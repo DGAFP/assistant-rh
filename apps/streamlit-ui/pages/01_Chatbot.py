@@ -64,6 +64,7 @@ from assistant_rh_rag_pipeline.chat_logger import build_log_row, build_non_rag_r
 from assistant_rh_rag_pipeline.chat_logger import log_run as _log_run_v3
 from assistant_rh_rag_pipeline.config import (
     DEFAULT_SYSTEM_PROMPT,
+    EmbeddingModel,
     get_prompt_content,
     today_fr,
 )
@@ -1261,6 +1262,14 @@ if query:
             config_v3.retrieval.enable_chunks_test = getattr(rag_config, "v3_enable_chunks_test", True)
             config_v3.retrieval.initial_top_k = v3_initial_top_k
             config_v3.retrieval.alpha = v3_alpha
+            _embedding_model_map = {
+                "albert": EmbeddingModel.ALBERT,
+                "bge_scaleway": EmbeddingModel.BGE_SCALEWAY,
+            }
+            config_v3.retrieval.embedding_model = _embedding_model_map.get(
+                getattr(rag_config, "embedding_model", "albert"),
+                EmbeddingModel.ALBERT,
+            )
             config_v3.aggregation.enable_section_reranker = v3_enable_reranker
             config_v3.aggregation.section_rerank_top_k = v3_rerank_top_k
             search_mode_map = {"semantic": SearchModeV3.SEMANTIC, "hybrid": SearchModeV3.HYBRID, "lexical": SearchModeV3.LEXICAL}
