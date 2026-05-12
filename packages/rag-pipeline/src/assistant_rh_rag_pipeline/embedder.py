@@ -38,6 +38,7 @@ EMBEDDING_MODELS: Dict[str, Dict] = {
 
 EMBEDDING_COLUMN_MAP: Dict[str, Dict[str, str]] = {
     "rag_chunks_matte": {"albert": "embedding_m3", "bge_scaleway": "embedding_bge_scw"},
+    "rag_chunks_mso": {"albert": "embedding_m3", "bge_scaleway": "embedding_bge_scw"},
     "rag_chunks_service_public": {"albert": "embedding_m3", "bge_scaleway": "embedding_bge_scw"},
     "rag_chunks_dgafp": {"albert": "embedding_m3", "bge_scaleway": "embedding_bge_scw"},
     "rag_chunks_rgrh": {"albert": "embedding_m3", "bge_scaleway": "embedding_bge_scw"},

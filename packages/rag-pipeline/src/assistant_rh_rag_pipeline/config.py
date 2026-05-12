@@ -56,6 +56,7 @@ class ChunkTable:
 
 CHUNK_TABLES: Dict[str, ChunkTable] = {
     "matte": ChunkTable("rag_chunks_matte", embed_col_albert="embedding_m3", tsv_col="text_tsv", publisher="MATTE", has_sections=True),
+    "mso": ChunkTable("rag_chunks_mso", embed_col_albert="embedding_m3", tsv_col="text_tsv", publisher="MSO", has_sections=True),
     "service_public": ChunkTable("rag_chunks_service_public", embed_col_albert="embedding_m3", tsv_col="text_tsv", publisher="Service-Public", has_sections=True),
     "service_public_scw": ChunkTable(
         os.getenv("SERVICE_PUBLIC_COMPARE_TABLE", "rag_chunks_service_public_scw"),
@@ -98,7 +99,7 @@ class RetrievalConfig:
     embedding_model: EmbeddingModel = EmbeddingModel.ALBERT
     initial_top_k: int = 15
     alpha: float = 0.5
-    tables: List[str] = field(default_factory=lambda: ["matte", "service_public", "dgafp", "rgrh"])
+    tables: List[str] = field(default_factory=lambda: ["matte", "mso", "service_public", "dgafp", "rgrh"])
     enable_chunks_test: bool = False
     enable_chunk_reranker: bool = False
     chunk_rerank_top_k: int = 30

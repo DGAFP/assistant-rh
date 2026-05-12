@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SUPPRESS WARNINGS - Must be FIRST before any streamlit import
@@ -12,6 +14,17 @@ warnings.filterwarnings("ignore", message=".*st.cache.*", category=DeprecationWa
 warnings.filterwarnings("ignore", message=".*st.cache.*", category=FutureWarning)
 warnings.filterwarnings("ignore", message=".*cache.*deprecated.*")
 warnings.filterwarnings("ignore", message=".*use_container_width.*")
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+EXTRA_PATHS = [
+    REPO_ROOT,
+    REPO_ROOT / "packages" / "rag-pipeline" / "src",
+    REPO_ROOT / "packages" / "data-engineering" / "src",
+]
+for candidate in EXTRA_PATHS:
+    path_str = str(candidate)
+    if path_str not in sys.path:
+        sys.path.insert(0, path_str)
 
 import streamlit as st  # noqa: E402 – early import for monkey-patch
 
@@ -31,7 +44,6 @@ import random
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -1234,7 +1246,17 @@ if query:
             config_v3.query_processor.enable_intent_gating = getattr(rag_config, "enable_intent_gating", False)
             config_v3.query_processor.enable_acronym_expansion = getattr(rag_config, "enable_query_expansion", True)
             config_v3.query_processor.intent_prompt_name = getattr(rag_config, "v3_intent_prompt_name", "intent_unified.md")
-            configured_tables = list(getattr(rag_config, "v3_tables", None) or ["matte", "service_public", "dgafp", "rgrh"])
+            configured_tables = list(getattr(rag_config, "v3_tables", None) or ["matte", "mso", "service_public", "dgafp", "rgrh"])
+            if compare_mode_enabled or dgafp_compare_mode_enabled:
+                remapped_tables = []
+                for table_name in configured_tables:
+                    if compare_mode_enabled and table_name == "service_public":
+                        remapped_tables.append("service_public_scw")
+                    elif dgafp_compare_mode_enabled and table_name == "dgafp":
+                        remapped_tables.append("dgafp_scw")
+                    else:
+                        remapped_tables.append(table_name)
+                configured_tables = remapped_tables
             config_v3.retrieval.tables = configured_tables
             config_v3.retrieval.enable_chunks_test = getattr(rag_config, "v3_enable_chunks_test", True)
             config_v3.retrieval.initial_top_k = v3_initial_top_k

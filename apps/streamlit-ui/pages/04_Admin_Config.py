@@ -331,7 +331,7 @@ with tab_config:
         if new_chunks_test != current_chunks_test:
             changes["v3_enable_chunks_test"] = new_chunks_test
     with col_src2:
-        tables_available = ["matte", "service_public", "dgafp", "rgrh"]
+        tables_available = ["matte", "mso", "service_public", "dgafp", "rgrh"]
         current_tables = getattr(config, 'v3_tables', tables_available)
         new_tables = st.multiselect(
             "Tables DE activées",
