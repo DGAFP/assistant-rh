@@ -73,7 +73,7 @@ jobs:
 
       - name: Login to Scaleway Container Registry
         env:
-          REGISTRY_NAMESPACE: ${{ secrets.SCW_CONTAINER_REGISTRY_NAMESPACE }}
+          REGISTRY_NAMESPACE: ${{ vars.SCW_CONTAINER_REGISTRY_NAMESPACE }}
           REGISTRY_PASSWORD: ${{ secrets.SCW_SECRET_KEY }}
           REGISTRY_PASSWORD_FALLBACK: ${{ secrets.SCALEWAY_API_KEY }}
         run: |
@@ -90,7 +90,7 @@ jobs:
 
       - name: Build and push prod image
         env:
-          REGISTRY_NAMESPACE: ${{ secrets.SCW_CONTAINER_REGISTRY_NAMESPACE }}
+          REGISTRY_NAMESPACE: ${{ vars.SCW_CONTAINER_REGISTRY_NAMESPACE }}
         run: |
           REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-assistant-rh}"
           docker buildx build \
@@ -113,7 +113,7 @@ jobs:
       SCW_DEFAULT_REGION: fr-par
       SCW_DEFAULT_PROJECT_ID: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
       SCW_DEFAULT_ORGANIZATION_ID: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
-      SCW_CONTAINER_REGISTRY_NAMESPACE: ${{ secrets.SCW_CONTAINER_REGISTRY_NAMESPACE }}
+      SCW_CONTAINER_REGISTRY_NAMESPACE: ${{ vars.SCW_CONTAINER_REGISTRY_NAMESPACE }}
       SCW_BUCKET_BRONZE: assistant-rh-bronze
       SCW_BUCKET_SILVER: assistant-rh-silver
       SCW_BUCKET_GOLD: assistant-rh-gold
