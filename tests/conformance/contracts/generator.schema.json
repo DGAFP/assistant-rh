@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "assistant-rh/conformance/generator.schema.json",
+  "title": "Generator Stage Contract",
+  "type": "object",
+  "required": ["input", "output"],
+  "properties": {
+    "input": {
+      "type": "object",
+      "required": ["query", "context_item_count", "conversation_history"],
+      "properties": {
+        "query": { "type": "string" },
+        "context_item_count": { "type": "integer" },
+        "conversation_history": { "type": "array" }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": ["answer", "answer_length", "citations"],
+      "properties": {
+        "answer": { "type": "string" },
+        "answer_length": { "type": "integer" },
+        "citations": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      }
+    }
+  }
+}
+

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "assistant-rh/conformance/context-selector.schema.json",
+  "title": "Context Selector Stage Contract",
+  "type": "object",
+  "required": ["input", "output"],
+  "properties": {
+    "input": {
+      "type": "object",
+      "required": ["query", "aggregated_section_ids"],
+      "properties": {
+        "query": { "type": "string" },
+        "aggregated_section_ids": {
+          "type": "array",
+          "items": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": [
+        "selector_enabled",
+        "selector_all_rejected",
+        "selector_items_before",
+        "selector_items_after",
+        "selector_decisions",
+        "selected_section_ids"
+      ],
+      "properties": {
+        "selector_enabled": { "type": "boolean" },
+        "selector_all_rejected": { "type": "boolean" },
+        "selector_items_before": { "type": ["integer", "number"] },
+        "selector_items_after": { "type": ["integer", "number"] },
+        "selector_decisions": { "type": "object" },
+        "selected_section_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}
+

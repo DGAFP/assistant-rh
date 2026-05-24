@@ -1,0 +1,26 @@
+.git
+.github
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.DS_Store
+data
+tests
+notebooks
+*.ipynb
+*.pyc
+*.pyo
+*.pyd
+dist
+build
+node_modules
+tmp
+
+# Coding agent directories
+.agents
+.claude
+.letta
+.pi
+.skills

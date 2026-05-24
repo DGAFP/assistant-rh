@@ -1,0 +1,184 @@
+name: Database Migrations (Scaleway)
+
+on:
+  release:
+    types:
+      - published
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/migrations/**"
+      - "tests/conformance/**/*.jsonl"
+      - "scripts/load_goldset_seed.py"
+      - ".github/workflows/db-migrations-scaleway.yml"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Target environment"
+        required: true
+        type: choice
+        default: staging
+        options:
+          - staging
+          - production
+      force_seed:
+        description: "Force staging seed load even when no JSONL seed changed"
+        required: true
+        type: boolean
+        default: false
+      seed_file:
+        description: "Seed JSONL path for staging load (required when force_seed=true)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  migrate-staging:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.target == 'staging') }}
+    runs-on: ubuntu-latest
+    environment: scaleway-staging
+    env:
+      SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
+      SEED_FILE: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_file || '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.98.2
+
+      - name: Detect changed goldset seed files
+        id: seed_filter
+        if: ${{ github.event_name == 'push' }}
+        uses: dorny/paths-filter@v4
+        with:
+          list-files: json
+          filters: |
+            goldset_seed:
+              - 'tests/conformance/**/goldset_questions_v2*.jsonl'
+
+      - name: Push Supabase migrations to Scaleway staging
+        run: |
+          set -euo pipefail
+          supabase db push \
+            --db-url "$SCW_POSTGRES_DSN" \
+            --workdir . \
+            --yes
+
+      - name: Setup uv
+        if: ${{ (github.event_name == 'push' && steps.seed_filter.outputs.goldset_seed == 'true') || (github.event_name == 'workflow_dispatch' && inputs.force_seed) }}
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        if: ${{ (github.event_name == 'push' && steps.seed_filter.outputs.goldset_seed == 'true') || (github.event_name == 'workflow_dispatch' && inputs.force_seed) }}
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        if: ${{ (github.event_name == 'push' && steps.seed_filter.outputs.goldset_seed == 'true') || (github.event_name == 'workflow_dispatch' && inputs.force_seed) }}
+        run: uv sync --frozen
+
+      - name: Load staging goldset seed
+        if: ${{ (github.event_name == 'push' && steps.seed_filter.outputs.goldset_seed == 'true') || (github.event_name == 'workflow_dispatch' && inputs.force_seed) }}
+        env:
+          SEED_FILES_JSON: ${{ steps.seed_filter.outputs.goldset_seed_files }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            while IFS= read -r seed_path; do
+              if [[ -z "$seed_path" ]]; then
+                continue
+              fi
+
+              uv run python scripts/load_goldset_seed.py \
+                --input "$seed_path" \
+                --target-dsn-env SCW_POSTGRES_DSN \
+                --replace-goldset
+            done < <(jq -r '.[]' <<< "$SEED_FILES_JSON")
+          else
+            if [[ -z "$SEED_FILE" ]]; then
+              echo "workflow_dispatch with force_seed=true requires inputs.seed_file" >&2
+              exit 1
+            fi
+
+            uv run python scripts/load_goldset_seed.py \
+              --input "$SEED_FILE" \
+              --target-dsn-env SCW_POSTGRES_DSN \
+              --replace-goldset
+          fi
+
+      - name: Summarize staging migration run
+        if: always()
+        env:
+          SEED_FILES_JSON: ${{ steps.seed_filter.outputs.goldset_seed_files }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Scaleway staging migration summary"
+            echo ""
+            echo "- Trigger: \`${{ github.event_name }}\`"
+            if [[ "${{ github.event_name }}" == "push" ]]; then
+              echo "- Seed JSONL changed: \`${{ steps.seed_filter.outputs.goldset_seed || 'false' }}\`"
+              if [[ -n "$SEED_FILES_JSON" && "$SEED_FILES_JSON" != "[]" ]]; then
+                echo "- Changed seed files:"
+                jq -r '.[] | "  - `" + . + "`"' <<< "$SEED_FILES_JSON"
+              else
+                echo "- Changed seed files: \`none\`"
+              fi
+            else
+              echo "- Manual force_seed: \`${{ inputs.force_seed }}\`"
+              if [[ -n "${{ inputs.seed_file }}" ]]; then
+                echo "- Seed file: \`${{ inputs.seed_file }}\`"
+              else
+                echo "- Seed file: \`none\`"
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  migrate-production:
+    if: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.target == 'production') }}
+    runs-on: ubuntu-latest
+    environment: scaleway-production
+    env:
+      SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.98.2
+
+      - name: Push Supabase migrations to Scaleway production
+        run: |
+          set -euo pipefail
+          supabase db push \
+            --db-url "$SCW_POSTGRES_DSN" \
+            --workdir . \
+            --yes
+
+      - name: Summarize production migration run
+        run: |
+          set -euo pipefail
+          {
+            echo "## Scaleway production migration summary"
+            echo ""
+            echo "- Trigger: \`${{ github.event_name }}\`"
+            if [[ "${{ github.event_name }}" == "release" ]]; then
+              echo "- Release tag: \`${{ github.event.release.tag_name }}\`"
+            fi
+            echo "- Seed load: \`disabled\`"
+          } >> "$GITHUB_STEP_SUMMARY"

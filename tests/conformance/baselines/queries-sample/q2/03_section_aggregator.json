@@ -1,0 +1,125 @@
+{
+  "input": {
+    "retrieved_chunk_ids": [
+      "3e6380ecac0525bdf8191fa16d9cee86f1c2dd81",
+      "d0aae71f044b453da566a42c16b57d347cdc631a",
+      "dfa63bf292858700fe4a0db01b3520fcfb0f072b",
+      "84ec1088d9bedb55f740402799821eb52ab2ef34",
+      "156c043454b4d1067c8d0bac61c34920276043fa",
+      "4becaa1bbb41d41f55ae0b342ac39d7607c46865",
+      "4b31df94fdbd95a82472a90a64fa82b89d2b670c",
+      "b9e6e7155193c5c498e1609acb92fa6a253717fd",
+      "216822591da278ed041827fbce8869a786a537cc",
+      "5c6a624a1b8b48fda76631097eb4e3b0de0aa759",
+      "05043ce25c3d5828050cae82c6421cef27fd00a9",
+      "21349215d38d5c4398f6a2e07ffe9fa3f9b8c9c6",
+      "a3154059c2b50b578a643d09d2656db40dfe9801",
+      "a537057603ff846d6d39a6cd6771320f064f186a",
+      "0d39ea5ffb46fc7b2a901be40ae71c3280660c5f",
+      "fed1b1a8fee327f9a216217d5ab4050fbee792be",
+      "cc2f345282a77ab58e13092b7722631180660058",
+      "28247c2862ba2ddcf4d1ab9bd724ede389132633",
+      "59eba5fac9355f87adfdc0934a6a9128a8a6640b",
+      "fd8dabea8d111afad68295bef7464f1b4193c528",
+      "4b2b1f60b2efc5ac1c4fab3a42c351dfadb5f2c3",
+      "40dee183d3a55e4f1b81193db96375f458d8d71e",
+      "05bf23fef9eaec2a72ff16a3e81fceefe9ebd3f7",
+      "81e252560fc5fd23c8c8ec72c2908d03f10eb7af",
+      "60415e188b118e49de6c7f86e04b44b970415c54",
+      "6a729e0d5f1e3b69fedc4c8b566452a05cd1e752",
+      "18df0f66eacb98eb6f90095c7973a9544b34ab5c",
+      "f42efa81b05a588ab81a259825718998a7100ec6",
+      "988d08b16e09e61b69255bcff0ce284397d11255",
+      "fbb6fb2539fc1dae94f767212dd88f357adb9d7f",
+      "5ff7d183c2a9f1365df70d09b6873a7fdcb5e400",
+      "4d29ed6f05a4b2851b3f128e75b740ec2bef9f7e",
+      "3a6f8c763011256fc1e87a5940bb10e7717c9bcd",
+      "bd7a7542a5ae5b80db2f7db676561839128b19ef",
+      "e7dee4fa9007980ac921b89e900afb7608a683b7",
+      "9e326ffe9fb60f364e03387feb3dc618d10dfeb6",
+      "21aa8c4660c314d495be769c4d4d47c13aceb518",
+      "bb81d7dfa367fb97151c5be8d0d0293165a6a477",
+      "e46332bf560011759cb0ad5ecd010d532bbe3af1",
+      "e4f3307b022219f437858e78036f3fd1421e2278",
+      "dd6e8d567f1556b18cf5c498fca8696a80645a4f",
+      "6122860675436ab69d318640c3c5964d62da9e29",
+      "83538e2c46930cce897fb5d3ddf07e72cf769b9f",
+      "aa73bfd3a0e6117ad987320ac5781accf13886ff",
+      "06177145d027190b11f333f99ccef813f522c9d5"
+    ]
+  },
+  "output": {
+    "aggregated_sections": [
+      {
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+        "score": 0.4584,
+        "publisher": "Service-Public",
+        "heading": "Licenciement d'un contractuel de la fonction publique d'Etat (FPE)",
+        "chunk_count": 12
+      },
+      {
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+        "score": 0.3475,
+        "publisher": "MATTE",
+        "heading": "FICHE 1 - Quel contrat choisir et pour quelle durée selon la situation ? (Le fon",
+        "chunk_count": 6
+      },
+      {
+        "section_id": "f7c005fd-81b1-45e3-a90a-6403e6665ffc",
+        "score": 0.2992,
+        "publisher": "MATTE",
+        "heading": "FICHE 6 - La fin de la période d'essai et la fin du contrat",
+        "chunk_count": 2
+      },
+      {
+        "section_id": "",
+        "score": 0.2833,
+        "publisher": "RGRH",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "score": 0.279,
+        "publisher": "RGRH",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "5c5e9a2a-e403-49cf-95b5-e7100b9194e8",
+        "score": 0.2749,
+        "publisher": "MATTE",
+        "heading": "Annexe 6 - Être recruté(e) en tant que contractuel(le) dans la Fonction publique",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "score": 0.2749,
+        "publisher": "RGRH",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "score": 0.2708,
+        "publisher": "RGRH",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "dae6cd13-7b49-4011-ba3c-c7c706b023b4",
+        "score": 0.2669,
+        "publisher": "MATTE",
+        "heading": "8 – GESTION DES CONGÉS ANNUELS",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "score": 0.2669,
+        "publisher": "RGRH",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "chunk_count": 1
+      }
+    ]
+  }
+}

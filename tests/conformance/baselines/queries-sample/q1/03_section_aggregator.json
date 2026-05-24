@@ -1,0 +1,125 @@
+{
+  "input": {
+    "retrieved_chunk_ids": [
+      "fed1b1a8fee327f9a216217d5ab4050fbee792be",
+      "156c043454b4d1067c8d0bac61c34920276043fa",
+      "e2de6a626ab0b67ca7a19e828c63786d5a61a0cc",
+      "0b017202cc791b85b7c2f63fb844a4ca51301132",
+      "a537057603ff846d6d39a6cd6771320f064f186a",
+      "e01c1463db22e20aca7611620af6eea8568ee8f9",
+      "6ed408cc58f9b22f600857e504275086c8da9c86",
+      "05bf23fef9eaec2a72ff16a3e81fceefe9ebd3f7",
+      "3f463714e9240b0966c8b5a3fd14a829f64fc7d6",
+      "ce21bac51615b7ef2b2a090959a9bcef9aaa8e6a",
+      "cc2f345282a77ab58e13092b7722631180660058",
+      "01f80caf6af0019960d7f4c5b9378ec9f47f1255",
+      "410f8aecfed1cf35934f4e995b9e9e2bb66735f6",
+      "bb81d7dfa367fb97151c5be8d0d0293165a6a477",
+      "a6e89e708720c5e10d38c7041ecbd14b6cab1107",
+      "0497e87f8392587468f3f7a7fd8c5786963f847c",
+      "988d08b16e09e61b69255bcff0ce284397d11255",
+      "73b7eef502aeba6ba112b88f08ab2da82c3840ce",
+      "d3d5b0691a47c28953355ab1bb49bd3c40a36827",
+      "e7dee4fa9007980ac921b89e900afb7608a683b7",
+      "45d7ddf7e4e3b48778130cac4584be97901c7dd4",
+      "860e64f925902b0b3bce746190f1e043813c0c76",
+      "d0aae71f044b453da566a42c16b57d347cdc631a",
+      "9899fc49734b9fee7c3e7860262327f75049fd0b",
+      "780d4cd89bd494c8eb084efc5390d59895a4942f",
+      "4d29ed6f05a4b2851b3f128e75b740ec2bef9f7e",
+      "9a7bd7693b65affdc2696b19e80a0efa442207ba",
+      "5c6a624a1b8b48fda76631097eb4e3b0de0aa759",
+      "6a729e0d5f1e3b69fedc4c8b566452a05cd1e752",
+      "f342aa4046c8ab227c03d23f2b92666944825993",
+      "34784a463dd521d1d2e883c64341dd10077f0840",
+      "05043ce25c3d5828050cae82c6421cef27fd00a9",
+      "dafa0a5330f06ad48dba53cd72aea6b0afde1fb2",
+      "6edd11f251e66244cc6e8c05c3fbc3725cb4ec70",
+      "ea1f8bcec65513ddf10953080834bb3cba306b92",
+      "dfa63bf292858700fe4a0db01b3520fcfb0f072b",
+      "5aab77763299e0b505c0a2e899be23796460a5ce",
+      "b118e7e59706d7e268bc39cdc4e02f091c4a67f8",
+      "e5b723b16115475a5342a099f6a15c8fb67f176a",
+      "cadf82c1d20afb6e39120e4dc23b3c785332180d",
+      "6e2b9bbf2d7586f73e25649819deb3cf2c2ba3fd",
+      "e71437fab6e13ef8a3d0dc829ab07a8e529c20eb",
+      "5ff7d183c2a9f1365df70d09b6873a7fdcb5e400",
+      "fe870092f98e1179c0ce83c282e4c339f9635fa3",
+      "b3173e350700a943a638d5ae94c45f207f6355d4"
+    ]
+  },
+  "output": {
+    "aggregated_sections": [
+      {
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+        "score": 0.4568,
+        "publisher": "MATTE",
+        "heading": "FICHE 1 - Quel contrat choisir et pour quelle durée selon la situation ? (Le fon",
+        "chunk_count": 12
+      },
+      {
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+        "score": 0.4225,
+        "publisher": "Service-Public",
+        "heading": "Recrutement d'un contractuel dans la fonction publique d'État (FPE)",
+        "chunk_count": 10
+      },
+      {
+        "section_id": "0f27cc89-2f7d-4336-be4b-7fe9f16e730e",
+        "score": 0.2855,
+        "publisher": "MATTE",
+        "heading": "FICHE 8 - Recrutement en CDI ou avec portabilité du CDI et CDIsation",
+        "chunk_count": 2
+      },
+      {
+        "section_id": "",
+        "score": 0.2833,
+        "publisher": "RGRH",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "score": 0.2833,
+        "publisher": "Service-Public",
+        "heading": "particuliers_vosdroits_F1906.txt",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "score": 0.279,
+        "publisher": "RGRH",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "score": 0.2749,
+        "publisher": "RGRH",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "score": 0.2708,
+        "publisher": "RGRH",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "score": 0.2669,
+        "publisher": "RGRH",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "score": 0.2631,
+        "publisher": "RGRH",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "chunk_count": 1
+      }
+    ]
+  }
+}

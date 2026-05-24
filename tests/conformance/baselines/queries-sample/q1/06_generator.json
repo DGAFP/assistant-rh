@@ -1,0 +1,12 @@
+{
+  "input": {
+    "query": "Quelle est la durée maximale d'un contrat CDD (Contrat à Durée Déterminée) pour un agent contractuel ?",
+    "context_item_count": 5,
+    "conversation_history": []
+  },
+  "output": {
+    "answer": "La durée maximale d’un CDD pour un agent contractuel est de **6 ans au total**.  \n\n- Un contrat individuel ne peut excéder **3 ans** ; il peut être renouvelé, mais la somme des périodes successives ne doit pas dépasser **6 ans** (au‑delà, le passage en CDI devient obligatoire).  \n\nCette règle provient de la fiche 8 du MATTE, qui indique que « la période maximale d’emploi en CDD est fixée à 6 ans » et précise que la CDIsation s’impose à l’issue de cette durée.  \n\nAinsi, pour un agent contractuel, le CDD peut être conclu pour une durée maximale de 3 ans, renouvelable jusqu’à atteindre le plafond cumulé de 6 ans.",
+    "answer_length": 617,
+    "citations": []
+  }
+}

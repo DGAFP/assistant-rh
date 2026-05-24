@@ -1,0 +1,273 @@
+"""
+LLM-based context selector for the RAG V3 Clean pipeline.
+
+When enabled (``SelectorConfig.enabled = True``), an LLM reviews the list of
+candidate sections post-rerank and drops irrelevant ones before they reach
+the ContextBuilder.
+
+When **disabled** (default), ``select()`` is a no-op – all sections pass through.
+
+Dependencies (internal only):
+  - config (SelectorConfig, get_prompt_content)
+  - llm_client (LLMClient)
+  - models (AggregatedSection, ContextItem)
+"""
+from __future__ import annotations
+
+import json
+import logging
+import re
+from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import List, Union
+
+from .config import SelectorConfig
+from .db_helpers import load_prompt
+from .llm_client import LLMClient
+from .models import AggregatedSection, ContextItem
+
+logger = logging.getLogger(__name__)
+
+SelectorItem = Union[AggregatedSection, ContextItem]
+
+
+@dataclass
+class _ParseResult:
+    """Distinguish between successful parse (even if empty) and parse failure."""
+    ids: List[int] = field(default_factory=list)
+    is_explicit_empty: bool = False
+
+
+class ContextSelector:
+    """
+    Stateful LLM-based selector that filters sections by relevance.
+
+    Each ``select()`` call stores results internally so the pipeline can
+    inspect them afterwards via properties, without relying on module globals.
+
+    Usage::
+
+        selector = ContextSelector(config.selector)
+        kept = selector.select(query, sections)
+        print(selector.last_decisions)
+        print(selector.all_rejected)
+    """
+
+    def __init__(self, config: SelectorConfig):
+        self._config = config
+        self._last_decisions: dict = {}
+        self._last_raw_response: str = ""
+        self._last_reasoning: str = ""
+
+    def _reset(self) -> None:
+        self._last_decisions = {}
+        self._last_raw_response = ""
+        self._last_reasoning = ""
+
+    # ── Public properties ──────────────────────────────────────────────
+
+    @property
+    def enabled(self) -> bool:
+        """Whether the selector is active."""
+        return self._config.enabled
+
+    @property
+    def last_decisions(self) -> dict:
+        """Selector decisions: ``{kept: [...], removed: [...], reason: "..."}``."""
+        return self._last_decisions
+
+    @property
+    def last_raw_response(self) -> str:
+        """Raw LLM response from the last ``select()`` call."""
+        return self._last_raw_response
+
+    @property
+    def last_reasoning(self) -> str:
+        """Extracted reasoning from the last ``select()`` call."""
+        return self._last_reasoning
+
+    @property
+    def all_rejected(self) -> bool:
+        """True if the LLM explicitly rejected every section."""
+        return self._last_decisions.get("all_rejected", False)
+
+    # ── Main entry point ───────────────────────────────────────────────
+
+    def select(
+        self,
+        query: str,
+        sections: List[AggregatedSection],
+    ) -> List[AggregatedSection]:
+        """
+        Filter *sections* through the LLM selector.
+
+        Returns the kept subset.  If disabled or on failure, returns all
+        *sections* unchanged.
+        """
+        self._reset()
+
+        if not self._config.enabled or not sections:
+            return sections
+
+        try:
+            llm = LLMClient(
+                provider=self._config.provider.value,
+                model=self._config.model,
+                temperature=self._config.temperature,
+            )
+
+            prompt_template = load_prompt(
+                self._config.prompt_name, "selector.md", default=_DEFAULT_PROMPT,
+            )
+
+            numbered = []
+            for i, sec in enumerate(sections):
+                label = f"[{i}] {sec.heading} ({sec.publisher or 'unknown'})"
+                numbered.append(f"{label}\n{sec.markdown}")
+
+            format_vars = {
+                "query": query,
+                "context": "\n\n---\n\n".join(numbered),
+                "theme": "",
+            }
+            try:
+                prompt = prompt_template.format_map(defaultdict(str, format_vars))
+            except Exception:
+                prompt = (
+                    prompt_template
+                    .replace("{query}", query)
+                    .replace("{context}", "\n\n---\n\n".join(numbered))
+                    .replace("{theme}", "")
+                )
+
+            raw = llm.chat(prompt, system_prompt="")
+            self._last_raw_response = raw
+            parsed = _parse_response(raw, len(sections))
+            reason = _parse_reason(raw)
+            self._last_reasoning = reason
+
+            if parsed.is_explicit_empty:
+                logger.info(
+                    "Selector explicitly rejected all %d sections – reason: %s",
+                    len(sections), reason[:120],
+                )
+                self._last_decisions = {
+                    "kept": [],
+                    "removed": [
+                        {"idx": i, "heading": (sections[i].heading or "")[:80],
+                         "publisher": sections[i].publisher or ""}
+                        for i in range(len(sections))
+                    ],
+                    "reason": reason,
+                    "all_rejected": True,
+                }
+                return []
+
+            if not parsed.ids:
+                _FALLBACK_K = 5
+                logger.warning("Selector parse failure – keeping top %d sections", _FALLBACK_K)
+                return sections[:_FALLBACK_K]
+
+            kept_set = set(parsed.ids)
+            removed_ids = [i for i in range(len(sections)) if i not in kept_set]
+            self._last_decisions = {
+                "kept": [
+                    {"idx": i, "heading": (sections[i].heading or "")[:80],
+                     "publisher": sections[i].publisher or ""}
+                    for i in parsed.ids if 0 <= i < len(sections)
+                ],
+                "removed": [
+                    {"idx": i, "heading": (sections[i].heading or "")[:80],
+                     "publisher": sections[i].publisher or ""}
+                    for i in removed_ids if 0 <= i < len(sections)
+                ],
+                "reason": reason,
+            }
+
+            filtered = [sections[i] for i in parsed.ids if 0 <= i < len(sections)]
+            logger.info("Selector kept %d / %d sections", len(filtered), len(sections))
+            return filtered if filtered else sections
+
+        except Exception as exc:
+            logger.warning("Context selector failed (%s), keeping all sections", exc)
+            return sections
+
+    def select_context(
+        self,
+        query: str,
+        items: List[ContextItem],
+    ) -> List[ContextItem]:
+        """Convenience wrapper: select over ``ContextItem`` lists."""
+        light_sections = [
+            AggregatedSection(
+                section_id=it.section_id, heading=it.heading, markdown=it.content,
+                chunks=[], score=it.score, publisher=it.publisher,
+                references_juridiques=it.references_juridiques, metadata=it.metadata,
+            )
+            for it in items
+        ]
+        kept = self.select(query, light_sections)
+        kept_ids = {id(s) for s in kept}
+        return [items[i] for i, s in enumerate(light_sections) if id(s) in kept_ids]
+
+
+# ── Pure helper functions (stateless) ──────────────────────────────────
+
+
+def _parse_response(raw: str, n_items: int) -> _ParseResult:
+    """Extract selected indices from the LLM JSON response."""
+    try:
+        data = _extract_json(raw)
+        raw_ids = (
+            data.get("selected_ids")
+            or data.get("selected_indices")
+            or data.get("selected_ordered")
+        )
+        if raw_ids is None or (isinstance(raw_ids, list) and len(raw_ids) == 0):
+            return _ParseResult(is_explicit_empty=True)
+        out = []
+        for v in raw_ids:
+            if isinstance(v, int):
+                out.append(v)
+            elif isinstance(v, str):
+                digits = re.sub(r"[^0-9]", "", v)
+                if digits:
+                    out.append(int(digits))
+        return _ParseResult(ids=[i for i in out if 0 <= i < n_items])
+    except (ValueError, KeyError, json.JSONDecodeError):
+        return _ParseResult()
+
+
+def _parse_reason(raw: str) -> str:
+    """Extract the 'reason' field from the LLM JSON response."""
+    try:
+        data = _extract_json(raw)
+        return data.get("reason", "")
+    except (ValueError, KeyError, json.JSONDecodeError):
+        return ""
+
+
+def _extract_json(raw: str) -> dict:
+    text = raw.strip()
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    text = m.group(1) if m else text
+    return json.loads(text.strip())
+
+
+_DEFAULT_PROMPT = """Tu es un expert en selection de contexte pour un assistant RH.
+
+**Question :** {query}
+
+**Sections disponibles :**
+{context}
+
+Selectionne les sections pertinentes pour repondre a la question.
+
+Reponds UNIQUEMENT avec un JSON :
+```json
+{{
+  "selected_ids": [0, 2, 5],
+  "reason": "Explication courte"
+}}
+```
+"""

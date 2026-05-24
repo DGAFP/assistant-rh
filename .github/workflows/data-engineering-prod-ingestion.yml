@@ -1,0 +1,69 @@
+name: Data Engineering Prod Ingestion
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Source a ingerer en base prod"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - service_public
+          - legifrance
+
+permissions:
+  contents: read
+
+concurrency:
+  group: data-prod-ingestion
+  cancel-in-progress: false
+
+jobs:
+  ingest-prod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    environment: scaleway-production
+    env:
+      UV_CACHE_DIR: .uv-cache
+      SCW_DEFAULT_REGION: fr-par
+      SCW_BUCKET_BRONZE: assistant-rh-bronze
+      SCW_BUCKET_SILVER: assistant-rh-silver
+      SCW_BUCKET_GOLD: assistant-rh-gold
+      SCW_PREFIX_STAGING: staging
+      SCW_PREFIX_PROD: prod
+      SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
+      SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+      SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Ingest Service-Public into Scaleway prod
+        if: ${{ github.event.inputs.source == 'all' || github.event.inputs.source == 'service_public' }}
+        run: |
+          uv run --no-sync assistant-rh-data service-public ingest \
+            --fiche-config config/service_public_fiches.json \
+            --target-env prod \
+            --from-object-storage \
+            --dsn "${SCW_POSTGRES_DSN}"
+
+      - name: Ingest Legifrance into Scaleway prod
+        if: ${{ github.event.inputs.source == 'all' || github.event.inputs.source == 'legifrance' }}
+        run: |
+          uv run --no-sync assistant-rh-data legifrance ingest \
+            --target-env prod \
+            --from-object-storage \
+            --load-all-artifacts \
+            --dsn "${SCW_POSTGRES_DSN}"

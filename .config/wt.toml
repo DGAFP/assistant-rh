@@ -1,0 +1,8 @@
+[pre-start]
+# Keep dev tools explicit for local worktrees only.
+# Do not switch to `--all-groups` or pyproject `default-groups=["dev"]`:
+# production/CI flows rely on runtime-only dependencies to keep images lean.
+deps = "uv sync --group dev"
+
+[post-start]
+copy = "wt step copy-ignored"

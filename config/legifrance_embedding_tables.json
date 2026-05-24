@@ -1,0 +1,34 @@
+{
+  "tables": [
+    {
+      "table": "rag_chunks_dgafp",
+      "id_column": "chunk_id",
+      "text_column": "chunk_text",
+      "embeddings": [
+        {
+          "column": "embedding_m3",
+          "algorithm": "m3"
+        },
+        {
+          "column": "embedding_bge_scw",
+          "algorithm": "bge_scaleway"
+        }
+      ]
+    },
+    {
+      "table": "rag_chunks_legifrance",
+      "id_column": "hash_id",
+      "text_column": "chunk_text",
+      "embeddings": [
+        {
+          "column": "embedding_m3",
+          "algorithm": "m3"
+        },
+        {
+          "column": "embedding_bge_scw",
+          "algorithm": "bge_scaleway"
+        }
+      ]
+    }
+  ]
+}

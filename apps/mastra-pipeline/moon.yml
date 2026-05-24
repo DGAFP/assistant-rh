@@ -1,0 +1,85 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+language: "typescript"
+layer: "application"
+stack: "backend"
+
+project:
+  title: "Mastra Pipeline"
+  description: "Mastra TypeScript RAG pipeline"
+
+workspace:
+  inheritedTasks:
+    exclude:
+      - "format"
+      - "lint"
+      - "test"
+      - "typecheck"
+
+tasks:
+  dev:
+    command: "pnpm --filter @assistant-rh/mastra-pipeline dev"
+    options:
+      runFromWorkspaceRoot: true
+      persistent: true
+      cache: false
+
+  build:
+    command: "pnpm --filter @assistant-rh/mastra-pipeline build"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  typecheck:
+    command: "pnpm --filter @assistant-rh/mastra-pipeline typecheck"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  health:
+    command: "pnpm --filter @assistant-rh/mastra-pipeline health:check"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  query-processor-conformance:
+    command: "pnpm --filter @assistant-rh/mastra-pipeline query-processor:conformance"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  retriever-conformance:
+    command: "pnpm --filter @assistant-rh/mastra-pipeline retriever:conformance"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  section-aggregator-conformance:
+    command: "pnpm --filter @assistant-rh/mastra-pipeline section-aggregator:conformance"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  context-selector-conformance:
+    command: "pnpm --filter @assistant-rh/mastra-pipeline context-selector:conformance"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  context-builder-conformance:
+    command: "pnpm --filter @assistant-rh/mastra-pipeline context-builder:conformance"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  rag-pipeline-conformance:
+    command: "pnpm --filter @assistant-rh/mastra-pipeline rag-pipeline:conformance"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  endpoint-smoke:
+    command: "pnpm --filter @assistant-rh/mastra-pipeline endpoint:smoke"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false

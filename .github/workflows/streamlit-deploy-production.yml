@@ -1,0 +1,241 @@
+name: Streamlit Deploy Production
+
+on:
+  workflow_run:
+    workflows:
+      - "Database Migrations (Scaleway)"
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      existing_image_tag:
+        description: "Optional existing image tag to redeploy directly (rollback)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: streamlit-deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY_HOST: rg.fr-par.scw.cloud
+  STREAMLIT_IMAGE_NAME: streamlit-ui
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: scaleway-production
+    env:
+      SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
+      SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+      SCW_DEFAULT_PROJECT_ID: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+      SCW_DEFAULT_ORGANIZATION_ID: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+      SCW_CONTAINER_REGISTRY_NAMESPACE: ${{ secrets.SCW_CONTAINER_REGISTRY_NAMESPACE }}
+      SCW_DEFAULT_REGION: ${{ secrets.SCW_DEFAULT_REGION || 'fr-par' }}
+
+      SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
+      ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
+      SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
+      COOKIES_PASSWORD: ${{ secrets.COOKIES_PASSWORD }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+
+      ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
+      SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || secrets.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
+      STREAMLIT_PRODUCTION_BASE_URL: ${{ vars.STREAMLIT_PRODUCTION_BASE_URL }}
+
+      APP_DB_TARGET: scaleway
+      APP_SCALEWAY_ENV: prod
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Validate required deployment configuration
+        run: |
+          set -euo pipefail
+          missing=()
+          required=(
+            SCW_ACCESS_KEY
+            SCW_SECRET_KEY
+            SCW_DEFAULT_PROJECT_ID
+            SCW_DEFAULT_ORGANIZATION_ID
+            SCW_CONTAINER_REGISTRY_NAMESPACE
+            SCW_POSTGRES_DSN
+            ALBERT_API_KEY
+            SCALEWAY_API_KEY
+            COOKIES_PASSWORD
+            ADMIN_PASSWORD
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "Missing required secret/variable(s): ${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Resolve deployment mode and image
+        id: image
+        env:
+          INPUT_EXISTING_IMAGE_TAG: ${{ inputs.existing_image_tag }}
+          RELEASE_WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_RUN_DISPLAY_TITLE: ${{ github.event.workflow_run.display_title }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            RELEASE_SHA="${RELEASE_WORKFLOW_SHA}"
+            if [[ -z "${RELEASE_SHA}" ]]; then
+              echo "Missing workflow_run.head_sha for release deployment." >&2
+              exit 1
+            fi
+
+            RELEASE_TAG="$(git tag --points-at "${RELEASE_SHA}" | sort -V | tail -n1)"
+            if [[ -z "${RELEASE_TAG}" && "${WORKFLOW_RUN_DISPLAY_TITLE}" =~ ^v[0-9] ]]; then
+              RELEASE_TAG="${WORKFLOW_RUN_DISPLAY_TITLE}"
+            fi
+
+            if [[ -z "${RELEASE_TAG}" ]]; then
+              echo "Could not resolve release tag for commit ${RELEASE_SHA}." >&2
+              exit 1
+            fi
+
+            IMAGE_TAG="release-${RELEASE_TAG}"
+            BUILD_REQUIRED=true
+            MODE="release-after-db-migration"
+          elif [[ -n "${INPUT_EXISTING_IMAGE_TAG}" ]]; then
+            RELEASE_TAG="manual-rollback"
+            IMAGE_TAG="${INPUT_EXISTING_IMAGE_TAG}"
+            BUILD_REQUIRED=false
+            MODE="manual-rollback"
+          else
+            echo "workflow_dispatch requires inputs.existing_image_tag to redeploy a previous image." >&2
+            exit 1
+          fi
+
+          IMAGE_URI="${REGISTRY_HOST}/${SCW_CONTAINER_REGISTRY_NAMESPACE}/${STREAMLIT_IMAGE_NAME}:${IMAGE_TAG}"
+
+          echo "mode=${MODE}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+          echo "build_required=${BUILD_REQUIRED}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        if: ${{ steps.image.outputs.build_required == 'true' }}
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Scaleway Container Registry
+        if: ${{ steps.image.outputs.build_required == 'true' }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$SCW_SECRET_KEY" | docker login \
+            "${REGISTRY_HOST}/${SCW_CONTAINER_REGISTRY_NAMESPACE}" \
+            -u nologin \
+            --password-stdin
+
+      - name: Build and push Streamlit production image
+        if: ${{ steps.image.outputs.build_required == 'true' }}
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/amd64 \
+            -f Dockerfile.streamlit \
+            -t "${{ steps.image.outputs.image_uri }}" \
+            -t "${REGISTRY_HOST}/${SCW_CONTAINER_REGISTRY_NAMESPACE}/${STREAMLIT_IMAGE_NAME}:prod-latest" \
+            --push \
+            .
+
+      - name: Install Scaleway CLI
+        uses: scaleway/action-scw@v0.0.3
+        with:
+          version: v2.54.0
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+      - name: Deploy Streamlit container (production)
+        id: deploy
+        run: |
+          set -euo pipefail
+          OUTPUT_JSON="$RUNNER_TEMP/streamlit-production-deploy.json"
+
+          python3 .github/scripts/scaleway_streamlit_deploy.py \
+            --target-env prod \
+            --project-id "$SCW_DEFAULT_PROJECT_ID" \
+            --region "$SCW_DEFAULT_REGION" \
+            --namespace-name assistant-rh-streamlit-production \
+            --container-name assistant-rh-streamlit-production \
+            --image-uri "${{ steps.image.outputs.image_uri }}" \
+            --output-json "$OUTPUT_JSON"
+
+          echo "deploy_json_path=$OUTPUT_JSON" >> "$GITHUB_OUTPUT"
+          echo "container_id=$(jq -r '.container_id' "$OUTPUT_JSON")" >> "$GITHUB_OUTPUT"
+          echo "domain_name=$(jq -r '.container_domain_name' "$OUTPUT_JSON")" >> "$GITHUB_OUTPUT"
+          echo "action=$(jq -r '.action' "$OUTPUT_JSON")" >> "$GITHUB_OUTPUT"
+
+      - name: Post-deploy health check
+        id: health
+        run: |
+          set -euo pipefail
+
+          BASE_URL="${STREAMLIT_PRODUCTION_BASE_URL:-}"
+          if [[ -z "$BASE_URL" ]]; then
+            if [[ -z "${{ steps.deploy.outputs.domain_name }}" ]]; then
+              echo "No STREAMLIT_PRODUCTION_BASE_URL set and no Scaleway domain returned." >&2
+              exit 1
+            fi
+            BASE_URL="https://${{ steps.deploy.outputs.domain_name }}"
+          fi
+
+          HEALTH_URL="${BASE_URL%/}/_stcore/health"
+          echo "base_url=${BASE_URL}" >> "$GITHUB_OUTPUT"
+          echo "health_url=${HEALTH_URL}" >> "$GITHUB_OUTPUT"
+
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --show-error --max-time 10 "$HEALTH_URL" >/dev/null; then
+              echo "health_status=ok" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Health check attempt ${attempt}/20 failed; retrying in 6s..."
+            sleep 6
+          done
+
+          echo "health_status=failed" >> "$GITHUB_OUTPUT"
+          curl --include --silent --show-error --max-time 10 "$HEALTH_URL" || true
+          exit 1
+
+      - name: Publish deployment summary
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "## Streamlit production deployment"
+            echo ""
+            echo "- Trigger: \`${{ github.event_name }}\`"
+            echo "- Mode: \`${{ steps.image.outputs.mode || 'n/a' }}\`"
+            echo "- Release reference: \`${{ steps.image.outputs.release_tag || 'n/a' }}\`"
+            echo "- Image: \`${{ steps.image.outputs.image_uri || 'n/a' }}\`"
+            echo "- Container action: \`${{ steps.deploy.outputs.action || 'n/a' }}\`"
+            echo "- Container ID: \`${{ steps.deploy.outputs.container_id || 'n/a' }}\`"
+            echo "- Endpoint: \`${{ steps.health.outputs.base_url || 'n/a' }}\`"
+            echo "- Health URL: \`${{ steps.health.outputs.health_url || 'n/a' }}\`"
+            echo "- Health status: \`${{ steps.health.outputs.health_status || 'failed' }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

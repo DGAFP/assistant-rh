@@ -1,0 +1,58 @@
+{
+  "input": {
+    "selected_section_ids": [
+      "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+      "3d3b8c7c-be16-4bf8-ba9b-52253e72f4d1"
+    ]
+  },
+  "output": {
+    "context_items_ref": [
+      {
+        "section_id": "",
+        "doc_id": "bfe1963a-b952-4f5a-911b-cf1a21b46fbc",
+        "heading": "Fiche 8 - Recrutement en CDI ou avec portabilité du CDI et CDIsation - Juillet ",
+        "publisher": "MATTE",
+        "tokens": 2129,
+        "score": 0.3614,
+        "is_doc_entire": true
+      },
+      {
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+        "doc_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f",
+        "heading": "Recrutement d'un contractuel dans la fonction publique d'État (FPE)",
+        "publisher": "Service-Public",
+        "tokens": 4787,
+        "score": 0.4541,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "3d3b8c7c-be16-4bf8-ba9b-52253e72f4d1",
+        "doc_id": "80f1055e-eff8-4eeb-94f8-ce782b87e542",
+        "heading": "FICHE 4 - Rédaction du contrat et prise en charge administrative et financière d",
+        "publisher": "MATTE",
+        "tokens": 1169,
+        "score": 0.3013,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "",
+        "doc_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "publisher": "RGRH",
+        "tokens": 0,
+        "score": 0.2867,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "",
+        "doc_id": "",
+        "heading": "particuliers_vosdroits_F1906.txt",
+        "publisher": "Service-Public",
+        "tokens": 0,
+        "score": 0.2867,
+        "is_doc_entire": false
+      }
+    ],
+    "context_text_hash": "b2a67811ed140e68fd8caf4ca4a4fa7b93920dced10cecaa35daf87a26bffa7a"
+  }
+}

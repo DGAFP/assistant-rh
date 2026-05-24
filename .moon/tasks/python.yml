@@ -1,0 +1,70 @@
+# Moon v2 Python Task Definitions
+# https://moonrepo.dev/docs/config/tasks
+#
+# These tasks are inherited by all Python projects (language: 'python')
+# Projects can override or extend these tasks in their moon.yml
+
+# File groups for Python projects
+# Note: Paths are relative to the project root, not workspace root
+fileGroups:
+  sources:
+    - '**/*.py'
+  tests:
+    - 'tests/**/*.py'
+    - 'test_*.py'
+    - '*_test.py'
+  configs:
+    - 'pyproject.toml'
+    - 'setup.py'
+    - 'setup.cfg'
+    - 'requirements*.txt'
+
+# Implicit inputs - always trigger rebuild on pyproject.toml changes
+# Use workspace-relative paths (prefixed with /) for root-level files
+implicitInputs:
+  - '/pyproject.toml'
+  - '/uv.lock'
+
+# Inherited tasks for all Python projects
+# Note: Commands use 'uv run' to execute tools in the virtual environment
+tasks:
+  # Format code with ruff format
+  format:
+    description: 'Format Python code with ruff'
+    command: 'uv run ruff format'
+    inputs:
+      - '@group(sources)'
+    options:
+      cache: false
+
+  # Lint code with ruff check
+  lint:
+    description: 'Lint Python code with ruff'
+    command: 'uv run ruff check'
+    inputs:
+      - '@group(sources)'
+    options:
+      cache: false
+      allowFailure: true
+
+  # Type check with mypy
+  typecheck:
+    description: 'Type check Python code with mypy'
+    command: 'uv run mypy'
+    args: '--ignore-missing-imports'
+    inputs:
+      - '@group(sources)'
+    options:
+      cache: true
+
+  # Run tests with pytest
+  test:
+    description: 'Run Python tests with pytest'
+    command: 'uv run pytest'
+    args: 'tests/ -v --tb=short'
+    inputs:
+      - '@group(sources)'
+      - '@group(tests)'
+    options:
+      cache: true
+      persistent: false

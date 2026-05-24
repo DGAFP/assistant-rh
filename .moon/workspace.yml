@@ -1,0 +1,47 @@
+# Moon v2 Workspace Configuration
+# https://moonrepo.dev/docs/config/workspace
+
+# Project discovery via globs
+# Projects will be auto-discovered from apps/* and packages/* directories
+projects:
+  globs:
+    - 'apps/*'
+    - 'packages/*'
+  # For initial migration, also include the legacy src/ as a project
+  # This will be removed once src/ is fully migrated to packages/
+  sources:
+    legacy: 'src'
+
+# Version control system configuration
+vcs:
+  provider: 'github'
+  defaultBranch: 'main'
+  client: 'git'
+
+# Project boundaries - enforce layer relationships
+# Libraries can't depend on apps, tools can't depend on apps, etc.
+constraints:
+  enforceLayerRelationships: true
+
+# Hasher configuration
+hasher:
+  # Ignore common non-code files during hashing
+  ignorePatterns:
+    - '**/*.md'
+    - '**/*.png'
+    - '**/*.jpg'
+    - '**/*.gif'
+  # Don't warn about missing .env files (they're gitignored)
+  ignoreMissingPatterns:
+    - '**/.env'
+    - '**/.env.*'
+
+# Pipeline configuration
+pipeline:
+  # Cache artifacts for 7 days
+  cacheLifetime: '7 days'
+  # Auto-install dependencies when manifests change
+  installDependencies: true
+
+# Disable telemetry
+telemetry: false

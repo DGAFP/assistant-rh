@@ -1,0 +1,33 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip" \
+    && unzip -q /tmp/awscliv2.zip -d /tmp \
+    && /tmp/aws/install \
+    && rm -rf /tmp/aws /tmp/awscliv2.zip
+
+COPY README.md ./
+COPY config ./config
+COPY packages/shared-config ./packages/shared-config
+COPY packages/data-engineering ./packages/data-engineering
+
+RUN pip install --no-cache-dir \
+    ./packages/shared-config \
+    ./packages/data-engineering
+
+RUN pip install --no-cache-dir \
+    torch==2.6.0 \
+    --index-url https://download.pytorch.org/whl/cpu
+
+RUN pip install --no-cache-dir \
+    sentence-transformers
+
+CMD ["assistant-rh-data", "embeddings", "backfill", "--help"]

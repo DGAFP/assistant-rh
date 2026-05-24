@@ -1,0 +1,210 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Optional
+
+import numpy as np
+import pandas as pd
+
+from .helpers import ensure_dir, write_json, write_jsonl
+
+
+class BaseBatchEmbedder:
+    column_name: str
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        raise NotImplementedError
+
+
+class SentenceTransformerEmbedder(BaseBatchEmbedder):
+    def __init__(
+        self,
+        model_name: str,
+        column_name: str,
+        batch_size: int,
+        normalize: bool,
+    ):
+        self.column_name = column_name
+        self.batch_size = batch_size
+        self.normalize = normalize
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            raise RuntimeError(
+                "sentence-transformers est requis pour générer embedding_m3 localement."
+            ) from exc
+
+        self.model = SentenceTransformer(model_name)
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        vectors = self.model.encode(
+            texts,
+            batch_size=self.batch_size,
+            convert_to_numpy=True,
+            normalize_embeddings=self.normalize,
+            show_progress_bar=False,
+        )
+        return vectors.astype(np.float32).tolist()
+
+
+class ScalewayApiEmbedder(BaseBatchEmbedder):
+    def __init__(self, model_name: str, column_name: str):
+        import os
+
+        self.column_name = column_name
+        self.model_name = model_name
+        self.base_url = (
+            os.getenv("SCALEWAY_BASE_URL")
+            or "https://api.scaleway.ai/11aa88cb-ec5b-4df9-bcb4-e9e82576ae58/v1"
+        ).rstrip("/")
+        self.api_key = os.getenv("SCALEWAY_API_KEY", "")
+        if not self.api_key:
+            raise RuntimeError(
+                "SCALEWAY_API_KEY manquant pour générer embedding_bge_scw."
+            )
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        import requests
+
+        vectors: list[list[float]] = []
+        for text in texts:
+            response = requests.post(
+                f"{self.base_url}/embeddings",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"model": self.model_name, "input": text},
+                timeout=30,
+            )
+            response.raise_for_status()
+            vectors.append(response.json()["data"][0]["embedding"])
+        return vectors
+
+
+def build_embedders(embedding_config: Any) -> list[BaseBatchEmbedder]:
+    embedders: list[BaseBatchEmbedder] = []
+    if embedding_config.enable_m3:
+        embedders.append(
+            SentenceTransformerEmbedder(
+                model_name=embedding_config.m3_model_name,
+                column_name="embedding_m3",
+                batch_size=embedding_config.batch_size,
+                normalize=embedding_config.normalize,
+            )
+        )
+    if embedding_config.enable_bge_scaleway:
+        embedders.append(
+            ScalewayApiEmbedder(
+                model_name=embedding_config.scaleway_model_name,
+                column_name="embedding_bge_scw",
+            )
+        )
+    return embedders
+
+
+def match_section_id(
+    section_path: str,
+    sections: list[dict[str, Any]],
+    *,
+    allow_heading_fallback: bool = False,
+    allow_suffix_fallback: bool = False,
+) -> Optional[str]:
+    if not section_path:
+        return None
+
+    exact_matches = [
+        section
+        for section in sections
+        if (section.get("heading_path") or "") == section_path
+    ]
+    if len(exact_matches) == 1:
+        return exact_matches[0]["section_id"]
+
+    if allow_heading_fallback:
+        heading = section_path.split(" > ")[-1].strip()
+        heading_matches = [
+            section
+            for section in sections
+            if (section.get("heading") or "").strip() == heading
+        ]
+        if len(heading_matches) == 1:
+            return heading_matches[0]["section_id"]
+
+    if allow_suffix_fallback:
+        suffix_matches = []
+        for section in sections:
+            heading_path = section.get("heading_path") or ""
+            if heading_path.endswith(section_path) or section_path.endswith(heading_path):
+                suffix_matches.append(section)
+        if len(suffix_matches) == 1:
+            return suffix_matches[0]["section_id"]
+
+    return sections[0]["section_id"] if len(sections) == 1 else None
+
+
+@dataclass
+class GoldBundle:
+    document: dict[str, Any]
+    chunks: list[dict[str, Any]]
+    chunks_path: Path
+    parquet_path: Optional[Path]
+    npy_path: Optional[Path]
+
+
+class GoldRepository:
+    def __init__(self, gold_dir: Path):
+        self.root = ensure_dir(gold_dir)
+        self.chunks_dir = ensure_dir(self.root / "chunks")
+        self.parquet_dir = ensure_dir(self.root / "parquet")
+        self.npy_dir = ensure_dir(self.root / "npy")
+        self.manifest_dir = ensure_dir(self.root / "manifests")
+
+    def save_chunks_jsonl(self, short_id: str, chunks: list[dict[str, Any]]) -> Path:
+        path = self.chunks_dir / f"{short_id}.chunks.jsonl"
+        write_jsonl(path, chunks)
+        return path
+
+    def save_parquet(
+        self,
+        short_id: str,
+        chunks: list[dict[str, Any]],
+    ) -> Optional[Path]:
+        path = self.parquet_dir / f"{short_id}.chunks.parquet"
+        df = pd.DataFrame(chunks)
+        for col in ("embedding_m3", "embedding_bge_scw"):
+            if col in df.columns:
+                df[col] = df[col].apply(
+                    lambda value: (
+                        json.dumps(value) if isinstance(value, list) else value
+                    )
+                )
+        try:
+            df.to_parquet(path, index=False)
+        except (ImportError, ValueError):
+            return None
+        return path
+
+    def save_npy(
+        self,
+        short_id: str,
+        chunks: list[dict[str, Any]],
+        column_name: str,
+    ) -> Optional[Path]:
+        matrix = [
+            row.get(column_name)
+            for row in chunks
+            if row.get(column_name) is not None
+        ]
+        if not matrix:
+            return None
+        path = self.npy_dir / f"{short_id}.{column_name}.npy"
+        np.save(path, np.array(matrix, dtype=np.float32))
+        return path
+
+    def save_manifest(self, manifest: dict[str, Any]) -> Path:
+        path = self.manifest_dir / f"gold_manifest_{manifest['run_id']}.json"
+        write_json(path, manifest)
+        return path

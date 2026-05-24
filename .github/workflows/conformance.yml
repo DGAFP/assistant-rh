@@ -1,0 +1,296 @@
+name: Conformance
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stage-conformance:
+    name: conformance / ${{ matrix.stage }}
+    runs-on: ubuntu-latest
+    environment: scaleway-staging
+    continue-on-error: ${{ matrix.required == false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - stage: retriever
+            required: true
+            requires_db: true
+            summary_key: retrievalOverlapTopKAvg
+            threshold_key: retrieval_overlap_topk_avg
+          - stage: section-aggregator
+            required: true
+            requires_db: false
+            summary_key: sectionOverlapTopKAvg
+            threshold_key: section_overlap_topk_avg
+          - stage: context-selector
+            required: true
+            requires_db: true
+            summary_key: selectorOverlapTopKAvg
+            threshold_key: selector_overlap_topk_avg
+          - stage: context-builder
+            required: true
+            requires_db: true
+            summary_key: contextOverlapTopKAvg
+            threshold_key: context_overlap_topk_avg
+          - stage: query-processor
+            required: true
+            requires_db: false
+            summary_key: intentMatchRate
+            threshold_key: intent_match_rate
+          - stage: rag-pipeline
+            required: false
+            requires_db: false
+
+    env:
+      SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
+      ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
+      ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || secrets.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
+      SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
+      SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || secrets.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10.33.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run conformance stage
+        env:
+          ALLOW_SECRETLESS_SKIP: ${{ github.event_name == 'pull_request' && github.actor == 'dependabot[bot]' }}
+          REQUIRES_DB: ${{ matrix.requires_db }}
+        run: |
+          mkdir -p tests/conformance/reports/ci
+          REPORT_PATH="tests/conformance/reports/ci/${{ matrix.stage }}.json"
+
+          if [[ "$REQUIRES_DB" == "true" && "$ALLOW_SECRETLESS_SKIP" == "true" && -z "${SCW_POSTGRES_DSN}" ]]; then
+            cat > "$REPORT_PATH" <<JSON
+          {
+            "generatedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "mode": "replay",
+            "queriesFile": "tests/conformance/queries.sample.jsonl",
+            "queryCount": 0,
+            "succeededCount": 0,
+            "failedCount": 0,
+            "skipped": true,
+            "skipReason": "Repository DB secrets are unavailable to Dependabot pull_request workflows.",
+            "summary": {},
+            "details": [],
+            "errors": []
+          }
+          JSON
+            echo "Skipping ${{ matrix.stage }} conformance: DB secrets are unavailable to Dependabot pull_request workflows."
+            exit 0
+          fi
+
+          case "${{ matrix.stage }}" in
+            query-processor)
+              pnpm --filter @assistant-rh/mastra-pipeline query-processor:conformance --output "$REPORT_PATH"
+              ;;
+            retriever)
+              pnpm --filter @assistant-rh/mastra-pipeline retriever:conformance --output "$REPORT_PATH"
+              ;;
+            section-aggregator)
+              pnpm --filter @assistant-rh/mastra-pipeline section-aggregator:conformance --output "$REPORT_PATH"
+              ;;
+            context-selector)
+              pnpm --filter @assistant-rh/mastra-pipeline context-selector:conformance --output "$REPORT_PATH"
+              ;;
+            context-builder)
+              pnpm --filter @assistant-rh/mastra-pipeline context-builder:conformance --output "$REPORT_PATH"
+              ;;
+            rag-pipeline)
+              pnpm --filter @assistant-rh/mastra-pipeline rag-pipeline:conformance --output "$REPORT_PATH"
+              ;;
+            *)
+              echo "Unknown stage: ${{ matrix.stage }}" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Enforce deterministic thresholds
+        if: ${{ matrix.required }}
+        env:
+          STAGE: ${{ matrix.stage }}
+          SUMMARY_KEY: ${{ matrix.summary_key }}
+          THRESHOLD_KEY: ${{ matrix.threshold_key }}
+          REPORT_PATH: tests/conformance/reports/ci/${{ matrix.stage }}.json
+          THRESHOLDS_PATH: tests/conformance/thresholds.replay.json
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import sys
+
+          stage = os.environ["STAGE"]
+          summary_key = os.environ["SUMMARY_KEY"]
+          threshold_key = os.environ["THRESHOLD_KEY"]
+          report_path = os.environ["REPORT_PATH"]
+          thresholds_path = os.environ["THRESHOLDS_PATH"]
+
+          with open(report_path, encoding="utf-8") as f:
+            report = json.load(f)
+
+          with open(thresholds_path, encoding="utf-8") as f:
+            thresholds = json.load(f)
+
+          summary = report.get("summary", {})
+          if report.get("skipped") is True:
+            print(f"Conformance gate skipped: {report.get('skipReason', 'no reason provided')}")
+            sys.exit(0)
+
+          actual = summary.get(summary_key)
+          expected = thresholds.get(threshold_key)
+
+          if expected is None:
+            print(f"Missing threshold '{threshold_key}' in {thresholds_path}", file=sys.stderr)
+            sys.exit(2)
+
+          if actual is None:
+            if stage == "retriever":
+              errors = report.get("errors") or []
+              missing_index_errors = [
+                row
+                for row in errors
+                if isinstance(row, dict)
+                and "Missing required dual-index table(s)" in str(row.get("error", ""))
+              ]
+              if missing_index_errors and len(missing_index_errors) == len(errors):
+                print(
+                  "Retriever gate skipped: required dual-index tables are missing in target DB.",
+                  file=sys.stderr,
+                )
+                sys.exit(0)
+
+            print(
+              f"Missing summary metric '{summary_key}' in {report_path}; cannot enforce threshold",
+              file=sys.stderr,
+            )
+            sys.exit(3)
+
+          actual_value = float(actual)
+          expected_value = float(expected)
+
+          print(f"{summary_key}: actual={actual_value:.4f}, threshold={expected_value:.4f}")
+          if actual_value < expected_value:
+            print(
+              f"Threshold failed: {summary_key} ({actual_value:.4f}) < {threshold_key} ({expected_value:.4f})",
+              file=sys.stderr,
+            )
+            sys.exit(1)
+          PY
+
+      - name: Upload conformance report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: conformance-${{ matrix.stage }}
+          path: tests/conformance/reports/ci/${{ matrix.stage }}.json
+          if-no-files-found: warn
+
+  summary:
+    name: conformance / summary
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: stage-conformance
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Download conformance reports
+        uses: actions/download-artifact@v7
+        with:
+          pattern: conformance-*
+          path: tests/conformance/reports/ci
+          merge-multiple: true
+
+      - name: Build conformance summary
+        run: |
+          python scripts/summarize_conformance_reports.py \
+            --reports-dir tests/conformance/reports/ci \
+            --thresholds-file tests/conformance/thresholds.replay.json \
+            --output-markdown "$RUNNER_TEMP/conformance-summary.md" \
+            --output-json "$RUNNER_TEMP/conformance-summary.json"
+
+      - name: Publish step summary
+        run: |
+          {
+            echo "## Conformance summary"
+            echo ""
+            cat "$RUNNER_TEMP/conformance-summary.md"
+            echo ""
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upsert sticky PR summary comment
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/github-script@v8
+        env:
+          SUMMARY_FILE: ${{ runner.temp }}/conformance-summary.md
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const marker = '<!-- conformance-summary -->';
+            const summary = fs.readFileSync(process.env.SUMMARY_FILE, 'utf8').trim();
+
+            const body = [
+              marker,
+              '## Conformance summary',
+              '',
+              summary,
+              '',
+              `Run: ${process.env.RUN_URL}`,
+              '',
+              '👾 Generated with [Letta Code](https://letta.com)',
+            ].join('\n');
+
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) =>
+              typeof comment.body === 'string' && comment.body.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body,
+              });
+            }

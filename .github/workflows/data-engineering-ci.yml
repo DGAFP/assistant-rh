@@ -1,0 +1,94 @@
+name: Data Engineering CI
+
+on:
+  push:
+    paths:
+      - ".github/workflows/data-engineering-*.yml"
+      - ".github/scripts/data_engineering_plan.py"
+      - ".github/scripts/scaleway_data_jobs.py"
+      - ".github/data-engineering-jobs.json"
+      - "packages/data-engineering/**"
+      - "packages/shared-config/**"
+      - "config/**"
+      - "Dockerfile.service_public_pipeline"
+      - "Dockerfile.service_public_ingestion"
+      - "Dockerfile.legifrance_pipeline"
+      - "Dockerfile.legifrance_ingestion"
+      - "Dockerfile.legifrance_bulk_dump"
+      - "Dockerfile.embeddings_job"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/data-engineering-*.yml"
+      - ".github/scripts/data_engineering_plan.py"
+      - ".github/scripts/scaleway_data_jobs.py"
+      - ".github/data-engineering-jobs.json"
+      - "packages/data-engineering/**"
+      - "packages/shared-config/**"
+      - "config/**"
+      - "Dockerfile.service_public_pipeline"
+      - "Dockerfile.service_public_ingestion"
+      - "Dockerfile.legifrance_pipeline"
+      - "Dockerfile.legifrance_ingestion"
+      - "Dockerfile.legifrance_bulk_dump"
+      - "Dockerfile.embeddings_job"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  data-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      UV_CACHE_DIR: .uv-cache
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Ruff check on data engineering code
+        run: |
+          uv run --no-sync ruff check \
+            .github/scripts/data_engineering_plan.py \
+            .github/scripts/scaleway_data_jobs.py \
+            packages/data-engineering/src \
+            packages/shared-config/src \
+            --select E,F,I
+
+      - name: Smoke import data engineering packages
+        run: |
+          uv run --no-sync python -c "
+          from assistant_rh_data_engineering.service_public import ServicePublicPipeline
+          from assistant_rh_data_engineering.legifrance import LegifrancePipeline
+          from assistant_rh_data_engineering.utils.object_storage import ScalewayObjectStorageSync
+          print('Data engineering imports OK')
+          "
+
+      - name: Compile critical data engineering modules
+        run: |
+          python3 -m compileall -q \
+            packages/data-engineering/src/assistant_rh_data_engineering \
+            packages/shared-config/src/assistant_rh_shared
+
+      - name: Smoke-check CLI entrypoints
+        run: |
+          uv run --no-sync assistant-rh-data --help > /dev/null
+          uv run --no-sync assistant-rh-data service-public medallion --help > /dev/null
+          uv run --no-sync assistant-rh-data service-public ingest --help > /dev/null
+          uv run --no-sync assistant-rh-data legifrance bulk-dump --help > /dev/null
+          uv run --no-sync assistant-rh-data legifrance medallion --help > /dev/null
+          uv run --no-sync assistant-rh-data legifrance ingest --help > /dev/null
+          uv run --no-sync assistant-rh-data embeddings service-public --help > /dev/null
+          uv run --no-sync assistant-rh-data embeddings legifrance --help > /dev/null

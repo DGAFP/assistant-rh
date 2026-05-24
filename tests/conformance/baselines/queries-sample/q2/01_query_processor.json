@@ -1,0 +1,16 @@
+{
+  "input": {
+    "query": "Un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+    "conversation_history": []
+  },
+  "output": {
+    "intent": "rag_query",
+    "theme": "conges",
+    "needs_legal_search": false,
+    "should_proceed": true,
+    "processed_query": "Un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+    "enriched_query": "",
+    "query_for_retrieval": "Un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+    "search_terms": []
+  }
+}

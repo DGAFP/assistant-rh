@@ -1,0 +1,49 @@
+name: Security Audit
+
+# Quand le workflow se lance
+on:
+  # Tous les lundis à 9h UTC (10h Paris hiver, 11h Paris été)
+  schedule:
+    - cron: '0 9 * * 1'
+  
+  # Permet de lancer manuellement depuis l'interface GitHub
+  workflow_dispatch:
+  
+  push:
+    branches: [main]
+
+jobs:
+  security-audit:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # 1. Récupérer le code
+    - name: Checkout code
+      uses: actions/checkout@v5
+    
+    # 2. Installer uv
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+    
+    # 3. Installer Python
+    - name: Set up Python
+      run: uv python install 3.12
+    
+    # 4. Installer les dépendances du projet (avec pip-audit inclus)
+    - name: Install project dependencies
+      run: uv sync
+
+    # 5. Installer pip-audit dans le venv du projet
+    - name: Install pip-audit
+      run: uv pip install pip-audit
+
+    - name: Run pip-audit
+      run: uv run pip-audit --strict --desc || true
+
+    - name: Upload audit results
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: security-report-${{ github.run_number }}
+        path: "*.txt"
+        retention-days: 90

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "assistant-rh/conformance/section-aggregator.schema.json",
+  "title": "Section Aggregator Stage Contract",
+  "type": "object",
+  "required": ["input", "output"],
+  "properties": {
+    "input": {
+      "type": "object",
+      "required": ["retrieved_chunk_ids"],
+      "properties": {
+        "retrieved_chunk_ids": {
+          "type": "array",
+          "items": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": ["aggregated_sections"],
+      "properties": {
+        "aggregated_sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["section_id", "score"],
+            "properties": {
+              "section_id": { "type": ["string", "null"] },
+              "score": { "type": ["number", "null"] },
+              "publisher": { "type": ["string", "null"] },
+              "heading": { "type": ["string", "null"] },
+              "chunk_count": { "type": ["integer", "null"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

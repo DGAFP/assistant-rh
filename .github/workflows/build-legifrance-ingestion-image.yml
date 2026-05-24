@@ -1,0 +1,52 @@
+name: Build Legifrance Ingestion Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Tag Docker additionnel a pousser"
+        required: false
+        default: "latest"
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Set registry variables
+        run: |
+          REGISTRY_NAMESPACE="${{ secrets.SCW_CONTAINER_REGISTRY_NAMESPACE }}"
+          echo "REGISTRY_HOST=rg.fr-par.scw.cloud" >> "$GITHUB_ENV"
+          echo "REGISTRY_NAMESPACE=${REGISTRY_NAMESPACE:-assistant-rh}" >> "$GITHUB_ENV"
+          echo "IMAGE_NAME=legifrance-ingestion" >> "$GITHUB_ENV"
+
+      - name: Login to Scaleway Container Registry
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.SCW_SECRET_KEY }}
+          REGISTRY_PASSWORD_FALLBACK: ${{ secrets.SCALEWAY_API_KEY }}
+        run: |
+          REGISTRY_PASSWORD="${REGISTRY_PASSWORD:-${REGISTRY_PASSWORD_FALLBACK:-}}"
+          if [ -z "${REGISTRY_PASSWORD}" ]; then
+            echo "Missing Scaleway registry secret: define SCW_SECRET_KEY or SCALEWAY_API_KEY." >&2
+            exit 1
+          fi
+          printf '%s' "${REGISTRY_PASSWORD}" | docker login \
+            ${{ env.REGISTRY_HOST }}/${{ env.REGISTRY_NAMESPACE }} \
+            -u nologin \
+            --password-stdin
+
+      - name: Build and push image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            -f Dockerfile.legifrance_ingestion \
+            -t ${{ env.REGISTRY_HOST }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -t ${{ env.REGISTRY_HOST }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.image_tag }} \
+            --push \
+            .

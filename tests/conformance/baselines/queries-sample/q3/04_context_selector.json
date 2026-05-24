@@ -1,0 +1,28 @@
+{
+  "input": {
+    "query": "Quelle est la différence entre un CDD (Contrat à Durée Déterminée) et un CDI (Contrat à Durée Indéterminée) dans la fonction publique d'État ?",
+    "aggregated_section_ids": [
+      "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+      "0f27cc89-2f7d-4336-be4b-7fe9f16e730e",
+      "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+      "3d3b8c7c-be16-4bf8-ba9b-52253e72f4d1",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ]
+  },
+  "output": {
+    "selector_enabled": false,
+    "selector_all_rejected": false,
+    "selector_items_before": 0,
+    "selector_items_after": 0,
+    "selector_decisions": {},
+    "selected_section_ids": [
+      "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+      "3d3b8c7c-be16-4bf8-ba9b-52253e72f4d1"
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "assistant-rh/conformance/query-processor.schema.json",
+  "title": "Query Processor Stage Contract",
+  "type": "object",
+  "required": ["input", "output"],
+  "properties": {
+    "input": {
+      "type": "object",
+      "required": ["query", "conversation_history"],
+      "properties": {
+        "query": { "type": "string" },
+        "conversation_history": { "type": "array" }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": [
+        "intent",
+        "theme",
+        "needs_legal_search",
+        "should_proceed",
+        "processed_query",
+        "query_for_retrieval",
+        "search_terms"
+      ],
+      "properties": {
+        "intent": { "type": ["string", "null"] },
+        "theme": { "type": ["string", "null"] },
+        "needs_legal_search": { "type": "boolean" },
+        "should_proceed": { "type": "boolean" },
+        "processed_query": { "type": "string" },
+        "enriched_query": { "type": ["string", "null"] },
+        "query_for_retrieval": { "type": "string" },
+        "search_terms": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}
+

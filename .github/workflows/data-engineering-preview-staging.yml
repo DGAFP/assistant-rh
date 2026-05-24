@@ -1,0 +1,196 @@
+name: Data Engineering Preview Staging
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/data-engineering-*.yml"
+      - ".github/scripts/data_engineering_plan.py"
+      - ".github/scripts/scaleway_data_jobs.py"
+      - ".github/data-engineering-jobs.json"
+      - "packages/data-engineering/**"
+      - "packages/shared-config/**"
+      - "config/**"
+      - "Dockerfile.service_public_pipeline"
+      - "Dockerfile.service_public_ingestion"
+      - "Dockerfile.legifrance_pipeline"
+      - "Dockerfile.legifrance_ingestion"
+      - "Dockerfile.legifrance_bulk_dump"
+      - "Dockerfile.embeddings_job"
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Source a traiter"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - service_public
+          - legifrance
+          - embeddings
+      run_ingestion:
+        description: "Ingerer aussi dans la base Scaleway staging"
+        required: true
+        default: true
+        type: boolean
+      run_embeddings:
+        description: "Backfill embeddings si l'image embeddings est concernee"
+        required: true
+        default: false
+        type: boolean
+      run_preview_jobs:
+        description: "Executer les jobs Scaleway staging (medallion/ingestion/embeddings)"
+        required: true
+        default: false
+        type: boolean
+      service_public_fiche_config:
+        description: "Config JSON Service-Public"
+        required: true
+        default: "config/service_public_fiches.json"
+        type: string
+      legifrance_article_ids_json:
+        description: "Manifest article IDs Legifrance pour le bulk dump"
+        required: true
+        default: "config/legifrance_article_cids.json"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: data-preview-staging-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY_HOST: rg.fr-par.scw.cloud
+  STAGING_IMAGE_TAG: staging-${{ github.sha }}
+
+jobs:
+  plan:
+    if: ${{ github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please--') }}
+    runs-on: ubuntu-latest
+    outputs:
+      service_public: ${{ steps.plan.outputs.service_public }}
+      legifrance: ${{ steps.plan.outputs.legifrance }}
+      embeddings: ${{ steps.plan.outputs.embeddings }}
+      has_builds: ${{ steps.plan.outputs.has_builds }}
+      has_runs: ${{ steps.plan.outputs.has_runs }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed data engineering jobs
+        id: plan
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          INPUT_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
+        run: python3 .github/scripts/data_engineering_plan.py
+
+  build-staging-images:
+    runs-on: ubuntu-latest
+    needs: plan
+    if: ${{ needs.plan.result == 'success' && needs.plan.outputs.has_builds == 'true' }}
+    timeout-minutes: 90
+    environment: scaleway-staging
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Scaleway Container Registry
+        env:
+          REGISTRY_NAMESPACE: ${{ secrets.SCW_CONTAINER_REGISTRY_NAMESPACE }}
+          REGISTRY_PASSWORD: ${{ secrets.SCW_SECRET_KEY }}
+          REGISTRY_PASSWORD_FALLBACK: ${{ secrets.SCALEWAY_API_KEY }}
+        run: |
+          REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-assistant-rh}"
+          REGISTRY_PASSWORD="${REGISTRY_PASSWORD:-${REGISTRY_PASSWORD_FALLBACK:-}}"
+          if [ -z "${REGISTRY_PASSWORD}" ]; then
+            echo "Missing Scaleway registry secret: define SCW_SECRET_KEY or SCALEWAY_API_KEY." >&2
+            exit 1
+          fi
+          printf '%s' "${REGISTRY_PASSWORD}" | docker login \
+            ${{ env.REGISTRY_HOST }}/${REGISTRY_NAMESPACE} \
+            -u nologin \
+            --password-stdin
+
+      - name: Build and push staging image
+        env:
+          REGISTRY_NAMESPACE: ${{ secrets.SCW_CONTAINER_REGISTRY_NAMESPACE }}
+        run: |
+          REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-assistant-rh}"
+          docker buildx build \
+            --platform linux/amd64 \
+            -f "${{ matrix.dockerfile }}" \
+            -t "${{ env.REGISTRY_HOST }}/${REGISTRY_NAMESPACE}/${{ matrix.image }}:${{ env.STAGING_IMAGE_TAG }}" \
+            -t "${{ env.REGISTRY_HOST }}/${REGISTRY_NAMESPACE}/${{ matrix.image }}:staging-latest" \
+            --push \
+            .
+
+  preview-staging:
+    runs-on: ubuntu-latest
+    needs:
+      - plan
+      - build-staging-images
+    if: ${{ needs.plan.result == 'success' && needs.plan.outputs.has_runs == 'true' && needs.build-staging-images.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.run_preview_jobs }}
+    timeout-minutes: 180
+    environment: scaleway-staging
+    env:
+      # Phase 2: preview job execution is manual-only (workflow_dispatch + run_preview_jobs=true).
+      RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ingestion || false }}
+      RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && (inputs.run_embeddings || inputs.source == 'embeddings') || false }}
+      SERVICE_PUBLIC_FICHE_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.service_public_fiche_config || 'config/service_public_fiches.json' }}
+      LEGIFRANCE_ARTICLE_IDS_JSON: ${{ github.event_name == 'workflow_dispatch' && inputs.legifrance_article_ids_json || 'config/legifrance_article_cids.json' }}
+      SCW_DEFAULT_REGION: fr-par
+      SCW_DEFAULT_PROJECT_ID: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+      SCW_DEFAULT_ORGANIZATION_ID: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+      SCW_CONTAINER_REGISTRY_NAMESPACE: ${{ secrets.SCW_CONTAINER_REGISTRY_NAMESPACE }}
+      SCW_BUCKET_BRONZE: assistant-rh-bronze
+      SCW_BUCKET_SILVER: assistant-rh-silver
+      SCW_BUCKET_GOLD: assistant-rh-gold
+      SCW_PREFIX_STAGING: staging
+      SCW_PREFIX_PROD: prod
+      SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
+      SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+      SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
+      SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install Scaleway CLI
+        uses: scaleway/action-scw@v0.0.3
+        with:
+          version: v2.54.0
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+      - name: Start selected Scaleway staging jobs
+        run: |
+          python3 .github/scripts/scaleway_data_jobs.py \
+            --target-env staging \
+            --image-tag "${STAGING_IMAGE_TAG}" \
+            --service-public "${{ needs.plan.outputs.service_public }}" \
+            --legifrance "${{ needs.plan.outputs.legifrance }}" \
+            --embeddings "${{ needs.plan.outputs.embeddings }}" \
+            --run-ingestion "${RUN_INGESTION}" \
+            --run-embeddings "${RUN_EMBEDDINGS}" \
+            --service-public-fiche-config "${SERVICE_PUBLIC_FICHE_CONFIG}" \
+            --legifrance-article-ids-json "${LEGIFRANCE_ARTICLE_IDS_JSON}" \
+            --wait

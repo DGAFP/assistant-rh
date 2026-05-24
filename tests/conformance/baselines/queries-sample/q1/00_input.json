@@ -1,0 +1,9 @@
+{
+  "id": "q1",
+  "query": "Quelle est la durée maximale d'un contrat CDD pour un agent contractuel ?",
+  "conversation_history": [],
+  "tags": [
+    "contracts",
+    "duration"
+  ]
+}

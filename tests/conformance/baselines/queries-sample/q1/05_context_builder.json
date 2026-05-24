@@ -1,0 +1,58 @@
+{
+  "input": {
+    "selected_section_ids": [
+      "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+      "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c"
+    ]
+  },
+  "output": {
+    "context_items_ref": [
+      {
+        "section_id": "",
+        "doc_id": "bfe1963a-b952-4f5a-911b-cf1a21b46fbc",
+        "heading": "Fiche 8 - Recrutement en CDI ou avec portabilité du CDI et CDIsation - Juillet ",
+        "publisher": "MATTE",
+        "tokens": 2129,
+        "score": 0.2855,
+        "is_doc_entire": true
+      },
+      {
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+        "doc_id": "3d1db387-35f3-4142-be46-801c1b827c7b",
+        "heading": "FICHE 1 - Quel contrat choisir et pour quelle durée selon la situation ? (Le fon",
+        "publisher": "MATTE",
+        "tokens": 3459,
+        "score": 0.4568,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "",
+        "doc_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "publisher": "RGRH",
+        "tokens": 0,
+        "score": 0.2833,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "",
+        "doc_id": "",
+        "heading": "particuliers_vosdroits_F1906.txt",
+        "publisher": "Service-Public",
+        "tokens": 0,
+        "score": 0.2833,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+        "doc_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f",
+        "heading": "Recrutement d'un contractuel dans la fonction publique d'État (FPE)",
+        "publisher": "Service-Public",
+        "tokens": 4787,
+        "score": 0.4225,
+        "is_doc_entire": false
+      }
+    ],
+    "context_text_hash": "2e717d73d69db068a59c987e93d4eac03e2a92b30b018d4efb042080ba380d41"
+  }
+}

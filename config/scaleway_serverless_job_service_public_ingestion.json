@@ -1,0 +1,21 @@
+{
+  "name": "service-public-ingestion-monthly-prod",
+  "region": "fr-par",
+  "cpu_limit": 1000,
+  "memory_limit": 2048,
+  "local_storage_capacity": 2048,
+  "timeout": "7200s",
+  "cron": "30 3 1 * *",
+  "timezone": "Europe/Paris",
+  "image_uri": "rg.fr-par.scw.cloud/assistant-rh/service-public-ingestion:prod-latest",
+  "command": [
+    "assistant-rh-data",
+    "service-public",
+    "ingest",
+    "--dsn-env",
+    "SCW_POSTGRES_DSN",
+    "--from-object-storage",
+    "--target-env",
+    "prod"
+  ]
+}

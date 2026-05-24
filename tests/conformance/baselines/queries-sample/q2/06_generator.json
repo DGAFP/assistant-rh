@@ -1,0 +1,12 @@
+{
+  "input": {
+    "query": "Un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+    "context_item_count": 4,
+    "conversation_history": []
+  },
+  "output": {
+    "answer": "Oui. Le congé de mobilité figure parmi les congés non rémunérés prévus pour « l’agent (fonctionnaire, non titulaire ou OPA) » dans l’instruction du 6 janvier 2011 ; il est donc ouvert aux contractuels de la fonction publique de l’État. Ce congé est non payé et, comme les autres congés non rémunérés, il n’est pas pris en compte dans le calcul de l’ancienneté.",
+    "answer_length": 360,
+    "citations": []
+  }
+}

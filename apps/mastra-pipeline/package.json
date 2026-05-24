@@ -1,0 +1,42 @@
+{
+  "name": "@assistant-rh/mastra-pipeline",
+  "version": "0.4.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "mastra dev",
+    "build": "mastra build",
+    "start": "node .mastra/output/index.mjs",
+    "typecheck": "tsc --noEmit",
+    "health:check": "tsx src/mastra/health-check.ts",
+    "query-processor:conformance": "tsx src/mastra/query-processor-conformance.ts --mode replay",
+    "query-processor:conformance:with-python": "tsx src/mastra/query-processor-conformance.ts --mode live",
+    "query-processor:conformance:record-cache": "tsx src/mastra/query-processor-conformance.ts --mode replay --llm-replay-mode record",
+    "retriever:conformance": "tsx src/mastra/retriever-conformance.ts --mode replay",
+    "retriever:conformance:with-python": "tsx src/mastra/retriever-conformance.ts --mode live",
+    "section-aggregator:conformance": "tsx src/mastra/section-aggregator-conformance.ts --mode replay",
+    "section-aggregator:conformance:with-python": "tsx src/mastra/section-aggregator-conformance.ts --mode live",
+    "context-selector:conformance": "tsx src/mastra/context-selector-conformance.ts --mode replay",
+    "context-selector:conformance:with-python": "tsx src/mastra/context-selector-conformance.ts --mode live",
+    "context-builder:conformance": "tsx src/mastra/context-builder-conformance.ts --mode replay",
+    "context-builder:conformance:with-python": "tsx src/mastra/context-builder-conformance.ts --mode live",
+    "rag-pipeline:conformance": "tsx src/mastra/rag-pipeline-conformance.ts --mode replay",
+    "rag-pipeline:conformance:with-python": "tsx src/mastra/rag-pipeline-conformance.ts --mode live",
+    "endpoint:smoke": "tsx scripts/endpoint-smoke-test.ts",
+    "lint": "biome check src scripts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "2.0.41",
+    "@mastra/core": "1.26.0",
+    "dotenv": "17.2.3",
+    "pg": "8.16.3",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@types/pg": "8.15.6",
+    "mastra": "1.6.1",
+    "tsx": "4.20.6",
+    "typescript": "^5.8"
+  }
+}

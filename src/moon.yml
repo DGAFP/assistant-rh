@@ -1,0 +1,54 @@
+# Moon project configuration for the legacy src/ directory
+# This will be removed once src/ is fully migrated to packages/
+
+language: 'python'
+
+# Project metadata
+project:
+  title: 'Legacy Assistant RH'
+  description: 'Legacy monolithic code being migrated to packages/ structure'
+
+# Layer and stack
+layer: 'library'
+stack: 'backend'
+
+# Toolchain configuration
+toolchains:
+  default: 'unstable_uv'
+
+# File groups for this project
+fileGroups:
+  sources:
+    - '**/*.py'
+  configs:
+    - 'pyproject.toml'
+
+# Tasks (inherit from .moon/tasks/python.yml)
+# Override test command to run from workspace root
+tasks:
+  test:
+    command: 'uv run pytest'
+    args: 'tests/ -v --tb=short'
+    options:
+      runFromWorkspaceRoot: true
+
+  private-data-check:
+    description: 'Check access to private Hugging Face datasets'
+    command: 'uv run python scripts/check_private_datasets.py'
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  golden-beta-download:
+    description: 'Download Golden Beta CSVs from the private Hugging Face dataset'
+    command: 'uv run python scripts/download_golden_beta_from_hf.py'
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  golden-beta-upload:
+    description: 'Upload local Golden Beta CSVs to the private Hugging Face dataset'
+    command: 'uv run python scripts/upload_golden_beta_to_hf.py'
+    options:
+      runFromWorkspaceRoot: true
+      cache: false

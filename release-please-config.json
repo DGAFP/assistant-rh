@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "component": "assistant-rh",
+      "changelog-path": "CHANGELOG.md",
+      "include-component-in-tag": false,
+      "include-v-in-tag": true,
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "pyproject.toml",
+          "jsonpath": "$.project.version"
+        },
+        {
+          "type": "toml",
+          "path": "packages/data-engineering/pyproject.toml",
+          "jsonpath": "$.project.version"
+        },
+        {
+          "type": "toml",
+          "path": "packages/rag-pipeline/pyproject.toml",
+          "jsonpath": "$.project.version"
+        },
+        {
+          "type": "toml",
+          "path": "packages/shared-config/pyproject.toml",
+          "jsonpath": "$.project.version"
+        },
+        {
+          "type": "json",
+          "path": "package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "apps/mastra-pipeline/package.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,5 @@
+.env
+.envrc
+.letta/
+apps/mastra-pipeline/.env
+# .venv/ intentionally excluded — virtual envs have hardcoded absolute paths

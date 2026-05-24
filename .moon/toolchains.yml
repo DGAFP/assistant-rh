@@ -1,0 +1,16 @@
+# Moon v2 Toolchain Configuration
+# https://moonrepo.dev/docs/config/toolchain
+
+# Python toolchain (unstable but production-ready in Moon v2)
+# Uses proto for version management
+unstable_python:
+  # Version will be read from .python-version or .prototools
+  versionFromPrototools: true
+  # Auto-install dependencies when uv.lock or pyproject.toml changes
+  installDependencies: true
+
+# uv package manager (fast Python package installer)
+# Requires unstable_python toolchain
+unstable_uv:
+  versionFromPrototools: true
+  installDependencies: true

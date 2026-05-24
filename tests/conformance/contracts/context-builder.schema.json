@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "assistant-rh/conformance/context-builder.schema.json",
+  "title": "Context Builder Stage Contract",
+  "type": "object",
+  "required": ["input", "output"],
+  "properties": {
+    "input": {
+      "type": "object",
+      "required": ["selected_section_ids"],
+      "properties": {
+        "selected_section_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": ["context_items_ref", "context_text_hash"],
+      "properties": {
+        "context_items_ref": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "context_text_hash": { "type": "string" }
+      }
+    }
+  }
+}
+

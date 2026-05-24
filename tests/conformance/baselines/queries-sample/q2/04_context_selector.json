@@ -1,0 +1,29 @@
+{
+  "input": {
+    "query": "Un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+    "aggregated_section_ids": [
+      "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+      "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+      "f7c005fd-81b1-45e3-a90a-6403e6665ffc",
+      "",
+      "",
+      "5c5e9a2a-e403-49cf-95b5-e7100b9194e8",
+      "",
+      "",
+      "dae6cd13-7b49-4011-ba3c-c7c706b023b4",
+      ""
+    ]
+  },
+  "output": {
+    "selector_enabled": false,
+    "selector_all_rejected": false,
+    "selector_items_before": 0,
+    "selector_items_after": 0,
+    "selector_decisions": {},
+    "selected_section_ids": [
+      "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+      "dae6cd13-7b49-4011-ba3c-c7c706b023b4",
+      "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+    ]
+  }
+}

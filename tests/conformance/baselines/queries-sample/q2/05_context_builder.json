@@ -1,0 +1,50 @@
+{
+  "input": {
+    "selected_section_ids": [
+      "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+      "dae6cd13-7b49-4011-ba3c-c7c706b023b4",
+      "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+    ]
+  },
+  "output": {
+    "context_items_ref": [
+      {
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+        "doc_id": "3d1db387-35f3-4142-be46-801c1b827c7b",
+        "heading": "FICHE 1 - Quel contrat choisir et pour quelle durée selon la situation ? (Le fon",
+        "publisher": "MATTE",
+        "tokens": 4382,
+        "score": 0.3475,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "",
+        "doc_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "publisher": "RGRH",
+        "tokens": 0,
+        "score": 0.2833,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "dae6cd13-7b49-4011-ba3c-c7c706b023b4",
+        "doc_id": "89cae642-2f07-4b5b-a9bc-3836992371ea",
+        "heading": "8 – GESTION DES CONGÉS ANNUELS",
+        "publisher": "MATTE",
+        "tokens": 1667,
+        "score": 0.2669,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+        "doc_id": "958d8571-74a7-4d5c-bb13-42fe4e3d224b",
+        "heading": "Licenciement d'un contractuel de la fonction publique d'Etat (FPE)",
+        "publisher": "Service-Public",
+        "tokens": 18048,
+        "score": 0.4584,
+        "is_doc_entire": false
+      }
+    ],
+    "context_text_hash": "62fef6ac2379e04d67ba43454b0afc7c11ffa10c5c8630e6ca9c11622e55a35d"
+  }
+}

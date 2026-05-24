@@ -1,0 +1,186 @@
+name: Streamlit Deploy Staging
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: streamlit-deploy-staging
+  cancel-in-progress: true
+
+env:
+  REGISTRY_HOST: rg.fr-par.scw.cloud
+  STREAMLIT_IMAGE_NAME: streamlit-ui
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: scaleway-staging
+    env:
+      SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
+      SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+      SCW_DEFAULT_PROJECT_ID: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+      SCW_DEFAULT_ORGANIZATION_ID: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+      SCW_CONTAINER_REGISTRY_NAMESPACE: ${{ secrets.SCW_CONTAINER_REGISTRY_NAMESPACE }}
+      SCW_DEFAULT_REGION: ${{ secrets.SCW_DEFAULT_REGION || 'fr-par' }}
+
+      SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
+      ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
+      SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
+      COOKIES_PASSWORD: ${{ secrets.COOKIES_PASSWORD }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+
+      ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
+      SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || secrets.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
+      STREAMLIT_STAGING_BASE_URL: ${{ vars.STREAMLIT_STAGING_BASE_URL }}
+
+      APP_DB_TARGET: scaleway
+      APP_SCALEWAY_ENV: staging
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Validate required deployment configuration
+        run: |
+          set -euo pipefail
+          missing=()
+          required=(
+            SCW_ACCESS_KEY
+            SCW_SECRET_KEY
+            SCW_DEFAULT_PROJECT_ID
+            SCW_DEFAULT_ORGANIZATION_ID
+            SCW_CONTAINER_REGISTRY_NAMESPACE
+            SCW_POSTGRES_DSN
+            ALBERT_API_KEY
+            SCALEWAY_API_KEY
+            COOKIES_PASSWORD
+            ADMIN_PASSWORD
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "Missing required secret/variable(s): ${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Resolve image metadata
+        id: image
+        run: |
+          set -euo pipefail
+          IMAGE_TAG="staging-${GITHUB_SHA}"
+          IMAGE_URI="${REGISTRY_HOST}/${SCW_CONTAINER_REGISTRY_NAMESPACE}/${STREAMLIT_IMAGE_NAME}:${IMAGE_TAG}"
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Scaleway Container Registry
+        run: |
+          set -euo pipefail
+          printf '%s' "$SCW_SECRET_KEY" | docker login \
+            "${REGISTRY_HOST}/${SCW_CONTAINER_REGISTRY_NAMESPACE}" \
+            -u nologin \
+            --password-stdin
+
+      - name: Build and push Streamlit staging image
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/amd64 \
+            -f Dockerfile.streamlit \
+            -t "${{ steps.image.outputs.image_uri }}" \
+            -t "${REGISTRY_HOST}/${SCW_CONTAINER_REGISTRY_NAMESPACE}/${STREAMLIT_IMAGE_NAME}:staging-latest" \
+            --push \
+            .
+
+      - name: Install Scaleway CLI
+        uses: scaleway/action-scw@v0.0.3
+        with:
+          version: v2.54.0
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+      - name: Deploy Streamlit container (staging)
+        id: deploy
+        run: |
+          set -euo pipefail
+          OUTPUT_JSON="$RUNNER_TEMP/streamlit-staging-deploy.json"
+
+          python3 .github/scripts/scaleway_streamlit_deploy.py \
+            --target-env staging \
+            --project-id "$SCW_DEFAULT_PROJECT_ID" \
+            --region "$SCW_DEFAULT_REGION" \
+            --namespace-name assistant-rh-streamlit-staging \
+            --container-name assistant-rh-streamlit-staging \
+            --image-uri "${{ steps.image.outputs.image_uri }}" \
+            --output-json "$OUTPUT_JSON"
+
+          echo "deploy_json_path=$OUTPUT_JSON" >> "$GITHUB_OUTPUT"
+          echo "container_id=$(jq -r '.container_id' "$OUTPUT_JSON")" >> "$GITHUB_OUTPUT"
+          echo "domain_name=$(jq -r '.container_domain_name' "$OUTPUT_JSON")" >> "$GITHUB_OUTPUT"
+          echo "action=$(jq -r '.action' "$OUTPUT_JSON")" >> "$GITHUB_OUTPUT"
+
+      - name: Post-deploy health check
+        id: health
+        run: |
+          set -euo pipefail
+
+          BASE_URL="${STREAMLIT_STAGING_BASE_URL:-}"
+          if [[ -z "$BASE_URL" ]]; then
+            if [[ -z "${{ steps.deploy.outputs.domain_name }}" ]]; then
+              echo "No STREAMLIT_STAGING_BASE_URL set and no Scaleway domain returned." >&2
+              exit 1
+            fi
+            BASE_URL="https://${{ steps.deploy.outputs.domain_name }}"
+          fi
+
+          HEALTH_URL="${BASE_URL%/}/_stcore/health"
+          echo "base_url=${BASE_URL}" >> "$GITHUB_OUTPUT"
+          echo "health_url=${HEALTH_URL}" >> "$GITHUB_OUTPUT"
+
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --show-error --max-time 10 "$HEALTH_URL" >/dev/null; then
+              echo "health_status=ok" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Health check attempt ${attempt}/20 failed; retrying in 6s..."
+            sleep 6
+          done
+
+          echo "health_status=failed" >> "$GITHUB_OUTPUT"
+          curl --include --silent --show-error --max-time 10 "$HEALTH_URL" || true
+          exit 1
+
+      - name: Publish deployment summary
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "## Streamlit staging deployment"
+            echo ""
+            echo "- Trigger: \`${{ github.event_name }}\`"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Image: \`${{ steps.image.outputs.image_uri || 'n/a' }}\`"
+            echo "- Container action: \`${{ steps.deploy.outputs.action || 'n/a' }}\`"
+            echo "- Container ID: \`${{ steps.deploy.outputs.container_id || 'n/a' }}\`"
+            echo "- Endpoint: \`${{ steps.health.outputs.base_url || 'n/a' }}\`"
+            echo "- Health URL: \`${{ steps.health.outputs.health_url || 'n/a' }}\`"
+            echo "- Health status: \`${{ steps.health.outputs.health_status || 'failed' }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

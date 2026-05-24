@@ -1,0 +1,980 @@
+{
+  "answer": "Oui. Le congé de mobilité figure parmi les congés non rémunérés prévus pour « l’agent (fonctionnaire, non titulaire ou OPA) » dans l’instruction du 6 janvier 2011 ; il est donc ouvert aux contractuels de la fonction publique de l’État. Ce congé est non payé et, comme les autres congés non rémunérés, il n’est pas pris en compte dans le calcul de l’ancienneté.",
+  "timing": {
+    "query_processing_ms": 2111.5331649780273,
+    "retrieval_ms": 271.52514457702637,
+    "aggregation_ms": 323.8980770111084,
+    "context_build_ms": 23.95796775817871,
+    "generation_ms": 3314.647912979126,
+    "response_length_tokens": 90
+  },
+  "sources": [
+    {
+      "heading": "FICHE 1 - Quel contrat choisir et pour quelle durée selon la situation ? (Le fondement juridique du recrutement des agents contractuels)",
+      "publisher": "MATTE",
+      "document_title": "Fiche 1 - Quel contrat choisir - Juillet 2024",
+      "document_url": null,
+      "score": 0.34749321803518674
+    },
+    {
+      "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+      "publisher": "RGRH",
+      "document_title": "all_RGRH_position_conges_rules_population_statut.csv",
+      "document_url": null,
+      "score": 0.2833333333333334
+    },
+    {
+      "heading": "8 – GESTION DES CONGÉS ANNUELS",
+      "publisher": "MATTE",
+      "document_title": "Instruction ministerielle du 6 janvier 2011",
+      "document_url": null,
+      "score": 0.26692307692307693
+    },
+    {
+      "heading": "Licenciement d'un contractuel de la fonction publique d'Etat (FPE)",
+      "publisher": "Service-Public",
+      "document_title": "Licenciement d'un contractuel de la fonction publique",
+      "document_url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F515",
+      "score": 0.45844821405370634
+    }
+  ],
+  "metadata": {
+    "intent": "rag_query",
+    "intent_confidence": 0.95,
+    "theme": "conges",
+    "was_expanded": false,
+    "expanded_acronyms": [],
+    "enriched_query": "",
+    "query_for_retrieval": "Un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+    "needs_legal_search": false,
+    "tables_searched": [
+      "matte",
+      "service_public",
+      "rgrh"
+    ],
+    "selector_enabled": false,
+    "generator_model": "openweight-large",
+    "generator_provider": "albert",
+    "embedding_model": "albert",
+    "retrieved_chunks": [
+      {
+        "chunk_id": "3e6380ecac0525bdf8191fa16d9cee86f1c2dd81",
+        "table": "MATTE",
+        "score": 0.3333,
+        "section_id": "f7c005fd-81b1-45e3-a90a-6403e6665ffc"
+      },
+      {
+        "chunk_id": "d0aae71f044b453da566a42c16b57d347cdc631a",
+        "table": "RGRH",
+        "score": 0.3333,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "dfa63bf292858700fe4a0db01b3520fcfb0f072b",
+        "table": "Service-Public",
+        "score": 0.3333,
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+      },
+      {
+        "chunk_id": "84ec1088d9bedb55f740402799821eb52ab2ef34",
+        "table": "MATTE",
+        "score": 0.328,
+        "section_id": "f7c005fd-81b1-45e3-a90a-6403e6665ffc"
+      },
+      {
+        "chunk_id": "156c043454b4d1067c8d0bac61c34920276043fa",
+        "table": "RGRH",
+        "score": 0.328,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "4becaa1bbb41d41f55ae0b342ac39d7607c46865",
+        "table": "Service-Public",
+        "score": 0.328,
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+      },
+      {
+        "chunk_id": "4b31df94fdbd95a82472a90a64fa82b89d2b670c",
+        "table": "MATTE",
+        "score": 0.3228,
+        "section_id": "5c5e9a2a-e403-49cf-95b5-e7100b9194e8"
+      },
+      {
+        "chunk_id": "b9e6e7155193c5c498e1609acb92fa6a253717fd",
+        "table": "RGRH",
+        "score": 0.3228,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "216822591da278ed041827fbce8869a786a537cc",
+        "table": "Service-Public",
+        "score": 0.3228,
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+      },
+      {
+        "chunk_id": "5c6a624a1b8b48fda76631097eb4e3b0de0aa759",
+        "table": "MATTE",
+        "score": 0.3177,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "05043ce25c3d5828050cae82c6421cef27fd00a9",
+        "table": "RGRH",
+        "score": 0.3177,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "21349215d38d5c4398f6a2e07ffe9fa3f9b8c9c6",
+        "table": "Service-Public",
+        "score": 0.3177,
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+      },
+      {
+        "chunk_id": "a3154059c2b50b578a643d09d2656db40dfe9801",
+        "table": "MATTE",
+        "score": 0.3128,
+        "section_id": "dae6cd13-7b49-4011-ba3c-c7c706b023b4"
+      },
+      {
+        "chunk_id": "a537057603ff846d6d39a6cd6771320f064f186a",
+        "table": "RGRH",
+        "score": 0.3128,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "0d39ea5ffb46fc7b2a901be40ae71c3280660c5f",
+        "table": "Service-Public",
+        "score": 0.3128,
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+      },
+      {
+        "chunk_id": "fed1b1a8fee327f9a216217d5ab4050fbee792be",
+        "table": "MATTE",
+        "score": 0.3081,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "cc2f345282a77ab58e13092b7722631180660058",
+        "table": "RGRH",
+        "score": 0.3081,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "28247c2862ba2ddcf4d1ab9bd724ede389132633",
+        "table": "Service-Public",
+        "score": 0.3081,
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+      },
+      {
+        "chunk_id": "59eba5fac9355f87adfdc0934a6a9128a8a6640b",
+        "table": "MATTE",
+        "score": 0.3035,
+        "section_id": "69b3eca2-3e1f-4389-b7d8-7d68cdc3c4d2"
+      },
+      {
+        "chunk_id": "fd8dabea8d111afad68295bef7464f1b4193c528",
+        "table": "RGRH",
+        "score": 0.3035,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "4b2b1f60b2efc5ac1c4fab3a42c351dfadb5f2c3",
+        "table": "Service-Public",
+        "score": 0.3035,
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+      },
+      {
+        "chunk_id": "40dee183d3a55e4f1b81193db96375f458d8d71e",
+        "table": "MATTE",
+        "score": 0.299,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "05bf23fef9eaec2a72ff16a3e81fceefe9ebd3f7",
+        "table": "RGRH",
+        "score": 0.299,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "81e252560fc5fd23c8c8ec72c2908d03f10eb7af",
+        "table": "Service-Public",
+        "score": 0.299,
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+      },
+      {
+        "chunk_id": "60415e188b118e49de6c7f86e04b44b970415c54",
+        "table": "MATTE",
+        "score": 0.2947,
+        "section_id": "f3f54909-79fc-4eb3-b9ee-cb33b7ff33cb"
+      },
+      {
+        "chunk_id": "6a729e0d5f1e3b69fedc4c8b566452a05cd1e752",
+        "table": "RGRH",
+        "score": 0.2947,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "18df0f66eacb98eb6f90095c7973a9544b34ab5c",
+        "table": "Service-Public",
+        "score": 0.2947,
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+      },
+      {
+        "chunk_id": "f42efa81b05a588ab81a259825718998a7100ec6",
+        "table": "MATTE",
+        "score": 0.2905,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "988d08b16e09e61b69255bcff0ce284397d11255",
+        "table": "RGRH",
+        "score": 0.2905,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "fbb6fb2539fc1dae94f767212dd88f357adb9d7f",
+        "table": "Service-Public",
+        "score": 0.2905,
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+      },
+      {
+        "chunk_id": "5ff7d183c2a9f1365df70d09b6873a7fdcb5e400",
+        "table": "MATTE",
+        "score": 0.2864,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "4d29ed6f05a4b2851b3f128e75b740ec2bef9f7e",
+        "table": "RGRH",
+        "score": 0.2864,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "3a6f8c763011256fc1e87a5940bb10e7717c9bcd",
+        "table": "Service-Public",
+        "score": 0.2864,
+        "section_id": "e85be735-8d3c-495b-a7fc-d970c27e4ee3"
+      },
+      {
+        "chunk_id": "bd7a7542a5ae5b80db2f7db676561839128b19ef",
+        "table": "MATTE",
+        "score": 0.2824,
+        "section_id": "42af1bdd-3f56-45be-8d1f-86a38f2313c0"
+      },
+      {
+        "chunk_id": "e7dee4fa9007980ac921b89e900afb7608a683b7",
+        "table": "RGRH",
+        "score": 0.2824,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "9e326ffe9fb60f364e03387feb3dc618d10dfeb6",
+        "table": "Service-Public",
+        "score": 0.2824,
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+      },
+      {
+        "chunk_id": "21aa8c4660c314d495be769c4d4d47c13aceb518",
+        "table": "MATTE",
+        "score": 0.2785,
+        "section_id": "f351c3e8-d0ca-43fa-b5ad-faf60bdbd871"
+      },
+      {
+        "chunk_id": "bb81d7dfa367fb97151c5be8d0d0293165a6a477",
+        "table": "RGRH",
+        "score": 0.2785,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "e46332bf560011759cb0ad5ecd010d532bbe3af1",
+        "table": "Service-Public",
+        "score": 0.2785,
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+      },
+      {
+        "chunk_id": "e4f3307b022219f437858e78036f3fd1421e2278",
+        "table": "MATTE",
+        "score": 0.2748,
+        "section_id": "f04e27a8-6ec3-4231-8edf-ef058d65629f"
+      },
+      {
+        "chunk_id": "dd6e8d567f1556b18cf5c498fca8696a80645a4f",
+        "table": "RGRH",
+        "score": 0.2748,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "6122860675436ab69d318640c3c5964d62da9e29",
+        "table": "Service-Public",
+        "score": 0.2748,
+        "section_id": "3b545d2e-794d-448e-8d79-f9307309154e"
+      },
+      {
+        "chunk_id": "83538e2c46930cce897fb5d3ddf07e72cf769b9f",
+        "table": "MATTE",
+        "score": 0.2711,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "aa73bfd3a0e6117ad987320ac5781accf13886ff",
+        "table": "RGRH",
+        "score": 0.2711,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "06177145d027190b11f333f99ccef813f522c9d5",
+        "table": "Service-Public",
+        "score": 0.2711,
+        "section_id": "3b545d2e-794d-448e-8d79-f9307309154e"
+      }
+    ],
+    "aggregated_sections": [
+      {
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+        "heading": "Licenciement d'un contractuel de la fonction publique d'Etat (FPE)",
+        "score": 0.4584,
+        "publisher": "Service-Public",
+        "chunk_count": 12
+      },
+      {
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+        "heading": "FICHE 1 - Quel contrat choisir et pour quelle durée selon la situation ? (Le fon",
+        "score": 0.3475,
+        "publisher": "MATTE",
+        "chunk_count": 6
+      },
+      {
+        "section_id": "f7c005fd-81b1-45e3-a90a-6403e6665ffc",
+        "heading": "FICHE 6 - La fin de la période d'essai et la fin du contrat",
+        "score": 0.2992,
+        "publisher": "MATTE",
+        "chunk_count": 2
+      },
+      {
+        "section_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "score": 0.2833,
+        "publisher": "RGRH",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "score": 0.279,
+        "publisher": "RGRH",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "5c5e9a2a-e403-49cf-95b5-e7100b9194e8",
+        "heading": "Annexe 6 - Être recruté(e) en tant que contractuel(le) dans la Fonction publique",
+        "score": 0.2749,
+        "publisher": "MATTE",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "score": 0.2749,
+        "publisher": "RGRH",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "score": 0.2708,
+        "publisher": "RGRH",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "dae6cd13-7b49-4011-ba3c-c7c706b023b4",
+        "heading": "8 – GESTION DES CONGÉS ANNUELS",
+        "score": 0.2669,
+        "publisher": "MATTE",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "score": 0.2669,
+        "publisher": "RGRH",
+        "chunk_count": 1
+      }
+    ],
+    "context_items_ref": [
+      {
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+        "doc_id": "3d1db387-35f3-4142-be46-801c1b827c7b",
+        "heading": "FICHE 1 - Quel contrat choisir et pour quelle durée selon la situation ? (Le fon",
+        "publisher": "MATTE",
+        "tokens": 4382,
+        "score": 0.3475,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "",
+        "doc_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "publisher": "RGRH",
+        "tokens": 0,
+        "score": 0.2833,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "dae6cd13-7b49-4011-ba3c-c7c706b023b4",
+        "doc_id": "89cae642-2f07-4b5b-a9bc-3836992371ea",
+        "heading": "8 – GESTION DES CONGÉS ANNUELS",
+        "publisher": "MATTE",
+        "tokens": 1667,
+        "score": 0.2669,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+        "doc_id": "958d8571-74a7-4d5c-bb13-42fe4e3d224b",
+        "heading": "Licenciement d'un contractuel de la fonction publique d'Etat (FPE)",
+        "publisher": "Service-Public",
+        "tokens": 18048,
+        "score": 0.4584,
+        "is_doc_entire": false
+      }
+    ],
+    "selector_decisions": {},
+    "selector_reasoning": "",
+    "selector_raw_response": "",
+    "selector_items_before": 0,
+    "selector_items_after": 0,
+    "sections_before_rerank": 27,
+    "sections_after_rerank": 10,
+    "selector_all_rejected": false,
+    "stage_trace": {
+      "schema_version": "2026-05-05",
+      "stage_order": [
+        "query-processor",
+        "retriever",
+        "section-aggregator",
+        "context-selector",
+        "context-builder",
+        "generator"
+      ],
+      "stages": {
+        "query-processor": {
+          "input": {
+            "query": "Un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+            "conversation_history": []
+          },
+          "output": {
+            "intent": "rag_query",
+            "theme": "conges",
+            "needs_legal_search": false,
+            "should_proceed": true,
+            "processed_query": "Un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+            "enriched_query": "",
+            "query_for_retrieval": "Un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+            "search_terms": []
+          }
+        },
+        "retriever": {
+          "input": {
+            "query": "Un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+            "needs_legal_search": false,
+            "tables_searched": [
+              "matte",
+              "service_public",
+              "rgrh"
+            ]
+          },
+          "output": {
+            "retrieved_chunks": [
+              {
+                "chunk_id": "3e6380ecac0525bdf8191fa16d9cee86f1c2dd81",
+                "section_id": "f7c005fd-81b1-45e3-a90a-6403e6665ffc",
+                "score": 0.3333,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "d0aae71f044b453da566a42c16b57d347cdc631a",
+                "section_id": "",
+                "score": 0.3333,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "dfa63bf292858700fe4a0db01b3520fcfb0f072b",
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "score": 0.3333,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "84ec1088d9bedb55f740402799821eb52ab2ef34",
+                "section_id": "f7c005fd-81b1-45e3-a90a-6403e6665ffc",
+                "score": 0.328,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "156c043454b4d1067c8d0bac61c34920276043fa",
+                "section_id": "",
+                "score": 0.328,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "4becaa1bbb41d41f55ae0b342ac39d7607c46865",
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "score": 0.328,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "4b31df94fdbd95a82472a90a64fa82b89d2b670c",
+                "section_id": "5c5e9a2a-e403-49cf-95b5-e7100b9194e8",
+                "score": 0.3228,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "b9e6e7155193c5c498e1609acb92fa6a253717fd",
+                "section_id": "",
+                "score": 0.3228,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "216822591da278ed041827fbce8869a786a537cc",
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "score": 0.3228,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "5c6a624a1b8b48fda76631097eb4e3b0de0aa759",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.3177,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "05043ce25c3d5828050cae82c6421cef27fd00a9",
+                "section_id": "",
+                "score": 0.3177,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "21349215d38d5c4398f6a2e07ffe9fa3f9b8c9c6",
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "score": 0.3177,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "a3154059c2b50b578a643d09d2656db40dfe9801",
+                "section_id": "dae6cd13-7b49-4011-ba3c-c7c706b023b4",
+                "score": 0.3128,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "a537057603ff846d6d39a6cd6771320f064f186a",
+                "section_id": "",
+                "score": 0.3128,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "0d39ea5ffb46fc7b2a901be40ae71c3280660c5f",
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "score": 0.3128,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "fed1b1a8fee327f9a216217d5ab4050fbee792be",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.3081,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "cc2f345282a77ab58e13092b7722631180660058",
+                "section_id": "",
+                "score": 0.3081,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "28247c2862ba2ddcf4d1ab9bd724ede389132633",
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "score": 0.3081,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "59eba5fac9355f87adfdc0934a6a9128a8a6640b",
+                "section_id": "69b3eca2-3e1f-4389-b7d8-7d68cdc3c4d2",
+                "score": 0.3035,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "fd8dabea8d111afad68295bef7464f1b4193c528",
+                "section_id": "",
+                "score": 0.3035,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "4b2b1f60b2efc5ac1c4fab3a42c351dfadb5f2c3",
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "score": 0.3035,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "40dee183d3a55e4f1b81193db96375f458d8d71e",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.299,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "05bf23fef9eaec2a72ff16a3e81fceefe9ebd3f7",
+                "section_id": "",
+                "score": 0.299,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "81e252560fc5fd23c8c8ec72c2908d03f10eb7af",
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "score": 0.299,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "60415e188b118e49de6c7f86e04b44b970415c54",
+                "section_id": "f3f54909-79fc-4eb3-b9ee-cb33b7ff33cb",
+                "score": 0.2947,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "6a729e0d5f1e3b69fedc4c8b566452a05cd1e752",
+                "section_id": "",
+                "score": 0.2947,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "18df0f66eacb98eb6f90095c7973a9544b34ab5c",
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "score": 0.2947,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "f42efa81b05a588ab81a259825718998a7100ec6",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.2905,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "988d08b16e09e61b69255bcff0ce284397d11255",
+                "section_id": "",
+                "score": 0.2905,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "fbb6fb2539fc1dae94f767212dd88f357adb9d7f",
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "score": 0.2905,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "5ff7d183c2a9f1365df70d09b6873a7fdcb5e400",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.2864,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "4d29ed6f05a4b2851b3f128e75b740ec2bef9f7e",
+                "section_id": "",
+                "score": 0.2864,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "3a6f8c763011256fc1e87a5940bb10e7717c9bcd",
+                "section_id": "e85be735-8d3c-495b-a7fc-d970c27e4ee3",
+                "score": 0.2864,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "bd7a7542a5ae5b80db2f7db676561839128b19ef",
+                "section_id": "42af1bdd-3f56-45be-8d1f-86a38f2313c0",
+                "score": 0.2824,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "e7dee4fa9007980ac921b89e900afb7608a683b7",
+                "section_id": "",
+                "score": 0.2824,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "9e326ffe9fb60f364e03387feb3dc618d10dfeb6",
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "score": 0.2824,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "21aa8c4660c314d495be769c4d4d47c13aceb518",
+                "section_id": "f351c3e8-d0ca-43fa-b5ad-faf60bdbd871",
+                "score": 0.2785,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "bb81d7dfa367fb97151c5be8d0d0293165a6a477",
+                "section_id": "",
+                "score": 0.2785,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "e46332bf560011759cb0ad5ecd010d532bbe3af1",
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "score": 0.2785,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "e4f3307b022219f437858e78036f3fd1421e2278",
+                "section_id": "f04e27a8-6ec3-4231-8edf-ef058d65629f",
+                "score": 0.2748,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "dd6e8d567f1556b18cf5c498fca8696a80645a4f",
+                "section_id": "",
+                "score": 0.2748,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "6122860675436ab69d318640c3c5964d62da9e29",
+                "section_id": "3b545d2e-794d-448e-8d79-f9307309154e",
+                "score": 0.2748,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "83538e2c46930cce897fb5d3ddf07e72cf769b9f",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.2711,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "aa73bfd3a0e6117ad987320ac5781accf13886ff",
+                "section_id": "",
+                "score": 0.2711,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "06177145d027190b11f333f99ccef813f522c9d5",
+                "section_id": "3b545d2e-794d-448e-8d79-f9307309154e",
+                "score": 0.2711,
+                "source_table": "Service-Public"
+              }
+            ]
+          }
+        },
+        "section-aggregator": {
+          "input": {
+            "retrieved_chunk_ids": [
+              "3e6380ecac0525bdf8191fa16d9cee86f1c2dd81",
+              "d0aae71f044b453da566a42c16b57d347cdc631a",
+              "dfa63bf292858700fe4a0db01b3520fcfb0f072b",
+              "84ec1088d9bedb55f740402799821eb52ab2ef34",
+              "156c043454b4d1067c8d0bac61c34920276043fa",
+              "4becaa1bbb41d41f55ae0b342ac39d7607c46865",
+              "4b31df94fdbd95a82472a90a64fa82b89d2b670c",
+              "b9e6e7155193c5c498e1609acb92fa6a253717fd",
+              "216822591da278ed041827fbce8869a786a537cc",
+              "5c6a624a1b8b48fda76631097eb4e3b0de0aa759",
+              "05043ce25c3d5828050cae82c6421cef27fd00a9",
+              "21349215d38d5c4398f6a2e07ffe9fa3f9b8c9c6",
+              "a3154059c2b50b578a643d09d2656db40dfe9801",
+              "a537057603ff846d6d39a6cd6771320f064f186a",
+              "0d39ea5ffb46fc7b2a901be40ae71c3280660c5f",
+              "fed1b1a8fee327f9a216217d5ab4050fbee792be",
+              "cc2f345282a77ab58e13092b7722631180660058",
+              "28247c2862ba2ddcf4d1ab9bd724ede389132633",
+              "59eba5fac9355f87adfdc0934a6a9128a8a6640b",
+              "fd8dabea8d111afad68295bef7464f1b4193c528",
+              "4b2b1f60b2efc5ac1c4fab3a42c351dfadb5f2c3",
+              "40dee183d3a55e4f1b81193db96375f458d8d71e",
+              "05bf23fef9eaec2a72ff16a3e81fceefe9ebd3f7",
+              "81e252560fc5fd23c8c8ec72c2908d03f10eb7af",
+              "60415e188b118e49de6c7f86e04b44b970415c54",
+              "6a729e0d5f1e3b69fedc4c8b566452a05cd1e752",
+              "18df0f66eacb98eb6f90095c7973a9544b34ab5c",
+              "f42efa81b05a588ab81a259825718998a7100ec6",
+              "988d08b16e09e61b69255bcff0ce284397d11255",
+              "fbb6fb2539fc1dae94f767212dd88f357adb9d7f",
+              "5ff7d183c2a9f1365df70d09b6873a7fdcb5e400",
+              "4d29ed6f05a4b2851b3f128e75b740ec2bef9f7e",
+              "3a6f8c763011256fc1e87a5940bb10e7717c9bcd",
+              "bd7a7542a5ae5b80db2f7db676561839128b19ef",
+              "e7dee4fa9007980ac921b89e900afb7608a683b7",
+              "9e326ffe9fb60f364e03387feb3dc618d10dfeb6",
+              "21aa8c4660c314d495be769c4d4d47c13aceb518",
+              "bb81d7dfa367fb97151c5be8d0d0293165a6a477",
+              "e46332bf560011759cb0ad5ecd010d532bbe3af1",
+              "e4f3307b022219f437858e78036f3fd1421e2278",
+              "dd6e8d567f1556b18cf5c498fca8696a80645a4f",
+              "6122860675436ab69d318640c3c5964d62da9e29",
+              "83538e2c46930cce897fb5d3ddf07e72cf769b9f",
+              "aa73bfd3a0e6117ad987320ac5781accf13886ff",
+              "06177145d027190b11f333f99ccef813f522c9d5"
+            ]
+          },
+          "output": {
+            "aggregated_sections": [
+              {
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "score": 0.4584,
+                "publisher": "Service-Public",
+                "heading": "Licenciement d'un contractuel de la fonction publique d'Etat (FPE)",
+                "chunk_count": 12
+              },
+              {
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.3475,
+                "publisher": "MATTE",
+                "heading": "FICHE 1 - Quel contrat choisir et pour quelle durée selon la situation ? (Le fon",
+                "chunk_count": 6
+              },
+              {
+                "section_id": "f7c005fd-81b1-45e3-a90a-6403e6665ffc",
+                "score": 0.2992,
+                "publisher": "MATTE",
+                "heading": "FICHE 6 - La fin de la période d'essai et la fin du contrat",
+                "chunk_count": 2
+              },
+              {
+                "section_id": "",
+                "score": 0.2833,
+                "publisher": "RGRH",
+                "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+                "chunk_count": 1
+              },
+              {
+                "section_id": "",
+                "score": 0.279,
+                "publisher": "RGRH",
+                "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+                "chunk_count": 1
+              },
+              {
+                "section_id": "5c5e9a2a-e403-49cf-95b5-e7100b9194e8",
+                "score": 0.2749,
+                "publisher": "MATTE",
+                "heading": "Annexe 6 - Être recruté(e) en tant que contractuel(le) dans la Fonction publique",
+                "chunk_count": 1
+              },
+              {
+                "section_id": "",
+                "score": 0.2749,
+                "publisher": "RGRH",
+                "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+                "chunk_count": 1
+              },
+              {
+                "section_id": "",
+                "score": 0.2708,
+                "publisher": "RGRH",
+                "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+                "chunk_count": 1
+              },
+              {
+                "section_id": "dae6cd13-7b49-4011-ba3c-c7c706b023b4",
+                "score": 0.2669,
+                "publisher": "MATTE",
+                "heading": "8 – GESTION DES CONGÉS ANNUELS",
+                "chunk_count": 1
+              },
+              {
+                "section_id": "",
+                "score": 0.2669,
+                "publisher": "RGRH",
+                "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+                "chunk_count": 1
+              }
+            ]
+          }
+        },
+        "context-selector": {
+          "input": {
+            "query": "Un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+            "aggregated_section_ids": [
+              "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+              "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+              "f7c005fd-81b1-45e3-a90a-6403e6665ffc",
+              "",
+              "",
+              "5c5e9a2a-e403-49cf-95b5-e7100b9194e8",
+              "",
+              "",
+              "dae6cd13-7b49-4011-ba3c-c7c706b023b4",
+              ""
+            ]
+          },
+          "output": {
+            "selector_enabled": false,
+            "selector_all_rejected": false,
+            "selector_items_before": 0,
+            "selector_items_after": 0,
+            "selector_decisions": {},
+            "selected_section_ids": [
+              "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+              "dae6cd13-7b49-4011-ba3c-c7c706b023b4",
+              "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+            ]
+          }
+        },
+        "context-builder": {
+          "input": {
+            "selected_section_ids": [
+              "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+              "dae6cd13-7b49-4011-ba3c-c7c706b023b4",
+              "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+            ]
+          },
+          "output": {
+            "context_items_ref": [
+              {
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "doc_id": "3d1db387-35f3-4142-be46-801c1b827c7b",
+                "heading": "FICHE 1 - Quel contrat choisir et pour quelle durée selon la situation ? (Le fon",
+                "publisher": "MATTE",
+                "tokens": 4382,
+                "score": 0.3475,
+                "is_doc_entire": false
+              },
+              {
+                "section_id": "",
+                "doc_id": "",
+                "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+                "publisher": "RGRH",
+                "tokens": 0,
+                "score": 0.2833,
+                "is_doc_entire": false
+              },
+              {
+                "section_id": "dae6cd13-7b49-4011-ba3c-c7c706b023b4",
+                "doc_id": "89cae642-2f07-4b5b-a9bc-3836992371ea",
+                "heading": "8 – GESTION DES CONGÉS ANNUELS",
+                "publisher": "MATTE",
+                "tokens": 1667,
+                "score": 0.2669,
+                "is_doc_entire": false
+              },
+              {
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "doc_id": "958d8571-74a7-4d5c-bb13-42fe4e3d224b",
+                "heading": "Licenciement d'un contractuel de la fonction publique d'Etat (FPE)",
+                "publisher": "Service-Public",
+                "tokens": 18048,
+                "score": 0.4584,
+                "is_doc_entire": false
+              }
+            ],
+            "context_text_hash": "62fef6ac2379e04d67ba43454b0afc7c11ffa10c5c8630e6ca9c11622e55a35d"
+          }
+        },
+        "generator": {
+          "input": {
+            "query": "Un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+            "context_item_count": 4,
+            "conversation_history": []
+          },
+          "output": {
+            "answer": "Oui. Le congé de mobilité figure parmi les congés non rémunérés prévus pour « l’agent (fonctionnaire, non titulaire ou OPA) » dans l’instruction du 6 janvier 2011 ; il est donc ouvert aux contractuels de la fonction publique de l’État. Ce congé est non payé et, comme les autres congés non rémunérés, il n’est pas pris en compte dans le calcul de l’ancienneté.",
+            "answer_length": 360,
+            "citations": []
+          }
+        }
+      }
+    }
+  }
+}

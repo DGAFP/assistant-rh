@@ -1,0 +1,36 @@
+[project]
+name = "assistant-rh-data-engineering"
+version = "0.4.2"
+description = "Data ingestion pipeline for Assistant RH"
+requires-python = ">=3.12"
+
+dependencies = [
+    # Database
+    "psycopg[binary]>=3.3.3",
+    # Data
+    "numpy>=2.0.0",
+    "pandas>=2.3.0",
+    "requests>=2.32.0",
+    # Storage
+    "filelock>=3.18.0",
+    # Runtime configuration
+    "python-dotenv>=1.0.0",
+    # Internal packages
+    "assistant-rh-shared-config",
+]
+
+[project.scripts]
+assistant-rh-data = "assistant_rh_data_engineering.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/assistant_rh_data_engineering"]
+
+# Ruff config is inherited from the workspace root pyproject.toml
+
+# Local workspace package source
+[tool.uv.sources]
+assistant-rh-shared-config = { workspace = true }

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "assistant-rh/conformance/retriever.schema.json",
+  "title": "Retriever Stage Contract",
+  "type": "object",
+  "required": ["input", "output"],
+  "properties": {
+    "input": {
+      "type": "object",
+      "required": ["query", "needs_legal_search", "tables_searched"],
+      "properties": {
+        "query": { "type": "string" },
+        "needs_legal_search": { "type": "boolean" },
+        "tables_searched": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": ["retrieved_chunks"],
+      "properties": {
+        "retrieved_chunks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["chunk_id", "score", "source_table"],
+            "properties": {
+              "chunk_id": { "type": ["string", "null"] },
+              "section_id": { "type": ["string", "null"] },
+              "score": { "type": ["number", "null"] },
+              "source_table": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

@@ -1,0 +1,62 @@
+name: CI Tests
+
+on:
+  push:
+    branches: [main, clean/v3-handover]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    env:
+      UV_CACHE_DIR: .uv-cache
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Lint check
+        run: uv run --no-sync ruff check src apps/streamlit-ui/pages tests --select E,F,I
+
+      - name: Run tests
+        run: uv run --no-sync python -m pytest tests/ --ignore=tests/archive -v
+
+      - name: Check pipeline imports
+        run: |
+          uv run --no-sync python -c "
+          from assistant_rh_rag_pipeline.pipeline import Pipeline
+          from assistant_rh_rag_pipeline.models import PipelineResult, RetrievedChunk, ContextItem
+          from assistant_rh_rag_pipeline.config import RAGConfig
+          print('All pipeline imports OK')
+          "
+
+  biome:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Biome lint & format check
+        run: pnpm exec biome check apps/mastra-pipeline/src apps/mastra-pipeline/scripts

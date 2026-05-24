@@ -1,0 +1,150 @@
+{
+  "job_name_template": "assistant-rh-{target_env}-{key}",
+  "jobs": [
+    {
+      "key": "service-public-medallion",
+      "domain": "service_public",
+      "image": "service-public-pipeline",
+      "description": "CI/CD Service-Public medallion pipeline.",
+      "cpu_limit": 2000,
+      "memory_limit": 4096,
+      "local_storage_capacity": 2048,
+      "job_timeout": "7200s",
+      "env_groups": ["object_storage"],
+      "args": [
+        "service-public",
+        "medallion",
+        "--fiche-config",
+        "{service_public_fiche_config}",
+        "--target-env",
+        "{target_env}",
+        "--sync-object-storage",
+        "--no-embed"
+      ]
+    },
+    {
+      "key": "service-public-ingestion",
+      "domain": "service_public",
+      "image": "service-public-ingestion",
+      "description": "CI/CD Service-Public Postgres ingestion.",
+      "cpu_limit": 1000,
+      "memory_limit": 2048,
+      "local_storage_capacity": 2048,
+      "job_timeout": "7200s",
+      "requires_ingestion": true,
+      "env_groups": ["object_storage", "postgres"],
+      "args": [
+        "service-public",
+        "ingest",
+        "--fiche-config",
+        "{service_public_fiche_config}",
+        "--target-env",
+        "{target_env}",
+        "--from-object-storage",
+        "--dsn-env",
+        "SCW_POSTGRES_DSN"
+      ]
+    },
+    {
+      "key": "legifrance-bulk-dump",
+      "domain": "legifrance",
+      "image": "legifrance-bulk-dump",
+      "description": "CI/CD Legifrance bulk dump refresh.",
+      "cpu_limit": 2000,
+      "memory_limit": 4096,
+      "local_storage_capacity": 8192,
+      "job_timeout": "14400s",
+      "env_groups": ["object_storage"],
+      "args": [
+        "legifrance",
+        "bulk-dump",
+        "--target-env",
+        "{target_env}",
+        "--article-ids-json",
+        "{legifrance_article_ids_json}",
+        "--sync-object-storage",
+        "--delete-local-archive"
+      ],
+      "prod_args": ["--delete-remote"]
+    },
+    {
+      "key": "legifrance-medallion",
+      "domain": "legifrance",
+      "image": "legifrance-pipeline",
+      "description": "CI/CD Legifrance medallion pipeline.",
+      "cpu_limit": 4000,
+      "memory_limit": 8192,
+      "local_storage_capacity": 8192,
+      "job_timeout": "14400s",
+      "env_groups": ["object_storage"],
+      "args": [
+        "legifrance",
+        "medallion",
+        "--target-env",
+        "{target_env}",
+        "--from-object-storage",
+        "--sync-object-storage",
+        "--delete-remote",
+        "--no-embed"
+      ]
+    },
+    {
+      "key": "legifrance-ingestion",
+      "domain": "legifrance",
+      "image": "legifrance-ingestion",
+      "description": "CI/CD Legifrance Postgres ingestion.",
+      "cpu_limit": 1000,
+      "memory_limit": 2048,
+      "local_storage_capacity": 2048,
+      "job_timeout": "7200s",
+      "requires_ingestion": true,
+      "env_groups": ["object_storage", "postgres"],
+      "args": [
+        "legifrance",
+        "ingest",
+        "--target-env",
+        "{target_env}",
+        "--from-object-storage",
+        "--load-all-artifacts",
+        "--dsn-env",
+        "SCW_POSTGRES_DSN"
+      ]
+    },
+    {
+      "key": "embeddings-service-public",
+      "domain": "embeddings",
+      "image": "embeddings-job",
+      "description": "CI/CD Service-Public embeddings backfill.",
+      "cpu_limit": 2000,
+      "memory_limit": 8192,
+      "local_storage_capacity": 4096,
+      "job_timeout": "14400s",
+      "requires_embeddings": true,
+      "env_groups": ["postgres", "embeddings_api"],
+      "args": [
+        "embeddings",
+        "service-public",
+        "--dsn-env",
+        "SCW_POSTGRES_DSN"
+      ]
+    },
+    {
+      "key": "embeddings-legifrance",
+      "domain": "embeddings",
+      "image": "embeddings-job",
+      "description": "CI/CD Legifrance embeddings backfill.",
+      "cpu_limit": 2000,
+      "memory_limit": 8192,
+      "local_storage_capacity": 4096,
+      "job_timeout": "14400s",
+      "requires_embeddings": true,
+      "env_groups": ["postgres", "embeddings_api"],
+      "args": [
+        "embeddings",
+        "legifrance",
+        "--dsn-env",
+        "SCW_POSTGRES_DSN"
+      ]
+    }
+  ]
+}

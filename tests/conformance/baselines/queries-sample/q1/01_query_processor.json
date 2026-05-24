@@ -1,0 +1,16 @@
+{
+  "input": {
+    "query": "Quelle est la durée maximale d'un contrat CDD pour un agent contractuel ?",
+    "conversation_history": []
+  },
+  "output": {
+    "intent": "rag_query",
+    "theme": "typologie_contrats",
+    "needs_legal_search": false,
+    "should_proceed": true,
+    "processed_query": "Quelle est la durée maximale d'un contrat CDD (Contrat à Durée Déterminée) pour un agent contractuel ?",
+    "enriched_query": "",
+    "query_for_retrieval": "Quelle est la durée maximale d'un contrat CDD (Contrat à Durée Déterminée) pour un agent contractuel ?",
+    "search_terms": []
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "legifrance-monthly-prod",
+  "description": "Job mensuel de generation bronze/silver/gold pour Légifrance.",
+  "region": "fr-par",
+  "image_uri": "rg.fr-par.scw.cloud/assistant-rh/legifrance-pipeline:prod-latest",
+  "cpu_limit_mvcpu": 2000,
+  "memory_limit_mib": 4096,
+  "local_storage_capacity_mib": 2048,
+  "job_timeout_seconds": 7200,
+  "cron_schedule": {
+    "schedule": "15 3 1 * *",
+    "timezone": "Europe/Paris"
+  },
+  "startup_command": [
+    "assistant-rh-data"
+  ],
+  "args": [
+    "legifrance",
+    "medallion",
+    "--target-env",
+    "prod",
+    "--sync-object-storage",
+    "--no-embed"
+  ],
+  "environment_variables": {
+    "SCW_DEFAULT_REGION": "fr-par",
+    "SCW_BUCKET_BRONZE": "assistant-rh-bronze",
+    "SCW_BUCKET_SILVER": "assistant-rh-silver",
+    "SCW_BUCKET_GOLD": "assistant-rh-gold",
+    "SCW_PREFIX_PROD": "prod",
+    "SCW_PREFIX_STAGING": "staging"
+  }
+}

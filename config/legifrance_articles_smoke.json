@@ -1,0 +1,10 @@
+{
+  "dataset": "cgfp_contractuels_smoke",
+  "code_name": "Code général de la fonction publique",
+  "code_id": "LEGITEXT000044416551",
+  "chunk_strategy": "dgafp_compatible",
+  "single_chunk_per_article": true,
+  "article_numbers": [
+    "R.271-5"
+  ]
+}

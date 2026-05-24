@@ -1,0 +1,7 @@
+{
+  "intent_match_rate": 0.95,
+  "retrieval_overlap_topk_avg": 0.8,
+  "section_overlap_topk_avg": 0.8,
+  "selector_overlap_topk_avg": 0.7,
+  "context_overlap_topk_avg": 0.5
+}

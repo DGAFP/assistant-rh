@@ -1,0 +1,80 @@
+{
+  "generated_at": "2026-05-05T14:45:10.031406+00:00",
+  "query_count": 5,
+  "succeeded_count": 5,
+  "failed_count": 0,
+  "errors": [],
+  "git_commit_sha": "ef7505dd90b12b280ea44a43a3c95e79dd54fe64",
+  "pipeline_config": {
+    "retrieval": {
+      "search_mode": "semantic",
+      "embedding_model": "albert",
+      "initial_top_k": 15,
+      "alpha": 0.5,
+      "tables": [
+        "matte",
+        "service_public",
+        "dgafp",
+        "rgrh"
+      ],
+      "enable_chunks_test": false,
+      "enable_chunk_reranker": false,
+      "chunk_rerank_top_k": 30
+    },
+    "aggregation": {
+      "weight_max_score": 0.5,
+      "weight_mean_score": 0.3,
+      "weight_chunk_count": 0.2,
+      "enable_section_reranker": true,
+      "section_rerank_top_k": 10
+    },
+    "context": {
+      "context_mode": "standard",
+      "token_budget": 8000,
+      "max_full_docs": 1,
+      "doc_entire_threshold": 3500,
+      "max_sections": 12,
+      "triangulation_sections": 2,
+      "legal_refs_budget": 1000,
+      "token_budget_wide": 12000,
+      "max_full_docs_wide": 2,
+      "doc_entire_threshold_wide": 5000,
+      "max_sections_wide": 20,
+      "legal_refs_budget_wide": 2000
+    },
+    "selector": {
+      "enabled": false,
+      "provider": "albert",
+      "model": "openweight-large",
+      "temperature": 0.0,
+      "prompt_name": "v3_selector_business.md"
+    },
+    "generation": {
+      "provider": "albert",
+      "model": "openweight-large",
+      "temperature": 0.0,
+      "system_prompt_name": "system_prompt_V6_optimized.md",
+      "fallback_provider": "scaleway",
+      "fallback_model": "llama-3.1-70b-instruct"
+    },
+    "query_processor": {
+      "enable_acronym_expansion": true,
+      "enable_intent_gating": true,
+      "intent_model": "openweight-medium",
+      "intent_prompt_name": "intent_unified.md",
+      "enable_hyde": false
+    },
+    "verbose": false
+  },
+  "models": {
+    "intent_model": "openweight-medium",
+    "generation_model": "openweight-large",
+    "generation_provider": "albert",
+    "embedding_model": "albert"
+  },
+  "prompt_hashes": {
+    "generator.md": "7d99987a1d6acc3f87717274449936422e3b553873109057700c1dfe2a0684b4",
+    "intent.md": "cf3d98cb7ead7e58b9e76a5bcc683d58024720805d1b79c35121eec667de0ed8",
+    "selector.md": "2a6e6539632d4a60d14500ec5867736f3117acc2416f4b5a452f886579c01692"
+  }
+}

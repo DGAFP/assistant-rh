@@ -1,0 +1,16 @@
+{
+  "input": {
+    "query": "Quelle est la différence entre un CDD et un CDI dans la fonction publique d'État ?",
+    "conversation_history": []
+  },
+  "output": {
+    "intent": "rag_query",
+    "theme": "typologie_contrats",
+    "needs_legal_search": false,
+    "should_proceed": true,
+    "processed_query": "Quelle est la différence entre un CDD (Contrat à Durée Déterminée) et un CDI (Contrat à Durée Indéterminée) dans la fonction publique d'État ?",
+    "enriched_query": "",
+    "query_for_retrieval": "Quelle est la différence entre un CDD (Contrat à Durée Déterminée) et un CDI (Contrat à Durée Indéterminée) dans la fonction publique d'État ?",
+    "search_terms": []
+  }
+}

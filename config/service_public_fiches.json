@@ -1,0 +1,31 @@
+{
+  "source": "service_public",
+  "description": "Liste de production des fiches Service-Public a traiter par le pipeline, initialisee a partir de la migration.",
+  "situation": "FPE",
+  "fiche_ids": [
+    "F12386",
+    "F12391",
+    "F13975",
+    "F14012",
+    "F14018",
+    "F18029",
+    "F18090",
+    "F1906",
+    "F1918",
+    "F20094",
+    "F3019",
+    "F3026",
+    "F3027",
+    "F31094",
+    "F34534",
+    "F34539",
+    "F38882",
+    "F430",
+    "F471",
+    "F489",
+    "F513",
+    "F515",
+    "F539",
+    "F593"
+  ]
+}

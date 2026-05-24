@@ -1,0 +1,2156 @@
+{
+  "fiche_count": 24,
+  "fiches": [
+    "F12386",
+    "F12391",
+    "F13975",
+    "F14012",
+    "F14018",
+    "F18029",
+    "F18090",
+    "F1906",
+    "F1918",
+    "F20094",
+    "F3019",
+    "F3026",
+    "F3027",
+    "F31094",
+    "F34534",
+    "F34539",
+    "F38882",
+    "F430",
+    "F471",
+    "F489",
+    "F513",
+    "F515",
+    "F539",
+    "F593"
+  ],
+  "global": {
+    "db": {
+      "label": "db",
+      "rows": 790,
+      "columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "role_counts": {
+        "A_ATOMIC": 574,
+        "QA_COMPOSITE": 119,
+        "Q_ONLY": 97
+      },
+      "text_chars_total": 707047,
+      "text_chars_mean": 894.9962025316456
+    },
+    "generated": {
+      "label": "generated",
+      "rows": 2169,
+      "columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "role_counts": {
+        "Q_ONLY": 584,
+        "QA_COMPOSITE": 584,
+        "A_ATOMIC": 1001
+      },
+      "text_chars_total": 1374648,
+      "text_chars_mean": 633.7704011065007
+    },
+    "common_columns": [
+      "chunk_index",
+      "chunk_text",
+      "hash_id",
+      "lang",
+      "parent_qa_id",
+      "qa_id",
+      "references_juridiques",
+      "role",
+      "section_id",
+      "section_path",
+      "short_id",
+      "source",
+      "source_document_id",
+      "source_name",
+      "text",
+      "thematique"
+    ],
+    "db_only_columns": [],
+    "generated_only_columns": [],
+    "text_overlap": {
+      "shared_signatures": 0,
+      "db_coverage_ratio": 0.0,
+      "generated_coverage_ratio": 0.0
+    }
+  },
+  "per_fiche": {
+    "F12386": {
+      "db": {
+        "label": "db",
+        "rows": 100,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 83,
+          "QA_COMPOSITE": 9,
+          "Q_ONLY": 8
+        },
+        "text_chars_total": 90236,
+        "text_chars_mean": 902.36
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 228,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 64,
+          "QA_COMPOSITE": 64,
+          "A_ATOMIC": 100
+        },
+        "text_chars_total": 133755,
+        "text_chars_mean": 586.6447368421053
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F12391": {
+      "db": {
+        "label": "db",
+        "rows": 8,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 6,
+          "QA_COMPOSITE": 1,
+          "Q_ONLY": 1
+        },
+        "text_chars_total": 7873,
+        "text_chars_mean": 984.125
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 46,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 13,
+          "QA_COMPOSITE": 13,
+          "A_ATOMIC": 20
+        },
+        "text_chars_total": 31559,
+        "text_chars_mean": 686.0652173913044
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F13975": {
+      "db": {
+        "label": "db",
+        "rows": 9,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 7,
+          "QA_COMPOSITE": 1,
+          "Q_ONLY": 1
+        },
+        "text_chars_total": 8453,
+        "text_chars_mean": 939.2222222222222
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 18,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 6,
+          "QA_COMPOSITE": 6,
+          "A_ATOMIC": 6
+        },
+        "text_chars_total": 8528,
+        "text_chars_mean": 473.77777777777777
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F14012": {
+      "db": {
+        "label": "db",
+        "rows": 29,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 27,
+          "QA_COMPOSITE": 1,
+          "Q_ONLY": 1
+        },
+        "text_chars_total": 28367,
+        "text_chars_mean": 978.1724137931035
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 74,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 22,
+          "QA_COMPOSITE": 22,
+          "A_ATOMIC": 30
+        },
+        "text_chars_total": 38900,
+        "text_chars_mean": 525.6756756756756
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F14018": {
+      "db": {
+        "label": "db",
+        "rows": 39,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 21,
+          "QA_COMPOSITE": 9,
+          "Q_ONLY": 9
+        },
+        "text_chars_total": 26966,
+        "text_chars_mean": 691.4358974358975
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 108,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 36,
+          "QA_COMPOSITE": 36,
+          "A_ATOMIC": 36
+        },
+        "text_chars_total": 33520,
+        "text_chars_mean": 310.3703703703704
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F18029": {
+      "db": {
+        "label": "db",
+        "rows": 139,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 104,
+          "QA_COMPOSITE": 23,
+          "Q_ONLY": 12
+        },
+        "text_chars_total": 130524,
+        "text_chars_mean": 939.0215827338129
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 284,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 77,
+          "QA_COMPOSITE": 77,
+          "A_ATOMIC": 130
+        },
+        "text_chars_total": 202721,
+        "text_chars_mean": 713.806338028169
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F18090": {
+      "db": {
+        "label": "db",
+        "rows": 75,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 62,
+          "QA_COMPOSITE": 8,
+          "Q_ONLY": 5
+        },
+        "text_chars_total": 71369,
+        "text_chars_mean": 951.5866666666667
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 68,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 10,
+          "QA_COMPOSITE": 10,
+          "A_ATOMIC": 48
+        },
+        "text_chars_total": 62262,
+        "text_chars_mean": 915.6176470588235
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F1906": {
+      "db": {
+        "label": "db",
+        "rows": 21,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 9,
+          "QA_COMPOSITE": 6,
+          "Q_ONLY": 6
+        },
+        "text_chars_total": 15047,
+        "text_chars_mean": 716.5238095238095
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 27,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 9,
+          "QA_COMPOSITE": 9,
+          "A_ATOMIC": 9
+        },
+        "text_chars_total": 10200,
+        "text_chars_mean": 377.77777777777777
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F1918": {
+      "db": {
+        "label": "db",
+        "rows": 5,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 3,
+          "QA_COMPOSITE": 1,
+          "Q_ONLY": 1
+        },
+        "text_chars_total": 5185,
+        "text_chars_mean": 1037.0
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 13,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 4,
+          "QA_COMPOSITE": 4,
+          "A_ATOMIC": 5
+        },
+        "text_chars_total": 7594,
+        "text_chars_mean": 584.1538461538462
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F20094": {
+      "db": {
+        "label": "db",
+        "rows": 8,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 4,
+          "QA_COMPOSITE": 2,
+          "Q_ONLY": 2
+        },
+        "text_chars_total": 6193,
+        "text_chars_mean": 774.125
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 18,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 6,
+          "QA_COMPOSITE": 6,
+          "A_ATOMIC": 6
+        },
+        "text_chars_total": 5458,
+        "text_chars_mean": 303.22222222222223
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F3019": {
+      "db": {
+        "label": "db",
+        "rows": 11,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 8,
+          "QA_COMPOSITE": 2,
+          "Q_ONLY": 1
+        },
+        "text_chars_total": 11257,
+        "text_chars_mean": 1023.3636363636364
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 38,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 11,
+          "QA_COMPOSITE": 11,
+          "A_ATOMIC": 16
+        },
+        "text_chars_total": 23480,
+        "text_chars_mean": 617.8947368421053
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F3026": {
+      "db": {
+        "label": "db",
+        "rows": 29,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 16,
+          "QA_COMPOSITE": 7,
+          "Q_ONLY": 6
+        },
+        "text_chars_total": 20814,
+        "text_chars_mean": 717.7241379310345
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 81,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 27,
+          "QA_COMPOSITE": 27,
+          "A_ATOMIC": 27
+        },
+        "text_chars_total": 30497,
+        "text_chars_mean": 376.5061728395062
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F3027": {
+      "db": {
+        "label": "db",
+        "rows": 25,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 11,
+          "QA_COMPOSITE": 7,
+          "Q_ONLY": 7
+        },
+        "text_chars_total": 14102,
+        "text_chars_mean": 564.08
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 46,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 15,
+          "QA_COMPOSITE": 15,
+          "A_ATOMIC": 16
+        },
+        "text_chars_total": 14361,
+        "text_chars_mean": 312.19565217391306
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F31094": {
+      "db": {
+        "label": "db",
+        "rows": 41,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 26,
+          "QA_COMPOSITE": 9,
+          "Q_ONLY": 6
+        },
+        "text_chars_total": 35089,
+        "text_chars_mean": 855.829268292683
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 127,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 31,
+          "QA_COMPOSITE": 31,
+          "A_ATOMIC": 65
+        },
+        "text_chars_total": 105025,
+        "text_chars_mean": 826.9685039370079
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F34534": {
+      "db": {
+        "label": "db",
+        "rows": 5,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 3,
+          "QA_COMPOSITE": 1,
+          "Q_ONLY": 1
+        },
+        "text_chars_total": 3863,
+        "text_chars_mean": 772.6
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 18,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 6,
+          "QA_COMPOSITE": 6,
+          "A_ATOMIC": 6
+        },
+        "text_chars_total": 3526,
+        "text_chars_mean": 195.88888888888889
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F34539": {
+      "db": {
+        "label": "db",
+        "rows": 3,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 1,
+          "QA_COMPOSITE": 1,
+          "Q_ONLY": 1
+        },
+        "text_chars_total": 1665,
+        "text_chars_mean": 555.0
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 3,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 1,
+          "QA_COMPOSITE": 1,
+          "A_ATOMIC": 1
+        },
+        "text_chars_total": 1391,
+        "text_chars_mean": 463.6666666666667
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F38882": {
+      "db": {
+        "label": "db",
+        "rows": 89,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 79,
+          "QA_COMPOSITE": 5,
+          "Q_ONLY": 5
+        },
+        "text_chars_total": 85212,
+        "text_chars_mean": 957.438202247191
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 289,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 86,
+          "QA_COMPOSITE": 86,
+          "A_ATOMIC": 117
+        },
+        "text_chars_total": 151746,
+        "text_chars_mean": 525.0726643598616
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F430": {
+      "db": {
+        "label": "db",
+        "rows": 13,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 11,
+          "QA_COMPOSITE": 1,
+          "Q_ONLY": 1
+        },
+        "text_chars_total": 12497,
+        "text_chars_mean": 961.3076923076923
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 14,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 3,
+          "QA_COMPOSITE": 3,
+          "A_ATOMIC": 8
+        },
+        "text_chars_total": 9992,
+        "text_chars_mean": 713.7142857142857
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F471": {
+      "db": {
+        "label": "db",
+        "rows": 13,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 9,
+          "QA_COMPOSITE": 2,
+          "Q_ONLY": 2
+        },
+        "text_chars_total": 12043,
+        "text_chars_mean": 926.3846153846154
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 32,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 10,
+          "QA_COMPOSITE": 10,
+          "A_ATOMIC": 12
+        },
+        "text_chars_total": 16772,
+        "text_chars_mean": 524.125
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F489": {
+      "db": {
+        "label": "db",
+        "rows": 3,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 1,
+          "QA_COMPOSITE": 1,
+          "Q_ONLY": 1
+        },
+        "text_chars_total": 809,
+        "text_chars_mean": 269.6666666666667
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 34,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 11,
+          "QA_COMPOSITE": 11,
+          "A_ATOMIC": 12
+        },
+        "text_chars_total": 12277,
+        "text_chars_mean": 361.0882352941176
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F513": {
+      "db": {
+        "label": "db",
+        "rows": 8,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 6,
+          "QA_COMPOSITE": 1,
+          "Q_ONLY": 1
+        },
+        "text_chars_total": 7925,
+        "text_chars_mean": 990.625
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 97,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 25,
+          "QA_COMPOSITE": 25,
+          "A_ATOMIC": 47
+        },
+        "text_chars_total": 76635,
+        "text_chars_mean": 790.0515463917526
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F515": {
+      "db": {
+        "label": "db",
+        "rows": 97,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 61,
+          "QA_COMPOSITE": 19,
+          "Q_ONLY": 17
+        },
+        "text_chars_total": 91390,
+        "text_chars_mean": 942.1649484536083
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 414,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 88,
+          "QA_COMPOSITE": 88,
+          "A_ATOMIC": 238
+        },
+        "text_chars_total": 324092,
+        "text_chars_mean": 782.8309178743962
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F539": {
+      "db": {
+        "label": "db",
+        "rows": 16,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 14,
+          "QA_COMPOSITE": 1,
+          "Q_ONLY": 1
+        },
+        "text_chars_total": 16986,
+        "text_chars_mean": 1061.625
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 78,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 19,
+          "QA_COMPOSITE": 19,
+          "A_ATOMIC": 40
+        },
+        "text_chars_total": 61517,
+        "text_chars_mean": 788.6794871794872
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    },
+    "F593": {
+      "db": {
+        "label": "db",
+        "rows": 4,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "A_ATOMIC": 2,
+          "QA_COMPOSITE": 1,
+          "Q_ONLY": 1
+        },
+        "text_chars_total": 3182,
+        "text_chars_mean": 795.5
+      },
+      "generated": {
+        "label": "generated",
+        "rows": 14,
+        "columns": [
+          "chunk_index",
+          "chunk_text",
+          "hash_id",
+          "lang",
+          "parent_qa_id",
+          "qa_id",
+          "references_juridiques",
+          "role",
+          "section_id",
+          "section_path",
+          "short_id",
+          "source",
+          "source_document_id",
+          "source_name",
+          "text",
+          "thematique"
+        ],
+        "role_counts": {
+          "Q_ONLY": 4,
+          "QA_COMPOSITE": 4,
+          "A_ATOMIC": 6
+        },
+        "text_chars_total": 8840,
+        "text_chars_mean": 631.4285714285714
+      },
+      "common_columns": [
+        "chunk_index",
+        "chunk_text",
+        "hash_id",
+        "lang",
+        "parent_qa_id",
+        "qa_id",
+        "references_juridiques",
+        "role",
+        "section_id",
+        "section_path",
+        "short_id",
+        "source",
+        "source_document_id",
+        "source_name",
+        "text",
+        "thematique"
+      ],
+      "db_only_columns": [],
+      "generated_only_columns": [],
+      "text_overlap": {
+        "shared_signatures": 0,
+        "db_coverage_ratio": 0.0,
+        "generated_coverage_ratio": 0.0
+      }
+    }
+  }
+}

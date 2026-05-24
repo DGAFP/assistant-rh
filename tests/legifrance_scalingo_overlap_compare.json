@@ -1,0 +1,117 @@
+{
+  "dgafp_overlap_on_number": 69,
+  "dgafp_exact_number_chunk_text_matches": 0,
+  "dgafp_non_matching_samples": [
+    {
+      "number": "R115-3",
+      "scw_chunk_id": "sha1:44f9f9c35a1c131581d18cb7c30cd8c4213e00f0",
+      "base_chunk_id": null
+    },
+    {
+      "number": "R130-1",
+      "scw_chunk_id": "sha1:4b5849d959e432cc7f4065f5623b785538f2ac32",
+      "base_chunk_id": null
+    },
+    {
+      "number": "R211-340",
+      "scw_chunk_id": "sha1:137f9f8b31f630e89a7feb9e2faf79aee269d7ed",
+      "base_chunk_id": null
+    },
+    {
+      "number": "R211-357",
+      "scw_chunk_id": "sha1:28e769a7c0ce50428740a9d80cfed1050a8a83db",
+      "base_chunk_id": null
+    },
+    {
+      "number": "R211-358",
+      "scw_chunk_id": "sha1:c97523615ff7a1b1ed6574b1e9595ea34fca5d9e",
+      "base_chunk_id": null
+    },
+    {
+      "number": "R211-359",
+      "scw_chunk_id": "sha1:8af8ecc3c0f37ba3eb4c4dbac5b39328a87919c5",
+      "base_chunk_id": null
+    },
+    {
+      "number": "R271-1",
+      "scw_chunk_id": "sha1:fde457e0e1cf647d58571c15ee50b8159504d4e0",
+      "base_chunk_id": null
+    },
+    {
+      "number": "R271-10",
+      "scw_chunk_id": "sha1:b496fbb9ebddcfed59b026dca915e2ecd07c7953",
+      "base_chunk_id": null
+    },
+    {
+      "number": "R271-11",
+      "scw_chunk_id": "sha1:ae9141278134d5b788c1be68fb97ef5c5ecc9e86",
+      "base_chunk_id": null
+    },
+    {
+      "number": "R271-12",
+      "scw_chunk_id": "sha1:563eb2b2e60dd094b2da82c080f9fb83921fc3fb",
+      "base_chunk_id": null
+    }
+  ],
+  "legifrance_exact_text_matches": 0,
+  "legifrance_exact_body_text_matches": 0,
+  "legifrance_base_samples": [
+    {
+      "source_name": "Décret n° 2025-564 du 21 juin 2025 relatif aux régimes dérogatoires de report et d'indemnisation des droits à congé annuel dans la fonction publique - Légifrance.txt",
+      "section_path": "634-1, L. 641-2, L. 641-3, L. 643-1, L. 644-1, L. 822-1, L. 822-6 et L. 822-12 du même code ».",
+      "text_preview": "Q: 634-1, L. 641-2, L. 641-3, L. 643-1, L. 644-1, L. 822-1, L. 822-6 et L. 822-12 du même code ».\nR: cret n° 2025-564 du"
+    },
+    {
+      "source_name": "Décret n° 2025-564 du 21 juin 2025 relatif aux régimes dérogatoires de report et d'indemnisation des droits à congé annuel dans la fonction publique - Légifrance.txt",
+      "section_path": "634-1, L. 641-2, L. 641-3, L. 643-1, L. 644-1, L. 822-1, L. 822-6 et L. 822-12 du même code ».",
+      "text_preview": "Q: 634-1, L. 641-2, L. 641-3, L. 643-1, L. 644-1, L. 822-1, L. 822-6 et L. 822-12 du même code ».\nR: [PAGE 5]\n4° Au a de"
+    },
+    {
+      "source_name": "Décret n° 2025-564 du 21 juin 2025 relatif aux régimes dérogatoires de report et d'indemnisation des droits à congé annuel dans la fonction publique - Légifrance.txt",
+      "section_path": "634-1, L. 641-2, L. 641-3, L. 643-1, L. 644-1, L. 822-1, L. 822-6 et L. 822-12 du même code ».",
+      "text_preview": "Q: 634-1, L. 641-2, L. 641-3, L. 643-1, L. 644-1, L. 822-1, L. 822-6 et L. 822-12 du même code ».\nR: A l'article 1 :\na) "
+    },
+    {
+      "source_name": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat - Légifrance.txt",
+      "section_path": "Et que la durée de l'interruption de fonction n'ait pas été supérieure à trois mois si elle a été volontaire, un an si elle > - La procédure de la rupture conventionnelle peut être engagée à l'initiative de l'agent ou de l'administration dont > - Le demandeur informe l'autre partie par lettre recommandée avec demande d'avis de réception ou remise en > - Dans les conditions prévues aux articles 49-4 et 49-5, un entretien relatif à cette demande se tient à une date",
+      "text_preview": "- Dans les conditions prévues aux articles 49-4 et 49-5, un entretien relatif à cette demande se tient à une date"
+    },
+    {
+      "source_name": "Décret n° 2025-564 du 21 juin 2025 relatif aux régimes dérogatoires de report et d'indemnisation des droits à congé annuel dans la fonction publique - Légifrance.txt",
+      "section_path": "634-1, L. 641-2, L. 641-3, L. 643-1, L. 644-1, L. 822-1, L. 822-6 et L. 822-12 du même code ».",
+      "text_preview": "Q: 634-1, L. 641-2, L. 641-3, L. 643-1, L. 644-1, L. 822-1, L. 822-6 et L. 822-12 du même code ».\nR: ure à la date d'ent"
+    }
+  ],
+  "legifrance_scw_samples": [
+    {
+      "number": "R115-3",
+      "title": "Code général de la fonction publique",
+      "section_path": "PARTIE RÉGLEMENTAIRE  > Livre Ier : DROITS, OBLIGATIONS ET PROTECTIONS > Titre Ier : DROITS ET LIBERTÉS > Chapitre V : DROIT À RÉMUNERATION, DROITS SOCIAUX, DROIT À LA FORMATION PROFESSIONNELLE ET DROIT À L'INFORMATION > Section 2 : Communication des informations et règles essentielles relatives à l'exercice des fonctions",
+      "text_preview": "Code général de la fonction publique\n\nPARTIE RÉGLEMENTAIRE  > Livre Ier : DROITS, OBLIGATIONS ET PROTECTIONS > Titre Ier"
+    },
+    {
+      "number": "R130-1",
+      "title": "Code général de la fonction publique",
+      "section_path": "PARTIE RÉGLEMENTAIRE  > Livre Ier : DROITS, OBLIGATIONS ET PROTECTIONS > Titre III : PROTECTIONS ET GARANTIES",
+      "text_preview": "Code général de la fonction publique\n\nPARTIE RÉGLEMENTAIRE  > Livre Ier : DROITS, OBLIGATIONS ET PROTECTIONS > Titre III"
+    },
+    {
+      "number": "R211-340",
+      "title": "Code général de la fonction publique",
+      "section_path": "PARTIE RÉGLEMENTAIRE  > Livre II : EXERCICE DU DROIT SYNDICAL ET DIALOGUE SOCIAL > Titre Ier : REPRÉSENTATION DES AGENTS ET GARANTIES DE L'EXERCICE DU DROIT SYNDICAL > Chapitre Ier : REPRÉSENTATION DES AGENTS > Section 3 : Election des représentants du personnel au sein des commissions consultatives paritaires > Sous-section 4 : Candidatures > Paragraphe 1 : Commissions consultatives paritaires dans la fonction publique de l'Etat",
+      "text_preview": "Code général de la fonction publique\n\nPARTIE RÉGLEMENTAIRE  > Livre II : EXERCICE DU DROIT SYNDICAL ET DIALOGUE SOCIAL >"
+    },
+    {
+      "number": "R211-357",
+      "title": "Code général de la fonction publique",
+      "section_path": "PARTIE RÉGLEMENTAIRE  > Livre II : EXERCICE DU DROIT SYNDICAL ET DIALOGUE SOCIAL > Titre Ier : REPRÉSENTATION DES AGENTS ET GARANTIES DE L'EXERCICE DU DROIT SYNDICAL > Chapitre Ier : REPRÉSENTATION DES AGENTS > Section 3 : Election des représentants du personnel au sein des commissions consultatives paritaires > Sous-section 5 : Affichage des candidatures, préparation et déroulement du scrutin > Paragraphe 1 : Commissions consultatives paritaires dans la fonction publique de l'Etat",
+      "text_preview": "Code général de la fonction publique\n\nPARTIE RÉGLEMENTAIRE  > Livre II : EXERCICE DU DROIT SYNDICAL ET DIALOGUE SOCIAL >"
+    },
+    {
+      "number": "R211-358",
+      "title": "Code général de la fonction publique",
+      "section_path": "PARTIE RÉGLEMENTAIRE  > Livre II : EXERCICE DU DROIT SYNDICAL ET DIALOGUE SOCIAL > Titre Ier : REPRÉSENTATION DES AGENTS ET GARANTIES DE L'EXERCICE DU DROIT SYNDICAL > Chapitre Ier : REPRÉSENTATION DES AGENTS > Section 3 : Election des représentants du personnel au sein des commissions consultatives paritaires > Sous-section 5 : Affichage des candidatures, préparation et déroulement du scrutin > Paragraphe 1 : Commissions consultatives paritaires dans la fonction publique de l'Etat",
+      "text_preview": "Code général de la fonction publique\n\nPARTIE RÉGLEMENTAIRE  > Livre II : EXERCICE DU DROIT SYNDICAL ET DIALOGUE SOCIAL >"
+    }
+  ]
+}

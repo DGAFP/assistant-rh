@@ -1,0 +1,342 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+from pathlib import Path
+from typing import Any
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_CONFIG = SCRIPT_DIR.parent / "data-engineering-jobs.json"
+
+TRUTHY = {"1", "true", "yes", "y", "on"}
+FALSY = {"0", "false", "no", "n", "off", ""}
+
+
+def parse_bool(value: str | bool | None) -> bool:
+    if isinstance(value, bool):
+        return value
+    normalized = str(value or "").strip().lower()
+    if normalized in TRUTHY:
+        return True
+    if normalized in FALSY:
+        return False
+    raise argparse.ArgumentTypeError(f"Invalid boolean value: {value!r}")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Create/update Scaleway Serverless Jobs and start the selected data engineering jobs."
+    )
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG))
+    parser.add_argument("--target-env", choices=("staging", "prod"), required=True)
+    parser.add_argument("--image-tag", required=True)
+    parser.add_argument("--service-public", type=parse_bool, default=False)
+    parser.add_argument("--legifrance", type=parse_bool, default=False)
+    parser.add_argument("--embeddings", type=parse_bool, default=False)
+    parser.add_argument("--run-ingestion", type=parse_bool, default=False)
+    parser.add_argument("--run-embeddings", type=parse_bool, default=False)
+    parser.add_argument("--service-public-fiche-config", default="config/service_public_fiches.json")
+    parser.add_argument("--legifrance-article-ids-json", default="config/legifrance_article_cids.json")
+    parser.add_argument("--wait", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    return parser
+
+
+def load_config(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def env_required(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+
+def env_optional(name: str, default: str = "") -> str:
+    return os.getenv(name, default).strip()
+
+
+def redacted(text: str, secrets: list[str]) -> str:
+    output = text
+    for secret in secrets:
+        if secret:
+            output = output.replace(secret, "***")
+    return output
+
+
+def run_scw(args: list[str], *, secrets: list[str], dry_run: bool = False) -> str:
+    printable = " ".join(redacted(part, secrets) for part in args)
+    if dry_run:
+        print(f"[dry-run] scw {printable}")
+        return "{}"
+
+    result = subprocess.run(
+        ["scw", *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        stdout = redacted(result.stdout.strip(), secrets)
+        stderr = redacted(result.stderr.strip(), secrets)
+        if stdout:
+            print(stdout)
+        if stderr:
+            print(stderr)
+        raise RuntimeError(f"Scaleway CLI command failed: scw {printable}")
+    return result.stdout
+
+
+def extract_definitions(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        for key in ("jobs", "job_definitions", "definitions", "items"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def list_definitions(project_id: str, region: str, *, secrets: list[str], dry_run: bool) -> dict[str, dict[str, Any]]:
+    if dry_run:
+        return {}
+    output = run_scw(
+        [
+            "jobs",
+            "definition",
+            "list",
+            f"project-id={project_id}",
+            f"region={region}",
+            "-o",
+            "json",
+        ],
+        secrets=secrets,
+        dry_run=False,
+    )
+    payload = json.loads(output or "[]")
+    definitions = extract_definitions(payload)
+    return {str(item.get("name") or ""): item for item in definitions if item.get("name")}
+
+
+def definition_id(definition: dict[str, Any]) -> str:
+    job_id = str(definition.get("id") or definition.get("ID") or "").strip()
+    if not job_id:
+        raise RuntimeError(f"Unable to find Scaleway job definition id for {definition.get('name')!r}")
+    return job_id
+
+
+def render_args(values: list[str], context: dict[str, str]) -> list[str]:
+    return [value.format(**context) for value in values]
+
+
+def indexed_args(prefix: str, values: list[str]) -> list[str]:
+    return [f"{prefix}.{index}={value}" for index, value in enumerate(values)]
+
+
+def image_uri(region: str, namespace: str, image: str, image_tag: str) -> str:
+    return f"rg.{region}.scw.cloud/{namespace}/{image}:{image_tag}"
+
+
+def create_definition(
+    spec: dict[str, Any],
+    name: str,
+    image: str,
+    project_id: str,
+    region: str,
+    *,
+    secrets: list[str],
+    dry_run: bool,
+) -> str:
+    args = [
+        "jobs",
+        "definition",
+        "create",
+        f"name={name}",
+        f"description={spec['description']}",
+        f"cpu-limit={spec['cpu_limit']}",
+        f"memory-limit={spec['memory_limit']}",
+        f"local-storage-capacity={spec['local_storage_capacity']}",
+        f"image-uri={image}",
+        "startup-command.0=assistant-rh-data",
+        f"job-timeout={spec['job_timeout']}",
+        f"project-id={project_id}",
+        f"region={region}",
+        "-o",
+        "json",
+    ]
+    output = run_scw(args, secrets=secrets, dry_run=dry_run)
+    if dry_run:
+        return "dry-run"
+    payload = json.loads(output or "{}")
+    if isinstance(payload, dict) and "id" in payload:
+        return definition_id(payload)
+    definitions = extract_definitions(payload)
+    if definitions:
+        return definition_id(definitions[0])
+    raise RuntimeError(f"Scaleway did not return the created definition id for {name}.")
+
+
+def update_definition(
+    spec: dict[str, Any],
+    job_id: str,
+    image: str,
+    region: str,
+    *,
+    secrets: list[str],
+    dry_run: bool,
+) -> None:
+    run_scw(
+        [
+            "jobs",
+            "definition",
+            "update",
+            job_id,
+            f"description={spec['description']}",
+            f"cpu-limit={spec['cpu_limit']}",
+            f"memory-limit={spec['memory_limit']}",
+            f"local-storage-capacity={spec['local_storage_capacity']}",
+            f"image-uri={image}",
+            "startup-command.0=assistant-rh-data",
+            f"job-timeout={spec['job_timeout']}",
+            f"region={region}",
+        ],
+        secrets=secrets,
+        dry_run=dry_run,
+    )
+
+
+def base_environment(target_env: str, region: str) -> dict[str, str]:
+    return {
+        "SCW_DEFAULT_REGION": region,
+        "SCW_BUCKET_BRONZE": env_optional("SCW_BUCKET_BRONZE", "assistant-rh-bronze"),
+        "SCW_BUCKET_SILVER": env_optional("SCW_BUCKET_SILVER", "assistant-rh-silver"),
+        "SCW_BUCKET_GOLD": env_optional("SCW_BUCKET_GOLD", "assistant-rh-gold"),
+        "SCW_PREFIX_STAGING": env_optional("SCW_PREFIX_STAGING", "staging"),
+        "SCW_PREFIX_PROD": env_optional("SCW_PREFIX_PROD", "prod"),
+        "TARGET_ENV": target_env,
+    }
+
+
+def job_environment(spec: dict[str, Any], target_env: str, region: str) -> dict[str, str]:
+    env = base_environment(target_env, region)
+    groups = set(spec.get("env_groups") or [])
+    if "object_storage" in groups:
+        env["SCW_ACCESS_KEY"] = env_required("SCW_ACCESS_KEY")
+        env["SCW_SECRET_KEY"] = env_required("SCW_SECRET_KEY")
+    if "postgres" in groups:
+        env["SCW_POSTGRES_DSN"] = env_required("SCW_POSTGRES_DSN")
+    if "embeddings_api" in groups:
+        env["SCALEWAY_API_KEY"] = env_required("SCALEWAY_API_KEY")
+        base_url = env_optional("SCALEWAY_BASE_URL")
+        if base_url:
+            env["SCALEWAY_BASE_URL"] = base_url
+    return env
+
+
+def should_run(spec: dict[str, Any], args: argparse.Namespace) -> bool:
+    domain = spec["domain"]
+    if domain == "service_public" and not args.service_public:
+        return False
+    if domain == "legifrance" and not args.legifrance:
+        return False
+    if domain == "embeddings" and not args.embeddings:
+        return False
+    if spec.get("requires_ingestion") and not args.run_ingestion:
+        return False
+    if spec.get("requires_embeddings") and not args.run_embeddings:
+        return False
+    return True
+
+
+def start_definition(
+    job_id: str,
+    spec: dict[str, Any],
+    command_args: list[str],
+    environment: dict[str, str],
+    region: str,
+    *,
+    wait: bool,
+    secrets: list[str],
+    dry_run: bool,
+) -> None:
+    args = [
+        "jobs",
+        "definition",
+        "start",
+        job_id,
+        "startup-command.0=assistant-rh-data",
+        *indexed_args("args", command_args),
+        *[f"environment-variables.{key}={value}" for key, value in sorted(environment.items())],
+        f"region={region}",
+    ]
+    if wait:
+        args.append("-w")
+    run_scw(args, secrets=secrets, dry_run=dry_run)
+
+
+def upsert_and_start_jobs(args: argparse.Namespace) -> int:
+    config = load_config(Path(args.config))
+    region = env_optional("SCW_DEFAULT_REGION", "fr-par")
+    project_id = env_required("SCW_DEFAULT_PROJECT_ID")
+    namespace = env_optional("SCW_CONTAINER_REGISTRY_NAMESPACE", "assistant-rh")
+    secrets = [
+        env_optional("SCW_ACCESS_KEY"),
+        env_optional("SCW_SECRET_KEY"),
+        env_optional("SCW_POSTGRES_DSN"),
+        env_optional("SCALEWAY_API_KEY"),
+    ]
+    context = {
+        "target_env": args.target_env,
+        "service_public_fiche_config": args.service_public_fiche_config,
+        "legifrance_article_ids_json": args.legifrance_article_ids_json,
+    }
+    definitions = list_definitions(project_id, region, secrets=secrets, dry_run=args.dry_run)
+    selected_specs = [spec for spec in config["jobs"] if should_run(spec, args)]
+
+    if not selected_specs:
+        print("No Scaleway data engineering job selected.")
+        return 0
+
+    for spec in selected_specs:
+        name = config["job_name_template"].format(target_env=args.target_env, key=spec["key"])
+        image = image_uri(region, namespace, spec["image"], args.image_tag)
+        existing = definitions.get(name)
+        if existing:
+            job_id = definition_id(existing)
+            print(f"Updating Scaleway job {name} -> {image}")
+            update_definition(spec, job_id, image, region, secrets=secrets, dry_run=args.dry_run)
+        else:
+            print(f"Creating Scaleway job {name} -> {image}")
+            job_id = create_definition(spec, name, image, project_id, region, secrets=secrets, dry_run=args.dry_run)
+
+        command_args = render_args(spec["args"], context)
+        if args.target_env == "prod":
+            command_args.extend(render_args(spec.get("prod_args") or [], context))
+        environment = job_environment(spec, args.target_env, region)
+        print(f"Starting Scaleway job {name}: assistant-rh-data {' '.join(command_args)}")
+        start_definition(
+            job_id,
+            spec,
+            command_args,
+            environment,
+            region,
+            wait=args.wait,
+            secrets=secrets,
+            dry_run=args.dry_run,
+        )
+
+    return 0
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+    return upsert_and_start_jobs(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

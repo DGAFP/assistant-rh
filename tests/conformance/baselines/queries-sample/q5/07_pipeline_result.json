@@ -1,0 +1,93 @@
+{
+  "answer": "Je ne suis pas en mesure de vous donner directement acces aux documents. Posez-moi plutot une question RH et je pourrai vous guider vers les bonnes sources.",
+  "timing": {
+    "query_processing_ms": 2136.3229751586914
+  },
+  "sources": [],
+  "metadata": {
+    "intent": "document_request",
+    "intent_reason": "Demande d'accès direct au texte intégral d'un décret sans question RH spécifique",
+    "stage_trace": {
+      "schema_version": "2026-05-05",
+      "stage_order": [
+        "query-processor",
+        "retriever",
+        "section-aggregator",
+        "context-selector",
+        "context-builder",
+        "generator"
+      ],
+      "stages": {
+        "query-processor": {
+          "input": {
+            "query": "Peux-tu me donner le texte intégral du décret n°86-83 ?",
+            "conversation_history": []
+          },
+          "output": {
+            "intent": "document_request",
+            "theme": null,
+            "needs_legal_search": false,
+            "should_proceed": false,
+            "processed_query": "Peux-tu me donner le texte intégral du décret n°86-83 ?",
+            "enriched_query": "",
+            "query_for_retrieval": "Peux-tu me donner le texte intégral du décret n°86-83 ?",
+            "search_terms": []
+          }
+        },
+        "retriever": {
+          "input": {
+            "query": "Peux-tu me donner le texte intégral du décret n°86-83 ?",
+            "needs_legal_search": false,
+            "tables_searched": []
+          },
+          "output": {
+            "retrieved_chunks": []
+          }
+        },
+        "section-aggregator": {
+          "input": {
+            "retrieved_chunk_ids": []
+          },
+          "output": {
+            "aggregated_sections": []
+          }
+        },
+        "context-selector": {
+          "input": {
+            "query": "Peux-tu me donner le texte intégral du décret n°86-83 ?",
+            "aggregated_section_ids": []
+          },
+          "output": {
+            "selector_enabled": false,
+            "selector_all_rejected": false,
+            "selector_items_before": 0,
+            "selector_items_after": 0,
+            "selector_decisions": {},
+            "selected_section_ids": []
+          }
+        },
+        "context-builder": {
+          "input": {
+            "selected_section_ids": []
+          },
+          "output": {
+            "context_items_ref": [],
+            "context_text_hash": ""
+          }
+        },
+        "generator": {
+          "input": {
+            "query": "Peux-tu me donner le texte intégral du décret n°86-83 ?",
+            "context_item_count": 0,
+            "conversation_history": []
+          },
+          "output": {
+            "answer": "Je ne suis pas en mesure de vous donner directement acces aux documents. Posez-moi plutot une question RH et je pourrai vous guider vers les bonnes sources.",
+            "answer_length": 156,
+            "citations": []
+          }
+        }
+      }
+    }
+  }
+}

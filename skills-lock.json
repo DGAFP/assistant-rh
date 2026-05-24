@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "mastra": {
+      "source": "mastra-ai/skills",
+      "sourceType": "github",
+      "computedHash": "b42f583342dfee7deb541f4d094f03e8748898257f1f884fa71de1fdba9f38a2"
+    },
+    "medallion-architecture": {
+      "source": "vivekgana/databricks-platform-marketplace",
+      "sourceType": "github",
+      "computedHash": "3feaaf948340004c10ccb6769d48784b21e6cb5dc9c906eb8c66ab9510e6b742"
+    },
+    "moon": {
+      "source": "hyperb1iss/moonrepo-skill",
+      "sourceType": "github",
+      "computedHash": "b09592c8023529035c8c116d0af3dae32af87e818f69879ee916b8bdabc28f36"
+    },
+    "proto": {
+      "source": "hyperb1iss/moonrepo-skill",
+      "sourceType": "github",
+      "computedHash": "71ac82a46f0fee0ede59310c37ea4cb5c00bdee0ac8cef56361c9fcc5e898d50"
+    },
+    "supabase": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "computedHash": "cb675a889c60172febe84740e7c22b600c8241c390deaff3d368c408f10dffdf"
+    },
+    "supabase-postgres-best-practices": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "computedHash": "d606a1146be6d54fb9e73f718b5320b9acac5ff2ba2d7230a555df4b5a923b4a"
+    }
+  }
+}

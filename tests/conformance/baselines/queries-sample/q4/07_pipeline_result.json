@@ -1,0 +1,93 @@
+{
+  "answer": "Bonjour, je suis l'Assistant RH specialise sur les questions liees aux contractuels de la fonction publique d'Etat (FPE). Comment puis-je vous aider ?",
+  "timing": {
+    "query_processing_ms": 1864.795207977295
+  },
+  "sources": [],
+  "metadata": {
+    "intent": "chit_chat",
+    "intent_reason": "Simple salutation sans question RH",
+    "stage_trace": {
+      "schema_version": "2026-05-05",
+      "stage_order": [
+        "query-processor",
+        "retriever",
+        "section-aggregator",
+        "context-selector",
+        "context-builder",
+        "generator"
+      ],
+      "stages": {
+        "query-processor": {
+          "input": {
+            "query": "Bonjour, comment ça va ?",
+            "conversation_history": []
+          },
+          "output": {
+            "intent": "chit_chat",
+            "theme": null,
+            "needs_legal_search": false,
+            "should_proceed": false,
+            "processed_query": "Bonjour, comment ça va ?",
+            "enriched_query": "",
+            "query_for_retrieval": "Bonjour, comment ça va ?",
+            "search_terms": []
+          }
+        },
+        "retriever": {
+          "input": {
+            "query": "Bonjour, comment ça va ?",
+            "needs_legal_search": false,
+            "tables_searched": []
+          },
+          "output": {
+            "retrieved_chunks": []
+          }
+        },
+        "section-aggregator": {
+          "input": {
+            "retrieved_chunk_ids": []
+          },
+          "output": {
+            "aggregated_sections": []
+          }
+        },
+        "context-selector": {
+          "input": {
+            "query": "Bonjour, comment ça va ?",
+            "aggregated_section_ids": []
+          },
+          "output": {
+            "selector_enabled": false,
+            "selector_all_rejected": false,
+            "selector_items_before": 0,
+            "selector_items_after": 0,
+            "selector_decisions": {},
+            "selected_section_ids": []
+          }
+        },
+        "context-builder": {
+          "input": {
+            "selected_section_ids": []
+          },
+          "output": {
+            "context_items_ref": [],
+            "context_text_hash": ""
+          }
+        },
+        "generator": {
+          "input": {
+            "query": "Bonjour, comment ça va ?",
+            "context_item_count": 0,
+            "conversation_history": []
+          },
+          "output": {
+            "answer": "Bonjour, je suis l'Assistant RH specialise sur les questions liees aux contractuels de la fonction publique d'Etat (FPE). Comment puis-je vous aider ?",
+            "answer_length": 150,
+            "citations": []
+          }
+        }
+      }
+    }
+  }
+}

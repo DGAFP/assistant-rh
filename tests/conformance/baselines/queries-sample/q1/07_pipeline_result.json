@@ -1,0 +1,1005 @@
+{
+  "answer": "La durée maximale d’un CDD pour un agent contractuel est de **6 ans au total**.  \n\n- Un contrat individuel ne peut excéder **3 ans** ; il peut être renouvelé, mais la somme des périodes successives ne doit pas dépasser **6 ans** (au‑delà, le passage en CDI devient obligatoire).  \n\nCette règle provient de la fiche 8 du MATTE, qui indique que « la période maximale d’emploi en CDD est fixée à 6 ans » et précise que la CDIsation s’impose à l’issue de cette durée.  \n\nAinsi, pour un agent contractuel, le CDD peut être conclu pour une durée maximale de 3 ans, renouvelable jusqu’à atteindre le plafond cumulé de 6 ans.",
+  "timing": {
+    "query_processing_ms": 2690.356969833374,
+    "retrieval_ms": 373.7609386444092,
+    "aggregation_ms": 277.97794342041016,
+    "context_build_ms": 18.56374740600586,
+    "generation_ms": 2410.813093185425,
+    "response_length_tokens": 154
+  },
+  "sources": [
+    {
+      "heading": "Fiche 8 - Recrutement en CDI ou avec portabilité du CDI et CDIsation - Juillet 2024",
+      "publisher": "MATTE",
+      "document_title": "Fiche 8 - Recrutement en CDI ou avec portabilité du CDI et CDIsation - Juillet 2024",
+      "document_url": "",
+      "score": 0.2854828042328042
+    },
+    {
+      "heading": "FICHE 1 - Quel contrat choisir et pour quelle durée selon la situation ? (Le fondement juridique du recrutement des agents contractuels)",
+      "publisher": "MATTE",
+      "document_title": "Fiche 1 - Quel contrat choisir - Juillet 2024",
+      "document_url": null,
+      "score": 0.4567588676015767
+    },
+    {
+      "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+      "publisher": "RGRH",
+      "document_title": "all_RGRH_position_conges_rules_population_statut.csv",
+      "document_url": null,
+      "score": 0.2833333333333334
+    },
+    {
+      "heading": "particuliers_vosdroits_F1906.txt",
+      "publisher": "Service-Public",
+      "document_title": "particuliers_vosdroits_F1906.txt",
+      "document_url": null,
+      "score": 0.2833333333333334
+    },
+    {
+      "heading": "Recrutement d'un contractuel dans la fonction publique d'État (FPE)",
+      "publisher": "Service-Public",
+      "document_title": "Recrutement d'un contractuel dans la fonction publique d'État (FPE)",
+      "document_url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F14012",
+      "score": 0.422546180844761
+    }
+  ],
+  "metadata": {
+    "intent": "rag_query",
+    "intent_confidence": 0.95,
+    "theme": "typologie_contrats",
+    "was_expanded": true,
+    "expanded_acronyms": [
+      "CDD"
+    ],
+    "enriched_query": "",
+    "query_for_retrieval": "Quelle est la durée maximale d'un contrat CDD (Contrat à Durée Déterminée) pour un agent contractuel ?",
+    "needs_legal_search": false,
+    "tables_searched": [
+      "matte",
+      "service_public",
+      "rgrh"
+    ],
+    "selector_enabled": false,
+    "generator_model": "openweight-large",
+    "generator_provider": "albert",
+    "embedding_model": "albert",
+    "retrieved_chunks": [
+      {
+        "chunk_id": "fed1b1a8fee327f9a216217d5ab4050fbee792be",
+        "table": "MATTE",
+        "score": 0.3333,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "156c043454b4d1067c8d0bac61c34920276043fa",
+        "table": "RGRH",
+        "score": 0.3333,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "e2de6a626ab0b67ca7a19e828c63786d5a61a0cc",
+        "table": "Service-Public",
+        "score": 0.3333,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "0b017202cc791b85b7c2f63fb844a4ca51301132",
+        "table": "MATTE",
+        "score": 0.328,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "a537057603ff846d6d39a6cd6771320f064f186a",
+        "table": "RGRH",
+        "score": 0.328,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "e01c1463db22e20aca7611620af6eea8568ee8f9",
+        "table": "Service-Public",
+        "score": 0.328,
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c"
+      },
+      {
+        "chunk_id": "6ed408cc58f9b22f600857e504275086c8da9c86",
+        "table": "MATTE",
+        "score": 0.3228,
+        "section_id": "0f27cc89-2f7d-4336-be4b-7fe9f16e730e"
+      },
+      {
+        "chunk_id": "05bf23fef9eaec2a72ff16a3e81fceefe9ebd3f7",
+        "table": "RGRH",
+        "score": 0.3228,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "3f463714e9240b0966c8b5a3fd14a829f64fc7d6",
+        "table": "Service-Public",
+        "score": 0.3228,
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c"
+      },
+      {
+        "chunk_id": "ce21bac51615b7ef2b2a090959a9bcef9aaa8e6a",
+        "table": "MATTE",
+        "score": 0.3177,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "cc2f345282a77ab58e13092b7722631180660058",
+        "table": "RGRH",
+        "score": 0.3177,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "01f80caf6af0019960d7f4c5b9378ec9f47f1255",
+        "table": "Service-Public",
+        "score": 0.3177,
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c"
+      },
+      {
+        "chunk_id": "410f8aecfed1cf35934f4e995b9e9e2bb66735f6",
+        "table": "MATTE",
+        "score": 0.3128,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "bb81d7dfa367fb97151c5be8d0d0293165a6a477",
+        "table": "RGRH",
+        "score": 0.3128,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "a6e89e708720c5e10d38c7041ecbd14b6cab1107",
+        "table": "Service-Public",
+        "score": 0.3128,
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c"
+      },
+      {
+        "chunk_id": "0497e87f8392587468f3f7a7fd8c5786963f847c",
+        "table": "MATTE",
+        "score": 0.3081,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "988d08b16e09e61b69255bcff0ce284397d11255",
+        "table": "RGRH",
+        "score": 0.3081,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "73b7eef502aeba6ba112b88f08ab2da82c3840ce",
+        "table": "Service-Public",
+        "score": 0.3081,
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c"
+      },
+      {
+        "chunk_id": "d3d5b0691a47c28953355ab1bb49bd3c40a36827",
+        "table": "MATTE",
+        "score": 0.3035,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "e7dee4fa9007980ac921b89e900afb7608a683b7",
+        "table": "RGRH",
+        "score": 0.3035,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "45d7ddf7e4e3b48778130cac4584be97901c7dd4",
+        "table": "Service-Public",
+        "score": 0.3035,
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c"
+      },
+      {
+        "chunk_id": "860e64f925902b0b3bce746190f1e043813c0c76",
+        "table": "MATTE",
+        "score": 0.299,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "d0aae71f044b453da566a42c16b57d347cdc631a",
+        "table": "RGRH",
+        "score": 0.299,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "9899fc49734b9fee7c3e7860262327f75049fd0b",
+        "table": "Service-Public",
+        "score": 0.299,
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c"
+      },
+      {
+        "chunk_id": "780d4cd89bd494c8eb084efc5390d59895a4942f",
+        "table": "MATTE",
+        "score": 0.2947,
+        "section_id": "3d3b8c7c-be16-4bf8-ba9b-52253e72f4d1"
+      },
+      {
+        "chunk_id": "4d29ed6f05a4b2851b3f128e75b740ec2bef9f7e",
+        "table": "RGRH",
+        "score": 0.2947,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "9a7bd7693b65affdc2696b19e80a0efa442207ba",
+        "table": "Service-Public",
+        "score": 0.2947,
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c"
+      },
+      {
+        "chunk_id": "5c6a624a1b8b48fda76631097eb4e3b0de0aa759",
+        "table": "MATTE",
+        "score": 0.2905,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "6a729e0d5f1e3b69fedc4c8b566452a05cd1e752",
+        "table": "RGRH",
+        "score": 0.2905,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "f342aa4046c8ab227c03d23f2b92666944825993",
+        "table": "Service-Public",
+        "score": 0.2905,
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c"
+      },
+      {
+        "chunk_id": "34784a463dd521d1d2e883c64341dd10077f0840",
+        "table": "MATTE",
+        "score": 0.2864,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "05043ce25c3d5828050cae82c6421cef27fd00a9",
+        "table": "RGRH",
+        "score": 0.2864,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "dafa0a5330f06ad48dba53cd72aea6b0afde1fb2",
+        "table": "Service-Public",
+        "score": 0.2864,
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c"
+      },
+      {
+        "chunk_id": "6edd11f251e66244cc6e8c05c3fbc3725cb4ec70",
+        "table": "MATTE",
+        "score": 0.2824,
+        "section_id": "0f27cc89-2f7d-4336-be4b-7fe9f16e730e"
+      },
+      {
+        "chunk_id": "ea1f8bcec65513ddf10953080834bb3cba306b92",
+        "table": "RGRH",
+        "score": 0.2824,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "dfa63bf292858700fe4a0db01b3520fcfb0f072b",
+        "table": "Service-Public",
+        "score": 0.2824,
+        "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50"
+      },
+      {
+        "chunk_id": "5aab77763299e0b505c0a2e899be23796460a5ce",
+        "table": "MATTE",
+        "score": 0.2785,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "b118e7e59706d7e268bc39cdc4e02f091c4a67f8",
+        "table": "RGRH",
+        "score": 0.2785,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "e5b723b16115475a5342a099f6a15c8fb67f176a",
+        "table": "Service-Public",
+        "score": 0.2785,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "cadf82c1d20afb6e39120e4dc23b3c785332180d",
+        "table": "MATTE",
+        "score": 0.2748,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "6e2b9bbf2d7586f73e25649819deb3cf2c2ba3fd",
+        "table": "RGRH",
+        "score": 0.2748,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "e71437fab6e13ef8a3d0dc829ab07a8e529c20eb",
+        "table": "Service-Public",
+        "score": 0.2748,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "5ff7d183c2a9f1365df70d09b6873a7fdcb5e400",
+        "table": "MATTE",
+        "score": 0.2711,
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb"
+      },
+      {
+        "chunk_id": "fe870092f98e1179c0ce83c282e4c339f9635fa3",
+        "table": "RGRH",
+        "score": 0.2711,
+        "section_id": ""
+      },
+      {
+        "chunk_id": "b3173e350700a943a638d5ae94c45f207f6355d4",
+        "table": "Service-Public",
+        "score": 0.2711,
+        "section_id": "78b280fd-60c3-48d8-bd5f-2900a077212d"
+      }
+    ],
+    "aggregated_sections": [
+      {
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+        "heading": "FICHE 1 - Quel contrat choisir et pour quelle durée selon la situation ? (Le fon",
+        "score": 0.4568,
+        "publisher": "MATTE",
+        "chunk_count": 12
+      },
+      {
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+        "heading": "Recrutement d'un contractuel dans la fonction publique d'État (FPE)",
+        "score": 0.4225,
+        "publisher": "Service-Public",
+        "chunk_count": 10
+      },
+      {
+        "section_id": "0f27cc89-2f7d-4336-be4b-7fe9f16e730e",
+        "heading": "FICHE 8 - Recrutement en CDI ou avec portabilité du CDI et CDIsation",
+        "score": 0.2855,
+        "publisher": "MATTE",
+        "chunk_count": 2
+      },
+      {
+        "section_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "score": 0.2833,
+        "publisher": "RGRH",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "heading": "particuliers_vosdroits_F1906.txt",
+        "score": 0.2833,
+        "publisher": "Service-Public",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "score": 0.279,
+        "publisher": "RGRH",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "score": 0.2749,
+        "publisher": "RGRH",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "score": 0.2708,
+        "publisher": "RGRH",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "score": 0.2669,
+        "publisher": "RGRH",
+        "chunk_count": 1
+      },
+      {
+        "section_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "score": 0.2631,
+        "publisher": "RGRH",
+        "chunk_count": 1
+      }
+    ],
+    "context_items_ref": [
+      {
+        "section_id": "",
+        "doc_id": "bfe1963a-b952-4f5a-911b-cf1a21b46fbc",
+        "heading": "Fiche 8 - Recrutement en CDI ou avec portabilité du CDI et CDIsation - Juillet ",
+        "publisher": "MATTE",
+        "tokens": 2129,
+        "score": 0.2855,
+        "is_doc_entire": true
+      },
+      {
+        "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+        "doc_id": "3d1db387-35f3-4142-be46-801c1b827c7b",
+        "heading": "FICHE 1 - Quel contrat choisir et pour quelle durée selon la situation ? (Le fon",
+        "publisher": "MATTE",
+        "tokens": 3459,
+        "score": 0.4568,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "",
+        "doc_id": "",
+        "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+        "publisher": "RGRH",
+        "tokens": 0,
+        "score": 0.2833,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "",
+        "doc_id": "",
+        "heading": "particuliers_vosdroits_F1906.txt",
+        "publisher": "Service-Public",
+        "tokens": 0,
+        "score": 0.2833,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+        "doc_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f",
+        "heading": "Recrutement d'un contractuel dans la fonction publique d'État (FPE)",
+        "publisher": "Service-Public",
+        "tokens": 4787,
+        "score": 0.4225,
+        "is_doc_entire": false
+      }
+    ],
+    "selector_decisions": {},
+    "selector_reasoning": "",
+    "selector_raw_response": "",
+    "selector_items_before": 0,
+    "selector_items_after": 0,
+    "sections_before_rerank": 24,
+    "sections_after_rerank": 10,
+    "selector_all_rejected": false,
+    "stage_trace": {
+      "schema_version": "2026-05-05",
+      "stage_order": [
+        "query-processor",
+        "retriever",
+        "section-aggregator",
+        "context-selector",
+        "context-builder",
+        "generator"
+      ],
+      "stages": {
+        "query-processor": {
+          "input": {
+            "query": "Quelle est la durée maximale d'un contrat CDD pour un agent contractuel ?",
+            "conversation_history": []
+          },
+          "output": {
+            "intent": "rag_query",
+            "theme": "typologie_contrats",
+            "needs_legal_search": false,
+            "should_proceed": true,
+            "processed_query": "Quelle est la durée maximale d'un contrat CDD (Contrat à Durée Déterminée) pour un agent contractuel ?",
+            "enriched_query": "",
+            "query_for_retrieval": "Quelle est la durée maximale d'un contrat CDD (Contrat à Durée Déterminée) pour un agent contractuel ?",
+            "search_terms": []
+          }
+        },
+        "retriever": {
+          "input": {
+            "query": "Quelle est la durée maximale d'un contrat CDD (Contrat à Durée Déterminée) pour un agent contractuel ?",
+            "needs_legal_search": false,
+            "tables_searched": [
+              "matte",
+              "service_public",
+              "rgrh"
+            ]
+          },
+          "output": {
+            "retrieved_chunks": [
+              {
+                "chunk_id": "fed1b1a8fee327f9a216217d5ab4050fbee792be",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.3333,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "156c043454b4d1067c8d0bac61c34920276043fa",
+                "section_id": "",
+                "score": 0.3333,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "e2de6a626ab0b67ca7a19e828c63786d5a61a0cc",
+                "section_id": "",
+                "score": 0.3333,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "0b017202cc791b85b7c2f63fb844a4ca51301132",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.328,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "a537057603ff846d6d39a6cd6771320f064f186a",
+                "section_id": "",
+                "score": 0.328,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "e01c1463db22e20aca7611620af6eea8568ee8f9",
+                "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+                "score": 0.328,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "6ed408cc58f9b22f600857e504275086c8da9c86",
+                "section_id": "0f27cc89-2f7d-4336-be4b-7fe9f16e730e",
+                "score": 0.3228,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "05bf23fef9eaec2a72ff16a3e81fceefe9ebd3f7",
+                "section_id": "",
+                "score": 0.3228,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "3f463714e9240b0966c8b5a3fd14a829f64fc7d6",
+                "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+                "score": 0.3228,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "ce21bac51615b7ef2b2a090959a9bcef9aaa8e6a",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.3177,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "cc2f345282a77ab58e13092b7722631180660058",
+                "section_id": "",
+                "score": 0.3177,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "01f80caf6af0019960d7f4c5b9378ec9f47f1255",
+                "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+                "score": 0.3177,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "410f8aecfed1cf35934f4e995b9e9e2bb66735f6",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.3128,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "bb81d7dfa367fb97151c5be8d0d0293165a6a477",
+                "section_id": "",
+                "score": 0.3128,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "a6e89e708720c5e10d38c7041ecbd14b6cab1107",
+                "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+                "score": 0.3128,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "0497e87f8392587468f3f7a7fd8c5786963f847c",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.3081,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "988d08b16e09e61b69255bcff0ce284397d11255",
+                "section_id": "",
+                "score": 0.3081,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "73b7eef502aeba6ba112b88f08ab2da82c3840ce",
+                "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+                "score": 0.3081,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "d3d5b0691a47c28953355ab1bb49bd3c40a36827",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.3035,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "e7dee4fa9007980ac921b89e900afb7608a683b7",
+                "section_id": "",
+                "score": 0.3035,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "45d7ddf7e4e3b48778130cac4584be97901c7dd4",
+                "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+                "score": 0.3035,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "860e64f925902b0b3bce746190f1e043813c0c76",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.299,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "d0aae71f044b453da566a42c16b57d347cdc631a",
+                "section_id": "",
+                "score": 0.299,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "9899fc49734b9fee7c3e7860262327f75049fd0b",
+                "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+                "score": 0.299,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "780d4cd89bd494c8eb084efc5390d59895a4942f",
+                "section_id": "3d3b8c7c-be16-4bf8-ba9b-52253e72f4d1",
+                "score": 0.2947,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "4d29ed6f05a4b2851b3f128e75b740ec2bef9f7e",
+                "section_id": "",
+                "score": 0.2947,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "9a7bd7693b65affdc2696b19e80a0efa442207ba",
+                "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+                "score": 0.2947,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "5c6a624a1b8b48fda76631097eb4e3b0de0aa759",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.2905,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "6a729e0d5f1e3b69fedc4c8b566452a05cd1e752",
+                "section_id": "",
+                "score": 0.2905,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "f342aa4046c8ab227c03d23f2b92666944825993",
+                "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+                "score": 0.2905,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "34784a463dd521d1d2e883c64341dd10077f0840",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.2864,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "05043ce25c3d5828050cae82c6421cef27fd00a9",
+                "section_id": "",
+                "score": 0.2864,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "dafa0a5330f06ad48dba53cd72aea6b0afde1fb2",
+                "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+                "score": 0.2864,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "6edd11f251e66244cc6e8c05c3fbc3725cb4ec70",
+                "section_id": "0f27cc89-2f7d-4336-be4b-7fe9f16e730e",
+                "score": 0.2824,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "ea1f8bcec65513ddf10953080834bb3cba306b92",
+                "section_id": "",
+                "score": 0.2824,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "dfa63bf292858700fe4a0db01b3520fcfb0f072b",
+                "section_id": "bfb8f8e4-1a45-43a3-bbf9-2ae03196bd50",
+                "score": 0.2824,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "5aab77763299e0b505c0a2e899be23796460a5ce",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.2785,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "b118e7e59706d7e268bc39cdc4e02f091c4a67f8",
+                "section_id": "",
+                "score": 0.2785,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "e5b723b16115475a5342a099f6a15c8fb67f176a",
+                "section_id": "",
+                "score": 0.2785,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "cadf82c1d20afb6e39120e4dc23b3c785332180d",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.2748,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "6e2b9bbf2d7586f73e25649819deb3cf2c2ba3fd",
+                "section_id": "",
+                "score": 0.2748,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "e71437fab6e13ef8a3d0dc829ab07a8e529c20eb",
+                "section_id": "",
+                "score": 0.2748,
+                "source_table": "Service-Public"
+              },
+              {
+                "chunk_id": "5ff7d183c2a9f1365df70d09b6873a7fdcb5e400",
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.2711,
+                "source_table": "MATTE"
+              },
+              {
+                "chunk_id": "fe870092f98e1179c0ce83c282e4c339f9635fa3",
+                "section_id": "",
+                "score": 0.2711,
+                "source_table": "RGRH"
+              },
+              {
+                "chunk_id": "b3173e350700a943a638d5ae94c45f207f6355d4",
+                "section_id": "78b280fd-60c3-48d8-bd5f-2900a077212d",
+                "score": 0.2711,
+                "source_table": "Service-Public"
+              }
+            ]
+          }
+        },
+        "section-aggregator": {
+          "input": {
+            "retrieved_chunk_ids": [
+              "fed1b1a8fee327f9a216217d5ab4050fbee792be",
+              "156c043454b4d1067c8d0bac61c34920276043fa",
+              "e2de6a626ab0b67ca7a19e828c63786d5a61a0cc",
+              "0b017202cc791b85b7c2f63fb844a4ca51301132",
+              "a537057603ff846d6d39a6cd6771320f064f186a",
+              "e01c1463db22e20aca7611620af6eea8568ee8f9",
+              "6ed408cc58f9b22f600857e504275086c8da9c86",
+              "05bf23fef9eaec2a72ff16a3e81fceefe9ebd3f7",
+              "3f463714e9240b0966c8b5a3fd14a829f64fc7d6",
+              "ce21bac51615b7ef2b2a090959a9bcef9aaa8e6a",
+              "cc2f345282a77ab58e13092b7722631180660058",
+              "01f80caf6af0019960d7f4c5b9378ec9f47f1255",
+              "410f8aecfed1cf35934f4e995b9e9e2bb66735f6",
+              "bb81d7dfa367fb97151c5be8d0d0293165a6a477",
+              "a6e89e708720c5e10d38c7041ecbd14b6cab1107",
+              "0497e87f8392587468f3f7a7fd8c5786963f847c",
+              "988d08b16e09e61b69255bcff0ce284397d11255",
+              "73b7eef502aeba6ba112b88f08ab2da82c3840ce",
+              "d3d5b0691a47c28953355ab1bb49bd3c40a36827",
+              "e7dee4fa9007980ac921b89e900afb7608a683b7",
+              "45d7ddf7e4e3b48778130cac4584be97901c7dd4",
+              "860e64f925902b0b3bce746190f1e043813c0c76",
+              "d0aae71f044b453da566a42c16b57d347cdc631a",
+              "9899fc49734b9fee7c3e7860262327f75049fd0b",
+              "780d4cd89bd494c8eb084efc5390d59895a4942f",
+              "4d29ed6f05a4b2851b3f128e75b740ec2bef9f7e",
+              "9a7bd7693b65affdc2696b19e80a0efa442207ba",
+              "5c6a624a1b8b48fda76631097eb4e3b0de0aa759",
+              "6a729e0d5f1e3b69fedc4c8b566452a05cd1e752",
+              "f342aa4046c8ab227c03d23f2b92666944825993",
+              "34784a463dd521d1d2e883c64341dd10077f0840",
+              "05043ce25c3d5828050cae82c6421cef27fd00a9",
+              "dafa0a5330f06ad48dba53cd72aea6b0afde1fb2",
+              "6edd11f251e66244cc6e8c05c3fbc3725cb4ec70",
+              "ea1f8bcec65513ddf10953080834bb3cba306b92",
+              "dfa63bf292858700fe4a0db01b3520fcfb0f072b",
+              "5aab77763299e0b505c0a2e899be23796460a5ce",
+              "b118e7e59706d7e268bc39cdc4e02f091c4a67f8",
+              "e5b723b16115475a5342a099f6a15c8fb67f176a",
+              "cadf82c1d20afb6e39120e4dc23b3c785332180d",
+              "6e2b9bbf2d7586f73e25649819deb3cf2c2ba3fd",
+              "e71437fab6e13ef8a3d0dc829ab07a8e529c20eb",
+              "5ff7d183c2a9f1365df70d09b6873a7fdcb5e400",
+              "fe870092f98e1179c0ce83c282e4c339f9635fa3",
+              "b3173e350700a943a638d5ae94c45f207f6355d4"
+            ]
+          },
+          "output": {
+            "aggregated_sections": [
+              {
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "score": 0.4568,
+                "publisher": "MATTE",
+                "heading": "FICHE 1 - Quel contrat choisir et pour quelle durée selon la situation ? (Le fon",
+                "chunk_count": 12
+              },
+              {
+                "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+                "score": 0.4225,
+                "publisher": "Service-Public",
+                "heading": "Recrutement d'un contractuel dans la fonction publique d'État (FPE)",
+                "chunk_count": 10
+              },
+              {
+                "section_id": "0f27cc89-2f7d-4336-be4b-7fe9f16e730e",
+                "score": 0.2855,
+                "publisher": "MATTE",
+                "heading": "FICHE 8 - Recrutement en CDI ou avec portabilité du CDI et CDIsation",
+                "chunk_count": 2
+              },
+              {
+                "section_id": "",
+                "score": 0.2833,
+                "publisher": "RGRH",
+                "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+                "chunk_count": 1
+              },
+              {
+                "section_id": "",
+                "score": 0.2833,
+                "publisher": "Service-Public",
+                "heading": "particuliers_vosdroits_F1906.txt",
+                "chunk_count": 1
+              },
+              {
+                "section_id": "",
+                "score": 0.279,
+                "publisher": "RGRH",
+                "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+                "chunk_count": 1
+              },
+              {
+                "section_id": "",
+                "score": 0.2749,
+                "publisher": "RGRH",
+                "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+                "chunk_count": 1
+              },
+              {
+                "section_id": "",
+                "score": 0.2708,
+                "publisher": "RGRH",
+                "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+                "chunk_count": 1
+              },
+              {
+                "section_id": "",
+                "score": 0.2669,
+                "publisher": "RGRH",
+                "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+                "chunk_count": 1
+              },
+              {
+                "section_id": "",
+                "score": 0.2631,
+                "publisher": "RGRH",
+                "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+                "chunk_count": 1
+              }
+            ]
+          }
+        },
+        "context-selector": {
+          "input": {
+            "query": "Quelle est la durée maximale d'un contrat CDD (Contrat à Durée Déterminée) pour un agent contractuel ?",
+            "aggregated_section_ids": [
+              "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+              "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+              "0f27cc89-2f7d-4336-be4b-7fe9f16e730e",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          "output": {
+            "selector_enabled": false,
+            "selector_all_rejected": false,
+            "selector_items_before": 0,
+            "selector_items_after": 0,
+            "selector_decisions": {},
+            "selected_section_ids": [
+              "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+              "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c"
+            ]
+          }
+        },
+        "context-builder": {
+          "input": {
+            "selected_section_ids": [
+              "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+              "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c"
+            ]
+          },
+          "output": {
+            "context_items_ref": [
+              {
+                "section_id": "",
+                "doc_id": "bfe1963a-b952-4f5a-911b-cf1a21b46fbc",
+                "heading": "Fiche 8 - Recrutement en CDI ou avec portabilité du CDI et CDIsation - Juillet ",
+                "publisher": "MATTE",
+                "tokens": 2129,
+                "score": 0.2855,
+                "is_doc_entire": true
+              },
+              {
+                "section_id": "6b9e5152-48fa-4d5e-883f-b95a26bde3fb",
+                "doc_id": "3d1db387-35f3-4142-be46-801c1b827c7b",
+                "heading": "FICHE 1 - Quel contrat choisir et pour quelle durée selon la situation ? (Le fon",
+                "publisher": "MATTE",
+                "tokens": 3459,
+                "score": 0.4568,
+                "is_doc_entire": false
+              },
+              {
+                "section_id": "",
+                "doc_id": "",
+                "heading": "all_RGRH_position_conges_rules_population_statut.csv",
+                "publisher": "RGRH",
+                "tokens": 0,
+                "score": 0.2833,
+                "is_doc_entire": false
+              },
+              {
+                "section_id": "",
+                "doc_id": "",
+                "heading": "particuliers_vosdroits_F1906.txt",
+                "publisher": "Service-Public",
+                "tokens": 0,
+                "score": 0.2833,
+                "is_doc_entire": false
+              },
+              {
+                "section_id": "ea9b6dde-77b4-413e-97f5-8d8cdab5a90c",
+                "doc_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f",
+                "heading": "Recrutement d'un contractuel dans la fonction publique d'État (FPE)",
+                "publisher": "Service-Public",
+                "tokens": 4787,
+                "score": 0.4225,
+                "is_doc_entire": false
+              }
+            ],
+            "context_text_hash": "2e717d73d69db068a59c987e93d4eac03e2a92b30b018d4efb042080ba380d41"
+          }
+        },
+        "generator": {
+          "input": {
+            "query": "Quelle est la durée maximale d'un contrat CDD (Contrat à Durée Déterminée) pour un agent contractuel ?",
+            "context_item_count": 5,
+            "conversation_history": []
+          },
+          "output": {
+            "answer": "La durée maximale d’un CDD pour un agent contractuel est de **6 ans au total**.  \n\n- Un contrat individuel ne peut excéder **3 ans** ; il peut être renouvelé, mais la somme des périodes successives ne doit pas dépasser **6 ans** (au‑delà, le passage en CDI devient obligatoire).  \n\nCette règle provient de la fiche 8 du MATTE, qui indique que « la période maximale d’emploi en CDD est fixée à 6 ans » et précise que la CDIsation s’impose à l’issue de cette durée.  \n\nAinsi, pour un agent contractuel, le CDD peut être conclu pour une durée maximale de 3 ans, renouvelable jusqu’à atteindre le plafond cumulé de 6 ans.",
+            "answer_length": 617,
+            "citations": []
+          }
+        }
+      }
+    }
+  }
+}

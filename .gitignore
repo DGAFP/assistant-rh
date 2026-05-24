@@ -1,0 +1,80 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.env
+.venv/
+env/
+venv/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Data (gitignored except README; restricted evaluation artifacts live in a private HF dataset)
+.cache/
+data/*
+!data/README.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+.pytest_cache/
+.deepeval/
+
+# Node.js
+node_modules/
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Scripts (only tracked: freshness_checker.py, load_theme_mapping.py)
+
+
+# Notebooks (evaluation notebooks tracked separately)
+notebooks/
+
+# Local files (backups, one-off scripts, generated artifacts)
+_local/
+*.dump
+GUIDES/
+
+# Mastra (generated files)
+.mastra/
+
+# Letta Code personal settings
+.letta/settings.local.json
+.moon/cache/
+
+# Local agent configurations (Antigravity)
+.agents/*
+!.agents/skills/
+!.agents/memory/
+
+# Claude Code
+.claude/*
+!.claude/settings.json
+!.claude/skills/
+.claude/skills/.cache/
+.claude/skills/*.log
+.claude/skills/state/
+.claude/skills/tmp/
+
+# Claude local state files
+.claude-history
+*.skill-backup
+skill-state.json
+
+# Pi
+.pi/*
+!.pi/settings.json
+!.pi/skills/

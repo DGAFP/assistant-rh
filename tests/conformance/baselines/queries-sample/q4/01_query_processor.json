@@ -1,0 +1,16 @@
+{
+  "input": {
+    "query": "Bonjour, comment ça va ?",
+    "conversation_history": []
+  },
+  "output": {
+    "intent": "chit_chat",
+    "theme": null,
+    "needs_legal_search": false,
+    "should_proceed": false,
+    "processed_query": "Bonjour, comment ça va ?",
+    "enriched_query": "",
+    "query_for_retrieval": "Bonjour, comment ça va ?",
+    "search_terms": []
+  }
+}

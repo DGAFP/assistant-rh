@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "key": "query-processor.intent:040f0dcff2471c3c7c16851e9213cf3cf146364a15507c0e732a904bb69fbf4f",
+      "stage": "query-processor.intent",
+      "requestDigest": "040f0dcff2471c3c7c16851e9213cf3cf146364a15507c0e732a904bb69fbf4f",
+      "response": "{\"intent\": \"document_request\", \"theme\": null, \"needs_legal_search\": false, \"reformulated_query\": null, \"query_for_retrieval\": \"Peux-tu me donner le texte intégral du décret n°86-83 ?\", \"confidence\": 1, \"reasoning\": \"Deterministic replay cache response from baseline\"}",
+      "createdAt": "2026-05-07T00:00:00.000Z",
+      "metadata": {
+        "fixtureId": "q5",
+        "source": "baseline-01_query_processor",
+        "intent": "document_request",
+        "theme": null,
+        "needsLegalSearch": false
+      }
+    },
+    {
+      "key": "query-processor.intent:6d685fab5987037e72ee434565c07d5194950726c397034e693db9a84d2124df",
+      "stage": "query-processor.intent",
+      "requestDigest": "6d685fab5987037e72ee434565c07d5194950726c397034e693db9a84d2124df",
+      "response": "{\"intent\": \"rag_query\", \"theme\": \"typologie_contrats\", \"needs_legal_search\": false, \"reformulated_query\": null, \"query_for_retrieval\": \"Quelle est la durée maximale d'un contrat CDD (Contrat à Durée Déterminée) pour un agent contractuel ?\", \"confidence\": 1, \"reasoning\": \"Deterministic replay cache response from baseline\"}",
+      "createdAt": "2026-05-07T00:00:00.000Z",
+      "metadata": {
+        "fixtureId": "q1",
+        "source": "baseline-01_query_processor",
+        "intent": "rag_query",
+        "theme": "typologie_contrats",
+        "needsLegalSearch": false
+      }
+    },
+    {
+      "key": "query-processor.intent:78d6d123914f53d2e5fdc3e617432658d8334a656a01c52d77c4ccd5ac2a97c5",
+      "stage": "query-processor.intent",
+      "requestDigest": "78d6d123914f53d2e5fdc3e617432658d8334a656a01c52d77c4ccd5ac2a97c5",
+      "response": "{\"intent\": \"chit_chat\", \"theme\": null, \"needs_legal_search\": false, \"reformulated_query\": null, \"query_for_retrieval\": \"Bonjour, comment ça va ?\", \"confidence\": 1, \"reasoning\": \"Deterministic replay cache response from baseline\"}",
+      "createdAt": "2026-05-07T00:00:00.000Z",
+      "metadata": {
+        "fixtureId": "q4",
+        "source": "baseline-01_query_processor",
+        "intent": "chit_chat",
+        "theme": null,
+        "needsLegalSearch": false
+      }
+    },
+    {
+      "key": "query-processor.intent:af12b3e58705aa05b569304b1252c7d593e1c3ada277cc0edae732251f66d403",
+      "stage": "query-processor.intent",
+      "requestDigest": "af12b3e58705aa05b569304b1252c7d593e1c3ada277cc0edae732251f66d403",
+      "response": "{\"intent\": \"rag_query\", \"theme\": \"typologie_contrats\", \"needs_legal_search\": false, \"reformulated_query\": null, \"query_for_retrieval\": \"Quelle est la différence entre un CDD (Contrat à Durée Déterminée) et un CDI (Contrat à Durée Indéterminée) dans la fonction publique d'État ?\", \"confidence\": 1, \"reasoning\": \"Deterministic replay cache response from baseline\"}",
+      "createdAt": "2026-05-07T00:00:00.000Z",
+      "metadata": {
+        "fixtureId": "q3",
+        "source": "baseline-01_query_processor",
+        "intent": "rag_query",
+        "theme": "typologie_contrats",
+        "needsLegalSearch": false
+      }
+    },
+    {
+      "key": "query-processor.intent:cf981f9432f44e22079c8373af00491b6d9614cad93c9cd0ac47c1aaeb25d4bc",
+      "stage": "query-processor.intent",
+      "requestDigest": "cf981f9432f44e22079c8373af00491b6d9614cad93c9cd0ac47c1aaeb25d4bc",
+      "response": "{\"intent\": \"rag_query\", \"theme\": \"conges\", \"needs_legal_search\": false, \"reformulated_query\": null, \"query_for_retrieval\": \"Un agent contractuel peut-il bénéficier d'un congé de mobilité ?\", \"confidence\": 1, \"reasoning\": \"Deterministic replay cache response from baseline\"}",
+      "createdAt": "2026-05-07T00:00:00.000Z",
+      "metadata": {
+        "fixtureId": "q2",
+        "source": "baseline-01_query_processor",
+        "intent": "rag_query",
+        "theme": "conges",
+        "needsLegalSearch": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,1390 @@
+{
+  "existing_articles": 69,
+  "generated_articles": 69,
+  "compared_articles": 69,
+  "exact_article_matches": 69,
+  "avg_article_similarity": 1.0,
+  "avg_chunk_count_delta": 0.0,
+  "comparisons": [
+    {
+      "num_article": "R115-3",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 786,
+          "generated_chars": 786,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R130-1",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 579,
+          "generated_chars": 579,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R211-340",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 1058,
+          "generated_chars": 1058,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R211-357",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 1053,
+          "generated_chars": 1053,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R211-358",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 891,
+          "generated_chars": 891,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R211-359",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 833,
+          "generated_chars": 833,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-1",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 703,
+          "generated_chars": 703,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-10",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 1047,
+          "generated_chars": 1047,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-11",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 2360,
+          "generated_chars": 2360,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-12",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 563,
+          "generated_chars": 563,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-13",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 1436,
+          "generated_chars": 1436,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-14",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 584,
+          "generated_chars": 584,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-15",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 1023,
+          "generated_chars": 1023,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-16",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 1776,
+          "generated_chars": 1776,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-17",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 987,
+          "generated_chars": 987,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-18",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 998,
+          "generated_chars": 998,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-2",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 587,
+          "generated_chars": 587,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-21",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 813,
+          "generated_chars": 813,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-22",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 529,
+          "generated_chars": 529,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-23",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 594,
+          "generated_chars": 594,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-3",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 539,
+          "generated_chars": 539,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-4",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 665,
+          "generated_chars": 665,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-5",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 533,
+          "generated_chars": 533,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-6",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 430,
+          "generated_chars": 430,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-7",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 908,
+          "generated_chars": 908,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-8",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 514,
+          "generated_chars": 514,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R271-9",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 550,
+          "generated_chars": 550,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R331-1",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 1259,
+          "generated_chars": 1259,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R331-10",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 644,
+          "generated_chars": 644,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R331-12",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 841,
+          "generated_chars": 841,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R331-13",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 1280,
+          "generated_chars": 1280,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R331-2",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 3039,
+          "generated_chars": 3039,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R331-3",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 543,
+          "generated_chars": 543,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R331-4",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 1325,
+          "generated_chars": 1325,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R331-5",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 669,
+          "generated_chars": 669,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R331-6",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 409,
+          "generated_chars": 409,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R331-7",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 1148,
+          "generated_chars": 1148,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R331-8",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 469,
+          "generated_chars": 469,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R331-9",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 476,
+          "generated_chars": 476,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-10",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 555,
+          "generated_chars": 555,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-11",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 578,
+          "generated_chars": 578,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-12",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 524,
+          "generated_chars": 524,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-13",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 753,
+          "generated_chars": 753,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-15",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 1581,
+          "generated_chars": 1581,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-16",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 546,
+          "generated_chars": 546,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-17",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 667,
+          "generated_chars": 667,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-18",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 762,
+          "generated_chars": 762,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-19",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 527,
+          "generated_chars": 527,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-20",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 474,
+          "generated_chars": 474,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-21",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 566,
+          "generated_chars": 566,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-22",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 1260,
+          "generated_chars": 1260,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-24",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 360,
+          "generated_chars": 360,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-25",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 1046,
+          "generated_chars": 1046,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-26",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 604,
+          "generated_chars": 604,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-27",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 835,
+          "generated_chars": 835,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-29",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 565,
+          "generated_chars": 565,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-30",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 653,
+          "generated_chars": 653,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-31",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 594,
+          "generated_chars": 594,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-32",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 417,
+          "generated_chars": 417,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-33",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 703,
+          "generated_chars": 703,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-34",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 625,
+          "generated_chars": 625,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-35",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 444,
+          "generated_chars": 444,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-36",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 415,
+          "generated_chars": 415,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-37",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 1887,
+          "generated_chars": 1887,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-38",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 589,
+          "generated_chars": 589,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-39",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 710,
+          "generated_chars": 710,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-40",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 583,
+          "generated_chars": 583,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-8",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 717,
+          "generated_chars": 717,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    },
+    {
+      "num_article": "R332-9",
+      "existing_chunk_count": 1,
+      "generated_chunk_count": 1,
+      "chunk_count_delta": 0,
+      "exact_chunk_matches": 1,
+      "avg_chunk_similarity": 1.0,
+      "article_similarity": 1.0,
+      "per_chunk": [
+        {
+          "chunk_index": 0,
+          "existing_present": true,
+          "generated_present": true,
+          "existing_chars": 743,
+          "generated_chars": 743,
+          "exact_text_match": true,
+          "similarity": 1.0
+        }
+      ]
+    }
+  ]
+}

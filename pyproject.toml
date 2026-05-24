@@ -1,0 +1,119 @@
+[project]
+name = "assistant-rh"
+version = "0.4.2"
+description = "Assistant RH - Chatbot Contractuels FPE"
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    # Core
+    "streamlit>=1.55.0",
+    "pandas>=2.3.3,<3",
+    "numpy>=2.4.3,<3",
+    "openpyxl>=3.1.5",
+    "python-dotenv>=1.2.2",
+    "filelock>=3.25.2",
+    # Database
+    "psycopg[binary]>=3.3.3",
+    "sqlalchemy>=2.0.48",
+    # LLM & API
+    "openai>=2.28.0",
+    "requests>=2.32.5",
+    # Security pins (transitive deps — keep versions without known CVEs)
+    "certifi>=2026.2.25",
+    "urllib3>=2.7.0",
+    "jinja2>=3.1.6",
+    "cryptography>=46.0.5",
+    "mako>=1.3.12",
+    "gitpython>=3.1.50",
+    "huggingface-hub>=1.0.0",
+
+    # UI
+    "plotly>=6.6.0",
+    "streamlit-cookies-manager>=0.2.0",
+    "beautifulsoup4>=4.14.3",
+    # Internal packages (monorepo workspace members)
+    "assistant-rh-rag-pipeline",
+    "assistant-rh-data-engineering",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+    "mypy",
+    "pre-commit",
+    "ipykernel",
+    # Evaluation (notebooks only — not needed in prod)
+    "mlflow>=3.11.1",
+    "tqdm>=4.67.3",
+    "datasets>=4.8.2",
+    "matplotlib>=3.10.8",
+    "anthropic>=0.85.0",
+    "psycopg2-binary>=2.9.11",
+]
+
+[tool.pytest]
+testpaths = ["tests"]
+norecursedirs = ["tests/archive", ".venv", "node_modules"]
+
+# =============================================================================
+# Moonrepo Monorepo Configuration
+# =============================================================================
+
+[tool.uv.workspace]
+# Workspace members - packages and apps in the monorepo
+# Paths are relative to workspace root (this file)
+members = [
+    "packages/*",
+    # "apps/*",  # TODO: add apps/*/pyproject.toml to make apps installable workspace members
+    # Legacy src/ will be migrated to packages/ in Phase 1
+    # "src",  # Uncomment after creating src/pyproject.toml
+]
+
+[tool.uv]
+default-groups = []
+
+# Local workspace package sources
+[tool.uv.sources]
+assistant-rh-rag-pipeline = { workspace = true }
+assistant-rh-data-engineering = { workspace = true }
+assistant-rh-shared-config = { workspace = true }
+[tool.ruff]
+line-length = 150
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# Streamlit pages: E402 (imports not at top), E501 (long CSS/HTML), E722 (bare except), F841 (unused vars)
+"apps/streamlit-ui/pages/01_Chatbot.py" = ["E402", "E501", "F841"]
+"apps/streamlit-ui/pages/02_Chat_Logs.py" = ["E501"]
+"apps/streamlit-ui/pages/03_Feedback_Dashboard.py" = ["E501", "E722"]
+"apps/streamlit-ui/pages/04_Admin_Config.py" = ["E402", "E501", "E722"]
+"apps/streamlit-ui/pages/05_DB_Explorer.py" = ["E501"]
+"apps/streamlit-ui/pages/07_Eval_Comparison.py" = ["E501"]
+"apps/streamlit-ui/pages/08_Chunking_Evaluation.py" = ["E501", "E741"]
+"apps/streamlit-ui/pages/09_Pipeline_Evaluation.py" = ["E501", "F841"]
+"apps/streamlit-ui/pages/10_Intent_Gater_Evaluation.py" = ["E501"]
+"apps/streamlit-ui/pages/11_Golden_Beta_Analysis.py" = ["E501"]
+"apps/streamlit-ui/pages/_PDF_Viewer.py" = ["E402", "E501"]
+# src/ui modules
+"src/ui/chatbot_logging.py" = ["E402", "E501"]
+"src/ui/chatbot_sources.py" = ["E501"]
+"src/ui/chatbot_styles.py" = ["E501"]
+"src/ui/citation_deduplicator.py" = ["F841"]
+# src/rag_v3_clean
+"src/rag_v3_clean/admin.py" = ["E501"]
+"src/rag_v3_clean/chat_logger.py" = ["E501"]
+"src/rag_v3_clean/config.py" = ["E501"]
+"src/rag_v3_clean/context_builder.py" = ["E501"]
+"src/rag_v3_clean/db_helpers.py" = ["E501"]
+"src/rag_v3_clean/feedback_analyzer.py" = ["E501"]
+"src/rag_v3_clean/llm_client.py" = ["E501"]
+"src/rag_v3_clean/pipeline.py" = ["E501"]
+"src/rag_v3_clean/retriever.py" = ["E501"]
+# tests
+"tests/test_pipeline_e2e.py" = ["E501"]
+# Archived test code
+"tests/archive/**/*.py" = ["E", "F", "I"]

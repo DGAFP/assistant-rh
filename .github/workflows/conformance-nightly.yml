@@ -1,0 +1,277 @@
+name: Conformance Nightly
+
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+    inputs:
+      goldset_name:
+        description: "Goldset name"
+        required: true
+        type: string
+        default: synthetic_docs_v1
+      limit:
+        description: "Max queries (0 = no limit)"
+        required: true
+        type: string
+        default: "100"
+
+permissions:
+  contents: read
+
+jobs:
+  nightly-conformance:
+    runs-on: ubuntu-latest
+    environment: scaleway-staging
+    env:
+      SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
+      ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
+      ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || secrets.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
+      SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
+      SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || secrets.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10.33.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip uv
+          uv sync
+          pnpm install --frozen-lockfile
+
+      - name: Precheck AI provider configuration
+        run: |
+          set -euo pipefail
+
+          albert_ok=false
+          scaleway_ok=false
+
+          if [[ -n "${ALBERT_API_KEY:-}" && -n "${ALBERT_BASE_URL:-}" ]]; then
+            albert_ok=true
+          fi
+          if [[ -n "${SCALEWAY_API_KEY:-}" && -n "${SCALEWAY_BASE_URL:-}" ]]; then
+            scaleway_ok=true
+          fi
+
+          {
+            echo "## AI provider precheck"
+            echo ""
+            echo "- Albert configured: \`$albert_ok\`"
+            echo "- Scaleway configured: \`$scaleway_ok\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$albert_ok" != "true" && "$scaleway_ok" != "true" ]]; then
+            echo "No complete AI provider configuration found. Set ALBERT_API_KEY or SCALEWAY_API_KEY and the corresponding base URL." >&2
+            exit 1
+          fi
+
+      - name: Resolve nightly parameters
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            GOLDSET_NAME="${{ inputs.goldset_name }}"
+            LIMIT="${{ inputs.limit }}"
+          else
+            GOLDSET_NAME="synthetic_docs_v1"
+            LIMIT="100"
+          fi
+
+          RUN_STAMP="$(date -u +%Y%m%d)"
+          BASELINE_DIR="$RUNNER_TEMP/conformance-nightly/baselines"
+          RESOLVED_QUERIES_PATH="$RUNNER_TEMP/conformance-nightly/queries.resolved.jsonl"
+          QP_CACHE_FILE="$RUNNER_TEMP/conformance-nightly/query-processor.intent.v1.json"
+          REPORT_DIR="tests/conformance/reports/nightly/$RUN_STAMP"
+          PRECHECK_SUMMARY_PATH="$RUNNER_TEMP/conformance-nightly/precheck-summary.md"
+
+          mkdir -p "$BASELINE_DIR" "$REPORT_DIR"
+
+          echo "GOLDSET_NAME=$GOLDSET_NAME" >> "$GITHUB_ENV"
+          echo "LIMIT=$LIMIT" >> "$GITHUB_ENV"
+          echo "RUN_STAMP=$RUN_STAMP" >> "$GITHUB_ENV"
+          echo "BASELINE_DIR=$BASELINE_DIR" >> "$GITHUB_ENV"
+          echo "RESOLVED_QUERIES_PATH=$RESOLVED_QUERIES_PATH" >> "$GITHUB_ENV"
+          echo "QP_CACHE_FILE=$QP_CACHE_FILE" >> "$GITHUB_ENV"
+          echo "REPORT_DIR=$REPORT_DIR" >> "$GITHUB_ENV"
+          echo "PRECHECK_SUMMARY_PATH=$PRECHECK_SUMMARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Precheck nightly goldset prerequisites
+        env:
+          GOLDSET_NAME: ${{ env.GOLDSET_NAME }}
+          LIMIT: ${{ env.LIMIT }}
+          PRECHECK_SUMMARY_PATH: ${{ env.PRECHECK_SUMMARY_PATH }}
+        run: |
+          set -euo pipefail
+          status=0
+
+          if uv run python scripts/check_nightly_goldset_readiness.py \
+            --goldset-name "$GOLDSET_NAME" \
+            --limit "$LIMIT" \
+            --summary-path "$PRECHECK_SUMMARY_PATH"; then
+            status=0
+          else
+            status=$?
+          fi
+
+          if [[ -f "$PRECHECK_SUMMARY_PATH" ]]; then
+            cat "$PRECHECK_SUMMARY_PATH" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          exit "$status"
+
+      - name: Dump nightly baselines
+        env:
+          GOLDSET_NAME: ${{ env.GOLDSET_NAME }}
+          LIMIT: ${{ env.LIMIT }}
+          BASELINE_DIR: ${{ env.BASELINE_DIR }}
+          RESOLVED_QUERIES_PATH: ${{ env.RESOLVED_QUERIES_PATH }}
+        run: |
+          set -euo pipefail
+          limit_args=()
+          if [[ "$LIMIT" != "0" && -n "$LIMIT" ]]; then
+            limit_args+=(--limit "$LIMIT")
+          fi
+
+          uv run python scripts/dump_stage_baselines.py \
+            --goldset-name "$GOLDSET_NAME" \
+            "${limit_args[@]}" \
+            --output-dir "$BASELINE_DIR" \
+            --resolved-queries-out "$RESOLVED_QUERIES_PATH"
+
+      - name: Build nightly query-processor replay cache
+        env:
+          BASELINE_DIR: ${{ env.BASELINE_DIR }}
+          QP_CACHE_FILE: ${{ env.QP_CACHE_FILE }}
+        run: |
+          set -euo pipefail
+          uv run python scripts/build_query_processor_replay_cache.py \
+            --baseline-dir "$BASELINE_DIR" \
+            --output "$QP_CACHE_FILE"
+
+      - name: Run nightly replay conformance stages
+        env:
+          BASELINE_DIR: ${{ env.BASELINE_DIR }}
+          RESOLVED_QUERIES_PATH: ${{ env.RESOLVED_QUERIES_PATH }}
+          REPORT_DIR: ${{ env.REPORT_DIR }}
+          QP_CACHE_FILE: ${{ env.QP_CACHE_FILE }}
+        run: |
+          set -euo pipefail
+
+          run_stage() {
+            local stage="$1"
+            local report_path="$REPORT_DIR/${stage}.json"
+
+            case "$stage" in
+              query-processor)
+                pnpm --filter @assistant-rh/mastra-pipeline query-processor:conformance \
+                  --mode replay \
+                  --baseline-dir "$BASELINE_DIR" \
+                  --queries-file "$RESOLVED_QUERIES_PATH" \
+                  --llm-replay-cache-file "$QP_CACHE_FILE" \
+                  --output "$report_path"
+                ;;
+              retriever)
+                pnpm --filter @assistant-rh/mastra-pipeline retriever:conformance \
+                  --mode replay \
+                  --baseline-dir "$BASELINE_DIR" \
+                  --queries-file "$RESOLVED_QUERIES_PATH" \
+                  --output "$report_path"
+                ;;
+              section-aggregator)
+                pnpm --filter @assistant-rh/mastra-pipeline section-aggregator:conformance \
+                  --mode replay \
+                  --baseline-dir "$BASELINE_DIR" \
+                  --queries-file "$RESOLVED_QUERIES_PATH" \
+                  --output "$report_path"
+                ;;
+              context-selector)
+                pnpm --filter @assistant-rh/mastra-pipeline context-selector:conformance \
+                  --mode replay \
+                  --baseline-dir "$BASELINE_DIR" \
+                  --queries-file "$RESOLVED_QUERIES_PATH" \
+                  --output "$report_path"
+                ;;
+              context-builder)
+                pnpm --filter @assistant-rh/mastra-pipeline context-builder:conformance \
+                  --mode replay \
+                  --baseline-dir "$BASELINE_DIR" \
+                  --queries-file "$RESOLVED_QUERIES_PATH" \
+                  --output "$report_path"
+                ;;
+              rag-pipeline)
+                pnpm --filter @assistant-rh/mastra-pipeline rag-pipeline:conformance \
+                  --mode replay \
+                  --baseline-dir "$BASELINE_DIR" \
+                  --queries-file "$RESOLVED_QUERIES_PATH" \
+                  --output "$report_path"
+                ;;
+              *)
+                echo "Unknown stage: $stage" >&2
+                exit 1
+                ;;
+            esac
+          }
+
+          for stage in \
+            query-processor \
+            retriever \
+            section-aggregator \
+            context-selector \
+            context-builder \
+            rag-pipeline
+          do
+            run_stage "$stage"
+          done
+
+      - name: Build nightly summary
+        env:
+          REPORT_DIR: ${{ env.REPORT_DIR }}
+        run: |
+          set -euo pipefail
+          python scripts/summarize_conformance_reports.py \
+            --reports-dir "$REPORT_DIR" \
+            --thresholds-file tests/conformance/thresholds.replay.json \
+            --output-markdown "$RUNNER_TEMP/nightly-conformance-summary.md" \
+            --output-json "$RUNNER_TEMP/nightly-conformance-summary.json"
+
+          {
+            echo "## Nightly conformance summary"
+            echo ""
+            echo "- Goldset: \\`${GOLDSET_NAME}\\`"
+            echo "- Limit: \\`${LIMIT}\\`"
+            echo "- Run stamp: \\`${RUN_STAMP}\\`"
+            echo ""
+            cat "$RUNNER_TEMP/nightly-conformance-summary.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload nightly artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: conformance-nightly-${{ env.RUN_STAMP }}
+          path: |
+            ${{ env.REPORT_DIR }}
+            ${{ env.BASELINE_DIR }}/manifest.json
+            ${{ env.RESOLVED_QUERIES_PATH }}
+            ${{ env.QP_CACHE_FILE }}
+            ${{ env.PRECHECK_SUMMARY_PATH }}
+            ${{ runner.temp }}/nightly-conformance-summary.md
+            ${{ runner.temp }}/nightly-conformance-summary.json
+          if-no-files-found: warn
