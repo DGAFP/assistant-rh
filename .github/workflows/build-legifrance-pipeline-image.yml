@@ -7,10 +7,19 @@ on:
         description: "Tag Docker additionnel a pousser"
         required: false
         default: "latest"
+      target_environment:
+        description: "Environment GitHub contenant le namespace et les credentials registry"
+        required: true
+        type: choice
+        default: scaleway-staging
+        options:
+          - scaleway-staging
+          - scaleway-production
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
 
     steps:
       - name: Checkout code
@@ -21,7 +30,7 @@ jobs:
 
       - name: Set registry variables
         run: |
-          REGISTRY_NAMESPACE="${{ secrets.SCW_CONTAINER_REGISTRY_NAMESPACE }}"
+          REGISTRY_NAMESPACE="${{ vars.SCW_CONTAINER_REGISTRY_NAMESPACE }}"
           echo "REGISTRY_HOST=rg.fr-par.scw.cloud" >> "$GITHUB_ENV"
           echo "REGISTRY_NAMESPACE=${REGISTRY_NAMESPACE:-assistant-rh}" >> "$GITHUB_ENV"
           echo "IMAGE_NAME=legifrance-pipeline" >> "$GITHUB_ENV"
