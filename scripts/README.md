@@ -18,6 +18,15 @@ embedder et ingerer des sources RH dans Postgres/pgvector.
 - Ingestion: Postgres avec `pgvector` + variables d'environnement DB.
 
 ## Notebooks
+- `scripts/extract_pdf_MSO.ipynb`
+  - Reference notebook for MSO ingestion from `data/in/MSO`.
+  - Supports `pdf`, `pptx` and `docx`.
+  - Handles section-aware guides, FAQ-like documents, process/logigramme
+    documents and matrix/table documents.
+  - Generates extracted text files, `documents/sections/chunks` JSONL,
+    embeddings and optional PostgreSQL upsert into `rag_chunks_mso`.
+  - Detailed handover doc:
+    [`docs/MSO_NOTEBOOK_HANDOVER.md`](../docs/MSO_NOTEBOOK_HANDOVER.md)
 - `scripts/analyse.ipynb`
   - Profiling/EDA (pandas, sklearn, ydata_profiling).
   - Genere `scripts/retex_profiling_report.html`.
