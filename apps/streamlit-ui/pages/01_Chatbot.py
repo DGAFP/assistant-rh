@@ -1,3 +1,4 @@
+# ruff: noqa: I001
 from __future__ import annotations
 
 import os
@@ -1356,16 +1357,6 @@ if query:
             config_v3.query_processor.enable_acronym_expansion = getattr(rag_config, "enable_query_expansion", True)
             config_v3.query_processor.intent_prompt_name = getattr(rag_config, "v3_intent_prompt_name", "intent_unified.md")
             configured_tables = list(getattr(rag_config, "v3_tables", None) or ["matte", "mso", "service_public", "dgafp", "rgrh"])
-            if compare_mode_enabled or dgafp_compare_mode_enabled:
-                remapped_tables = []
-                for table_name in configured_tables:
-                    if compare_mode_enabled and table_name == "service_public":
-                        remapped_tables.append("service_public_scw")
-                    elif dgafp_compare_mode_enabled and table_name == "dgafp":
-                        remapped_tables.append("dgafp_scw")
-                    else:
-                        remapped_tables.append(table_name)
-                configured_tables = remapped_tables
             if forced_internal_source == "mso":
                 configured_tables = [t for t in configured_tables if t != "matte"]
             elif forced_internal_source == "matte":
