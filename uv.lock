@@ -10,6 +10,7 @@ resolution-markers = [
 members = [
     "assistant-rh",
     "assistant-rh-data-engineering",
+    "assistant-rh-data-ingestion-cli",
     "assistant-rh-rag-pipeline",
     "assistant-rh-shared-config",
 ]
@@ -216,6 +217,7 @@ version = "0.4.2"
 source = { virtual = "." }
 dependencies = [
     { name = "assistant-rh-data-engineering" },
+    { name = "assistant-rh-data-ingestion-cli" },
     { name = "assistant-rh-rag-pipeline" },
     { name = "beautifulsoup4" },
     { name = "certifi" },
@@ -257,6 +259,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "assistant-rh-data-engineering", editable = "packages/data-engineering" },
+    { name = "assistant-rh-data-ingestion-cli", editable = "apps/data-ingestion-cli" },
     { name = "assistant-rh-rag-pipeline", editable = "packages/rag-pipeline" },
     { name = "beautifulsoup4", specifier = ">=4.14.3" },
     { name = "certifi", specifier = ">=2026.2.25" },
@@ -319,6 +322,17 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "requests", specifier = ">=2.32.0" },
 ]
+
+[[package]]
+name = "assistant-rh-data-ingestion-cli"
+version = "0.4.2"
+source = { editable = "apps/data-ingestion-cli" }
+dependencies = [
+    { name = "assistant-rh-data-engineering" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "assistant-rh-data-engineering", editable = "packages/data-engineering" }]
 
 [[package]]
 name = "assistant-rh-rag-pipeline"

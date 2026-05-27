@@ -7,6 +7,7 @@ on:
       - ".github/scripts/data_engineering_plan.py"
       - ".github/scripts/scaleway_data_jobs.py"
       - ".github/data-engineering-jobs.json"
+      - "apps/data-ingestion-cli/**"
       - "packages/data-engineering/**"
       - "packages/shared-config/**"
       - "config/**"
@@ -24,6 +25,7 @@ on:
       - ".github/scripts/data_engineering_plan.py"
       - ".github/scripts/scaleway_data_jobs.py"
       - ".github/data-engineering-jobs.json"
+      - "apps/data-ingestion-cli/**"
       - "packages/data-engineering/**"
       - "packages/shared-config/**"
       - "config/**"
@@ -63,6 +65,7 @@ jobs:
           uv run --no-sync ruff check \
             .github/scripts/data_engineering_plan.py \
             .github/scripts/scaleway_data_jobs.py \
+            apps/data-ingestion-cli/src \
             packages/data-engineering/src \
             packages/shared-config/src \
             --select E,F,I
@@ -84,11 +87,14 @@ jobs:
 
       - name: Smoke-check CLI entrypoints
         run: |
+          uv run --no-sync data-ingestion --help > /dev/null
+          uv run --no-sync data-ingestion service-public medallion --help > /dev/null
+          uv run --no-sync data-ingestion service-public ingest --help > /dev/null
+          uv run --no-sync data-ingestion legifrance bulk-dump --help > /dev/null
+          uv run --no-sync data-ingestion legifrance medallion --help > /dev/null
+          uv run --no-sync data-ingestion legifrance ingest --help > /dev/null
+          uv run --no-sync data-ingestion embeddings service-public --help > /dev/null
+          uv run --no-sync data-ingestion embeddings legifrance --help > /dev/null
+
+          # Backward-compatible alias during the migration.
           uv run --no-sync assistant-rh-data --help > /dev/null
-          uv run --no-sync assistant-rh-data service-public medallion --help > /dev/null
-          uv run --no-sync assistant-rh-data service-public ingest --help > /dev/null
-          uv run --no-sync assistant-rh-data legifrance bulk-dump --help > /dev/null
-          uv run --no-sync assistant-rh-data legifrance medallion --help > /dev/null
-          uv run --no-sync assistant-rh-data legifrance ingest --help > /dev/null
-          uv run --no-sync assistant-rh-data embeddings service-public --help > /dev/null
-          uv run --no-sync assistant-rh-data embeddings legifrance --help > /dev/null

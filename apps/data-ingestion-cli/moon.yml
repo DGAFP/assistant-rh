@@ -1,0 +1,25 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+language: "python"
+layer: "application"
+stack: "backend"
+
+project:
+  title: "Data Ingestion CLI"
+  description: "Canonical CLI application for Assistant RH data ingestion jobs"
+
+toolchains:
+  default: "unstable_uv"
+
+tasks:
+  help:
+    command: "uv run data-ingestion --help"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  smoke:
+    command: "uv run data-ingestion service-public medallion --help"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
