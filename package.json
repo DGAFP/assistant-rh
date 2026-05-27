@@ -9,6 +9,6 @@
     "lint:ts": "biome check apps/mastra-pipeline/src apps/mastra-pipeline/scripts"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14"
+    "@biomejs/biome": "^2.4.16"
   }
 }

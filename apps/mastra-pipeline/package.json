@@ -26,17 +26,17 @@
     "lint": "biome check src scripts"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "2.0.41",
-    "@mastra/core": "1.26.0",
-    "dotenv": "17.2.3",
-    "pg": "8.16.3",
-    "zod": "4.3.6"
+    "@ai-sdk/openai-compatible": "2.0.48",
+    "@mastra/core": "1.37.1",
+    "dotenv": "17.4.2",
+    "pg": "8.21.0",
+    "zod": "3.25.76"
   },
   "devDependencies": {
-    "@types/node": "^24",
-    "@types/pg": "8.15.6",
-    "mastra": "1.6.1",
-    "tsx": "4.20.6",
-    "typescript": "^5.8"
+    "@types/node": "^25.9.1",
+    "@types/pg": "8.20.0",
+    "mastra": "1.10.2",
+    "tsx": "4.22.3",
+    "typescript": "^6.0.3"
   }
 }
