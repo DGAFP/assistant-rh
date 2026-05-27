@@ -27,7 +27,7 @@ scw jobs definition create \
   memory-limit="${MEMORY_LIMIT}" \
   local-storage-capacity="${LOCAL_STORAGE_CAPACITY}" \
   image-uri="rg.${REGION}.scw.cloud/${REGISTRY_NAMESPACE}/embeddings-job:${IMAGE_TAG}" \
-  startup-command.0=assistant-rh-data \
+  startup-command.0=data-ingestion \
   args.0=embeddings \
   args.1=legifrance \
   args.2=--dsn-env \

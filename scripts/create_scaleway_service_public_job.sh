@@ -17,7 +17,7 @@ scw jobs definition create \
   memory-limit=4096 \
   local-storage-capacity=2048 \
   image-uri="rg.${REGION}.scw.cloud/${REGISTRY_NAMESPACE}/service-public-pipeline:${IMAGE_TAG}" \
-  startup-command.0=assistant-rh-data \
+  startup-command.0=data-ingestion \
   args.0=service-public \
   args.1=medallion \
   args.2=--target-env \

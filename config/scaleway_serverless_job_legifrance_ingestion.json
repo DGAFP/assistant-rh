@@ -9,7 +9,7 @@
   "timezone": "Europe/Paris",
   "image_uri": "rg.fr-par.scw.cloud/assistant-rh/legifrance-ingestion:prod-latest",
   "command": [
-    "assistant-rh-data",
+    "data-ingestion",
     "legifrance",
     "ingest",
     "--dsn-env",

@@ -18,10 +18,12 @@ COPY README.md ./
 COPY config ./config
 COPY packages/shared-config ./packages/shared-config
 COPY packages/data-engineering ./packages/data-engineering
+COPY apps/data-ingestion-cli ./apps/data-ingestion-cli
 
 RUN pip install --no-cache-dir \
     ./packages/shared-config \
-    ./packages/data-engineering
+    ./packages/data-engineering \
+    ./apps/data-ingestion-cli
 
 RUN pip install --no-cache-dir \
     torch==2.6.0 \
@@ -30,4 +32,4 @@ RUN pip install --no-cache-dir \
 RUN pip install --no-cache-dir \
     sentence-transformers
 
-CMD ["assistant-rh-data", "embeddings", "backfill", "--help"]
+CMD ["data-ingestion", "embeddings", "backfill", "--help"]

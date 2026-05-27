@@ -18,7 +18,7 @@ scw jobs definition create \
   memory-limit=2048 \
   local-storage-capacity=2048 \
   image-uri="rg.${REGION}.scw.cloud/${REGISTRY_NAMESPACE}/legifrance-ingestion:${IMAGE_TAG}" \
-  startup-command.0=assistant-rh-data \
+  startup-command.0=data-ingestion \
   args.0=legifrance \
   args.1=ingest \
   args.2=--dsn-env \

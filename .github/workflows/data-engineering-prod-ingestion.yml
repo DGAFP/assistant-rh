@@ -53,7 +53,7 @@ jobs:
       - name: Ingest Service-Public into Scaleway prod
         if: ${{ github.event.inputs.source == 'all' || github.event.inputs.source == 'service_public' }}
         run: |
-          uv run --no-sync assistant-rh-data service-public ingest \
+          uv run --no-sync data-ingestion service-public ingest \
             --fiche-config config/service_public_fiches.json \
             --target-env prod \
             --from-object-storage \
@@ -62,7 +62,7 @@ jobs:
       - name: Ingest Legifrance into Scaleway prod
         if: ${{ github.event.inputs.source == 'all' || github.event.inputs.source == 'legifrance' }}
         run: |
-          uv run --no-sync assistant-rh-data legifrance ingest \
+          uv run --no-sync data-ingestion legifrance ingest \
             --target-env prod \
             --from-object-storage \
             --load-all-artifacts \
