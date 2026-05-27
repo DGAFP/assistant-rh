@@ -102,7 +102,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     previous_argv = sys.argv
     sys.argv = [f"data-ingestion {argv[0]} {argv[1]}", *job_args]
     try:
-        return int(job_main())
+        result = job_main()
+        return 0 if result is None else int(result)
     finally:
         sys.argv = previous_argv
 
