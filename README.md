@@ -62,7 +62,9 @@ assistant-rh/
 │   ├── PIPELINE.md             # Architecture détaillée du pipeline RAG
 │   ├── DATABASE.md             # Schéma complet de la base de données
 │   └── rapport_fin_de_mission.md
-├── scripts/                    # Scripts d'ingestion de données
+├── apps/
+│   └── data-ingestion-cli/     # CLI canonique d'ingestion de données
+├── scripts/                    # Scripts historiques et outillage ponctuel
 ├── notebooks/                  # Notebooks d'évaluation (RAGAS)
 └── data/                       # Données locales gitignored
 ```
@@ -108,11 +110,26 @@ if qr.should_proceed:
 
 ## Data Engineering
 
-This repository also contains a data-engineering scaffold to ingest legal
-documents (PDFs, HTML), extract text, preprocess into chunks, and compute
-embeddings for vector search.
+This repository also contains a data-ingestion CLI to ingest legal documents,
+extract text, preprocess into chunks, and compute embeddings for vector search.
 
-The ingestion scripts are in `scripts/`:
+The canonical command is `data-ingestion`:
+
+```bash
+uv run data-ingestion --help
+uv run data-ingestion service-public medallion --help
+uv run data-ingestion service-public ingest --help
+uv run data-ingestion legifrance bulk-dump --help
+uv run data-ingestion legifrance medallion --help
+uv run data-ingestion legifrance ingest --help
+uv run data-ingestion embeddings service-public --help
+uv run data-ingestion embeddings legifrance --help
+```
+
+`assistant-rh-data` remains available as a backward-compatible alias during the
+migration.
+
+Historical ingestion notebooks and compatibility scripts remain in `scripts/`:
 
 | Script | Source |
 |--------|--------|

@@ -60,7 +60,8 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
 
 
 def _print_help() -> None:
-    print("Usage: assistant-rh-data <domain> <job> [job args]\n")
+    print("Usage: data-ingestion <domain> <job> [job args]")
+    print("Compatibility alias: assistant-rh-data\n")
     print("Commands:")
     for (domain, job), spec in sorted(COMMANDS.items()):
         print(f"  {domain:15} {job:16} {spec.description}")
@@ -100,7 +101,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     job_main: Callable[[], int] = getattr(module, "main")
 
     previous_argv = sys.argv
-    sys.argv = [f"assistant-rh-data {argv[0]} {argv[1]}", *job_args]
+    sys.argv = [f"data-ingestion {argv[0]} {argv[1]}", *job_args]
     try:
         return int(job_main())
     finally:

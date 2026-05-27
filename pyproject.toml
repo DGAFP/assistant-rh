@@ -35,6 +35,7 @@ dependencies = [
     # Internal packages (monorepo workspace members)
     "assistant-rh-rag-pipeline",
     "assistant-rh-data-engineering",
+    "assistant-rh-data-ingestion-cli",
 ]
 
 [dependency-groups]
@@ -65,6 +66,7 @@ norecursedirs = ["tests/archive", ".venv", "node_modules"]
 # Workspace members - packages and apps in the monorepo
 # Paths are relative to workspace root (this file)
 members = [
+    "apps/data-ingestion-cli",
     "packages/*",
     # "apps/*",  # TODO: add apps/*/pyproject.toml to make apps installable workspace members
     # Legacy src/ will be migrated to packages/ in Phase 1
@@ -79,6 +81,7 @@ default-groups = []
 assistant-rh-rag-pipeline = { workspace = true }
 assistant-rh-data-engineering = { workspace = true }
 assistant-rh-shared-config = { workspace = true }
+assistant-rh-data-ingestion-cli = { workspace = true }
 [tool.ruff]
 line-length = 150
 
