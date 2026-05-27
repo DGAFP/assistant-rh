@@ -19,9 +19,6 @@ dependencies = [
     "assistant-rh-shared-config",
 ]
 
-[project.scripts]
-assistant-rh-data = "assistant_rh_data_engineering.cli:main"
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
