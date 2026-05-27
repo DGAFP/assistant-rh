@@ -7,10 +7,56 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
+  detect-conformance-changes:
+    name: conformance / detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.decision.outputs.should_run }}
+    steps:
+      - name: Checkout code
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/checkout@v5
+
+      - name: Detect conformance-relevant changes
+        if: ${{ github.event_name == 'pull_request' }}
+        id: paths
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            conformance:
+              # Mastra TypeScript candidate pipeline and its Node dependencies.
+              - "apps/mastra-pipeline/**"
+              - "package.json"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              # Python reference pipeline and Python dependency lock/configuration.
+              - "packages/rag-pipeline/**"
+              - "pyproject.toml"
+              - "uv.lock"
+              # Conformance fixtures, thresholds, runner helpers, and workflow definition.
+              - "tests/conformance/**"
+              - "scripts/run_mastra_conformance.py"
+              - "scripts/summarize_conformance_reports.py"
+              - ".github/workflows/conformance.yml"
+
+      - name: Decide whether to run conformance
+        id: decision
+        env:
+          IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
+          CONFORMANCE_CHANGED: ${{ steps.paths.outputs.conformance }}
+        run: |
+          if [[ "$IS_PULL_REQUEST" != "true" || "$CONFORMANCE_CHANGED" == "true" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   stage-conformance:
     name: conformance / ${{ matrix.stage }}
+    needs: detect-conformance-changes
     runs-on: ubuntu-latest
     environment: scaleway-staging
     continue-on-error: ${{ matrix.required == false }}
@@ -56,24 +102,51 @@ jobs:
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
 
     steps:
+      - name: Create skipped conformance report
+        if: ${{ needs.detect-conformance-changes.outputs.should_run != 'true' }}
+        run: |
+          mkdir -p tests/conformance/reports/ci
+          REPORT_PATH="tests/conformance/reports/ci/${{ matrix.stage }}.json"
+          cat > "$REPORT_PATH" <<JSON
+          {
+            "generatedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "mode": "replay",
+            "queriesFile": "tests/conformance/queries.sample.jsonl",
+            "queryCount": 0,
+            "succeededCount": 0,
+            "failedCount": 0,
+            "skipped": true,
+            "skipReason": "No conformance-relevant files changed in this pull request.",
+            "summary": {},
+            "details": [],
+            "errors": []
+          }
+          JSON
+          echo "Skipping ${{ matrix.stage }} conformance: no conformance-relevant files changed."
+
       - name: Checkout code
+        if: ${{ needs.detect-conformance-changes.outputs.should_run == 'true' }}
         uses: actions/checkout@v5
 
       - name: Setup pnpm
+        if: ${{ needs.detect-conformance-changes.outputs.should_run == 'true' }}
         uses: pnpm/action-setup@v5
         with:
           version: 10.33.0
 
       - name: Setup Node.js
+        if: ${{ needs.detect-conformance-changes.outputs.should_run == 'true' }}
         uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install dependencies
+        if: ${{ needs.detect-conformance-changes.outputs.should_run == 'true' }}
         run: pnpm install --frozen-lockfile
 
       - name: Run conformance stage
+        if: ${{ needs.detect-conformance-changes.outputs.should_run == 'true' }}
         env:
           ALLOW_SECRETLESS_SKIP: ${{ github.event_name == 'pull_request' && github.actor == 'dependabot[bot]' }}
           REQUIRES_DB: ${{ matrix.requires_db }}
@@ -127,7 +200,7 @@ jobs:
           esac
 
       - name: Enforce deterministic thresholds
-        if: ${{ matrix.required }}
+        if: ${{ matrix.required && needs.detect-conformance-changes.outputs.should_run == 'true' }}
         env:
           STAGE: ${{ matrix.stage }}
           SUMMARY_KEY: ${{ matrix.summary_key }}
