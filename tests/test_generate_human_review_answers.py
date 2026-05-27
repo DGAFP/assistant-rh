@@ -18,6 +18,7 @@ Question = generate_human_review_answers.Question
 build_row = generate_human_review_answers.build_row
 read_questions = generate_human_review_answers.read_questions
 write_csv = generate_human_review_answers.write_csv
+run_python_pipeline = generate_human_review_answers.run_python_pipeline
 validate_python_provider_environment = generate_human_review_answers.validate_python_provider_environment
 
 
@@ -111,3 +112,34 @@ def test_validate_python_provider_environment_accepts_explicit_provider_config(m
     monkeypatch.setenv("SCALEWAY_BASE_URL", "https://example.test/scaleway")
 
     validate_python_provider_environment()
+
+
+def test_read_questions_from_empty_csv_returns_no_questions(tmp_path: Path):
+    input_path = tmp_path / "empty.csv"
+    input_path.write_text("", encoding="utf-8")
+
+    assert read_questions(input_path) == []
+
+
+def test_run_python_pipeline_reuses_supplied_pipeline():
+    class Result:
+        answer = "Réponse"
+        metadata = {"intent": "rag_query"}
+        sources = [{"title": "Source"}]
+        timing = {}
+
+    class Pipe:
+        calls = 0
+
+        def run(self, question: str):
+            self.calls += 1
+            assert question == "Question ?"
+            return Result()
+
+    pipe = Pipe()
+
+    result = run_python_pipeline(pipe, "Question ?")
+
+    assert pipe.calls == 1
+    assert result.answer == "Réponse"
+    assert "pipeline_total_ms" in result.timing

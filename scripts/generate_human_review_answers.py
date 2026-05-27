@@ -127,7 +127,7 @@ def _read_questions_csv(path: Path, *, question_column: str, id_column: str) -> 
     questions: list[Question] = []
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
-        if reader.fieldnames is None:
+        if not reader.fieldnames:
             return []
         fallback_column = reader.fieldnames[0]
         for row_number, row in enumerate(reader, start=2):
@@ -158,12 +158,15 @@ def validate_python_provider_environment() -> None:
         )
 
 
-def run_python_pipeline(question: str) -> PipelineRun:
+def create_python_pipeline() -> Any:
     validate_python_provider_environment()
 
     from assistant_rh_rag_pipeline import create_pipeline
 
-    pipe = create_pipeline()
+    return create_pipeline()
+
+
+def run_python_pipeline(pipe: Any, question: str) -> PipelineRun:
     started = time.perf_counter()
     result = pipe.run(question)
     elapsed_ms = (time.perf_counter() - started) * 1000
@@ -286,42 +289,49 @@ def main() -> int:
     should_run_mastra = args.pipeline in {"mastra", "both"}
     mastra_api_key = args.mastra_api_key or os.getenv("OPENAI_API_KEY")
 
-    rows: list[dict[str, str]] = []
+    python_pipe = create_python_pipeline() if should_run_python else None
+
     failed = False
     total = len(questions)
     print(f"Generating {total} row(s) at {output_path}", file=sys.stderr)
 
-    for index, question in enumerate(questions, start=1):
-        print(f"[{index}/{total}] {question.id}: {question.question[:90]}", file=sys.stderr)
-        python_run = None
-        mastra_run = None
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS, extrasaction="ignore")
+        writer.writeheader()
 
-        if should_run_python:
-            try:
-                python_run = run_python_pipeline(question.question)
-            except Exception as exc:  # pragma: no cover - environment dependent
-                failed = True
-                python_run = error_run(exc)
-                if not args.continue_on_error:
-                    raise
+        for index, question in enumerate(questions, start=1):
+            print(f"[{index}/{total}] {question.id}: {question.question[:90]}", file=sys.stderr)
+            python_run = None
+            mastra_run = None
 
-        if should_run_mastra:
-            try:
-                mastra_run = run_mastra_pipeline(
-                    question=question.question,
-                    base_url=args.mastra_base_url,
-                    model=args.mastra_model,
-                    api_key=mastra_api_key,
-                    timeout_s=args.timeout_s,
-                )
-            except Exception as exc:  # pragma: no cover - environment dependent
-                failed = True
-                mastra_run = error_run(exc)
-                if not args.continue_on_error:
-                    raise
+            if should_run_python:
+                try:
+                    assert python_pipe is not None
+                    python_run = run_python_pipeline(python_pipe, question.question)
+                except Exception as exc:  # pragma: no cover - environment dependent
+                    failed = True
+                    python_run = error_run(exc)
+                    if not args.continue_on_error:
+                        raise
 
-        rows.append(build_row(question, python_run, mastra_run))
-        write_csv(output_path, rows)
+            if should_run_mastra:
+                try:
+                    mastra_run = run_mastra_pipeline(
+                        question=question.question,
+                        base_url=args.mastra_base_url,
+                        model=args.mastra_model,
+                        api_key=mastra_api_key,
+                        timeout_s=args.timeout_s,
+                    )
+                except Exception as exc:  # pragma: no cover - environment dependent
+                    failed = True
+                    mastra_run = error_run(exc)
+                    if not args.continue_on_error:
+                        raise
+
+            writer.writerow(build_row(question, python_run, mastra_run))
+            handle.flush()
 
     print(
         json.dumps(
