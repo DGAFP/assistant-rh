@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.5.0](https://github.com/DGAFP/assistant-rh/compare/v0.4.2...v0.5.0) (2026-05-27)
+
+
+### Features
+
+* add MSO data ingestion support ([eeea940](https://github.com/DGAFP/assistant-rh/commit/eeea940ca2d4be9752698759a783d745bcf450c6))
+* add MSO extraction notebook ([5e32504](https://github.com/DGAFP/assistant-rh/commit/5e32504ece5b0376e5d6937fa6be623f1fe7699e))
+* improve MSO extraction notebook ([6575435](https://github.com/DGAFP/assistant-rh/commit/6575435ee0cae6e4795b249b1502da95b48bf101))
+* introduce data-ingestion CLI app ([aa9e028](https://github.com/DGAFP/assistant-rh/commit/aa9e028af00e06cb03e7fb4e495854ce8ab2956c))
+* introduce data-ingestion CLI app ([1946abe](https://github.com/DGAFP/assistant-rh/commit/1946abe4646c70ce176de036d8157e75ced697c2))
+
+
+### Bug Fixes
+
+* adapt MSO ingestion cherry-picks to public branch ([a557628](https://github.com/DGAFP/assistant-rh/commit/a5576282a30ccfb0e48800747b40a52ce2d49c3c))
+* handle empty data ingestion job returns ([41d19ef](https://github.com/DGAFP/assistant-rh/commit/41d19ef6a1368fe0905da8779e227e856523207a))
+* include all workspace packages in release bumps ([97972c8](https://github.com/DGAFP/assistant-rh/commit/97972c8cda053c6202a503ed5a49787db341e705))
+* include all workspace packages in release bumps ([95db67a](https://github.com/DGAFP/assistant-rh/commit/95db67a5be09aa04de5c97fdf70fa68195c2e28e))
+* update release lockfile via uv ([98405af](https://github.com/DGAFP/assistant-rh/commit/98405af8b2ad682ee428752cc8872d324d7d900d))
+
+
+### Documentation
+
+* annotate notebook sections for handover ([84635a0](https://github.com/DGAFP/assistant-rh/commit/84635a0ced15d1e1d488a09723c9aea264dc47d1))
+* document MSO notebook handover ([9a4fee6](https://github.com/DGAFP/assistant-rh/commit/9a4fee6b88add9e653b9c7314237c433f2625a1e))
+* explain MSO notebook directly in notebook ([2151853](https://github.com/DGAFP/assistant-rh/commit/21518538f63c1f79605e038c8874ff67e17894ea))
+
 ## [0.4.2](https://github.com/DGAFP/assistant-rh/compare/v0.4.1...v0.4.2) (2026-05-20)
 
 

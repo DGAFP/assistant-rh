@@ -1,6 +1,6 @@
 [project]
 name = "assistant-rh-data-engineering"
-version = "0.4.2"
+version = "0.5.0"
 description = "Data ingestion pipeline for Assistant RH"
 requires-python = ">=3.12"
 
