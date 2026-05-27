@@ -126,8 +126,8 @@ uv run data-ingestion embeddings service-public --help
 uv run data-ingestion embeddings legifrance --help
 ```
 
-`assistant-rh-data` remains available as a backward-compatible alias during the
-migration.
+The legacy `assistant-rh-data` command has been retired; use `data-ingestion`
+for all data ingestion jobs.
 
 Historical ingestion notebooks and compatibility scripts remain in `scripts/`:
 

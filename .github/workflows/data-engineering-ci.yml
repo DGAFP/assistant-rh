@@ -95,6 +95,3 @@ jobs:
           uv run --no-sync data-ingestion legifrance ingest --help > /dev/null
           uv run --no-sync data-ingestion embeddings service-public --help > /dev/null
           uv run --no-sync data-ingestion embeddings legifrance --help > /dev/null
-
-          # Backward-compatible alias during the migration.
-          uv run --no-sync assistant-rh-data --help > /dev/null

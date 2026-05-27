@@ -8,7 +8,7 @@ The executable command is:
 uv run data-ingestion <domain> <job> [job args]
 ```
 
-`assistant-rh-data` remains available as a backward-compatible alias during the migration.
+The legacy `assistant-rh-data` command has been retired; use `data-ingestion` for all data ingestion jobs.
 
 ## Commands
 
