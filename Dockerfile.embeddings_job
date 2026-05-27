@@ -14,6 +14,13 @@ RUN curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/t
     && /tmp/aws/install \
     && rm -rf /tmp/aws /tmp/awscliv2.zip
 
+RUN pip install --no-cache-dir \
+    torch==2.6.0 \
+    --index-url https://download.pytorch.org/whl/cpu
+
+RUN pip install --no-cache-dir \
+    sentence-transformers
+
 COPY README.md ./
 COPY config ./config
 COPY packages/shared-config ./packages/shared-config
@@ -24,12 +31,5 @@ RUN pip install --no-cache-dir \
     ./packages/shared-config \
     ./packages/data-engineering \
     ./apps/data-ingestion-cli
-
-RUN pip install --no-cache-dir \
-    torch==2.6.0 \
-    --index-url https://download.pytorch.org/whl/cpu
-
-RUN pip install --no-cache-dir \
-    sentence-transformers
 
 CMD ["data-ingestion", "embeddings", "backfill", "--help"]

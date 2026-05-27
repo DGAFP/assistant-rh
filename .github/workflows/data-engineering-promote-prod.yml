@@ -9,6 +9,7 @@ on:
       - ".github/scripts/data_engineering_plan.py"
       - ".github/scripts/scaleway_data_jobs.py"
       - ".github/data-engineering-jobs.json"
+      - "apps/data-ingestion-cli/**"
       - "packages/data-engineering/**"
       - "packages/shared-config/**"
       - "config/**"
