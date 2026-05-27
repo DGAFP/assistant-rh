@@ -12,7 +12,7 @@
     "timezone": "Europe/Paris"
   },
   "startup_command": [
-    "assistant-rh-data"
+    "data-ingestion"
   ],
   "args": [
     "service-public",

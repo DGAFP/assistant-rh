@@ -18,7 +18,7 @@ scw jobs definition create \
   memory-limit=4096 \
   local-storage-capacity="${LOCAL_STORAGE_CAPACITY}" \
   image-uri="rg.${REGION}.scw.cloud/${REGISTRY_NAMESPACE}/legifrance-bulk-dump:${IMAGE_TAG}" \
-  startup-command.0=assistant-rh-data \
+  startup-command.0=data-ingestion \
   args.0=legifrance \
   args.1=bulk-dump \
   args.2=--target-env \

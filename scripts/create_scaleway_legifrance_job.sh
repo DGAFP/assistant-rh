@@ -22,7 +22,7 @@ scw jobs definition create \
   memory-limit="${MEMORY_LIMIT}" \
   local-storage-capacity="${LOCAL_STORAGE_CAPACITY}" \
   image-uri="rg.${REGION}.scw.cloud/${REGISTRY_NAMESPACE}/legifrance-pipeline:${IMAGE_TAG}" \
-  startup-command.0=assistant-rh-data \
+  startup-command.0=data-ingestion \
   args.0=legifrance \
   args.1=medallion \
   args.2=--target-env \

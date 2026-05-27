@@ -161,7 +161,7 @@ def create_definition(
         f"memory-limit={spec['memory_limit']}",
         f"local-storage-capacity={spec['local_storage_capacity']}",
         f"image-uri={image}",
-        "startup-command.0=assistant-rh-data",
+        "startup-command.0=data-ingestion",
         f"job-timeout={spec['job_timeout']}",
         f"project-id={project_id}",
         f"region={region}",
@@ -200,7 +200,7 @@ def update_definition(
             f"memory-limit={spec['memory_limit']}",
             f"local-storage-capacity={spec['local_storage_capacity']}",
             f"image-uri={image}",
-            "startup-command.0=assistant-rh-data",
+            "startup-command.0=data-ingestion",
             f"job-timeout={spec['job_timeout']}",
             f"region={region}",
         ],
@@ -268,7 +268,7 @@ def start_definition(
         "definition",
         "start",
         job_id,
-        "startup-command.0=assistant-rh-data",
+        "startup-command.0=data-ingestion",
         *indexed_args("args", command_args),
         *[f"environment-variables.{key}={value}" for key, value in sorted(environment.items())],
         f"region={region}",
@@ -317,7 +317,7 @@ def upsert_and_start_jobs(args: argparse.Namespace) -> int:
         if args.target_env == "prod":
             command_args.extend(render_args(spec.get("prod_args") or [], context))
         environment = job_environment(spec, args.target_env, region)
-        print(f"Starting Scaleway job {name}: assistant-rh-data {' '.join(command_args)}")
+        print(f"Starting Scaleway job {name}: data-ingestion {' '.join(command_args)}")
         start_definition(
             job_id,
             spec,

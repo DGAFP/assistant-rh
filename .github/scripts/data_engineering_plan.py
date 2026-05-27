@@ -69,6 +69,7 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
             or path == ".github/scripts/scaleway_data_jobs.py"
             or path == ".github/data-engineering-jobs.json"
             or path == "uv.lock"
+            or path.startswith("apps/data-ingestion-cli/")
             or path == "packages/data-engineering/pyproject.toml"
             or path == "packages/data-engineering/src/assistant_rh_data_engineering/cli.py"
             or path == "packages/data-engineering/src/assistant_rh_data_engineering/jobs/__init__.py"

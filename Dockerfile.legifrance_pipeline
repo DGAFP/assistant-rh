@@ -18,9 +18,11 @@ COPY README.md ./
 COPY config ./config
 COPY packages/shared-config ./packages/shared-config
 COPY packages/data-engineering ./packages/data-engineering
+COPY apps/data-ingestion-cli ./apps/data-ingestion-cli
 
 RUN pip install --no-cache-dir \
     ./packages/shared-config \
-    ./packages/data-engineering
+    ./packages/data-engineering \
+    ./apps/data-ingestion-cli
 
-CMD ["assistant-rh-data", "legifrance", "medallion", "--help"]
+CMD ["data-ingestion", "legifrance", "medallion", "--help"]
