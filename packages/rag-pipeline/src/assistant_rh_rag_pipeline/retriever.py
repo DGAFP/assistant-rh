@@ -111,8 +111,8 @@ class Retriever:
 
         embedding = self.embedder.embed_query(query)
         if embedding is None:
-            logger.warning("Embedding failed – falling back to lexical retrieval when possible")
-            return self._retrieve_lexical_only(query)
+            logger.warning("Embedding failed – returning empty results")
+            return []
 
         embed_model_used = self.embedder.last_model_used or "albert"
         is_hybrid = self.config.search_mode == SearchMode.HYBRID
@@ -177,42 +177,6 @@ class Retriever:
             len(all_chunks), n_workers, mode_label, (time.time() - t0) * 1000,
         )
         return all_chunks
-
-    def _retrieve_lexical_only(self, query: str) -> List[RetrievedChunk]:
-        """Fallback retrieval path when semantic embeddings are unavailable."""
-        tables = [
-            CHUNK_TABLES[k]
-            for k in self.config.tables
-            if k in CHUNK_TABLES and CHUNK_TABLES[k].tsv_col
-        ]
-        if not tables and not self.config.enable_chunks_test:
-            return []
-
-        per_source_results: Dict[str, List[RetrievedChunk]] = {}
-        n_workers = len(tables) + (1 if self.config.enable_chunks_test else 0)
-        with ThreadPoolExecutor(max_workers=max(n_workers, 1)) as pool:
-            futures = {
-                pool.submit(self._search_table_lexical, tbl, query): tbl.name
-                for tbl in tables
-            }
-            if self.config.enable_chunks_test:
-                futures[pool.submit(self._search_chunks_test_lexical, query)] = "rag_chunks_test"
-
-            for future in as_completed(futures):
-                name = futures[future]
-                try:
-                    result = future.result()
-                    self._sort_chunks_deterministically(result)
-                    logger.info("  %s → %d chunks [lexical fallback]", name, len(result))
-                    per_source_results[name] = result
-                except Exception as exc:
-                    logger.error("Lexical fallback on %s failed (%s): %s", name, type(exc).__name__, exc)
-
-        merged = self._merge_cross_source_ranks(per_source_results)
-        return self._normalize_merged_scores(
-            merged,
-            source_count=len(per_source_results),
-        )
 
     def _normalize_merged_scores(
         self,
@@ -297,7 +261,6 @@ class Retriever:
 
     _TABLE_META_COLS: Dict[str, List[str]] = {
         "rag_chunks_matte": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
-        "rag_chunks_mso": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
         "rag_chunks_service_public": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
         CHUNK_TABLES["service_public_scw"].name: ["source_name", "section_path", "role", "thematique", "short_id", "source"],
         "rag_chunks_dgafp": ["title", "full_title", "number", "category", "url", "cid"],
@@ -451,40 +414,6 @@ class Retriever:
             top_k,                                         # final limit
         )
         return self._exec_de_table(table, sql, params, model_used)
-
-    def _search_table_lexical(
-        self,
-        table: ChunkTable,
-        query: str,
-    ) -> List[RetrievedChunk]:
-        """Pure lexical search on a DE table using its tsvector column."""
-        if not table.tsv_col:
-            return []
-
-        extra_cols = self._TABLE_META_COLS.get(table.name, [])
-        extra_sql = "".join(f", t.{c}" for c in extra_cols)
-        section_sql = ", t.section_id" if table.has_sections else ""
-        tsq = _TSQUERY_OR.format(p="%s")
-        top_k = self.config.initial_top_k
-
-        sql = f"""
-            WITH parsed_query AS (
-                SELECT ({tsq}) AS q
-            )
-            SELECT
-                t.{table.id_col} AS chunk_id,
-                t.{table.text_col} AS chunk_text,
-                ts_rank_cd(t.{table.tsv_col}, pq.q) AS score
-                {extra_sql}
-                {section_sql}
-            FROM {table.name} t
-            CROSS JOIN parsed_query pq
-            WHERE t.{table.tsv_col} @@ pq.q
-            ORDER BY ts_rank_cd(t.{table.tsv_col}, pq.q) DESC, t.{table.id_col}
-            LIMIT %s
-        """
-        params: Tuple = (query, query, query, top_k)
-        return self._exec_de_table(table, sql, params, "lexical")
 
     def _exec_de_table(
         self,

@@ -84,7 +84,7 @@ class RuntimeRAGConfig:
     reformulation_add_jurisdiction: bool = True
     reformulation_add_temporal: bool = True
     reformulation_include_acronyms: bool = True
-    v3_tables: List[str] = field(default_factory=lambda: ["matte", "mso", "service_public", "dgafp", "rgrh"])
+    v3_tables: List[str] = field(default_factory=lambda: ["matte", "service_public", "dgafp", "rgrh"])
     v3_enable_chunks_test: bool = True
     v3_context_mode: str = "standard"
     v3_token_budget: int = 8000

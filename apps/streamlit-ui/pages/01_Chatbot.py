@@ -1,9 +1,6 @@
-# ruff: noqa: I001
 from __future__ import annotations
 
 import os
-import sys
-from pathlib import Path
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SUPPRESS WARNINGS - Must be FIRST before any streamlit import
@@ -15,17 +12,6 @@ warnings.filterwarnings("ignore", message=".*st.cache.*", category=DeprecationWa
 warnings.filterwarnings("ignore", message=".*st.cache.*", category=FutureWarning)
 warnings.filterwarnings("ignore", message=".*cache.*deprecated.*")
 warnings.filterwarnings("ignore", message=".*use_container_width.*")
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
-EXTRA_PATHS = [
-    REPO_ROOT,
-    REPO_ROOT / "packages" / "rag-pipeline" / "src",
-    REPO_ROOT / "packages" / "data-engineering" / "src",
-]
-for candidate in EXTRA_PATHS:
-    path_str = str(candidate)
-    if path_str not in sys.path:
-        sys.path.insert(0, path_str)
 
 import streamlit as st  # noqa: E402 – early import for monkey-patch
 
@@ -43,9 +29,9 @@ import datetime as dt
 import json
 import random
 import time
-import unicodedata
 import uuid
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -66,7 +52,6 @@ from assistant_rh_rag_pipeline.chat_logger import build_log_row, build_non_rag_r
 from assistant_rh_rag_pipeline.chat_logger import log_run as _log_run_v3
 from assistant_rh_rag_pipeline.config import (
     DEFAULT_SYSTEM_PROMPT,
-    EmbeddingModel,
     get_prompt_content,
     today_fr,
 )
@@ -344,7 +329,6 @@ class Turn:
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     feedback: Optional[Dict[str, Any]] = None
     legal_refs: Optional[List] = None  # Références juridiques extraites (MatchedReference)
-    is_clarification: bool = False
 
 
 # ---------- Feedback storage ----------
@@ -808,8 +792,6 @@ if "config_logged" not in st.session_state:
 # ═══════════════════════════════════════════════════════════════════════════════
 if "turns" not in st.session_state:
     st.session_state.turns = []
-if "pending_internal_source_clarification" not in st.session_state:
-    st.session_state.pending_internal_source_clarification = None
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Cookie Manager (session tracking, user group, disclaimer)
@@ -979,7 +961,6 @@ with col2:
     new_chat = st.button(label="**:material/refresh: New chat**", key="new", width="stretch", type="primary")
     if new_chat:
         st.session_state.turns = []
-        st.session_state.pending_internal_source_clarification = None
         # Générer un nouveau conversation_id pour le nouveau fil de discussion
         st.session_state.conversation_id = str(uuid.uuid4())[:8]
         # 🔄 Régénérer 3 nouvelles suggestions aléatoires
@@ -1012,7 +993,6 @@ def _detect_source_type(chunk: Chunk) -> str:
         # Mapper les noms de tables vers les noms lisibles
         table_to_name = {
             "rag_chunks_matte": "MATTE",
-            "rag_chunks_mso": "MSO",
             "rag_chunks_fiches_sp": "Service Public",
             "rag_chunks_dgafp": "DGAFP",
             "rag_chunks_3": "RAG3",  # Nouvelle source
@@ -1030,65 +1010,6 @@ def _detect_source_type(chunk: Chunk) -> str:
         return "MATTE"
     else:
         return "Inconnu"
-
-
-def _normalize_source_hint(text: str) -> str:
-    value = unicodedata.normalize("NFKD", text or "")
-    value = "".join(ch for ch in value if not unicodedata.combining(ch))
-    value = value.lower()
-    return " ".join(value.split())
-
-
-def _parse_internal_source_choice(text: str) -> Optional[str]:
-    norm = f" {_normalize_source_hint(text)} "
-    mentions_mso = any(token in norm for token in (
-        " mso ",
-        " ministeres sociaux ",
-        " ministere du travail ",
-        " ministere des solidarites ",
-    ))
-    mentions_matte = any(token in norm for token in (
-        " matte ",
-        " ministere de la transition ecologique ",
-        " transition ecologique ",
-        " mtect ",
-    ))
-    if mentions_mso and not mentions_matte:
-        return "mso"
-    if mentions_matte and not mentions_mso:
-        return "matte"
-    return None
-
-
-def _needs_internal_source_clarification(query: str, configured_tables: List[str]) -> bool:
-    if "mso" not in configured_tables or "matte" not in configured_tables:
-        return False
-    if _parse_internal_source_choice(query):
-        return False
-    norm = _normalize_source_hint(query)
-    if "mso" in norm and "matte" in norm:
-        return True
-    internal_doc_cues = (
-        "fiche",
-        "guide",
-        "instruction",
-        "processus",
-        "procedure",
-        "procédure",
-        "note interne",
-        "cycle de paie",
-        "rdr",
-        "actes deconcentres",
-        "actes déconcentrés",
-    )
-    return any(cue in norm for cue in internal_doc_cues)
-
-
-def _build_internal_source_clarification_message() -> str:
-    return (
-        "Pour choisir la bonne base interne, parlez-vous des documents **MSO** "
-        "ou des fiches **MATTE** ? Répondez simplement `MSO` ou `MATTE`."
-    )
 
 
 def _source_badge_html(source: str) -> str:
@@ -1266,14 +1187,14 @@ for idx, t in enumerate(st.session_state.turns):
         # unsafe_allow_html=True pour supporter les <br/> dans les tableaux (GPT-OSS)
         st.markdown(t.assistant, unsafe_allow_html=True)
         # 📚 Afficher les sources pour l'historique (sauf si réponse négative ou sources à cacher)
-        if not t.is_clarification and not is_negative_response(t.assistant) and not should_hide_sources(t.assistant):
+        if not is_negative_response(t.assistant) and not should_hide_sources(t.assistant):
             render_sources(t.retrieved, key_suffix=f"history_{idx}", legal_refs=t.legal_refs)
         if rag_config.verbose_mode:
             with st.expander("Détails RAG", expanded=False):
                 st.json([{"id": c.id, "score": round(c.score, 3), "source": c.metadata.get("source_name", "")} for c in (t.retrieved or [])])
 
         # Feedback seulement si réponse positive
-        if not t.is_clarification and not is_negative_response(t.assistant):
+        if not is_negative_response(t.assistant):
             render_feedback_block(t)
         # render_feedback_block(i, t, llm_config)
 
@@ -1294,49 +1215,6 @@ if query:
     with st.chat_message("user", avatar="🧑‍💻"):
         st.markdown(query)
 
-    configured_tables_preview = list(
-        getattr(rag_config, "v3_tables", None) or ["matte", "mso", "service_public", "dgafp", "rgrh"]
-    )
-    pending_source_clarification = st.session_state.pending_internal_source_clarification
-    forced_internal_source: Optional[str] = None
-    query_for_pipeline = query
-
-    if pending_source_clarification:
-        forced_internal_source = _parse_internal_source_choice(query)
-        if not forced_internal_source:
-            clarification_msg = _build_internal_source_clarification_message()
-            with st.chat_message("assistant"):
-                st.markdown(clarification_msg)
-            st.session_state.turns.append(
-                Turn(
-                    user=query,
-                    assistant=clarification_msg,
-                    retrieved=[],
-                    is_clarification=True,
-                )
-            )
-            st.stop()
-        query_for_pipeline = pending_source_clarification["original_query"]
-        st.session_state.pending_internal_source_clarification = None
-    else:
-        forced_internal_source = _parse_internal_source_choice(query)
-        if forced_internal_source is None and _needs_internal_source_clarification(query, configured_tables_preview):
-            clarification_msg = _build_internal_source_clarification_message()
-            with st.chat_message("assistant"):
-                st.markdown(clarification_msg)
-            st.session_state.pending_internal_source_clarification = {
-                "original_query": query,
-            }
-            st.session_state.turns.append(
-                Turn(
-                    user=query,
-                    assistant=clarification_msg,
-                    retrieved=[],
-                    is_clarification=True,
-                )
-            )
-            st.stop()
-
     # ═══════════════════════════════════════════════════════════════════════════
     # RAG V3 CLEAN PIPELINE
     # ═══════════════════════════════════════════════════════════════════════════
@@ -1356,23 +1234,11 @@ if query:
             config_v3.query_processor.enable_intent_gating = getattr(rag_config, "enable_intent_gating", False)
             config_v3.query_processor.enable_acronym_expansion = getattr(rag_config, "enable_query_expansion", True)
             config_v3.query_processor.intent_prompt_name = getattr(rag_config, "v3_intent_prompt_name", "intent_unified.md")
-            configured_tables = list(getattr(rag_config, "v3_tables", None) or ["matte", "mso", "service_public", "dgafp", "rgrh"])
-            if forced_internal_source == "mso":
-                configured_tables = [t for t in configured_tables if t != "matte"]
-            elif forced_internal_source == "matte":
-                configured_tables = [t for t in configured_tables if t != "mso"]
+            configured_tables = list(getattr(rag_config, "v3_tables", None) or ["matte", "service_public", "dgafp", "rgrh"])
             config_v3.retrieval.tables = configured_tables
             config_v3.retrieval.enable_chunks_test = getattr(rag_config, "v3_enable_chunks_test", True)
             config_v3.retrieval.initial_top_k = v3_initial_top_k
             config_v3.retrieval.alpha = v3_alpha
-            _embedding_model_map = {
-                "albert": EmbeddingModel.ALBERT,
-                "bge_scaleway": EmbeddingModel.BGE_SCALEWAY,
-            }
-            config_v3.retrieval.embedding_model = _embedding_model_map.get(
-                getattr(rag_config, "embedding_model", "albert"),
-                EmbeddingModel.ALBERT,
-            )
             config_v3.aggregation.enable_section_reranker = v3_enable_reranker
             config_v3.aggregation.section_rerank_top_k = v3_rerank_top_k
             search_mode_map = {"semantic": SearchModeV3.SEMANTIC, "hybrid": SearchModeV3.HYBRID, "lexical": SearchModeV3.LEXICAL}
@@ -1390,8 +1256,6 @@ if query:
             if st.session_state.turns:
                 recent_turns = st.session_state.turns[-MAX_HISTORY_TURNS_V3:]
                 for turn in recent_turns:
-                    if getattr(turn, "is_clarification", False):
-                        continue
                     conversation_history_v3.append(
                         {
                             "role": "user",
@@ -1409,7 +1273,7 @@ if query:
             t_v3_start = time.time()
 
             # Étape 1 : traitement de la requête (intent + acronymes)
-            qr_v3 = pipeline_v3.process_query(query_for_pipeline, conversation_history_v3)
+            qr_v3 = pipeline_v3.process_query(query, conversation_history_v3)
 
             # Si hors-scope (chit-chat, etc.), répondre directement
             if not qr_v3.should_proceed:
@@ -1417,14 +1281,14 @@ if query:
                     v3_response = qr_v3.direct_response or ""
                     st.markdown(v3_response)
                 turn_id = str(uuid.uuid4())[:8]
-                turn_obj = Turn(id=turn_id, user=query_for_pipeline, assistant=v3_response, retrieved=[], prompt_used="")
+                turn_obj = Turn(id=turn_id, user=query, assistant=v3_response, retrieved=[], prompt_used="")
                 st.session_state.turns.append(turn_obj)
 
                 # Log non-RAG turns for full conversation traceability
                 try:
                     row = build_non_rag_row(
                         turn_id,
-                        query_for_pipeline,
+                        query,
                         v3_response,
                         qr_v3,
                         pipeline_v3,
@@ -1444,8 +1308,6 @@ if query:
             with st.chat_message("assistant"):
                 status_placeholder = st.empty()
                 status_placeholder.caption("🔍 Analyse de la question...")
-                if forced_internal_source:
-                    st.caption(f"Source interne retenue pour le retrieval : **{forced_internal_source.upper()}**")
 
                 def _update_status(msg: str):
                     status_placeholder.caption(f"⏳ {msg}")
@@ -1548,7 +1410,7 @@ if query:
             turn_id = str(uuid.uuid4())[:8]
             turn_obj = Turn(
                 id=turn_id,
-                user=query_for_pipeline,
+                user=query,
                 assistant=v3_response,
                 retrieved=v1_chunks_for_display,  # Maintenant on a les chunks
                 prompt_used="",
@@ -1562,7 +1424,7 @@ if query:
             try:
                 row = build_log_row(
                     turn_id=turn_id,
-                    query=query_for_pipeline,
+                    query=query,
                     response=v3_response,
                     pipeline=pipeline_v3,
                     qr=qr_v3,
