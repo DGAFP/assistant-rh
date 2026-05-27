@@ -18,6 +18,7 @@ Question = generate_human_review_answers.Question
 build_row = generate_human_review_answers.build_row
 read_questions = generate_human_review_answers.read_questions
 write_csv = generate_human_review_answers.write_csv
+configure_python_provider_environment = generate_human_review_answers.configure_python_provider_environment
 
 
 def test_read_questions_from_plain_text_skips_blank_lines(tmp_path: Path):
@@ -86,3 +87,23 @@ def test_write_csv_outputs_human_review_columns(tmp_path: Path):
     assert rows[0]["question"] == "Question ?"
     assert rows[0]["python_answer"] == "Python"
     assert "mastra_answer" in rows[0]
+
+
+def test_configure_python_provider_environment_sets_openai_compatible_base_urls(monkeypatch):
+    monkeypatch.delenv("ALBERT_BASE_URL", raising=False)
+    monkeypatch.delenv("SCALEWAY_BASE_URL", raising=False)
+
+    configure_python_provider_environment()
+
+    assert generate_human_review_answers.os.environ["ALBERT_BASE_URL"] == "https://albert.api.etalab.gouv.fr/v1"
+    assert generate_human_review_answers.os.environ["SCALEWAY_BASE_URL"].startswith("https://api.scaleway.ai/")
+
+
+def test_configure_python_provider_environment_preserves_explicit_base_urls(monkeypatch):
+    monkeypatch.setenv("ALBERT_BASE_URL", "https://example.test/albert")
+    monkeypatch.setenv("SCALEWAY_BASE_URL", "https://example.test/scaleway")
+
+    configure_python_provider_environment()
+
+    assert generate_human_review_answers.os.environ["ALBERT_BASE_URL"] == "https://example.test/albert"
+    assert generate_human_review_answers.os.environ["SCALEWAY_BASE_URL"] == "https://example.test/scaleway"
