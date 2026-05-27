@@ -3,6 +3,21 @@ name: Conformance
 on:
   pull_request:
     branches: [main]
+    paths:
+      # Mastra TypeScript candidate pipeline and its Node dependencies.
+      - "apps/mastra-pipeline/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      # Python reference pipeline and Python dependency lock/configuration.
+      - "packages/rag-pipeline/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      # Conformance fixtures, thresholds, runner helpers, and workflow definition.
+      - "tests/conformance/**"
+      - "scripts/run_mastra_conformance.py"
+      - "scripts/summarize_conformance_reports.py"
+      - ".github/workflows/conformance.yml"
   workflow_dispatch:
 
 permissions:
