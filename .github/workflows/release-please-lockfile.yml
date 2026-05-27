@@ -1,0 +1,56 @@
+name: Release Please Lockfile Update
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    paths:
+      - ".release-please-manifest.json"
+      - "release-please-config.json"
+      - "pyproject.toml"
+      - "apps/data-ingestion-cli/pyproject.toml"
+      - "apps/mastra-pipeline/package.json"
+      - "packages/*/pyproject.toml"
+      - "uv.lock"
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: release-please-lockfile-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  update-uv-lock:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release-please--') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release PR branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Refresh uv lockfile
+        run: uv lock
+
+      - name: Commit lockfile update
+        uses: stefanzweifel/git-auto-commit-action@v6
+        with:
+          commit_message: "chore: update uv lockfile for release"
+          file_pattern: uv.lock
+          commit_user_name: github-actions[bot]
+          commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
+          commit_author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
