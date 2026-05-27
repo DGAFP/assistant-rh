@@ -39,8 +39,6 @@ import requests
 from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_ALBERT_BASE_URL = "https://albert.api.etalab.gouv.fr/v1"
-DEFAULT_SCALEWAY_BASE_URL = "https://api.scaleway.ai/11aa88cb-ec5b-4df9-bcb4-e9e82576ae58/v1"
 load_dotenv(REPO_ROOT / ".env")
 
 PipelineChoice = Literal["python", "mastra", "both"]
@@ -141,21 +139,27 @@ def _read_questions_csv(path: Path, *, question_column: str, id_column: str) -> 
     return questions
 
 
-def configure_python_provider_environment() -> None:
-    """Ensure OpenAI-compatible providers do not silently fall back to OpenAI.
+def validate_python_provider_environment() -> None:
+    """Fail fast when provider config would fall through to api.openai.com.
 
     The pipeline LLM client only passes ``base_url`` to the OpenAI SDK when the
-    provider-specific URL env var is set. Existing embedder/reranker code has
-    DINUM/Scaleway defaults, so we mirror those defaults here for one-shot batch
-    generation when `.env` only contains API keys.
+    provider-specific URL env var is set. Without these URLs, Albert/Scaleway
+    API keys are sent to OpenAI and fail with misleading 401 errors. Keep the
+    URLs in `.env` or the shell environment rather than hardcoding
+    environment-specific infrastructure details in this script.
     """
 
-    os.environ.setdefault("ALBERT_BASE_URL", DEFAULT_ALBERT_BASE_URL)
-    os.environ.setdefault("SCALEWAY_BASE_URL", DEFAULT_SCALEWAY_BASE_URL)
+    required = ["ALBERT_API_KEY", "ALBERT_BASE_URL", "SCALEWAY_API_KEY", "SCALEWAY_BASE_URL"]
+    missing = [name for name in required if not os.getenv(name)]
+    if missing:
+        formatted = ", ".join(missing)
+        raise RuntimeError(
+            f"Python pipeline provider configuration is incomplete. Missing: {formatted}. Add these variables to .env or the shell environment."
+        )
 
 
 def run_python_pipeline(question: str) -> PipelineRun:
-    configure_python_provider_environment()
+    validate_python_provider_environment()
 
     from assistant_rh_rag_pipeline import create_pipeline
 

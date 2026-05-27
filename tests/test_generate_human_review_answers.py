@@ -18,7 +18,7 @@ Question = generate_human_review_answers.Question
 build_row = generate_human_review_answers.build_row
 read_questions = generate_human_review_answers.read_questions
 write_csv = generate_human_review_answers.write_csv
-configure_python_provider_environment = generate_human_review_answers.configure_python_provider_environment
+validate_python_provider_environment = generate_human_review_answers.validate_python_provider_environment
 
 
 def test_read_questions_from_plain_text_skips_blank_lines(tmp_path: Path):
@@ -89,21 +89,25 @@ def test_write_csv_outputs_human_review_columns(tmp_path: Path):
     assert "mastra_answer" in rows[0]
 
 
-def test_configure_python_provider_environment_sets_openai_compatible_base_urls(monkeypatch):
-    monkeypatch.delenv("ALBERT_BASE_URL", raising=False)
-    monkeypatch.delenv("SCALEWAY_BASE_URL", raising=False)
+def test_validate_python_provider_environment_requires_provider_urls(monkeypatch):
+    for name in ["ALBERT_API_KEY", "ALBERT_BASE_URL", "SCALEWAY_API_KEY", "SCALEWAY_BASE_URL"]:
+        monkeypatch.delenv(name, raising=False)
 
-    configure_python_provider_environment()
+    try:
+        validate_python_provider_environment()
+    except RuntimeError as exc:
+        message = str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("Expected missing provider configuration to fail")
 
-    assert generate_human_review_answers.os.environ["ALBERT_BASE_URL"] == "https://albert.api.etalab.gouv.fr/v1"
-    assert generate_human_review_answers.os.environ["SCALEWAY_BASE_URL"].startswith("https://api.scaleway.ai/")
+    assert "ALBERT_BASE_URL" in message
+    assert "SCALEWAY_BASE_URL" in message
 
 
-def test_configure_python_provider_environment_preserves_explicit_base_urls(monkeypatch):
+def test_validate_python_provider_environment_accepts_explicit_provider_config(monkeypatch):
+    monkeypatch.setenv("ALBERT_API_KEY", "albert-key")
     monkeypatch.setenv("ALBERT_BASE_URL", "https://example.test/albert")
+    monkeypatch.setenv("SCALEWAY_API_KEY", "scaleway-key")
     monkeypatch.setenv("SCALEWAY_BASE_URL", "https://example.test/scaleway")
 
-    configure_python_provider_environment()
-
-    assert generate_human_review_answers.os.environ["ALBERT_BASE_URL"] == "https://example.test/albert"
-    assert generate_human_review_answers.os.environ["SCALEWAY_BASE_URL"] == "https://example.test/scaleway"
+    validate_python_provider_environment()
