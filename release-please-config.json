@@ -37,31 +37,6 @@
           "type": "json",
           "path": "apps/mastra-pipeline/package.json",
           "jsonpath": "$.version"
-        },
-        {
-          "type": "toml",
-          "path": "uv.lock",
-          "jsonpath": "$.package[?(@.name==\"assistant-rh\")].version"
-        },
-        {
-          "type": "toml",
-          "path": "uv.lock",
-          "jsonpath": "$.package[?(@.name==\"assistant-rh-data-ingestion-cli\")].version"
-        },
-        {
-          "type": "toml",
-          "path": "uv.lock",
-          "jsonpath": "$.package[?(@.name==\"assistant-rh-data-engineering\")].version"
-        },
-        {
-          "type": "toml",
-          "path": "uv.lock",
-          "jsonpath": "$.package[?(@.name==\"assistant-rh-rag-pipeline\")].version"
-        },
-        {
-          "type": "toml",
-          "path": "uv.lock",
-          "jsonpath": "$.package[?(@.name==\"assistant-rh-shared-config\")].version"
         }
       ]
     }
