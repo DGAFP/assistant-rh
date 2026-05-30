@@ -54,6 +54,12 @@ The deployment script creates resources if they do not exist yet:
 - staging namespace/container: `assistant-rh-streamlit-staging`
 - production namespace/container: `assistant-rh-streamlit-production`
 
+The Streamlit container is intentionally deployed with `max-scale=1` by default.
+Streamlit keeps UI session state in the running process, and the admin UI is expected
+to remain stateful while the end-user chat UI moves to a separate client/container.
+During the experimental phase, single-instance deployment is preferred over horizontal
+scaling to avoid cross-instance session routing issues.
+
 ## Required GitHub configuration
 
 Required secrets (scaleway-staging and/or scaleway-production environment):
