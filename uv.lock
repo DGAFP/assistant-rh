@@ -213,7 +213,7 @@ wheels = [
 
 [[package]]
 name = "assistant-rh"
-version = "0.5.0"
+version = "0.6.0"
 source = { virtual = "." }
 dependencies = [
     { name = "assistant-rh-data-engineering" },
@@ -300,7 +300,7 @@ dev = [
 
 [[package]]
 name = "assistant-rh-data-engineering"
-version = "0.5.0"
+version = "0.6.0"
 source = { editable = "packages/data-engineering" }
 dependencies = [
     { name = "assistant-rh-shared-config" },
@@ -325,7 +325,7 @@ requires-dist = [
 
 [[package]]
 name = "assistant-rh-data-ingestion-cli"
-version = "0.5.0"
+version = "0.6.0"
 source = { editable = "apps/data-ingestion-cli" }
 dependencies = [
     { name = "assistant-rh-data-engineering" },
@@ -336,7 +336,7 @@ requires-dist = [{ name = "assistant-rh-data-engineering", editable = "packages/
 
 [[package]]
 name = "assistant-rh-rag-pipeline"
-version = "0.5.0"
+version = "0.6.0"
 source = { editable = "packages/rag-pipeline" }
 dependencies = [
     { name = "filelock" },
@@ -363,7 +363,7 @@ requires-dist = [
 
 [[package]]
 name = "assistant-rh-shared-config"
-version = "0.5.0"
+version = "0.6.0"
 source = { editable = "packages/shared-config" }
 dependencies = [
     { name = "psycopg", extra = ["binary"] },
