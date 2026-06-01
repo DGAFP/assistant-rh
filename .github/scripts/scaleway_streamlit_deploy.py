@@ -262,7 +262,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--memory-limit", type=int, default=2048)
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--min-scale", type=int)
-    parser.add_argument("--max-scale", type=int, default=3)
+    parser.add_argument("--max-scale", type=int, default=1)
     parser.add_argument("--privacy", choices=("public", "private"), default="public")
     parser.add_argument("--protocol", choices=("http1", "h2c"), default="http1")
     parser.add_argument("--health-path", default="/_stcore/health")
