@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.0](https://github.com/DGAFP/assistant-rh/compare/v0.5.0...v0.6.0) (2026-06-01)
+
+
+### Features
+
+* add human review answer CSV generator ([174c65a](https://github.com/DGAFP/assistant-rh/commit/174c65ae43deb14bb0ffaabccec0be25fc1aa30e))
+
+
+### Bug Fixes
+
+* default Python batch providers to compatible endpoints ([74a698b](https://github.com/DGAFP/assistant-rh/commit/74a698b7d435b5d8a00dd3ee93ce3db2f5eeb976))
+* keep Streamlit deployment single-instance ([56caf39](https://github.com/DGAFP/assistant-rh/commit/56caf39d1c4e8ffff97a216ddb6cafcb3a6f4b07))
+* keep Streamlit deployment single-instance ([fc35806](https://github.com/DGAFP/assistant-rh/commit/fc358064b7396e4e025fb3bd3d51b3eda99860f9))
+* require explicit Python provider endpoints ([006ad5d](https://github.com/DGAFP/assistant-rh/commit/006ad5d6402e4e4fa326279eb206c6bdbff77d8b))
+* stream review CSV generation efficiently ([1e2707d](https://github.com/DGAFP/assistant-rh/commit/1e2707d1ac8f0c35ad582e6dbe13fbca458dbc9d))
+
 ## [0.5.0](https://github.com/DGAFP/assistant-rh/compare/v0.4.2...v0.5.0) (2026-05-27)
 
 
