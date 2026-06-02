@@ -1,7 +1,7 @@
 {
   "name": "assistant-rh-workspace",
   "private": true,
-  "packageManager": "pnpm@10.33.0",
+  "packageManager": "pnpm@10.34.1",
   "scripts": {
     "mastra:dev": "pnpm --filter @assistant-rh/mastra-pipeline dev",
     "mastra:build": "pnpm --filter @assistant-rh/mastra-pipeline build",
