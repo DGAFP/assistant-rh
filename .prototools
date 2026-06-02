@@ -2,14 +2,14 @@
 # https://moonrepo.dev/docs/proto
 
 # Python version (read by unstable_python toolchain)
-python = "3.12"
+python = "3.12.13"
 
 # uv version for package management (pinned for reproducibility)
-uv = "0.11.5"
+uv = "0.11.18"
 
 # Node.js for Mastra TypeScript apps
-node = "24.14.1"
-pnpm = "10.33.0"
+node = "24.16.0"
+pnpm = "10.34.1"
 
 [settings]
 # Auto-install missing tool versions

@@ -44,6 +44,7 @@ mlartifacts/
 notebooks/
 
 # Local files (backups, one-off scripts, generated artifacts)
+tmp/
 _local/
 *.dump
 GUIDES/
