@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from assistant_rh_rag_pipeline.config import RetrievalConfig
+from assistant_rh_rag_pipeline.config import CHUNK_TABLES, RetrievalConfig
 from assistant_rh_rag_pipeline.models import RetrievedChunk
 from assistant_rh_rag_pipeline.retriever import Retriever
 
@@ -80,3 +80,31 @@ def test_rrf_normalization_rescales_to_unit_interval_and_keeps_metadata():
     for chunk in normalized:
         assert "fused_rrf_score" in chunk.metadata
         assert chunk.metadata["merged_score_mode"] == "rrf_source_ceiling"
+
+
+def test_retriever_ignores_missing_metadata_columns(monkeypatch):
+    retriever = Retriever(RetrievalConfig(), dsn="unused")
+    monkeypatch.setattr(
+        retriever,
+        "_get_table_columns",
+        lambda _table_name: {"source_name", "section_path", "role", "thematique", "short_id"},
+    )
+
+    cols = retriever._select_existing_meta_cols(CHUNK_TABLES["service_public"])
+
+    assert cols == ["source_name", "section_path", "role", "thematique"]
+
+
+def test_retriever_resolves_section_id_from_service_public_short_id(monkeypatch):
+    retriever = Retriever(RetrievalConfig(), dsn="unused")
+    monkeypatch.setattr(
+        retriever,
+        "_get_table_columns",
+        lambda _table_name: {"hash_id", "short_id", "section_path"},
+    )
+
+    section_sql = retriever._section_select_sql(CHUNK_TABLES["service_public"])
+
+    assert "AS section_id" in section_sql
+    assert "d.short_id = t.short_id" in section_sql
+    assert "s.heading_path = t.section_path" in section_sql

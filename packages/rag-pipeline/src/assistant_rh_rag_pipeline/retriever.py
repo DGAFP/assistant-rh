@@ -63,6 +63,7 @@ class Retriever:
         self.config = config
         self.dsn = dsn or get_dsn()
         self._embedder: FallbackEmbedder | None = None
+        self._table_columns_cache: dict[str, set[str]] = {}
 
     @staticmethod
     def _chunk_sort_key(chunk: RetrievedChunk) -> tuple[float, str, str, str]:
@@ -268,6 +269,73 @@ class Retriever:
         "rag_chunks_rgrh": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
     }
 
+    def _get_table_columns(self, table_name: str) -> set[str]:
+        """Return existing columns for a chunk table, cached per retriever instance."""
+        if table_name in self._table_columns_cache:
+            return self._table_columns_cache[table_name]
+
+        try:
+            with psycopg.connect(self.dsn) as conn:
+                rows = conn.execute(
+                    """
+                    SELECT attname
+                    FROM pg_attribute
+                    WHERE attrelid = %s::regclass
+                      AND attnum > 0
+                      AND NOT attisdropped
+                    """,
+                    (table_name,),
+                ).fetchall()
+            columns = {str(row[0]) for row in rows}
+        except Exception as exc:
+            logger.warning("Column introspection failed for %s: %s", table_name, exc)
+            columns = set()
+
+        self._table_columns_cache[table_name] = columns
+        return columns
+
+    def _select_existing_meta_cols(self, table: ChunkTable) -> list[str]:
+        """Return configured metadata columns that exist in the current DB schema."""
+        expected = self._TABLE_META_COLS.get(table.name, [])
+        if not expected:
+            return []
+        existing = self._get_table_columns(table.name)
+        if not existing:
+            return expected
+        return [col for col in expected if col in existing]
+
+    def _section_select_sql(self, table: ChunkTable) -> str:
+        """Return SQL that exposes a `section_id` column when the table supports sections.
+
+        Some ingested tables store a direct `section_id`; Service-Public's current
+        production table only stores `short_id` + `section_path`, so we resolve the
+        section through `rag_documents`/`rag_sections` at query time.
+        """
+        if not table.has_sections:
+            return ""
+
+        existing = self._get_table_columns(table.name)
+        if "section_id" in existing:
+            return ", t.section_id"
+
+        if {"short_id", "section_path"}.issubset(existing):
+            return r"""
+                , (
+                    SELECT s.section_id
+                    FROM rag_documents d
+                    JOIN rag_sections s ON s.doc_id = d.doc_id
+                    WHERE d.short_id = t.short_id
+                      AND (
+                        s.heading_path = t.section_path
+                        OR s.heading = btrim(regexp_replace(t.section_path, '^.*>\s*', ''))
+                      )
+                    ORDER BY CASE WHEN s.heading_path = t.section_path THEN 0 ELSE 1 END
+                    LIMIT 1
+                ) AS section_id
+            """
+
+        return ""
+
     def _search_table(
         self,
         table: ChunkTable,
@@ -306,9 +374,9 @@ class Retriever:
         """Pure semantic (cosine) search on a DE table."""
         embed_col = table.embed_col_albert if model_used == "albert" else table.embed_col_bge
 
-        extra_cols = self._TABLE_META_COLS.get(table.name, [])
+        extra_cols = self._select_existing_meta_cols(table)
         extra_sql = "".join(f", t.{c}" for c in extra_cols)
-        section_sql = ", t.section_id" if table.has_sections else ""
+        section_sql = self._section_select_sql(table)
 
         sql = f"""
             SELECT
@@ -340,9 +408,9 @@ class Retriever:
         top_k = self.config.initial_top_k
         is_lexical_only = self.config.search_mode == SearchMode.LEXICAL
 
-        extra_cols = self._TABLE_META_COLS.get(table.name, [])
+        extra_cols = self._select_existing_meta_cols(table)
         extra_sql = "".join(f", t.{c}" for c in extra_cols)
-        section_sql = ", t.section_id" if table.has_sections else ""
+        section_sql = self._section_select_sql(table)
         tsq = _TSQUERY_OR.format(p="%s")
 
         if is_lexical_only:
@@ -423,7 +491,7 @@ class Retriever:
         model_used: str,
     ) -> List[RetrievedChunk]:
         """Execute a search query on a DE table and return parsed chunks."""
-        extra_cols = self._TABLE_META_COLS.get(table.name, [])
+        extra_cols = self._select_existing_meta_cols(table)
         chunks: List[RetrievedChunk] = []
         try:
             with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
