@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.1](https://github.com/DGAFP/assistant-rh/compare/v0.6.0...v0.6.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* restore Service-Public retrieval on Scaleway ([cb74471](https://github.com/DGAFP/assistant-rh/commit/cb74471091eff9d5770cd2f296e5dccc5ce99982))
+* tolerate Service-Public chunk schema drift ([fcce99e](https://github.com/DGAFP/assistant-rh/commit/fcce99eaa76a0b858abb7a620f2fd2fa92332ada))
+
+
+### Performance Improvements
+
+* speed up retriever column introspection ([f2ada6b](https://github.com/DGAFP/assistant-rh/commit/f2ada6baa82d5032d325b10c4ec82de46c80834a))
+
 ## [0.6.0](https://github.com/DGAFP/assistant-rh/compare/v0.5.0...v0.6.0) (2026-06-01)
 
 
