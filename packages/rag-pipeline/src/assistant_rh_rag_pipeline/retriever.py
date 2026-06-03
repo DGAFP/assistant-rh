@@ -278,10 +278,11 @@ class Retriever:
             with psycopg.connect(self.dsn) as conn:
                 rows = conn.execute(
                     """
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_schema = current_schema()
-                      AND table_name = %s
+                    SELECT attname
+                    FROM pg_attribute
+                    WHERE attrelid = %s::regclass
+                      AND attnum > 0
+                      AND NOT attisdropped
                     """,
                     (table_name,),
                 ).fetchall()
