@@ -8,7 +8,6 @@ from assistant_rh_shared import db_helpers as shared_db_helpers
 def _clear_dsn_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in (
         "APP_DB_TARGET",
-        "APP_SCALEWAY_ENV",
         "APP_POSTGRES_DSN",
         "STREAMLIT_POSTGRES_DSN",
         "SCW_POSTGRES_DSN",
@@ -34,30 +33,19 @@ def test_scalingo_dsn_is_not_used_as_implicit_fallback(monkeypatch: pytest.Monke
         db_helpers.get_dsn()
 
 
-def test_scaleway_prod_uses_prod_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_scaleway_target_uses_canonical_dsn_without_environment_selector(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_dsn_env(monkeypatch)
     monkeypatch.setenv("APP_DB_TARGET", "scaleway")
-    monkeypatch.setenv("APP_SCALEWAY_ENV", "prod")
-    monkeypatch.setenv("SCW_POSTGRES_DSN", "postgresql://prod")
+    monkeypatch.setenv("SCW_POSTGRES_DSN", "postgresql://scw")
 
-    assert db_helpers.get_dsn() == "postgresql://prod"
+    assert db_helpers.get_dsn() == "postgresql://scw"
 
 
-def test_scaleway_staging_does_not_fallback_to_prod(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_scaleway_target_requires_canonical_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_dsn_env(monkeypatch)
     monkeypatch.setenv("APP_DB_TARGET", "scaleway")
-    monkeypatch.setenv("APP_SCALEWAY_ENV", "staging")
 
     with pytest.raises(RuntimeError, match="SCW_POSTGRES_DSN"):
-        db_helpers.get_dsn()
-
-
-def test_scaleway_requires_explicit_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    _clear_dsn_env(monkeypatch)
-    monkeypatch.setenv("APP_DB_TARGET", "scaleway")
-    monkeypatch.setenv("SCW_POSTGRES_DSN", "postgresql://prod")
-
-    with pytest.raises(RuntimeError, match="APP_SCALEWAY_ENV"):
         db_helpers.get_dsn()
 
 
@@ -88,7 +76,26 @@ def test_shared_config_does_not_use_scalingo_fallback(monkeypatch: pytest.Monkey
 def test_shared_config_scaleway_target_uses_canonical_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_dsn_env(monkeypatch)
     monkeypatch.setenv("APP_DB_TARGET", "scaleway")
-    monkeypatch.setenv("APP_SCALEWAY_ENV", "staging")
-    monkeypatch.setenv("SCW_POSTGRES_DSN", "postgresql://staging")
+    monkeypatch.setenv("SCW_POSTGRES_DSN", "postgresql://scw")
 
-    assert shared_db_helpers.get_dsn() == "postgresql://staging"
+    assert shared_db_helpers.get_dsn() == "postgresql://scw"
+
+
+def test_dsn_fallbacks_ignore_whitespace_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_dsn_env(monkeypatch)
+    monkeypatch.setenv("SCW_POSTGRES_DSN", "   ")
+    monkeypatch.setenv("APP_POSTGRES_DSN", "  postgresql://app  ")
+
+    assert db_helpers.get_dsn() == "postgresql://app"
+    assert shared_db_helpers.get_dsn() == "postgresql://app"
+
+
+def test_scaleway_target_rejects_whitespace_canonical_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_dsn_env(monkeypatch)
+    monkeypatch.setenv("APP_DB_TARGET", "scaleway")
+    monkeypatch.setenv("SCW_POSTGRES_DSN", "   ")
+
+    with pytest.raises(RuntimeError, match="SCW_POSTGRES_DSN"):
+        db_helpers.get_dsn()
+    with pytest.raises(RuntimeError, match="SCW_POSTGRES_DSN"):
+        shared_db_helpers.get_dsn()

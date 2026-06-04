@@ -1,8 +1,6 @@
 import { Pool, type PoolConfig } from "pg";
 
 const DSN_ENV_KEYS = ["SCW_POSTGRES_DSN"] as const;
-const SCALEWAY_ALLOWED_ENVS = new Set(["prod", "staging"]);
-
 let pool: Pool | null = null;
 
 function parseInteger(raw: string | undefined, fallback: number): number {
@@ -40,21 +38,12 @@ export function resolveDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string
 			throw new Error(`Unsupported APP_DB_TARGET=${JSON.stringify(target)} (expected: scaleway).`);
 		}
 
-		const scalewayEnv = env.APP_SCALEWAY_ENV?.trim().toLowerCase();
-		if (!scalewayEnv || !SCALEWAY_ALLOWED_ENVS.has(scalewayEnv)) {
-			throw new Error(
-				"APP_DB_TARGET=scaleway requires APP_SCALEWAY_ENV to be one of: prod, staging (uses SCW_POSTGRES_DSN from environment).",
-			);
-		}
-
 		const value = env.SCW_POSTGRES_DSN?.trim();
 		if (value) {
 			return value;
 		}
 
-		throw new Error(
-			`APP_DB_TARGET=scaleway with APP_SCALEWAY_ENV=${scalewayEnv} requires SCW_POSTGRES_DSN to be set.`,
-		);
+		throw new Error("APP_DB_TARGET=scaleway requires SCW_POSTGRES_DSN to be set.");
 	}
 
 	for (const key of DSN_ENV_KEYS) {

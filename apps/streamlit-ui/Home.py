@@ -16,7 +16,7 @@ if not hasattr(st, "_original_cache"):
 
     st.cache = _compat_cache
 
-# Validate cookie secret policy at startup (fail fast in staging/prod)
+# Validate cookie secret policy at startup (fail fast in staging/production)
 resolve_cookies_password()
 
 

@@ -290,10 +290,10 @@ def main() -> int:
             "Missing required runtime environment variable(s) for Streamlit container: " + ", ".join(missing_runtime)
         )
 
-    default_scaleway_env = "staging" if args.target_env == "staging" else "prod"
+    default_app_env = "staging" if args.target_env == "staging" else "production"
     container_env = {
+        "APP_ENV": env_optional("APP_ENV", default_app_env),
         "APP_DB_TARGET": env_optional("APP_DB_TARGET", "scaleway"),
-        "APP_SCALEWAY_ENV": env_optional("APP_SCALEWAY_ENV", default_scaleway_env),
         "ALBERT_BASE_URL": env_optional("ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1"),
         "SCALEWAY_BASE_URL": env_optional("SCALEWAY_BASE_URL", "https://api.scaleway.ai/v1"),
         "STREAMLIT_BROWSER_GATHER_USAGE_STATS": env_optional("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false"),

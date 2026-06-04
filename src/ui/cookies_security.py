@@ -4,7 +4,7 @@ import os
 import warnings
 
 _TRUTHY = {"1", "true", "yes", "on"}
-_STRICT_ENV_NAMES = {"staging", "prod", "production"}
+_STRICT_ENV_NAMES = {"staging", "production"}
 _INSECURE_DEV_FALLBACK = "__INSECURE_DEV_ONLY_COOKIE_PASSWORD__"
 
 
@@ -15,11 +15,6 @@ def _is_truthy_env(name: str) -> bool:
 
 def is_production_like_env() -> bool:
     """Return True when runtime should fail closed on missing secrets."""
-    db_target = os.getenv("APP_DB_TARGET", "").strip().lower()
-    scaleway_env = os.getenv("APP_SCALEWAY_ENV", "").strip().lower()
-    if db_target == "scaleway" and scaleway_env in _STRICT_ENV_NAMES:
-        return True
-
     env_name = (
         os.getenv("APP_ENV")
         or os.getenv("ENV")

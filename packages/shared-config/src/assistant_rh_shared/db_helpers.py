@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SCALEWAY_ALLOWED_ENVS = {"prod", "staging"}
 SCALEWAY_DSN_ENV_KEY = "SCW_POSTGRES_DSN"
 
 DSN_ENV_KEYS = (
@@ -29,21 +28,15 @@ def get_dsn() -> str:
     target = os.getenv("APP_DB_TARGET", "").strip().lower()
     if target:
         if target == "scaleway":
-            env_name = os.getenv("APP_SCALEWAY_ENV", "").strip().lower()
-            if env_name not in SCALEWAY_ALLOWED_ENVS:
-                raise RuntimeError(
-                    "APP_DB_TARGET=scaleway requires APP_SCALEWAY_ENV to be one of: prod, staging (uses SCW_POSTGRES_DSN from environment)."
-                )
-
             dsn = os.getenv(SCALEWAY_DSN_ENV_KEY, "").strip()
             if dsn:
                 return dsn
 
-            raise RuntimeError(f"APP_DB_TARGET=scaleway with APP_SCALEWAY_ENV={env_name} requires {SCALEWAY_DSN_ENV_KEY} to be set.")
+            raise RuntimeError(f"APP_DB_TARGET=scaleway requires {SCALEWAY_DSN_ENV_KEY} to be set.")
 
         raise RuntimeError(f"Unsupported APP_DB_TARGET={target!r} (expected: scaleway).")
 
-    dsn = next((os.getenv(key) for key in DSN_ENV_KEYS if os.getenv(key)), "")
+    dsn = next((value for key in DSN_ENV_KEYS if (value := os.getenv(key, "").strip())), "")
     if not dsn:
         raise RuntimeError(f"No database connection string found (set one of: {', '.join(DSN_ENV_KEYS)}).")
     return dsn

@@ -23,7 +23,6 @@ import psycopg
 
 logger = logging.getLogger(__name__)
 
-SCALEWAY_ALLOWED_ENVS = {"prod", "staging"}
 SCALEWAY_DSN_ENV_KEY = "SCW_POSTGRES_DSN"
 
 DSN_ENV_KEYS = (
@@ -43,18 +42,18 @@ def get_named_dsn(target: str) -> str | None:
     normalized_target = target.strip().lower()
 
     if normalized_target == "scaleway":
-        env_name = os.getenv("APP_SCALEWAY_ENV", "").strip()
-        if not env_name:
-            return None
-        return get_scaleway_env_dsn(env_name)
+        return get_scaleway_env_dsn()
 
     return None
 
 
-def get_scaleway_env_dsn(env_name: str) -> str | None:
-    """Return the DSN for a named Scaleway environment, or None if unavailable."""
-    if env_name.strip().lower() not in SCALEWAY_ALLOWED_ENVS:
-        return None
+def get_scaleway_env_dsn(env_name: str | None = None) -> str | None:
+    """Return the canonical Scaleway DSN, or None if unavailable.
+
+    The optional ``env_name`` argument is ignored and kept only for backward
+    compatibility with older callers. GitHub/Scaleway environment binding now
+    provides the correct value via the canonical ``SCW_POSTGRES_DSN`` name.
+    """
     value = os.getenv(SCALEWAY_DSN_ENV_KEY, "").strip()
     return value or None
 
@@ -64,23 +63,15 @@ def get_dsn() -> str:
     target = os.getenv("APP_DB_TARGET", "").strip().lower()
     if target:
         if target == "scaleway":
-            env_name = os.getenv("APP_SCALEWAY_ENV", "").strip().lower()
-
-            if env_name not in SCALEWAY_ALLOWED_ENVS:
-                raise RuntimeError(
-                    "APP_DB_TARGET=scaleway requires APP_SCALEWAY_ENV to be one of: prod, staging (uses SCW_POSTGRES_DSN from environment)."
-                )
-
-            dsn = get_scaleway_env_dsn(env_name)
+            dsn = get_scaleway_env_dsn()
             if dsn:
                 return dsn
 
-            env_key = SCALEWAY_DSN_ENV_KEY
-            raise RuntimeError(f"APP_DB_TARGET=scaleway with APP_SCALEWAY_ENV={env_name} requires {env_key} to be set.")
+            raise RuntimeError(f"APP_DB_TARGET=scaleway requires {SCALEWAY_DSN_ENV_KEY} to be set.")
 
         raise RuntimeError(f"Unsupported APP_DB_TARGET={target!r} (expected: scaleway).")
 
-    dsn = next((os.getenv(key) for key in DSN_ENV_KEYS if os.getenv(key)), "")
+    dsn = next((value for key in DSN_ENV_KEYS if (value := os.getenv(key, "").strip())), "")
     if not dsn:
         raise RuntimeError(f"No database connection string found (set APP_DB_TARGET + canonical DSN, or one of: {', '.join(DSN_ENV_KEYS)}).")
     return dsn

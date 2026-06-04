@@ -3,12 +3,11 @@
 ## Infrastructure
 
 - **SGBD** : PostgreSQL (avec extension `pgvector` pour la recherche sémantique)
-- **Hébergement** : Scalingo, région SecNumCloud `osc-secnum-fr1`
+- **Hébergement applicatif** : Scaleway pour les chemins runtime actifs
 - **Connexion** : résolution explicite via `APP_DB_TARGET` + DSN canonique
-  - `APP_DB_TARGET=scalingo` → `SCALINGO_POSTGRESQL_URL`
-  - `APP_DB_TARGET=scaleway` + `APP_SCALEWAY_ENV=prod` → `SCW_POSTGRES_DSN_PROD`
-  - `APP_DB_TARGET=scaleway` + `APP_SCALEWAY_ENV=staging` → `SCW_POSTGRES_DSN_STAGING`
-  - fallback legacy (hors ciblage explicite) : `APP_POSTGRES_DSN`, `STREAMLIT_POSTGRES_DSN`, `SCALINGO_POSTGRESQL_URL`, `PG_DSN`, `DATABASE_URL`
+  - `APP_DB_TARGET=scaleway` → `SCW_POSTGRES_DSN`
+  - le contexte staging/production est porté par l'environnement de déploiement (GitHub/Scaleway), pas par une variable Scaleway séparée
+  - fallback local/dev (hors ciblage explicite) : `SCW_POSTGRES_DSN`, `APP_POSTGRES_DSN`, `STREAMLIT_POSTGRES_DSN`
 - **ORM** : pas d'ORM — requêtes SQL directes via `psycopg` (v3) et `sqlalchemy` (engine)
 
 ---
