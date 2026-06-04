@@ -1,6 +1,7 @@
 import { Pool, type PoolConfig } from "pg";
 
-const DSN_ENV_KEYS = ["SCW_POSTGRES_DSN", "SCALINGO_POSTGRESQL_URL"] as const;
+const DSN_ENV_KEYS = ["SCW_POSTGRES_DSN"] as const;
+const SCALEWAY_ALLOWED_ENVS = new Set(["prod", "staging"]);
 
 let pool: Pool | null = null;
 
@@ -33,8 +34,31 @@ function normalizeJsonObject(value: unknown): Record<string, unknown> {
 }
 
 export function resolveDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+	const target = env.APP_DB_TARGET?.trim().toLowerCase();
+	if (target) {
+		if (target !== "scaleway") {
+			throw new Error(`Unsupported APP_DB_TARGET=${JSON.stringify(target)} (expected: scaleway).`);
+		}
+
+		const scalewayEnv = env.APP_SCALEWAY_ENV?.trim().toLowerCase();
+		if (!scalewayEnv || !SCALEWAY_ALLOWED_ENVS.has(scalewayEnv)) {
+			throw new Error(
+				"APP_DB_TARGET=scaleway requires APP_SCALEWAY_ENV to be one of: prod, staging (uses SCW_POSTGRES_DSN from environment).",
+			);
+		}
+
+		const value = env.SCW_POSTGRES_DSN?.trim();
+		if (value) {
+			return value;
+		}
+
+		throw new Error(
+			`APP_DB_TARGET=scaleway with APP_SCALEWAY_ENV=${scalewayEnv} requires SCW_POSTGRES_DSN to be set.`,
+		);
+	}
+
 	for (const key of DSN_ENV_KEYS) {
-		const value = env[key];
+		const value = env[key]?.trim();
 		if (value) {
 			return value;
 		}

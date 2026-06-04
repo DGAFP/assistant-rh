@@ -74,7 +74,7 @@ from src.ui.chatbot_sources import (
     render_sources,
     should_hide_sources,
 )
-from src.ui.cookies_security import resolve_cookies_password
+from src.ui.cookies_security import is_production_like_env, resolve_cookies_password
 
 # --- Defaults dynamiques selon l'environnement ---
 PG_AVAILABLE = bool(has_dsn() or os.getenv("PGHOST"))
@@ -332,9 +332,9 @@ class Turn:
 
 
 # ---------- Feedback storage ----------
-# In production (Scalingo), use /tmp to avoid triggering file watcher
+# In production, use /tmp to avoid triggering file watcher
 # In development, use local data/ directory for persistence
-_IS_PRODUCTION = bool(os.getenv("SCALINGO_POSTGRESQL_URL") or os.getenv("DYNO"))
+_IS_PRODUCTION = is_production_like_env()
 if _IS_PRODUCTION:
     BASE = Path("/tmp/assistant_rh_data")
 else:
@@ -1060,7 +1060,7 @@ def render_debug_chunks(
                     f"{', '.join(f'{k}={v}' for k, v in (ctx.get('filters') or {}).items() if v) or '—'}"
                 )
                 st.caption(
-                    "Tips: vérifie `ALBERT_API_KEY`, le DSN (SCALINGO_POSTGRESQL_URL/PG_DSN), les filtres et que la colonne d'embedding n'est pas vide."
+                    "Tips: vérifie `ALBERT_API_KEY`, le DSN (`SCW_POSTGRES_DSN`), les filtres et que la colonne d'embedding n'est pas vide."
                 )
             return
 

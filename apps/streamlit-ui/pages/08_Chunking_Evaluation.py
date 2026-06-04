@@ -55,7 +55,7 @@ def get_dsn() -> str:
     try:
         return get_app_dsn()
     except RuntimeError:
-        st.error("Aucune connexion DB configurée (APP_POSTGRES_DSN / STREAMLIT_POSTGRES_DSN / SCALINGO_POSTGRESQL_URL / PG_DSN / DATABASE_URL / SCW_POSTGRES_DSN / TUNNEL_DSN)")
+        st.error("Aucune connexion DB configurée (SCW_POSTGRES_DSN / APP_POSTGRES_DSN / STREAMLIT_POSTGRES_DSN / TUNNEL_DSN)")
         st.stop()
 
 

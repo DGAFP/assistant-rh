@@ -7,11 +7,12 @@ import pytest
 from src.ui.cookies_security import resolve_cookies_password
 
 
-@pytest.mark.parametrize("strict_var", ["DYNO", "SCALINGO_POSTGRESQL_URL"])
-def test_missing_password_fails_in_production_like_env(monkeypatch, strict_var):
+@pytest.mark.parametrize("scaleway_env", ["prod", "staging", "production"])
+def test_missing_password_fails_in_scaleway_production_like_env(monkeypatch, scaleway_env):
     monkeypatch.delenv("COOKIES_PASSWORD", raising=False)
     monkeypatch.delenv("ALLOW_INSECURE_COOKIES_PASSWORD", raising=False)
-    monkeypatch.setenv(strict_var, "1")
+    monkeypatch.setenv("APP_DB_TARGET", "scaleway")
+    monkeypatch.setenv("APP_SCALEWAY_ENV", scaleway_env)
 
     with pytest.raises(RuntimeError, match="COOKIES_PASSWORD"):
         resolve_cookies_password()
@@ -37,8 +38,8 @@ def test_returns_configured_password(monkeypatch):
 def test_missing_password_fails_in_dev_without_explicit_opt_in(monkeypatch):
     monkeypatch.delenv("COOKIES_PASSWORD", raising=False)
     monkeypatch.delenv("ALLOW_INSECURE_COOKIES_PASSWORD", raising=False)
-    monkeypatch.delenv("DYNO", raising=False)
-    monkeypatch.delenv("SCALINGO_POSTGRESQL_URL", raising=False)
+    monkeypatch.delenv("APP_DB_TARGET", raising=False)
+    monkeypatch.delenv("APP_SCALEWAY_ENV", raising=False)
     monkeypatch.delenv("APP_ENV", raising=False)
 
     with pytest.raises(RuntimeError, match="ALLOW_INSECURE_COOKIES_PASSWORD"):
@@ -47,8 +48,8 @@ def test_missing_password_fails_in_dev_without_explicit_opt_in(monkeypatch):
 
 def test_missing_password_allows_explicit_dev_opt_in_with_warning(monkeypatch):
     monkeypatch.delenv("COOKIES_PASSWORD", raising=False)
-    monkeypatch.delenv("DYNO", raising=False)
-    monkeypatch.delenv("SCALINGO_POSTGRESQL_URL", raising=False)
+    monkeypatch.delenv("APP_DB_TARGET", raising=False)
+    monkeypatch.delenv("APP_SCALEWAY_ENV", raising=False)
     monkeypatch.delenv("APP_ENV", raising=False)
     monkeypatch.setenv("ALLOW_INSECURE_COOKIES_PASSWORD", "true")
 

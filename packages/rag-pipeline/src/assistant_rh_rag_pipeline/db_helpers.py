@@ -30,7 +30,6 @@ DSN_ENV_KEYS = (
     "SCW_POSTGRES_DSN",
     "APP_POSTGRES_DSN",
     "STREAMLIT_POSTGRES_DSN",
-    "SCALINGO_POSTGRESQL_URL",
 )
 
 
@@ -49,10 +48,6 @@ def get_named_dsn(target: str) -> str | None:
             return None
         return get_scaleway_env_dsn(env_name)
 
-    if normalized_target == "scalingo":
-        value = os.getenv("SCALINGO_POSTGRESQL_URL", "").strip()
-        return value or None
-
     return None
 
 
@@ -68,12 +63,6 @@ def get_dsn() -> str:
     """Return the PostgreSQL connection string from environment variables."""
     target = os.getenv("APP_DB_TARGET", "").strip().lower()
     if target:
-        if target == "scalingo":
-            dsn = get_named_dsn("scalingo")
-            if dsn:
-                return dsn
-            raise RuntimeError("APP_DB_TARGET=scalingo but SCALINGO_POSTGRESQL_URL is not set.")
-
         if target == "scaleway":
             env_name = os.getenv("APP_SCALEWAY_ENV", "").strip().lower()
 
@@ -89,7 +78,7 @@ def get_dsn() -> str:
             env_key = SCALEWAY_DSN_ENV_KEY
             raise RuntimeError(f"APP_DB_TARGET=scaleway with APP_SCALEWAY_ENV={env_name} requires {env_key} to be set.")
 
-        raise RuntimeError(f"Unsupported APP_DB_TARGET={target!r} (expected one of: scalingo, scaleway).")
+        raise RuntimeError(f"Unsupported APP_DB_TARGET={target!r} (expected: scaleway).")
 
     dsn = next((os.getenv(key) for key in DSN_ENV_KEYS if os.getenv(key)), "")
     if not dsn:
