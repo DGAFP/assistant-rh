@@ -39,9 +39,17 @@ class SectionAggregator:
         self._reranker: AlbertReranker | None = None
         self.last_sections_before_rerank: int = 0
         self.last_sections_after_rerank: int = 0
+        self.last_reranker_status: str = "not_run"
+        self.last_reranker_error: str = ""
 
     def aggregate(self, chunks: List[RetrievedChunk], query: str | None = None) -> List[AggregatedSection]:
+        self.last_sections_before_rerank = 0
+        self.last_sections_after_rerank = 0
+        self.last_reranker_status = "not_run"
+        self.last_reranker_error = ""
+
         if not chunks:
+            self.last_reranker_status = "skipped_no_chunks"
             return []
 
         section_ids = [str(c.section_id) for c in chunks if c.section_id]
@@ -117,7 +125,11 @@ class SectionAggregator:
         sections.sort(key=lambda s: s.score, reverse=True)
 
         self.last_sections_before_rerank = len(sections)
-        if self.config.enable_section_reranker and query:
+        if not self.config.enable_section_reranker:
+            self.last_reranker_status = "disabled"
+        elif not query:
+            self.last_reranker_status = "skipped_no_query"
+        else:
             sections = self._rerank(query, sections)
         self.last_sections_after_rerank = len(sections)
 
@@ -177,6 +189,7 @@ class SectionAggregator:
             texts = [f"# {s.heading}\n\n{s.markdown[:1500]}" for s in candidates]
             t0 = time.time()
             ranked = self._reranker.rerank(query, texts, top_k=self.config.section_rerank_top_k)
+            self.last_reranker_status = "completed"
             logger.info("Section reranking done in %.0fms (%d candidates → %d selected)",
                         (time.time() - t0) * 1000, len(candidates), len(ranked))
 
@@ -188,5 +201,7 @@ class SectionAggregator:
             return out
 
         except Exception as exc:
+            self.last_reranker_status = "failed"
+            self.last_reranker_error = str(exc)
             logger.warning("Section reranking failed, keeping aggregated order: %s", exc)
             return sections[: self.config.section_rerank_top_k]

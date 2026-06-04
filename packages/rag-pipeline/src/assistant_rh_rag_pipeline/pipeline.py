@@ -143,7 +143,14 @@ class Pipeline:
                 "pour répondre à cette question. N'hésitez pas à reformuler votre question ou à contacter "
                 "votre service RH pour obtenir une réponse précise."
             )
-            return self._build_result(query, no_answer, [], qr)
+            return self._build_result(
+                query,
+                no_answer,
+                [],
+                qr,
+                conversation_history=conversation_history,
+                include_stage_trace=include_stage_trace,
+            )
 
         t0 = time.time()
         answer = self._generator.generate(qr.query_for_retrieval, context_items)
@@ -193,6 +200,7 @@ class Pipeline:
         """
         self._timing = {}
         self._stage_refs = {}
+        self._stage_trace = {}
         _notify = on_status or (lambda _: None)
 
         _notify("📚 Recherche dans les sources...")
@@ -248,6 +256,11 @@ class Pipeline:
         elif qr.needs_legal_search:
             force_hybrid_tables.add("dgafp")
 
+        tables_searched = [t for t in self._retriever.config.tables if qr.needs_legal_search or t != "dgafp"]
+        if getattr(self._retriever.config, "enable_chunks_test", False) is True:
+            tables_searched.append("rag_chunks_test")
+        self._stage_refs["tables_searched"] = tables_searched
+
         t0 = time.time()
         chunks = self._retriever.retrieve(retrieval_query, force_hybrid_tables=force_hybrid_tables)
         self._timing["retrieval_ms"] = (time.time() - t0) * 1000
@@ -259,6 +272,7 @@ class Pipeline:
                 "table": c.table_source,
                 "score": round(c.score, 4),
                 "section_id": str(c.section_id) if c.section_id else "",
+                "preview": _preview(c.text),
             }
             for c in chunks
         ]
@@ -270,7 +284,8 @@ class Pipeline:
 
         self._stage_refs["aggregated_sections"] = [
             {"section_id": str(s.section_id) if s.section_id else "", "heading": (s.heading or "")[:80], "score": round(s.score, 4),
-             "publisher": s.publisher or "", "chunk_count": len(s.chunks)}
+             "publisher": s.publisher or "", "chunk_count": len(s.chunks), "token_estimate": s.token_estimate,
+             "document_id": str(s.document_id or s.metadata.get("doc_id", "") or "")}
             for s in sections
         ]
 
@@ -286,6 +301,9 @@ class Pipeline:
             self._stage_refs["selector_items_before"] = sections_before
             self._stage_refs["selector_items_after"] = len(sections)
             self._stage_refs["selector_all_rejected"] = self._selector.all_rejected
+            self._stage_refs["selector_rejection_reason"] = (
+                self._selector.last_reasoning if self._selector.all_rejected else ""
+            )
 
             if not sections and self._selector.all_rejected:
                 logger.info("Selector rejected all sections – returning empty context")
@@ -334,6 +352,7 @@ class Pipeline:
             })
 
         metadata: Dict[str, Any] = {
+            "original_query": query,
             "intent": qr.intent.value,
             "intent_confidence": qr.intent_confidence,
             "theme": qr.theme,
@@ -342,7 +361,7 @@ class Pipeline:
             "enriched_query": qr.enriched_query,
             "query_for_retrieval": qr.query_for_retrieval,
             "needs_legal_search": qr.needs_legal_search,
-            "tables_searched": [t for t in self.config.retrieval.tables if qr.needs_legal_search or t != "dgafp"],
+            "tables_searched": self._stage_refs.get("tables_searched", []),
             "selector_enabled": self.config.selector.enabled,
             "generator_model": self.config.generation.model,
             "generator_provider": self.config.generation.provider.value,
@@ -352,6 +371,7 @@ class Pipeline:
             "context_items_ref": self._stage_refs.get("context_items_ref", []),
             "selector_decisions": self._stage_refs.get("selector_decisions", {}),
             "selector_reasoning": self._stage_refs.get("selector_reasoning", ""),
+            "selector_rejection_reason": self._stage_refs.get("selector_rejection_reason", ""),
             "selector_raw_response": self._stage_refs.get("selector_raw_response", ""),
             "selector_items_before": self._stage_refs.get("selector_items_before", 0),
             "selector_items_after": self._stage_refs.get("selector_items_after", 0),
@@ -359,6 +379,13 @@ class Pipeline:
             "sections_after_rerank": self._aggregator.last_sections_after_rerank,
             "selector_all_rejected": self._stage_refs.get("selector_all_rejected", False),
         }
+        metadata["selector_decision"] = self._selector_decision(metadata)
+        metadata["reranker_status"] = self._reranker_status()
+        metadata["rag_diagnostics"] = self._build_rag_diagnostics(
+            query=query,
+            qr=qr,
+            metadata=metadata,
+        )
 
         if include_stage_trace:
             metadata["stage_trace"] = self._build_stage_trace(
@@ -507,6 +534,9 @@ class Pipeline:
                         "selector_items_before": metadata.get("selector_items_before", 0),
                         "selector_items_after": metadata.get("selector_items_after", 0),
                         "selector_decisions": selector_decisions,
+                        "selector_decision": metadata.get("selector_decision", "not_run"),
+                        "rejection_reason": metadata.get("selector_rejection_reason", ""),
+                        "reason": metadata.get("selector_reasoning", ""),
                         "selected_section_ids": selected_section_ids,
                     },
                 },
@@ -536,3 +566,85 @@ class Pipeline:
 
         self._stage_trace = stage_trace
         return stage_trace
+
+    def _selector_decision(self, metadata: Dict[str, Any]) -> str:
+        if not metadata.get("selector_enabled", False):
+            return "disabled"
+        if metadata.get("selector_all_rejected", False):
+            return "all_rejected"
+        if int(metadata.get("selector_items_before", 0) or 0) <= 0:
+            return "skipped_no_sections"
+        return "selected"
+
+    def _reranker_status(self) -> Dict[str, Any]:
+        section_before = int(getattr(self._aggregator, "last_sections_before_rerank", 0) or 0)
+        section_after = int(getattr(self._aggregator, "last_sections_after_rerank", 0) or 0)
+        section_status = getattr(self._aggregator, "last_reranker_status", None)
+        if not section_status:
+            if not self.config.aggregation.enable_section_reranker:
+                section_status = "disabled"
+            elif section_before <= 0:
+                section_status = "skipped_no_sections"
+            else:
+                section_status = "completed"
+
+        return {
+            "chunk": {
+                "enabled": bool(self.config.retrieval.enable_chunk_reranker),
+                "status": "not_implemented" if self.config.retrieval.enable_chunk_reranker else "disabled",
+                "top_k": self.config.retrieval.chunk_rerank_top_k,
+            },
+            "section": {
+                "enabled": bool(self.config.aggregation.enable_section_reranker),
+                "status": section_status,
+                "top_k": self.config.aggregation.section_rerank_top_k,
+                "items_before": section_before,
+                "items_after": section_after,
+                "error": getattr(self._aggregator, "last_reranker_error", ""),
+            },
+        }
+
+    def _build_rag_diagnostics(
+        self,
+        *,
+        query: str,
+        qr: QueryProcessResult,
+        metadata: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        return {
+            "query": {
+                "original": query,
+                "processed": qr.processed_query,
+                "enriched": qr.enriched_query,
+                "retrieval": qr.query_for_retrieval,
+                "needs_legal_search": qr.needs_legal_search,
+            },
+            "retrieval": {
+                "tables_searched": metadata.get("tables_searched", []),
+                "retrieved_chunks": metadata.get("retrieved_chunks", []),
+            },
+            "aggregation": {
+                "sections_before_rerank": metadata.get("sections_before_rerank", 0),
+                "sections_after_rerank": metadata.get("sections_after_rerank", 0),
+                "aggregated_sections": metadata.get("aggregated_sections", []),
+            },
+            "reranker": metadata.get("reranker_status", {}),
+            "selector": {
+                "enabled": metadata.get("selector_enabled", False),
+                "decision": metadata.get("selector_decision", "not_run"),
+                "all_rejected": metadata.get("selector_all_rejected", False),
+                "items_before": metadata.get("selector_items_before", 0),
+                "items_after": metadata.get("selector_items_after", 0),
+                "decisions": metadata.get("selector_decisions", {}),
+                "reason": metadata.get("selector_reasoning", ""),
+                "rejection_reason": metadata.get("selector_rejection_reason", ""),
+                "raw_response": metadata.get("selector_raw_response", ""),
+            },
+        }
+
+
+def _preview(text: str, max_chars: int = 240) -> str:
+    normalized = " ".join((text or "").split())
+    if len(normalized) <= max_chars:
+        return normalized
+    return f"{normalized[: max_chars - 1]}..."

@@ -245,11 +245,28 @@ class TestPipelineE2E:
         config.selector = SelectorConfig(enabled=True)
         from assistant_rh_rag_pipeline.pipeline import Pipeline
         pipe = Pipeline(config)
-        result = pipe.run("Quelle est la durée du congé spatial ?")
+        result = pipe.run_with_trace("Quelle est la durée du congé spatial ?")
 
         assert isinstance(result, PipelineResult)
         assert "pas trouvé" in result.answer.lower() or "base de connaissances" in result.answer.lower()
         assert result.context_items == []
+        assert result.metadata["selector_all_rejected"] is True
+
+        diagnostics = result.metadata["rag_diagnostics"]
+        assert diagnostics["query"]["original"] == "Quelle est la durée du congé spatial ?"
+        assert diagnostics["query"]["enriched"] == "congé de mobilité"
+        assert diagnostics["retrieval"]["tables_searched"] == ["matte"]
+        assert diagnostics["retrieval"]["retrieved_chunks"][0]["chunk_id"] == "chunk_0"
+        assert diagnostics["aggregation"]["aggregated_sections"][0]["section_id"] == "sec_0"
+        assert diagnostics["reranker"]["section"]["enabled"] is True
+        assert diagnostics["selector"]["all_rejected"] is True
+        assert diagnostics["selector"]["rejection_reason"] == "Aucune section pertinente."
+
+        stage_trace = result.metadata["stage_trace"]
+        selector_output = stage_trace["stages"]["context-selector"]["output"]
+        assert selector_output["selector_all_rejected"] is True
+        assert selector_output["rejection_reason"] == "Aucune section pertinente."
+        assert selector_output["selector_decision"] == "all_rejected"
         # Generator should NOT have been called
         MockGenerator.return_value.generate.assert_not_called()
 
