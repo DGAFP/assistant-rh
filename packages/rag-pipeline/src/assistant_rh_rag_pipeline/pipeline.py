@@ -20,9 +20,10 @@ import hashlib
 import logging
 import time
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, Generator, List, Optional
 
-from .config import RAGConfig
+from .config import RAGConfig, SearchMode
 from .context_builder import ContextBuilder
 from .context_selector import ContextSelector
 from .db_helpers import get_dsn
@@ -46,6 +47,56 @@ class _RunState:
     timing: Dict[str, float] = field(default_factory=dict)
     stage_refs: Dict[str, Any] = field(default_factory=dict)
     aggregation_diagnostics: Any = None
+
+
+@dataclass
+class _RetrievalAttempt:
+    """Request-scoped diagnostics for one retrieval/selection attempt."""
+
+    name: str
+    search_mode: SearchMode
+    top_k: int
+    tables_searched: list[str]
+    retrieved_chunks: list[dict[str, Any]] = field(default_factory=list)
+    aggregated_sections: list[dict[str, Any]] = field(default_factory=list)
+    context_items_ref: list[dict[str, Any]] = field(default_factory=list)
+    selector_decisions: dict[str, Any] = field(default_factory=dict)
+    selector_reasoning: str = ""
+    selector_raw_response: str = ""
+    selector_items_before: int = 0
+    selector_items_after: int = 0
+    selector_all_rejected: bool = False
+    selector_rejection_reason: str = ""
+    sections_before_rerank: int = 0
+    sections_after_rerank: int = 0
+    reranker_status: str = ""
+    reranker_error: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "search_mode": self.search_mode.value,
+            "top_k": self.top_k,
+            "tables_searched": self.tables_searched,
+            "retrieved_chunks": self.retrieved_chunks,
+            "aggregated_sections": self.aggregated_sections,
+            "context_items_ref": self.context_items_ref,
+            "selector": {
+                "decisions": self.selector_decisions,
+                "reason": self.selector_reasoning,
+                "raw_response": self.selector_raw_response,
+                "items_before": self.selector_items_before,
+                "items_after": self.selector_items_after,
+                "all_rejected": self.selector_all_rejected,
+                "rejection_reason": self.selector_rejection_reason,
+            },
+            "aggregation": {
+                "sections_before_rerank": self.sections_before_rerank,
+                "sections_after_rerank": self.sections_after_rerank,
+                "reranker_status": self.reranker_status,
+                "reranker_error": self.reranker_error,
+            },
+        }
 
 
 class Pipeline:
@@ -76,9 +127,12 @@ class Pipeline:
         self._retriever = Retriever(config.retrieval, dsn=dsn)
         self._aggregator = SectionAggregator(config.aggregation, dsn=dsn)
         self._context_builder = ContextBuilder(config.context, dsn=dsn)
-        # Retained for legacy/manual step callers; full pipeline runs create a
-        # request-scoped selector instance to avoid mixing selector diagnostics.
-        self._selector = ContextSelector(config.selector)
+        # Full pipeline runs create request-scoped selector instances to avoid
+        # mixing selector diagnostics. This snapshot is updated after selector runs
+        # for legacy/manual callers that inspect ``pipe._selector``.
+        # Initialized lazily via the property to avoid consuming mock side_effects
+        # in tests and to defer construction until first access.
+        self._selector: ContextSelector | None = None
         self._generator = StreamingGenerator(config.generation)
 
         self.last_result: Optional[PipelineResult] = None
@@ -283,7 +337,6 @@ class Pipeline:
     def _retrieve_and_build(self, qr: QueryProcessResult, state: _RunState) -> List[ContextItem]:
         retrieval_query = qr.query_for_retrieval
 
-        # ── Stage 1: Retrieve chunks ──────────────────────────────────────
         configured_tables = list(self._retriever.config.tables)
         force_hybrid_tables: set[str] = set()
         if qr.needs_legal_search:
@@ -292,23 +345,93 @@ class Pipeline:
         else:
             active_tables = [t for t in configured_tables if t != "dgafp"]
 
+        initial_attempt = self._run_retrieval_attempt(
+            name="initial",
+            retrieval_query=retrieval_query,
+            active_tables=active_tables,
+            force_hybrid_tables=force_hybrid_tables,
+            state=state,
+            search_mode=self.config.retrieval.search_mode,
+            top_k=self.config.retrieval.initial_top_k,
+        )
+        attempts = [initial_attempt]
+        items = initial_attempt.context_items_ref
+
+        if items or not initial_attempt.selector_all_rejected:
+            self._set_latest_attempt_state(state, initial_attempt, attempts)
+            return state.stage_refs.get("_latest_context_items", [])
+
+        retry_enabled = bool(self.config.retrieval.enable_selector_retry)
+        state.stage_refs["selector_retry_triggered"] = retry_enabled
+        if not retry_enabled:
+            self._set_latest_attempt_state(state, initial_attempt, attempts)
+            return []
+
+        logger.info(
+            "Selector rejected all sections – retrying retrieval with %s/top_k=%d",
+            self.config.retrieval.selector_retry_search_mode.value,
+            self.config.retrieval.selector_retry_top_k,
+        )
+        retry_attempt = self._run_retrieval_attempt(
+            name="selector_retry",
+            retrieval_query=retrieval_query,
+            active_tables=active_tables,
+            force_hybrid_tables=force_hybrid_tables,
+            state=state,
+            search_mode=self.config.retrieval.selector_retry_search_mode,
+            top_k=self.config.retrieval.selector_retry_top_k,
+        )
+        attempts.append(retry_attempt)
+        retry_has_context = bool(retry_attempt.context_items_ref)
+        self._set_latest_attempt_state(state, retry_attempt, attempts)
+        state.stage_refs["selector_retry_succeeded"] = (
+            retry_has_context and not retry_attempt.selector_all_rejected
+        )
+        # If the retry also failed to produce context, preserve the no-answer
+        # signal so run()/run_stream() takes the no-answer path regardless
+        # of whether the retry selector explicitly rejected or just returned
+        # empty sections.
+        if not retry_has_context:
+            state.stage_refs["selector_all_rejected"] = True
+            state.stage_refs["selector_rejection_reason"] = (
+                retry_attempt.selector_rejection_reason
+                or initial_attempt.selector_rejection_reason
+            )
+        return state.stage_refs.get("_latest_context_items", [])
+
+    def _run_retrieval_attempt(
+        self,
+        *,
+        name: str,
+        retrieval_query: str,
+        active_tables: list[str],
+        force_hybrid_tables: set[str],
+        state: _RunState,
+        search_mode: SearchMode,
+        top_k: int,
+    ) -> _RetrievalAttempt:
         tables_searched = list(active_tables)
-        # rag_chunks_test is controlled by a dedicated config flag inside
-        # Retriever, not by the request-scoped table-key list. Include it in
-        # diagnostics when enabled because it is still searched.
         if getattr(self._retriever.config, "enable_chunks_test", False) is True:
             tables_searched.append("rag_chunks_test")
-        state.stage_refs["tables_searched"] = tables_searched
+
+        attempt = _RetrievalAttempt(
+            name=name,
+            search_mode=search_mode,
+            top_k=top_k,
+            tables_searched=tables_searched,
+        )
 
         t0 = time.time()
         chunks = self._retriever.retrieve(
             retrieval_query,
             force_hybrid_tables=force_hybrid_tables,
             tables=active_tables,
+            search_mode=search_mode,
+            top_k=top_k,
         )
-        state.timing["retrieval_ms"] = (time.time() - t0) * 1000
+        state.timing[f"retrieval_{name}_ms"] = (time.time() - t0) * 1000
 
-        state.stage_refs["retrieved_chunks"] = [
+        attempt.retrieved_chunks = [
             {
                 "chunk_id": str(c.chunk_id),
                 "table": c.table_source,
@@ -319,61 +442,112 @@ class Pipeline:
             for c in chunks
         ]
 
-        # ── Stage 2: Aggregate chunks into sections + rerank ──────────────
         t0 = time.time()
         aggregation_result = self._aggregator.aggregate_with_diagnostics(chunks, query=retrieval_query)
         sections = aggregation_result.sections
-        state.aggregation_diagnostics = aggregation_result.diagnostics
-        state.timing["aggregation_ms"] = (time.time() - t0) * 1000
+        diagnostics = aggregation_result.diagnostics
+        state.timing[f"aggregation_{name}_ms"] = (time.time() - t0) * 1000
 
-        state.stage_refs["aggregated_sections"] = [
-            {"section_id": str(s.section_id) if s.section_id else "", "heading": (s.heading or "")[:80], "score": round(s.score, 4),
-             "publisher": s.publisher or "", "chunk_count": len(s.chunks), "token_estimate": s.token_estimate,
-             "document_id": str(s.document_id or s.metadata.get("doc_id", "") or "")}
+        attempt.sections_before_rerank = int(
+            getattr(diagnostics, "sections_before_rerank", 0) or 0
+        )
+        attempt.sections_after_rerank = int(
+            getattr(diagnostics, "sections_after_rerank", 0) or 0
+        )
+        attempt.reranker_status = str(getattr(diagnostics, "reranker_status", "") or "")
+        attempt.reranker_error = str(getattr(diagnostics, "reranker_error", "") or "")
+        attempt.aggregated_sections = [
+            {
+                "section_id": str(s.section_id) if s.section_id else "",
+                "heading": (s.heading or "")[:80],
+                "score": round(s.score, 4),
+                "publisher": s.publisher or "",
+                "chunk_count": len(s.chunks),
+                "token_estimate": s.token_estimate,
+                "document_id": str(s.document_id or s.metadata.get("doc_id", "") or ""),
+            }
             for s in sections
         ]
 
-        # ── Stage 3: LLM Selector (filter sections by relevance) ─────────
         if self.config.selector.enabled:
             sections_before = len(sections)
             t0 = time.time()
             selector = ContextSelector(self.config.selector)
             sections = selector.select(retrieval_query, sections)
-            state.timing["selector_ms"] = (time.time() - t0) * 1000
-            state.stage_refs["selector_decisions"] = selector.last_decisions
-            state.stage_refs["selector_reasoning"] = selector.last_reasoning
-            state.stage_refs["selector_raw_response"] = selector.last_raw_response
-            state.stage_refs["selector_items_before"] = sections_before
-            state.stage_refs["selector_items_after"] = len(sections)
-            state.stage_refs["selector_all_rejected"] = selector.all_rejected
-            state.stage_refs["selector_rejection_reason"] = (
-                selector.last_reasoning if selector.all_rejected else ""
-            )
-            # Backward-compatible snapshot for manual step callers that inspect
-            # pipe._selector after a run. The pipeline's own diagnostics use the
-            # request-local selector above and do not read this shared snapshot.
+            state.timing[f"selector_{name}_ms"] = (time.time() - t0) * 1000
+            attempt.selector_decisions = selector.last_decisions
+            attempt.selector_reasoning = selector.last_reasoning
+            attempt.selector_raw_response = selector.last_raw_response
+            attempt.selector_items_before = sections_before
+            attempt.selector_items_after = len(sections)
+            attempt.selector_all_rejected = selector.all_rejected
+            attempt.selector_rejection_reason = selector.last_reasoning if selector.all_rejected else ""
             self._selector = selector
 
             if not sections and selector.all_rejected:
-                logger.info("Selector rejected all sections – returning empty context")
-                state.timing["context_build_ms"] = 0
-                state.stage_refs["context_items_ref"] = []
-                return []
+                logger.info("Selector rejected all sections on %s attempt", name)
+                state.timing[f"context_build_{name}_ms"] = 0
+                return attempt
 
-        # ── Stage 4: ContextBuilder (budget + doc-entire + triangulation + legal refs) ──
         t0 = time.time()
         items = self._context_builder.build(sections)
-        state.timing["context_build_ms"] = (time.time() - t0) * 1000
-
-        state.stage_refs["context_items_ref"] = [
-            {"section_id": str(it.section_id) if it.section_id else "", "doc_id": str(it.metadata.get("doc_id", "") or ""),
-             "heading": (it.heading or "")[:80], "publisher": it.publisher or "",
-             "tokens": it.token_estimate, "score": round(it.score, 4),
-             "is_doc_entire": it.metadata.get("is_doc_entire", False)}
+        state.timing[f"context_build_{name}_ms"] = (time.time() - t0) * 1000
+        attempt.context_items_ref = [
+            {
+                "section_id": str(it.section_id) if it.section_id else "",
+                "doc_id": str(it.metadata.get("doc_id", "") or ""),
+                "heading": (it.heading or "")[:80],
+                "publisher": it.publisher or "",
+                "tokens": it.token_estimate,
+                "score": round(it.score, 4),
+                "is_doc_entire": it.metadata.get("is_doc_entire", False),
+            }
             for it in items
         ]
+        state.stage_refs["_latest_context_items"] = items
+        return attempt
 
-        return items
+    def _set_latest_attempt_state(
+        self,
+        state: _RunState,
+        latest: _RetrievalAttempt,
+        attempts: list[_RetrievalAttempt],
+    ) -> None:
+        state.stage_refs["retrieval_attempts"] = [attempt.to_dict() for attempt in attempts]
+        state.stage_refs["tables_searched"] = latest.tables_searched
+        state.stage_refs["retrieved_chunks"] = latest.retrieved_chunks
+        state.stage_refs["aggregated_sections"] = latest.aggregated_sections
+        state.stage_refs["context_items_ref"] = latest.context_items_ref
+        state.stage_refs["selector_decisions"] = latest.selector_decisions
+        state.stage_refs["selector_reasoning"] = latest.selector_reasoning
+        state.stage_refs["selector_raw_response"] = latest.selector_raw_response
+        state.stage_refs["selector_items_before"] = latest.selector_items_before
+        state.stage_refs["selector_items_after"] = latest.selector_items_after
+        state.stage_refs["selector_all_rejected"] = latest.selector_all_rejected
+        state.stage_refs["selector_rejection_reason"] = latest.selector_rejection_reason
+        state.stage_refs.setdefault("selector_retry_triggered", len(attempts) > 1)
+        state.stage_refs.setdefault("selector_retry_succeeded", False)
+
+        diagnostics = SimpleNamespace(
+            sections_before_rerank=latest.sections_before_rerank,
+            sections_after_rerank=latest.sections_after_rerank,
+            reranker_status=latest.reranker_status,
+            reranker_error=latest.reranker_error,
+        )
+        state.aggregation_diagnostics = diagnostics
+
+        state.timing["retrieval_ms"] = sum(
+            state.timing.get(f"retrieval_{attempt.name}_ms", 0.0) for attempt in attempts
+        )
+        state.timing["aggregation_ms"] = sum(
+            state.timing.get(f"aggregation_{attempt.name}_ms", 0.0) for attempt in attempts
+        )
+        state.timing["selector_ms"] = sum(
+            state.timing.get(f"selector_{attempt.name}_ms", 0.0) for attempt in attempts
+        )
+        state.timing["context_build_ms"] = sum(
+            state.timing.get(f"context_build_{attempt.name}_ms", 0.0) for attempt in attempts
+        )
 
     def _build_result(
         self,
@@ -428,6 +602,9 @@ class Pipeline:
             "sections_before_rerank": _sections_before_rerank(state),
             "sections_after_rerank": _sections_after_rerank(state),
             "selector_all_rejected": state.stage_refs.get("selector_all_rejected", False),
+            "selector_retry_triggered": state.stage_refs.get("selector_retry_triggered", False),
+            "selector_retry_succeeded": state.stage_refs.get("selector_retry_succeeded", False),
+            "retrieval_attempts": state.stage_refs.get("retrieval_attempts", []),
         }
         metadata["selector_decision"] = self._selector_decision(metadata)
         metadata["reranker_status"] = self._reranker_status(state)
@@ -479,6 +656,10 @@ class Pipeline:
         context_items_ref = metadata.get("context_items_ref")
         if not isinstance(context_items_ref, list):
             context_items_ref = []
+
+        retrieval_attempts = metadata.get("retrieval_attempts")
+        if not isinstance(retrieval_attempts, list):
+            retrieval_attempts = []
 
         tables_searched = metadata.get("tables_searched")
         if not isinstance(tables_searched, list):
@@ -545,6 +726,7 @@ class Pipeline:
                             for item in retrieved_chunks
                             if isinstance(item, dict)
                         ],
+                        "attempts": retrieval_attempts,
                     },
                 },
                 "section-aggregator": {
@@ -567,6 +749,7 @@ class Pipeline:
                             for item in aggregated_sections
                             if isinstance(item, dict)
                         ],
+                        "attempts": retrieval_attempts,
                     },
                 },
                 "context-selector": {
@@ -585,14 +768,19 @@ class Pipeline:
                         "selector_items_after": metadata.get("selector_items_after", 0),
                         "selector_decisions": selector_decisions,
                         "selector_decision": metadata.get("selector_decision", "not_run"),
+                        "selector_retry_triggered": bool(metadata.get("selector_retry_triggered", False)),
+                        "selector_retry_succeeded": bool(metadata.get("selector_retry_succeeded", False)),
                         "rejection_reason": metadata.get("selector_rejection_reason", ""),
                         "reason": metadata.get("selector_reasoning", ""),
                         "selected_section_ids": selected_section_ids,
+                        "attempts": retrieval_attempts,
                     },
                 },
                 "context-builder": {
                     "input": {
                         "selected_section_ids": selected_section_ids,
+                        "selector_retry_triggered": bool(metadata.get("selector_retry_triggered", False)),
+                        "attempts": retrieval_attempts,
                     },
                     "output": {
                         "context_items_ref": context_items_ref,
@@ -690,6 +878,15 @@ class Pipeline:
                 "rejection_reason": metadata.get("selector_rejection_reason", ""),
                 "raw_response": metadata.get("selector_raw_response", ""),
             },
+            "selector_retry": {
+                "enabled": metadata.get("selector_enabled", False)
+                and self.config.retrieval.enable_selector_retry,
+                "triggered": metadata.get("selector_retry_triggered", False),
+                "succeeded": metadata.get("selector_retry_succeeded", False),
+                "search_mode": self.config.retrieval.selector_retry_search_mode.value,
+                "top_k": self.config.retrieval.selector_retry_top_k,
+            },
+            "attempts": metadata.get("retrieval_attempts", []),
         }
 
 
