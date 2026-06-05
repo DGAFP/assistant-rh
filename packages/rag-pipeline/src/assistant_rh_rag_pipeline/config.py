@@ -55,8 +55,20 @@ class ChunkTable:
 
 
 CHUNK_TABLES: Dict[str, ChunkTable] = {
-    "matte": ChunkTable("rag_chunks_matte", embed_col_albert="embedding_m3", tsv_col="text_tsv", publisher="MATTE", has_sections=True),
-    "service_public": ChunkTable("rag_chunks_service_public", embed_col_albert="embedding_m3", tsv_col="text_tsv", publisher="Service-Public", has_sections=True),
+    "matte": ChunkTable(
+        "rag_chunks_matte",
+        embed_col_albert="embedding_m3",
+        tsv_col="text_tsv",
+        publisher="MATTE",
+        has_sections=True,
+    ),
+    "service_public": ChunkTable(
+        "rag_chunks_service_public",
+        embed_col_albert="embedding_m3",
+        tsv_col="text_tsv",
+        publisher="Service-Public",
+        has_sections=True,
+    ),
     "service_public_scw": ChunkTable(
         os.getenv("SERVICE_PUBLIC_COMPARE_TABLE", "rag_chunks_service_public_scw"),
         embed_col_albert="embedding_m3",
@@ -64,7 +76,14 @@ CHUNK_TABLES: Dict[str, ChunkTable] = {
         publisher="Service-Public (Scaleway)",
         has_sections=False,
     ),
-    "dgafp": ChunkTable("rag_chunks_dgafp", id_col="chunk_id", embed_col_albert="embedding_m3", tsv_col="chunk_text_tsv", publisher="DGAFP", has_sections=False),
+    "dgafp": ChunkTable(
+        "rag_chunks_dgafp",
+        id_col="chunk_id",
+        embed_col_albert="embedding_m3",
+        tsv_col="chunk_text_tsv",
+        publisher="DGAFP",
+        has_sections=False,
+    ),
     "dgafp_scw": ChunkTable(
         os.getenv("DGAFP_COMPARE_TABLE", "rag_chunks_dgafp_scw"),
         id_col="chunk_id",
@@ -102,9 +121,17 @@ class RetrievalConfig:
     enable_chunks_test: bool = False
     enable_chunk_reranker: bool = False
     chunk_rerank_top_k: int = 30
+    enable_selector_retry: bool = True
+    selector_retry_search_mode: SearchMode = SearchMode.HYBRID
+    selector_retry_top_k: int = 30
 
     def to_dict(self) -> dict:
-        return {**asdict(self), "search_mode": self.search_mode.value, "embedding_model": self.embedding_model.value}
+        return {
+            **asdict(self),
+            "search_mode": self.search_mode.value,
+            "embedding_model": self.embedding_model.value,
+            "selector_retry_search_mode": self.selector_retry_search_mode.value,
+        }
 
 
 @dataclass

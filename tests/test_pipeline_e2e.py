@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from assistant_rh_rag_pipeline.config import RAGConfig, SelectorConfig
+from assistant_rh_rag_pipeline.config import RAGConfig, SearchMode, SelectorConfig
 from assistant_rh_rag_pipeline.models import (
     AggregatedSection,
     ContextItem,
@@ -278,6 +278,11 @@ class TestPipelineE2E:
         assert "pas trouvé" in result.answer.lower() or "base de connaissances" in result.answer.lower()
         assert result.context_items == []
         assert result.metadata["selector_all_rejected"] is True
+        assert result.metadata["selector_retry_triggered"] is True
+        assert result.metadata["selector_retry_succeeded"] is False
+        assert len(result.metadata["retrieval_attempts"]) == 2
+        assert result.metadata["retrieval_attempts"][0]["name"] == "initial"
+        assert result.metadata["retrieval_attempts"][1]["name"] == "selector_retry"
 
         diagnostics = result.metadata["rag_diagnostics"]
         assert diagnostics["query"]["original"] == "Quelle est la durée du congé spatial ?"
@@ -288,14 +293,24 @@ class TestPipelineE2E:
         assert diagnostics["reranker"]["section"]["enabled"] is True
         assert diagnostics["selector"]["all_rejected"] is True
         assert diagnostics["selector"]["rejection_reason"] == "Aucune section pertinente."
+        assert diagnostics["selector_retry"]["triggered"] is True
+        assert diagnostics["selector_retry"]["succeeded"] is False
+        assert diagnostics["attempts"][1]["search_mode"] == "hybrid"
+        assert diagnostics["attempts"][1]["top_k"] == 30
 
         stage_trace = result.metadata["stage_trace"]
         selector_output = stage_trace["stages"]["context-selector"]["output"]
         assert selector_output["selector_all_rejected"] is True
         assert selector_output["rejection_reason"] == "Aucune section pertinente."
         assert selector_output["selector_decision"] == "all_rejected"
+        assert selector_output["selector_retry_triggered"] is True
+        assert selector_output["selector_retry_succeeded"] is False
+        assert stage_trace["stages"]["retriever"]["output"]["attempts"][1]["name"] == "selector_retry"
         # Generator should NOT have been called
         MockGenerator.return_value.generate.assert_not_called()
+        assert MockRetriever.return_value.retrieve.call_count == 2
+        assert MockAggregator.return_value.aggregate_with_diagnostics.call_count == 2
+        assert mock_sel.select.call_count == 2
 
     @patch("assistant_rh_rag_pipeline.pipeline.StreamingGenerator")
     @patch("assistant_rh_rag_pipeline.pipeline.ContextBuilder")
@@ -334,6 +349,7 @@ class TestPipelineE2E:
 
         config = RAGConfig()
         config.selector = SelectorConfig(enabled=True)
+        config.retrieval.enable_selector_retry = False
         from assistant_rh_rag_pipeline.pipeline import Pipeline
 
         pipe = Pipeline(config)
@@ -350,6 +366,166 @@ class TestPipelineE2E:
         )
         MockContextBuilder.return_value.build.assert_not_called()
         MockGenerator.return_value.stream.assert_not_called()
+
+    @patch("assistant_rh_rag_pipeline.pipeline.StreamingGenerator")
+    @patch("assistant_rh_rag_pipeline.pipeline.ContextBuilder")
+    @patch("assistant_rh_rag_pipeline.pipeline.ContextSelector")
+    @patch("assistant_rh_rag_pipeline.pipeline.SectionAggregator")
+    @patch("assistant_rh_rag_pipeline.pipeline.Retriever")
+    @patch("assistant_rh_rag_pipeline.pipeline.QueryProcessor")
+    @patch("assistant_rh_rag_pipeline.pipeline.get_dsn", return_value="postgresql://fake")
+    def test_selector_all_rejected_retries_with_hybrid_search_and_generates_answer(
+        self,
+        mock_get_dsn,
+        MockQueryProcessor,
+        MockRetriever,
+        MockAggregator,
+        MockSelector,
+        MockContextBuilder,
+        MockGenerator,
+    ):
+        """When the first selector attempt rejects all sections, a hybrid retry can recover context."""
+        MockQueryProcessor.return_value.process.return_value = FAKE_QUERY_RESULT
+
+        initial_chunks = [_make_chunk(0, table="matte")]
+        retry_chunks = [_make_chunk(10, table="service_public")]
+        mock_retriever = MockRetriever.return_value
+        mock_retriever.retrieve.side_effect = [initial_chunks, retry_chunks]
+        mock_retriever.config = MagicMock()
+        mock_retriever.config.tables = ["matte", "service_public", "dgafp"]
+        mock_retriever.config.enable_chunks_test = False
+        mock_retriever.config.search_mode = SearchMode.SEMANTIC
+        mock_retriever.config.initial_top_k = 15
+
+        initial_sections = [_make_section(0, "MATTE")]
+        retry_sections = [_make_section(10, "Service-Public")]
+        MockAggregator.return_value.aggregate_with_diagnostics.side_effect = [
+            _aggregation_result(initial_sections, before=1, after=1),
+            _aggregation_result(retry_sections, before=1, after=1),
+        ]
+
+        initial_selector = MagicMock()
+        initial_selector.select.return_value = []
+        initial_selector.all_rejected = True
+        initial_selector.last_decisions = {}
+        initial_selector.last_reasoning = "Aucune section pertinente."
+        initial_selector.last_raw_response = '{"selected_ids": []}'
+
+        retry_selector = MagicMock()
+        retry_selector.select.return_value = retry_sections
+        retry_selector.all_rejected = False
+        retry_selector.last_decisions = {"kept": [{"idx": 0, "heading": "Fiche 10"}]}
+        retry_selector.last_reasoning = "La seconde recherche trouve une section utile."
+        retry_selector.last_raw_response = '{"selected_ids": [0]}'
+        MockSelector.side_effect = [initial_selector, retry_selector]
+
+        context_items = [_make_context_item(10, "Service-Public")]
+        MockContextBuilder.return_value.build.return_value = context_items
+        MockContextBuilder.return_value.last_full_docs = []
+        MockContextBuilder.return_value.last_legal_refs_found = 0
+        MockContextBuilder.return_value.last_legal_refs_total = 0
+        MockGenerator.return_value.generate.return_value = "Le SFT est versé sous conditions."
+
+        config = RAGConfig()
+        config.selector = SelectorConfig(enabled=True)
+        config.retrieval.selector_retry_top_k = 30
+        from assistant_rh_rag_pipeline.pipeline import Pipeline
+
+        pipe = Pipeline(config)
+        result = pipe.run_with_trace("Quelles sont les conditions pour recevoir le SFT ?")
+
+        assert result.answer == "Le SFT est versé sous conditions."
+        assert result.context_items == context_items
+        assert result.metadata["selector_retry_triggered"] is True
+        assert result.metadata["selector_retry_succeeded"] is True
+        assert result.metadata["selector_all_rejected"] is False
+        assert mock_retriever.retrieve.call_count == 2
+        retry_call = mock_retriever.retrieve.call_args_list[1]
+        assert retry_call.kwargs["search_mode"] == SearchMode.HYBRID
+        assert retry_call.kwargs["top_k"] == 30
+        assert retry_call.kwargs["tables"] == ["matte", "service_public"]
+        MockGenerator.return_value.generate.assert_called_once()
+
+        attempts = result.metadata["rag_diagnostics"]["attempts"]
+        assert [attempt["name"] for attempt in attempts] == ["initial", "selector_retry"]
+        assert attempts[0]["selector"]["all_rejected"] is True
+        assert attempts[0]["search_mode"] == "semantic"
+        assert len(attempts[0]["aggregated_sections"]) == 1
+        assert attempts[1]["selector"]["all_rejected"] is False
+        assert attempts[1]["search_mode"] == "hybrid"
+        assert attempts[1]["top_k"] == 30
+        assert len(attempts[1]["aggregated_sections"]) == 1
+        assert result.metadata["stage_trace"]["stages"]["context-selector"]["output"]["selector_retry_triggered"] is True
+
+    @patch("assistant_rh_rag_pipeline.pipeline.StreamingGenerator")
+    @patch("assistant_rh_rag_pipeline.pipeline.ContextBuilder")
+    @patch("assistant_rh_rag_pipeline.pipeline.ContextSelector")
+    @patch("assistant_rh_rag_pipeline.pipeline.SectionAggregator")
+    @patch("assistant_rh_rag_pipeline.pipeline.Retriever")
+    @patch("assistant_rh_rag_pipeline.pipeline.QueryProcessor")
+    @patch("assistant_rh_rag_pipeline.pipeline.get_dsn", return_value="postgresql://fake")
+    def test_selector_retry_preserves_no_answer_when_second_attempt_rejects_all(
+        self,
+        mock_get_dsn,
+        MockQueryProcessor,
+        MockRetriever,
+        MockAggregator,
+        MockSelector,
+        MockContextBuilder,
+        MockGenerator,
+    ):
+        """The no-answer behavior is kept when the retry selector also rejects all sections."""
+        MockQueryProcessor.return_value.process.return_value = FAKE_QUERY_RESULT
+
+        mock_retriever = MockRetriever.return_value
+        mock_retriever.retrieve.side_effect = [[_make_chunk(0)], [_make_chunk(1, table="service_public")]]
+        mock_retriever.config = MagicMock()
+        mock_retriever.config.tables = ["matte", "service_public"]
+        mock_retriever.config.enable_chunks_test = False
+        mock_retriever.config.search_mode = SearchMode.SEMANTIC
+        mock_retriever.config.initial_top_k = 15
+
+        MockAggregator.return_value.aggregate_with_diagnostics.side_effect = [
+            _aggregation_result([_make_section(0)], before=1, after=1),
+            _aggregation_result([_make_section(1, "Service-Public")], before=1, after=1),
+        ]
+
+        first_selector = MagicMock()
+        first_selector.select.return_value = []
+        first_selector.all_rejected = True
+        first_selector.last_decisions = {}
+        first_selector.last_reasoning = "Aucune section pertinente."
+        first_selector.last_raw_response = '{"selected_ids": []}'
+
+        retry_selector = MagicMock()
+        retry_selector.select.return_value = []
+        retry_selector.all_rejected = True
+        retry_selector.last_decisions = {}
+        retry_selector.last_reasoning = "Toujours aucune section pertinente."
+        retry_selector.last_raw_response = '{"selected_ids": []}'
+        MockSelector.side_effect = [first_selector, retry_selector]
+
+        config = RAGConfig()
+        config.selector = SelectorConfig(enabled=True)
+        from assistant_rh_rag_pipeline.pipeline import Pipeline
+
+        pipe = Pipeline(config)
+        result = pipe.run_with_trace("Question sans contexte utile")
+
+        assert "pas trouvé" in result.answer.lower() or "base de connaissances" in result.answer.lower()
+        assert result.context_items == []
+        assert result.metadata["selector_retry_triggered"] is True
+        assert result.metadata["selector_retry_succeeded"] is False
+        assert result.metadata["selector_all_rejected"] is True
+        assert result.metadata["selector_rejection_reason"] == "Toujours aucune section pertinente."
+        assert mock_retriever.retrieve.call_count == 2
+        MockContextBuilder.return_value.build.assert_not_called()
+        MockGenerator.return_value.generate.assert_not_called()
+
+        attempts = result.metadata["rag_diagnostics"]["attempts"]
+        assert len(attempts) == 2
+        assert attempts[0]["selector"]["all_rejected"] is True
+        assert attempts[1]["selector"]["all_rejected"] is True
 
     @patch("assistant_rh_rag_pipeline.pipeline.StreamingGenerator")
     @patch("assistant_rh_rag_pipeline.pipeline.ContextBuilder")

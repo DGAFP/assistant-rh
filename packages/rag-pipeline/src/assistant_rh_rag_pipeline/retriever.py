@@ -100,6 +100,8 @@ class Retriever:
         query: str,
         force_hybrid_tables: set[str] | None = None,
         tables: list[str] | None = None,
+        search_mode: SearchMode | None = None,
+        top_k: int | None = None,
     ) -> List[RetrievedChunk]:
         """Embed *query*, search all configured tables in parallel, return merged results.
 
@@ -107,6 +109,8 @@ class Retriever:
         hybrid search regardless of the global ``search_mode``.
         *tables*: optional request-scoped table keys to search without mutating
         ``self.config.tables``.
+        *search_mode* and *top_k*: optional request-scoped overrides used by
+        fallback/retry paths without mutating ``self.config``.
         """
         t0 = time.time()
         _force_names = {
@@ -119,8 +123,10 @@ class Retriever:
             return []
 
         embed_model_used = self.embedder.last_model_used or "albert"
-        is_hybrid = self.config.search_mode == SearchMode.HYBRID
-        is_lexical = self.config.search_mode == SearchMode.LEXICAL
+        effective_search_mode = search_mode or self.config.search_mode
+        effective_top_k = top_k or self.config.initial_top_k
+        is_hybrid = effective_search_mode == SearchMode.HYBRID
+        is_lexical = effective_search_mode == SearchMode.LEXICAL
 
         table_keys = self.config.tables if tables is None else tables
         chunk_tables = [CHUNK_TABLES[k] for k in table_keys if k in CHUNK_TABLES]
@@ -134,21 +140,27 @@ class Retriever:
                 pool.submit(
                     self._search_table, tbl, embedding, embed_model_used, query,
                     force_hybrid=(tbl.name in _force_names),
+                    search_mode=effective_search_mode,
+                    top_k=effective_top_k,
                 ): tbl.name
                 for tbl in chunk_tables
             }
             if self.config.enable_chunks_test:
                 if is_hybrid:
                     futures[pool.submit(
-                        self._search_chunks_test_hybrid, embedding, embed_model_used, query,
+                        self._search_chunks_test_hybrid,
+                        embedding,
+                        embed_model_used,
+                        query,
+                        top_k=effective_top_k,
                     )] = "rag_chunks_test"
                 elif is_lexical:
                     futures[pool.submit(
-                        self._search_chunks_test_lexical, query,
+                        self._search_chunks_test_lexical, query, top_k=effective_top_k,
                     )] = "rag_chunks_test"
                 else:
                     futures[pool.submit(
-                        self._search_chunks_test, embedding, embed_model_used,
+                        self._search_chunks_test, embedding, embed_model_used, top_k=effective_top_k,
                     )] = "rag_chunks_test"
 
             for future in as_completed(futures):
@@ -176,7 +188,7 @@ class Retriever:
             all_chunks,
             source_count=len(per_source_results),
         )
-        mode_label = self.config.search_mode.value
+        mode_label = effective_search_mode.value
         logger.info(
             "Retrieved %d chunks from %d sources (%s, cross-source RRF + source-ceiling score calibration) in %.0fms",
             len(all_chunks), n_workers, mode_label, (time.time() - t0) * 1000,
@@ -348,21 +360,34 @@ class Retriever:
         query: str,
         *,
         force_hybrid: bool = False,
+        search_mode: SearchMode | None = None,
+        top_k: int | None = None,
     ) -> List[RetrievedChunk]:
         """Search a DE table. Uses hybrid RRF when tsvector is available, else semantic."""
+        effective_search_mode = search_mode or self.config.search_mode
+        effective_top_k = top_k or self.config.initial_top_k
         use_hybrid = (
-            (self.config.search_mode in (SearchMode.HYBRID, SearchMode.LEXICAL) or force_hybrid)
+            (effective_search_mode in (SearchMode.HYBRID, SearchMode.LEXICAL) or force_hybrid)
             and table.tsv_col
         )
-        if self.config.search_mode == SearchMode.LEXICAL and table.tsv_col:
+        if effective_search_mode == SearchMode.LEXICAL and table.tsv_col:
             mode = "lexical"
         else:
             mode = "hybrid" if use_hybrid else "semantic"
         logger.info("Searching %s [%s] tsv_col=%s force=%s", table.name, mode, table.tsv_col or "—", force_hybrid)
         if use_hybrid:
-            chunks = self._search_table_hybrid(table, embedding, model_used, query)
+            chunks = self._search_table_hybrid(
+                table,
+                embedding,
+                model_used,
+                query,
+                search_mode=effective_search_mode,
+                top_k=effective_top_k,
+            )
         else:
-            chunks = self._search_table_semantic(table, embedding, model_used)
+            chunks = self._search_table_semantic(
+                table, embedding, model_used, top_k=effective_top_k,
+            )
 
         for chunk in chunks:
             chunk.metadata.setdefault("source_score_mode", mode)
@@ -374,9 +399,12 @@ class Retriever:
         table: ChunkTable,
         embedding: List[float],
         model_used: str,
+        *,
+        top_k: int | None = None,
     ) -> List[RetrievedChunk]:
         """Pure semantic (cosine) search on a DE table."""
         embed_col = table.embed_col_albert if model_used == "albert" else table.embed_col_bge
+        effective_top_k = top_k or self.config.initial_top_k
 
         extra_cols = self._select_existing_meta_cols(table)
         extra_sql = "".join(f", t.{c}" for c in extra_cols)
@@ -394,7 +422,7 @@ class Retriever:
             ORDER BY t.{embed_col} <=> %s::vector, t.{table.id_col}
             LIMIT %s
         """
-        params: Tuple = (embedding, embedding, self.config.initial_top_k)
+        params: Tuple = (embedding, embedding, effective_top_k)
         return self._exec_de_table(table, sql, params, model_used)
 
     def _search_table_hybrid(
@@ -403,14 +431,18 @@ class Retriever:
         embedding: List[float],
         model_used: str,
         query: str,
+        *,
+        search_mode: SearchMode | None = None,
+        top_k: int | None = None,
     ) -> List[RetrievedChunk]:
         """Hybrid RRF search on a DE table that has a tsvector column."""
         embed_col = table.embed_col_albert if model_used == "albert" else table.embed_col_bge
         tsv = table.tsv_col
         alpha = self.config.alpha
         rrf_k = 60
-        top_k = self.config.initial_top_k
-        is_lexical_only = self.config.search_mode == SearchMode.LEXICAL
+        top_k = top_k or self.config.initial_top_k
+        effective_search_mode = search_mode or self.config.search_mode
+        is_lexical_only = effective_search_mode == SearchMode.LEXICAL
 
         extra_cols = self._select_existing_meta_cols(table)
         extra_sql = "".join(f", t.{c}" for c in extra_cols)
@@ -526,10 +558,13 @@ class Retriever:
         self,
         embedding: List[float],
         model_used: str,
+        *,
+        top_k: int | None = None,
     ) -> List[RetrievedChunk]:
         """Pure semantic search on rag_chunks_test via rag_chunk_embeddings."""
         tbl = CHUNKS_TEST_TABLE
         embed_col = tbl.embed_col_albert if model_used == "albert" else tbl.embed_col_bge
+        top_k = top_k or self.config.initial_top_k
 
         sql = f"""
             SELECT
@@ -541,7 +576,7 @@ class Retriever:
             ORDER BY e.{embed_col} <=> %s::vector, t.chunk_id
             LIMIT %s
         """
-        return self._exec_chunks_test(sql, (embedding, embedding, self.config.initial_top_k), model_used)
+        return self._exec_chunks_test(sql, (embedding, embedding, top_k), model_used)
 
     # ------------------------------------------------------------------
     # rag_chunks_test: hybrid (RRF = semantic + lexical)
@@ -552,13 +587,15 @@ class Retriever:
         embedding: List[float],
         model_used: str,
         query: str,
+        *,
+        top_k: int | None = None,
     ) -> List[RetrievedChunk]:
         """Hybrid search on rag_chunks_test using Reciprocal Rank Fusion."""
         tbl = CHUNKS_TEST_TABLE
         embed_col = tbl.embed_col_albert if model_used == "albert" else tbl.embed_col_bge
         alpha = self.config.alpha
         rrf_k = 60
-        top_k = self.config.initial_top_k
+        top_k = top_k or self.config.initial_top_k
         tsq = _TSQUERY_OR.format(p="%s")
 
         sql = f"""
@@ -614,10 +651,12 @@ class Retriever:
     def _search_chunks_test_lexical(
         self,
         query: str,
+        *,
+        top_k: int | None = None,
     ) -> List[RetrievedChunk]:
         """Pure lexical search on rag_chunks_test using chunk_tsv."""
         tsq = _TSQUERY_OR.format(p="%s")
-        top_k = self.config.initial_top_k
+        top_k = top_k or self.config.initial_top_k
 
         sql = f"""
             WITH parsed_query AS (
