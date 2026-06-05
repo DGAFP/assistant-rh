@@ -99,11 +99,14 @@ class Retriever:
         self,
         query: str,
         force_hybrid_tables: set[str] | None = None,
+        tables: list[str] | None = None,
     ) -> List[RetrievedChunk]:
         """Embed *query*, search all configured tables in parallel, return merged results.
 
         *force_hybrid_tables*: table keys (e.g. ``{"dgafp"}``) that should use
         hybrid search regardless of the global ``search_mode``.
+        *tables*: optional request-scoped table keys to search without mutating
+        ``self.config.tables``.
         """
         t0 = time.time()
         _force_names = {
@@ -119,11 +122,12 @@ class Retriever:
         is_hybrid = self.config.search_mode == SearchMode.HYBRID
         is_lexical = self.config.search_mode == SearchMode.LEXICAL
 
-        tables = [CHUNK_TABLES[k] for k in self.config.tables if k in CHUNK_TABLES]
-        if not tables and not self.config.enable_chunks_test:
+        table_keys = self.config.tables if tables is None else tables
+        chunk_tables = [CHUNK_TABLES[k] for k in table_keys if k in CHUNK_TABLES]
+        if not chunk_tables and not self.config.enable_chunks_test:
             return []
 
-        n_workers = len(tables) + (1 if self.config.enable_chunks_test else 0)
+        n_workers = len(chunk_tables) + (1 if self.config.enable_chunks_test else 0)
         per_source_results: Dict[str, List[RetrievedChunk]] = {}
         with ThreadPoolExecutor(max_workers=max(n_workers, 1)) as pool:
             futures = {
@@ -131,7 +135,7 @@ class Retriever:
                     self._search_table, tbl, embedding, embed_model_used, query,
                     force_hybrid=(tbl.name in _force_names),
                 ): tbl.name
-                for tbl in tables
+                for tbl in chunk_tables
             }
             if self.config.enable_chunks_test:
                 if is_hybrid:
