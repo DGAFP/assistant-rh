@@ -20,6 +20,10 @@ from assistant_rh_rag_pipeline.models import (
     RetrievedChunk,
 )
 from assistant_rh_rag_pipeline.query_processor import Intent, QueryProcessResult
+from assistant_rh_rag_pipeline.section_aggregator import (
+    SectionAggregationDiagnostics,
+    SectionAggregationResult,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures: realistic fake data
@@ -50,6 +54,25 @@ def _make_section(idx: int, publisher: str = "MATTE") -> AggregatedSection:
         publisher=publisher,
         references_juridiques=[{"cid": f"LEGIARTI{idx}", "title": "CGFP", "number": f"L332-{idx}"}],
         metadata={"document_id": f"doc_{idx}"},
+    )
+
+
+
+
+def _aggregation_result(
+    sections: list[AggregatedSection],
+    *,
+    before: int | None = None,
+    after: int | None = None,
+    reranker_status: str = "completed",
+) -> SectionAggregationResult:
+    return SectionAggregationResult(
+        sections=sections,
+        diagnostics=SectionAggregationDiagnostics(
+            sections_before_rerank=len(sections) if before is None else before,
+            sections_after_rerank=len(sections) if after is None else after,
+            reranker_status=reranker_status,
+        ),
     )
 
 
@@ -112,9 +135,11 @@ class TestPipelineE2E:
 
         sections = [_make_section(0, "MATTE"), _make_section(1, "Service-Public")]
         mock_agg = MockAggregator.return_value
-        mock_agg.aggregate.return_value = sections
-        mock_agg.last_sections_before_rerank = 4
-        mock_agg.last_sections_after_rerank = 2
+        mock_agg.aggregate_with_diagnostics.return_value = _aggregation_result(
+            sections,
+            before=4,
+            after=2,
+        )
 
         mock_sel = MockSelector.return_value
         mock_sel.enabled = True
@@ -154,7 +179,7 @@ class TestPipelineE2E:
         # Verify pipeline called each stage in order
         mock_qp.process.assert_called_once()
         mock_retriever.retrieve.assert_called_once()
-        mock_agg.aggregate.assert_called_once()
+        mock_agg.aggregate_with_diagnostics.assert_called_once()
         mock_sel.select.assert_called_once()
         mock_cb.build.assert_called_once()
         mock_gen.generate.assert_called_once()
@@ -224,9 +249,11 @@ class TestPipelineE2E:
         MockRetriever.return_value.config = MagicMock()
         MockRetriever.return_value.config.tables = ["matte"]
 
-        MockAggregator.return_value.aggregate.return_value = [_make_section(0)]
-        MockAggregator.return_value.last_sections_before_rerank = 1
-        MockAggregator.return_value.last_sections_after_rerank = 1
+        MockAggregator.return_value.aggregate_with_diagnostics.return_value = _aggregation_result(
+            [_make_section(0)],
+            before=1,
+            after=1,
+        )
 
         mock_sel = MockSelector.return_value
         mock_sel.enabled = True
@@ -245,13 +272,84 @@ class TestPipelineE2E:
         config.selector = SelectorConfig(enabled=True)
         from assistant_rh_rag_pipeline.pipeline import Pipeline
         pipe = Pipeline(config)
-        result = pipe.run("Quelle est la durée du congé spatial ?")
+        result = pipe.run_with_trace("Quelle est la durée du congé spatial ?")
 
         assert isinstance(result, PipelineResult)
         assert "pas trouvé" in result.answer.lower() or "base de connaissances" in result.answer.lower()
         assert result.context_items == []
+        assert result.metadata["selector_all_rejected"] is True
+
+        diagnostics = result.metadata["rag_diagnostics"]
+        assert diagnostics["query"]["original"] == "Quelle est la durée du congé spatial ?"
+        assert diagnostics["query"]["enriched"] == "congé de mobilité"
+        assert diagnostics["retrieval"]["tables_searched"] == ["matte"]
+        assert diagnostics["retrieval"]["retrieved_chunks"][0]["chunk_id"] == "chunk_0"
+        assert diagnostics["aggregation"]["aggregated_sections"][0]["section_id"] == "sec_0"
+        assert diagnostics["reranker"]["section"]["enabled"] is True
+        assert diagnostics["selector"]["all_rejected"] is True
+        assert diagnostics["selector"]["rejection_reason"] == "Aucune section pertinente."
+
+        stage_trace = result.metadata["stage_trace"]
+        selector_output = stage_trace["stages"]["context-selector"]["output"]
+        assert selector_output["selector_all_rejected"] is True
+        assert selector_output["rejection_reason"] == "Aucune section pertinente."
+        assert selector_output["selector_decision"] == "all_rejected"
         # Generator should NOT have been called
         MockGenerator.return_value.generate.assert_not_called()
+
+    @patch("assistant_rh_rag_pipeline.pipeline.StreamingGenerator")
+    @patch("assistant_rh_rag_pipeline.pipeline.ContextBuilder")
+    @patch("assistant_rh_rag_pipeline.pipeline.ContextSelector")
+    @patch("assistant_rh_rag_pipeline.pipeline.SectionAggregator")
+    @patch("assistant_rh_rag_pipeline.pipeline.Retriever")
+    @patch("assistant_rh_rag_pipeline.pipeline.QueryProcessor")
+    @patch("assistant_rh_rag_pipeline.pipeline.get_dsn", return_value="postgresql://fake")
+    def test_run_stream_selector_all_rejected_sets_last_result(
+        self,
+        mock_get_dsn,
+        MockQueryProcessor,
+        MockRetriever,
+        MockAggregator,
+        MockSelector,
+        MockContextBuilder,
+        MockGenerator,
+    ):
+        """Streaming path should also return diagnostics when selector rejects all sections."""
+        MockRetriever.return_value.retrieve.return_value = [_make_chunk(0)]
+        MockRetriever.return_value.config = MagicMock()
+        MockRetriever.return_value.config.tables = ["matte"]
+
+        MockAggregator.return_value.aggregate_with_diagnostics.return_value = _aggregation_result(
+            [_make_section(0)],
+            before=1,
+            after=1,
+        )
+
+        mock_sel = MockSelector.return_value
+        mock_sel.select.return_value = []
+        mock_sel.all_rejected = True
+        mock_sel.last_decisions = {}
+        mock_sel.last_reasoning = "Aucune section pertinente."
+        mock_sel.last_raw_response = "{}"
+
+        config = RAGConfig()
+        config.selector = SelectorConfig(enabled=True)
+        from assistant_rh_rag_pipeline.pipeline import Pipeline
+
+        pipe = Pipeline(config)
+        chunks = list(pipe.run_stream(FAKE_QUERY_RESULT))
+
+        assert len(chunks) == 1
+        assert "pas trouvé" in chunks[0].lower() or "base de connaissances" in chunks[0].lower()
+        assert pipe.last_result is not None
+        assert pipe.last_result.context_items == []
+        assert pipe.last_result.metadata["selector_all_rejected"] is True
+        assert pipe.last_result.metadata["selector_decision"] == "all_rejected"
+        assert pipe.last_result.metadata["rag_diagnostics"]["selector"]["rejection_reason"] == (
+            "Aucune section pertinente."
+        )
+        MockContextBuilder.return_value.build.assert_not_called()
+        MockGenerator.return_value.stream.assert_not_called()
 
     @patch("assistant_rh_rag_pipeline.pipeline.StreamingGenerator")
     @patch("assistant_rh_rag_pipeline.pipeline.ContextBuilder")
@@ -276,9 +374,11 @@ class TestPipelineE2E:
         MockRetriever.return_value.config = MagicMock()
         MockRetriever.return_value.config.tables = ["matte", "service_public"]
 
-        MockAggregator.return_value.aggregate.return_value = [_make_section(0)]
-        MockAggregator.return_value.last_sections_before_rerank = 1
-        MockAggregator.return_value.last_sections_after_rerank = 1
+        MockAggregator.return_value.aggregate_with_diagnostics.return_value = _aggregation_result(
+            [_make_section(0)],
+            before=1,
+            after=1,
+        )
 
         mock_sel = MockSelector.return_value
         mock_sel.enabled = True

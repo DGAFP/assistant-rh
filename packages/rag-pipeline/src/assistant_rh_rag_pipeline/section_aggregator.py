@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 from typing import Dict, List
 
 import psycopg
@@ -30,6 +31,24 @@ from .reranker import AlbertReranker
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class SectionAggregationDiagnostics:
+    """Request-scoped diagnostics produced while aggregating sections."""
+
+    sections_before_rerank: int = 0
+    sections_after_rerank: int = 0
+    reranker_status: str = "not_run"
+    reranker_error: str = ""
+
+
+@dataclass
+class SectionAggregationResult:
+    """Sections plus request-scoped aggregation diagnostics."""
+
+    sections: List[AggregatedSection]
+    diagnostics: SectionAggregationDiagnostics
+
+
 class SectionAggregator:
     """Aggregate chunks into sections, score them, and optionally rerank."""
 
@@ -37,12 +56,25 @@ class SectionAggregator:
         self.config = config
         self.dsn = dsn or get_dsn()
         self._reranker: AlbertReranker | None = None
-        self.last_sections_before_rerank: int = 0
-        self.last_sections_after_rerank: int = 0
 
     def aggregate(self, chunks: List[RetrievedChunk], query: str | None = None) -> List[AggregatedSection]:
+        """Return aggregated sections.
+
+        Use :meth:`aggregate_with_diagnostics` when the caller also needs
+        request-scoped reranker diagnostics.
+        """
+        return self.aggregate_with_diagnostics(chunks, query=query).sections
+
+    def aggregate_with_diagnostics(
+        self,
+        chunks: List[RetrievedChunk],
+        query: str | None = None,
+    ) -> SectionAggregationResult:
         if not chunks:
-            return []
+            return SectionAggregationResult(
+                sections=[],
+                diagnostics=SectionAggregationDiagnostics(reranker_status="skipped_no_chunks"),
+            )
 
         section_ids = [str(c.section_id) for c in chunks if c.section_id]
         section_meta = self._fetch_sections(section_ids) if section_ids else {}
@@ -116,12 +148,25 @@ class SectionAggregator:
 
         sections.sort(key=lambda s: s.score, reverse=True)
 
-        self.last_sections_before_rerank = len(sections)
-        if self.config.enable_section_reranker and query:
-            sections = self._rerank(query, sections)
-        self.last_sections_after_rerank = len(sections)
+        sections_before_rerank = len(sections)
+        reranker_status = "not_run"
+        reranker_error = ""
+        if not self.config.enable_section_reranker:
+            reranker_status = "disabled"
+        elif not query:
+            reranker_status = "skipped_no_query"
+        else:
+            sections, reranker_status, reranker_error = self._rerank(query, sections)
 
-        return sections
+        return SectionAggregationResult(
+            sections=sections,
+            diagnostics=SectionAggregationDiagnostics(
+                sections_before_rerank=sections_before_rerank,
+                sections_after_rerank=len(sections),
+                reranker_status=reranker_status,
+                reranker_error=reranker_error,
+            ),
+        )
 
     # ------------------------------------------------------------------
     # DB lookup for rag_sections + rag_documents
@@ -164,9 +209,9 @@ class SectionAggregator:
     # Max sections to send to the reranker API (avoids 413 payload errors)
     _MAX_RERANK_INPUT = 20
 
-    def _rerank(self, query: str, sections: List[AggregatedSection]) -> List[AggregatedSection]:
+    def _rerank(self, query: str, sections: List[AggregatedSection]) -> tuple[List[AggregatedSection], str, str]:
         if not sections:
-            return sections
+            return sections, "skipped_no_sections", ""
         try:
             if self._reranker is None:
                 self._reranker = AlbertReranker()
@@ -185,8 +230,8 @@ class SectionAggregator:
                 sec = candidates[idx]
                 sec.score = score
                 out.append(sec)
-            return out
+            return out, "completed", ""
 
         except Exception as exc:
             logger.warning("Section reranking failed, keeping aggregated order: %s", exc)
-            return sections[: self.config.section_rerank_top_k]
+            return sections[: self.config.section_rerank_top_k], "failed", str(exc)
