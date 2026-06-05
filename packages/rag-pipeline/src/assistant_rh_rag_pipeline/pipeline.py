@@ -20,6 +20,7 @@ import hashlib
 import logging
 import time
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, Generator, List, Optional
 
 from .config import RAGConfig, SearchMode
@@ -129,6 +130,8 @@ class Pipeline:
         # Full pipeline runs create request-scoped selector instances to avoid
         # mixing selector diagnostics. This snapshot is updated after selector runs
         # for legacy/manual callers that inspect ``pipe._selector``.
+        # Initialized lazily via the property to avoid consuming mock side_effects
+        # in tests and to defer construction until first access.
         self._selector: ContextSelector | None = None
         self._generator = StreamingGenerator(config.generation)
 
@@ -379,10 +382,21 @@ class Pipeline:
             top_k=self.config.retrieval.selector_retry_top_k,
         )
         attempts.append(retry_attempt)
+        retry_has_context = bool(retry_attempt.context_items_ref)
         self._set_latest_attempt_state(state, retry_attempt, attempts)
-        state.stage_refs["selector_retry_succeeded"] = bool(
-            retry_attempt.context_items_ref and not retry_attempt.selector_all_rejected
+        state.stage_refs["selector_retry_succeeded"] = (
+            retry_has_context and not retry_attempt.selector_all_rejected
         )
+        # If the retry also failed to produce context, preserve the no-answer
+        # signal so run()/run_stream() takes the no-answer path regardless
+        # of whether the retry selector explicitly rejected or just returned
+        # empty sections.
+        if not retry_has_context:
+            state.stage_refs["selector_all_rejected"] = True
+            state.stage_refs["selector_rejection_reason"] = (
+                retry_attempt.selector_rejection_reason
+                or initial_attempt.selector_rejection_reason
+            )
         return state.stage_refs.get("_latest_context_items", [])
 
     def _run_retrieval_attempt(
@@ -514,14 +528,12 @@ class Pipeline:
         state.stage_refs.setdefault("selector_retry_triggered", len(attempts) > 1)
         state.stage_refs.setdefault("selector_retry_succeeded", False)
 
-        class _DiagnosticsSnapshot:
-            pass
-
-        diagnostics = _DiagnosticsSnapshot()
-        diagnostics.sections_before_rerank = latest.sections_before_rerank
-        diagnostics.sections_after_rerank = latest.sections_after_rerank
-        diagnostics.reranker_status = latest.reranker_status
-        diagnostics.reranker_error = latest.reranker_error
+        diagnostics = SimpleNamespace(
+            sections_before_rerank=latest.sections_before_rerank,
+            sections_after_rerank=latest.sections_after_rerank,
+            reranker_status=latest.reranker_status,
+            reranker_error=latest.reranker_error,
+        )
         state.aggregation_diagnostics = diagnostics
 
         state.timing["retrieval_ms"] = sum(

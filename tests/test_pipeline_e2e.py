@@ -534,6 +534,79 @@ class TestPipelineE2E:
     @patch("assistant_rh_rag_pipeline.pipeline.Retriever")
     @patch("assistant_rh_rag_pipeline.pipeline.QueryProcessor")
     @patch("assistant_rh_rag_pipeline.pipeline.get_dsn", return_value="postgresql://fake")
+    def test_selector_retry_no_answer_when_context_builder_returns_empty(
+        self,
+        mock_get_dsn,
+        MockQueryProcessor,
+        MockRetriever,
+        MockAggregator,
+        MockSelector,
+        MockContextBuilder,
+        MockGenerator,
+    ):
+        """No-answer path is taken when retry selector doesn't reject but context builder returns empty."""
+        MockQueryProcessor.return_value.process.return_value = FAKE_QUERY_RESULT
+
+        mock_retriever = MockRetriever.return_value
+        mock_retriever.retrieve.side_effect = [[_make_chunk(0)], [_make_chunk(1, table="service_public")]]
+        mock_retriever.config = MagicMock()
+        mock_retriever.config.tables = ["matte", "service_public"]
+        mock_retriever.config.enable_chunks_test = False
+        mock_retriever.config.search_mode = SearchMode.SEMANTIC
+        mock_retriever.config.initial_top_k = 15
+
+        MockAggregator.return_value.aggregate_with_diagnostics.side_effect = [
+            _aggregation_result([_make_section(0)], before=1, after=1),
+            _aggregation_result([_make_section(1, "Service-Public")], before=1, after=1),
+        ]
+
+        first_selector = MagicMock()
+        first_selector.select.return_value = []
+        first_selector.all_rejected = True
+        first_selector.last_decisions = {}
+        first_selector.last_reasoning = "Aucune section pertinente."
+        first_selector.last_raw_response = '{"selected_ids": []}'
+
+        # Retry selector keeps sections (not all_rejected), but context builder
+        # will return empty — this is the edge case from the Codex review.
+        retry_selector = MagicMock()
+        retry_selector.select.return_value = [_make_section(1, "Service-Public")]
+        retry_selector.all_rejected = False
+        retry_selector.last_decisions = {"kept": [{"idx": 0}]}
+        retry_selector.last_reasoning = "Une section est pertinente."
+        retry_selector.last_raw_response = '{"selected_ids": [0]}'
+        MockSelector.side_effect = [first_selector, retry_selector]
+
+        # Context builder returns empty despite selector keeping sections
+        MockContextBuilder.return_value.build.return_value = []
+        MockContextBuilder.return_value.last_full_docs = []
+        MockContextBuilder.return_value.last_legal_refs_found = 0
+        MockContextBuilder.return_value.last_legal_refs_total = 0
+        MockGenerator.return_value.generate.return_value = "Réponse."
+
+        config = RAGConfig()
+        config.selector = SelectorConfig(enabled=True)
+        from assistant_rh_rag_pipeline.pipeline import Pipeline
+
+        pipe = Pipeline(config)
+        result = pipe.run_with_trace("Question où le contexte est vide après retry")
+
+        # Even though the retry selector didn't explicitly reject, the no-answer
+        # path must be taken because the retry produced no usable context.
+        assert "pas trouvé" in result.answer.lower() or "base de connaissances" in result.answer.lower()
+        assert result.context_items == []
+        assert result.metadata["selector_retry_triggered"] is True
+        assert result.metadata["selector_retry_succeeded"] is False
+        assert result.metadata["selector_all_rejected"] is True
+        MockGenerator.return_value.generate.assert_not_called()
+
+    @patch("assistant_rh_rag_pipeline.pipeline.StreamingGenerator")
+    @patch("assistant_rh_rag_pipeline.pipeline.ContextBuilder")
+    @patch("assistant_rh_rag_pipeline.pipeline.ContextSelector")
+    @patch("assistant_rh_rag_pipeline.pipeline.SectionAggregator")
+    @patch("assistant_rh_rag_pipeline.pipeline.Retriever")
+    @patch("assistant_rh_rag_pipeline.pipeline.QueryProcessor")
+    @patch("assistant_rh_rag_pipeline.pipeline.get_dsn", return_value="postgresql://fake")
     def test_run_with_trace_includes_stage_trace(
         self,
         mock_get_dsn,
