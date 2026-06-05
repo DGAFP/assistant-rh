@@ -2,9 +2,9 @@
 
 ## Goal
 
-Automate the refresh of `rag_chunks_dgafp` from official Legifrance / DILA sources while staying as close as possible to the historical Scalingo table.
+Automate the refresh of `rag_chunks_dgafp` from official Legifrance / DILA sources while staying as close as possible to the historical Scalingo export/baseline.
 
-This document captures the current diagnosis after the reverse-engineering work and defines the next implementation steps.
+This historical compatibility note captures the diagnosis after the reverse-engineering work. Scalingo is no longer an active runtime target; references below describe the historical DGAFP baseline/export used to validate the Scaleway projection.
 
 ## Current Findings
 
@@ -134,7 +134,7 @@ This is more robust than using the article number alone.
 
 ## Validation Protocol
 
-Any DGAFP compatibility iteration should be validated against the historical Scalingo table.
+Any DGAFP compatibility iteration should be validated against the historical Scalingo export/baseline, not by reintroducing Scalingo as an active runtime dependency.
 
 ### Comparison rules
 
@@ -193,7 +193,7 @@ These should be reused and, if needed, extended rather than replaced.
 
 ### Phase 2: Align the DGAFP projection
 
-1. Compare Scaleway DGAFP output with historical Scalingo DGAFP.
+1. Compare Scaleway DGAFP output with the historical Scalingo DGAFP export/baseline.
 2. Identify the largest field deltas by volume.
 3. Adjust `gold.py` compatibility projection.
 4. Repeat until row count and chunk coverage are close to the historical baseline.
@@ -210,7 +210,7 @@ These should be reused and, if needed, extended rather than replaced.
 The next useful engineering step is:
 
 1. regenerate silver/gold from the current bronze snapshot
-2. compare the regenerated DGAFP output with Scalingo again
+2. compare the regenerated DGAFP output with the historical Scalingo export/baseline
 3. then tune the DGAFP projection
 
 Until this is done, we should not conclude that the official DILA source is insufficient.

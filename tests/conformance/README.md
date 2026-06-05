@@ -139,7 +139,7 @@ uv run python scripts/export_goldset_seed.py \
 # 2) Load seed into staging (after applying Supabase migrations)
 uv run python scripts/load_goldset_seed.py \
   --input tests/conformance/seeds/goldset_questions_v2.synthetic_docs_v1.jsonl \
-  --target-dsn-env SCW_POSTGRES_DSN_STAGING
+  --target-dsn-env SCW_POSTGRES_DSN
 ```
 
 Use `--replace-goldset` on `load_goldset_seed.py` if you want a full replace for

@@ -15,7 +15,7 @@ embedder et ingerer des sources RH dans Postgres/pgvector.
 - Jupyter + libs Python: `pandas`, `numpy`, `pypdf`, `pdf2image`,
   `pytesseract`, `easyocr`, `sentence-transformers`, `fastparquet`, `psycopg`.
 - OCR: `tesseract` + `poppler` (pour `pdf2image`). EasyOCR est optionnel.
-- Ingestion: Postgres avec `pgvector` + variables d'environnement DB.
+- Ingestion active: Postgres Scaleway avec `pgvector` + `SCW_POSTGRES_DSN` (ou variables explicitement documentées par le notebook historique).
 
 ## Notebooks
 - `scripts/extract_pdf_MSO.ipynb`
@@ -39,7 +39,7 @@ embedder et ingerer des sources RH dans Postgres/pgvector.
     `data/out/chunks_baai_bge_m3_SP.parquet`.
 - `scripts/ingestion_SP.ipynb`
   - Ingere les JSONL avec embeddings SP vers Postgres (`rag_chunks_3`).
-  - Config DB via `DATABASE_URL` ou variables `PG*`.
+  - Notebook historique: config DB via `DATABASE_URL` ou variables `PG*`; pour les chemins runtime actuels, préférer `SCW_POSTGRES_DSN`.
 - `scripts/service_public_xml_example.ipynb`
   - Exemple de recuperation d'une fiche Service-Public via le flux XML officiel
     DILA (`data.gouv.fr` -> `vosdroits-latest.zip` -> `F12391.xml` -> markdown).
