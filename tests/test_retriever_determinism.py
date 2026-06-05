@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from assistant_rh_rag_pipeline import retriever as retriever_module
 from assistant_rh_rag_pipeline.config import CHUNK_TABLES, RetrievalConfig
 from assistant_rh_rag_pipeline.models import RetrievedChunk
 from assistant_rh_rag_pipeline.retriever import Retriever
@@ -157,3 +158,70 @@ def test_merge_preserves_heading_search_contribution_and_determinism():
     assert merged[0].metadata["heading_search"] is True
     assert merged[0].metadata["heading_match_score"] == 1.0
     assert merged[0].metadata["score_source"] == "heading:rag_chunks_service_public"
+
+
+def test_merge_marks_chunk_and_heading_path_when_heading_source_is_first():
+    retriever = Retriever(RetrievalConfig(), dsn="unused")
+    chunk_result = _chunk(chunk_id="same", score=0.8, table_source="Service-Public", section_id="s1")
+    heading_result = _chunk(chunk_id="same", score=1.0, table_source="Service-Public", section_id="s1")
+    heading_result.metadata = {
+        "retrieval_path": "heading",
+        "heading_match_score": 1.0,
+    }
+
+    merged = retriever._merge_cross_source_ranks(
+        {
+            "heading:rag_chunks_service_public": [heading_result],
+            "rag_chunks_service_public": [chunk_result],
+        }
+    )
+
+    assert len(merged) == 1
+    assert merged[0].metadata["retrieval_path"] == "chunk+heading"
+    assert merged[0].metadata["heading_search"] is True
+    assert merged[0].metadata["heading_match_score"] == 1.0
+
+
+def test_heading_search_filters_before_limiting_candidates(monkeypatch):
+    captured: dict[str, object] = {}
+    retriever = Retriever(RetrievalConfig(initial_top_k=3), dsn="unused")
+    monkeypatch.setattr(
+        retriever,
+        "_get_table_columns",
+        lambda _table_name: {"hash_id", "text", "section_id"},
+    )
+    monkeypatch.setattr(retriever, "_heading_match_score", lambda *_args: 1.0)
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, sql, params):
+            captured["sql"] = sql
+            captured["params"] = params
+            return self
+
+        def fetchall(self):
+            return [
+                {
+                    "chunk_id": "late-chunk",
+                    "chunk_text": "Late chunk",
+                    "section_id": "section-1",
+                    "heading": "Supplément familial de traitement",
+                    "heading_path": "Famille > Supplément familial de traitement",
+                }
+            ]
+
+    monkeypatch.setattr(retriever_module.psycopg, "connect", lambda *_args, **_kwargs: FakeConnection())
+
+    chunks = retriever._search_table_headings(CHUNK_TABLES["service_public"], "supplément familial", top_k=3)
+
+    sql = str(captured["sql"])
+    candidate_cte = sql.split("candidate_chunks AS (", 1)[1].split("FROM candidate_chunks c", 1)[0]
+    assert "FROM rag_chunks_service_public t" in candidate_cte
+    assert "LIMIT" not in candidate_cte
+    assert captured["params"] == ("supplément familial", "supplément familial", "supplément familial", 3)
+    assert chunks[0].chunk_id == "late-chunk"

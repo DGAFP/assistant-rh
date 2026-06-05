@@ -327,6 +327,7 @@ class Retriever:
                 key = (chunk.table_source, chunk.chunk_id)
                 contribution = 1.0 / (_CROSS_SOURCE_RRF_K + rank)
 
+                source_is_heading = source_name.startswith(_HEADING_SOURCE_PREFIX)
                 if key not in fused:
                     fused_chunk = RetrievedChunk(
                         chunk_id=chunk.chunk_id,
@@ -343,19 +344,21 @@ class Retriever:
                         chunk.metadata.get("source_score_mode", "unknown"),
                     )
                     fused_chunk.metadata.setdefault("score_source", source_name)
-                    if source_name.startswith(_HEADING_SOURCE_PREFIX):
+                    if source_is_heading:
                         fused_chunk.metadata["heading_search"] = True
                     fused[key] = fused_chunk
                     continue
 
                 fused[key].score += contribution
-                if source_name.startswith(_HEADING_SOURCE_PREFIX):
+                if source_is_heading:
                     fused[key].metadata["heading_search"] = True
                     fused[key].metadata["heading_match_score"] = max(
                         float(fused[key].metadata.get("heading_match_score", 0.0) or 0.0),
                         float(chunk.metadata.get("heading_match_score", 0.0) or 0.0),
                     )
-                    fused[key].metadata.setdefault("retrieval_path", "chunk+heading")
+                    fused[key].metadata["retrieval_path"] = "chunk+heading"
+                elif fused[key].metadata.get("heading_search") is True:
+                    fused[key].metadata["retrieval_path"] = "chunk+heading"
                 previous_raw = fused[key].metadata.get("source_score")
                 if not isinstance(previous_raw, (int, float)) or chunk.score > float(previous_raw):
                     fused[key].metadata["source_score"] = chunk.score
@@ -433,7 +436,6 @@ class Retriever:
             return []
 
         effective_top_k = top_k or self.config.initial_top_k
-        title_candidates_limit = max(effective_top_k * 4, 20)
         section_sql = self._section_select_sql(table)
         extra_cols = self._select_existing_meta_cols(table)
         extra_sql = "".join(f", t.{c}" for c in extra_cols)
@@ -450,8 +452,6 @@ class Retriever:
                     {extra_sql}
                     {section_sql}
                 FROM {table.name} t
-                ORDER BY t.{table.id_col}
-                LIMIT %s
             )
             SELECT
                 c.chunk_id,
@@ -474,7 +474,7 @@ class Retriever:
             ORDER BY lexical_score DESC, c.chunk_id
             LIMIT %s
         """
-        params: Tuple = (query, query, query, title_candidates_limit, effective_top_k)
+        params: Tuple = (query, query, query, effective_top_k)
         chunks: List[RetrievedChunk] = []
         try:
             with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
