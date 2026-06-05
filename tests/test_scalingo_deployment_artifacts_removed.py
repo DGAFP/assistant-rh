@@ -27,9 +27,10 @@ def test_active_deployment_automation_does_not_reference_scalingo_buildpacks() -
     matches: list[str] = []
 
     for root in ACTIVE_DEPLOYMENT_PATHS:
+        assert root.exists(), f"Expected active deployment path does not exist: {root}"
         files = [root] if root.is_file() else [path for path in root.rglob("*") if path.is_file()]
         for file_path in files:
-            text = file_path.read_text(encoding="utf-8")
+            text = file_path.read_text(encoding="utf-8", errors="ignore")
             for needle in needles:
                 if needle in text:
                     matches.append(f"{file_path.relative_to(REPO_ROOT)} contains {needle}")
