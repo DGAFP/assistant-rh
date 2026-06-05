@@ -15,11 +15,6 @@ def _is_truthy_env(name: str) -> bool:
 
 def is_production_like_env() -> bool:
     """Return True when runtime should fail closed on missing secrets."""
-    if os.getenv("DYNO"):
-        return True
-    if os.getenv("SCALINGO_POSTGRESQL_URL"):
-        return True
-
     env_name = (
         os.getenv("APP_ENV")
         or os.getenv("ENV")

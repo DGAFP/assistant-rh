@@ -622,10 +622,10 @@ class TestFeedbackLogging:
 
 
 def _db_available() -> bool:
-    """Check if the DB tunnel is reachable (auto-detect, no CLI flag needed)."""
+    """Check if the configured DB is reachable (auto-detect, no CLI flag needed)."""
     from dotenv import load_dotenv
     load_dotenv()
-    url = os.getenv("SCALINGO_POSTGRESQL_URL") or os.getenv("DATABASE_URL") or os.getenv("PG_DSN")
+    url = os.getenv("SCW_POSTGRES_DSN") or os.getenv("APP_POSTGRES_DSN") or os.getenv("STREAMLIT_POSTGRES_DSN")
     if not url:
         return False
     try:
@@ -648,7 +648,7 @@ class TestDBRoundTrip:
         from dotenv import load_dotenv
         load_dotenv()
 
-        url = os.getenv("SCALINGO_POSTGRESQL_URL") or os.getenv("DATABASE_URL") or os.getenv("PG_DSN")
+        url = os.getenv("SCW_POSTGRES_DSN") or os.getenv("APP_POSTGRES_DSN") or os.getenv("STREAMLIT_POSTGRES_DSN")
         if not url:
             raise RuntimeError("No DB URL configured")
 

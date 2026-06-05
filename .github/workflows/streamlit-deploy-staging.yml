@@ -40,8 +40,8 @@ jobs:
       SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || secrets.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
       STREAMLIT_STAGING_BASE_URL: ${{ vars.STREAMLIT_STAGING_BASE_URL }}
 
+      APP_ENV: staging
       APP_DB_TARGET: scaleway
-      APP_SCALEWAY_ENV: staging
       STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
 
     steps:

@@ -35,11 +35,6 @@ def resolve_dsn(explicit_dsn: str | None, dsn_env: str) -> str:
     if first_try:
         return first_try
 
-    for fallback_env in ("SCALINGO_POSTGRESQL_URL",):
-        value = os.getenv(fallback_env, "").strip()
-        if value:
-            return value
-
     raise RuntimeError(f"No DSN found. Provide --dsn or set {dsn_env}.")
 
 

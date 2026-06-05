@@ -1,6 +1,5 @@
 """Chat Logs viewer – reads from PostgreSQL with CSV fallback."""
 import json
-import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -9,6 +8,7 @@ import streamlit as st
 from sqlalchemy import text
 
 from src.ui.admin_auth import require_admin, show_admin_badge
+from src.ui.cookies_security import is_production_like_env
 from src.ui.db_utils import get_engine
 
 st.set_page_config(page_title="Chat Logs", page_icon="📕", layout="wide")
@@ -19,8 +19,8 @@ show_admin_badge()
 engine = get_engine()
 
 # ---------- CSV paths (fallback) ----------
-# In production (Scalingo), use /tmp to avoid triggering file watcher
-_IS_PRODUCTION = bool(os.getenv("SCALINGO_POSTGRESQL_URL") or os.getenv("DYNO"))
+# In production, use /tmp to avoid triggering file watcher
+_IS_PRODUCTION = is_production_like_env()
 if _IS_PRODUCTION:
     BASE = Path("/tmp/assistant_rh_data")
 else:

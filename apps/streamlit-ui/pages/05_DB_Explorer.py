@@ -387,7 +387,7 @@ st.markdown("Explorez les chunks et sections de la base de données RAG.")
 
 engine = get_db_engine()
 if not engine:
-    st.error("Connexion a la base de données impossible. Vérifiez `APP_POSTGRES_DSN` ou les DSN historiques (`SCALINGO_POSTGRESQL_URL`, `PG_DSN`, `DATABASE_URL`, `SCW_POSTGRES_DSN`).")
+    st.error("Connexion a la base de données impossible. Vérifiez `SCW_POSTGRES_DSN`, `APP_POSTGRES_DSN` ou `STREAMLIT_POSTGRES_DSN`.")
     st.stop()
 
 st.sidebar.success("Connecté à la base de données")
