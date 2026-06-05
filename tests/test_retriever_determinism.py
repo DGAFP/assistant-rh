@@ -108,3 +108,52 @@ def test_retriever_resolves_section_id_from_service_public_short_id(monkeypatch)
     assert "AS section_id" in section_sql
     assert "d.short_id = t.short_id" in section_sql
     assert "s.heading_path = t.section_path" in section_sql
+
+
+def test_heading_match_score_rewards_exact_and_near_title_matches():
+    retriever = Retriever(RetrievalConfig(), dsn="unused")
+
+    exact = retriever._heading_match_score(
+        "Supplément familial de traitement (SFT) dans la fonction publique",
+        "",
+        "Quelles sont les conditions pour recevoir le supplément familial de traitement ?",
+    )
+    near = retriever._heading_match_score(
+        "Conditions d'attribution du supplément familial de traitement",
+        "Supplément familial de traitement (SFT) dans la fonction publique > Conditions d'attribution",
+        "Quelles sont les conditions pour recevoir le SFT ?",
+    )
+    unrelated = retriever._heading_match_score(
+        "Compte épargne-temps",
+        "Temps de travail > Compte épargne-temps",
+        "Quelles sont les conditions pour recevoir le SFT ?",
+    )
+
+    assert exact == 1.0
+    assert near > 0.55
+    assert unrelated == 0.0
+
+
+def test_merge_preserves_heading_search_contribution_and_determinism():
+    retriever = Retriever(RetrievalConfig(), dsn="unused")
+    chunk_result = _chunk(chunk_id="c2", score=0.8, table_source="Service-Public", section_id="s2")
+    title_result = _chunk(chunk_id="title-sft", score=1.0, table_source="Service-Public", section_id="s1")
+    title_result.metadata = {
+        "retrieval_path": "heading",
+        "heading_match_score": 1.0,
+        "matched_heading": "Supplément familial de traitement (SFT) dans la fonction publique",
+    }
+
+    merged = retriever._merge_cross_source_ranks(
+        {
+            "rag_chunks_service_public": [chunk_result],
+            "heading:rag_chunks_service_public": [title_result],
+        }
+    )
+    retriever._normalize_merged_scores(merged, source_count=2)
+
+    assert [chunk.chunk_id for chunk in merged] == ["title-sft", "c2"]
+    assert merged[0].metadata["retrieval_path"] == "heading"
+    assert merged[0].metadata["heading_search"] is True
+    assert merged[0].metadata["heading_match_score"] == 1.0
+    assert merged[0].metadata["score_source"] == "heading:rag_chunks_service_public"

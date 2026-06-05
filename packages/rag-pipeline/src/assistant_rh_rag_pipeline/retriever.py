@@ -16,8 +16,11 @@ Dependencies (internal only):
 from __future__ import annotations
 
 import logging
+import re
 import time
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from difflib import SequenceMatcher
 from typing import Dict, List, Tuple
 
 import psycopg
@@ -47,6 +50,38 @@ _TSQUERY_OR = """
 """
 
 _CROSS_SOURCE_RRF_K = 60
+_HEADING_SOURCE_PREFIX = "heading:"
+_HEADING_STOPWORDS = {
+    "a",
+    "au",
+    "aux",
+    "avec",
+    "ce",
+    "ces",
+    "dans",
+    "de",
+    "des",
+    "du",
+    "en",
+    "est",
+    "et",
+    "la",
+    "le",
+    "les",
+    "l",
+    "pour",
+    "qu",
+    "que",
+    "quel",
+    "quelle",
+    "quelles",
+    "quels",
+    "recevoir",
+    "sont",
+    "sur",
+    "un",
+    "une",
+}
 
 
 class Retriever:
@@ -66,14 +101,15 @@ class Retriever:
         self._table_columns_cache: dict[str, set[str]] = {}
 
     @staticmethod
-    def _chunk_sort_key(chunk: RetrievedChunk) -> tuple[float, str, str, str]:
+    def _chunk_sort_key(chunk: RetrievedChunk) -> tuple[float, float, str, str, str]:
         """Canonical deterministic sort key for retrieved chunks.
 
-        Primary order keeps ranking semantics (score DESC). Secondary keys
-        remove nondeterminism when scores tie.
+        Primary order keeps ranking semantics (score DESC). Heading matches
+        break exact score ties before stable identifiers.
         """
         return (
             -float(chunk.score),
+            -float(chunk.metadata.get("heading_match_score", 0.0) or 0.0),
             str(chunk.table_source or ""),
             str(chunk.chunk_id or ""),
             str(chunk.section_id or ""),
@@ -82,6 +118,53 @@ class Retriever:
     def _sort_chunks_deterministically(self, chunks: List[RetrievedChunk]) -> List[RetrievedChunk]:
         chunks.sort(key=self._chunk_sort_key)
         return chunks
+
+    @staticmethod
+    def _normalize_text(value: str) -> str:
+        """Normalize French headings and queries for lexical title matching."""
+        decomposed = unicodedata.normalize("NFKD", value.lower())
+        ascii_text = "".join(char for char in decomposed if not unicodedata.combining(char))
+        return " ".join(re.findall(r"[a-z0-9]+", ascii_text))
+
+    @classmethod
+    def _tokenize_for_heading_match(cls, value: str) -> set[str]:
+        return {
+            token
+            for token in cls._normalize_text(value).split()
+            if len(token) > 1 and token not in _HEADING_STOPWORDS
+        }
+
+    @classmethod
+    def _heading_match_score(cls, heading: str, heading_path: str, query: str) -> float:
+        """Return a generic title/intertitle relevance score in [0, 1]."""
+        query_norm = cls._normalize_text(query)
+        heading_norm = cls._normalize_text(heading)
+        path_norm = cls._normalize_text(heading_path)
+        if not query_norm or not (heading_norm or path_norm):
+            return 0.0
+
+        candidates = [candidate for candidate in (heading_norm, path_norm) if candidate]
+        if any(candidate == query_norm or candidate in query_norm or query_norm in candidate for candidate in candidates):
+            return 1.0
+
+        query_tokens = cls._tokenize_for_heading_match(query)
+        heading_tokens = cls._tokenize_for_heading_match(f"{heading} {heading_path}")
+        if not query_tokens or not heading_tokens:
+            return 0.0
+
+        overlap = len(query_tokens & heading_tokens)
+        if overlap == 0:
+            return 0.0
+
+        coverage_query = overlap / len(query_tokens)
+        coverage_heading = overlap / len(heading_tokens)
+        if coverage_query >= 0.75 and coverage_heading >= 0.45:
+            return 1.0
+
+        token_score = (0.7 * coverage_query) + (0.3 * coverage_heading)
+        fuzzy_score = max(SequenceMatcher(None, query_norm, candidate).ratio() for candidate in candidates)
+        score = max(token_score, fuzzy_score if fuzzy_score >= 0.72 else 0.0)
+        return min(score, 0.99)
 
     @property
     def embedder(self) -> FallbackEmbedder:
@@ -133,7 +216,7 @@ class Retriever:
         if not chunk_tables and not self.config.enable_chunks_test:
             return []
 
-        n_workers = len(chunk_tables) + (1 if self.config.enable_chunks_test else 0)
+        n_workers = (len(chunk_tables) * 2) + (1 if self.config.enable_chunks_test else 0)
         per_source_results: Dict[str, List[RetrievedChunk]] = {}
         with ThreadPoolExecutor(max_workers=max(n_workers, 1)) as pool:
             futures = {
@@ -145,6 +228,11 @@ class Retriever:
                 ): tbl.name
                 for tbl in chunk_tables
             }
+            futures.update({
+                pool.submit(self._search_table_headings, tbl, query, top_k=effective_top_k): f"{_HEADING_SOURCE_PREFIX}{tbl.name}"
+                for tbl in chunk_tables
+                if tbl.has_sections
+            })
             if self.config.enable_chunks_test:
                 if is_hybrid:
                     futures[pool.submit(
@@ -255,10 +343,19 @@ class Retriever:
                         chunk.metadata.get("source_score_mode", "unknown"),
                     )
                     fused_chunk.metadata.setdefault("score_source", source_name)
+                    if source_name.startswith(_HEADING_SOURCE_PREFIX):
+                        fused_chunk.metadata["heading_search"] = True
                     fused[key] = fused_chunk
                     continue
 
                 fused[key].score += contribution
+                if source_name.startswith(_HEADING_SOURCE_PREFIX):
+                    fused[key].metadata["heading_search"] = True
+                    fused[key].metadata["heading_match_score"] = max(
+                        float(fused[key].metadata.get("heading_match_score", 0.0) or 0.0),
+                        float(chunk.metadata.get("heading_match_score", 0.0) or 0.0),
+                    )
+                    fused[key].metadata.setdefault("retrieval_path", "chunk+heading")
                 previous_raw = fused[key].metadata.get("source_score")
                 if not isinstance(previous_raw, (int, float)) or chunk.score > float(previous_raw):
                     fused[key].metadata["source_score"] = chunk.score
@@ -319,6 +416,103 @@ class Retriever:
         if not existing:
             return expected
         return [col for col in expected if col in existing]
+
+    def _search_table_headings(
+        self,
+        table: ChunkTable,
+        query: str,
+        *,
+        top_k: int | None = None,
+    ) -> List[RetrievedChunk]:
+        """Search document titles, section headings and heading paths for section-backed tables."""
+        if not table.has_sections:
+            return []
+
+        existing = self._get_table_columns(table.name)
+        if "section_id" not in existing and not {"short_id", "section_path"}.issubset(existing):
+            return []
+
+        effective_top_k = top_k or self.config.initial_top_k
+        title_candidates_limit = max(effective_top_k * 4, 20)
+        section_sql = self._section_select_sql(table)
+        extra_cols = self._select_existing_meta_cols(table)
+        extra_sql = "".join(f", t.{c}" for c in extra_cols)
+        tsq = _TSQUERY_OR.format(p="%s")
+
+        sql = f"""
+            WITH parsed_query AS (
+                SELECT ({tsq}) AS q
+            ),
+            candidate_chunks AS (
+                SELECT
+                    t.{table.id_col} AS chunk_id,
+                    t.{table.text_col} AS chunk_text
+                    {extra_sql}
+                    {section_sql}
+                FROM {table.name} t
+                ORDER BY t.{table.id_col}
+                LIMIT %s
+            )
+            SELECT
+                c.chunk_id,
+                c.chunk_text,
+                c.section_id,
+                s.heading,
+                s.heading_path,
+                d.title AS source_name,
+                d.short_id AS source_document_id,
+                d.source_url AS doc_url,
+                ts_rank_cd(
+                    to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)),
+                    pq.q
+                ) AS lexical_score
+            FROM candidate_chunks c
+            JOIN rag_sections s ON s.section_id = c.section_id
+            LEFT JOIN rag_documents d ON d.doc_id = s.doc_id
+            CROSS JOIN parsed_query pq
+            WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ pq.q
+            ORDER BY lexical_score DESC, c.chunk_id
+            LIMIT %s
+        """
+        params: Tuple = (query, query, query, title_candidates_limit, effective_top_k)
+        chunks: List[RetrievedChunk] = []
+        try:
+            with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+                rows = conn.execute(sql, params).fetchall()
+
+            for row in rows:
+                heading = str(row.get("heading") or "")
+                heading_path = str(row.get("heading_path") or "")
+                match_score = self._heading_match_score(heading, heading_path, query)
+                if match_score <= 0.0:
+                    continue
+
+                meta = {
+                    "retrieval_path": "heading",
+                    "source_score_mode": "heading",
+                    "heading_search": True,
+                    "heading_match_score": match_score,
+                    "matched_heading": heading,
+                    "matched_heading_path": heading_path,
+                }
+                for key in ("source_name", "source_document_id", "doc_url"):
+                    if row.get(key) is not None:
+                        meta[key] = row.get(key)
+
+                chunks.append(RetrievedChunk(
+                    chunk_id=str(row["chunk_id"]),
+                    text=row["chunk_text"] or "",
+                    score=match_score,
+                    table_source=table.publisher,
+                    metadata=meta,
+                    section_id=row.get("section_id"),
+                    embedding_model_used="heading",
+                ))
+        except Exception as exc:
+            logger.error("Heading query on %s failed (%s): %s", table.name, type(exc).__name__, exc)
+
+        self._sort_chunks_deterministically(chunks)
+        return chunks[:effective_top_k]
 
     def _section_select_sql(self, table: ChunkTable) -> str:
         """Return SQL that exposes a `section_id` column when the table supports sections.
