@@ -438,6 +438,9 @@ class Pipeline:
                 "score": round(c.score, 4),
                 "section_id": str(c.section_id) if c.section_id else "",
                 "preview": _preview(c.text),
+                "retrieval_path": c.metadata.get("retrieval_path", "chunk"),
+                "heading_search": bool(c.metadata.get("heading_search", False)),
+                "heading_match_score": c.metadata.get("heading_match_score"),
             }
             for c in chunks
         ]
