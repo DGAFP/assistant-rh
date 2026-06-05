@@ -4,7 +4,7 @@ import os
 import warnings
 
 _TRUTHY = {"1", "true", "yes", "on"}
-_STRICT_ENV_NAMES = {"staging", "production"}
+_STRICT_ENV_NAMES = {"staging", "prod", "production"}
 _INSECURE_DEV_FALLBACK = "__INSECURE_DEV_ONLY_COOKIE_PASSWORD__"
 
 

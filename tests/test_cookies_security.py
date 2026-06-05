@@ -7,7 +7,7 @@ import pytest
 from src.ui.cookies_security import resolve_cookies_password
 
 
-@pytest.mark.parametrize("env_name", ["production", "staging"])
+@pytest.mark.parametrize("env_name", ["production", "prod", "staging"])
 def test_missing_password_fails_with_explicit_env_name(monkeypatch, env_name):
     monkeypatch.delenv("COOKIES_PASSWORD", raising=False)
     monkeypatch.delenv("ALLOW_INSECURE_COOKIES_PASSWORD", raising=False)
