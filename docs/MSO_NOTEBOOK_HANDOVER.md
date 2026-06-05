@@ -233,16 +233,14 @@ document set.
 - `MSO_UPSERT_TO_DB`
 - `MSO_REPLACE_EXISTING_DOCS`
 
-`resolve_target_dsn()` supports these targets:
+`resolve_target_dsn()` supports these active targets:
 
-- `scalingo`
-- `scaleway`
-- `scaleway_prod`
-- `prod`
-- `scaleway_staging`
-- `staging`
+- `scaleway_staging` / `staging`
+- `scaleway_prod` / `prod` / `scaleway`
 - `custom`
 - `local`
+
+`scalingo` is a deprecated historical target kept only to make old private notebooks understandable; do not use it for new MSO upserts.
 
 ## Typical runs
 
@@ -271,19 +269,10 @@ MSO_UPSERT_TO_DB=0 \
 jupyter nbconvert --to notebook --execute scripts/extract_pdf_MSO.ipynb
 ```
 
-### Upsert to Scalingo
-
-This assumes the Scalingo tunnel is already up and the local environment is
-configured accordingly.
-
-```bash
-MSO_DB_TARGET=scalingo \
-MSO_UPSERT_TO_DB=1 \
-MSO_REPLACE_EXISTING_DOCS=1 \
-jupyter nbconvert --to notebook --execute scripts/extract_pdf_MSO.ipynb
-```
-
 ### Upsert to Scaleway staging or prod
+
+Use the same `SCW_POSTGRES_DSN` variable name as the GitHub environments; the selected environment supplies the staging or production value.
+
 
 ```bash
 MSO_DB_TARGET=scaleway_staging \

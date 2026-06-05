@@ -99,7 +99,7 @@ This is the French government's official open-source chat interface, built for p
 **Risks:**
 - Early-stage project (breaking changes possible)
 - Smaller community (47 stars, 20 contributors)
-- Requires adaptation for Scalingo deployment
+- Requires adaptation for the current Scaleway deployment target
 
 **Why it's the recommended choice:** Strategic alignment with the French government's digital transformation. If the official instance becomes available, integration would be straightforward. Even if we self-host, we benefit from a purpose-built public sector solution.
 
@@ -111,9 +111,9 @@ A mature, widely-used open-source chat interface.
 - Production-ready (35,000+ stars on GitHub)
 - MIT license (government-safe)
 - Keycloak support (compatible with ProConnect via intermediary)
-- Docker-based deployment (Scalingo-compatible)
+- Docker-based deployment compatible with container platforms
 
-**Why it's the fallback:** If conversations proves too early-stage or Scalingo deployment proves problematic, LibreChat is a safe, mature alternative.
+**Why it's the fallback:** If conversations proves too early-stage or deployment proves problematic, LibreChat is a safe, mature alternative.
 
 **Decision point:** We recommend validating conversations first (2-4 weeks), with LibreChat as a proven backup.
 
@@ -165,7 +165,7 @@ The technical details are documented in separate analysis files:
 ## Next steps
 
 1. **Confirm UI direction** — conversations vs. LibreChat (decision needed)
-2. **Validate conversations on Scalingo** — Deploy a test instance (1-2 weeks)
+2. **Validate conversations on Scaleway** — Deploy a test instance (1-2 weeks)
 3. **Begin Phase 0** — Project setup and infrastructure (once UI direction confirmed)
 4. **Establish evaluation criteria** — Define success metrics before starting
 

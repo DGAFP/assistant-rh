@@ -307,7 +307,7 @@ Search uses cosine distance operator `<=>`. Score = `1 - (a <=> b)`.
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `SCALINGO_POSTGRESQL_URL` / `PG_DSN` / `DATABASE_URL` | Yes | PostgreSQL with pgvector |
+| `SCW_POSTGRES_DSN` | Yes | Canonical PostgreSQL/pgvector DSN for Scaleway runtime environments |
 | `ALBERT_API_KEY` | Yes | DINUM Albert API (LLM + embeddings + reranking) |
 | `ALBERT_BASE_URL` | Yes | Albert API base URL — no code-level default; if unset, the OpenAI client falls back to `https://api.openai.com/v1` which will fail |
 | `SCALEWAY_API_KEY` | No | Fallback LLM + embeddings |

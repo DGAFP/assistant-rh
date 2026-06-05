@@ -93,7 +93,7 @@ The analysis documents it (with `enable_chunks_test = true` in prod), but the im
 
 ### 5. Two database clients need coordinated pooling
 
-The plan requires both Mastra PgVector (for vector operations) and a raw `pg.Pool` (for relational tables: sections, documents, acronyms, config, prompts). These share the same connection string but are independent clients. Scalingo has connection limits, and two pools competing could exhaust them.
+The plan requires both Mastra PgVector (for vector operations) and a raw `pg.Pool` (for relational tables: sections, documents, acronyms, config, prompts). These share the same connection string but are independent clients. The managed PostgreSQL instance has connection limits, and two pools competing could exhaust them.
 
 **Mitigation:** Share a single `pg.Pool` and pass it to PgVector's constructor (if supported), or use Mastra's `PostgresStore` for both concerns.
 

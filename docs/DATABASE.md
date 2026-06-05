@@ -6,7 +6,7 @@
 - **Hébergement applicatif** : Scaleway pour les chemins runtime actifs
 - **Connexion** : résolution explicite via `APP_DB_TARGET` + DSN canonique
   - `APP_DB_TARGET=scaleway` → `SCW_POSTGRES_DSN`
-  - le contexte staging/production est porté par l'environnement de déploiement (GitHub/Scaleway), pas par une variable Scaleway séparée
+  - `APP_SCALEWAY_ENV=staging|production` documente le contexte déployé et suit le même environnement GitHub/Scaleway
   - fallback local/dev (hors ciblage explicite) : `SCW_POSTGRES_DSN`, `APP_POSTGRES_DSN`, `STREAMLIT_POSTGRES_DSN`
 - **ORM** : pas d'ORM — requêtes SQL directes via `psycopg` (v3) et `sqlalchemy` (engine)
 

@@ -18,11 +18,11 @@ contractuels de la fonction publique d'État.
 | Composant | Technologie |
 |-----------|-------------|
 | UI | **Streamlit** |
-| Base de données | **PostgreSQL** + pgvector (Scalingo) |
+| Base de données | **PostgreSQL** + pgvector sur **Scaleway Managed Database** |
 | Embeddings | Albert (DINUM), Scaleway BGE (fallback) |
 | Reranking | Albert /rerank (BGE-m3) |
 | LLMs | Albert (DINUM), Scaleway (fallback) |
-| Hébergement | **Scalingo** (SecNumCloud `osc-secnum-fr1`) |
+| Hébergement | **Scaleway Serverless Containers** pour Streamlit ; jobs data sur Scaleway |
 
 ### Architecture du pipeline RAG
 
@@ -37,33 +37,26 @@ Query
 → PipelineResult
 ```
 
-Le module principal est **`src/rag_v3_clean/`**, entièrement autonome (zéro
-dépendance vers les anciens modules RAG). Voir `docs/PIPELINE.md`
+Le module principal est **`packages/rag-pipeline/`**, entièrement autonome. Voir `docs/PIPELINE.md`
 pour la documentation détaillée.
 
 ### Structure du projet
 
 ```
 assistant-rh/
-├── Home.py                     # Point d'entrée Streamlit
-├── pages/                      # 13 pages Streamlit de production
-│   ├── 01_Chatbot.py           # Interface principale
-│   ├── 02-11_*.py              # Logs, feedback, admin, éval... (admin)
-│   └── _PDF_Viewer.py          # Viewer PDF
+├── apps/
+│   ├── streamlit-ui/           # UI Streamlit (Home.py + pages/)
+│   ├── mastra-pipeline/        # Port TypeScript / endpoint OpenAI-compatible
+│   └── data-ingestion-cli/     # CLI canonique d'ingestion de données
 ├── packages/
 │   ├── rag-pipeline/           # Pipeline RAG V3 (production)
 │   ├── data-engineering/       # Jobs et transformations d'ingestion
 │   └── shared-config/          # Configuration partagée
 ├── src/
-│   ├── ui/                     # Composants UI Streamlit
+│   ├── ui/                     # Composants UI Streamlit partagés
 │   └── goldset/                # Outils d'évaluation
-├── tests/                      # Tests unitaires
-├── docs/
-│   ├── PIPELINE.md             # Architecture détaillée du pipeline RAG
-│   ├── DATABASE.md             # Schéma complet de la base de données
-│   └── rapport_fin_de_mission.md
-├── apps/
-│   └── data-ingestion-cli/     # CLI canonique d'ingestion de données
+├── tests/                      # Tests unitaires et conformance
+├── docs/                       # Documentation opérationnelle et architecture
 ├── scripts/                    # Scripts historiques et outillage ponctuel
 ├── notebooks/                  # Notebooks d'évaluation (RAGAS)
 └── data/                       # Données locales gitignored
@@ -88,7 +81,7 @@ Voir `docs/DATABASE.md` pour le schéma complet.
 ### Utilisation rapide
 
 ```python
-from src.rag_v3_clean import create_pipeline
+from assistant_rh_rag_pipeline import create_pipeline
 
 pipe = create_pipeline()
 result = pipe.run("Qu'est-ce que le RIFSEEP ?")
@@ -147,18 +140,30 @@ For more details, see `data/README.md` and `scripts/README.md`.
 ## Variables d'environnement
 
 ```bash
-# Obligatoires
-SCALINGO_POSTGRESQL_URL   # Connexion PostgreSQL (ou PG_DSN)
-ALBERT_API_KEY            # Clé API Albert (DINUM)
-ALBERT_BASE_URL           # https://albert.api.etalab.gouv.fr/v1
+# Runtime applicatif
+APP_ENV=staging                 # ou production/local
+APP_DB_TARGET=scaleway          # cible explicite pour les déploiements actifs
+APP_SCALEWAY_ENV=staging        # information d'environnement pour l'UI/logs
+SCW_POSTGRES_DSN=postgresql://… # DSN canonique, fourni par l'environnement GitHub/Scaleway
+
+# Fournisseurs IA
+ALBERT_API_KEY                  # Clé API Albert (DINUM)
+ALBERT_BASE_URL=https://albert.api.etalab.gouv.fr/v1
+SCALEWAY_API_KEY                # Fallback LLM + embeddings (Scaleway)
+SCALEWAY_BASE_URL=https://api.scaleway.ai/v1
+
+# Infrastructure Scaleway
+SCW_ACCESS_KEY
+SCW_SECRET_KEY
+SCW_DEFAULT_PROJECT_ID
+SCW_DEFAULT_ORGANIZATION_ID
+SCW_DEFAULT_REGION=fr-par
 
 # Optionnelles
-SCW_SECRET_KEY            # Fallback LLM + embeddings (Scaleway)
-SCW_DEFAULT_PROJECT_ID    # Scaleway project
-OPENAI_API_KEY            # Métriques RAGAS uniquement
-ADMIN_PASSWORD            # Mot de passe pages admin
-COOKIES_PASSWORD          # Clé chiffrement cookies navigateur (obligatoire en staging/prod)
-ALLOW_INSECURE_COOKIES_PASSWORD  # Local uniquement: fallback explicite, jamais en staging/prod
+OPENAI_API_KEY                  # Métriques RAGAS uniquement
+ADMIN_PASSWORD                  # Mot de passe pages admin
+COOKIES_PASSWORD                # Clé chiffrement cookies navigateur (obligatoire en staging/prod)
+ALLOW_INSECURE_COOKIES_PASSWORD # Local uniquement: fallback explicite, jamais en staging/prod
 ```
 
 
@@ -171,12 +176,12 @@ ALLOW_INSECURE_COOKIES_PASSWORD  # Local uniquement: fallback explicite, jamais 
 # Installer les dépendances
 uv sync --group dev
 
-# Ouvrir le tunnel DB (dans un terminal séparé)
-scalingo --region osc-secnum-fr1 --app assistant-rh-staging \
-  db-tunnel "$SCALINGO_POSTGRESQL_URL" --port 10001
+# Configurer une base locale ou un tunnel Scaleway dans .env
+# Exemple local : SCW_POSTGRES_DSN=postgresql://postgres:postgres@127.0.0.1:54322/assistant_rh
+# Exemple tunnel : SCW_POSTGRES_DSN=postgresql://user:pass@127.0.0.1:<port>/assistant_rh?sslmode=require
 
 # Lancer Streamlit
-uv run streamlit run Home.py
+uv run streamlit run apps/streamlit-ui/Home.py
 
 # Lancer les tests
 uv run python -m pytest tests/ --ignore=tests/archive -v
@@ -184,13 +189,14 @@ uv run python -m pytest tests/ --ignore=tests/archive -v
 
 ## Déploiement
 
-Push sur `main` déclenche le déploiement automatique sur Scalingo.
-Seules les dépendances `[project].dependencies` sont installées en prod
-(`default-groups = []` dans `[tool.uv]`).
+Les déploiements actifs ciblent Scaleway :
 
-```bash
-git push origin main
-```
+- push/merge sur `main` → déploiement automatique Streamlit staging ;
+- publication de release / chaîne production → déploiement Streamlit production ;
+- jobs d'ingestion et migrations → workflows Scaleway dédiés.
+
+Les secrets `SCW_POSTGRES_DSN`, `ALBERT_API_KEY`, `SCALEWAY_API_KEY`, `COOKIES_PASSWORD` et `ADMIN_PASSWORD` sont résolus via les environnements GitHub `scaleway-staging` et `scaleway-production`.
+Voir `docs/SCALEWAY_STREAMLIT_DEPLOY_RUNBOOK.md` et `docs/SCALEWAY_PIPELINE_RUNBOOK.md`.
 
 ---
 

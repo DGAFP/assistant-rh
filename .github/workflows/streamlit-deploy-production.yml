@@ -51,6 +51,7 @@ jobs:
 
       APP_ENV: production
       APP_DB_TARGET: scaleway
+      APP_SCALEWAY_ENV: production
       STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
 
     steps:

@@ -64,16 +64,24 @@ scaling to avoid cross-instance session routing issues.
 
 Required secrets (scaleway-staging and/or scaleway-production environment):
 
+> GitHub Environment secrets use the same names in staging and production; the selected `environment:` supplies the right value. Do not use repo-level fallback DSNs for runtime deployment.
+
 - `SCW_ACCESS_KEY`
 - `SCW_SECRET_KEY`
 - `SCW_DEFAULT_PROJECT_ID`
+- `SCW_DEFAULT_ORGANIZATION_ID`
 - `SCW_CONTAINER_REGISTRY_NAMESPACE`
-- `SCW_POSTGRES_DSN_STAGING` (staging)
-- `SCW_POSTGRES_DSN` (production)
+- `SCW_POSTGRES_DSN` (staging and production; same secret name, environment-scoped value)
 - `ALBERT_API_KEY`
 - `SCALEWAY_API_KEY`
 - `COOKIES_PASSWORD`
 - `ADMIN_PASSWORD`
+
+Runtime environment values set by the workflows:
+
+- `APP_ENV=staging|production`
+- `APP_DB_TARGET=scaleway`
+- `APP_SCALEWAY_ENV=staging|production`
 
 Optional variables:
 

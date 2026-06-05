@@ -48,7 +48,7 @@ def get_document_url(
         >>> # URL absolue (pour emails, exports, etc.)
         >>> url = get_document_url("abc123...", relative=False, is_rag_doc=True)
         >>> # Dev:  "http://localhost:8501/PDF_Viewer?rag_doc_id=abc123..."
-        >>> # Prod: "https://votre-app.scalingo.io/PDF_Viewer?rag_doc_id=abc123..."
+        >>> # Prod: "https://assistant-rh.example.fr/PDF_Viewer?rag_doc_id=abc123..."
     
     Notes:
         - Les URLs relatives fonctionnent automatiquement en dev et prod
@@ -107,7 +107,7 @@ def _get_absolute_url(doc_id: str, page: str = "PDF_Viewer", param: str = "doc_i
     
     Ordre de priorité :
     1. Variable d'environnement STREAMLIT_SERVER_URL
-    2. Détection via st.get_option (Streamlit Cloud, Scalingo, etc.)
+    2. Détection via st.get_option (Streamlit Cloud, Scaleway, reverse proxy, etc.)
     3. Fallback sur localhost (développement local)
     """
     # 1. Variable d'environnement (la plus fiable)
@@ -271,12 +271,12 @@ def configure_production_url(url: str):
     Configure l'URL de production (à appeler au démarrage de l'app).
     
     Args:
-        url: URL complète de l'app en production (ex: "https://mon-app.scalingo.io")
+        url: URL complète de l'app en production (ex: "https://assistant-rh.example.fr")
     
     Example:
         >>> # Dans Home.py ou au début de l'app
         >>> if os.environ.get("ENV") == "production":
-        >>>     configure_production_url("https://assistant-rh.scalingo.io")
+        >>>     configure_production_url("https://assistant-rh.example.fr")
     """
     os.environ["STREAMLIT_SERVER_URL"] = url.rstrip("/")
 
@@ -286,7 +286,7 @@ def get_current_base_url() -> str:
     Retourne l'URL de base de l'application (pour debug).
     
     Returns:
-        URL de base (ex: "http://localhost:8501" ou "https://mon-app.scalingo.io")
+        URL de base (ex: "http://localhost:8501" ou "https://assistant-rh.example.fr")
     
     Example:
         >>> print(f"App running at: {get_current_base_url()}")
@@ -342,7 +342,7 @@ if __name__ == "__main__":
     print()
     
     print("5. Simulation prod (avec STREAMLIT_SERVER_URL):")
-    configure_production_url("https://mon-app.scalingo.io")
+    configure_production_url("https://assistant-rh.example.fr")
     print(f"   {get_document_url(test_uuid, relative=False)}")
     print()
     

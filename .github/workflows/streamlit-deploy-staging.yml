@@ -42,6 +42,7 @@ jobs:
 
       APP_ENV: staging
       APP_DB_TARGET: scaleway
+      APP_SCALEWAY_ENV: staging
       STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
 
     steps:

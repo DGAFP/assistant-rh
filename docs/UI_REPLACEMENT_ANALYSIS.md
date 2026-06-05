@@ -2,9 +2,11 @@
 
 **Research Date:** April 2025
 **Context:** French government HR chatbot (MATTE) replacing Streamlit UI
-**Requirements:** OpenAI-compatible `/v1/chat/completions` endpoint, French language support, privacy constraints (no external telemetry), self-hostable, Scalingo (SecNumCloud) hosting
+**Historical requirements:** OpenAI-compatible `/v1/chat/completions` endpoint, French language support, privacy constraints (no external telemetry), self-hostable hosting. The hosting target at the time was Scalingo; active deployment docs now target Scaleway.
 
 ---
+
+> **Status note (2026-06)**: This is a historical research note from the earlier Scalingo hosting phase. Active assistant-rh deployment documentation now targets Scaleway; remaining Scalingo references below describe the original research assumptions, not current runtime guidance.
 
 ## Executive Summary
 

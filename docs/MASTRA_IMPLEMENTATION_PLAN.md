@@ -209,7 +209,7 @@ assistant-rh/
 2. Initialize Mastra project (manual setup, not CLI — we're in an existing repo)
 3. Install (pin exact versions): `@mastra/core@1.13.0`, `@mastra/pg@1.13.0`, `@mastra/rag@1.13.0`, `@ai-sdk/openai`, `pg`, `zod`
 4. Configure `tsconfig.json` with `ES2022` module
-5. Set up `.env` with `DATABASE_URL`, `ALBERT_API_KEY`, `ALBERT_BASE_URL`, `SCALEWAY_API_KEY`, `SCALEWAY_BASE_URL`
+5. Set up `.env` with `SCW_POSTGRES_DSN`, `APP_DB_TARGET=scaleway`, `ALBERT_API_KEY`, `ALBERT_BASE_URL`, `SCALEWAY_API_KEY`, `SCALEWAY_BASE_URL`
 6. Create `src/mastra/index.ts` with Mastra instance + PgVector
 
 ### Phase 1: Foundation (`lib/`)
@@ -463,7 +463,7 @@ import { chatCompletionsRoute } from './routes/chat-completions'
 
 const pgVector = new PgVector({
   id: 'pg-vector',
-  connectionString: process.env.DATABASE_URL!,
+  connectionString: process.env.SCW_POSTGRES_DSN!,
 })
 
 export const mastra = new Mastra({
