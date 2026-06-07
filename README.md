@@ -224,9 +224,19 @@ pnpm exec biome check --write --unsafe apps/mastra-pipeline/src apps/mastra-pipe
 
 Biome config is in `biome.json` at the workspace root. It covers all `.ts`/`.tsx` files under `apps/mastra-pipeline/src/` and `apps/mastra-pipeline/scripts/`.
 
+### JavaScript Dependency Security
+
+The root `pnpm-lock.yaml` is scanned with [OWASP CVE Lite CLI](https://github.com/OWASP/cve-lite-cli):
+
+```bash
+pnpm security:scan:js
+```
+
+The scan fails on high or critical OSV findings and is installed as a pre-push hook so the full lockfile is checked before sharing code.
+
 ### Pre-commit hooks
 
-This repo uses [pre-commit](https://pre-commit.com) for both ruff (Python) and Biome (TypeScript).
+This repo uses [pre-commit](https://pre-commit.com) for ruff (Python), Biome (TypeScript), notebook cleanup, and the JavaScript dependency security scan.
 
 **Installing hooks in a bare-repo workspace:**
 
@@ -235,6 +245,7 @@ Because this repo uses the bare-repo + worktree pattern, `git rev-parse --git-co
 ```bash
 # From inside any worktree (e.g. main/ or feat-*/):
 pre-commit install --config $(git rev-parse --show-toplevel)/.pre-commit-config.yaml
+pre-commit install --hook-type pre-push --config $(git rev-parse --show-toplevel)/.pre-commit-config.yaml
 ```
 
 This sets `core.hooksPath` to the pre-commit managed directory, bypassing the bare repo's empty hooks.
