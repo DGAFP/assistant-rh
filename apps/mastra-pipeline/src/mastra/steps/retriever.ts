@@ -745,36 +745,45 @@ async function queryHeadings(args: {
       WITH parsed_query AS (
         SELECT websearch_to_tsquery('french', $1) AS q
       ),
-      candidate_chunks AS (
+      section_search_vectors AS (
         SELECT
-          vector_id AS chunk_id,
-          COALESCE(metadata->>'text', '') AS chunk_text,
-          metadata,
-          NULLIF(metadata->>'section_id', '') AS section_id
-        FROM ${args.indexName}
-        WHERE lower(COALESCE(metadata->>'publisher', '')) = ANY($2::text[])
-          AND NULLIF(metadata->>'section_id', '') IS NOT NULL
+          s.section_id,
+          s.heading,
+          s.heading_path,
+          d.title AS document_title,
+          d.source_url AS doc_url,
+          to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) AS search_vector
+        FROM rag_sections s
+        LEFT JOIN rag_documents d ON d.doc_id = s.doc_id
+      ),
+      matched_sections AS (
+        SELECT
+          sv.section_id,
+          sv.heading,
+          sv.heading_path,
+          sv.document_title,
+          sv.doc_url,
+          ts_rank_cd(sv.search_vector, pq.q) AS lexical_score
+        FROM section_search_vectors sv
+        CROSS JOIN parsed_query pq
+        WHERE sv.search_vector @@ pq.q
+        ORDER BY lexical_score DESC, sv.section_id
+        LIMIT $3
       )
       SELECT
-        c.chunk_id,
-        c.chunk_text,
+        c.vector_id AS chunk_id,
+        COALESCE(c.metadata->>'text', '') AS chunk_text,
         0::double precision AS score,
         c.metadata,
-        c.section_id,
-        s.heading,
-        s.heading_path,
-        d.title AS document_title,
-        d.source_url AS doc_url,
-        ts_rank_cd(
-          to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)),
-          pq.q
-        ) AS lexical_score
-      FROM candidate_chunks c
-      JOIN rag_sections s ON s.section_id::text = c.section_id
-      LEFT JOIN rag_documents d ON d.doc_id = s.doc_id
-      CROSS JOIN parsed_query pq
-      WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ pq.q
-      ORDER BY lexical_score DESC, c.chunk_id
+        ms.section_id::text AS section_id,
+        ms.heading,
+        ms.heading_path,
+        ms.document_title,
+        ms.doc_url
+      FROM matched_sections ms
+      JOIN ${args.indexName} c ON ms.section_id::text = NULLIF(c.metadata->>'section_id', '')
+      WHERE lower(COALESCE(c.metadata->>'publisher', '')) = ANY($2::text[])
+      ORDER BY ms.lexical_score DESC, c.vector_id
       LIMIT $3
     `,
 		[lexicalSearchQuery, args.publisherAliases, candidateLimit],
