@@ -188,6 +188,27 @@ function makeContextBuilderOutput(section: AggregatedSection): ContextBuilderOut
 	};
 }
 
+function makeEmptyContextBuilderOutput(): ContextBuilderOutput {
+	return {
+		contextItems: [],
+		context: "",
+		contextMeta: {
+			contextMode: "standard",
+			tokenBudget: 8000,
+			tokenCount: 0,
+			refsTokenCount: 0,
+			maxSections: 12,
+			selectedCount: 0,
+			fullDocCount: 0,
+			triangulationAdded: 0,
+			legalRefsResolvedCount: 0,
+			legalRefsInjectedCount: 0,
+			lastResolvedRefs: {},
+			warnings: ["No section fit the token budget."],
+		},
+	};
+}
+
 const generatorOutput: GeneratorOutput = {
 	answer: "Le SFT est versé sous conditions.",
 	generationMeta: {
@@ -333,7 +354,153 @@ async function testRetryPreservesNoAnswerWhenSecondAttemptRejectsAll() {
 	assert.equal(result.metadata.selected_retrieval_attempt, "selector_retry");
 }
 
+async function testRetryPreservesNoAnswerWhenContextBuilderReturnsNoItems() {
+	const initialChunk = makeChunk("initial", "MATTE");
+	const retryChunk = makeChunk("retry", "Service-Public");
+	const initialSection = makeSection(initialChunk);
+	const retrySection = makeSection(retryChunk);
+	const retrieverCalls: Array<Parameters<RagPipelineExecutionDependencies["runRetriever"]>[0]> = [];
+	let contextBuilderCalls = 0;
+	let generatorCalls = 0;
+
+	const dependencies: Partial<RagPipelineExecutionDependencies> = {
+		getRuntimeRagConfig: async () => DEFAULT_RUNTIME_RAG_CONFIG,
+		runRetriever: async (input) => {
+			retrieverCalls.push(input);
+			return retrieverCalls.length === 1
+				? makeRetrieverOutput(initialChunk, 15, "semantic")
+				: makeRetrieverOutput(retryChunk, 30, "hybrid");
+		},
+		runSectionAggregator: async (input) => {
+			const chunk = input.chunks[0];
+			assert.ok(chunk);
+			return makeAggregationOutput(chunk.chunkId === "initial" ? initialSection : retrySection);
+		},
+		runContextSelector: async (input) =>
+			retrieverCalls.length === 1
+				? makeSelectorOutput({
+						sections: input.sections,
+						allRejected: true,
+						reason: "Aucune section pertinente.",
+					})
+				: makeSelectorOutput({
+						sections: input.sections,
+						allRejected: false,
+						reason: "La recherche hybride trouve une section utile.",
+					}),
+		runContextBuilder: async () => {
+			contextBuilderCalls += 1;
+			return makeEmptyContextBuilderOutput();
+		},
+		runGenerator: async () => {
+			generatorCalls += 1;
+			return generatorOutput;
+		},
+	};
+
+	const result = await runRagPipelineRagBranch({
+		inputData,
+		state: {},
+		setState: async () => {},
+		dependencies,
+	});
+
+	assert.equal(result.shortCircuit, true);
+	assert.equal(result.answer, "Je n'ai pas trouvé de contexte utile.");
+	assert.equal(result.contextItems.length, 0);
+	assert.equal(result.context, "");
+	assert.equal(contextBuilderCalls, 1);
+	assert.equal(generatorCalls, 0);
+	assert.equal(result.generationMeta, null);
+	assert.equal(result.metadata.selector_retry_triggered, true);
+	assert.equal(result.metadata.selector_retry_succeeded, false);
+	assert.equal(result.metadata.selected_retrieval_attempt, "selector_retry");
+}
+
+async function testInvalidStateConfigFallsBackToActiveRuntimeConfig() {
+	const chunk = makeChunk("runtime", "MATTE");
+	const section = makeSection(chunk);
+	const retrieverCalls: Array<Parameters<RagPipelineExecutionDependencies["runRetriever"]>[0]> = [];
+	const runtimeConfig = {
+		...DEFAULT_RUNTIME_RAG_CONFIG,
+		retrieval: {
+			...DEFAULT_RUNTIME_RAG_CONFIG.retrieval,
+			search_mode: "lexical" as const,
+			initial_top_k: 22,
+			enable_selector_retry: false,
+		},
+		aggregation: {
+			...DEFAULT_RUNTIME_RAG_CONFIG.aggregation,
+			section_rerank_top_k: 7,
+		},
+		selector: {
+			...DEFAULT_RUNTIME_RAG_CONFIG.selector,
+			enabled: true,
+			model: "runtime-selector",
+		},
+		context: {
+			...DEFAULT_RUNTIME_RAG_CONFIG.context,
+			token_budget: 4321,
+		},
+		generation: {
+			...DEFAULT_RUNTIME_RAG_CONFIG.generation,
+			model: "runtime-generator",
+		},
+	};
+
+	const dependencies: Partial<RagPipelineExecutionDependencies> = {
+		getRuntimeRagConfig: async () => runtimeConfig,
+		runRetriever: async (input) => {
+			retrieverCalls.push(input);
+			return makeRetrieverOutput(chunk, 22, "lexical");
+		},
+		runSectionAggregator: async (input) => {
+			assert.equal(input.config?.section_rerank_top_k, 7);
+			return makeAggregationOutput(section);
+		},
+		runContextSelector: async (input) => {
+			assert.equal(input.config?.enabled, true);
+			assert.equal(input.config?.model, "runtime-selector");
+			return makeSelectorOutput({
+				sections: input.sections,
+				allRejected: false,
+				reason: "Runtime selector config preserved.",
+			});
+		},
+		runContextBuilder: async (input) => {
+			assert.equal(input.config?.token_budget, 4321);
+			return makeContextBuilderOutput(section);
+		},
+		runGenerator: async (input) => {
+			assert.equal(input.config?.model, "runtime-generator");
+			return generatorOutput;
+		},
+	};
+
+	await runRagPipelineRagBranch({
+		inputData,
+		state: {
+			config: {
+				retrieval: { initial_top_k: -1 },
+				aggregation: { section_rerank_top_k: -1 },
+				selector: { provider: "invalid-provider" },
+				context: { token_budget: -1 },
+				generation: { provider: "invalid-provider" },
+			},
+		} as never,
+		setState: async () => {},
+		dependencies,
+	});
+
+	assert.equal(retrieverCalls.length, 1);
+	assert.equal(retrieverCalls[0]?.config?.search_mode, "lexical");
+	assert.equal(retrieverCalls[0]?.config?.initial_top_k, 22);
+	assert.equal(retrieverCalls[0]?.config?.enable_selector_retry, false);
+}
+
 await testRetryCanRecoverContext();
 await testRetryPreservesNoAnswerWhenSecondAttemptRejectsAll();
+await testRetryPreservesNoAnswerWhenContextBuilderReturnsNoItems();
+await testInvalidStateConfigFallsBackToActiveRuntimeConfig();
 
 console.log("selector retry smoke tests passed");

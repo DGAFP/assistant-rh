@@ -227,10 +227,18 @@ function toAttemptMetadata(attempt: RagPipelineAttemptResult): AttemptMetadata {
 	};
 }
 
+const NO_CONTEXT_AFTER_SELECTION_MESSAGE =
+	"Je n'ai pas trouvé d'informations suffisamment pertinentes dans ma base de connaissances " +
+	"pour répondre à cette question. N'hésitez pas à reformuler votre question ou à contacter " +
+	"votre service RH pour obtenir une réponse précise.";
+
 function resolveEffectiveRuntimeConfig(args: {
 	runtimeConfig: RuntimeConfig;
 	stateConfig: RagPipelineState["config"];
 }) {
+	const runtimeRetrievalConfig = retrieverStepInputSchema.shape.config.safeParse(
+		args.runtimeConfig.retrieval,
+	);
 	const rawRetrievalConfig = {
 		...args.runtimeConfig.retrieval,
 		...(args.stateConfig?.retrieval ?? {}),
@@ -238,8 +246,13 @@ function resolveEffectiveRuntimeConfig(args: {
 	const retrievalConfig = retrieverStepInputSchema.shape.config.safeParse(rawRetrievalConfig);
 	const baseRetrievalConfig = retrievalConfig.success
 		? retrievalConfig.data
-		: DEFAULT_RUNTIME_RAG_CONFIG.retrieval;
+		: runtimeRetrievalConfig.success
+			? runtimeRetrievalConfig.data
+			: DEFAULT_RUNTIME_RAG_CONFIG.retrieval;
 
+	const runtimeAggregationConfig = sectionAggregatorStepInputSchema.shape.config.safeParse(
+		args.runtimeConfig.aggregation,
+	);
 	const rawAggregationConfig = {
 		...args.runtimeConfig.aggregation,
 		...(args.stateConfig?.aggregation ?? {}),
@@ -247,18 +260,27 @@ function resolveEffectiveRuntimeConfig(args: {
 	const aggregationConfig =
 		sectionAggregatorStepInputSchema.shape.config.safeParse(rawAggregationConfig);
 
+	const runtimeSelectorConfig = contextSelectorStepInputSchema.shape.config.safeParse(
+		args.runtimeConfig.selector,
+	);
 	const rawSelectorConfig = {
 		...args.runtimeConfig.selector,
 		...(args.stateConfig?.selector ?? {}),
 	};
 	const selectorConfig = contextSelectorStepInputSchema.shape.config.safeParse(rawSelectorConfig);
 
+	const runtimeContextBuildConfig = contextBuilderStepInputSchema.shape.config.safeParse(
+		args.runtimeConfig.context,
+	);
 	const rawContextConfig = {
 		...args.runtimeConfig.context,
 		...(args.stateConfig?.context ?? {}),
 	};
 	const contextBuildConfig = contextBuilderStepInputSchema.shape.config.safeParse(rawContextConfig);
 
+	const runtimeGenerationConfig = generatorStepInputSchema.shape.config.safeParse(
+		args.runtimeConfig.generation,
+	);
 	const rawGenerationConfig = {
 		...args.runtimeConfig.generation,
 		...(args.stateConfig?.generation ?? {}),
@@ -267,10 +289,26 @@ function resolveEffectiveRuntimeConfig(args: {
 
 	return {
 		baseRetrievalConfig: baseRetrievalConfig ?? DEFAULT_RUNTIME_RAG_CONFIG.retrieval,
-		aggregationConfig: aggregationConfig.success ? aggregationConfig.data : undefined,
-		selectorConfig: selectorConfig.success ? selectorConfig.data : undefined,
-		contextBuildConfig: contextBuildConfig.success ? contextBuildConfig.data : undefined,
-		generationConfig: generationConfig.success ? generationConfig.data : undefined,
+		aggregationConfig: aggregationConfig.success
+			? aggregationConfig.data
+			: runtimeAggregationConfig.success
+				? runtimeAggregationConfig.data
+				: DEFAULT_RUNTIME_RAG_CONFIG.aggregation,
+		selectorConfig: selectorConfig.success
+			? selectorConfig.data
+			: runtimeSelectorConfig.success
+				? runtimeSelectorConfig.data
+				: DEFAULT_RUNTIME_RAG_CONFIG.selector,
+		contextBuildConfig: contextBuildConfig.success
+			? contextBuildConfig.data
+			: runtimeContextBuildConfig.success
+				? runtimeContextBuildConfig.data
+				: DEFAULT_RUNTIME_RAG_CONFIG.context,
+		generationConfig: generationConfig.success
+			? generationConfig.data
+			: runtimeGenerationConfig.success
+				? runtimeGenerationConfig.data
+				: DEFAULT_RUNTIME_RAG_CONFIG.generation,
 	};
 }
 
@@ -449,6 +487,71 @@ export async function runRagPipelineRagBranch(args: {
 		config: contextBuildConfig,
 	});
 	timings.context_build_ms = Date.now() - contextBuildStart;
+
+	if (contextBuilderResult.contextItems.length === 0) {
+		const answer =
+			initialAttempt.contextSelectorResult.shortCircuitMessage ??
+			selectedAttempt.contextSelectorResult.shortCircuitMessage ??
+			NO_CONTEXT_AFTER_SELECTION_MESSAGE;
+		timings.generation_ms = 0;
+		timings.ttft_ms = 0;
+		timings.chars_per_second = 0;
+		timings.response_length_tokens = estimateTokens(answer);
+		timings.pipeline_total_ms = Date.now() - pipelineStart;
+
+		const metadata = buildSharedMetadata({
+			intent: args.inputData.intent,
+			intentConfidence: args.inputData.intentConfidence,
+			theme: args.inputData.theme,
+			wasExpanded: args.inputData.wasExpanded,
+			expandedAcronyms: args.inputData.expandedAcronyms,
+			queryForRetrieval: args.inputData.queryForRetrieval,
+			needsLegalSearch: args.inputData.needsLegalSearch,
+			tablesSearched: selectedAttempt.retrieverResult.retrievalMeta.publishersSearched,
+			selectorMeta: selectedAttempt.contextSelectorResult.selectorMeta,
+			retrievedChunks: toRetrievedChunkRefs(selectedAttempt.retrieverResult.chunks),
+			aggregatedSections: toAggregatedSectionRefs(
+				selectedAttempt.sectionAggregationResult.sections,
+			),
+			contextItemsRef: [],
+			generationMeta: null,
+			selectorRetryEnabled,
+			selectorRetryTriggered,
+			selectorRetrySucceeded: false,
+			selectedAttemptName: selectedAttempt.name,
+			retrievalAttempts,
+		});
+
+		await args.setState({
+			...args.state,
+			branchPath,
+			retriever: selectedAttempt.retrieverResult,
+			sectionAggregator: selectedAttempt.sectionAggregationResult,
+			contextSelector: selectedAttempt.contextSelectorResult,
+			contextBuilder: contextBuilderResult,
+			generator: undefined,
+		});
+
+		return {
+			...args.inputData,
+			branchPath,
+			answer,
+			chunks: selectedAttempt.retrieverResult.chunks,
+			retrievalMeta: selectedAttempt.retrieverResult.retrievalMeta,
+			sections: selectedAttempt.sectionAggregationResult.sections,
+			aggregationMeta: selectedAttempt.sectionAggregationResult.aggregationMeta,
+			selectedSections: selectedAttempt.contextSelectorResult.sections,
+			selectorMeta: selectedAttempt.contextSelectorResult.selectorMeta,
+			shortCircuit: true,
+			shortCircuitMessage: answer,
+			contextItems: [],
+			context: "",
+			contextMeta: contextBuilderResult.contextMeta,
+			generationMeta: null,
+			timing: timings,
+			metadata,
+		};
+	}
 
 	const generatorResult = await dependencies.runGenerator({
 		queryForRetrieval: args.inputData.queryForRetrieval,
