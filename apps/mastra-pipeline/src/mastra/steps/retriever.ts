@@ -12,6 +12,47 @@ import { queryProcessorStateSchema } from "./query-processor";
 
 const EMBEDDING_BREAKER = new CircuitBreaker({ cooldownMs: 60_000 });
 const RRF_K = 60;
+const HEADING_SOURCE_PREFIX = "heading:";
+const HEADING_CANDIDATE_MULTIPLIER = 5;
+const MAX_HEADING_CANDIDATES = 100;
+
+const HEADING_SEARCH_EXCLUDED_PUBLISHERS = new Set(["dgafp"]);
+const HEADING_STOPWORDS = new Set([
+	"a",
+	"au",
+	"aux",
+	"avec",
+	"beneficier",
+	"ce",
+	"ces",
+	"condition",
+	"conditions",
+	"dans",
+	"de",
+	"des",
+	"du",
+	"en",
+	"est",
+	"et",
+	"la",
+	"le",
+	"les",
+	"l",
+	"peut",
+	"pour",
+	"qu",
+	"que",
+	"quel",
+	"quelle",
+	"quelles",
+	"quels",
+	"qui",
+	"recevoir",
+	"sont",
+	"sur",
+	"un",
+	"une",
+]);
 
 const INDEX_NAME_BY_EMBEDDING_MODEL = {
 	albert: "rag_chunks_albert",
@@ -113,6 +154,14 @@ interface RawChunkRow {
 	metadata: unknown;
 }
 
+interface RawHeadingRow extends RawChunkRow {
+	section_id: string | null;
+	heading: string | null;
+	heading_path: string | null;
+	document_title: string | null;
+	doc_url: string | null;
+}
+
 interface RankedChunkRow {
 	chunkId: string;
 	text: string;
@@ -123,6 +172,8 @@ interface RankedChunkRow {
 interface PublisherSearchResult {
 	publisherKey: string;
 	mode: SearchMode;
+	sourcePath: "chunk" | "heading";
+	sourceName: string;
 	rows: RankedChunkRow[];
 }
 
@@ -326,6 +377,128 @@ function buildLexicalSearchQuery(query: string): string | null {
 	return tokens.join(" OR ");
 }
 
+function normalizeTextForHeadingMatch(value: string): string {
+	return (
+		value
+			.toLowerCase()
+			.normalize("NFKD")
+			.replace(/[\u0300-\u036f]/g, "")
+			.match(/[a-z0-9]+/g)
+			?.join(" ") ?? ""
+	);
+}
+
+function tokenizeForHeadingMatch(value: string): Set<string> {
+	return new Set(
+		normalizeTextForHeadingMatch(value)
+			.split(" ")
+			.map((token) => token.trim())
+			.filter((token) => token.length > 1 && !HEADING_STOPWORDS.has(token)),
+	);
+}
+
+function bigramSimilarity(left: string, right: string): number {
+	if (!left || !right) {
+		return 0;
+	}
+
+	if (left === right) {
+		return 1;
+	}
+
+	const toBigrams = (value: string): Set<string> => {
+		if (value.length < 2) {
+			return new Set([value]);
+		}
+
+		const grams = new Set<string>();
+		for (let index = 0; index < value.length - 1; index += 1) {
+			grams.add(value.slice(index, index + 2));
+		}
+
+		return grams;
+	};
+
+	const leftBigrams = toBigrams(left);
+	const rightBigrams = toBigrams(right);
+	let overlap = 0;
+	for (const gram of leftBigrams) {
+		if (rightBigrams.has(gram)) {
+			overlap += 1;
+		}
+	}
+
+	return (2 * overlap) / (leftBigrams.size + rightBigrams.size);
+}
+
+function headingMatchScore(heading: string, headingPath: string, query: string): number {
+	const queryNorm = normalizeTextForHeadingMatch(query);
+	const headingNorm = normalizeTextForHeadingMatch(heading);
+	const pathNorm = normalizeTextForHeadingMatch(headingPath);
+
+	if (!queryNorm || (!headingNorm && !pathNorm)) {
+		return 0;
+	}
+
+	const candidates = [headingNorm, pathNorm].filter((candidate) => candidate.length > 0);
+	if (
+		candidates.some(
+			(candidate) =>
+				candidate === queryNorm || candidate.includes(queryNorm) || queryNorm.includes(candidate),
+		)
+	) {
+		return 1;
+	}
+
+	const queryTokens = tokenizeForHeadingMatch(query);
+	const headingTokens = tokenizeForHeadingMatch(`${heading} ${headingPath}`);
+	if (queryTokens.size === 0 || headingTokens.size === 0) {
+		return 0;
+	}
+
+	let overlap = 0;
+	for (const token of queryTokens) {
+		if (headingTokens.has(token)) {
+			overlap += 1;
+		}
+	}
+
+	if (overlap === 0) {
+		return 0;
+	}
+
+	const coverageQuery = overlap / queryTokens.size;
+	const coverageHeading = overlap / headingTokens.size;
+	if (coverageQuery >= 0.75 && coverageHeading >= 0.45) {
+		return 1;
+	}
+
+	const tokenScore = 0.7 * coverageQuery + 0.3 * coverageHeading;
+	const fuzzyScore = Math.max(
+		...candidates.map((candidate) => bigramSimilarity(queryNorm, candidate)),
+	);
+	const score = Math.max(tokenScore, fuzzyScore >= 0.72 ? fuzzyScore : 0);
+
+	return Math.min(score, 0.99);
+}
+
+function withChunkRetrievalMetadata(row: RawChunkRow): RankedChunkRow {
+	const metadata = normalizeMetadata(row.metadata);
+	metadata.retrieval_path ??= "chunk";
+	metadata.heading_search ??= false;
+
+	return {
+		chunkId: row.chunk_id,
+		text: row.chunk_text || "",
+		score: Number(row.score),
+		metadata,
+	};
+}
+
+function shouldSearchHeadings(publisherKey: string): boolean {
+	return !HEADING_SEARCH_EXCLUDED_PUBLISHERS.has(publisherKey);
+}
+
 async function ensureDualIndexTables(): Promise<void> {
 	if (dualIndexTablesChecked) {
 		return;
@@ -511,12 +684,7 @@ async function querySemantic(args: {
 		[args.vectorLiteral, args.publisherAliases, args.topK],
 	);
 
-	return result.rows.map((row) => ({
-		chunkId: row.chunk_id,
-		text: row.chunk_text || "",
-		score: Number(row.score),
-		metadata: normalizeMetadata(row.metadata),
-	}));
+	return result.rows.map(withChunkRetrievalMetadata);
 }
 
 async function queryLexical(args: {
@@ -552,12 +720,117 @@ async function queryLexical(args: {
 		[lexicalSearchQuery, args.publisherAliases, args.topK],
 	);
 
-	return result.rows.map((row) => ({
-		chunkId: row.chunk_id,
-		text: row.chunk_text || "",
-		score: Number(row.score),
-		metadata: normalizeMetadata(row.metadata),
-	}));
+	return result.rows.map(withChunkRetrievalMetadata);
+}
+
+async function queryHeadings(args: {
+	indexName: "rag_chunks_albert" | "rag_chunks_scaleway";
+	query: string;
+	publisherAliases: string[];
+	topK: number;
+}): Promise<RankedChunkRow[]> {
+	const lexicalSearchQuery = buildLexicalSearchQuery(args.query);
+	if (!lexicalSearchQuery) {
+		return [];
+	}
+
+	const db = getDbPool();
+	const candidateLimit = Math.min(
+		Math.max(args.topK * HEADING_CANDIDATE_MULTIPLIER, args.topK),
+		MAX_HEADING_CANDIDATES,
+	);
+
+	const result = await db.query<RawHeadingRow>(
+		`
+      WITH parsed_query AS (
+        SELECT websearch_to_tsquery('french', $1) AS q
+      ),
+      candidate_chunks AS (
+        SELECT
+          vector_id AS chunk_id,
+          COALESCE(metadata->>'text', '') AS chunk_text,
+          metadata,
+          NULLIF(metadata->>'section_id', '') AS section_id
+        FROM ${args.indexName}
+        WHERE lower(COALESCE(metadata->>'publisher', '')) = ANY($2::text[])
+          AND NULLIF(metadata->>'section_id', '') IS NOT NULL
+      )
+      SELECT
+        c.chunk_id,
+        c.chunk_text,
+        0::double precision AS score,
+        c.metadata,
+        c.section_id,
+        s.heading,
+        s.heading_path,
+        d.title AS document_title,
+        d.source_url AS doc_url,
+        ts_rank_cd(
+          to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)),
+          pq.q
+        ) AS lexical_score
+      FROM candidate_chunks c
+      JOIN rag_sections s ON s.section_id::text = c.section_id
+      LEFT JOIN rag_documents d ON d.doc_id = s.doc_id
+      CROSS JOIN parsed_query pq
+      WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ pq.q
+      ORDER BY lexical_score DESC, c.chunk_id
+      LIMIT $3
+    `,
+		[lexicalSearchQuery, args.publisherAliases, candidateLimit],
+	);
+
+	const rows = result.rows
+		.map((row) => {
+			const heading = row.heading?.trim() ?? "";
+			const headingPath = row.heading_path?.trim() ?? "";
+			const documentTitle = row.document_title?.trim() ?? "";
+			const matchScore = headingMatchScore(
+				[documentTitle, heading].filter((value) => value.length > 0).join(" "),
+				headingPath,
+				args.query,
+			);
+
+			if (matchScore <= 0) {
+				return null;
+			}
+
+			const metadata = normalizeMetadata(row.metadata);
+			metadata.retrieval_path = "heading";
+			metadata.source_score_mode = "heading";
+			metadata.heading_search = true;
+			metadata.heading_match_score = matchScore;
+			metadata.matched_heading = heading || documentTitle;
+			metadata.matched_heading_path = headingPath;
+			metadata.section_id = row.section_id;
+
+			if (documentTitle.length > 0) {
+				metadata.source_name = documentTitle;
+			}
+
+			if (row.doc_url?.trim()) {
+				metadata.doc_url = row.doc_url.trim();
+			}
+
+			return {
+				chunkId: row.chunk_id,
+				text: row.chunk_text || "",
+				score: matchScore,
+				metadata,
+			} satisfies RankedChunkRow;
+		})
+		.filter((row): row is RankedChunkRow => row !== null);
+
+	rows.sort((left, right) => {
+		const scoreDelta = right.score - left.score;
+		if (scoreDelta !== 0) {
+			return scoreDelta;
+		}
+
+		return left.chunkId < right.chunkId ? -1 : left.chunkId > right.chunkId ? 1 : 0;
+	});
+
+	return rows.slice(0, args.topK);
 }
 
 function mergeHybridRrf(args: {
@@ -598,18 +871,94 @@ function mergeHybridRrf(args: {
 	return scored.slice(0, args.topK);
 }
 
+function stableCompare(left: string, right: string): number {
+	if (left < right) {
+		return -1;
+	}
+
+	if (left > right) {
+		return 1;
+	}
+
+	return 0;
+}
+
+function getMetadataString(metadata: Record<string, unknown>, key: string): string | null {
+	const value = metadata[key];
+	return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function mergeHeadingMetadata(
+	target: Record<string, unknown>,
+	source: Record<string, unknown>,
+): void {
+	const incomingScore = Number(source.heading_match_score ?? 0);
+	const currentScore = Number(target.heading_match_score ?? 0);
+	if (
+		Number.isFinite(incomingScore) &&
+		(!Number.isFinite(currentScore) || incomingScore > currentScore)
+	) {
+		target.heading_match_score = incomingScore;
+	}
+
+	target.matched_heading ??= source.matched_heading;
+	target.matched_heading_path ??= source.matched_heading_path;
+}
+
 function mergeCrossPublisherRanks(searchResults: PublisherSearchResult[]): Array<
 	PublisherSearchResult["rows"][number] & {
 		publisherKey: string;
 		mode: SearchMode;
+		sourcePath: "chunk" | "heading";
+		sourceName: string;
 		fusedScore: number;
 	}
 > {
+	const headingBySection = new Map<
+		string,
+		{
+			matchScore: number;
+			matchedHeading: unknown;
+			matchedHeadingPath: unknown;
+		}
+	>();
+	const chunkSections = new Set<string>();
+
+	for (const result of searchResults) {
+		for (const row of result.rows) {
+			const sectionId = getMetadataString(row.metadata, "section_id");
+			if (!sectionId) {
+				continue;
+			}
+
+			const sectionKey = `${result.publisherKey}:${sectionId}`;
+			if (result.sourcePath === "heading") {
+				const matchScore = Number(row.metadata.heading_match_score ?? 0);
+				const existing = headingBySection.get(sectionKey);
+				if (!existing || matchScore > existing.matchScore) {
+					headingBySection.set(sectionKey, {
+						matchScore,
+						matchedHeading: row.metadata.matched_heading,
+						matchedHeadingPath: row.metadata.matched_heading_path,
+					});
+				}
+			} else {
+				chunkSections.add(sectionKey);
+			}
+		}
+	}
+
+	const chunkAndHeadingSections = new Set(
+		Array.from(chunkSections).filter((sectionKey) => headingBySection.has(sectionKey)),
+	);
+
 	const fused = new Map<
 		string,
 		PublisherSearchResult["rows"][number] & {
 			publisherKey: string;
 			mode: SearchMode;
+			sourcePath: "chunk" | "heading";
+			sourceName: string;
 			fusedScore: number;
 		}
 	>();
@@ -619,22 +968,91 @@ function mergeCrossPublisherRanks(searchResults: PublisherSearchResult[]): Array
 			const rank = index + 1;
 			const contribution = 1 / (RRF_K + rank);
 			const existing = fused.get(row.chunkId);
+			const sourceIsHeading = result.sourcePath === "heading";
 
 			if (existing) {
 				existing.fusedScore += contribution;
+				if (sourceIsHeading) {
+					existing.metadata.heading_search = true;
+					existing.metadata.retrieval_path = "chunk+heading";
+					mergeHeadingMetadata(existing.metadata, row.metadata);
+				} else if (existing.metadata.heading_search === true) {
+					existing.metadata.retrieval_path = "chunk+heading";
+				}
+
+				const previousRaw = Number(existing.metadata.source_score ?? Number.NEGATIVE_INFINITY);
+				if (!Number.isFinite(previousRaw) || row.score > previousRaw) {
+					existing.metadata.source_score = row.score;
+					existing.metadata.source_score_mode = row.metadata.source_score_mode ?? result.mode;
+					existing.metadata.score_source = result.sourceName;
+				}
 				return;
+			}
+
+			const metadata = { ...row.metadata };
+			metadata.source_score ??= row.score;
+			metadata.source_score_mode ??= sourceIsHeading ? "heading" : result.mode;
+			metadata.score_source ??= result.sourceName;
+			if (sourceIsHeading) {
+				metadata.heading_search = true;
+				metadata.retrieval_path = "heading";
+			} else {
+				metadata.retrieval_path ??= "chunk";
+				metadata.heading_search ??= false;
 			}
 
 			fused.set(row.chunkId, {
 				...row,
+				metadata,
 				publisherKey: result.publisherKey,
 				mode: result.mode,
+				sourcePath: result.sourcePath,
+				sourceName: result.sourceName,
 				fusedScore: contribution,
 			});
 		});
 	}
 
-	return Array.from(fused.values()).sort((left, right) => right.fusedScore - left.fusedScore);
+	for (const row of fused.values()) {
+		const sectionId = getMetadataString(row.metadata, "section_id");
+		const sectionKey = sectionId ? `${row.publisherKey}:${sectionId}` : null;
+		if (!sectionKey || !chunkAndHeadingSections.has(sectionKey)) {
+			continue;
+		}
+
+		row.metadata.heading_search = true;
+		row.metadata.retrieval_path = "chunk+heading";
+		const headingMetadata = headingBySection.get(sectionKey);
+		if (headingMetadata) {
+			const currentScore = Number(row.metadata.heading_match_score ?? 0);
+			if (!Number.isFinite(currentScore) || headingMetadata.matchScore > currentScore) {
+				row.metadata.heading_match_score = headingMetadata.matchScore;
+			}
+			row.metadata.matched_heading ??= headingMetadata.matchedHeading;
+			row.metadata.matched_heading_path ??= headingMetadata.matchedHeadingPath;
+		}
+	}
+
+	return Array.from(fused.values()).sort((left, right) => {
+		const scoreDelta = right.fusedScore - left.fusedScore;
+		if (scoreDelta !== 0) {
+			return scoreDelta;
+		}
+
+		const headingDelta =
+			Number(right.metadata.heading_match_score ?? 0) -
+			Number(left.metadata.heading_match_score ?? 0);
+		if (headingDelta !== 0) {
+			return headingDelta;
+		}
+
+		const sourceDelta = stableCompare(left.sourceName, right.sourceName);
+		if (sourceDelta !== 0) {
+			return sourceDelta;
+		}
+
+		return stableCompare(left.chunkId, right.chunkId);
+	});
 }
 
 function resolveModeForPublisher(args: {
@@ -704,7 +1122,7 @@ export async function runRetriever(
 	const warnings: string[] = [];
 	const modeByPublisher: Record<string, SearchMode> = {};
 
-	const searchResults: PublisherSearchResult[] = await Promise.all(
+	const searchResultsByPublisher = await Promise.all(
 		publisherKeys.map(async (publisherKey) => {
 			const mode = resolveModeForPublisher({
 				configuredMode,
@@ -716,20 +1134,30 @@ export async function runRetriever(
 
 			modeByPublisher[publisherKey] = mode;
 			const publisherAliases = getPublisherAliases(publisherKey, publisherRouting);
+			const headingRowsPromise = shouldSearchHeadings(publisherKey)
+				? queryHeadings({
+						indexName: embeddingResult.indexName,
+						query: input.queryForRetrieval,
+						publisherAliases,
+						topK,
+					}).catch((error: unknown) => {
+						const message = error instanceof Error ? error.message : String(error);
+						warnings.push(`Heading search unavailable on ${publisherKey}: ${message}`);
+						return [];
+					})
+				: Promise.resolve([]);
+
+			let chunkRowsPromise: Promise<RankedChunkRow[]>;
 
 			if (mode === "lexical") {
-				const lexicalRows = await queryLexical({
+				chunkRowsPromise = queryLexical({
 					indexName: embeddingResult.indexName,
 					query: input.queryForRetrieval,
 					publisherAliases,
 					topK,
 				});
-
-				return { publisherKey, mode, rows: lexicalRows };
-			}
-
-			if (mode === "hybrid") {
-				const [semanticRows, lexicalRows] = await Promise.all([
+			} else if (mode === "hybrid") {
+				chunkRowsPromise = Promise.all([
 					querySemantic({
 						indexName: embeddingResult.indexName,
 						vectorLiteral,
@@ -742,28 +1170,48 @@ export async function runRetriever(
 						publisherAliases,
 						topK,
 					}),
-				]);
-
-				const mergedRows = mergeHybridRrf({
-					semanticRows,
-					lexicalRows,
-					alpha,
+				]).then(([semanticRows, lexicalRows]) =>
+					mergeHybridRrf({
+						semanticRows,
+						lexicalRows,
+						alpha,
+						topK,
+					}),
+				);
+			} else {
+				chunkRowsPromise = querySemantic({
+					indexName: embeddingResult.indexName,
+					vectorLiteral,
+					publisherAliases,
 					topK,
 				});
-
-				return { publisherKey, mode, rows: mergedRows };
 			}
 
-			const semanticRows = await querySemantic({
-				indexName: embeddingResult.indexName,
-				vectorLiteral,
-				publisherAliases,
-				topK,
-			});
+			const [chunkRows, headingRows] = await Promise.all([chunkRowsPromise, headingRowsPromise]);
+			const results: PublisherSearchResult[] = [
+				{
+					publisherKey,
+					mode,
+					sourcePath: "chunk",
+					sourceName: `chunk:${publisherKey}`,
+					rows: chunkRows,
+				},
+			];
 
-			return { publisherKey, mode, rows: semanticRows };
+			if (headingRows.length > 0) {
+				results.push({
+					publisherKey,
+					mode: "lexical",
+					sourcePath: "heading",
+					sourceName: `${HEADING_SOURCE_PREFIX}${publisherKey}`,
+					rows: headingRows,
+				});
+			}
+
+			return results;
 		}),
 	);
+	const searchResults = searchResultsByPublisher.flat();
 
 	const globallyRankedRows = mergeCrossPublisherRanks(searchResults);
 
@@ -811,6 +1259,11 @@ export async function runRetriever(
 		},
 	};
 }
+
+export const __retrieverTestHooks = {
+	headingMatchScore,
+	mergeCrossPublisherRanks,
+};
 
 export const retrieverStep = createStep({
 	id: "retriever",
