@@ -24,7 +24,8 @@
     "rag-pipeline:conformance:with-python": "tsx src/mastra/rag-pipeline-conformance.ts --mode live",
     "selector-retry:test": "tsx scripts/selector-retry-smoke-test.ts",
     "endpoint:smoke": "tsx scripts/endpoint-smoke-test.ts",
-    "lint": "biome check src scripts"
+    "lint": "biome check src scripts",
+    "retriever:heading-search:test": "tsx scripts/retriever-heading-search-test.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "2.0.48",
