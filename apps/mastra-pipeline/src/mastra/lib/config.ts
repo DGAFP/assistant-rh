@@ -9,6 +9,9 @@ const retrievalSchema = z
 		alpha: z.number(),
 		tables: z.array(z.string()),
 		enable_chunks_test: z.boolean(),
+		enable_selector_retry: z.boolean(),
+		selector_retry_search_mode: z.enum(["semantic", "lexical", "hybrid"]),
+		selector_retry_top_k: z.number().int().positive(),
 	})
 	.partial();
 
@@ -91,6 +94,9 @@ export const DEFAULT_RUNTIME_RAG_CONFIG: Required<RuntimeRagConfig> = {
 		alpha: 0.5,
 		tables: ["matte", "service_public", "dgafp", "rgrh"],
 		enable_chunks_test: false,
+		enable_selector_retry: true,
+		selector_retry_search_mode: "hybrid",
+		selector_retry_top_k: 30,
 	},
 	aggregation: {
 		weight_max_score: 0.5,

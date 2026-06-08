@@ -18,10 +18,10 @@ const INDEX_NAME_BY_EMBEDDING_MODEL = {
 	bge_scaleway: "rag_chunks_scaleway",
 } as const;
 
-const searchModeSchema = z.enum(["semantic", "hybrid", "lexical"]);
+export const searchModeSchema = z.enum(["semantic", "hybrid", "lexical"]);
 const embeddingModelSchema = z.enum(["albert", "bge_scaleway"]);
 
-type SearchMode = z.infer<typeof searchModeSchema>;
+export type SearchMode = z.infer<typeof searchModeSchema>;
 type EmbeddingModel = z.infer<typeof embeddingModelSchema>;
 
 type RuntimeRetrievalConfig = RuntimeRagConfig["retrieval"];
@@ -33,6 +33,9 @@ interface NormalizedRetrievalConfig {
 	alpha: number;
 	tables: string[];
 	enable_chunks_test: boolean;
+	enable_selector_retry: boolean;
+	selector_retry_search_mode: SearchMode;
+	selector_retry_top_k: number;
 }
 
 const retrieverConfigSchema = z
@@ -43,6 +46,9 @@ const retrieverConfigSchema = z
 		alpha: z.number(),
 		tables: z.array(z.string()),
 		enable_chunks_test: z.boolean(),
+		enable_selector_retry: z.boolean(),
+		selector_retry_search_mode: searchModeSchema,
+		selector_retry_top_k: z.number().int().positive(),
 	})
 	.partial();
 
@@ -240,6 +246,9 @@ function normalizeRetrievalConfig(
 		alpha: 0.5,
 		tables: ["matte", "service_public", "dgafp", "rgrh"],
 		enable_chunks_test: false,
+		enable_selector_retry: true,
+		selector_retry_search_mode: "hybrid",
+		selector_retry_top_k: 30,
 	};
 
 	return {
@@ -251,6 +260,18 @@ function normalizeRetrievalConfig(
 		tables: override?.tables ?? runtimeConfig?.tables ?? base.tables,
 		enable_chunks_test:
 			override?.enable_chunks_test ?? runtimeConfig?.enable_chunks_test ?? base.enable_chunks_test,
+		enable_selector_retry:
+			override?.enable_selector_retry ??
+			runtimeConfig?.enable_selector_retry ??
+			base.enable_selector_retry,
+		selector_retry_search_mode:
+			override?.selector_retry_search_mode ??
+			runtimeConfig?.selector_retry_search_mode ??
+			base.selector_retry_search_mode,
+		selector_retry_top_k:
+			override?.selector_retry_top_k ??
+			runtimeConfig?.selector_retry_top_k ??
+			base.selector_retry_top_k,
 	};
 }
 

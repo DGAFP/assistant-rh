@@ -1,5 +1,6 @@
 import { createStep, createWorkflow } from "@mastra/core/workflows";
 import { z } from "zod";
+import { DEFAULT_RUNTIME_RAG_CONFIG, getRuntimeRagConfig } from "../lib/config";
 import {
 	contextBuilderStateSchema,
 	contextBuilderStepInputSchema,
@@ -23,6 +24,7 @@ import {
 	retrieverStepInputSchema,
 	retrieverStepOutputSchema,
 	runRetriever,
+	type SearchMode,
 } from "../steps/retriever";
 import {
 	aggregatedSectionSchema,
@@ -104,6 +106,18 @@ function toContextItemRefs(
 	}));
 }
 
+type AttemptName = "initial" | "selector_retry";
+
+interface AttemptMetadata {
+	name: AttemptName;
+	search_mode: SearchMode;
+	top_k: number;
+	chunk_count: number;
+	section_count: number;
+	selected_section_count: number;
+	selector_all_rejected: boolean;
+}
+
 function buildSharedMetadata(args: {
 	intent: string;
 	intentConfidence: number;
@@ -118,6 +132,11 @@ function buildSharedMetadata(args: {
 	aggregatedSections: ReturnType<typeof toAggregatedSectionRefs>;
 	contextItemsRef: ReturnType<typeof toContextItemRefs>;
 	generationMeta: z.infer<typeof generatorStepOutputSchema.shape.generationMeta> | null;
+	selectorRetryEnabled?: boolean;
+	selectorRetryTriggered?: boolean;
+	selectorRetrySucceeded?: boolean;
+	selectedAttemptName?: AttemptName;
+	retrievalAttempts?: AttemptMetadata[];
 }) {
 	return {
 		intent: args.intent,
@@ -141,6 +160,359 @@ function buildSharedMetadata(args: {
 			(args.selectorMeta?.selectedCount ?? 0) + (args.selectorMeta?.removedCount ?? 0),
 		selector_items_after: args.selectorMeta?.selectedCount ?? 0,
 		selector_all_rejected: args.selectorMeta?.allRejected ?? false,
+		selector_retry_enabled: args.selectorRetryEnabled ?? false,
+		selector_retry_triggered: args.selectorRetryTriggered ?? false,
+		selector_retry_succeeded: args.selectorRetrySucceeded ?? false,
+		selected_retrieval_attempt: args.selectedAttemptName ?? "initial",
+		retrieval_attempts: args.retrievalAttempts ?? [],
+	};
+}
+
+type RagPipelineInputData = z.infer<typeof queryProcessorStepOutputSchema>;
+type RagPipelineState = z.infer<typeof ragPipelineStateSchema>;
+type RagPipelineOutput = z.infer<typeof ragPipelineWorkflowOutputSchema>;
+
+type RuntimeConfig = Awaited<ReturnType<typeof getRuntimeRagConfig>>;
+
+interface RagPipelineAttemptResult {
+	name: AttemptName;
+	searchMode: SearchMode;
+	topK: number;
+	retrieverResult: z.infer<typeof retrieverStepOutputSchema>;
+	sectionAggregationResult: z.infer<typeof sectionAggregatorStepOutputSchema>;
+	contextSelectorResult: z.infer<typeof contextSelectorStepOutputSchema>;
+}
+
+export interface RagPipelineExecutionDependencies {
+	getRuntimeRagConfig: typeof getRuntimeRagConfig;
+	runRetriever: typeof runRetriever;
+	runSectionAggregator: typeof runSectionAggregator;
+	runContextSelector: typeof runContextSelector;
+	runContextBuilder: typeof runContextBuilder;
+	runGenerator: typeof runGenerator;
+}
+
+const DEFAULT_RAG_PIPELINE_EXECUTION_DEPENDENCIES: RagPipelineExecutionDependencies = {
+	getRuntimeRagConfig,
+	runRetriever,
+	runSectionAggregator,
+	runContextSelector,
+	runContextBuilder,
+	runGenerator,
+};
+
+async function loadRuntimeRagConfigSafe(
+	dependencies: RagPipelineExecutionDependencies,
+): Promise<RuntimeConfig> {
+	try {
+		return await dependencies.getRuntimeRagConfig();
+	} catch {
+		return DEFAULT_RUNTIME_RAG_CONFIG;
+	}
+}
+
+function addTiming(timings: Record<string, number>, key: string, elapsedMs: number): void {
+	timings[key] = (timings[key] ?? 0) + elapsedMs;
+}
+
+function toAttemptMetadata(attempt: RagPipelineAttemptResult): AttemptMetadata {
+	return {
+		name: attempt.name,
+		search_mode: attempt.searchMode,
+		top_k: attempt.topK,
+		chunk_count: attempt.retrieverResult.chunks.length,
+		section_count: attempt.sectionAggregationResult.sections.length,
+		selected_section_count: attempt.contextSelectorResult.sections.length,
+		selector_all_rejected: attempt.contextSelectorResult.selectorMeta.allRejected,
+	};
+}
+
+function resolveEffectiveRuntimeConfig(args: {
+	runtimeConfig: RuntimeConfig;
+	stateConfig: RagPipelineState["config"];
+}) {
+	const rawRetrievalConfig = {
+		...args.runtimeConfig.retrieval,
+		...(args.stateConfig?.retrieval ?? {}),
+	};
+	const retrievalConfig = retrieverStepInputSchema.shape.config.safeParse(rawRetrievalConfig);
+	const baseRetrievalConfig = retrievalConfig.success
+		? retrievalConfig.data
+		: DEFAULT_RUNTIME_RAG_CONFIG.retrieval;
+
+	const rawAggregationConfig = {
+		...args.runtimeConfig.aggregation,
+		...(args.stateConfig?.aggregation ?? {}),
+	};
+	const aggregationConfig =
+		sectionAggregatorStepInputSchema.shape.config.safeParse(rawAggregationConfig);
+
+	const rawSelectorConfig = {
+		...args.runtimeConfig.selector,
+		...(args.stateConfig?.selector ?? {}),
+	};
+	const selectorConfig = contextSelectorStepInputSchema.shape.config.safeParse(rawSelectorConfig);
+
+	const rawContextConfig = {
+		...args.runtimeConfig.context,
+		...(args.stateConfig?.context ?? {}),
+	};
+	const contextBuildConfig = contextBuilderStepInputSchema.shape.config.safeParse(rawContextConfig);
+
+	const rawGenerationConfig = {
+		...args.runtimeConfig.generation,
+		...(args.stateConfig?.generation ?? {}),
+	};
+	const generationConfig = generatorStepInputSchema.shape.config.safeParse(rawGenerationConfig);
+
+	return {
+		baseRetrievalConfig: baseRetrievalConfig ?? DEFAULT_RUNTIME_RAG_CONFIG.retrieval,
+		aggregationConfig: aggregationConfig.success ? aggregationConfig.data : undefined,
+		selectorConfig: selectorConfig.success ? selectorConfig.data : undefined,
+		contextBuildConfig: contextBuildConfig.success ? contextBuildConfig.data : undefined,
+		generationConfig: generationConfig.success ? generationConfig.data : undefined,
+	};
+}
+
+export async function runRagPipelineRagBranch(args: {
+	inputData: RagPipelineInputData;
+	state: RagPipelineState;
+	setState: (state: RagPipelineState) => Promise<void>;
+	dependencies?: Partial<RagPipelineExecutionDependencies>;
+}): Promise<RagPipelineOutput> {
+	const dependencies: RagPipelineExecutionDependencies = {
+		...DEFAULT_RAG_PIPELINE_EXECUTION_DEPENDENCIES,
+		...(args.dependencies ?? {}),
+	};
+
+	const pipelineStart = Date.now();
+	const timings: Record<string, number> = {};
+	const branchPath: "rag" = "rag";
+
+	const runtimeConfig = await loadRuntimeRagConfigSafe(dependencies);
+	const {
+		baseRetrievalConfig,
+		aggregationConfig,
+		selectorConfig,
+		contextBuildConfig,
+		generationConfig,
+	} = resolveEffectiveRuntimeConfig({
+		runtimeConfig,
+		stateConfig: args.state.config,
+	});
+
+	async function runAttempt({
+		name,
+		searchMode,
+		topK,
+	}: {
+		name: AttemptName;
+		searchMode: SearchMode;
+		topK: number;
+	}): Promise<RagPipelineAttemptResult> {
+		const retrievalStart = Date.now();
+		const retrieverResult = await dependencies.runRetriever({
+			queryForRetrieval: args.inputData.queryForRetrieval,
+			needsLegalSearch: args.inputData.needsLegalSearch,
+			config: {
+				...baseRetrievalConfig,
+				search_mode: searchMode,
+				initial_top_k: topK,
+			},
+		});
+		addTiming(timings, "retrieval_ms", Date.now() - retrievalStart);
+
+		const aggregationStart = Date.now();
+		const sectionAggregationResult = await dependencies.runSectionAggregator({
+			chunks: retrieverResult.chunks,
+			queryForRetrieval: args.inputData.queryForRetrieval,
+			reformulatedQuery: args.inputData.reformulatedQuery ?? undefined,
+			config: aggregationConfig,
+		});
+		addTiming(timings, "aggregation_ms", Date.now() - aggregationStart);
+
+		const selectorStart = Date.now();
+		const contextSelectorResult = await dependencies.runContextSelector({
+			queryForRetrieval: args.inputData.queryForRetrieval,
+			sections: sectionAggregationResult.sections,
+			config: selectorConfig,
+		});
+		addTiming(timings, "selector_ms", Date.now() - selectorStart);
+
+		return {
+			name,
+			searchMode,
+			topK,
+			retrieverResult,
+			sectionAggregationResult,
+			contextSelectorResult,
+		};
+	}
+
+	const initialSearchMode = baseRetrievalConfig.search_mode ?? "semantic";
+	const initialTopK = baseRetrievalConfig.initial_top_k ?? 15;
+	const selectorRetryEnabled = baseRetrievalConfig.enable_selector_retry ?? true;
+	const selectorRetrySearchMode = baseRetrievalConfig.selector_retry_search_mode ?? "hybrid";
+	const selectorRetryTopK = baseRetrievalConfig.selector_retry_top_k ?? 30;
+
+	const initialAttempt = await runAttempt({
+		name: "initial",
+		searchMode: initialSearchMode,
+		topK: initialTopK,
+	});
+	const attempts = [initialAttempt];
+
+	let selectedAttempt = initialAttempt;
+	let selectorRetryTriggered = false;
+	let selectorRetrySucceeded = false;
+
+	if (initialAttempt.contextSelectorResult.shortCircuit && selectorRetryEnabled) {
+		selectorRetryTriggered = true;
+		const retryAttempt = await runAttempt({
+			name: "selector_retry",
+			searchMode: selectorRetrySearchMode,
+			topK: selectorRetryTopK,
+		});
+		attempts.push(retryAttempt);
+		selectedAttempt = retryAttempt;
+		selectorRetrySucceeded = !retryAttempt.contextSelectorResult.shortCircuit;
+	}
+
+	const retrievalAttempts = attempts.map(toAttemptMetadata);
+
+	if (selectedAttempt.contextSelectorResult.shortCircuit) {
+		const answer = selectedAttempt.contextSelectorResult.shortCircuitMessage ?? "";
+		timings.context_build_ms = 0;
+		timings.generation_ms = 0;
+		timings.ttft_ms = 0;
+		timings.chars_per_second = 0;
+		timings.response_length_tokens = estimateTokens(answer);
+		timings.pipeline_total_ms = Date.now() - pipelineStart;
+
+		const metadata = buildSharedMetadata({
+			intent: args.inputData.intent,
+			intentConfidence: args.inputData.intentConfidence,
+			theme: args.inputData.theme,
+			wasExpanded: args.inputData.wasExpanded,
+			expandedAcronyms: args.inputData.expandedAcronyms,
+			queryForRetrieval: args.inputData.queryForRetrieval,
+			needsLegalSearch: args.inputData.needsLegalSearch,
+			tablesSearched: selectedAttempt.retrieverResult.retrievalMeta.publishersSearched,
+			selectorMeta: selectedAttempt.contextSelectorResult.selectorMeta,
+			retrievedChunks: toRetrievedChunkRefs(selectedAttempt.retrieverResult.chunks),
+			aggregatedSections: toAggregatedSectionRefs(
+				selectedAttempt.sectionAggregationResult.sections,
+			),
+			contextItemsRef: [],
+			generationMeta: null,
+			selectorRetryEnabled,
+			selectorRetryTriggered,
+			selectorRetrySucceeded,
+			selectedAttemptName: selectedAttempt.name,
+			retrievalAttempts,
+		});
+
+		await args.setState({
+			...args.state,
+			branchPath,
+			retriever: selectedAttempt.retrieverResult,
+			sectionAggregator: selectedAttempt.sectionAggregationResult,
+			contextSelector: selectedAttempt.contextSelectorResult,
+			contextBuilder: undefined,
+			generator: undefined,
+		});
+
+		return {
+			...args.inputData,
+			branchPath,
+			answer,
+			chunks: selectedAttempt.retrieverResult.chunks,
+			retrievalMeta: selectedAttempt.retrieverResult.retrievalMeta,
+			sections: selectedAttempt.sectionAggregationResult.sections,
+			aggregationMeta: selectedAttempt.sectionAggregationResult.aggregationMeta,
+			selectedSections: selectedAttempt.contextSelectorResult.sections,
+			selectorMeta: selectedAttempt.contextSelectorResult.selectorMeta,
+			shortCircuit: true,
+			shortCircuitMessage: selectedAttempt.contextSelectorResult.shortCircuitMessage,
+			contextItems: [],
+			context: "",
+			contextMeta: null,
+			generationMeta: null,
+			timing: timings,
+			metadata,
+		};
+	}
+
+	const contextBuildStart = Date.now();
+	const contextBuilderResult = await dependencies.runContextBuilder({
+		sections: selectedAttempt.contextSelectorResult.sections,
+		config: contextBuildConfig,
+	});
+	timings.context_build_ms = Date.now() - contextBuildStart;
+
+	const generatorResult = await dependencies.runGenerator({
+		queryForRetrieval: args.inputData.queryForRetrieval,
+		context: contextBuilderResult.context,
+		contextItems: contextBuilderResult.contextItems,
+		conversationHistory: args.state.conversationHistory ?? [],
+		config: generationConfig,
+	});
+
+	timings.generation_ms = generatorResult.generationMeta.generationMs;
+	timings.ttft_ms = generatorResult.generationMeta.ttftMs;
+	timings.chars_per_second = generatorResult.generationMeta.charsPerSecond;
+	timings.response_length_tokens = generatorResult.generationMeta.responseLengthTokens;
+	timings.pipeline_total_ms = Date.now() - pipelineStart;
+
+	const metadata = buildSharedMetadata({
+		intent: args.inputData.intent,
+		intentConfidence: args.inputData.intentConfidence,
+		theme: args.inputData.theme,
+		wasExpanded: args.inputData.wasExpanded,
+		expandedAcronyms: args.inputData.expandedAcronyms,
+		queryForRetrieval: args.inputData.queryForRetrieval,
+		needsLegalSearch: args.inputData.needsLegalSearch,
+		tablesSearched: selectedAttempt.retrieverResult.retrievalMeta.publishersSearched,
+		selectorMeta: selectedAttempt.contextSelectorResult.selectorMeta,
+		retrievedChunks: toRetrievedChunkRefs(selectedAttempt.retrieverResult.chunks),
+		aggregatedSections: toAggregatedSectionRefs(selectedAttempt.sectionAggregationResult.sections),
+		contextItemsRef: toContextItemRefs(contextBuilderResult.contextItems),
+		generationMeta: generatorResult.generationMeta,
+		selectorRetryEnabled,
+		selectorRetryTriggered,
+		selectorRetrySucceeded,
+		selectedAttemptName: selectedAttempt.name,
+		retrievalAttempts,
+	});
+
+	await args.setState({
+		...args.state,
+		branchPath,
+		retriever: selectedAttempt.retrieverResult,
+		sectionAggregator: selectedAttempt.sectionAggregationResult,
+		contextSelector: selectedAttempt.contextSelectorResult,
+		contextBuilder: contextBuilderResult,
+		generator: generatorResult,
+	});
+
+	return {
+		...args.inputData,
+		branchPath,
+		answer: generatorResult.answer,
+		chunks: selectedAttempt.retrieverResult.chunks,
+		retrievalMeta: selectedAttempt.retrieverResult.retrievalMeta,
+		sections: selectedAttempt.sectionAggregationResult.sections,
+		aggregationMeta: selectedAttempt.sectionAggregationResult.aggregationMeta,
+		selectedSections: selectedAttempt.contextSelectorResult.sections,
+		selectorMeta: selectedAttempt.contextSelectorResult.selectorMeta,
+		shortCircuit: false,
+		shortCircuitMessage: null,
+		contextItems: contextBuilderResult.contextItems,
+		context: contextBuilderResult.context,
+		contextMeta: contextBuilderResult.contextMeta,
+		generationMeta: generatorResult.generationMeta,
+		timing: timings,
+		metadata,
 	};
 }
 
@@ -150,180 +522,8 @@ const ragPipelineStep = createStep({
 	inputSchema: queryProcessorStepOutputSchema,
 	outputSchema: ragPipelineWorkflowOutputSchema,
 	stateSchema: ragPipelineStateSchema,
-	execute: async ({ inputData, state, setState }) => {
-		const pipelineStart = Date.now();
-		const timings: Record<string, number> = {};
-
-		const stateConfig = state.config;
-
-		const retrievalConfig = retrieverStepInputSchema.shape.config.safeParse(stateConfig?.retrieval);
-
-		const retrievalStart = Date.now();
-		const retrieverResult = await runRetriever({
-			queryForRetrieval: inputData.queryForRetrieval,
-			needsLegalSearch: inputData.needsLegalSearch,
-			config: retrievalConfig.success ? retrievalConfig.data : undefined,
-		});
-		timings.retrieval_ms = Date.now() - retrievalStart;
-
-		const aggregationConfig = sectionAggregatorStepInputSchema.shape.config.safeParse(
-			stateConfig?.aggregation,
-		);
-
-		const aggregationStart = Date.now();
-		const sectionAggregationResult = await runSectionAggregator({
-			chunks: retrieverResult.chunks,
-			queryForRetrieval: inputData.queryForRetrieval,
-			reformulatedQuery: inputData.reformulatedQuery ?? undefined,
-			config: aggregationConfig.success ? aggregationConfig.data : undefined,
-		});
-		timings.aggregation_ms = Date.now() - aggregationStart;
-
-		const selectorConfig = contextSelectorStepInputSchema.shape.config.safeParse(
-			stateConfig?.selector,
-		);
-
-		const selectorStart = Date.now();
-		const contextSelectorResult = await runContextSelector({
-			queryForRetrieval: inputData.queryForRetrieval,
-			sections: sectionAggregationResult.sections,
-			config: selectorConfig.success ? selectorConfig.data : undefined,
-		});
-		timings.selector_ms = Date.now() - selectorStart;
-
-		const branchPath: "rag" = "rag";
-
-		if (contextSelectorResult.shortCircuit) {
-			const answer = contextSelectorResult.shortCircuitMessage ?? "";
-			timings.context_build_ms = 0;
-			timings.generation_ms = 0;
-			timings.ttft_ms = 0;
-			timings.chars_per_second = 0;
-			timings.response_length_tokens = estimateTokens(answer);
-			timings.pipeline_total_ms = Date.now() - pipelineStart;
-
-			const metadata = buildSharedMetadata({
-				intent: inputData.intent,
-				intentConfidence: inputData.intentConfidence,
-				theme: inputData.theme,
-				wasExpanded: inputData.wasExpanded,
-				expandedAcronyms: inputData.expandedAcronyms,
-				queryForRetrieval: inputData.queryForRetrieval,
-				needsLegalSearch: inputData.needsLegalSearch,
-				tablesSearched: retrieverResult.retrievalMeta.publishersSearched,
-				selectorMeta: contextSelectorResult.selectorMeta,
-				retrievedChunks: toRetrievedChunkRefs(retrieverResult.chunks),
-				aggregatedSections: toAggregatedSectionRefs(sectionAggregationResult.sections),
-				contextItemsRef: [],
-				generationMeta: null,
-			});
-
-			await setState({
-				...state,
-				branchPath,
-				retriever: retrieverResult,
-				sectionAggregator: sectionAggregationResult,
-				contextSelector: contextSelectorResult,
-				contextBuilder: undefined,
-				generator: undefined,
-			});
-
-			return {
-				...inputData,
-				branchPath,
-				answer,
-				chunks: retrieverResult.chunks,
-				retrievalMeta: retrieverResult.retrievalMeta,
-				sections: sectionAggregationResult.sections,
-				aggregationMeta: sectionAggregationResult.aggregationMeta,
-				selectedSections: contextSelectorResult.sections,
-				selectorMeta: contextSelectorResult.selectorMeta,
-				shortCircuit: true,
-				shortCircuitMessage: contextSelectorResult.shortCircuitMessage,
-				contextItems: [],
-				context: "",
-				contextMeta: null,
-				generationMeta: null,
-				timing: timings,
-				metadata,
-			};
-		}
-
-		const contextBuildConfig = contextBuilderStepInputSchema.shape.config.safeParse(
-			stateConfig?.context,
-		);
-
-		const contextBuildStart = Date.now();
-		const contextBuilderResult = await runContextBuilder({
-			sections: contextSelectorResult.sections,
-			config: contextBuildConfig.success ? contextBuildConfig.data : undefined,
-		});
-		timings.context_build_ms = Date.now() - contextBuildStart;
-
-		const generationConfig = generatorStepInputSchema.shape.config.safeParse(
-			stateConfig?.generation,
-		);
-
-		const generatorResult = await runGenerator({
-			queryForRetrieval: inputData.queryForRetrieval,
-			context: contextBuilderResult.context,
-			contextItems: contextBuilderResult.contextItems,
-			conversationHistory: state.conversationHistory ?? [],
-			config: generationConfig.success ? generationConfig.data : undefined,
-		});
-
-		timings.generation_ms = generatorResult.generationMeta.generationMs;
-		timings.ttft_ms = generatorResult.generationMeta.ttftMs;
-		timings.chars_per_second = generatorResult.generationMeta.charsPerSecond;
-		timings.response_length_tokens = generatorResult.generationMeta.responseLengthTokens;
-		timings.pipeline_total_ms = Date.now() - pipelineStart;
-
-		const metadata = buildSharedMetadata({
-			intent: inputData.intent,
-			intentConfidence: inputData.intentConfidence,
-			theme: inputData.theme,
-			wasExpanded: inputData.wasExpanded,
-			expandedAcronyms: inputData.expandedAcronyms,
-			queryForRetrieval: inputData.queryForRetrieval,
-			needsLegalSearch: inputData.needsLegalSearch,
-			tablesSearched: retrieverResult.retrievalMeta.publishersSearched,
-			selectorMeta: contextSelectorResult.selectorMeta,
-			retrievedChunks: toRetrievedChunkRefs(retrieverResult.chunks),
-			aggregatedSections: toAggregatedSectionRefs(sectionAggregationResult.sections),
-			contextItemsRef: toContextItemRefs(contextBuilderResult.contextItems),
-			generationMeta: generatorResult.generationMeta,
-		});
-
-		await setState({
-			...state,
-			branchPath,
-			retriever: retrieverResult,
-			sectionAggregator: sectionAggregationResult,
-			contextSelector: contextSelectorResult,
-			contextBuilder: contextBuilderResult,
-			generator: generatorResult,
-		});
-
-		return {
-			...inputData,
-			branchPath,
-			answer: generatorResult.answer,
-			chunks: retrieverResult.chunks,
-			retrievalMeta: retrieverResult.retrievalMeta,
-			sections: sectionAggregationResult.sections,
-			aggregationMeta: sectionAggregationResult.aggregationMeta,
-			selectedSections: contextSelectorResult.sections,
-			selectorMeta: contextSelectorResult.selectorMeta,
-			shortCircuit: false,
-			shortCircuitMessage: null,
-			contextItems: contextBuilderResult.contextItems,
-			context: contextBuilderResult.context,
-			contextMeta: contextBuilderResult.contextMeta,
-			generationMeta: generatorResult.generationMeta,
-			timing: timings,
-			metadata,
-		};
-	},
+	execute: async ({ inputData, state, setState }) =>
+		runRagPipelineRagBranch({ inputData, state, setState }),
 });
 
 const nonRagShortCircuitStep = createStep({
