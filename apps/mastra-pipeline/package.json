@@ -22,6 +22,7 @@
     "context-builder:conformance:with-python": "tsx src/mastra/context-builder-conformance.ts --mode live",
     "rag-pipeline:conformance": "tsx src/mastra/rag-pipeline-conformance.ts --mode replay",
     "rag-pipeline:conformance:with-python": "tsx src/mastra/rag-pipeline-conformance.ts --mode live",
+    "selector-retry:test": "tsx scripts/selector-retry-smoke-test.ts",
     "endpoint:smoke": "tsx scripts/endpoint-smoke-test.ts",
     "lint": "biome check src scripts"
   },
