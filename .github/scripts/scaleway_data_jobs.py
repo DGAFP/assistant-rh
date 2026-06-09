@@ -26,9 +26,7 @@ def parse_bool(value: str | bool | None) -> bool:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Create/update Scaleway Serverless Jobs and start the selected data engineering jobs."
-    )
+    parser = argparse.ArgumentParser(description="Create/update Scaleway Serverless Jobs and start the selected data engineering jobs.")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     parser.add_argument("--target-env", choices=("staging", "prod"), required=True)
     parser.add_argument("--image-tag", required=True)
