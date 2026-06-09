@@ -124,6 +124,7 @@ jobs:
       SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
       SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
       SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
+      SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
 
     steps:
       - name: Checkout code

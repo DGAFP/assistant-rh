@@ -229,9 +229,7 @@ def job_environment(spec: dict[str, Any], target_env: str, region: str) -> dict[
         env["SCW_POSTGRES_DSN"] = env_required("SCW_POSTGRES_DSN")
     if "embeddings_api" in groups:
         env["SCALEWAY_API_KEY"] = env_required("SCALEWAY_API_KEY")
-        base_url = env_optional("SCALEWAY_BASE_URL")
-        if base_url:
-            env["SCALEWAY_BASE_URL"] = base_url
+        env["SCALEWAY_BASE_URL"] = env_optional("SCALEWAY_BASE_URL", "https://api.scaleway.ai/v1")
     return env
 
 
