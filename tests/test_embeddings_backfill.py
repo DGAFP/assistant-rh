@@ -15,7 +15,7 @@ class DummyResponse:
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
-            raise requests.HTTPError(f"status {self.status_code}")
+            raise requests.HTTPError(f"status {self.status_code}", response=self)
 
     def json(self) -> dict[str, Any]:
         return self.payload
@@ -105,6 +105,35 @@ def test_embed_text_retries_and_raises_last_error(tmp_path: Path, monkeypatch: p
     assert "Erreur embedding_bge_scw" in caplog.text
 
 
+def test_embed_text_preserves_429_http_error_after_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "SCALEWAY_BASE_URL=https://dotenv.example.test/v1\nSCALEWAY_API_KEY=dotenv-key\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(embeddings_backfill.time, "sleep", lambda delay: None)
+
+    session = requests.Session()
+
+    def rate_limited_post(*args: Any, **kwargs: Any) -> DummyResponse:
+        return DummyResponse(status_code=429)
+
+    monkeypatch.setattr(session, "post", rate_limited_post)
+    client = embeddings_backfill.ScalewayBgeClient(env_path=env_path, model_name="model", session=session)
+
+    with caplog.at_level("DEBUG"):
+        with pytest.raises(requests.HTTPError) as exc_info:
+            client.embed_text("texte")
+
+    assert exc_info.value.response is not None
+    assert exc_info.value.response.status_code == 429
+    assert "Scaleway embeddings rate limit" in caplog.text
+
+
 def test_backfill_bge_scaleway_reuses_one_threadpool_across_batches(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -116,13 +145,22 @@ def test_backfill_bge_scaleway_reuses_one_threadpool_across_batches(
     ]
     updates: list[list[dict[str, Any]]] = []
     executor_instances = 0
+    session_closed = False
 
     class DummyClient:
         def __init__(self, **kwargs: Any):
-            pass
+            assert "session" in kwargs
 
         def embed_text(self, text: str) -> list[float]:
             return [float(ord(text) - ord("a") + 1), 0.0]
+
+    class DummySession:
+        def __enter__(self) -> "DummySession":
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            nonlocal session_closed
+            session_closed = True
 
     class DummyExecutor:
         def __init__(self, max_workers: int):
@@ -142,6 +180,7 @@ def test_backfill_bge_scaleway_reuses_one_threadpool_across_batches(
     monkeypatch.setattr(embeddings_backfill, "fetch_missing_rows", lambda *args: rows)
     monkeypatch.setattr(embeddings_backfill, "ScalewayBgeClient", DummyClient)
     monkeypatch.setattr(embeddings_backfill, "ThreadPoolExecutor", DummyExecutor)
+    monkeypatch.setattr(embeddings_backfill.requests, "Session", DummySession)
     monkeypatch.setattr(
         embeddings_backfill,
         "update_embeddings",
@@ -163,4 +202,5 @@ def test_backfill_bge_scaleway_reuses_one_threadpool_across_batches(
 
     assert total == 3
     assert executor_instances == 1
+    assert session_closed is True
     assert [len(batch) for batch in updates] == [2, 1]

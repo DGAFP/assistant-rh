@@ -12,7 +12,8 @@ from typing import Any
 
 import psycopg
 import requests
-from dotenv import dotenv_values, load_dotenv
+from assistant_rh_shared import resolve_runtime_value, resolve_runtime_value_candidates
+from dotenv import load_dotenv
 
 from assistant_rh_data_engineering.utils.helpers import vector_to_pgvector
 
@@ -70,39 +71,6 @@ def load_table_specs(config_path: Path) -> list[dict[str, Any]]:
     return normalized
 
 
-def _load_dotenv_key_candidates(env_path: Path, key_name: str) -> list[str]:
-    if not env_path.exists():
-        return []
-    values: list[str] = []
-    for line in env_path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, value = stripped.split("=", 1)
-        if key.strip() != key_name:
-            continue
-        candidate = value.strip().strip('"').strip("'")
-        if candidate and candidate not in values:
-            values.append(candidate)
-    return values
-
-
-def _resolve_env_value(env_path: Path, key_name: str, explicit_value: str | None = None) -> str | None:
-    if explicit_value:
-        value = explicit_value.strip()
-        if value:
-            return value
-    env_value = os.getenv(key_name, "").strip()
-    if env_value:
-        return env_value
-    dotenv_value = dotenv_values(env_path).get(key_name)
-    if dotenv_value:
-        value = dotenv_value.strip()
-        if value:
-            return value
-    return None
-
-
 def _normalize_vector(vector: list[float]) -> list[float]:
     norm = math.sqrt(sum(float(value) * float(value) for value in vector))
     if norm == 0:
@@ -112,22 +80,20 @@ def _normalize_vector(vector: list[float]) -> list[float]:
 
 class ScalewayBgeClient:
     def __init__(self, env_path: Path, model_name: str, base_url: str | None = None, session: requests.Session | None = None):
-        resolved_base_url = _resolve_env_value(env_path, "SCALEWAY_BASE_URL", base_url)
-        if not resolved_base_url:
-            raise RuntimeError("SCALEWAY_BASE_URL manquant pour embedding_bge_scw (ou passer --bge-base-url).")
+        resolved_base_url = resolve_runtime_value(
+            "SCALEWAY_BASE_URL",
+            explicit_value=base_url,
+            env_path=env_path,
+            required=True,
+            missing_message="SCALEWAY_BASE_URL manquant pour embedding_bge_scw (ou passer --bge-base-url).",
+        )
         self.base_url = resolved_base_url.rstrip("/")
         self.model_name = model_name
         self.api_key = self._resolve_api_key(env_path)
         self.session = session or requests.Session()
 
     def _resolve_api_key(self, env_path: Path) -> str:
-        candidates: list[str] = []
-        env_value = os.getenv("SCALEWAY_API_KEY", "").strip()
-        if env_value:
-            candidates.append(env_value)
-        for candidate in _load_dotenv_key_candidates(env_path, "SCALEWAY_API_KEY"):
-            if candidate not in candidates:
-                candidates.append(candidate)
+        candidates = resolve_runtime_value_candidates("SCALEWAY_API_KEY", env_path=env_path)
         if not candidates:
             raise RuntimeError("Aucune clé SCALEWAY_API_KEY trouvée pour embedding_bge_scw.")
         if len(candidates) > 1:
@@ -150,10 +116,6 @@ class ScalewayBgeClient:
         for attempt in range(6):
             try:
                 response = self._post_embeddings(text)
-                if response.status_code == 429:
-                    logger.debug("Scaleway embeddings rate limit, retry %s/6.", attempt + 1)
-                    time.sleep(min(30, 2**attempt))
-                    continue
                 response.raise_for_status()
                 payload = response.json()
                 embedding = payload["data"][0]["embedding"]
@@ -162,7 +124,10 @@ class ScalewayBgeClient:
                 return embedding
             except (requests.RequestException, KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
                 last_error = exc
-                logger.debug("Erreur embedding_bge_scw, retry %s/6: %s", attempt + 1, exc)
+                if isinstance(exc, requests.HTTPError) and exc.response is not None and exc.response.status_code == 429:
+                    logger.debug("Scaleway embeddings rate limit, retry %s/6.", attempt + 1)
+                else:
+                    logger.debug("Erreur embedding_bge_scw, retry %s/6: %s", attempt + 1, exc)
                 time.sleep(min(30, 2**attempt))
         if last_error is not None:
             raise last_error
@@ -301,21 +266,22 @@ def backfill_bge_scaleway(
     )
     if not rows:
         return 0
-    client = ScalewayBgeClient(env_path=env_path, model_name=model_name, base_url=base_url)
     total = 0
-    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        for start in range(0, len(rows), batch_size):
-            batch = rows[start : start + batch_size]
-            vectors = list(pool.map(client.embed_text, [str(row["text"]) for row in batch]))
-            prepared = [{"id": row["id"], "vector": _normalize_vector(list(vectors[index]))} for index, row in enumerate(batch)]
-            total += update_embeddings(
-                conn,
-                schema,
-                table_spec["table"],
-                table_spec["id_column"],
-                embedding_column,
-                prepared,
-            )
+    with requests.Session() as session:
+        client = ScalewayBgeClient(env_path=env_path, model_name=model_name, base_url=base_url, session=session)
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            for start in range(0, len(rows), batch_size):
+                batch = rows[start : start + batch_size]
+                vectors = list(pool.map(client.embed_text, [str(row["text"]) for row in batch]))
+                prepared = [{"id": row["id"], "vector": _normalize_vector(list(vectors[index]))} for index, row in enumerate(batch)]
+                total += update_embeddings(
+                    conn,
+                    schema,
+                    table_spec["table"],
+                    table_spec["id_column"],
+                    embedding_column,
+                    prepared,
+                )
     return total
 
 
