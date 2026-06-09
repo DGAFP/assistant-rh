@@ -1,0 +1,198 @@
+# Audit qualité RAG & Roadmap 3 mois
+
+> Issue de référence : [#83](https://github.com/DGAFP/assistant-rh/issues/83)
+> Date : 2026-06-09 — pour présentation et décision le lundi 15 juin 2026.
+> Méthode : pipeline exécuté en local (Supabase, copie des données + 3 054 `chat_runs` + 761 `chat_feedbacks` réels), audit SQL du chunking, replay de requêtes réelles issues des feedbacks négatifs, traces bout-en-bout avec variantes contrôlées.
+
+---
+
+## 1. Synthèse pour décision
+
+**Constat principal : le reranker Albert est silencieusement cassé en production.** L'API Albert `/rerank` a changé de schéma (`prompt`/`input` → `query`/`documents`) ; chaque appel renvoie HTTP 422 et le pipeline retombe sans alerte sur l'ordre d'agrégation brut. Or le scoring d'agrégation est un RRF cross-source qui jette l'amplitude de similarité : sans reranker, le système n'a **aucun signal de pertinence réelle**.
+
+**Preuve d'impact (replay local, 4 questions en échec issues des feedbacks négatifs réels) :**
+
+| Configuration | Réponses correctes |
+|---|---|
+| Production actuelle (rerank cassé, mode sémantique) | 0/4 |
+| Rerank réparé (payload corrigé, 1 ligne) | 2/4 |
+| Rerank réparé + mode hybride | 3/4 |
+
+Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme apparaît dans 18 chunks MATTE mais n'est jamais *défini* dans le corpus.
+
+**Chiffres de cadrage (données réelles) :**
+- 74 % de feedbacks positifs sur 761 ; en baisse à 69,5 % en janvier 2026.
+- ~19 % des questions RAG légitimes (195/1 018) reçoivent « je n'ai pas trouvé ».
+- 58 % des feedbacks négatifs catégorisés = `retrieval_issue`, 23 % = `missing_document`.
+- Motif négatif n°1 : « Incomplet » (185 occurrences seul ou combiné).
+
+**Recommandation :** corriger le reranker immédiatement (quick win, 1 ligne + test), puis dérouler la roadmap §5 : d'abord la mesure (goldset aujourd'hui vide), ensuite retrieval/scoring, ensuite données et chunking.
+
+---
+
+## 2. Constats détaillés
+
+### 2.1 Retrieval et scoring — facteur de non-qualité dominant
+
+**C1. Reranker cassé (critique, vérifié).** `reranker.py` envoie `{"model", "prompt", "input", "top_n"}` ; l'API actuelle exige `{"model", "query", "documents"}` → 422 systématique, reproduit en local contre l'API réelle. Le fallback « keeping aggregated order » est silencieux : aucune métrique, aucun log d'alerte agrégé, le port TypeScript n'a pas encore branché le rerank. Avec le payload corrigé, l'endpoint répond normalement (scores 0,96 vs 1,6e-05 sur un test discriminant).
+
+**C2. Le score fusionné ne porte aucune information de pertinence.** `_merge_cross_source_ranks` applique un RRF (k=60) entre 8 listes (4 tables × 2 chemins chunk/heading) puis normalise au plafond théorique. Conséquences observées :
+- scores quasi plats : 0,167 / 0,164 / … quelle que soit la pertinence réelle ;
+- le #1 d'une table sans aucun contenu pertinent pèse autant que le #1 d'une table avec une réponse exacte ;
+- impossible de distinguer « rien de pertinent dans le corpus » de « réponse exacte trouvée » — le no-answer ne peut venir que du selector LLM ;
+- le score d'agrégation de section (0,5×max + 0,3×mean + 0,2×count) appliqué à des scores plats est dominé par le *nombre* de chunks, pas leur qualité.
+
+**C3. Mode sémantique seul insuffisant sur les termes exacts.** En sémantique (défaut prod), « RIFSEEP » ne remonte aucun des 18 chunks qui le contiennent ; en hybride, 4 remontent mais noyés à 0,167. Les questions à acronymes/références (fréquentes en RH) sont structurellement pénalisées. La table DGAFP est déjà forcée en hybride pour les requêtes juridiques — le mécanisme existe, il n'est pas généralisé.
+
+**C4. Chunks invisibles silencieusement.** Le retriever filtre `WHERE embedding_m3 IS NOT NULL` : 146/324 chunks RGRH (45 %) n'ont pas d'embedding m3 et sont donc exclus de la recherche sémantique sans aucune trace. (MATTE : 762 nulls sur `bge_scw`/`qwen3`, sans impact tant qu'Albert est primaire — mais le fallback embeddings BGE-Scaleway chercherait dans une colonne aux 762 trous.)
+
+**C5. DGAFP quasi absente des réponses finales.** Les distributions de sources loggées sont dominées par MATTE/Service-Public ; DGAFP n'apparaît pas dans le top des combinaisons malgré 3 992 chunks. Intent gating conditionnel + scores plats + sections standalone (pas de regroupement) l'écartent.
+
+### 2.2 Chunking et structuration
+
+| Table | n | Médiane (chars) | < 200 chars | Doublons exacts | Particularités |
+|---|---|---|---|---|---|
+| matte | 959 | 998 | 196 (20 %) | 2 | plafond dur à 1 500 |
+| service_public | 1 554 | 466 | **512 (33 %)** | **518 (33 %)** | plafond dur à 1 500 |
+| dgafp | 3 992 | 734 | 0 | 0 | 9 chunks > 4 000, max 20 510 |
+| rgrh | 324 | 511 | 11 | 0 | 45 % sans embedding m3 |
+
+- **Chunks-titres** : les chunks < 200 chars sont massivement des intitulés seuls (« ANNEXE 5 », « Durée du contrat », « La démission ») — du bruit qui consomme des places du top-20 par table.
+- **Doublons Service-Public (33 %)** : mêmes textes indexés plusieurs fois → places gaspillées et sur-pondération RRF artificielle (un doublon classé 2 fois cumule deux contributions).
+- **Sections déséquilibrées** : 1 887/5 962 sections < 300 chars (32 %) ; 36 sections > 20 000 chars, max 174 337. Le reranker ne voit que les 2 000 premiers chars d'une section ; le selector reçoit le texte intégral (coût tokens, dilution).
+- **Pas de recouvrement** (overlap) entre chunks ; coupes dures à 1 500 chars sans garantie de frontière sémantique.
+
+### 2.3 Données et ingestion
+
+- **RIFSEEP jamais défini** dans le corpus alors que les agents le demandent — symptomatique : 23 % des feedbacks négatifs = `missing_document`. Pas de processus systématique « questions sans réponse → backlog d'ingestion ».
+- Seules 279/5 962 sections (4,7 %) portent des `references_juridiques` exploitables par l'injection de réfs.
+- `rag_chunks_test` (activée par défaut en prod, censée améliorer le recall multi-granularité) **n'existe pas dans le seed local** : l'environnement local ne reproduit pas la prod.
+- Le goldset d'évaluation (`goldset_questions_v2`) existe en schéma mais est **vide** : aucune base de mesure.
+
+### 2.4 Pipeline aval (selector, contexte, génération)
+
+- Le **selector LLM est le seul garde-fou anti-hallucination** effectif (cf. C2). Il fait globalement son travail (fallback parsing : 20/1 133 runs) mais on lui fait porter la décision no-answer sans signal de score fiable. Feedbacks `selector_*` : 4 cas seulement — le selector n'est pas le problème dominant.
+- Côté génération : 14 feedbacks `generator_*` (interprétation erronée, incomplétude, 3 hallucinations). Motif utilisateur n°1 « Incomplet » : cohérent avec un contexte construit sur des sections mal classées.
+- **Écart config documentée / config réelle** : `create_pipeline()` sans argument utilise les défauts de la lib (top_k=15, selector OFF, STANDARD) tandis que la prod mappe `rag_config` (top_k=20, selector ON, WIDE) dans la page Streamlit. Tout script d'éval « naïf » mesure donc un autre système que la prod.
+- Latence query processing observée jusqu'à 5,3 s en local (documentation : 200–500 ms) — à confirmer en prod via `chat_runs`.
+
+### 2.5 Observabilité
+
+Le logging `chat_runs` est riche (140+ colonnes) mais :
+- l'échec du rerank n'est pas loggé comme tel (aucune colonne, aucun alerting) — une panne totale est restée invisible ;
+- `v3_sections_before/after_rerank` sont des *compteurs*, pas des listes : impossible de savoir a posteriori si le rerank a réellement réordonné ;
+- `v3_top1_score` médian = 0 sur les runs loggés — la colonne est peu fiable ou peu renseignée ;
+- l'analyse IA des feedbacks plante régulièrement (`'NoneType' object has no attribute 'strip'`).
+
+---
+
+## 3. Pourquoi les résultats sont ce qu'ils sont (traces)
+
+**Mauvais — « un contractuel peut-il faire des astreintes ? »** (feedback négatif réel, `retrieval_issue`)
+1. Retrieval sémantique : les bons chunks MATTE (« 9 - ASTREINTE », instruction ministérielle 2011) sont dans le pool top-20 mais avec un score RRF plat 0,167, indiscernables du bruit (chunks licenciement/démission).
+2. Rerank → 422 → ordre RRF conservé : les sections « astreinte » ne remontent pas dans le top-10.
+3. Selector ne voit pas les bonnes sections → « je n'ai pas trouvé ».
+4. **Avec rerank réparé : réponse correcte sourcée sur l'instruction ministérielle du 6 janvier 2011.**
+
+**Mauvais — « réserviste opérationnel »** (feedback négatif réel) : même mécanique ; la réponse est dans MATTE Fiche 1 (motif d'absence L.332-6). Sémantique seul ne la fait pas remonter assez haut même avec rerank ; **hybride + rerank réparé : réponse correcte**.
+
+**Mauvais — « RIFSEEP »** : retrieval sémantique ne remonte aucun chunk RIFSEEP ; hybride en remonte 4 mais le corpus ne contient pas de *définition* → no-answer légitime côté génération, mais frustrant. Cause racine : couverture documentaire + absence de boucle « question sans réponse → ingestion ».
+
+**Bon — « indemnité de fin de contrat d'un CDD »** : la Fiche 6 MATTE matche sur les deux chemins (chunk + heading), cumule les contributions RRF (≈0,32, seul cas où le score se détache), domine l'agrégation → bonne réponse même sans rerank. Les cas qui marchent aujourd'hui sont ceux où *plusieurs chemins de retrieval convergent* sur le même document.
+
+---
+
+## 4. Facteurs de non-qualité, priorisés
+
+| # | Facteur | Étage | Impact | Effort |
+|---|---|---|---|---|
+| 1 | Payload rerank obsolète → 422 silencieux | Reranking | Critique | 1 ligne + test |
+| 2 | Score RRF plat sans amplitude de pertinence | Scoring | Élevé | Moyen |
+| 3 | Mode sémantique seul sur termes exacts/acronymes | Retrieval | Élevé | Faible (config) |
+| 4 | Goldset vide, aucune mesure reproductible | Mesure | Élevé (aveugle) | Moyen |
+| 5 | Doublons SP (33 %) + chunks-titres (20–33 %) | Chunking | Moyen | Moyen |
+| 6 | 45 % chunks RGRH sans embedding | Ingestion | Moyen | Faible |
+| 7 | Trous documentaires (RIFSEEP…) sans boucle de rattrapage | Données | Moyen | Process |
+| 8 | Pannes provider invisibles (pas d'alerting) | Observabilité | Moyen | Faible |
+| 9 | Sections géantes (>20k) et naines (<300) | Structuration | Moyen | Moyen |
+| 10 | Écart config locale/prod, `rag_chunks_test` absent du seed | Reproductibilité | Moyen | Faible |
+
+---
+
+## 5. Roadmap 3 mois
+
+### Phase 0 — Quick wins (semaine du 16 juin)
+
+| Chantier | Critère de succès |
+|---|---|
+| Fix payload `/rerank` (`query`/`documents`) + test unitaire + **alerte si taux d'échec rerank > 5 %** | Rerank actif en prod, vérifié dans les logs |
+| Passer `search_mode` prod en **hybride** (config DB, réversible) | Replay des 8 questions de référence : ≥ 6/8 correctes |
+| Backfill `embedding_m3` des 146 chunks RGRH | 0 chunk sans embedding sur colonnes actives |
+| Logger l'état du rerank par run (`rerank_ok`, listes avant/après) | Colonne exploitable dans `chat_runs` |
+
+*Dépendance : aucune. Risque : l'hybride change l'ordre des résultats → valider sur le jeu de questions avant bascule.*
+
+### Phase 1 — Mesure et observabilité (16 juin → 11 juillet)
+
+- Constituer le **goldset v1 : 80–120 questions** depuis `chat_feedbacks` (mix positifs/négatifs, tous thèmes, difficultés étiquetées) avec réponses et sources attendues.
+- Harness d'éval automatisé (recall@k chunks/sections, présence de la bonne source dans le contexte final, no-answer justifié ou non, juge LLM sur la réponse) exécutable en CI et en local — en réutilisant `src/goldset/` et `tests/conformance/`.
+- **Baseline chiffrée** avant/après Phase 0 ; tableau de bord hebdo (taux no-answer, helpful rate, échecs provider).
+- Réparer l'analyse IA des feedbacks (crashs `NoneType`).
+- Seed local aligné prod (`rag_chunks_test` incluse) ; script unique « run prod-config local ».
+
+*Jalon 11/07 : baseline publiée, éval reproductible en 1 commande. Critère : toute PR retrieval peut être évaluée en < 15 min.*
+
+### Phase 2 — Retrieval, scoring, données (14 juillet → 15 août)
+
+- **Scoring v2** : conserver le score reranker comme signal principal en aval (agrégation pondérée par scores réels, pas par comptes) ; seuil de pertinence pour court-circuiter avant le selector quand tout est sous le seuil.
+- Dédup Service-Public (518 doublons) + filtrage des chunks-titres à l'ingestion (ou fusion titre+contenu).
+- Étendre la couverture `references_juridiques` (4,7 % → cible 30 % des sections MATTE/SP).
+- Boucle **trous documentaires** : extraction mensuelle des no-answer + `missing_document` → backlog d'ingestion priorisé (RIFSEEP en premier).
+- Revisiter la place de DGAFP (intent gating trop restrictif ? mesurer sur goldset).
+
+*Jalon 15/08 : +X points de recall@10 sur goldset vs baseline (cible : −50 % de `retrieval_issue` sur le goldset). Dépend de Phase 1 pour être mesurable.*
+
+### Phase 3 — Chunking, contexte, génération (18 août → 12 septembre)
+
+- Re-chunking avec frontières sémantiques + overlap, re-découpage des 36 sections > 20k ; arbitrer la multi-granularité (`rag_chunks_test`) sur mesures.
+- Budget de contexte : prioriser par score reranker, plafonner les sections envoyées au selector (coût/latence).
+- Prompts génération : traiter le motif « Incomplet » (consignes de complétude, citations systématiques) ; A/B sur goldset.
+- UX feedback : catégories de feedback alignées sur les étages du pipeline pour boucler le diagnostic automatiquement.
+
+*Jalon 12/09 : helpful rate ≥ 85 % sur 4 semaines glissantes ; no-answer < 10 % avec ≥ 90 % de no-answer justifiés (vérifiés goldset).*
+
+### Risques transverses
+
+- **Dépendance Albert** : le schéma d'API peut encore changer → tests de contrat provider en CI (smoke quotidien embeddings/rerank/LLM).
+- **Volume de feedback en baisse** (8 feedbacks en avril) : le helpful rate devient non significatif → relancer la collecte côté UI en Phase 1.
+- **Conformance Mastra** : tout changement d'ordre (hybride, scoring v2) casse les tests de conformance sensibles à l'ordre → synchroniser les baselines.
+
+---
+
+## 6. Métriques de suivi proposées
+
+| Métrique | Source | Baseline (à figer en Phase 1) | Cible 3 mois |
+|---|---|---|---|
+| Recall@10 sections (bonne source dans le top) | Goldset | à mesurer | +20 pts |
+| Taux de no-answer sur questions répondables | Goldset | ~19 % global actuel | < 10 % |
+| No-answer justifiés (vrai « pas dans le corpus ») | Goldset | — | ≥ 90 % |
+| Helpful rate utilisateurs (4 sem. glissantes) | `chat_feedbacks` | 74 % | ≥ 85 % |
+| Taux d'échec rerank / embeddings / LLM | logs + alerting | inconnu (non mesuré) | < 1 %, alerté |
+| Part `retrieval_issue` dans les feedbacks négatifs | `chat_feedbacks` (analyse IA réparée) | 58 % | < 30 % |
+| Latence P50/P95 par étage | `chat_runs` | à figer | pas de régression |
+
+**Critère d'acceptation général** : aucune bascule de config/scoring en prod sans run goldset complet avant/après, archivé.
+
+---
+
+## 7. Décision demandée (15 juin)
+
+1. **Valider le déploiement immédiat des quick wins Phase 0** (fix rerank en premier).
+2. Valider le séquencement Phase 1 → 3 et les cibles chiffrées du §6.
+3. Arbitrer la bascule en mode hybride : directe (recommandé, réversible) ou après goldset v1.
+
+## Sources
+
+- Code : `packages/rag-pipeline/src/assistant_rh_rag_pipeline/` (retriever, reranker, section_aggregator, config).
+- Données : base locale Supabase (copie staging) — `rag_chunks_*`, `rag_sections`, `rag_documents`, `chat_runs` (3 054, oct. 2025 → juin 2026), `chat_feedbacks` (761), `rag_config`, `goldset_questions_v2`.
+- Replays : scripts d'audit exécutés le 2026-06-09 contre l'API Albert réelle (modèles, `/rerank`) et la base locale.
