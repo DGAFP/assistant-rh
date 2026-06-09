@@ -90,7 +90,7 @@ class ScalewayBgeClient:
         self.base_url = resolved_base_url.rstrip("/")
         self.model_name = model_name
         self.api_key = self._resolve_api_key(env_path)
-        self.session = session or requests.Session()
+        self.session = session
 
     def _resolve_api_key(self, env_path: Path) -> str:
         candidates = resolve_runtime_value_candidates("SCALEWAY_API_KEY", env_path=env_path)
@@ -101,7 +101,8 @@ class ScalewayBgeClient:
         return candidates[0]
 
     def _post_embeddings(self, text: str) -> requests.Response:
-        return self.session.post(
+        post = self.session.post if self.session is not None else requests.post
+        return post(
             f"{self.base_url}/embeddings",
             headers={
                 "Authorization": f"Bearer {self.api_key}",
@@ -267,21 +268,20 @@ def backfill_bge_scaleway(
     if not rows:
         return 0
     total = 0
-    with requests.Session() as session:
-        client = ScalewayBgeClient(env_path=env_path, model_name=model_name, base_url=base_url, session=session)
-        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-            for start in range(0, len(rows), batch_size):
-                batch = rows[start : start + batch_size]
-                vectors = list(pool.map(client.embed_text, [str(row["text"]) for row in batch]))
-                prepared = [{"id": row["id"], "vector": _normalize_vector(list(vectors[index]))} for index, row in enumerate(batch)]
-                total += update_embeddings(
-                    conn,
-                    schema,
-                    table_spec["table"],
-                    table_spec["id_column"],
-                    embedding_column,
-                    prepared,
-                )
+    client = ScalewayBgeClient(env_path=env_path, model_name=model_name, base_url=base_url)
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        for start in range(0, len(rows), batch_size):
+            batch = rows[start : start + batch_size]
+            vectors = list(pool.map(client.embed_text, [str(row["text"]) for row in batch]))
+            prepared = [{"id": row["id"], "vector": _normalize_vector(list(vectors[index]))} for index, row in enumerate(batch)]
+            total += update_embeddings(
+                conn,
+                schema,
+                table_spec["table"],
+                table_spec["id_column"],
+                embedding_column,
+                prepared,
+            )
     return total
 
 

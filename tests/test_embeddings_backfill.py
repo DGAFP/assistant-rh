@@ -134,7 +134,7 @@ def test_embed_text_preserves_429_http_error_after_retries(
     assert "Scaleway embeddings rate limit" in caplog.text
 
 
-def test_backfill_bge_scaleway_reuses_one_threadpool_across_batches(
+def test_backfill_bge_scaleway_reuses_one_threadpool_without_shared_session(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -145,22 +145,15 @@ def test_backfill_bge_scaleway_reuses_one_threadpool_across_batches(
     ]
     updates: list[list[dict[str, Any]]] = []
     executor_instances = 0
-    session_closed = False
+    client_kwargs: dict[str, Any] = {}
 
     class DummyClient:
         def __init__(self, **kwargs: Any):
-            assert "session" in kwargs
+            nonlocal client_kwargs
+            client_kwargs = kwargs
 
         def embed_text(self, text: str) -> list[float]:
             return [float(ord(text) - ord("a") + 1), 0.0]
-
-    class DummySession:
-        def __enter__(self) -> "DummySession":
-            return self
-
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-            nonlocal session_closed
-            session_closed = True
 
     class DummyExecutor:
         def __init__(self, max_workers: int):
@@ -180,7 +173,6 @@ def test_backfill_bge_scaleway_reuses_one_threadpool_across_batches(
     monkeypatch.setattr(embeddings_backfill, "fetch_missing_rows", lambda *args: rows)
     monkeypatch.setattr(embeddings_backfill, "ScalewayBgeClient", DummyClient)
     monkeypatch.setattr(embeddings_backfill, "ThreadPoolExecutor", DummyExecutor)
-    monkeypatch.setattr(embeddings_backfill.requests, "Session", DummySession)
     monkeypatch.setattr(
         embeddings_backfill,
         "update_embeddings",
@@ -202,5 +194,5 @@ def test_backfill_bge_scaleway_reuses_one_threadpool_across_batches(
 
     assert total == 3
     assert executor_instances == 1
-    assert session_closed is True
+    assert "session" not in client_kwargs
     assert [len(batch) for batch in updates] == [2, 1]
