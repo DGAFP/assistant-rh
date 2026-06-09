@@ -12,7 +12,7 @@ from typing import Any
 
 import psycopg
 import requests
-from assistant_rh_shared import resolve_runtime_value, resolve_runtime_value_candidates
+from assistant_rh_shared import resolve_config_value, resolve_config_value_candidates
 from dotenv import load_dotenv
 
 from assistant_rh_data_engineering.utils.helpers import vector_to_pgvector
@@ -80,7 +80,7 @@ def _normalize_vector(vector: list[float]) -> list[float]:
 
 class ScalewayBgeClient:
     def __init__(self, env_path: Path, model_name: str, base_url: str | None = None, session: requests.Session | None = None):
-        resolved_base_url = resolve_runtime_value(
+        resolved_base_url = resolve_config_value(
             "SCALEWAY_BASE_URL",
             explicit_value=base_url,
             env_path=env_path,
@@ -93,7 +93,7 @@ class ScalewayBgeClient:
         self.session = session
 
     def _resolve_api_key(self, env_path: Path) -> str:
-        candidates = resolve_runtime_value_candidates("SCALEWAY_API_KEY", env_path=env_path)
+        candidates = resolve_config_value_candidates("SCALEWAY_API_KEY", env_path=env_path)
         if not candidates:
             raise RuntimeError("Aucune clé SCALEWAY_API_KEY trouvée pour embedding_bge_scw.")
         if len(candidates) > 1:
