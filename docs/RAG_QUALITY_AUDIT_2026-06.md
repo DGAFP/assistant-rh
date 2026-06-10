@@ -59,7 +59,7 @@ Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme
 
 - **Chunks-titres** : les chunks < 200 chars sont massivement des intitulés seuls (« ANNEXE 5 », « Durée du contrat », « La démission ») — du bruit qui consomme des places du top-20 par table.
 - **Doublons Service-Public (33 %)** : mêmes textes indexés plusieurs fois → places gaspillées et sur-pondération RRF artificielle (un doublon classé 2 fois cumule deux contributions).
-- **Sections déséquilibrées** : 1 887/5 962 sections < 300 chars (32 %) ; 36 sections > 20 000 chars, max 174 337. Le reranker ne voit que les 2 000 premiers chars d'une section ; le selector reçoit le texte intégral (coût tokens, dilution).
+- **Sections déséquilibrées** : 1 887/5 962 sections < 300 chars (32 %) ; 36 sections > 20 000 chars, max 174 337. Le reranker ne voit que les 1 500 premiers chars d'une section ; le selector reçoit le texte intégral (coût tokens, dilution).
 - **Pas de recouvrement** (overlap) entre chunks ; coupes dures à 1 500 chars sans garantie de frontière sémantique.
 
 ### 2.3 Données et ingestion
