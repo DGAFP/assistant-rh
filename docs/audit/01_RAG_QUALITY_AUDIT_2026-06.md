@@ -191,6 +191,75 @@ Le logging `chat_runs` est riche (140+ colonnes) mais :
 2. Valider le séquencement Phase 1 → 3 et les cibles chiffrées du §6.
 3. Arbitrer la bascule en mode hybride : directe (recommandé, réversible) ou après goldset v1.
 
+---
+
+## Addendum (2026-06-09) — Trou de couverture index : cas SFT généralisé
+
+Approfondissement suite au signalement « SFT : la fiche est indexée mais ne remonte jamais, et la limite d'âge n'est jamais citée ». **Vérifié et reproduit, y compris avec rerank réparé + hybride** : le problème n'est pas un réglage de retrieval mais un trou structurel entre l'ingestion documentaire et l'index de retrieval.
+
+### Mécanique du cas SFT (trace complète)
+
+1. La fiche Service-Public **F32513 « Supplément familial de traitement (SFT) »** existe dans `rag_documents` (16 sections dans `rag_sections`, dont la règle de la limite d'âge : « le versement du SFT cesse […] pour un enfant atteignant l'âge de 20 ans »).
+2. Mais elle a **zéro chunk** dans `rag_chunks_service_public` : aucune unité de retrieval, donc invisible à la recherche sémantique, lexicale et hybride.
+3. La recherche par titres/headings ne peut pas la rattraper : `_search_table_headings` part de la table de chunks (`FROM rag_chunks_* JOIN rag_sections`) — **un document sans chunk est invisible même quand son titre matche exactement la question**.
+4. `rag_chunks_test` (censée apporter le recall multi-granularité, `v3_enable_chunks_test=true` en config) **n'existe pas en base staging** (vérifié en lecture seule) ni en local ; l'erreur « relation does not exist » est avalée par le ThreadPool du retriever (log error puis continue). Statut en prod non vérifié (accès non autorisé pendant cet audit) — à confirmer, mais la config seule ne garantit rien.
+5. La table `rag_chunks_mso` (1 262 chunks, dont 18 sur le SFT incluant la limite d'âge via le Vademecum MSO) **n'est pas dans la liste des tables du retriever** (`CHUNK_TABLES` = matte, service_public, dgafp, rgrh, test) : jamais interrogée.
+6. Résultat : la seule matière « SFT » atteignable est constituée de mentions incidentes dans d'autres fiches (licenciement F515, temps partiel F18029). La réponse générée définit le SFT à partir de la fiche temps partiel, cite cette fiche en source, et **ne peut pas** mentionner la limite d'âge — l'information n'entre jamais dans le contexte.
+
+### Généralisation (mesuré en local, copie staging)
+
+| Corpus | Documents avec sections mais **zéro chunk** |
+|---|---|
+| Service-Public | **31 / 53 fiches (58 %)** — dont SFT, CET, congés maladie/maternité/parental, télétravail, RTT, vacataire, prime de précarité, Ircantec, fiche de paie… |
+| MATTE | **17 / 44 documents** — majoritairement des circulaires, dont plusieurs ingérées en 2025 |
+| MSO | **16 / 16 documents** au niveau du retrieval effectif (table `rag_chunks_mso` jamais interrogée) |
+
+Chronologie explicative : `rag_documents`/`rag_sections` SP ont été peuplés par le nouveau pipeline (janv. 2026, sections jusqu'à mai 2026), mais `rag_chunks_service_public` n'a été (re)généré (23 avr.–1er mai) que pour 24 fiches. **Deux générations d'ingestion coexistent : le retrieval ne lit que l'ancienne ; le corpus récent est du poids mort.**
+
+### Conséquences sur l'audit et la roadmap
+
+- Les replays sur questions cibles (§1, §3) **sous-estiment** le problème : une question dont le document n'a pas de chunks échoue quelle que soit la qualité du retrieval. La part réelle de `missing_document` dans les échecs est probablement bien supérieure aux 23 % mesurés sur les feedbacks — beaucoup d'échecs classés `retrieval_issue` sont en réalité des trous d'index.
+- **Nouveau quick win prioritaire (à intégrer en Phase 0/1)** : job de **réconciliation ingestion → index** : pour chaque document `is_indexable`, vérifier ≥ 1 chunk avec embedding non nul dans une table effectivement interrogée par le retriever ; rapport d'écart + backfill ; test CI qui échoue si la couverture régresse. Décider du sort de `rag_chunks_mso` (intégrer au retriever ou retirer du corpus) et de `rag_chunks_test` (créer la table ou désactiver le flag — un flag actif sur une table absente doit être une erreur visible, pas un warning avalé).
+- **Métrique à ajouter au §6** : taux de couverture index = % de documents indexables disposant d'unités de retrieval effectives (cible : 100 %, alerte en CI). C'est une mesure indépendante du jeu de questions — elle corrige le biais « questions cibles » du goldset.
+
+---
+
+## Addendum 2 (2026-06-09) — Disparité métriques auto vs évaluation experte
+
+Audit du dispositif d'évaluation suite au constat d'écart entre les métriques automatiques (RAGAS, LLM judges, page Pipeline_Evaluation) et le jugement des experts métier. **Conclusion : les deux dispositifs ne mesurent ni la même chose, ni la même population de questions, ni le même état du système.** La disparité est structurelle, pas un bruit de mesure.
+
+### Pourquoi les métriques auto sont systématiquement plus optimistes
+
+**1. Biais de population — les échecs dominants sont exclus par construction.**
+- Le goldset `golden_beta` (`golden_beta_builder.ipynb`, étape 3) **exclut explicitement les questions « Document manquant » et « Hors périmètre »** — précisément le mode d'échec dominant constaté par les experts (cf. Addendum 1 : 58 % des fiches SP sans unité de retrieval).
+- La page `09_Pipeline_Evaluation` exclut toute question sans `gold_sources` renseigné → seules les questions dont la source est connue *et indexée* sont mesurées.
+- Le goldset synthétique (`goldset_synthetic_generation.ipynb`) génère les Q/A **à partir des documents ingérés** (`rag_documents`) : circulaire par construction, il ne peut pas détecter un trou de couverture.
+- L'auto-enrichissement (`src/goldset/auto_enrich.py`) ajoute les questions des feedbacks **sans gold_answer ni gold_sources** → elles retombent dans le filtre d'exclusion ci-dessus.
+
+**2. Conditionnement des métriques — RAGAS note la cohérence, l'expert note la vérité.** `faithfulness` et `answer_relevancy` sont conditionnées au **contexte récupéré**, pas à la vérité terrain : une réponse partielle mais fidèle à un mauvais contexte, ou un « je n'ai pas trouvé », scorent bien. Aucune métrique auto ne mesure la **complétude vs réponse attendue** — alors que « Incomplet » est le motif n°1 des feedbacks négatifs (121+ occurrences). L'expert juge exactitude + complétude par rapport au droit applicable ; la machine juge la cohérence interne d'un contexte potentiellement vide ou hors sujet.
+
+**3. Matching de sources trop rigide.** `_is_hit` (page 09) = égalité stricte `short_id == gold_sources` avec **une seule source gold par question** : retrouver une source alternative également valide (fiche MATTE vs fiche SP vs article CGFP — cas fréquent) compte comme un échec ; inversement, toucher le bon document via un chunk-titre vide compte comme un succès.
+
+**4. Juges non calibrés et hétérogènes.** RAGAS tourne avec `gpt-4o-mini` (+ prompts internes RAGAS en anglais, sur du droit français), les judges Golden Beta avec `gpt-4.1`, l'analyse de feedbacks avec un 3e dispositif (qui crashe : `'NoneType' object has no attribute 'strip'`). **Aucune mesure d'accord juge↔expert n'existe** (pas de kappa, pas de set de calibration) ; le seuil `faithfulness < 0.5` est arbitraire.
+
+**5. Dérive de snapshot — on ne mesure pas le même système.** Les notebooks d'éval pointent vers des DSN retirés (`SCALINGO_POSTGRESQL_URL`, `TUNNEL_DSN`) ; la table `goldset_runs` n'existe plus dans la base courante ; `goldset_questions_v2` est vide. Les métriques auto en circulation ont été calculées sur **un ancien corpus et d'anciennes configs**, tandis que les experts évaluent la prod actuelle (reranker cassé + trous d'index). Aucun run auto n'est reproductible aujourd'hui.
+
+**6. Le canal expert est lui-même faible.** 12 lignes seulement dans `chat_reviews` ; les CSV de revue humaine (HF privé) ne sont pas réinjectés en base ; les critères experts (exactitude, complétude, sources) ne sont pas mappés formellement sur les axes des juges LLM ni sur les motifs de feedback utilisateur.
+
+### Pistes pour un dispositif d'éval fiable
+
+| # | Piste | Effet attendu |
+|---|---|---|
+| 1 | **Rubrique unique partagée** (exactitude / complétude / sourçage / clarté, échelle commune) utilisée par les experts ET les juges LLM, mappée sur les motifs de feedback UI | Comparabilité directe auto↔expert |
+| 2 | **Set de calibration** : ~100 réponses notées par experts ; mesurer l'accord juge↔expert (kappa, accuracy par axe) ; itérer le prompt juge jusqu'à κ ≥ 0,7 ; re-calibrer à chaque changement de modèle juge | La métrique auto devient un proxy validé du jugement expert |
+| 3 | **Juger contre la vérité terrain, pas le contexte** : gold_answer + gold_sources multiples (liste, niveau section) comme référence principale ; garder faithfulness uniquement comme garde-fou anti-hallucination | Supprime l'angle mort « fidèle mais faux/incomplet » |
+| 4 | **Réintégrer les questions exclues** : missing_document (comportement attendu = no-answer honnête + escalade documentée), hors-gold (étiquetées « réponse attendue : aucune ») ; stratifier par thème/difficulté/type et **ne jamais publier une moyenne globale seule** | Les métriques couvrent enfin le mode d'échec dominant |
+| 5 | `gold_sources` en **liste multi-sources** + hit au niveau section ; recall = au moins une source valide | recall/MRR cessent de sous- et sur-estimer |
+| 6 | **Re-fonder l'exécution** : goldset_runs recréée dans la base courante, run one-command sur snapshot prod actuel, nightly CI (le script `check_nightly_goldset_readiness.py` existe déjà), versionner modèle juge + hash de prompt avec chaque score | Reproductibilité, fin de la dérive de snapshot |
+| 7 | **Boucle experte régulière** : lot hebdomadaire de 10–20 réponses à noter (réutiliser `chat_reviews`, aujourd'hui 12 lignes), alimentant le set de calibration en continu | Le canal expert devient un flux, pas un événement |
+
+Ces pistes s'insèrent dans la **Phase 1 (Mesure)** de la roadmap §5 : les points 1–2–6 conditionnent tout le reste — tant que l'accord juge↔expert n'est pas mesuré, aucune métrique auto ne devrait servir de critère de décision.
+
 ## Sources
 
 - Code : `packages/rag-pipeline/src/assistant_rh_rag_pipeline/` (retriever, reranker, section_aggregator, config).
