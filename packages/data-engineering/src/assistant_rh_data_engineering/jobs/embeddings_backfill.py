@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import math
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -11,7 +12,7 @@ from typing import Any
 
 import psycopg
 import requests
-from assistant_rh_shared import get_env, get_scaleway_api_key, get_scaleway_base_url
+from assistant_rh_shared import Config
 from dotenv import load_dotenv
 
 from assistant_rh_data_engineering.utils.helpers import vector_to_pgvector
@@ -79,15 +80,15 @@ def _normalize_vector(vector: list[float]) -> list[float]:
 
 class ScalewayBgeClient:
     def __init__(self, model_name: str, base_url: str | None = None, session: requests.Session | None = None):
-        resolved_base_url = get_scaleway_base_url(override=base_url)
+        config = Config()
+        resolved_base_url = (base_url or "").strip() or config.scaleway_base_url
         if not resolved_base_url:
             raise RuntimeError("SCALEWAY_BASE_URL manquant pour embedding_bge_scw (ou passer --bge-base-url).")
         self.base_url = resolved_base_url.rstrip("/")
         self.model_name = model_name
-        api_key = get_scaleway_api_key()
-        if not api_key:
+        if not config.scaleway_api_key:
             raise RuntimeError("Aucune clé SCALEWAY_API_KEY trouvée pour embedding_bge_scw.")
-        self.api_key = api_key
+        self.api_key = config.scaleway_api_key
         self.session = session
 
     def _post_embeddings(self, text: str) -> requests.Response:
@@ -277,7 +278,8 @@ def backfill_bge_scaleway(
 def main() -> int:
     args = build_parser().parse_args()
     load_dotenv(Path(args.env_file))
-    dsn = get_env(args.dsn_env)
+    # Clé d'environnement dynamique (--dsn-env): reste hors de Config.
+    dsn = os.getenv(args.dsn_env)
     if not dsn:
         raise SystemExit(f"{args.dsn_env} manquant.")
 

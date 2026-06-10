@@ -1,33 +1,28 @@
-"""Shared environment configuration accessors.
+"""Shared environment configuration.
 
-Centralizes `os.getenv` reads so orchestration and business code do not
-access the environment directly. Loading `.env` files stays the
-responsibility of entrypoints (e.g. `dotenv.load_dotenv`); this module
-only reads the process environment.
+Centralizes the `os.getenv` reads so orchestration and business code do
+not access the environment directly. Loading `.env` files stays the
+responsibility of entrypoints (e.g. `dotenv.load_dotenv`); `Config`
+snapshots the process environment at instantiation time.
 """
 
 from __future__ import annotations
 
 import os
 
-SCALEWAY_BASE_URL_ENV = "SCALEWAY_BASE_URL"
-SCALEWAY_API_KEY_ENV = "SCALEWAY_API_KEY"
+
+def _read_env(key_name: str) -> str | None:
+    value = os.getenv(key_name, "").strip()
+    return value or None
 
 
-def get_env(key_name: str, *, override: str | None = None) -> str | None:
-    """Return the explicit override if non-empty, else the environment value.
+class Config:
+    """Environment values shared across packages, read at instantiation.
 
-    Values are stripped; blank values are treated as missing.
+    Scope grows progressively as `os.getenv` calls migrate here from the
+    rest of the codebase.
     """
-    for candidate in (override, os.getenv(key_name)):
-        if candidate is not None and candidate.strip():
-            return candidate.strip()
-    return None
 
-
-def get_scaleway_base_url(override: str | None = None) -> str | None:
-    return get_env(SCALEWAY_BASE_URL_ENV, override=override)
-
-
-def get_scaleway_api_key() -> str | None:
-    return get_env(SCALEWAY_API_KEY_ENV)
+    def __init__(self) -> None:
+        self.scaleway_base_url = _read_env("SCALEWAY_BASE_URL")
+        self.scaleway_api_key = _read_env("SCALEWAY_API_KEY")
