@@ -89,7 +89,7 @@ def test_embed_text_retries_and_raises_last_error(
         with pytest.raises(requests.ConnectionError, match="network down"):
             client.embed_text("texte")
 
-    assert "Erreur embedding_bge_scw" in caplog.text
+    assert "Erreur réseau embedding_bge_scw" in caplog.text
 
 
 def test_embed_text_preserves_429_http_error_after_retries(
@@ -100,8 +100,11 @@ def test_embed_text_preserves_429_http_error_after_retries(
     monkeypatch.setattr(embeddings_backfill.time, "sleep", lambda delay: None)
 
     session = requests.Session()
+    post_calls = 0
 
     def rate_limited_post(*args: Any, **kwargs: Any) -> DummyResponse:
+        nonlocal post_calls
+        post_calls += 1
         return DummyResponse(status_code=429)
 
     monkeypatch.setattr(session, "post", rate_limited_post)
@@ -113,7 +116,80 @@ def test_embed_text_preserves_429_http_error_after_retries(
 
     assert exc_info.value.response is not None
     assert exc_info.value.response.status_code == 429
-    assert "Scaleway embeddings rate limit" in caplog.text
+    assert post_calls == 6
+    assert "Erreur HTTP 429" in caplog.text
+
+
+def test_embed_text_retries_server_errors(
+    scaleway_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(embeddings_backfill.time, "sleep", lambda delay: None)
+
+    session = requests.Session()
+    responses = [DummyResponse(status_code=503), DummyResponse()]
+
+    def flaky_post(*args: Any, **kwargs: Any) -> DummyResponse:
+        return responses.pop(0)
+
+    monkeypatch.setattr(session, "post", flaky_post)
+    client = embeddings_backfill.ScalewayBgeClient(model_name="model", session=session)
+
+    assert client.embed_text("texte") == [1.0, 0.0]
+
+
+def test_embed_text_fails_fast_on_non_retryable_http_error(
+    scaleway_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = requests.Session()
+    post_calls = 0
+
+    def unauthorized_post(*args: Any, **kwargs: Any) -> DummyResponse:
+        nonlocal post_calls
+        post_calls += 1
+        return DummyResponse(status_code=401)
+
+    monkeypatch.setattr(session, "post", unauthorized_post)
+    monkeypatch.setattr(
+        embeddings_backfill.time,
+        "sleep",
+        lambda delay: pytest.fail("should not sleep on non-retryable error"),
+    )
+    client = embeddings_backfill.ScalewayBgeClient(model_name="model", session=session)
+
+    with pytest.raises(requests.HTTPError) as exc_info:
+        client.embed_text("texte")
+
+    assert exc_info.value.response is not None
+    assert exc_info.value.response.status_code == 401
+    assert post_calls == 1
+
+
+def test_embed_text_fails_fast_on_invalid_payload(
+    scaleway_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = requests.Session()
+    post_calls = 0
+
+    def invalid_payload_post(*args: Any, **kwargs: Any) -> DummyResponse:
+        nonlocal post_calls
+        post_calls += 1
+        return DummyResponse(payload={"data": [{"embedding": "pas-une-liste"}]})
+
+    monkeypatch.setattr(session, "post", invalid_payload_post)
+    monkeypatch.setattr(
+        embeddings_backfill.time,
+        "sleep",
+        lambda delay: pytest.fail("should not sleep on invalid payload"),
+    )
+    client = embeddings_backfill.ScalewayBgeClient(model_name="model", session=session)
+
+    with pytest.raises(ValueError, match="embedding absent ou non-list"):
+        client.embed_text("texte")
+
+    assert post_calls == 1
 
 
 def test_backfill_bge_scaleway_reuses_one_threadpool_without_shared_session(

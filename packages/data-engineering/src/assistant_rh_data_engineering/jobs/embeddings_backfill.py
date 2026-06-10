@@ -104,8 +104,9 @@ class ScalewayBgeClient:
         )
 
     def embed_text(self, text: str) -> list[float]:
+        max_attempts = 6
         last_error: Exception | None = None
-        for attempt in range(6):
+        for attempt in range(max_attempts):
             try:
                 response = self._post_embeddings(text)
                 response.raise_for_status()
@@ -114,12 +115,18 @@ class ScalewayBgeClient:
                 if not isinstance(embedding, list):
                     raise ValueError("Réponse embeddings Scaleway invalide: embedding absent ou non-list.")
                 return embedding
-            except (requests.RequestException, KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            except requests.HTTPError as exc:
+                status_code = exc.response.status_code if exc.response is not None else None
+                # Seuls 429 et 5xx sont transitoires; les autres 4xx (clé invalide,
+                # modèle inconnu...) ne se résoudront pas en réessayant.
+                if status_code != 429 and not (status_code is not None and status_code >= 500):
+                    raise
                 last_error = exc
-                if isinstance(exc, requests.HTTPError) and exc.response is not None and exc.response.status_code == 429:
-                    logger.debug("Scaleway embeddings rate limit, retry %s/6.", attempt + 1)
-                else:
-                    logger.debug("Erreur embedding_bge_scw, retry %s/6: %s", attempt + 1, exc)
+                logger.debug("Erreur HTTP %s embedding_bge_scw, retry %s/%s.", status_code, attempt + 1, max_attempts)
+            except requests.RequestException as exc:
+                last_error = exc
+                logger.debug("Erreur réseau embedding_bge_scw, retry %s/%s: %s", attempt + 1, max_attempts, exc)
+            if attempt < max_attempts - 1:
                 time.sleep(min(30, 2**attempt))
         if last_error is not None:
             raise last_error
