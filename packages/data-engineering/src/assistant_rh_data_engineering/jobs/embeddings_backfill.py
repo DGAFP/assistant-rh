@@ -4,7 +4,6 @@ import argparse
 import json
 import logging
 import math
-import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -12,7 +11,7 @@ from typing import Any
 
 import psycopg
 import requests
-from assistant_rh_shared import resolve_config_value, resolve_config_value_candidates
+from assistant_rh_shared import get_env, get_scaleway_api_key, get_scaleway_base_url
 from dotenv import load_dotenv
 
 from assistant_rh_data_engineering.utils.helpers import vector_to_pgvector
@@ -79,26 +78,17 @@ def _normalize_vector(vector: list[float]) -> list[float]:
 
 
 class ScalewayBgeClient:
-    def __init__(self, env_path: Path, model_name: str, base_url: str | None = None, session: requests.Session | None = None):
-        resolved_base_url = resolve_config_value(
-            "SCALEWAY_BASE_URL",
-            explicit_value=base_url,
-            env_path=env_path,
-            required=True,
-            missing_message="SCALEWAY_BASE_URL manquant pour embedding_bge_scw (ou passer --bge-base-url).",
-        )
+    def __init__(self, model_name: str, base_url: str | None = None, session: requests.Session | None = None):
+        resolved_base_url = get_scaleway_base_url(override=base_url)
+        if not resolved_base_url:
+            raise RuntimeError("SCALEWAY_BASE_URL manquant pour embedding_bge_scw (ou passer --bge-base-url).")
         self.base_url = resolved_base_url.rstrip("/")
         self.model_name = model_name
-        self.api_key = self._resolve_api_key(env_path)
-        self.session = session
-
-    def _resolve_api_key(self, env_path: Path) -> str:
-        candidates = resolve_config_value_candidates("SCALEWAY_API_KEY", env_path=env_path)
-        if not candidates:
+        api_key = get_scaleway_api_key()
+        if not api_key:
             raise RuntimeError("Aucune clé SCALEWAY_API_KEY trouvée pour embedding_bge_scw.")
-        if len(candidates) > 1:
-            logger.debug("Plusieurs SCALEWAY_API_KEY candidates trouvées; utilisation de la première candidate.")
-        return candidates[0]
+        self.api_key = api_key
+        self.session = session
 
     def _post_embeddings(self, text: str) -> requests.Response:
         post = self.session.post if self.session is not None else requests.post
@@ -249,7 +239,6 @@ def backfill_bge_scaleway(
     schema: str,
     table_spec: dict[str, Any],
     embedding_column: str,
-    env_path: Path,
     model_name: str,
     base_url: str | None,
     workers: int,
@@ -268,7 +257,7 @@ def backfill_bge_scaleway(
     if not rows:
         return 0
     total = 0
-    client = ScalewayBgeClient(env_path=env_path, model_name=model_name, base_url=base_url)
+    client = ScalewayBgeClient(model_name=model_name, base_url=base_url)
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         for start in range(0, len(rows), batch_size):
             batch = rows[start : start + batch_size]
@@ -287,9 +276,8 @@ def backfill_bge_scaleway(
 
 def main() -> int:
     args = build_parser().parse_args()
-    env_path = Path(args.env_file)
-    load_dotenv(env_path)
-    dsn = os.getenv(args.dsn_env)
+    load_dotenv(Path(args.env_file))
+    dsn = get_env(args.dsn_env)
     if not dsn:
         raise SystemExit(f"{args.dsn_env} manquant.")
 
@@ -334,7 +322,6 @@ def main() -> int:
                         args.schema,
                         table_spec,
                         embedding_column,
-                        env_path=env_path,
                         model_name=args.bge_model,
                         base_url=args.bge_base_url,
                         workers=args.bge_workers,

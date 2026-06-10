@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -21,72 +20,60 @@ class DummyResponse:
         return self.payload
 
 
-def test_scaleway_bge_client_resolves_base_url_from_explicit_env_and_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    env_path = tmp_path / ".env"
-    env_path.write_text(
-        "SCALEWAY_BASE_URL=https://dotenv.example.test/v1\nSCALEWAY_API_KEY=dotenv-key\n",
-        encoding="utf-8",
-    )
-    monkeypatch.delenv("SCALEWAY_BASE_URL", raising=False)
-    monkeypatch.delenv("SCALEWAY_API_KEY", raising=False)
-
-    dotenv_client = embeddings_backfill.ScalewayBgeClient(env_path=env_path, model_name="model")
-    assert dotenv_client.base_url == "https://dotenv.example.test/v1"
-    assert dotenv_client.api_key == "dotenv-key"
-
+@pytest.fixture
+def scaleway_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SCALEWAY_BASE_URL", "https://env.example.test/v1")
     monkeypatch.setenv("SCALEWAY_API_KEY", "env-key")
-    env_client = embeddings_backfill.ScalewayBgeClient(env_path=env_path, model_name="model")
+
+
+def test_scaleway_bge_client_resolves_base_url_from_explicit_then_env(scaleway_env: None) -> None:
+    env_client = embeddings_backfill.ScalewayBgeClient(model_name="model")
     assert env_client.base_url == "https://env.example.test/v1"
     assert env_client.api_key == "env-key"
 
     explicit_client = embeddings_backfill.ScalewayBgeClient(
-        env_path=env_path,
         model_name="model",
         base_url="https://explicit.example.test/v1",
     )
     assert explicit_client.base_url == "https://explicit.example.test/v1"
 
 
-def test_scaleway_bge_client_requires_base_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    env_path = tmp_path / ".env"
-    env_path.write_text("SCALEWAY_API_KEY=test-key\n", encoding="utf-8")
+def test_scaleway_bge_client_requires_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SCALEWAY_BASE_URL", raising=False)
-    monkeypatch.delenv("SCALEWAY_API_KEY", raising=False)
+    monkeypatch.setenv("SCALEWAY_API_KEY", "env-key")
 
     with pytest.raises(RuntimeError, match="SCALEWAY_BASE_URL"):
-        embeddings_backfill.ScalewayBgeClient(env_path=env_path, model_name="model")
+        embeddings_backfill.ScalewayBgeClient(model_name="model")
+
+
+def test_scaleway_bge_client_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SCALEWAY_BASE_URL", "https://env.example.test/v1")
+    monkeypatch.delenv("SCALEWAY_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="SCALEWAY_API_KEY"):
+        embeddings_backfill.ScalewayBgeClient(model_name="model")
 
 
 def test_scaleway_bge_client_does_not_validate_api_key_during_initialization(
-    tmp_path: Path,
+    scaleway_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    env_path = tmp_path / ".env"
-    env_path.write_text(
-        "SCALEWAY_BASE_URL=https://dotenv.example.test/v1\nSCALEWAY_API_KEY=dotenv-key\n",
-        encoding="utf-8",
-    )
-    monkeypatch.delenv("SCALEWAY_BASE_URL", raising=False)
-    monkeypatch.delenv("SCALEWAY_API_KEY", raising=False)
-
     def fail_post(*args: Any, **kwargs: Any) -> DummyResponse:
         raise AssertionError("network validation should not run during initialization")
 
     session = requests.Session()
     monkeypatch.setattr(session, "post", fail_post)
 
-    client = embeddings_backfill.ScalewayBgeClient(env_path=env_path, model_name="model", session=session)
+    client = embeddings_backfill.ScalewayBgeClient(model_name="model", session=session)
 
-    assert client.api_key == "dotenv-key"
+    assert client.api_key == "env-key"
 
 
-def test_embed_text_retries_and_raises_last_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-    env_path = tmp_path / ".env"
-    env_path.write_text(
-        "SCALEWAY_BASE_URL=https://dotenv.example.test/v1\nSCALEWAY_API_KEY=dotenv-key\n",
-        encoding="utf-8",
-    )
+def test_embed_text_retries_and_raises_last_error(
+    scaleway_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     monkeypatch.setattr(embeddings_backfill.time, "sleep", lambda delay: None)
 
     session = requests.Session()
@@ -96,7 +83,7 @@ def test_embed_text_retries_and_raises_last_error(tmp_path: Path, monkeypatch: p
         raise error
 
     monkeypatch.setattr(session, "post", fail_post)
-    client = embeddings_backfill.ScalewayBgeClient(env_path=env_path, model_name="model", session=session)
+    client = embeddings_backfill.ScalewayBgeClient(model_name="model", session=session)
 
     with caplog.at_level("DEBUG"):
         with pytest.raises(requests.ConnectionError, match="network down"):
@@ -106,15 +93,10 @@ def test_embed_text_retries_and_raises_last_error(tmp_path: Path, monkeypatch: p
 
 
 def test_embed_text_preserves_429_http_error_after_retries(
-    tmp_path: Path,
+    scaleway_env: None,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    env_path = tmp_path / ".env"
-    env_path.write_text(
-        "SCALEWAY_BASE_URL=https://dotenv.example.test/v1\nSCALEWAY_API_KEY=dotenv-key\n",
-        encoding="utf-8",
-    )
     monkeypatch.setattr(embeddings_backfill.time, "sleep", lambda delay: None)
 
     session = requests.Session()
@@ -123,7 +105,7 @@ def test_embed_text_preserves_429_http_error_after_retries(
         return DummyResponse(status_code=429)
 
     monkeypatch.setattr(session, "post", rate_limited_post)
-    client = embeddings_backfill.ScalewayBgeClient(env_path=env_path, model_name="model", session=session)
+    client = embeddings_backfill.ScalewayBgeClient(model_name="model", session=session)
 
     with caplog.at_level("DEBUG"):
         with pytest.raises(requests.HTTPError) as exc_info:
@@ -135,7 +117,6 @@ def test_embed_text_preserves_429_http_error_after_retries(
 
 
 def test_backfill_bge_scaleway_reuses_one_threadpool_without_shared_session(
-    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     rows = [
@@ -184,7 +165,6 @@ def test_backfill_bge_scaleway_reuses_one_threadpool_without_shared_session(
         schema="public",
         table_spec={"table": "rag_chunks", "id_column": "id", "text_column": "text"},
         embedding_column="embedding_bge_scw",
-        env_path=tmp_path / ".env",
         model_name="model",
         base_url="https://example.test/v1",
         workers=2,

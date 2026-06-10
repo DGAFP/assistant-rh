@@ -1,46 +1,36 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
-from assistant_rh_shared.config import resolve_config_value, resolve_config_value_candidates
+from assistant_rh_shared.config import get_env, get_scaleway_api_key, get_scaleway_base_url
 
 
-def test_resolve_config_value_prefers_explicit_then_env_then_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    env_path = tmp_path / ".env"
-    env_path.write_text("TEST_KEY=dotenv-value\n", encoding="utf-8")
-
+def test_get_env_prefers_override_then_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TEST_KEY", "env-value")
 
-    assert resolve_config_value("TEST_KEY", explicit_value="explicit-value", env_path=env_path) == "explicit-value"
-    assert resolve_config_value("TEST_KEY", env_path=env_path) == "env-value"
-
-    monkeypatch.delenv("TEST_KEY")
-    assert resolve_config_value("TEST_KEY", env_path=env_path) == "dotenv-value"
+    assert get_env("TEST_KEY", override="explicit-value") == "explicit-value"
+    assert get_env("TEST_KEY") == "env-value"
 
 
-def test_resolve_config_value_candidates_uses_python_dotenv_effective_value(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    env_path = tmp_path / ".env"
-    env_path.write_text(
-        "TEST_KEY=dotenv-first\nTEST_KEY=dotenv-second\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("TEST_KEY", "env-value")
+def test_get_env_strips_values_and_ignores_blanks(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TEST_KEY", "  env-value  ")
+    assert get_env("TEST_KEY", override="   ") == "env-value"
 
-    assert resolve_config_value_candidates("TEST_KEY", explicit_value="explicit-value", env_path=env_path) == [
-        "explicit-value",
-        "env-value",
-        "dotenv-second",
-    ]
+    monkeypatch.setenv("TEST_KEY", "   ")
+    assert get_env("TEST_KEY") is None
 
-
-def test_resolve_config_value_required_raises_clear_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("TEST_KEY", raising=False)
+    assert get_env("TEST_KEY") is None
 
-    with pytest.raises(RuntimeError, match="custom missing"):
-        resolve_config_value(
-            "TEST_KEY",
-            env_path=tmp_path / ".env",
-            required=True,
-            missing_message="custom missing",
-        )
+
+def test_scaleway_accessors_read_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SCALEWAY_BASE_URL", "https://env.example.test/v1")
+    monkeypatch.setenv("SCALEWAY_API_KEY", "env-key")
+
+    assert get_scaleway_base_url() == "https://env.example.test/v1"
+    assert get_scaleway_base_url(override="https://explicit.example.test/v1") == "https://explicit.example.test/v1"
+    assert get_scaleway_api_key() == "env-key"
+
+    monkeypatch.delenv("SCALEWAY_BASE_URL", raising=False)
+    monkeypatch.delenv("SCALEWAY_API_KEY", raising=False)
+    assert get_scaleway_base_url() is None
+    assert get_scaleway_api_key() is None
