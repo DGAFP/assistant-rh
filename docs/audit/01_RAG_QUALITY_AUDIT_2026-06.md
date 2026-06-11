@@ -78,7 +78,7 @@ Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme
 
 ### 2.5 Observabilité
 
-Le logging `chat_runs` est riche (140+ colonnes) mais ne donne pas encore une vision production consolidée : usage, volumes de requêtes, latences P50/P95/P99, pannes provider, no-answer, rerank, traces et alerting.
+Le logging `chat_runs` est volumineux (~125 colonnes) mais paradoxalement mal ciblé : il ne donne pas de vision production consolidée (usage, latences P50/P95/P99, pannes provider, no-answer, rerank, traces, alerting) **et** n'enregistre pas les données fines du retrieval (chunks par étape) nécessaires au diagnostic. Le double sujet — rationaliser le schéma et ajouter les bons signaux — est traité en note [02](02_ARCHITECTURE_AUDIT_2026-06.md) A6 et note [05](05_PLAN_AUDIT_ET_COUVERTURE.md) D16.
 
 La trajectoire détaillée est traitée dans le document dédié : [Observabilité RAG & Dashboards Grafana](./RAG_OBSERVABILITY_ROADMAP_2026-06.md). Points à garder dans cette roadmap qualité :
 - l'échec du rerank n'est pas loggé comme tel (aucune colonne, aucun alerting) — une panne totale est restée invisible ;
@@ -121,6 +121,18 @@ La trajectoire détaillée est traitée dans le document dédié : [Observabilit
 ---
 
 ## 5. Planification itération 2 (juin → 31 octobre 2026)
+
+### 5.0 Grandes priorités de l'itération 2
+
+Deux priorités structurent l'itération, plus un horizon itération 3 :
+
+| Prio | Objectif | Couverture dans ce dossier |
+|---|---|---|
+| **P1 — Intégrer 5 nouveaux ministères** | Étendre le périmètre au-delà du MATTE : ingestion des sources ministérielles, métadonnées normalisées, **scope appliqué côté serveur avant retrieval** et habilitations (ProConnect) | Chantier structurel — cadré note [04](04_OBSERVATIONS_INITIALES_2026-06-05.md) §3 (multi-ministère, auth) et P1.5 ; prérequis qualité ci-dessous (un retrieval non fiable se multiplierait par 6) |
+| **P2 — Améliorer la qualité du RAG** | Fiabiliser scoring, retrieval, couverture d'index, abstention, génération, et la **mesure** qui permet de juger les modifs | Objet principal de cette note — phases 0 à 4 ci-dessous |
+| **P3 (itération 3) — Réemploi dans un autre produit** | Industrialiser le pipeline comme brique réutilisable hors Assistant RH | Hors périmètre itération 2 ; à n'envisager qu'une fois P1+P2 stabilisés et le pipeline rendu autonome/testé (note [02](02_ARCHITECTURE_AUDIT_2026-06.md)) |
+
+**Articulation** : P1 et P2 sont menées **en parallèle** mais P2 conditionne P1 — étendre à 6 périmètres un retrieval dont le scoring est plat et la couverture d'index trouée démultiplierait les défauts. Les quick wins (Phase 0) et la mesure (Phase 1) doivent précéder l'extension multi-ministère réelle. La séparation des trois niveaux (autorisation / priorité des sources / autorité documentaire) de la note 04 est un prérequis de P1.
 
 ### Phase 0 — Quick wins (semaine du 16 juin)
 
