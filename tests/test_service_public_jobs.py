@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from assistant_rh_data_engineering.jobs import service_public_ingestion, service_public_medallion
 from assistant_rh_data_engineering.service_public.db import ServicePublicDbWriter
+from assistant_rh_data_engineering.utils.helpers import stable_section_uuid
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -29,12 +30,27 @@ def _write_service_public_artifacts(lake_root: Path, short_id: str, *, sections:
     if sections:
         _write_jsonl(
             lake_root / "silver" / "sections" / f"{short_id}.sections.jsonl",
-            [{"section_id": f"section-{short_id}", "doc_id": f"doc-{short_id}", "heading": "Titre"}],
+            [
+                {
+                    "section_id": f"section-{short_id}",
+                    "doc_id": f"doc-{short_id}",
+                    "heading": "Titre",
+                    "section_index": 0,
+                }
+            ],
         )
     if chunks:
         _write_jsonl(
             lake_root / "gold" / "chunks" / f"{short_id}.chunks.jsonl",
-            [{"hash_id": f"chunk-{short_id}", "short_id": short_id, "chunk_text": "Texte"}],
+            [
+                {
+                    "hash_id": f"chunk-{short_id}",
+                    "short_id": short_id,
+                    "chunk_text": "Texte",
+                    "source_document_id": f"doc-{short_id}",
+                    "section_id": f"section-{short_id}",
+                }
+            ],
         )
 
 
@@ -89,6 +105,60 @@ def test_load_artifacts_allows_missing_chunks_when_skipped(tmp_path: Path) -> No
     assert per_fiche == {"F32513": {"documents": 1, "sections": 1, "chunks": 0}}
 
 
+def test_remap_existing_document_ids_preserves_foreign_keys() -> None:
+    documents = [{"doc_id": "new-doc", "short_id": "F32513", "title": "Titre"}]
+    sections = [
+        {
+            "section_id": "new-section-parent",
+            "doc_id": "new-doc",
+            "section_index": 0,
+            "parent_section_id": None,
+        },
+        {
+            "section_id": "new-section-child",
+            "doc_id": "new-doc",
+            "section_index": 1,
+            "parent_section_id": "new-section-parent",
+        },
+    ]
+    chunks = [
+        {
+            "hash_id": "chunk-F32513",
+            "short_id": "F32513",
+            "source_document_id": "new-doc",
+            "section_id": "new-section-child",
+        }
+    ]
+
+    remapped = service_public_ingestion.remap_existing_document_ids(
+        documents,
+        sections,
+        chunks,
+        {"F32513": "existing-doc"},
+    )
+
+    parent_section_id = stable_section_uuid("existing-doc", 0)
+    child_section_id = stable_section_uuid("existing-doc", 1)
+    assert remapped == {"documents": 1, "sections": 2, "chunks": 1}
+    assert documents[0]["doc_id"] == "existing-doc"
+    assert sections == [
+        {
+            "section_id": parent_section_id,
+            "doc_id": "existing-doc",
+            "section_index": 0,
+            "parent_section_id": None,
+        },
+        {
+            "section_id": child_section_id,
+            "doc_id": "existing-doc",
+            "section_index": 1,
+            "parent_section_id": parent_section_id,
+        },
+    ]
+    assert chunks[0]["source_document_id"] == "existing-doc"
+    assert chunks[0]["section_id"] == child_section_id
+
+
 def test_ingestion_main_upserts_documents_sections_and_chunks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -104,6 +174,10 @@ def test_ingestion_main_upserts_documents_sections_and_chunks(
         def __init__(self, schema: str = "public", dsn: str | None = None):
             self.schema = schema
             self.dsn = dsn
+
+        def list_document_ids_by_short_id(self, short_ids: list[str]) -> dict[str, str]:
+            calls["listed_documents"] = len(short_ids)
+            return {}
 
         def upsert_documents(self, rows: list[dict[str, Any]]) -> int:
             calls["documents"] = calls.get("documents", 0) + len(rows)
@@ -140,7 +214,8 @@ def test_ingestion_main_upserts_documents_sections_and_chunks(
     assert payload["loaded"] == {"documents": 1, "sections": 1, "chunks": 1}
     assert payload["ingested"] == {"documents": 1, "sections": 1, "chunks": 1}
     assert payload["per_fiche"] == {"F32513": {"documents": 1, "sections": 1, "chunks": 1}}
-    assert calls == {"documents": 1, "sections": 1, "chunks": 1}
+    assert payload["remapped_existing_ids"] == {"documents": 0, "sections": 0, "chunks": 0}
+    assert calls == {"listed_documents": 1, "documents": 1, "sections": 1, "chunks": 1}
 
 
 def test_db_writer_upserts_documents_on_short_id_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -166,11 +241,13 @@ def test_db_writer_upserts_documents_on_short_id_when_available(monkeypatch: pyt
         rows: list[dict[str, Any]],
         conflict_cols: list[str],
         conflict_where: str | None = None,
+        update_exclude_cols: list[str] | None = None,
     ) -> int:
         calls["table"] = table
         calls["rows"] = rows
         calls["conflict_cols"] = conflict_cols
         calls["conflict_where"] = conflict_where
+        calls["update_exclude_cols"] = update_exclude_cols
         return len(rows)
 
     monkeypatch.setattr(writer, "_upsert", fake_upsert)
@@ -179,6 +256,7 @@ def test_db_writer_upserts_documents_on_short_id_when_available(monkeypatch: pyt
     assert calls["table"] == "rag_documents"
     assert calls["conflict_cols"] == ["short_id"]
     assert calls["conflict_where"] == "short_id IS NOT NULL"
+    assert calls["update_exclude_cols"] == ["doc_id"]
     assert calls["committed"] is True
 
 

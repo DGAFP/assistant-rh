@@ -163,6 +163,75 @@ def dedupe_chunk_hash_ids(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return output
 
 
+def remap_existing_document_ids(
+    documents: list[dict[str, Any]],
+    sections: list[dict[str, Any]],
+    chunks: list[dict[str, Any]],
+    existing_doc_ids_by_short_id: dict[str, str],
+) -> dict[str, int]:
+    from assistant_rh_data_engineering.utils.helpers import stable_section_uuid
+
+    existing_doc_ids = {str(short_id).strip().upper(): str(doc_id) for short_id, doc_id in existing_doc_ids_by_short_id.items()}
+    if not existing_doc_ids:
+        return {"documents": 0, "sections": 0, "chunks": 0}
+
+    doc_id_map: dict[str, str] = {}
+    remapped_documents = 0
+    for document in documents:
+        short_id = str(document.get("short_id", "")).strip().upper()
+        target_doc_id = existing_doc_ids.get(short_id)
+        if not target_doc_id:
+            continue
+
+        source_doc_id = str(document.get("doc_id") or "")
+        if source_doc_id and source_doc_id != target_doc_id:
+            doc_id_map[source_doc_id] = target_doc_id
+        if document.get("doc_id") != target_doc_id:
+            document["doc_id"] = target_doc_id
+            remapped_documents += 1
+
+    section_id_map: dict[str, str] = {}
+    remapped_sections = 0
+    for section in sections:
+        source_doc_id = str(section.get("doc_id") or "")
+        target_doc_id = doc_id_map.get(source_doc_id)
+        if not target_doc_id:
+            continue
+
+        section["doc_id"] = target_doc_id
+        section_index = section.get("section_index")
+        if section_index is not None:
+            old_section_id = str(section.get("section_id") or "")
+            new_section_id = stable_section_uuid(target_doc_id, int(section_index))
+            if old_section_id and old_section_id != new_section_id:
+                section_id_map[old_section_id] = new_section_id
+            section["section_id"] = new_section_id
+        remapped_sections += 1
+
+    for section in sections:
+        parent_section_id = section.get("parent_section_id")
+        if parent_section_id in section_id_map:
+            section["parent_section_id"] = section_id_map[parent_section_id]
+
+    remapped_chunks = 0
+    for chunk in chunks:
+        source_document_id = str(chunk.get("source_document_id") or "")
+        target_doc_id = doc_id_map.get(source_document_id)
+        if target_doc_id:
+            chunk["source_document_id"] = target_doc_id
+            remapped_chunks += 1
+
+        section_id = chunk.get("section_id")
+        if section_id in section_id_map:
+            chunk["section_id"] = section_id_map[section_id]
+
+    return {
+        "documents": remapped_documents,
+        "sections": remapped_sections,
+        "chunks": remapped_chunks,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=("Job d'ingestion Service-Public: relit les artefacts silver/gold et applique les UPSERTs du notebook ingestion_pdf en base.")
@@ -260,6 +329,12 @@ def main() -> int:
     if not dsn:
         raise SystemExit(f"Aucun DSN trouvé pour l'ingestion. Passe --dsn ou définis {args.dsn_env}.")
     writer = ServicePublicDbWriter(schema=args.schema, dsn=dsn)
+    remapped = remap_existing_document_ids(
+        documents,
+        sections,
+        chunks,
+        writer.list_document_ids_by_short_id(short_ids),
+    )
 
     ingested = {"documents": 0, "sections": 0, "chunks": 0}
     for batch in chunked(documents, args.batch_size):
@@ -285,6 +360,7 @@ def main() -> int:
                     "chunks": len(chunks),
                 },
                 "per_fiche": per_fiche,
+                "remapped_existing_ids": remapped,
                 "ingested": ingested,
                 "from_object_storage": args.from_object_storage,
             },

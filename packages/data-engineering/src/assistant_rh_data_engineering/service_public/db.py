@@ -93,6 +93,7 @@ class ServicePublicDbWriter:
         rows: list[dict[str, Any]],
         conflict_cols: list[str],
         conflict_where: str | None = None,
+        update_exclude_cols: list[str] | None = None,
     ) -> int:
         if not rows:
             return 0
@@ -104,7 +105,8 @@ class ServicePublicDbWriter:
 
         cols = list(rows[0].keys())
         vector_cols = {col for col in cols if column_types.get(col, ("", None))[0] == "vector"}
-        assignments = [col for col in cols if col not in conflict_cols]
+        update_exclude = set(update_exclude_cols or [])
+        assignments = [col for col in cols if col not in conflict_cols and col not in update_exclude]
 
         placeholders = []
         for col in cols:
@@ -147,6 +149,7 @@ class ServicePublicDbWriter:
                     documents,
                     ["short_id"],
                     conflict_where=short_id_predicate,
+                    update_exclude_cols=["doc_id"],
                 )
             else:
                 count = self._upsert(conn, "rag_documents", documents, ["doc_id"])
@@ -210,6 +213,22 @@ class ServicePublicDbWriter:
 
             cur.execute(query, params)
             return [row[0] for row in cur.fetchall()]
+
+    def list_document_ids_by_short_id(self, short_ids: list[str]) -> dict[str, str]:
+        if not short_ids:
+            return {}
+
+        with self._connect() as conn, conn.cursor() as cur:
+            query = sql.SQL(
+                """
+                SELECT short_id, doc_id
+                FROM {}.{}
+                WHERE short_id = ANY(%s)
+                  AND short_id IS NOT NULL
+                """
+            ).format(sql.Identifier(self.schema), sql.Identifier("rag_documents"))
+            cur.execute(query, (short_ids,))
+            return {str(row[0]): str(row[1]) for row in cur.fetchall()}
 
     def fetch_service_public_chunks(
         self,
