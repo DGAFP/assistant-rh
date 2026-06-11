@@ -102,7 +102,7 @@ Cible : chaque dimension critique a soit un **test rejouable**, soit un **dashbo
 |---|---|---|
 | **Immédiat** | D8 + D9 (note « Performance & coûts ») ; confirmation prod des constats notes 01-02 | Données déjà là, complète le dossier de décision du 15 juin, sans dépendance |
 | **Court terme** | Baseline d'éval (socle 1) ; D10 (fraîcheur données) ; D12 (RGPD) ; D16 (refonte `chat_runs` + traces) ; renforcement D5 | Conditionnent la mesure (D10/baseline), l'observabilité (D16, jumeau du socle 2) et couvrent les risques métier/conformité |
-| **Itération 2** | D11 (sécurité prompt, via benchmark) ; D15 (embeddings) ; D7 (multi-ministère, prio P1) ; socles 2-3 d'instrumentation | S'appuient sur la baseline et sur les chantiers structurels de la note 04 |
+| **Itération 2** | D11 (sécurité prompt, via benchmark) ; D15 (embeddings) ; D7 (multi-ministère, prio P2) ; socles 2-3 d'instrumentation | S'appuient sur la baseline qualité et sur les chantiers structurels de la note 04 |
 | **Selon priorités** | D13 (RGAA/UX) ; D14 (infra/résilience) | Obligations et robustesse, à caler avec produit et ops |
 
 ## Sources
