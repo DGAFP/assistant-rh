@@ -13,6 +13,7 @@ Dependencies (internal only):
   - models (RetrievedChunk, AggregatedSection)
   - reranker (AlbertReranker)
 """
+
 from __future__ import annotations
 
 import logging
@@ -93,11 +94,7 @@ class SectionAggregator:
             mean_s = sum(scores) / len(scores)
             norm_count = len(group) / max_count
 
-            agg_score = (
-                self.config.weight_max_score * max_s
-                + self.config.weight_mean_score * mean_s
-                + self.config.weight_chunk_count * norm_count
-            )
+            agg_score = self.config.weight_max_score * max_s + self.config.weight_mean_score * mean_s + self.config.weight_chunk_count * norm_count
 
             meta = section_meta.get(key, {})
             first = group[0]
@@ -106,11 +103,7 @@ class SectionAggregator:
             doc_id = meta.get("doc_id") or first.metadata.get("source_document_id")
             first_meta = first.metadata
 
-            doc_short_id = (
-                meta.get("doc_short_id")
-                or first_meta.get("source_document_id")
-                or ""
-            )
+            doc_short_id = meta.get("doc_short_id") or first_meta.get("source_document_id") or ""
 
             sec_metadata = {
                 "doc_id": str(doc_id) if doc_id else "",
@@ -133,18 +126,20 @@ class SectionAggregator:
                     if v:
                         sec_metadata[k] = v
 
-            sections.append(AggregatedSection(
-                section_id=None if is_standalone else key,
-                heading=meta.get("heading", first_meta.get("source_name", "")),
-                markdown=meta.get("section_markdown", first.text),
-                chunks=group,
-                score=agg_score,
-                document_id=str(doc_id) if doc_id else None,
-                publisher=meta.get("doc_publisher") or first.table_source,
-                references_juridiques=meta.get("references_juridiques"),
-                heading_path=meta.get("heading_path"),
-                metadata=sec_metadata,
-            ))
+            sections.append(
+                AggregatedSection(
+                    section_id=None if is_standalone else key,
+                    heading=meta.get("heading", first_meta.get("source_name", "")),
+                    markdown=meta.get("section_markdown", first.text),
+                    chunks=group,
+                    score=agg_score,
+                    document_id=str(doc_id) if doc_id else None,
+                    publisher=meta.get("doc_publisher") or first.table_source,
+                    references_juridiques=meta.get("references_juridiques"),
+                    heading_path=meta.get("heading_path"),
+                    metadata=sec_metadata,
+                )
+            )
 
         sections.sort(key=lambda s: s.score, reverse=True)
 
@@ -222,8 +217,7 @@ class SectionAggregator:
             texts = [f"# {s.heading}\n\n{s.markdown[:1500]}" for s in candidates]
             t0 = time.time()
             ranked = self._reranker.rerank(query, texts, top_k=self.config.section_rerank_top_k)
-            logger.info("Section reranking done in %.0fms (%d candidates → %d selected)",
-                        (time.time() - t0) * 1000, len(candidates), len(ranked))
+            logger.info("Section reranking done in %.0fms (%d candidates → %d selected)", (time.time() - t0) * 1000, len(candidates), len(ranked))
 
             out: List[AggregatedSection] = []
             for idx, score in ranked:
@@ -233,5 +227,5 @@ class SectionAggregator:
             return out, "completed", ""
 
         except Exception as exc:
-            logger.warning("Section reranking failed, keeping aggregated order: %s", exc)
+            logger.error("Section reranking failed, keeping aggregated order: %s", exc)
             return sections[: self.config.section_rerank_top_k], "failed", str(exc)

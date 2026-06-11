@@ -171,6 +171,17 @@ def _build_mock_objects():
             "context_items_ref": [{"section_id": "s1", "heading": "Congés"}],
             "sections_before_rerank": 5,
             "sections_after_rerank": 3,
+            "reranker_status": {
+                "chunk": {"enabled": False, "status": "disabled", "top_k": 0},
+                "section": {
+                    "enabled": True,
+                    "status": "completed",
+                    "top_k": 5,
+                    "items_before": 5,
+                    "items_after": 3,
+                    "error": "",
+                },
+            },
         },
         timing={
             "query_processing_ms": 150.5,
@@ -258,17 +269,35 @@ class TestDynamicSQL:
 
 class TestBuildLogRow:
     REQUIRED_COLUMNS = [
-        "ts", "turn_id", "question", "answer",
-        "backend", "filters", "top_k", "use_reranker",
-        "session_id", "conversation_id", "rag_version", "user_group",
-        "v3_context_mode", "v3_sections_count", "v3_context_items_count",
-        "v3_chunks_retrieved_count", "v3_intent", "v3_source_distribution",
-        "v3_timing_breakdown", "v3_query_processing_ms", "v3_retrieval_ms",
+        "ts",
+        "turn_id",
+        "question",
+        "answer",
+        "backend",
+        "filters",
+        "top_k",
+        "use_reranker",
+        "session_id",
+        "conversation_id",
+        "rag_version",
+        "user_group",
+        "v3_context_mode",
+        "v3_sections_count",
+        "v3_context_items_count",
+        "v3_chunks_retrieved_count",
+        "v3_intent",
+        "v3_source_distribution",
+        "v3_timing_breakdown",
+        "v3_query_processing_ms",
+        "v3_retrieval_ms",
         "v3_generation_ms",
+        "v3_reranker_status",
     ]
 
-    def _build_row(self):
+    def _build_row(self, metadata_overrides: Optional[dict] = None):
         pipeline, qr, config, runtime, items, v1_chunks = _build_mock_objects()
+        if metadata_overrides:
+            pipeline.last_result.metadata.update(metadata_overrides)
         return build_log_row(
             turn_id="abc12345",
             query="Quels sont mes droits RTT ?",
@@ -326,6 +355,31 @@ class TestBuildLogRow:
         assert "RTT" in row["v3_acronyms_expanded"]
         assert "detected:" in row["v3_acronyms_expanded"]
 
+    def test_reranker_status_completed(self):
+        row = self._build_row()
+        assert row["v3_reranker_status"] == "completed"
+        assert row["v3_reranker_error"] == ""
+
+    def test_reranker_failure_visible(self):
+        row = self._build_row(
+            metadata_overrides={
+                "reranker_status": {
+                    "section": {
+                        "enabled": True,
+                        "status": "failed",
+                        "error": "422 Client Error: Unprocessable Entity",
+                    },
+                },
+            }
+        )
+        assert row["v3_reranker_status"] == "failed"
+        assert "422" in row["v3_reranker_error"]
+
+    def test_reranker_status_missing_metadata(self):
+        row = self._build_row(metadata_overrides={"reranker_status": {}})
+        assert row["v3_reranker_status"] == ""
+        assert row["v3_reranker_error"] == ""
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TESTS – build_non_rag_row
@@ -366,8 +420,7 @@ class TestBuildNonRagRow:
 
     def test_required_fields_present(self):
         row = self._build_row()
-        required = ["ts", "turn_id", "question", "answer", "session_id",
-                     "conversation_id", "turn_index", "rag_version", "v3_intent"]
+        required = ["ts", "turn_id", "question", "answer", "session_id", "conversation_id", "turn_index", "rag_version", "v3_intent"]
         missing = [c for c in required if c not in row]
         assert not missing, f"Missing: {missing}"
 
@@ -509,9 +562,18 @@ class TestFeedbackLogging:
         """All required DB columns are present in a feedback row."""
         row = _make_feedback_row()
         required = {
-            "ts", "turn_id", "turn_idx", "helpful", "reasons", "comment",
-            "stars", "reasons_positive", "reasons_negative", "session_id",
-            "question", "answer",
+            "ts",
+            "turn_id",
+            "turn_idx",
+            "helpful",
+            "reasons",
+            "comment",
+            "stars",
+            "reasons_positive",
+            "reasons_negative",
+            "session_id",
+            "question",
+            "answer",
         }
         assert required.issubset(set(row.keys()))
 
@@ -546,8 +608,7 @@ class TestFeedbackLogging:
         csv_path = tmp_path / "feedbacks.csv"
         row = _make_feedback_row()
 
-        with patch("src.ui.chatbot_logging.get_engine", return_value=None), \
-             patch("src.ui.chatbot_logging.FEEDS_CSV", csv_path):
+        with patch("src.ui.chatbot_logging.get_engine", return_value=None), patch("src.ui.chatbot_logging.FEEDS_CSV", csv_path):
             log_feedback_row(row)
 
         assert csv_path.exists()
@@ -591,8 +652,10 @@ class TestFeedbackLogging:
 
         row = _make_feedback_row()
 
-        with patch("src.ui.chatbot_logging.get_engine", return_value=mock_engine), \
-             patch("src.ui.chatbot_logging._auto_enrich_goldset") as mock_enrich:
+        with (
+            patch("src.ui.chatbot_logging.get_engine", return_value=mock_engine),
+            patch("src.ui.chatbot_logging._auto_enrich_goldset") as mock_enrich,
+        ):
             log_feedback_row(row)
 
         mock_enrich.assert_called_once_with(mock_engine, row)
@@ -608,8 +671,10 @@ class TestFeedbackLogging:
 
         row = _make_feedback_row()
 
-        with patch("src.ui.chatbot_logging.get_engine", return_value=mock_engine), \
-             patch("src.ui.chatbot_logging._auto_enrich_goldset", side_effect=RuntimeError("boom")):
+        with (
+            patch("src.ui.chatbot_logging.get_engine", return_value=mock_engine),
+            patch("src.ui.chatbot_logging._auto_enrich_goldset", side_effect=RuntimeError("boom")),
+        ):
             log_feedback_row(row)
 
         mock_conn.execute.assert_called_once()
@@ -624,12 +689,14 @@ class TestFeedbackLogging:
 def _db_available() -> bool:
     """Check if the configured DB is reachable (auto-detect, no CLI flag needed)."""
     from dotenv import load_dotenv
+
     load_dotenv()
     url = os.getenv("SCW_POSTGRES_DSN") or os.getenv("APP_POSTGRES_DSN") or os.getenv("STREAMLIT_POSTGRES_DSN")
     if not url:
         return False
     try:
         from sqlalchemy import create_engine, text
+
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
         if "://" in url and "+psycopg" not in url:
@@ -646,6 +713,7 @@ def _db_available() -> bool:
 class TestDBRoundTrip:
     def test_column_existence(self):
         from dotenv import load_dotenv
+
         load_dotenv()
 
         url = os.getenv("SCW_POSTGRES_DSN") or os.getenv("APP_POSTGRES_DSN") or os.getenv("STREAMLIT_POSTGRES_DSN")
@@ -653,20 +721,23 @@ class TestDBRoundTrip:
             raise RuntimeError("No DB URL configured")
 
         from sqlalchemy import create_engine, text
+
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
         if "+psycopg" not in url:
             url = url.replace("postgresql://", "postgresql+psycopg://", 1)
         if "sslmode=" not in url:
-            url += ("&sslmode=require" if "?" in url else "?sslmode=require")
+            url += "&sslmode=require" if "?" in url else "?sslmode=require"
 
         engine = create_engine(url, connect_args={"connect_timeout": 5})
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-            cols = conn.execute(text("""
+            cols = conn.execute(
+                text("""
                 SELECT column_name FROM information_schema.columns
                 WHERE table_name = 'chat_runs' ORDER BY ordinal_position
-            """))
+            """)
+            )
             db_columns = {r[0] for r in cols}
 
         pipeline, qr, config, runtime, items, v1_chunks = _build_mock_objects()
@@ -695,12 +766,16 @@ class TestDBRoundTrip:
 # STANDALONE RUNNER
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class _raises:
     """Minimal pytest.raises replacement for standalone mode."""
+
     def __init__(self, exc_type):
         self.exc_type = exc_type
+
     def __enter__(self):
         return self
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
             raise AssertionError(f"Expected {self.exc_type.__name__}")
@@ -731,6 +806,8 @@ if __name__ == "__main__":
         ("build_log_row: selector confidence", TestBuildLogRow().test_selector_confidence_ratio),
         ("build_log_row: timing keys", TestBuildLogRow().test_timing_keys),
         ("build_log_row: acronyms", TestBuildLogRow().test_acronyms_formatted),
+        ("build_log_row: reranker status", TestBuildLogRow().test_reranker_status_completed),
+        ("build_log_row: reranker failure visible", TestBuildLogRow().test_reranker_failure_visible),
         ("build_non_rag_row: backend", TestBuildNonRagRow().test_backend_is_intent_gating),
         ("build_non_rag_row: should_proceed", TestBuildNonRagRow().test_should_proceed_false),
         ("build_non_rag_row: intent", TestBuildNonRagRow().test_intent_value),
