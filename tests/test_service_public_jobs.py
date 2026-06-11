@@ -159,6 +159,36 @@ def test_remap_existing_document_ids_preserves_foreign_keys() -> None:
     assert chunks[0]["section_id"] == child_section_id
 
 
+def test_remap_existing_document_ids_reuses_existing_section_ids() -> None:
+    documents = [{"doc_id": "new-doc", "short_id": "F32513"}]
+    sections = [
+        {
+            "section_id": "new-section",
+            "doc_id": "new-doc",
+            "section_index": 0,
+            "parent_section_id": None,
+        }
+    ]
+    chunks = [
+        {
+            "hash_id": "chunk-F32513",
+            "source_document_id": "new-doc",
+            "section_id": "new-section",
+        }
+    ]
+
+    service_public_ingestion.remap_existing_document_ids(
+        documents,
+        sections,
+        chunks,
+        {"F32513": "existing-doc"},
+        {("existing-doc", 0): "existing-section"},
+    )
+
+    assert sections[0]["section_id"] == "existing-section"
+    assert chunks[0]["section_id"] == "existing-section"
+
+
 def test_ingestion_main_upserts_documents_sections_and_chunks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -177,6 +207,10 @@ def test_ingestion_main_upserts_documents_sections_and_chunks(
 
         def list_document_ids_by_short_id(self, short_ids: list[str]) -> dict[str, str]:
             calls["listed_documents"] = len(short_ids)
+            return {}
+
+        def list_section_ids_by_doc_id_and_index(self, doc_ids: list[str]) -> dict[tuple[str, int], str]:
+            calls["listed_sections"] = len(doc_ids)
             return {}
 
         def upsert_documents(self, rows: list[dict[str, Any]]) -> int:
@@ -215,7 +249,7 @@ def test_ingestion_main_upserts_documents_sections_and_chunks(
     assert payload["ingested"] == {"documents": 1, "sections": 1, "chunks": 1}
     assert payload["per_fiche"] == {"F32513": {"documents": 1, "sections": 1, "chunks": 1}}
     assert payload["remapped_existing_ids"] == {"documents": 0, "sections": 0, "chunks": 0}
-    assert calls == {"listed_documents": 1, "documents": 1, "sections": 1, "chunks": 1}
+    assert calls == {"listed_documents": 1, "listed_sections": 0, "documents": 1, "sections": 1, "chunks": 1}
 
 
 def test_db_writer_upserts_documents_on_short_id_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -257,6 +291,48 @@ def test_db_writer_upserts_documents_on_short_id_when_available(monkeypatch: pyt
     assert calls["conflict_cols"] == ["short_id"]
     assert calls["conflict_where"] == "short_id IS NOT NULL"
     assert calls["update_exclude_cols"] == ["doc_id"]
+    assert calls["committed"] is True
+
+
+def test_db_writer_upserts_sections_on_doc_index_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    writer = ServicePublicDbWriter(dsn="postgresql://unused")
+    calls: dict[str, Any] = {}
+
+    class DummyConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def commit(self) -> None:
+            calls["committed"] = True
+
+    monkeypatch.setattr(writer, "_connect", lambda: DummyConnection())
+    monkeypatch.setattr(writer, "_index_predicate", lambda conn, index_name: "")
+
+    def fake_upsert(
+        conn: object,
+        table: str,
+        rows: list[dict[str, Any]],
+        conflict_cols: list[str],
+        conflict_where: str | None = None,
+        update_exclude_cols: list[str] | None = None,
+    ) -> int:
+        calls["table"] = table
+        calls["rows"] = rows
+        calls["conflict_cols"] = conflict_cols
+        calls["conflict_where"] = conflict_where
+        calls["update_exclude_cols"] = update_exclude_cols
+        return len(rows)
+
+    monkeypatch.setattr(writer, "_upsert", fake_upsert)
+
+    assert writer.upsert_sections([{"section_id": "section", "doc_id": "doc", "section_index": 0}]) == 1
+    assert calls["table"] == "rag_sections"
+    assert calls["conflict_cols"] == ["doc_id", "section_index"]
+    assert calls["conflict_where"] is None
+    assert calls["update_exclude_cols"] == ["section_id"]
     assert calls["committed"] is True
 
 

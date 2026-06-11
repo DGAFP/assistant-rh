@@ -158,7 +158,18 @@ class ServicePublicDbWriter:
 
     def upsert_sections(self, sections: list[dict[str, Any]]) -> int:
         with self._connect() as conn:
-            count = self._upsert(conn, "rag_sections", sections, ["section_id"])
+            doc_index_predicate = self._index_predicate(conn, "uq_rag_sections_doc_index")
+            if doc_index_predicate is not None:
+                count = self._upsert(
+                    conn,
+                    "rag_sections",
+                    sections,
+                    ["doc_id", "section_index"],
+                    conflict_where=doc_index_predicate or None,
+                    update_exclude_cols=["section_id"],
+                )
+            else:
+                count = self._upsert(conn, "rag_sections", sections, ["section_id"])
             conn.commit()
             return count
 
@@ -229,6 +240,22 @@ class ServicePublicDbWriter:
             ).format(sql.Identifier(self.schema), sql.Identifier("rag_documents"))
             cur.execute(query, (short_ids,))
             return {str(row[0]): str(row[1]) for row in cur.fetchall()}
+
+    def list_section_ids_by_doc_id_and_index(self, doc_ids: list[str]) -> dict[tuple[str, int], str]:
+        if not doc_ids:
+            return {}
+
+        with self._connect() as conn, conn.cursor() as cur:
+            query = sql.SQL(
+                """
+                SELECT doc_id, section_index, section_id
+                FROM {}.{}
+                WHERE doc_id = ANY(%s)
+                  AND section_index IS NOT NULL
+                """
+            ).format(sql.Identifier(self.schema), sql.Identifier("rag_sections"))
+            cur.execute(query, (doc_ids,))
+            return {(str(row[0]), int(row[1])): str(row[2]) for row in cur.fetchall()}
 
     def fetch_service_public_chunks(
         self,

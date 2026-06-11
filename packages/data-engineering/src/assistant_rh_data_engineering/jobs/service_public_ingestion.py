@@ -168,10 +168,12 @@ def remap_existing_document_ids(
     sections: list[dict[str, Any]],
     chunks: list[dict[str, Any]],
     existing_doc_ids_by_short_id: dict[str, str],
+    existing_section_ids_by_doc_index: dict[tuple[str, int], str] | None = None,
 ) -> dict[str, int]:
     from assistant_rh_data_engineering.utils.helpers import stable_section_uuid
 
     existing_doc_ids = {str(short_id).strip().upper(): str(doc_id) for short_id, doc_id in existing_doc_ids_by_short_id.items()}
+    existing_section_ids = existing_section_ids_by_doc_index or {}
     if not existing_doc_ids:
         return {"documents": 0, "sections": 0, "chunks": 0}
 
@@ -201,8 +203,12 @@ def remap_existing_document_ids(
         section["doc_id"] = target_doc_id
         section_index = section.get("section_index")
         if section_index is not None:
+            section_index_int = int(section_index)
             old_section_id = str(section.get("section_id") or "")
-            new_section_id = stable_section_uuid(target_doc_id, int(section_index))
+            new_section_id = existing_section_ids.get(
+                (target_doc_id, section_index_int),
+                stable_section_uuid(target_doc_id, section_index_int),
+            )
             if old_section_id and old_section_id != new_section_id:
                 section_id_map[old_section_id] = new_section_id
             section["section_id"] = new_section_id
@@ -329,11 +335,13 @@ def main() -> int:
     if not dsn:
         raise SystemExit(f"Aucun DSN trouvé pour l'ingestion. Passe --dsn ou définis {args.dsn_env}.")
     writer = ServicePublicDbWriter(schema=args.schema, dsn=dsn)
+    existing_doc_ids_by_short_id = writer.list_document_ids_by_short_id(short_ids)
     remapped = remap_existing_document_ids(
         documents,
         sections,
         chunks,
-        writer.list_document_ids_by_short_id(short_ids),
+        existing_doc_ids_by_short_id,
+        writer.list_section_ids_by_doc_id_and_index(list(existing_doc_ids_by_short_id.values())),
     )
 
     ingested = {"documents": 0, "sections": 0, "chunks": 0}
