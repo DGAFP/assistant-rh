@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from assistant_rh_data_engineering.jobs import service_public_ingestion, service_public_medallion
+from assistant_rh_data_engineering.service_public import pipeline as service_public_pipeline
 from assistant_rh_data_engineering.service_public.db import ServicePublicDbWriter
 from assistant_rh_data_engineering.utils.helpers import stable_section_uuid
 
@@ -189,6 +190,38 @@ def test_remap_existing_document_ids_reuses_existing_section_ids() -> None:
     assert chunks[0]["section_id"] == "existing-section"
 
 
+def test_remap_existing_document_ids_reuses_section_ids_when_doc_id_is_unchanged() -> None:
+    documents = [{"doc_id": "same-doc", "short_id": "F32513"}]
+    sections = [
+        {
+            "section_id": "new-section",
+            "doc_id": "same-doc",
+            "section_index": 0,
+            "parent_section_id": None,
+        }
+    ]
+    chunks = [
+        {
+            "hash_id": "chunk-F32513",
+            "source_document_id": "same-doc",
+            "section_id": "new-section",
+        }
+    ]
+
+    remapped = service_public_ingestion.remap_existing_document_ids(
+        documents,
+        sections,
+        chunks,
+        {"F32513": "same-doc"},
+        {("same-doc", 0): "existing-section"},
+    )
+
+    assert remapped == {"documents": 0, "sections": 1, "chunks": 1}
+    assert sections[0]["section_id"] == "existing-section"
+    assert chunks[0]["source_document_id"] == "same-doc"
+    assert chunks[0]["section_id"] == "existing-section"
+
+
 def test_ingestion_main_upserts_documents_sections_and_chunks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -250,6 +283,54 @@ def test_ingestion_main_upserts_documents_sections_and_chunks(
     assert payload["per_fiche"] == {"F32513": {"documents": 1, "sections": 1, "chunks": 1}}
     assert payload["remapped_existing_ids"] == {"documents": 0, "sections": 0, "chunks": 0}
     assert calls == {"listed_documents": 1, "listed_sections": 0, "documents": 1, "sections": 1, "chunks": 1}
+
+
+def test_pipeline_ingest_remaps_existing_ids_before_upsert(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: dict[str, Any] = {}
+
+    class DummyWriter:
+        def __init__(self, schema: str = "public"):
+            calls["schema"] = schema
+
+        def list_document_ids_by_short_id(self, short_ids: list[str]) -> dict[str, str]:
+            calls["short_ids"] = short_ids
+            return {"F32513": "same-doc"}
+
+        def list_section_ids_by_doc_id_and_index(self, doc_ids: list[str]) -> dict[tuple[str, int], str]:
+            calls["doc_ids"] = doc_ids
+            return {("same-doc", 0): "existing-section"}
+
+        def upsert_documents(self, rows: list[dict[str, Any]]) -> int:
+            calls["documents"] = rows
+            return len(rows)
+
+        def upsert_sections(self, rows: list[dict[str, Any]]) -> int:
+            calls["sections"] = rows
+            return len(rows)
+
+        def upsert_chunks(self, rows: list[dict[str, Any]]) -> int:
+            calls["chunks"] = rows
+            return len(rows)
+
+    monkeypatch.setattr(service_public_pipeline, "ServicePublicDbWriter", DummyWriter)
+    pipeline = service_public_pipeline.ServicePublicPipeline.__new__(service_public_pipeline.ServicePublicPipeline)
+
+    result = pipeline.ingest_from_silver_and_gold(
+        [
+            SimpleNamespace(
+                document={"doc_id": "same-doc", "short_id": "F32513"},
+                sections=[{"section_id": "new-section", "doc_id": "same-doc", "section_index": 0}],
+            )
+        ],
+        [SimpleNamespace(chunks=[{"hash_id": "chunk-F32513", "source_document_id": "same-doc", "section_id": "new-section"}])],
+        schema="public",
+    )
+
+    assert result == {"documents": 1, "sections": 1, "chunks": 1}
+    assert calls["short_ids"] == ["F32513"]
+    assert calls["doc_ids"] == ["same-doc"]
+    assert calls["sections"][0]["section_id"] == "existing-section"
+    assert calls["chunks"][0]["section_id"] == "existing-section"
 
 
 def test_db_writer_upserts_documents_on_short_id_when_available(monkeypatch: pytest.MonkeyPatch) -> None:

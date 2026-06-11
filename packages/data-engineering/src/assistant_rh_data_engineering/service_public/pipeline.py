@@ -53,10 +53,21 @@ class ServicePublicPipeline:
         }
 
     def ingest_from_silver_and_gold(self, silver_bundles: list[Any], gold_bundles: list[Any], schema: str = "public") -> dict[str, int]:
+        from assistant_rh_data_engineering.jobs.service_public_ingestion import remap_existing_document_ids
+
         writer = ServicePublicDbWriter(schema=schema)
         documents = [bundle.document for bundle in silver_bundles]
         sections = [section for bundle in silver_bundles for section in bundle.sections]
         chunks = [chunk for bundle in gold_bundles for chunk in bundle.chunks]
+        short_ids = [str(document.get("short_id", "")).strip().upper() for document in documents if document.get("short_id")]
+        existing_doc_ids_by_short_id = writer.list_document_ids_by_short_id(short_ids)
+        remap_existing_document_ids(
+            documents,
+            sections,
+            chunks,
+            existing_doc_ids_by_short_id,
+            writer.list_section_ids_by_doc_id_and_index(list(existing_doc_ids_by_short_id.values())),
+        )
         return {
             "documents": writer.upsert_documents(documents),
             "sections": writer.upsert_sections(sections),

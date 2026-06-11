@@ -186,21 +186,24 @@ def remap_existing_document_ids(
             continue
 
         source_doc_id = str(document.get("doc_id") or "")
-        if source_doc_id and source_doc_id != target_doc_id:
+        if source_doc_id:
             doc_id_map[source_doc_id] = target_doc_id
         if document.get("doc_id") != target_doc_id:
             document["doc_id"] = target_doc_id
             remapped_documents += 1
 
     section_id_map: dict[str, str] = {}
-    remapped_sections = 0
-    for section in sections:
+    remapped_section_indexes: set[int] = set()
+    for index, section in enumerate(sections):
         source_doc_id = str(section.get("doc_id") or "")
         target_doc_id = doc_id_map.get(source_doc_id)
         if not target_doc_id:
             continue
 
-        section["doc_id"] = target_doc_id
+        section_remapped = False
+        if section.get("doc_id") != target_doc_id:
+            section["doc_id"] = target_doc_id
+            section_remapped = True
         section_index = section.get("section_index")
         if section_index is not None:
             section_index_int = int(section_index)
@@ -211,29 +214,37 @@ def remap_existing_document_ids(
             )
             if old_section_id and old_section_id != new_section_id:
                 section_id_map[old_section_id] = new_section_id
-            section["section_id"] = new_section_id
-        remapped_sections += 1
+            if section.get("section_id") != new_section_id:
+                section["section_id"] = new_section_id
+                section_remapped = True
+        if section_remapped:
+            remapped_section_indexes.add(index)
 
-    for section in sections:
+    for index, section in enumerate(sections):
         parent_section_id = section.get("parent_section_id")
         if parent_section_id in section_id_map:
             section["parent_section_id"] = section_id_map[parent_section_id]
+            remapped_section_indexes.add(index)
 
     remapped_chunks = 0
     for chunk in chunks:
+        chunk_remapped = False
         source_document_id = str(chunk.get("source_document_id") or "")
         target_doc_id = doc_id_map.get(source_document_id)
-        if target_doc_id:
+        if target_doc_id and chunk.get("source_document_id") != target_doc_id:
             chunk["source_document_id"] = target_doc_id
-            remapped_chunks += 1
+            chunk_remapped = True
 
         section_id = chunk.get("section_id")
         if section_id in section_id_map:
             chunk["section_id"] = section_id_map[section_id]
+            chunk_remapped = True
+        if chunk_remapped:
+            remapped_chunks += 1
 
     return {
         "documents": remapped_documents,
-        "sections": remapped_sections,
+        "sections": len(remapped_section_indexes),
         "chunks": remapped_chunks,
     }
 
