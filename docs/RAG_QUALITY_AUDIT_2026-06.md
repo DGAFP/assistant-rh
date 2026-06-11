@@ -78,11 +78,12 @@ Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme
 
 ### 2.5 Observabilité
 
-Le logging `chat_runs` est riche (140+ colonnes) mais :
+Le logging `chat_runs` est riche (140+ colonnes) mais ne donne pas encore une vision production consolidée : usage, volumes de requêtes, latences P50/P95/P99, pannes provider, no-answer, rerank, traces et alerting.
+
+La trajectoire détaillée est traitée dans le document dédié : [Observabilité RAG & Dashboards Grafana](./RAG_OBSERVABILITY_ROADMAP_2026-06.md). Points à garder dans cette roadmap qualité :
 - l'échec du rerank n'est pas loggé comme tel (aucune colonne, aucun alerting) — une panne totale est restée invisible ;
-- `v3_sections_before/after_rerank` sont des *compteurs*, pas des listes : impossible de savoir a posteriori si le rerank a réellement réordonné ;
-- `v3_top1_score` médian = 0 sur les runs loggés — la colonne est peu fiable ou peu renseignée ;
-- l'analyse IA des feedbacks plante régulièrement (`'NoneType' object has no attribute 'strip'`).
+- les dashboards Grafana doivent couvrir l'usage, la santé RAG, les latences, les providers/infra et les feedbacks qualité ;
+- les traces doivent relier un `turn_id`/`trace_id` à chaque étape : retrieval, rerank, selector, contexte, génération et appels providers.
 
 ---
 
@@ -132,11 +133,12 @@ Le logging `chat_runs` est riche (140+ colonnes) mais :
 
 *Dépendance : aucune. Risque : l'hybride change l'ordre des résultats → valider sur le jeu de questions avant bascule.*
 
-### Phase 1 — Mesure et observabilité (16 juin → 11 juillet)
+### Phase 1 — Mesure, observabilité et pilotage production (16 juin → 11 juillet)
 
 - Constituer le **goldset v1 : 80–120 questions** depuis `chat_feedbacks` (mix positifs/négatifs, tous thèmes, difficultés étiquetées) avec réponses et sources attendues.
 - Harness d'éval automatisé (recall@k chunks/sections, présence de la bonne source dans le contexte final, no-answer justifié ou non, juge LLM sur la réponse) exécutable en CI et en local — en réutilisant `src/goldset/` et `tests/conformance/`.
 - **Baseline chiffrée** avant/après Phase 0 ; tableau de bord hebdo (taux no-answer, helpful rate, échecs provider).
+- Observabilité production : voir le document dédié [Observabilité RAG & Dashboards Grafana](./RAG_OBSERVABILITY_ROADMAP_2026-06.md) pour les dashboards Grafana, traces, alertes et métriques infra/RAG.
 - Réparer l'analyse IA des feedbacks (crashs `NoneType`).
 - Seed local aligné prod (`rag_chunks_test` incluse) ; script unique « run prod-config local ».
 
@@ -189,6 +191,7 @@ Le logging `chat_runs` est riche (140+ colonnes) mais :
 | Taux d'échec rerank / embeddings / LLM | logs + alerting | inconnu (non mesuré) | < 1 %, alerté |
 | Part `retrieval_issue` dans les feedbacks négatifs | `chat_feedbacks` (analyse IA réparée) | 58 % | < 30 % |
 | Latence P50/P95 par étage | `chat_runs` | à figer | pas de régression |
+| Observabilité production | Grafana + `chat_runs` + logs/traces Scaleway | dashboards absents | dashboards v1 + alertes rerank/provider |
 
 **Critère d'acceptation général** : aucune bascule de config/scoring en prod sans run goldset complet avant/après, archivé.
 
