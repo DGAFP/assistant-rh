@@ -8,7 +8,7 @@
 
 ## 1. Synthèse pour décision
 
-**Constat principal : le reranker Albert est silencieusement cassé en production.** L'API Albert `/rerank` a changé de schéma (`prompt`/`input` → `query`/`documents`) ; chaque appel renvoie HTTP 422 et le pipeline retombe sans alerte sur l'ordre d'agrégation brut. Or le scoring d'agrégation est un RRF cross-source qui jette l'amplitude de similarité : sans reranker, le système n'a **aucun signal de pertinence réelle**.
+**Constat principal : le reranker Albert est silencieusement cassé en production.** L'API Albert `/rerank` a changé de schéma (`prompt`/`input` → `query`/`documents`) ; chaque appel renvoie HTTP 422 et le pipeline retombe sans alerte sur l'ordre d'agrégation brut. Or le scoring d'agrégation est un RRF cross-source qui jette l'amplitude de similarité : sans reranker, l'aval ne dispose plus d'un score calibré de pertinence ; il ne reçoit qu'un signal de rang fusionné, peu discriminant.
 
 **Preuve d'impact (replay local, 4 questions en échec issues des feedbacks négatifs réels) :**
 
@@ -36,17 +36,17 @@ Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme
 
 **C1. Reranker cassé (critique, vérifié).** `reranker.py` envoie `{"model", "prompt", "input", "top_n"}` ; l'API actuelle exige `{"model", "query", "documents"}` → 422 systématique, reproduit en local contre l'API réelle. Le fallback « keeping aggregated order » est silencieux : aucune métrique, aucun log d'alerte agrégé, le port TypeScript n'a pas encore branché le rerank. Avec le payload corrigé, l'endpoint répond normalement (scores 0,96 vs 1,6e-05 sur un test discriminant).
 
-**C2. Le score fusionné ne porte aucune information de pertinence.** `_merge_cross_source_ranks` applique un RRF (k=60) entre 8 listes (4 tables × 2 chemins chunk/heading) puis normalise au plafond théorique. Conséquences observées :
-- scores quasi plats : 0,167 / 0,164 / … quelle que soit la pertinence réelle ;
+**C2. Le score fusionné perd l'amplitude de pertinence.** `_merge_cross_source_ranks` applique un RRF (k=60) entre 8 listes (4 tables × 2 chemins chunk/heading) puis normalise au plafond théorique. Le RRF conserve un signal de rang, mais il ne conserve pas l'amplitude des scores de similarité et ne fournit pas un score calibré de pertinence. Conséquences observées :
+- scores quasi plats : 0,167 / 0,164 / … avec peu de discrimination entre sections très pertinentes et bruit ;
 - le #1 d'une table sans aucun contenu pertinent pèse autant que le #1 d'une table avec une réponse exacte ;
-- impossible de distinguer « rien de pertinent dans le corpus » de « réponse exacte trouvée » — le no-answer ne peut venir que du selector LLM ;
+- difficile de distinguer « rien de pertinent dans le corpus » de « réponse exacte trouvée » à partir du score seul — le no-answer repose surtout sur le selector LLM ;
 - le score d'agrégation de section (0,5×max + 0,3×mean + 0,2×count) appliqué à des scores plats est dominé par le *nombre* de chunks, pas leur qualité.
 
 **C3. Mode sémantique seul insuffisant sur les termes exacts.** En sémantique (défaut prod), « RIFSEEP » ne remonte aucun des 18 chunks qui le contiennent ; en hybride, 4 remontent mais noyés à 0,167. Les questions à acronymes/références (fréquentes en RH) sont structurellement pénalisées. La table DGAFP est déjà forcée en hybride pour les requêtes juridiques — le mécanisme existe, il n'est pas généralisé.
 
 **C4. Chunks invisibles silencieusement.** Le retriever filtre `WHERE embedding_m3 IS NOT NULL` : 146/324 chunks RGRH (45 %) n'ont pas d'embedding m3 et sont donc exclus de la recherche sémantique sans aucune trace. (MATTE : 762 nulls sur `bge_scw`/`qwen3`, sans impact tant qu'Albert est primaire — mais le fallback embeddings BGE-Scaleway chercherait dans une colonne aux 762 trous.)
 
-**C5. DGAFP quasi absente des réponses finales.** Les distributions de sources loggées sont dominées par MATTE/Service-Public ; DGAFP n'apparaît pas dans le top des combinaisons malgré 3 992 chunks. Intent gating conditionnel + scores plats + sections standalone (pas de regroupement) l'écartent.
+**C5. DGAFP quasi absente des réponses finales.** Les distributions de sources loggées sont dominées par MATTE/Service-Public ; DGAFP n'apparaît pas dans le top des combinaisons malgré 3 992 chunks. Intent gating conditionnel + scores plats + sections standalone (pas de regroupement) l'écartent. Point à confirmer avant arbitrage : sur un DSN actif consulté lors de la revue, `rag_chunks_dgafp` apparaît avec `embedding_m3 IS NULL` et `embedding_bge_scw IS NULL` pour 3 992/3 992 chunks. Si ce DSN est représentatif de staging/prod, DGAFP est invisible en recherche sémantique pure et ne peut revenir que par les chemins lexicaux/hybrides.
 
 ### 2.2 Chunking et structuration
 
@@ -169,7 +169,16 @@ Le logging `chat_runs` est riche (140+ colonnes) mais :
 
 ---
 
-## 6. Métriques de suivi proposées
+## 6. Limites de validation / points à confirmer
+
+- Les scripts de replay et d'audit SQL utilisés pour produire cette note ne sont pas commités dans cette PR ; les résultats doivent donc être traités comme des constats reproductibles localement, mais pas encore comme un harness d'évaluation maintenu.
+- Les chiffres DB proviennent d'une copie locale Supabase et de vérifications ponctuelles en lecture seule ; il faut confirmer les écarts sensibles sur le DSN staging/prod qui servira d'arbitrage.
+- Le statut des embeddings DGAFP est à confirmer rapidement : si les 3 992 chunks DGAFP sont bien sans `embedding_m3` et sans `embedding_bge_scw` sur l'environnement actif, leur absence des réponses finales est un problème d'indexation/retrieval plus direct que le seul intent gating.
+- La bascule globale en mode hybride doit rester réversible et précédée au minimum d'un mini-jeu de replay/goldset archivé. Le fix du payload reranker, lui, peut être traité comme un bug urgent et isolé.
+
+---
+
+## 7. Métriques de suivi proposées
 
 | Métrique | Source | Baseline (à figer en Phase 1) | Cible 3 mois |
 |---|---|---|---|
@@ -185,10 +194,10 @@ Le logging `chat_runs` est riche (140+ colonnes) mais :
 
 ---
 
-## 7. Décision demandée (15 juin)
+## 8. Décision demandée (15 juin)
 
 1. **Valider le déploiement immédiat des quick wins Phase 0** (fix rerank en premier).
-2. Valider le séquencement Phase 1 → 3 et les cibles chiffrées du §6.
+2. Valider le séquencement Phase 1 → 3 et les cibles chiffrées du §7.
 3. Arbitrer la bascule en mode hybride : directe (recommandé, réversible) ou après goldset v1.
 
 ## Sources
