@@ -177,7 +177,7 @@ def test_start_definition_renders_scw_start_command(monkeypatch: pytest.MonkeyPa
         calls.append(args)
         assert secrets == ["secret"]
         assert dry_run is True
-        return "{}"
+        return json.dumps({"id": "run-id", "state": "succeeded"})
 
     monkeypatch.setattr(scaleway_data_jobs, "run_scw", fake_run_scw)
 
@@ -206,9 +206,45 @@ def test_start_definition_renders_scw_start_command(monkeypatch: pytest.MonkeyPa
             "environment-variables.SCW_SECRET_KEY=secret",
             "environment-variables.TARGET_ENV=staging",
             "region=fr-par",
+            "-o",
+            "json",
             "-w",
         ]
     ]
+
+
+def test_start_definition_raises_when_waited_scaleway_run_failed() -> None:
+    def fake_run_scw(args: list[str], *, secrets: list[str], dry_run: bool = False) -> str:
+        assert "-w" in args
+        return json.dumps(
+            {
+                "id": "run-id",
+                "state": "failed",
+                "reason": "exited_with_error",
+                "error_message": "database password plain-secret leaked here",
+            }
+        )
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(scaleway_data_jobs, "run_scw", fake_run_scw)
+        with pytest.raises(RuntimeError) as exc_info:
+            scaleway_data_jobs.start_definition(
+                "job-id",
+                {"key": "service-public-ingestion"},
+                ["service-public", "ingest"],
+                {"TARGET_ENV": "staging"},
+                "fr-par",
+                wait=True,
+                secrets=["plain-secret"],
+                dry_run=False,
+            )
+
+    message = str(exc_info.value)
+    assert "service-public-ingestion" in message
+    assert "state=failed" in message
+    assert "exited_with_error" in message
+    assert "plain-secret" not in message
+    assert "***" in message
 
 
 def test_upsert_and_start_jobs_uses_existing_definition_without_real_scw(

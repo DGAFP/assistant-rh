@@ -129,6 +129,18 @@ def definition_id(definition: dict[str, Any]) -> str:
     return job_id
 
 
+def extract_run(payload: Any) -> dict[str, Any]:
+    if isinstance(payload, dict):
+        for key in ("run", "job_run", "job"):
+            value = payload.get(key)
+            if isinstance(value, dict):
+                return value
+        return payload
+    if isinstance(payload, list) and payload and isinstance(payload[0], dict):
+        return payload[0]
+    return {}
+
+
 def render_args(values: list[str], context: dict[str, str]) -> list[str]:
     return [value.format(**context) for value in values]
 
@@ -277,10 +289,33 @@ def start_definition(
         *indexed_args("args", command_args),
         *[f"environment-variables.{key}={value}" for key, value in sorted(environment.items())],
         f"region={region}",
+        "-o",
+        "json",
     ]
     if wait:
         args.append("-w")
-    run_scw(args, secrets=secrets, dry_run=dry_run)
+    output = run_scw(args, secrets=secrets, dry_run=dry_run)
+    if dry_run or not wait:
+        return
+
+    run = extract_run(json.loads(output or "{}"))
+    state = str(run.get("state") or "").strip().lower()
+    if state != "succeeded":
+        run_id = str(run.get("id") or "").strip()
+        error_message = str(run.get("error_message") or "").strip()
+        reason = str(run.get("reason") or "").strip()
+        details = ", ".join(
+            part
+            for part in (
+                f"id={run_id}" if run_id else "",
+                f"state={state}" if state else "",
+                f"reason={reason}" if reason else "",
+            )
+            if part
+        )
+        if error_message:
+            details = f"{details}: {redacted(error_message, secrets)}" if details else redacted(error_message, secrets)
+        raise RuntimeError(f"Scaleway job run failed for {spec.get('key')}: {details}")
 
 
 def upsert_and_start_jobs(args: argparse.Namespace) -> int:

@@ -92,15 +92,11 @@ class ServicePublicDbWriter:
         placeholders = []
         for col in cols:
             if col in vector_cols:
-                placeholders.append(
-                    sql.SQL("%({})s::vector").format(sql.SQL(col))
-                )
+                placeholders.append(sql.SQL("%({})s::vector").format(sql.SQL(col)))
             else:
                 placeholders.append(sql.SQL("%({})s").format(sql.SQL(col)))
 
-        query = sql.SQL(
-            "INSERT INTO {}.{} ({}) VALUES ({}) ON CONFLICT ({}) DO UPDATE SET {}"
-        ).format(
+        query = sql.SQL("INSERT INTO {}.{} ({}) VALUES ({}) ON CONFLICT ({}) DO UPDATE SET {}").format(
             sql.Identifier(self.schema),
             sql.Identifier(table),
             sql.SQL(", ").join(sql.Identifier(col) for col in cols),
@@ -121,7 +117,9 @@ class ServicePublicDbWriter:
 
     def upsert_documents(self, documents: list[dict[str, Any]]) -> int:
         with self._connect() as conn:
-            count = self._upsert(conn, "rag_documents", documents, ["doc_id"])
+            column_types = self._column_types(conn, "rag_documents")
+            conflict_cols = ["short_id"] if "short_id" in column_types else ["doc_id"]
+            count = self._upsert(conn, "rag_documents", documents, conflict_cols)
             conn.commit()
             return count
 
@@ -156,10 +154,7 @@ class ServicePublicDbWriter:
         with self._connect() as conn, conn.cursor() as cur:
             column_types = self._column_types(conn, table)
             if id_column not in column_types:
-                raise RuntimeError(
-                    f"Column {id_column!r} not found in "
-                    f"{self.schema}.{table}."
-                )
+                raise RuntimeError(f"Column {id_column!r} not found in {self.schema}.{table}.")
 
             where_clauses = [
                 sql.SQL("{} IS NOT NULL").format(sql.Identifier(id_column)),
@@ -168,16 +163,10 @@ class ServicePublicDbWriter:
             params: list[Any] = [rf"^{prefix}[0-9]+$"]
 
             if source_value and "source" in column_types:
-                where_clauses.append(
-                    sql.SQL("LOWER({}) = %s").format(
-                        sql.Identifier("source")
-                    )
-                )
+                where_clauses.append(sql.SQL("LOWER({}) = %s").format(sql.Identifier("source")))
                 params.append(source_value.lower())
 
-            query = sql.SQL(
-                "SELECT DISTINCT {} FROM {}.{} WHERE {} ORDER BY {}"
-            ).format(
+            query = sql.SQL("SELECT DISTINCT {} FROM {}.{} WHERE {} ORDER BY {}").format(
                 sql.Identifier(id_column),
                 sql.Identifier(self.schema),
                 sql.Identifier(table),

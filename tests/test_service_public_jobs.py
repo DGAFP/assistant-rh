@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from assistant_rh_data_engineering.jobs import service_public_ingestion, service_public_medallion
+from assistant_rh_data_engineering.service_public.db import ServicePublicDbWriter
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -140,6 +141,45 @@ def test_ingestion_main_upserts_documents_sections_and_chunks(
     assert payload["ingested"] == {"documents": 1, "sections": 1, "chunks": 1}
     assert payload["per_fiche"] == {"F32513": {"documents": 1, "sections": 1, "chunks": 1}}
     assert calls == {"documents": 1, "sections": 1, "chunks": 1}
+
+
+def test_db_writer_upserts_documents_on_short_id_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    writer = ServicePublicDbWriter(dsn="postgresql://unused")
+    calls: dict[str, Any] = {}
+
+    class DummyConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def commit(self) -> None:
+            calls["committed"] = True
+
+    monkeypatch.setattr(writer, "_connect", lambda: DummyConnection())
+    monkeypatch.setattr(
+        writer,
+        "_column_types",
+        lambda conn, table: {
+            "doc_id": ("text", None),
+            "short_id": ("text", None),
+            "title": ("text", None),
+        },
+    )
+
+    def fake_upsert(conn: object, table: str, rows: list[dict[str, Any]], conflict_cols: list[str]) -> int:
+        calls["table"] = table
+        calls["rows"] = rows
+        calls["conflict_cols"] = conflict_cols
+        return len(rows)
+
+    monkeypatch.setattr(writer, "_upsert", fake_upsert)
+
+    assert writer.upsert_documents([{"doc_id": "new-doc", "short_id": "F12386", "title": "Titre"}]) == 1
+    assert calls["table"] == "rag_documents"
+    assert calls["conflict_cols"] == ["short_id"]
+    assert calls["committed"] is True
 
 
 def test_summarize_pipeline_outputs_returns_per_fiche_counts() -> None:
