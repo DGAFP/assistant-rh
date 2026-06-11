@@ -36,6 +36,8 @@ Le cœur du pipeline (`packages/rag-pipeline/`) est bien découpé en modules et
 
 **A5 — Couches legacy entremêlées.** `src/ui/` (« helpers not yet packaged »), `src/_archive/`, `scripts/` (704 Ko de notebooks historiques), duplication des helpers DB (`src/ui/db_utils.py` vs `packages/rag-pipeline/.../db_helpers.py`), deux générations d'ingestion coexistantes (note 01). Le README annonce `src/goldset/` comme « outils d'évaluation » mais la table cible est vide.
 
+**A6 — `chat_runs` : table de log obèse et mal ciblée.** ~125 colonnes par tour, accumulées par strates de versions (`v3_*`, doublons `use_query_rewriting`/`rewritten_query`/`reformulated_query`/`reformulation_model`…, colonnes v2 mortes). Beaucoup ne sont jamais lues. Symptômes : schéma illisible, écritures coûteuses, et surtout **mauvaise granularité pour le diagnostic** — on logge des *compteurs* et des agrégats (`v3_sections_before/after_rerank`, `v3_top1_score` souvent à 0) mais **pas les données qui permettraient une vraie observabilité du retrieval** : le jeu de chunks à chaque étape (retrieval brut par table → fusion → agrégation → rerank → selector → contexte final) n'est pas persisté de façon exploitable. Conséquence : impossible de rejouer ou d'expliquer a posteriori *pourquoi* un chunk pertinent a été perdu (cf. les cas tracés en note 01 §3, reconstitués à la main faute de trace). Le sujet est double — **rationaliser le schéma** (supprimer le mort, normaliser) et **ajouter les bons signaux** (sets de chunks par étape, scores réels, état du rerank). L'audit approfondi (note [06](06_AUDIT_CODE_ET_DB.md)) chiffre le problème : **154 colonnes réelles, 33 jamais écrites par le code — dont précisément les colonnes de diagnostic** (`v3_chunks_raw`, `v3_top1_score`, `v3_chunks_before/after_rerank`…), conçues mais jamais câblées. La note 06 couvre aussi les index vectoriels manquants, l'absence de FK, les tables fantômes et les erreurs fail-open. Voir aussi le plan d'audit D16 (note [05](05_PLAN_AUDIT_ET_COUVERTURE.md)) et l'observabilité (note [03](03_RAG_OBSERVABILITY_ROADMAP_2026-06.md)).
+
 ---
 
 ## 3. Qualité de code
@@ -53,12 +55,12 @@ Le cœur du pipeline (`packages/rag-pipeline/`) est bien découpé en modules et
 
 ## 4. Observabilité — le déficit le plus coûteux
 
-Le paradoxe du repo : `chat_runs` logge 140+ colonnes par tour de chat, mais **aucun signal n'est exploité automatiquement**.
+Le paradoxe du repo : `chat_runs` logge ~125 colonnes par tour de chat, mais **aucun signal n'est exploité automatiquement** — et paradoxalement les bonnes données pour le diagnostic n'y sont pas (cf. A6 ci-dessous).
 
 - **Aucun APM / error tracking / métrique** : pas de Sentry, Prometheus, OTel ni équivalent. Le logging est du `logging.getLogger` standard sans configuration centrale, visible uniquement dans les logs de conteneur Scaleway.
 - **Les pannes provider sont des warnings de flux** : le rerank cassé loggue « Section reranking failed, keeping aggregated order » à chaque requête depuis des semaines/mois sans qu'aucune alerte n'existe. Idem pour `rag_chunks_test` absente (« Search on X failed » avalé par le ThreadPool, `retriever.py:271-272`) et pour les fallbacks embeddings/LLM.
 - **Pas de health check sémantique** : rien ne vérifie périodiquement que les endpoints Albert (modèles, schémas de payload) répondent comme attendu — alors que le projet a déjà subi deux ruptures d'API silencieuses (rerank, et le schéma `/models`).
-- **Colonnes de log mal conçues pour le diagnostic** : `v3_sections_before/after_rerank` sont des compteurs (impossible de savoir si le rerank a réordonné) ; `v3_top1_score` médian = 0 (peu fiable) ; l'état du rerank (ok/échec) n'est pas loggé.
+- **Colonnes de log mal conçues pour le diagnostic** : `v3_sections_before/after_rerank` sont des compteurs (impossible de savoir si le rerank a réordonné) ; `v3_top1_score` est à 0 **parce que la colonne n'est jamais écrite** (note [06](06_AUDIT_CODE_ET_DB.md) §1.1, et non parce que les scores seraient nuls) ; l'état du rerank (ok/échec) n'est pas loggé.
 - **L'analyse automatique des feedbacks crashe** (`'NoneType' object has no attribute 'strip'`) sans supervision.
 
 **Recommandation prioritaire** : (1) error tracking (Sentry self-hosted ou équivalent souverain) sur Streamlit + jobs ; (2) un « provider contract check » quotidien en CI (embeddings + rerank + LLM, payloads réels) ; (3) promouvoir 3 compteurs en alertes : taux d'échec rerank, taux de fallback provider, taux de no-answer.

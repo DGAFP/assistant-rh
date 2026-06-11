@@ -29,6 +29,8 @@ Le socle cible est **Scaleway Serverless Containers + Cockpit/Grafana**.
 
 Principe de mise en œuvre : ne pas remplacer `chat_runs` par Grafana, mais relier les deux niveaux. Grafana donne le pilotage temps réel et les alertes ; `chat_runs` donne le diagnostic métier détaillé et l'analyse a posteriori.
 
+**Prérequis : refondre la persistance des traces RAG.** L'observabilité de niveau trace (chemin question → retrieval → rerank → selector → contexte) suppose de persister les **sets de chunks à chaque étape** — ce que `chat_runs` ne fait pas aujourd'hui (compteurs et agrégats seulement, cf. note [02](02_ARCHITECTURE_AUDIT_2026-06.md) A6). Cible : pour chaque `turn_id`, un enregistrement structuré (idéalement une table d'événements séparée, pas 30 colonnes de plus dans `chat_runs`) capturant par étape les identifiants de chunks, scores réels et décisions, permettant de **rejouer et expliquer** la perte d'un chunk pertinent. Ce chantier est jumeau de la rationalisation du schéma `chat_runs` (note [05](05_PLAN_AUDIT_ET_COUVERTURE.md) D16) : enlever le mort, ajouter le signal utile.
+
 ## 3. Dashboards Grafana v1
 
 ### 3.1 Vue exécutive
