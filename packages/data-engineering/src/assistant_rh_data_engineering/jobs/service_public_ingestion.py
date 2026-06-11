@@ -66,6 +66,9 @@ def load_artifacts(
     chunks: list[dict[str, Any]] = []
     per_fiche: dict[str, dict[str, int]] = {}
     errors: list[str] = []
+    # Lecture+parsing isolés par artefact : un fichier corrompu est collecté dans
+    # `errors` comme un fichier manquant, pour rapporter tout le corpus en un run.
+    read_errors = (json.JSONDecodeError, OSError, UnicodeDecodeError)
 
     for short_id in short_ids:
         document_path = silver_documents_dir / f"{short_id}.document.json"
@@ -74,27 +77,39 @@ def load_artifacts(
 
         document: dict[str, Any] | None = None
         if document_path.exists():
-            document = read_json(document_path)
+            try:
+                document = read_json(document_path)
+            except read_errors as exc:
+                errors.append(f"{short_id}: document silver illisible ({document_path}): {exc}")
             if document:
                 documents.append(document)
-            else:
+            elif document is not None:
                 errors.append(f"{short_id}: document silver vide ({document_path})")
         else:
             errors.append(f"{short_id}: document silver manquant ({document_path})")
 
-        section_rows = read_jsonl(sections_path) if sections_path.exists() else []
-        if section_rows:
-            sections.extend(section_rows)
+        section_rows: list[dict[str, Any]] = []
+        try:
+            section_rows = read_jsonl(sections_path) if sections_path.exists() else []
+        except read_errors as exc:
+            errors.append(f"{short_id}: sections silver illisibles ({sections_path}): {exc}")
         else:
-            errors.append(f"{short_id}: sections silver manquantes ou vides ({sections_path})")
-
-        chunk_rows = []
-        if not skip_chunks:
-            chunk_rows = read_jsonl(chunks_path) if chunks_path.exists() else []
-            if chunk_rows:
-                chunks.extend(chunk_rows)
+            if section_rows:
+                sections.extend(section_rows)
             else:
-                errors.append(f"{short_id}: chunks gold manquants ou vides ({chunks_path})")
+                errors.append(f"{short_id}: sections silver manquantes ou vides ({sections_path})")
+
+        chunk_rows: list[dict[str, Any]] = []
+        if not skip_chunks:
+            try:
+                chunk_rows = read_jsonl(chunks_path) if chunks_path.exists() else []
+            except read_errors as exc:
+                errors.append(f"{short_id}: chunks gold illisibles ({chunks_path}): {exc}")
+            else:
+                if chunk_rows:
+                    chunks.extend(chunk_rows)
+                else:
+                    errors.append(f"{short_id}: chunks gold manquants ou vides ({chunks_path})")
 
         per_fiche[short_id] = {
             "documents": 1 if document else 0,

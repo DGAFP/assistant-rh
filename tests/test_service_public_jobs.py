@@ -63,6 +63,20 @@ def test_load_artifacts_fails_on_empty_chunks_file(tmp_path: Path) -> None:
         service_public_ingestion.load_artifacts(tmp_path, ["F32513"])
 
 
+def test_load_artifacts_collects_corrupted_files_across_corpus(tmp_path: Path) -> None:
+    corrupted_chunks = tmp_path / "gold" / "chunks" / "F32513.chunks.jsonl"
+    _write_service_public_artifacts(tmp_path, "F32513")
+    corrupted_chunks.write_text('{"hash_id": "chunk-F32513", "tronqué', encoding="utf-8")
+    _write_service_public_artifacts(tmp_path, "F12163", sections=False)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        service_public_ingestion.load_artifacts(tmp_path, ["F32513", "F12163"])
+
+    message = str(excinfo.value)
+    assert "F32513: chunks gold illisibles" in message
+    assert "F12163: sections silver" in message
+
+
 def test_load_artifacts_allows_missing_chunks_when_skipped(tmp_path: Path) -> None:
     _write_service_public_artifacts(tmp_path, "F32513", chunks=False)
 
