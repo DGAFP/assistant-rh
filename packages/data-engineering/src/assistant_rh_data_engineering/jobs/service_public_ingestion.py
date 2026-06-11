@@ -23,11 +23,7 @@ def read_json(path: Path) -> dict[str, Any]:
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
-    return [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def chunked(items: list[dict[str, Any]], size: int) -> list[list[dict[str, Any]]]:
@@ -55,19 +51,77 @@ def resolve_short_ids(raw_ids: list[str]) -> list[str]:
     return short_ids
 
 
-def load_artifacts(lake_root: Path, short_ids: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+def load_artifacts(
+    lake_root: Path,
+    short_ids: list[str],
+    *,
+    skip_chunks: bool = False,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, dict[str, int]]]:
     silver_documents_dir = lake_root / "silver" / "documents"
+    silver_sections_dir = lake_root / "silver" / "sections"
     gold_chunks_dir = lake_root / "gold" / "chunks"
 
     documents: list[dict[str, Any]] = []
+    sections: list[dict[str, Any]] = []
     chunks: list[dict[str, Any]] = []
+    per_fiche: dict[str, dict[str, int]] = {}
+    errors: list[str] = []
+    # Lecture+parsing isolés par artefact : un fichier corrompu est collecté dans
+    # `errors` comme un fichier manquant, pour rapporter tout le corpus en un run.
+    read_errors = (json.JSONDecodeError, OSError, UnicodeDecodeError)
 
     for short_id in short_ids:
-        if (silver_documents_dir / f"{short_id}.document.json").exists():
-            documents.append(read_json(silver_documents_dir / f"{short_id}.document.json"))
-        chunks.extend(read_jsonl(gold_chunks_dir / f"{short_id}.chunks.jsonl"))
+        document_path = silver_documents_dir / f"{short_id}.document.json"
+        sections_path = silver_sections_dir / f"{short_id}.sections.jsonl"
+        chunks_path = gold_chunks_dir / f"{short_id}.chunks.jsonl"
 
-    return documents, [], chunks
+        document: dict[str, Any] | None = None
+        if document_path.exists():
+            try:
+                document = read_json(document_path)
+            except read_errors as exc:
+                errors.append(f"{short_id}: document silver illisible ({document_path}): {exc}")
+            if document:
+                documents.append(document)
+            elif document is not None:
+                errors.append(f"{short_id}: document silver vide ({document_path})")
+        else:
+            errors.append(f"{short_id}: document silver manquant ({document_path})")
+
+        section_rows: list[dict[str, Any]] = []
+        try:
+            section_rows = read_jsonl(sections_path) if sections_path.exists() else []
+        except read_errors as exc:
+            errors.append(f"{short_id}: sections silver illisibles ({sections_path}): {exc}")
+        else:
+            if section_rows:
+                sections.extend(section_rows)
+            else:
+                errors.append(f"{short_id}: sections silver manquantes ou vides ({sections_path})")
+
+        chunk_rows: list[dict[str, Any]] = []
+        if not skip_chunks:
+            try:
+                chunk_rows = read_jsonl(chunks_path) if chunks_path.exists() else []
+            except read_errors as exc:
+                errors.append(f"{short_id}: chunks gold illisibles ({chunks_path}): {exc}")
+            else:
+                if chunk_rows:
+                    chunks.extend(chunk_rows)
+                else:
+                    errors.append(f"{short_id}: chunks gold manquants ou vides ({chunks_path})")
+
+        per_fiche[short_id] = {
+            "documents": 1 if document else 0,
+            "sections": len(section_rows),
+            "chunks": len(chunk_rows),
+        }
+
+    if errors:
+        detail = "\n".join(f"- {error}" for error in errors)
+        raise RuntimeError(f"Artefacts Service-Public incomplets pour l'ingestion:\n{detail}")
+
+    return documents, sections, chunks, per_fiche
 
 
 def dedupe_chunk_hash_ids(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -111,10 +165,7 @@ def dedupe_chunk_hash_ids(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description=(
-            "Job d'ingestion Service-Public: relit les artefacts silver/gold "
-            "et applique les UPSERTs du notebook ingestion_pdf en base."
-        )
+        description=("Job d'ingestion Service-Public: relit les artefacts silver/gold et applique les UPSERTs du notebook ingestion_pdf en base.")
     )
     parser.add_argument(
         "--lake-root",
@@ -161,7 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--from-object-storage",
         action="store_true",
-        help="Télécharge gold depuis les buckets Scaleway avant ingestion.",
+        help="Télécharge silver/gold depuis les buckets Scaleway avant ingestion.",
     )
     parser.add_argument(
         "--skip-chunks",
@@ -196,19 +247,25 @@ def main() -> int:
         syncer.download_medallion_root(
             lake_root,
             args.target_env,
-            include_layers=("gold",),
+            include_layers=("silver", "gold"),
         )
 
-    documents, sections, chunks = load_artifacts(lake_root, short_ids)
+    documents, sections, chunks, per_fiche = load_artifacts(
+        lake_root,
+        short_ids,
+        skip_chunks=args.skip_chunks,
+    )
     chunks = dedupe_chunk_hash_ids(chunks)
     dsn = args.dsn or os.getenv(args.dsn_env)
     if not dsn:
-        raise SystemExit(
-            f"Aucun DSN trouvé pour l'ingestion. Passe --dsn ou définis {args.dsn_env}."
-        )
+        raise SystemExit(f"Aucun DSN trouvé pour l'ingestion. Passe --dsn ou définis {args.dsn_env}.")
     writer = ServicePublicDbWriter(schema=args.schema, dsn=dsn)
 
     ingested = {"documents": 0, "sections": 0, "chunks": 0}
+    for batch in chunked(documents, args.batch_size):
+        ingested["documents"] += writer.upsert_documents(batch)
+    for batch in chunked(sections, args.batch_size):
+        ingested["sections"] += writer.upsert_sections(batch)
     if not args.skip_chunks:
         for batch in chunked(chunks, args.batch_size):
             ingested["chunks"] += writer.upsert_chunks(batch)
@@ -227,6 +284,7 @@ def main() -> int:
                     "sections": len(sections),
                     "chunks": len(chunks),
                 },
+                "per_fiche": per_fiche,
                 "ingested": ingested,
                 "from_object_storage": args.from_object_storage,
             },
