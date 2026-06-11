@@ -1,8 +1,8 @@
-# Observabilité RAG & Dashboards Grafana
+# Observabilité RAG & Dashboards Grafana — Itération 2
 
-> Document complémentaire à la roadmap qualité RAG : [RAG_QUALITY_AUDIT_2026-06.md](./RAG_QUALITY_AUDIT_2026-06.md)
+> Document complémentaire à la planification itération 2 : [RAG_QUALITY_AUDIT_2026-06.md](./RAG_QUALITY_AUDIT_2026-06.md)
 > Date : 2026-06-11
-> Objectif : rendre le RAG pilotable en production : usage, qualité, latence, erreurs, traces et alerting.
+> Objectif : rendre le RAG pilotable en production d'ici le 31 octobre 2026 : usage, qualité, latence, erreurs, traces et alerting.
 
 ---
 
@@ -149,9 +149,9 @@ Règle de diagnostic : un incident qualité doit permettre de partir d'un feedba
 
 Les seuils initiaux doivent être calibrés en Phase 1 après baseline, mais l'alerte rerank doit être créée dès la correction du payload `/rerank`.
 
-## 6. Plan 3 mois
+## 6. Plan itération 2 (juin → 31 octobre 2026)
 
-### Phase 1 — Cadrage et instrumentation (16 juin -> 11 juillet)
+### Phase 1 — Cadrage et instrumentation (16 juin -> 18 juillet)
 
 - Figer le schéma minimal des métriques production et des champs `chat_runs` nécessaires.
 - Ajouter les statuts rerank/provider manquants dans les logs métier.
@@ -161,7 +161,7 @@ Les seuils initiaux doivent être calibrés en Phase 1 après baseline, mais l'a
 
 Critère de succès : tout incident qualité ou latence peut être relié à un `turn_id`, une trace et un ensemble de métriques Grafana.
 
-### Phase 2 — Alerting et exploitation (14 juillet -> 15 août)
+### Phase 2 — Alerting et exploitation (21 juillet -> 29 août)
 
 - Activer les alertes v1 sur rerank, providers, HTTP 5xx, latence et no-answer.
 - Mettre en place une revue hebdomadaire qualité/observabilité : top no-answer, top feedbacks négatifs, régressions latence, erreurs provider.
@@ -170,7 +170,7 @@ Critère de succès : tout incident qualité ou latence peut être relié à un 
 
 Critère de succès : les pannes provider ou régressions RAG critiques sont détectées par alerte ou dashboard, pas par retour utilisateur tardif.
 
-### Phase 3 — Pilotage continu (18 août -> 12 septembre)
+### Phase 3 — Pilotage continu (1er septembre -> 10 octobre)
 
 - Comparer chaque changement retrieval/scoring/chunking avant/après via dashboard et goldset.
 - Ajouter des vues par source documentaire, thème RH, groupe utilisateur et version de configuration RAG.
@@ -178,6 +178,15 @@ Critère de succès : les pannes provider ou régressions RAG critiques sont dé
 - Intégrer les signaux observabilité dans les critères d'acceptation des PRs RAG.
 
 Critère de succès : la qualité et la performance du RAG deviennent pilotables en continu, avec des décisions fondées sur signaux production + goldset.
+
+### Phase 4 — Stabilisation et bilan itération 2 (13 octobre -> 31 octobre)
+
+- Stabiliser les dashboards et alertes qui doivent rester actifs en production.
+- Documenter le runbook final : investigation latence, panne provider, baisse helpful rate, hausse no-answer.
+- Produire le bilan observabilité : métriques disponibles, angles morts restants, coûts, dette instrumentation.
+- Prioriser les compléments post-itération : traces plus fines, vues par source, alertes qualité avancées.
+
+Critère de succès : l'équipe peut suivre l'exploitation RAG sans requêtes SQL ad hoc pour les signaux critiques.
 
 ## 7. Questions à confirmer avant implémentation
 

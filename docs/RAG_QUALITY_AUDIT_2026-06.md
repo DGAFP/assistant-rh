@@ -1,7 +1,7 @@
-# Audit qualité RAG & Roadmap 3 mois
+# Audit qualité RAG & Planification itération 2
 
 > Issue de référence : [#83](https://github.com/DGAFP/assistant-rh/issues/83)
-> Date : 2026-06-09 — pour présentation et décision le lundi 15 juin 2026.
+> Date : 2026-06-09 — cadrage itération 2, de juin au 31 octobre 2026.
 > Méthode : pipeline exécuté en local (Supabase, copie des données + 3 054 `chat_runs` + 761 `chat_feedbacks` réels), audit SQL du chunking, replay de requêtes réelles issues des feedbacks négatifs, traces bout-en-bout avec variantes contrôlées.
 
 ---
@@ -26,7 +26,7 @@ Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme
 - 58 % des feedbacks négatifs catégorisés = `retrieval_issue`, 23 % = `missing_document`.
 - Motif négatif n°1 : « Incomplet » (185 occurrences seul ou combiné).
 
-**Recommandation :** corriger le reranker immédiatement (quick win, 1 ligne + test), puis dérouler la roadmap §5 : d'abord la mesure (goldset aujourd'hui vide), ensuite retrieval/scoring, ensuite données et chunking.
+**Recommandation :** corriger le reranker immédiatement (quick win, 1 ligne + test), puis dérouler la planification itération 2 (§5) : d'abord la mesure et l'observabilité, ensuite retrieval/scoring, ensuite données, chunking et stabilisation avant le 31 octobre.
 
 ---
 
@@ -120,7 +120,7 @@ La trajectoire détaillée est traitée dans le document dédié : [Observabilit
 
 ---
 
-## 5. Roadmap 3 mois
+## 5. Planification itération 2 (juin → 31 octobre 2026)
 
 ### Phase 0 — Quick wins (semaine du 16 juin)
 
@@ -133,7 +133,7 @@ La trajectoire détaillée est traitée dans le document dédié : [Observabilit
 
 *Dépendance : aucune. Risque : l'hybride change l'ordre des résultats → valider sur le jeu de questions avant bascule.*
 
-### Phase 1 — Mesure, observabilité et pilotage production (16 juin → 11 juillet)
+### Phase 1 — Mesure, observabilité et pilotage production (16 juin → 18 juillet)
 
 - Constituer le **goldset v1 : 80–120 questions** depuis `chat_feedbacks` (mix positifs/négatifs, tous thèmes, difficultés étiquetées) avec réponses et sources attendues.
 - Harness d'éval automatisé (recall@k chunks/sections, présence de la bonne source dans le contexte final, no-answer justifié ou non, juge LLM sur la réponse) exécutable en CI et en local — en réutilisant `src/goldset/` et `tests/conformance/`.
@@ -142,9 +142,9 @@ La trajectoire détaillée est traitée dans le document dédié : [Observabilit
 - Réparer l'analyse IA des feedbacks (crashs `NoneType`).
 - Seed local aligné prod (`rag_chunks_test` incluse) ; script unique « run prod-config local ».
 
-*Jalon 11/07 : baseline publiée, éval reproductible en 1 commande. Critère : toute PR retrieval peut être évaluée en < 15 min.*
+*Jalon 18/07 : baseline publiée, éval reproductible en 1 commande. Critère : toute PR retrieval peut être évaluée en < 15 min.*
 
-### Phase 2 — Retrieval, scoring, données (14 juillet → 15 août)
+### Phase 2 — Retrieval, scoring, données (21 juillet → 29 août)
 
 - **Scoring v2** : conserver le score reranker comme signal principal en aval (agrégation pondérée par scores réels, pas par comptes) ; seuil de pertinence pour court-circuiter avant le selector quand tout est sous le seuil.
 - Dédup Service-Public (518 doublons) + filtrage des chunks-titres à l'ingestion (ou fusion titre+contenu).
@@ -152,16 +152,24 @@ La trajectoire détaillée est traitée dans le document dédié : [Observabilit
 - Boucle **trous documentaires** : extraction mensuelle des no-answer + `missing_document` → backlog d'ingestion priorisé (RIFSEEP en premier).
 - Revisiter la place de DGAFP (intent gating trop restrictif ? mesurer sur goldset).
 
-*Jalon 15/08 : +X points de recall@10 sur goldset vs baseline (cible : −50 % de `retrieval_issue` sur le goldset). Dépend de Phase 1 pour être mesurable.*
+*Jalon 29/08 : +X points de recall@10 sur goldset vs baseline (cible : −50 % de `retrieval_issue` sur le goldset). Dépend de Phase 1 pour être mesurable.*
 
-### Phase 3 — Chunking, contexte, génération (18 août → 12 septembre)
+### Phase 3 — Chunking, contexte, génération (1er septembre → 10 octobre)
 
 - Re-chunking avec frontières sémantiques + overlap, re-découpage des 36 sections > 20k ; arbitrer la multi-granularité (`rag_chunks_test`) sur mesures.
 - Budget de contexte : prioriser par score reranker, plafonner les sections envoyées au selector (coût/latence).
 - Prompts génération : traiter le motif « Incomplet » (consignes de complétude, citations systématiques) ; A/B sur goldset.
 - UX feedback : catégories de feedback alignées sur les étages du pipeline pour boucler le diagnostic automatiquement.
 
-*Jalon 12/09 : helpful rate ≥ 85 % sur 4 semaines glissantes ; no-answer < 10 % avec ≥ 90 % de no-answer justifiés (vérifiés goldset).*
+*Jalon 10/10 : helpful rate ≥ 85 % sur 4 semaines glissantes ; no-answer < 10 % avec ≥ 90 % de no-answer justifiés (vérifiés goldset).*
+
+### Phase 4 — Stabilisation et bilan itération 2 (13 octobre → 31 octobre)
+
+- Stabiliser les configurations validées : search mode, scoring, prompts, budgets de contexte, alertes et dashboards.
+- Publier un bilan itération 2 : métriques avant/après, décisions prises, chantiers reportés, risques restants.
+- Préparer la suite : backlog priorisé novembre/décembre, arbitrages ingestion, Mastra/conformance, dette observabilité.
+
+*Jalon 31/10 : bilan itération 2 partageable, critères de succès vérifiés ou écarts explicités.*
 
 ### Risques transverses
 
@@ -182,7 +190,7 @@ La trajectoire détaillée est traitée dans le document dédié : [Observabilit
 
 ## 7. Métriques de suivi proposées
 
-| Métrique | Source | Baseline (à figer en Phase 1) | Cible 3 mois |
+| Métrique | Source | Baseline (à figer en Phase 1) | Cible itération 2 |
 |---|---|---|---|
 | Recall@10 sections (bonne source dans le top) | Goldset | à mesurer | +20 pts |
 | Taux de no-answer sur questions répondables | Goldset | ~19 % global actuel | < 10 % |
@@ -197,10 +205,10 @@ La trajectoire détaillée est traitée dans le document dédié : [Observabilit
 
 ---
 
-## 8. Décision demandée (15 juin)
+## 8. Décision demandée pour l'itération 2
 
 1. **Valider le déploiement immédiat des quick wins Phase 0** (fix rerank en premier).
-2. Valider le séquencement Phase 1 → 3 et les cibles chiffrées du §7.
+2. Valider le séquencement Phase 1 → 4, jusqu'au 31 octobre 2026, et les cibles chiffrées du §7.
 3. Arbitrer la bascule en mode hybride : directe (recommandé, réversible) ou après goldset v1.
 
 ## Sources
