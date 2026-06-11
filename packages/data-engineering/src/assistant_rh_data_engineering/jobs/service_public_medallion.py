@@ -37,13 +37,55 @@ def resolve_fiche_ids(raw_ids: list[str]) -> list[str]:
     return fiche_ids
 
 
+def summarize_pipeline_outputs(
+    requested_fiche_ids: list[str],
+    bronze_assets: list[Any],
+    silver_bundles: list[Any],
+    gold_bundles: list[Any],
+) -> dict[str, dict[str, int]]:
+    bronze_ids = {str(getattr(asset, "fiche_id", "")).strip().upper() for asset in bronze_assets}
+    silver_by_id = {
+        str(bundle.document.get("short_id", "")).strip().upper(): bundle for bundle in silver_bundles if getattr(bundle, "document", None)
+    }
+    gold_by_id = {str(bundle.document.get("short_id", "")).strip().upper(): bundle for bundle in gold_bundles if getattr(bundle, "document", None)}
+
+    per_fiche: dict[str, dict[str, int]] = {}
+    errors: list[str] = []
+    for fiche_id in requested_fiche_ids:
+        silver_bundle = silver_by_id.get(fiche_id)
+        gold_bundle = gold_by_id.get(fiche_id)
+        counts = {
+            "bronze": 1 if fiche_id in bronze_ids else 0,
+            "documents": 1 if silver_bundle is not None else 0,
+            "sections": len(getattr(silver_bundle, "sections", []) or []),
+            "gold_documents": 1 if gold_bundle is not None else 0,
+            "chunks": len(getattr(gold_bundle, "chunks", []) or []),
+        }
+        per_fiche[fiche_id] = counts
+
+        missing: list[str] = []
+        if counts["bronze"] == 0:
+            missing.append("bronze XML")
+        if counts["documents"] == 0:
+            missing.append("silver document")
+        if counts["sections"] == 0:
+            missing.append("silver sections")
+        if counts["gold_documents"] == 0:
+            missing.append("gold document")
+        if counts["chunks"] == 0:
+            missing.append("gold chunks")
+        if missing:
+            errors.append(f"{fiche_id}: {', '.join(missing)}")
+
+    if errors:
+        detail = "\n".join(f"- {error}" for error in errors)
+        raise RuntimeError(f"Pipeline Service-Public incomplet:\n{detail}")
+
+    return per_fiche
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Pipeline médaillon Service-Public "
-            "basé sur le XML officiel DILA."
-        )
-    )
+    parser = argparse.ArgumentParser(description=("Pipeline médaillon Service-Public basé sur le XML officiel DILA."))
     parser.add_argument(
         "--fiche-id",
         dest="fiche_ids",
@@ -146,9 +188,7 @@ def main() -> int:
     config = ServicePublicPipelineConfig(paths=LakePaths(root_dir=Path(args.lake_root)))
     fiche_config_path = Path(args.fiche_config)
     fiche_config = load_fiche_config(fiche_config_path)
-    fiche_ids = resolve_fiche_ids(
-        list(fiche_config.get("fiche_ids", [])) + list(args.fiche_ids or [])
-    )
+    fiche_ids = resolve_fiche_ids(list(fiche_config.get("fiche_ids", [])) + list(args.fiche_ids or []))
     situation = args.situation or fiche_config.get("situation")
     if args.batch_from_db:
         db = ServicePublicDbWriter(schema=args.schema)
@@ -161,8 +201,7 @@ def main() -> int:
         )
     if not fiche_ids:
         raise SystemExit(
-            "Aucune fiche fournie. Renseigne config/service_public_fiches.json, "
-            "--fiche-id, ou utilise --batch-from-db pour la migration."
+            "Aucune fiche fournie. Renseigne config/service_public_fiches.json, --fiche-id, ou utilise --batch-from-db pour la migration."
         )
     config.fiche_ids = fiche_ids or None
     config.silver.situation_filter = situation
@@ -182,12 +221,21 @@ def main() -> int:
         gold_batch = pipeline.run_gold(silver_batch)
         silver_bundles.extend(silver_batch)
         gold_bundles.extend(gold_batch)
-        if args.ingest:
-            pipeline.ingest_from_silver_and_gold(
-                silver_batch,
-                gold_batch,
-                schema=args.schema,
-            )
+
+    per_fiche = summarize_pipeline_outputs(
+        fiche_ids,
+        bronze_assets,
+        silver_bundles,
+        gold_bundles,
+    )
+
+    ingested: dict[str, int] | None = None
+    if args.ingest:
+        ingested = pipeline.ingest_from_silver_and_gold(
+            silver_bundles,
+            gold_bundles,
+            schema=args.schema,
+        )
 
     result = {
         "requested_fiche_ids": fiche_ids,
@@ -200,7 +248,10 @@ def main() -> int:
         "batch_size": args.batch_size,
         "target_env": args.target_env,
         "situation": situation,
+        "per_fiche": per_fiche,
     }
+    if ingested is not None:
+        result["ingested"] = ingested
 
     if args.sync_object_storage:
         syncer = ScalewayObjectStorageSync(ObjectStorageConfig.from_env())

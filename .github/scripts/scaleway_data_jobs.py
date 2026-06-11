@@ -37,6 +37,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-embeddings", type=parse_bool, default=False)
     parser.add_argument("--service-public-fiche-config", default="config/service_public_fiches.json")
     parser.add_argument("--legifrance-article-ids-json", default="config/legifrance_article_cids.json")
+    parser.add_argument("--embedding-source", choices=("all", "service_public", "legifrance"), default="all")
+    parser.add_argument("--embedding-only-column", default="")
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser
@@ -241,6 +243,13 @@ def should_run(spec: dict[str, Any], args: argparse.Namespace) -> bool:
         return False
     if domain == "embeddings" and not args.embeddings:
         return False
+    if domain == "embeddings":
+        embedding_source = getattr(args, "embedding_source", "all")
+        key = str(spec.get("key") or "")
+        if embedding_source == "service_public" and key != "embeddings-service-public":
+            return False
+        if embedding_source == "legifrance" and key != "embeddings-legifrance":
+            return False
     if spec.get("requires_ingestion") and not args.run_ingestion:
         return False
     if spec.get("requires_embeddings") and not args.run_embeddings:
@@ -310,6 +319,9 @@ def upsert_and_start_jobs(args: argparse.Namespace) -> int:
             job_id = create_definition(spec, name, image, project_id, region, secrets=secrets, dry_run=args.dry_run)
 
         command_args = render_args(spec["args"], context)
+        embedding_only_column = str(getattr(args, "embedding_only_column", "") or "").strip()
+        if spec["domain"] == "embeddings" and embedding_only_column:
+            command_args.extend(["--only-column", embedding_only_column])
         if args.target_env == "prod":
             command_args.extend(render_args(spec.get("prod_args") or [], context))
         environment = job_environment(spec, args.target_env, region)

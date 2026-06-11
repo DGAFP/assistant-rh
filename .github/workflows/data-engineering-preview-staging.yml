@@ -40,6 +40,20 @@ on:
         required: true
         default: false
         type: boolean
+      embedding_source:
+        description: "Source embeddings a backfiller"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - service_public
+          - legifrance
+      embedding_only_column:
+        description: "Colonne embeddings cible optionnelle, ex: embedding_m3"
+        required: false
+        default: ""
+        type: string
       run_preview_jobs:
         description: "Executer les jobs Scaleway staging (medallion/ingestion/embeddings)"
         required: true
@@ -150,6 +164,8 @@ jobs:
       # Phase 2: preview job execution is manual-only (workflow_dispatch + run_preview_jobs=true).
       RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ingestion || false }}
       RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && (inputs.run_embeddings || inputs.source == 'embeddings') || false }}
+      EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_source || 'all' }}
+      EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
       SERVICE_PUBLIC_FICHE_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.service_public_fiche_config || 'config/service_public_fiches.json' }}
       LEGIFRANCE_ARTICLE_IDS_JSON: ${{ github.event_name == 'workflow_dispatch' && inputs.legifrance_article_ids_json || 'config/legifrance_article_cids.json' }}
       SCW_DEFAULT_REGION: fr-par
@@ -192,6 +208,8 @@ jobs:
             --embeddings "${{ needs.plan.outputs.embeddings }}" \
             --run-ingestion "${RUN_INGESTION}" \
             --run-embeddings "${RUN_EMBEDDINGS}" \
+            --embedding-source "${EMBEDDING_SOURCE}" \
+            --embedding-only-column "${EMBEDDING_ONLY_COLUMN}" \
             --service-public-fiche-config "${SERVICE_PUBLIC_FICHE_CONFIG}" \
             --legifrance-article-ids-json "${LEGIFRANCE_ARTICLE_IDS_JSON}" \
             --wait
