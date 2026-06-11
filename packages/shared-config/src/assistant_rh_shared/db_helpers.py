@@ -3,6 +3,7 @@ Database connection utilities for shared-config.
 
 Provides basic DB connectivity without any pipeline-specific dependencies.
 """
+
 from __future__ import annotations
 
 import logging
@@ -50,6 +51,7 @@ def create_engine_from_env() -> Optional["Engine"]:
     Does NOT use Streamlit caching — suitable for scripts, tests, and APIs.
     """
     from sqlalchemy import create_engine, text
+    from sqlalchemy.exc import SQLAlchemyError
 
     try:
         url = get_dsn()
@@ -78,6 +80,6 @@ def create_engine_from_env() -> Optional["Engine"]:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         return engine
-    except Exception as exc:
+    except (SQLAlchemyError, OSError) as exc:
         logger.warning("DB engine creation failed: %s", exc)
         return None

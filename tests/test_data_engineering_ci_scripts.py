@@ -107,6 +107,20 @@ def test_scaleway_job_environment_resolves_required_env_groups(monkeypatch: pyte
     assert environment["TARGET_ENV"] == "staging"
 
 
+def test_scaleway_job_environment_defaults_embeddings_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SCALEWAY_API_KEY", "api-key")
+    monkeypatch.delenv("SCALEWAY_BASE_URL", raising=False)
+
+    environment = scaleway_data_jobs.job_environment(
+        {"env_groups": ["embeddings_api"]},
+        "staging",
+        "fr-par",
+    )
+
+    assert environment["SCALEWAY_API_KEY"] == "api-key"
+    assert environment["SCALEWAY_BASE_URL"] == "https://api.scaleway.ai/v1"
+
+
 def test_scaleway_job_environment_fails_on_missing_required_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SCW_ACCESS_KEY", raising=False)
 

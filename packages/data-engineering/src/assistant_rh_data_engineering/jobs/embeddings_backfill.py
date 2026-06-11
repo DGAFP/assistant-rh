@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
 import os
 import time
@@ -11,18 +12,19 @@ from typing import Any
 
 import psycopg
 import requests
-from dotenv import dotenv_values, load_dotenv
+from assistant_rh_shared import Config
+from dotenv import load_dotenv
 
 from assistant_rh_data_engineering.utils.helpers import vector_to_pgvector
+
+logger = logging.getLogger(__name__)
 
 cwd = Path.cwd().resolve()
 REPO_ROOT = cwd.parent if cwd.name == "scripts" else cwd
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Backfill générique des embeddings DB à partir d'un manifest JSON."
-    )
+    parser = argparse.ArgumentParser(description="Backfill générique des embeddings DB à partir d'un manifest JSON.")
     parser.add_argument("--config", required=True, help="Manifest JSON de tables/colonnes d'embedding.")
     parser.add_argument("--dsn-env", default="SCW_POSTGRES_DSN")
     parser.add_argument("--schema", default="public")
@@ -31,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--m3-batch-size", type=int, default=64)
     parser.add_argument("--m3-device", default="cpu")
     parser.add_argument("--bge-model", default="bge-multilingual-gemma2")
+    parser.add_argument("--bge-base-url", help="Base URL Scaleway pour embedding_bge_scw.")
     parser.add_argument("--bge-workers", type=int, default=2)
     parser.add_argument("--bge-batch-size", type=int, default=32)
     parser.add_argument("--limit", type=int)
@@ -68,23 +71,6 @@ def load_table_specs(config_path: Path) -> list[dict[str, Any]]:
     return normalized
 
 
-def _load_dotenv_key_candidates(env_path: Path, key_name: str) -> list[str]:
-    if not env_path.exists():
-        return []
-    values: list[str] = []
-    for line in env_path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, value = stripped.split("=", 1)
-        if key.strip() != key_name:
-            continue
-        candidate = value.strip().strip('"').strip("'")
-        if candidate and candidate not in values:
-            values.append(candidate)
-    return values
-
-
 def _normalize_vector(vector: list[float]) -> list[float]:
     norm = math.sqrt(sum(float(value) * float(value) for value in vector))
     if norm == 0:
@@ -93,67 +79,54 @@ def _normalize_vector(vector: list[float]) -> list[float]:
 
 
 class ScalewayBgeClient:
-    def __init__(self, env_path: Path, model_name: str):
-        self.base_url = (
-            os.getenv("SCALEWAY_BASE_URL")
-            or dotenv_values(env_path).get("SCALEWAY_BASE_URL")
-            or "https://api.scaleway.ai/11aa88cb-ec5b-4df9-bcb4-e9e82576ae58/v1"
-        ).rstrip("/")
+    def __init__(self, model_name: str, base_url: str | None = None, session: requests.Session | None = None):
+        config = Config()
+        resolved_base_url = (base_url or "").strip() or config.scaleway_base_url
+        if not resolved_base_url:
+            raise RuntimeError("SCALEWAY_BASE_URL manquant pour embedding_bge_scw (ou passer --bge-base-url).")
+        self.base_url = resolved_base_url.rstrip("/")
         self.model_name = model_name
-        self.api_key = self._resolve_api_key(env_path)
-
-    def _resolve_api_key(self, env_path: Path) -> str:
-        candidates: list[str] = []
-        env_value = os.getenv("SCALEWAY_API_KEY", "").strip()
-        if env_value:
-            candidates.append(env_value)
-        for candidate in _load_dotenv_key_candidates(env_path, "SCALEWAY_API_KEY"):
-            if candidate not in candidates:
-                candidates.append(candidate)
-        if not candidates:
+        if not config.scaleway_api_key:
             raise RuntimeError("Aucune clé SCALEWAY_API_KEY trouvée pour embedding_bge_scw.")
-        for candidate in candidates:
-            if self._is_valid_key(candidate):
-                return candidate
-        raise RuntimeError("Aucune SCALEWAY_API_KEY candidate ne permet d'appeler l'API embeddings Scaleway.")
+        self.api_key = config.scaleway_api_key
+        self.session = session
 
-    def _is_valid_key(self, api_key: str) -> bool:
-        try:
-            response = requests.post(
-                f"{self.base_url}/embeddings",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={"model": self.model_name, "input": "test"},
-                timeout=20,
-            )
-            response.raise_for_status()
-            payload = response.json()
-            return bool(payload.get("data"))
-        except Exception:
-            return False
+    def _post_embeddings(self, text: str) -> requests.Response:
+        post = self.session.post if self.session is not None else requests.post
+        return post(
+            f"{self.base_url}/embeddings",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={"model": self.model_name, "input": text},
+            timeout=30,
+        )
 
     def embed_text(self, text: str) -> list[float]:
+        max_attempts = 6
         last_error: Exception | None = None
-        for attempt in range(6):
+        for attempt in range(max_attempts):
             try:
-                response = requests.post(
-                    f"{self.base_url}/embeddings",
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={"model": self.model_name, "input": text},
-                    timeout=30,
-                )
-                if response.status_code == 429:
-                    time.sleep(min(30, 2**attempt))
-                    continue
+                response = self._post_embeddings(text)
                 response.raise_for_status()
-                return response.json()["data"][0]["embedding"]
-            except Exception as exc:
+                payload = response.json()
+                embedding = payload["data"][0]["embedding"]
+                if not isinstance(embedding, list):
+                    raise ValueError("Réponse embeddings Scaleway invalide: embedding absent ou non-list.")
+                return embedding
+            except requests.HTTPError as exc:
+                status_code = exc.response.status_code if exc.response is not None else None
+                # Seuls 429 et 5xx sont transitoires; les autres 4xx (clé invalide,
+                # modèle inconnu...) ne se résoudront pas en réessayant.
+                if status_code != 429 and not (status_code is not None and status_code >= 500):
+                    raise
                 last_error = exc
+                logger.debug("Erreur HTTP %s embedding_bge_scw, retry %s/%s.", status_code, attempt + 1, max_attempts)
+            except requests.RequestException as exc:
+                last_error = exc
+                logger.debug("Erreur réseau embedding_bge_scw, retry %s/%s: %s", attempt + 1, max_attempts, exc)
+            if attempt < max_attempts - 1:
                 time.sleep(min(30, 2**attempt))
         if last_error is not None:
             raise last_error
@@ -215,10 +188,7 @@ def update_embeddings(
         SET {", ".join(set_clauses)}
         WHERE {id_column} = %(id)s
     """
-    payload = [
-        {"id": row["id"], "vector": vector_to_pgvector(row["vector"])}
-        for row in rows
-    ]
+    payload = [{"id": row["id"], "vector": vector_to_pgvector(row["vector"])} for row in rows]
     with conn.cursor() as cur:
         cur.executemany(query, payload)
     conn.commit()
@@ -260,10 +230,7 @@ def backfill_m3(
             normalize_embeddings=True,
             show_progress_bar=False,
         )
-        prepared = [
-            {"id": row["id"], "vector": vectors[index].astype("float32").tolist()}
-            for index, row in enumerate(batch)
-        ]
+        prepared = [{"id": row["id"], "vector": vectors[index].astype("float32").tolist()} for index, row in enumerate(batch)]
         total += update_embeddings(
             conn,
             schema,
@@ -280,8 +247,8 @@ def backfill_bge_scaleway(
     schema: str,
     table_spec: dict[str, Any],
     embedding_column: str,
-    env_path: Path,
     model_name: str,
+    base_url: str | None,
     workers: int,
     batch_size: int,
     limit: int | None,
@@ -297,31 +264,28 @@ def backfill_bge_scaleway(
     )
     if not rows:
         return 0
-    client = ScalewayBgeClient(env_path=env_path, model_name=model_name)
     total = 0
-    for start in range(0, len(rows), batch_size):
-        batch = rows[start : start + batch_size]
-        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+    client = ScalewayBgeClient(model_name=model_name, base_url=base_url)
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        for start in range(0, len(rows), batch_size):
+            batch = rows[start : start + batch_size]
             vectors = list(pool.map(client.embed_text, [str(row["text"]) for row in batch]))
-        prepared = [
-            {"id": row["id"], "vector": _normalize_vector(list(vectors[index]))}
-            for index, row in enumerate(batch)
-        ]
-        total += update_embeddings(
-            conn,
-            schema,
-            table_spec["table"],
-            table_spec["id_column"],
-            embedding_column,
-            prepared,
-        )
+            prepared = [{"id": row["id"], "vector": _normalize_vector(list(vectors[index]))} for index, row in enumerate(batch)]
+            total += update_embeddings(
+                conn,
+                schema,
+                table_spec["table"],
+                table_spec["id_column"],
+                embedding_column,
+                prepared,
+            )
     return total
 
 
 def main() -> int:
     args = build_parser().parse_args()
-    env_path = Path(args.env_file)
-    load_dotenv(env_path)
+    load_dotenv(Path(args.env_file))
+    # Clé d'environnement dynamique (--dsn-env): reste hors de Config.
     dsn = os.getenv(args.dsn_env)
     if not dsn:
         raise SystemExit(f"{args.dsn_env} manquant.")
@@ -367,16 +331,14 @@ def main() -> int:
                         args.schema,
                         table_spec,
                         embedding_column,
-                        env_path=env_path,
                         model_name=args.bge_model,
+                        base_url=args.bge_base_url,
                         workers=args.bge_workers,
                         batch_size=args.bge_batch_size,
                         limit=args.limit,
                     )
                 else:
-                    raise RuntimeError(
-                        f"Algorithme d'embedding non supporté pour {table_spec['table']}.{embedding_column}: {algorithm}"
-                    )
+                    raise RuntimeError(f"Algorithme d'embedding non supporté pour {table_spec['table']}.{embedding_column}: {algorithm}")
             summary["tables"][table_spec["table"]] = table_summary
 
     print(json.dumps(summary, ensure_ascii=False, indent=2))
