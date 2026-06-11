@@ -169,8 +169,10 @@ def build_log_row(
         source_dist_post_selector = dict(source_dist_post_rerank)
 
     # Reranker status (issue #87: make rerank failures visible per run)
-    reranker_status_meta = v3_metadata.get("reranker_status", {})
-    section_reranker = reranker_status_meta.get("section", {}) if isinstance(reranker_status_meta, dict) else {}
+    reranker_status_meta = v3_metadata.get("reranker_status")
+    section_reranker = reranker_status_meta.get("section") if isinstance(reranker_status_meta, dict) else None
+    if not isinstance(section_reranker, dict):
+        section_reranker = {}
 
     # Selector metrics
     selector_reasoning = v3_metadata.get("selector_reasoning", "")

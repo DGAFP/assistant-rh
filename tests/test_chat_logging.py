@@ -380,6 +380,11 @@ class TestBuildLogRow:
         assert row["v3_reranker_status"] == ""
         assert row["v3_reranker_error"] == ""
 
+    def test_reranker_status_section_none(self):
+        row = self._build_row(metadata_overrides={"reranker_status": {"section": None}})
+        assert row["v3_reranker_status"] == ""
+        assert row["v3_reranker_error"] == ""
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TESTS – build_non_rag_row
