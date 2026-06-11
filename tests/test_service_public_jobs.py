@@ -158,20 +158,19 @@ def test_db_writer_upserts_documents_on_short_id_when_available(monkeypatch: pyt
             calls["committed"] = True
 
     monkeypatch.setattr(writer, "_connect", lambda: DummyConnection())
-    monkeypatch.setattr(
-        writer,
-        "_column_types",
-        lambda conn, table: {
-            "doc_id": ("text", None),
-            "short_id": ("text", None),
-            "title": ("text", None),
-        },
-    )
+    monkeypatch.setattr(writer, "_index_predicate", lambda conn, index_name: "short_id IS NOT NULL")
 
-    def fake_upsert(conn: object, table: str, rows: list[dict[str, Any]], conflict_cols: list[str]) -> int:
+    def fake_upsert(
+        conn: object,
+        table: str,
+        rows: list[dict[str, Any]],
+        conflict_cols: list[str],
+        conflict_where: str | None = None,
+    ) -> int:
         calls["table"] = table
         calls["rows"] = rows
         calls["conflict_cols"] = conflict_cols
+        calls["conflict_where"] = conflict_where
         return len(rows)
 
     monkeypatch.setattr(writer, "_upsert", fake_upsert)
@@ -179,6 +178,7 @@ def test_db_writer_upserts_documents_on_short_id_when_available(monkeypatch: pyt
     assert writer.upsert_documents([{"doc_id": "new-doc", "short_id": "F12386", "title": "Titre"}]) == 1
     assert calls["table"] == "rag_documents"
     assert calls["conflict_cols"] == ["short_id"]
+    assert calls["conflict_where"] == "short_id IS NOT NULL"
     assert calls["committed"] is True
 
 

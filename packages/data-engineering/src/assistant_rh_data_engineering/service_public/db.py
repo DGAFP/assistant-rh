@@ -43,6 +43,22 @@ class ServicePublicDbWriter:
             )
             return {row[0]: (row[1], row[2]) for row in cur.fetchall()}
 
+    def _index_predicate(self, conn: psycopg.Connection, index_name: str) -> str | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT pg_get_expr(indexes.indpred, indexes.indrelid)
+                FROM pg_index indexes
+                JOIN pg_class index_class ON index_class.oid = indexes.indexrelid
+                WHERE index_class.relname = %s
+                """,
+                (index_name,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return str(row[0] or "").strip()
+
     def _prepare_rows(
         self,
         rows: Iterable[dict[str, Any]],
@@ -76,6 +92,7 @@ class ServicePublicDbWriter:
         table: str,
         rows: list[dict[str, Any]],
         conflict_cols: list[str],
+        conflict_where: str | None = None,
     ) -> int:
         if not rows:
             return 0
@@ -96,12 +113,17 @@ class ServicePublicDbWriter:
             else:
                 placeholders.append(sql.SQL("%({})s").format(sql.SQL(col)))
 
-        query = sql.SQL("INSERT INTO {}.{} ({}) VALUES ({}) ON CONFLICT ({}) DO UPDATE SET {}").format(
+        conflict_where_sql = sql.SQL("")
+        if conflict_where:
+            conflict_where_sql = sql.SQL(" WHERE ") + sql.SQL(conflict_where)
+
+        query = sql.SQL("INSERT INTO {}.{} ({}) VALUES ({}) ON CONFLICT ({}){} DO UPDATE SET {}").format(
             sql.Identifier(self.schema),
             sql.Identifier(table),
             sql.SQL(", ").join(sql.Identifier(col) for col in cols),
             sql.SQL(", ").join(placeholders),
             sql.SQL(", ").join(sql.Identifier(col) for col in conflict_cols),
+            conflict_where_sql,
             sql.SQL(", ").join(
                 sql.SQL("{} = EXCLUDED.{}").format(
                     sql.Identifier(col),
@@ -117,9 +139,17 @@ class ServicePublicDbWriter:
 
     def upsert_documents(self, documents: list[dict[str, Any]]) -> int:
         with self._connect() as conn:
-            column_types = self._column_types(conn, "rag_documents")
-            conflict_cols = ["short_id"] if "short_id" in column_types else ["doc_id"]
-            count = self._upsert(conn, "rag_documents", documents, conflict_cols)
+            short_id_predicate = self._index_predicate(conn, "uq_rag_documents_short_id")
+            if short_id_predicate is not None:
+                count = self._upsert(
+                    conn,
+                    "rag_documents",
+                    documents,
+                    ["short_id"],
+                    conflict_where=short_id_predicate,
+                )
+            else:
+                count = self._upsert(conn, "rag_documents", documents, ["doc_id"])
             conn.commit()
             return count
 
