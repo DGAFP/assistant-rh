@@ -45,10 +45,10 @@ Trois découvertes structurent l'itération 2 :
 | Prio | Objectif | Horizon |
 |---|---|---|
 | **P1 — Qualité du RAG** | Fiabiliser mesure, observabilité, scoring, retrieval, couverture d'index, abstention, génération | Itération 2 (juin → 31 oct.) |
-| **P2 — Intégrer 5 nouveaux ministères** | Ingestion des sources, métadonnées normalisées, **scope serveur avant retrieval**, habilitations (ProConnect) | Itération 2, en parallèle |
+| **P2 — Intégrer 5 nouveaux ministères** | Ingestion des sources, métadonnées normalisées, **scope serveur avant retrieval**, habilitations (ProConnect) | Itération 2, après fondations qualité |
 | **P3 — Réemploi dans un autre produit** | Industrialiser le pipeline comme brique réutilisable | Itération 3 |
 
-**Articulation décisive** : P2 (multi-ministère) ne doit pas précéder P1 (qualité). Étendre à 6 périmètres un retrieval au scoring plat, à la couverture trouée et sans index vectoriel **démultiplierait les défauts et les coûts**. P1 et P2 avancent en parallèle, mais les fondations qualité (mesure + scoring + index) conditionnent l'extension réelle.
+**Articulation décisive** : P2 (multi-ministère) vient après les fondations qualité. Des travaux préparatoires peuvent avancer en parallèle (sources, auth, métadonnées), mais l'extension réelle ne doit pas précéder P1 puis P1.5. Étendre à 6 périmètres un retrieval au scoring plat, à la couverture trouée et sans index vectoriel **démultiplierait les défauts et les coûts**.
 
 ---
 
@@ -67,16 +67,16 @@ Trois découvertes structurent l'itération 2 :
 - **Baseline chiffrée** avant/après ; **dashboards Cockpit/Grafana v1** (usage, qualité, latence, providers) + alertes.
 - **Taxonomie d'erreurs partagée** (note 04, livrable 1) comme socle commun audit/éval/PR.
 
-### P1.5 — Chantiers structurels multi-ministère (en parallèle, longs)
-- **Scope ministériel côté serveur** (`ministry_id` + filtrage SQL avant retrieval), séparé en 3 niveaux : autorisation / priorité des sources / autorité documentaire.
-- **Ingestion sources ministérielles** (MI, MSO, MASA, MEF) + **réconciliation index** (chaque doc indexable a ≥ 1 chunk) + métadonnées normalisées.
-- **ProConnect + habilitations** (enforcement dans la retrieval, pas l'UI) + **blocage des données personnelles / RGPD**.
-
-### P2 — Retrieval, scoring, données (après baseline)
+### P1.5 — Retrieval, scoring, données (après baseline)
 - **Scoring v2** (score reranker comme signal aval, seuil d'abstention).
 - **Dédup SP, filtrage chunks-titres, couverture `references_juridiques`.**
 - **Classifier de question + policies RRF par type** ; **abstention stricte** sur contexte faible.
 - **Fraîcheur des données** (droit périmé) ; **embeddings RH** (vocabulaire métier).
+
+### P2 — Chantiers structurels multi-ministère (après fondations qualité)
+- **Scope ministériel côté serveur** (`ministry_id` + filtrage SQL avant retrieval), séparé en 3 niveaux : autorisation / priorité des sources / autorité documentaire.
+- **Ingestion sources ministérielles** (MI, MSO, MASA, MEF) + **réconciliation index** (chaque doc indexable a ≥ 1 chunk) + métadonnées normalisées.
+- **ProConnect + habilitations** (enforcement dans la retrieval, pas l'UI) + **blocage des données personnelles / RGPD**.
 
 ### P2.5 — Produit & UX (après baseline)
 - Affichage enrichi des sources (dates, fraîcheur, contradictions, PDF page ciblée) ; rebond conversationnel ; historique ; disclaimer permanent.
@@ -107,7 +107,7 @@ Trois découvertes structurent l'itération 2 :
 
 ## 6. Décisions demandées en validation
 
-1. **Valider les grandes priorités** : P1 qualité + P2 multi-ministère en parallèle, P3 (autre produit) en itération 3 — et le principe « la qualité conditionne l'extension ».
+1. **Valider les grandes priorités** : P1 puis P1.5 qualité d'abord, P2 multi-ministère ensuite, P3 (autre produit) en itération 3 — et le principe « la qualité conditionne l'extension ».
 2. **Valider le séquencement P0 → P2.5** et les cibles chiffrées du §5.
 3. **Arbitrer 2 sujets transverses** : (a) rétention/anonymisation des conversations (RGPD, décision DPO) ; (b) cible Python vs Mastra à terme (la double maintenance pèse sur chaque évolution).
 4. **Acter les quick wins P0** (index vectoriels, câblage observabilité, alertes fail-open, hybride) dès la semaine du 16 juin.
