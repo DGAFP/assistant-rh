@@ -117,22 +117,32 @@ class ServicePublicDbWriter:
 
         conflict_where_sql = sql.SQL("")
         if conflict_where:
+            # conflict_where ne doit venir que du catalogue Postgres (pg_get_expr
+            # via _index_predicate), jamais d'une entrée utilisateur: il est
+            # injecté tel quel dans la requête.
             conflict_where_sql = sql.SQL(" WHERE ") + sql.SQL(conflict_where)
 
-        query = sql.SQL("INSERT INTO {}.{} ({}) VALUES ({}) ON CONFLICT ({}){} DO UPDATE SET {}").format(
+        if assignments:
+            conflict_action_sql = sql.SQL("DO UPDATE SET {}").format(
+                sql.SQL(", ").join(
+                    sql.SQL("{} = EXCLUDED.{}").format(
+                        sql.Identifier(col),
+                        sql.Identifier(col),
+                    )
+                    for col in assignments
+                )
+            )
+        else:
+            conflict_action_sql = sql.SQL("DO NOTHING")
+
+        query = sql.SQL("INSERT INTO {}.{} ({}) VALUES ({}) ON CONFLICT ({}){} {}").format(
             sql.Identifier(self.schema),
             sql.Identifier(table),
             sql.SQL(", ").join(sql.Identifier(col) for col in cols),
             sql.SQL(", ").join(placeholders),
             sql.SQL(", ").join(sql.Identifier(col) for col in conflict_cols),
             conflict_where_sql,
-            sql.SQL(", ").join(
-                sql.SQL("{} = EXCLUDED.{}").format(
-                    sql.Identifier(col),
-                    sql.Identifier(col),
-                )
-                for col in assignments
-            ),
+            conflict_action_sql,
         )
 
         with conn.cursor() as cur:
@@ -143,12 +153,16 @@ class ServicePublicDbWriter:
         with self._connect() as conn:
             short_id_predicate = self._index_predicate(conn, "uq_rag_documents_short_id")
             if short_id_predicate is not None:
+                # L'arbitre partiel sur short_id suppose que chaque ligne a un
+                # short_id non NULL: une ligne sans short_id ne matcherait pas
+                # l'index et lèverait une violation de PK sur doc_id en cas de
+                # re-run au lieu d'être mise à jour.
                 count = self._upsert(
                     conn,
                     "rag_documents",
                     documents,
                     ["short_id"],
-                    conflict_where=short_id_predicate,
+                    conflict_where=short_id_predicate or None,
                     update_exclude_cols=["doc_id"],
                 )
             else:
@@ -160,6 +174,9 @@ class ServicePublicDbWriter:
         with self._connect() as conn:
             doc_index_predicate = self._index_predicate(conn, "uq_rag_sections_doc_index")
             if doc_index_predicate is not None:
+                # Même contrainte que pour les documents: une section avec
+                # section_index NULL ne matcherait pas l'arbitre (doc_id,
+                # section_index) et lèverait une violation de PK en re-run.
                 count = self._upsert(
                     conn,
                     "rag_sections",
@@ -226,7 +243,8 @@ class ServicePublicDbWriter:
             return [row[0] for row in cur.fetchall()]
 
     def list_document_ids_by_short_id(self, short_ids: list[str]) -> dict[str, str]:
-        if not short_ids:
+        normalized_short_ids = sorted({str(short_id).strip().upper() for short_id in short_ids if str(short_id).strip()})
+        if not normalized_short_ids:
             return {}
 
         with self._connect() as conn, conn.cursor() as cur:
@@ -234,12 +252,12 @@ class ServicePublicDbWriter:
                 """
                 SELECT short_id, doc_id
                 FROM {}.{}
-                WHERE short_id = ANY(%s)
+                WHERE UPPER(TRIM(short_id)) = ANY(%s)
                   AND short_id IS NOT NULL
                 """
             ).format(sql.Identifier(self.schema), sql.Identifier("rag_documents"))
-            cur.execute(query, (short_ids,))
-            return {str(row[0]): str(row[1]) for row in cur.fetchall()}
+            cur.execute(query, (normalized_short_ids,))
+            return {str(row[0]).strip().upper(): str(row[1]) for row in cur.fetchall()}
 
     def list_section_ids_by_doc_id_and_index(self, doc_ids: list[str]) -> dict[tuple[str, int], str]:
         if not doc_ids:

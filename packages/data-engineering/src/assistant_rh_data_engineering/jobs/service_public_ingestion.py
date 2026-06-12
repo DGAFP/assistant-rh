@@ -171,6 +171,14 @@ def remap_existing_document_ids(
     existing_doc_ids_by_short_id: dict[str, str],
     existing_section_ids_by_doc_index: dict[tuple[str, int], str] | None = None,
 ) -> dict[str, int]:
+    """Réécrit les IDs régénérés pour réutiliser ceux déjà en base.
+
+    Mute ``documents``, ``sections`` et ``chunks`` en place: les ``doc_id``
+    sont remplacés par ceux trouvés via ``short_id``, les ``section_id`` par
+    ceux trouvés via ``(doc_id, section_index)``, et les références
+    (``parent_section_id``, ``source_document_id``, ``section_id`` des chunks)
+    sont propagées. Retourne le nombre de lignes remappées par type.
+    """
     from assistant_rh_data_engineering.utils.helpers import stable_section_uuid
 
     existing_doc_ids = {str(short_id).strip().upper(): str(doc_id) for short_id, doc_id in existing_doc_ids_by_short_id.items()}

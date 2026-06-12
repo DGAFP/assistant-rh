@@ -230,6 +230,37 @@ def test_remap_existing_document_ids_reuses_section_ids_when_doc_id_is_unchanged
     assert chunks[0]["section_id"] == "existing-section"
 
 
+def test_remap_existing_document_ids_leaves_new_documents_untouched() -> None:
+    documents = [
+        {"doc_id": "new-doc-existing", "short_id": "F32513"},
+        {"doc_id": "new-doc-fresh", "short_id": "F99999"},
+    ]
+    sections = [
+        {"section_id": "section-existing", "doc_id": "new-doc-existing", "section_index": 0, "parent_section_id": None},
+        {"section_id": "section-fresh", "doc_id": "new-doc-fresh", "section_index": 0, "parent_section_id": None},
+    ]
+    chunks = [
+        {"hash_id": "chunk-F32513", "source_document_id": "new-doc-existing", "section_id": "section-existing"},
+        {"hash_id": "chunk-F99999", "source_document_id": "new-doc-fresh", "section_id": "section-fresh"},
+    ]
+
+    remapped = service_public_ingestion.remap_existing_document_ids(
+        documents,
+        sections,
+        chunks,
+        {"F32513": "existing-doc"},
+        {("existing-doc", 0): "existing-section"},
+    )
+
+    assert remapped == {"documents": 1, "sections": 1, "chunks": 1}
+    assert documents[0]["doc_id"] == "existing-doc"
+    assert documents[1]["doc_id"] == "new-doc-fresh"
+    assert sections[0]["section_id"] == "existing-section"
+    assert sections[1] == {"section_id": "section-fresh", "doc_id": "new-doc-fresh", "section_index": 0, "parent_section_id": None}
+    assert chunks[0] == {"hash_id": "chunk-F32513", "source_document_id": "existing-doc", "section_id": "existing-section"}
+    assert chunks[1] == {"hash_id": "chunk-F99999", "source_document_id": "new-doc-fresh", "section_id": "section-fresh"}
+
+
 def test_ingestion_main_upserts_documents_sections_and_chunks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
