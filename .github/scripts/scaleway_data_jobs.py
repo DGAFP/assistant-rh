@@ -37,6 +37,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-embeddings", type=parse_bool, default=False)
     parser.add_argument("--service-public-fiche-config", default="config/service_public_fiches.json")
     parser.add_argument("--legifrance-article-ids-json", default="config/legifrance_article_cids.json")
+    parser.add_argument("--embedding-source", choices=("all", "service_public", "legifrance"), default="all")
+    parser.add_argument("--embedding-only-column", default="")
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser
@@ -59,9 +61,10 @@ def env_optional(name: str, default: str = "") -> str:
 
 def redacted(text: str, secrets: list[str]) -> str:
     output = text
-    for secret in secrets:
-        if secret:
-            output = output.replace(secret, "***")
+    # Longest first: redacting a secret that contains another one must not leave
+    # the remainder of the longer secret in clear text.
+    for secret in sorted({secret for secret in secrets if secret}, key=len, reverse=True):
+        output = output.replace(secret, "***")
     return output
 
 
@@ -125,6 +128,18 @@ def definition_id(definition: dict[str, Any]) -> str:
     if not job_id:
         raise RuntimeError(f"Unable to find Scaleway job definition id for {definition.get('name')!r}")
     return job_id
+
+
+def extract_run(payload: Any) -> dict[str, Any]:
+    if isinstance(payload, dict):
+        for key in ("run", "job_run", "job"):
+            value = payload.get(key)
+            if isinstance(value, dict):
+                return value
+        return payload
+    if isinstance(payload, list) and payload and isinstance(payload[0], dict):
+        return payload[0]
+    return {}
 
 
 def render_args(values: list[str], context: dict[str, str]) -> list[str]:
@@ -241,6 +256,13 @@ def should_run(spec: dict[str, Any], args: argparse.Namespace) -> bool:
         return False
     if domain == "embeddings" and not args.embeddings:
         return False
+    if domain == "embeddings":
+        embedding_source = getattr(args, "embedding_source", "all")
+        key = str(spec.get("key") or "")
+        if embedding_source == "service_public" and key != "embeddings-service-public":
+            return False
+        if embedding_source == "legifrance" and key != "embeddings-legifrance":
+            return False
     if spec.get("requires_ingestion") and not args.run_ingestion:
         return False
     if spec.get("requires_embeddings") and not args.run_embeddings:
@@ -268,10 +290,38 @@ def start_definition(
         *indexed_args("args", command_args),
         *[f"environment-variables.{key}={value}" for key, value in sorted(environment.items())],
         f"region={region}",
+        "-o",
+        "json",
     ]
     if wait:
         args.append("-w")
-    run_scw(args, secrets=secrets, dry_run=dry_run)
+    output = run_scw(args, secrets=secrets, dry_run=dry_run)
+    if dry_run or not wait:
+        return
+
+    try:
+        payload = json.loads(output or "{}")
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Unable to parse Scaleway run output for {spec.get('key')}: {redacted(output, secrets)}") from exc
+
+    run = extract_run(payload)
+    state = str(run.get("state") or "").strip().lower()
+    if state != "succeeded":
+        run_id = str(run.get("id") or "").strip()
+        error_message = str(run.get("error_message") or "").strip()
+        reason = str(run.get("reason") or "").strip()
+        details = ", ".join(
+            part
+            for part in (
+                f"id={run_id}" if run_id else "",
+                f"state={state}" if state else "",
+                f"reason={reason}" if reason else "",
+            )
+            if part
+        )
+        if error_message:
+            details = f"{details}: {redacted(error_message, secrets)}" if details else redacted(error_message, secrets)
+        raise RuntimeError(f"Scaleway job run failed for {spec.get('key')}: {details}")
 
 
 def upsert_and_start_jobs(args: argparse.Namespace) -> int:
@@ -310,6 +360,9 @@ def upsert_and_start_jobs(args: argparse.Namespace) -> int:
             job_id = create_definition(spec, name, image, project_id, region, secrets=secrets, dry_run=args.dry_run)
 
         command_args = render_args(spec["args"], context)
+        embedding_only_column = str(getattr(args, "embedding_only_column", "") or "").strip()
+        if spec["domain"] == "embeddings" and embedding_only_column:
+            command_args.extend(["--only-column", embedding_only_column])
         if args.target_env == "prod":
             command_args.extend(render_args(spec.get("prod_args") or [], context))
         environment = job_environment(spec, args.target_env, region)

@@ -128,6 +128,15 @@ def test_scaleway_job_environment_fails_on_missing_required_secret(monkeypatch: 
         scaleway_data_jobs.job_environment({"env_groups": ["object_storage"]}, "prod", "fr-par")
 
 
+def test_redacted_handles_overlapping_secrets_longest_first() -> None:
+    secrets = ["plain-secret", "plain-secret-extended", ""]
+
+    output = scaleway_data_jobs.redacted("token=plain-secret-extended end", secrets)
+
+    assert output == "token=*** end"
+    assert "extended" not in output
+
+
 def test_run_scw_dry_run_redacts_secrets(capsys: pytest.CaptureFixture[str]) -> None:
     output = scaleway_data_jobs.run_scw(
         ["jobs", "definition", "start", "job-id", "environment-variables.SECRET=plain-secret"],
@@ -177,7 +186,7 @@ def test_start_definition_renders_scw_start_command(monkeypatch: pytest.MonkeyPa
         calls.append(args)
         assert secrets == ["secret"]
         assert dry_run is True
-        return "{}"
+        return json.dumps({"id": "run-id", "state": "succeeded"})
 
     monkeypatch.setattr(scaleway_data_jobs, "run_scw", fake_run_scw)
 
@@ -206,9 +215,70 @@ def test_start_definition_renders_scw_start_command(monkeypatch: pytest.MonkeyPa
             "environment-variables.SCW_SECRET_KEY=secret",
             "environment-variables.TARGET_ENV=staging",
             "region=fr-par",
+            "-o",
+            "json",
             "-w",
         ]
     ]
+
+
+def test_start_definition_raises_when_waited_scaleway_run_failed() -> None:
+    def fake_run_scw(args: list[str], *, secrets: list[str], dry_run: bool = False) -> str:
+        assert "-w" in args
+        return json.dumps(
+            {
+                "id": "run-id",
+                "state": "failed",
+                "reason": "exited_with_error",
+                "error_message": "database password plain-secret leaked here",
+            }
+        )
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(scaleway_data_jobs, "run_scw", fake_run_scw)
+        with pytest.raises(RuntimeError) as exc_info:
+            scaleway_data_jobs.start_definition(
+                "job-id",
+                {"key": "service-public-ingestion"},
+                ["service-public", "ingest"],
+                {"TARGET_ENV": "staging"},
+                "fr-par",
+                wait=True,
+                secrets=["plain-secret"],
+                dry_run=False,
+            )
+
+    message = str(exc_info.value)
+    assert "service-public-ingestion" in message
+    assert "state=failed" in message
+    assert "exited_with_error" in message
+    assert "plain-secret" not in message
+    assert "***" in message
+
+
+def test_start_definition_redacts_secrets_when_waited_run_output_is_malformed() -> None:
+    def fake_run_scw(args: list[str], *, secrets: list[str], dry_run: bool = False) -> str:
+        assert "-w" in args
+        return "not-json plain-secret"
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(scaleway_data_jobs, "run_scw", fake_run_scw)
+        with pytest.raises(RuntimeError) as exc_info:
+            scaleway_data_jobs.start_definition(
+                "job-id",
+                {"key": "service-public-ingestion"},
+                ["service-public", "ingest"],
+                {"TARGET_ENV": "staging"},
+                "fr-par",
+                wait=True,
+                secrets=["plain-secret"],
+                dry_run=False,
+            )
+
+    message = str(exc_info.value)
+    assert "Unable to parse Scaleway run output" in message
+    assert "plain-secret" not in message
+    assert "***" in message
 
 
 def test_upsert_and_start_jobs_uses_existing_definition_without_real_scw(
@@ -340,3 +410,79 @@ def test_upsert_and_start_jobs_appends_prod_args_for_production(
     assert scaleway_data_jobs.upsert_and_start_jobs(args) == 0
 
     assert started == [["legifrance", "bulk-dump", "--target-env", "prod", "--delete-remote"]]
+
+
+def test_upsert_and_start_jobs_filters_embeddings_source_and_appends_only_column(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "jobs.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "job_name_template": "assistant-rh-{target_env}-{key}",
+                "jobs": [
+                    {
+                        "key": "embeddings-service-public",
+                        "domain": "embeddings",
+                        "image": "embeddings-job",
+                        "description": "Service-Public embeddings",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_embeddings": True,
+                        "env_groups": [],
+                        "args": ["embeddings", "service-public", "--dsn-env", "SCW_POSTGRES_DSN"],
+                    },
+                    {
+                        "key": "embeddings-legifrance",
+                        "domain": "embeddings",
+                        "image": "embeddings-job",
+                        "description": "Legifrance embeddings",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_embeddings": True,
+                        "env_groups": [],
+                        "args": ["embeddings", "legifrance", "--dsn-env", "SCW_POSTGRES_DSN"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    started: list[list[str]] = []
+
+    monkeypatch.setenv("SCW_DEFAULT_PROJECT_ID", "project-id")
+    monkeypatch.delenv("SCW_DEFAULT_REGION", raising=False)
+    monkeypatch.delenv("SCW_CONTAINER_REGISTRY_NAMESPACE", raising=False)
+    monkeypatch.setattr(scaleway_data_jobs, "list_definitions", lambda project_id, region, *, secrets, dry_run: {})
+    monkeypatch.setattr(scaleway_data_jobs, "create_definition", lambda spec, name, image, project_id, region, *, secrets, dry_run: "new-id")
+    monkeypatch.setattr(
+        scaleway_data_jobs,
+        "start_definition",
+        lambda job_id, spec, command_args, environment, region, *, wait, secrets, dry_run: started.append(command_args),
+    )
+
+    args = SimpleNamespace(
+        config=str(config_path),
+        target_env="staging",
+        image_tag="sha-123",
+        service_public=False,
+        legifrance=False,
+        embeddings=True,
+        run_ingestion=False,
+        run_embeddings=True,
+        embedding_source="service_public",
+        embedding_only_column="embedding_m3",
+        service_public_fiche_config="config/service_public_fiches.json",
+        legifrance_article_ids_json="config/legifrance_article_cids.json",
+        wait=False,
+        dry_run=False,
+    )
+
+    assert scaleway_data_jobs.upsert_and_start_jobs(args) == 0
+
+    assert started == [["embeddings", "service-public", "--dsn-env", "SCW_POSTGRES_DSN", "--only-column", "embedding_m3"]]
