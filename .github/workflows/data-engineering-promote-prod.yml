@@ -60,6 +60,7 @@ jobs:
       service_public: ${{ steps.plan.outputs.service_public }}
       legifrance: ${{ steps.plan.outputs.legifrance }}
       embeddings: ${{ steps.plan.outputs.embeddings }}
+      run_embeddings: ${{ steps.plan.outputs.run_embeddings }}
       has_builds: ${{ steps.plan.outputs.has_builds }}
       has_runs: ${{ steps.plan.outputs.has_runs }}
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -133,7 +134,6 @@ jobs:
     timeout-minutes: 240
     environment: scaleway-production
     env:
-      RUN_EMBEDDINGS: ${{ github.event_name != 'workflow_dispatch' && needs.plan.outputs.embeddings == 'true' || github.event_name == 'workflow_dispatch' && (inputs.run_embeddings || inputs.source == 'embeddings') }}
       SCW_DEFAULT_REGION: fr-par
       SCW_DEFAULT_PROJECT_ID: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
       SCW_DEFAULT_ORGANIZATION_ID: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
@@ -173,7 +173,7 @@ jobs:
             --legifrance "${{ needs.plan.outputs.legifrance }}" \
             --embeddings "${{ needs.plan.outputs.embeddings }}" \
             --run-ingestion "false" \
-            --run-embeddings "${RUN_EMBEDDINGS}" \
+            --run-embeddings "${{ needs.plan.outputs.run_embeddings }}" \
             --service-public-fiche-config "config/service_public_fiches.json" \
             --legifrance-article-ids-json "config/legifrance_article_cids.json" \
             --wait

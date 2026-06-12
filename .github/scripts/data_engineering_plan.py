@@ -140,13 +140,16 @@ def write_outputs(outputs: dict[str, str]) -> None:
 
 def main() -> int:
     if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
-        selected = classify_from_source(os.getenv("INPUT_SOURCE", "all"))
-        if os.getenv("INPUT_RUN_EMBEDDINGS", "").strip().lower() == "true":
+        source = os.getenv("INPUT_SOURCE") or "all"
+        selected = classify_from_source(source)
+        run_embeddings = source == "embeddings" or os.getenv("INPUT_RUN_EMBEDDINGS", "").strip().lower() == "true"
+        if run_embeddings:
             selected["embeddings"] = True
         files: list[str] = []
     else:
         files = changed_files()
         selected = classify_from_files(files)
+        run_embeddings = selected["embeddings"]
 
     matrix: list[dict[str, str]] = []
     for domain in ("service_public", "legifrance", "embeddings"):
@@ -157,6 +160,7 @@ def main() -> int:
         "service_public": str(selected["service_public"]).lower(),
         "legifrance": str(selected["legifrance"]).lower(),
         "embeddings": str(selected["embeddings"]).lower(),
+        "run_embeddings": str(run_embeddings).lower(),
         "has_builds": str(bool(matrix)).lower(),
         "has_runs": str(selected["service_public"] or selected["legifrance"] or selected["embeddings"]).lower(),
         "matrix": json.dumps({"include": matrix or [{"image": "noop", "dockerfile": "Dockerfile.service_public_pipeline"}]}),
