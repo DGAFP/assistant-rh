@@ -3,8 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-cwd = Path.cwd().resolve()
-REPO_ROOT = cwd.parent if cwd.name == "scripts" else cwd
+REPO_ROOT = Path(__file__).resolve().parent.parent
 for path in (
     REPO_ROOT / "packages" / "shared-config" / "src",
     REPO_ROOT / "packages" / "data-engineering" / "src",
