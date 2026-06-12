@@ -128,6 +128,15 @@ def test_scaleway_job_environment_fails_on_missing_required_secret(monkeypatch: 
         scaleway_data_jobs.job_environment({"env_groups": ["object_storage"]}, "prod", "fr-par")
 
 
+def test_redacted_handles_overlapping_secrets_longest_first() -> None:
+    secrets = ["plain-secret", "plain-secret-extended", ""]
+
+    output = scaleway_data_jobs.redacted("token=plain-secret-extended end", secrets)
+
+    assert output == "token=*** end"
+    assert "extended" not in output
+
+
 def test_run_scw_dry_run_redacts_secrets(capsys: pytest.CaptureFixture[str]) -> None:
     output = scaleway_data_jobs.run_scw(
         ["jobs", "definition", "start", "job-id", "environment-variables.SECRET=plain-secret"],
@@ -243,6 +252,31 @@ def test_start_definition_raises_when_waited_scaleway_run_failed() -> None:
     assert "service-public-ingestion" in message
     assert "state=failed" in message
     assert "exited_with_error" in message
+    assert "plain-secret" not in message
+    assert "***" in message
+
+
+def test_start_definition_redacts_secrets_when_waited_run_output_is_malformed() -> None:
+    def fake_run_scw(args: list[str], *, secrets: list[str], dry_run: bool = False) -> str:
+        assert "-w" in args
+        return "not-json plain-secret"
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(scaleway_data_jobs, "run_scw", fake_run_scw)
+        with pytest.raises(RuntimeError) as exc_info:
+            scaleway_data_jobs.start_definition(
+                "job-id",
+                {"key": "service-public-ingestion"},
+                ["service-public", "ingest"],
+                {"TARGET_ENV": "staging"},
+                "fr-par",
+                wait=True,
+                secrets=["plain-secret"],
+                dry_run=False,
+            )
+
+    message = str(exc_info.value)
+    assert "Unable to parse Scaleway run output" in message
     assert "plain-secret" not in message
     assert "***" in message
 

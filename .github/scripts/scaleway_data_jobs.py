@@ -61,9 +61,10 @@ def env_optional(name: str, default: str = "") -> str:
 
 def redacted(text: str, secrets: list[str]) -> str:
     output = text
-    for secret in secrets:
-        if secret:
-            output = output.replace(secret, "***")
+    # Longest first: redacting a secret that contains another one must not leave
+    # the remainder of the longer secret in clear text.
+    for secret in sorted({secret for secret in secrets if secret}, key=len, reverse=True):
+        output = output.replace(secret, "***")
     return output
 
 
@@ -298,7 +299,12 @@ def start_definition(
     if dry_run or not wait:
         return
 
-    run = extract_run(json.loads(output or "{}"))
+    try:
+        payload = json.loads(output or "{}")
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Unable to parse Scaleway run output for {spec.get('key')}: {redacted(output, secrets)}") from exc
+
+    run = extract_run(payload)
     state = str(run.get("state") or "").strip().lower()
     if state != "succeeded":
         run_id = str(run.get("id") or "").strip()
