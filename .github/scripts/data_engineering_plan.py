@@ -141,6 +141,8 @@ def write_outputs(outputs: dict[str, str]) -> None:
 def main() -> int:
     if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
         selected = classify_from_source(os.getenv("INPUT_SOURCE", "all"))
+        if os.getenv("INPUT_RUN_EMBEDDINGS", "").strip().lower() == "true":
+            selected["embeddings"] = True
         files: list[str] = []
     else:
         files = changed_files()
