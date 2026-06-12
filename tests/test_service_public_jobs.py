@@ -414,6 +414,47 @@ def test_db_writer_upserts_documents_on_short_id_when_available(monkeypatch: pyt
     assert calls["committed"] is True
 
 
+def test_db_writer_falls_back_to_doc_id_when_short_id_index_is_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    writer = ServicePublicDbWriter(dsn="postgresql://unused")
+    calls: dict[str, Any] = {}
+
+    class DummyConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def commit(self) -> None:
+            calls["committed"] = True
+
+    monkeypatch.setattr(writer, "_connect", lambda: DummyConnection())
+    monkeypatch.setattr(writer, "_index_predicate", lambda conn, index_name: None)
+
+    def fake_upsert(
+        conn: object,
+        table: str,
+        rows: list[dict[str, Any]],
+        conflict_cols: list[str],
+        conflict_where: str | None = None,
+        update_exclude_cols: list[str] | None = None,
+    ) -> int:
+        calls["table"] = table
+        calls["conflict_cols"] = conflict_cols
+        calls["conflict_where"] = conflict_where
+        calls["update_exclude_cols"] = update_exclude_cols
+        return len(rows)
+
+    monkeypatch.setattr(writer, "_upsert", fake_upsert)
+
+    assert writer.upsert_documents([{"doc_id": "new-doc", "short_id": "F12386", "title": "Titre"}]) == 1
+    assert calls["table"] == "rag_documents"
+    assert calls["conflict_cols"] == ["doc_id"]
+    assert calls["conflict_where"] is None
+    assert calls["update_exclude_cols"] is None
+    assert calls["committed"] is True
+
+
 def test_db_writer_upserts_sections_on_doc_index_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
     writer = ServicePublicDbWriter(dsn="postgresql://unused")
     calls: dict[str, Any] = {}
@@ -454,6 +495,74 @@ def test_db_writer_upserts_sections_on_doc_index_when_available(monkeypatch: pyt
     assert calls["conflict_where"] is None
     assert calls["update_exclude_cols"] == ["section_id"]
     assert calls["committed"] is True
+
+
+def test_db_writer_falls_back_to_section_id_when_doc_index_is_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    writer = ServicePublicDbWriter(dsn="postgresql://unused")
+    calls: dict[str, Any] = {}
+
+    class DummyConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def commit(self) -> None:
+            calls["committed"] = True
+
+    monkeypatch.setattr(writer, "_connect", lambda: DummyConnection())
+    monkeypatch.setattr(writer, "_index_predicate", lambda conn, index_name: None)
+
+    def fake_upsert(
+        conn: object,
+        table: str,
+        rows: list[dict[str, Any]],
+        conflict_cols: list[str],
+        conflict_where: str | None = None,
+        update_exclude_cols: list[str] | None = None,
+    ) -> int:
+        calls["table"] = table
+        calls["conflict_cols"] = conflict_cols
+        calls["conflict_where"] = conflict_where
+        calls["update_exclude_cols"] = update_exclude_cols
+        return len(rows)
+
+    monkeypatch.setattr(writer, "_upsert", fake_upsert)
+
+    assert writer.upsert_sections([{"section_id": "section", "doc_id": "doc", "section_index": 0}]) == 1
+    assert calls["table"] == "rag_sections"
+    assert calls["conflict_cols"] == ["section_id"]
+    assert calls["conflict_where"] is None
+    assert calls["update_exclude_cols"] is None
+    assert calls["committed"] is True
+
+
+def test_db_writer_index_predicate_is_schema_qualified() -> None:
+    writer = ServicePublicDbWriter(schema="staging", dsn="postgresql://unused")
+    calls: dict[str, Any] = {}
+
+    class DummyCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def execute(self, query: str, params: tuple[str, str]) -> None:
+            calls["query"] = query
+            calls["params"] = params
+
+        def fetchone(self) -> tuple[str]:
+            return ("short_id IS NOT NULL",)
+
+    class DummyConnection:
+        def cursor(self) -> DummyCursor:
+            return DummyCursor()
+
+    assert writer._index_predicate(DummyConnection(), "uq_rag_documents_short_id") == "short_id IS NOT NULL"
+    assert calls["params"] == ("uq_rag_documents_short_id", "staging")
+    assert "namespace.nspname = %s" in calls["query"]
 
 
 def test_summarize_pipeline_outputs_returns_per_fiche_counts() -> None:

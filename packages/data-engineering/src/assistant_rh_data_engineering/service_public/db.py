@@ -50,9 +50,11 @@ class ServicePublicDbWriter:
                 SELECT pg_get_expr(indexes.indpred, indexes.indrelid)
                 FROM pg_index indexes
                 JOIN pg_class index_class ON index_class.oid = indexes.indexrelid
+                JOIN pg_namespace namespace ON namespace.oid = index_class.relnamespace
                 WHERE index_class.relname = %s
+                  AND namespace.nspname = %s
                 """,
-                (index_name,),
+                (index_name, self.schema),
             )
             row = cur.fetchone()
             if row is None:
@@ -268,7 +270,7 @@ class ServicePublicDbWriter:
                 """
                 SELECT doc_id, section_index, section_id
                 FROM {}.{}
-                WHERE doc_id = ANY(%s)
+                WHERE doc_id = ANY(%s::uuid[])
                   AND section_index IS NOT NULL
                 """
             ).format(sql.Identifier(self.schema), sql.Identifier("rag_sections"))
