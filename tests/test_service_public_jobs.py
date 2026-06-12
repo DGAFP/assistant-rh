@@ -70,6 +70,14 @@ def test_load_artifacts_fails_on_missing_sections_file(tmp_path: Path) -> None:
         service_public_ingestion.load_artifacts(tmp_path, ["F32513"])
 
 
+def test_load_artifacts_fails_on_null_document(tmp_path: Path) -> None:
+    _write_service_public_artifacts(tmp_path, "F32513")
+    (tmp_path / "silver" / "documents" / "F32513.document.json").write_text("null", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="document silver vide"):
+        service_public_ingestion.load_artifacts(tmp_path, ["F32513"])
+
+
 def test_load_artifacts_fails_on_empty_chunks_file(tmp_path: Path) -> None:
     _write_service_public_artifacts(tmp_path, "F32513", chunks=False)
     _write_jsonl(tmp_path / "gold" / "chunks" / "F32513.chunks.jsonl", [])

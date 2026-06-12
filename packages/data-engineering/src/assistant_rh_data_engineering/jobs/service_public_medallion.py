@@ -45,9 +45,11 @@ def summarize_pipeline_outputs(
 ) -> dict[str, dict[str, int]]:
     bronze_ids = {str(getattr(asset, "fiche_id", "")).strip().upper() for asset in bronze_assets}
     silver_by_id = {
-        str(bundle.document.get("short_id", "")).strip().upper(): bundle for bundle in silver_bundles if getattr(bundle, "document", None)
+        str(bundle.document.get("short_id", "")).strip().upper(): bundle for bundle in silver_bundles if getattr(bundle, "document", None) is not None
     }
-    gold_by_id = {str(bundle.document.get("short_id", "")).strip().upper(): bundle for bundle in gold_bundles if getattr(bundle, "document", None)}
+    gold_by_id = {
+        str(bundle.document.get("short_id", "")).strip().upper(): bundle for bundle in gold_bundles if getattr(bundle, "document", None) is not None
+    }
 
     per_fiche: dict[str, dict[str, int]] = {}
     errors: list[str] = []

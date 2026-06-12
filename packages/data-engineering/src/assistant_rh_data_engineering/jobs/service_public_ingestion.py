@@ -81,10 +81,11 @@ def load_artifacts(
                 document = read_json(document_path)
             except read_errors as exc:
                 errors.append(f"{short_id}: document silver illisible ({document_path}): {exc}")
-            if document:
-                documents.append(document)
-            elif document is not None:
-                errors.append(f"{short_id}: document silver vide ({document_path})")
+            else:
+                if document:
+                    documents.append(document)
+                else:
+                    errors.append(f"{short_id}: document silver vide ({document_path})")
         else:
             errors.append(f"{short_id}: document silver manquant ({document_path})")
 
