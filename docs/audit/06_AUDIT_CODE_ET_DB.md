@@ -8,10 +8,10 @@
 
 ## 1. `chat_runs` — anti-patterns de table de log
 
-**Chiffres (base locale)** : **154 colonnes**, 51 Mo pour 3 058 lignes (**~17 Ko/ligne**), 1 seule contrainte (PK), **0 clé étrangère**, **14 index**.
+**Chiffres (base locale)** : **154 colonnes**, 51 Mo pour 3 058 lignes (**~17 Ko/ligne** ; snapshot du 09/06 légèrement postérieur aux 3 054 lignes de la note 01), 1 seule contrainte (PK), **0 clé étrangère**, **14 index**.
 
 ### 1.1 Colonnes provisionnées et jamais écrites (le point le plus grave)
-Le logger (`chat_logger.build_log_row`) écrit **126 colonnes** ; la table en a **154**. **33 colonnes existent en base mais ne sont jamais alimentées par le code.** Et ce ne sont pas des reliquats anodins — ce sont précisément **les colonnes de diagnostic** :
+Le logger (`chat_logger.build_log_row`) écrit **126 colonnes** ; la table en a **154**. **33 colonnes existent en base mais ne sont jamais alimentées par le code** (décompte au 2026-06-09, avant l'ajout de `v3_reranker_status` écrite par #88). Et ce ne sont pas des reliquats anodins — ce sont précisément **les colonnes de diagnostic** :
 
 ```
 v3_chunks_raw, v3_sections_raw, v3_chunks_before_rerank, v3_chunks_after_rerank,
@@ -53,10 +53,10 @@ Le retriever fait une recherche pgvector (`embedding_m3 <=> query`) sur matte, s
 | `rag_chunks_dgafp` | 3 992 | ❌ | **scan séquentiel** |
 | `rag_chunks_rgrh` | 178 | ❌ | **scan séquentiel** |
 
-3 des 4 tables n'ont **aucun index vectoriel** : chaque question recalcule la distance cosinus sur l'intégralité de la table (jusqu'à ~4 000 vecteurs pour DGAFP), à chaque requête, en parallèle. C'est une cause directe de latence et de coût CPU, et ça se dégradera linéairement avec le multi-ministère (prio P1). Paradoxe : un index ivfflat existe sur `rag_chunks_mso`… une table que le retriever n'interroge même pas.
+3 des 4 tables n'ont **aucun index vectoriel** : chaque question recalcule la distance cosinus sur l'intégralité de la table (jusqu'à ~4 000 vecteurs pour DGAFP), à chaque requête, en parallèle. C'est une cause directe de latence et de coût CPU, et ça se dégradera linéairement avec le multi-ministère (prio P2). Paradoxe : un index ivfflat existe sur `rag_chunks_mso`… une table que le retriever n'interroge même pas.
 
 ### 2.3 Prolifération de colonnes d'embedding majoritairement NULL
-matte : 5 colonnes d'embedding ; rgrh : 4 ; dgafp : 3. Plusieurs modèles coexistent (`embedding_m3`, `embedding_bge_scw`, `embedding_qwen3`, `embedding_ctx`, `embedding_bge`) et la plupart sont NULL (note 01 : 762 NULL matte, 178 rgrh, 3 992 qwen3 dgafp). Stockage gaspillé (un vecteur 1024-dim ≈ 4-8 Ko), schéma ambigu (laquelle fait foi ?), et risque fonctionnel : le fallback embeddings BGE-Scaleway lit une colonne aux trous (note 01 C4).
+matte : 5 colonnes d'embedding ; rgrh : 4 ; dgafp : 3. Plusieurs modèles coexistent (`embedding_m3`, `embedding_bge_scw`, `embedding_qwen3`, `embedding_ctx`, `embedding_bge`) et la plupart sont NULL (note 01 : 762 NULL matte, 146 rgrh, 3 992 qwen3 dgafp). Stockage gaspillé (un vecteur 1024-dim ≈ 4-8 Ko), schéma ambigu (laquelle fait foi ?), et risque fonctionnel : le fallback embeddings BGE-Scaleway lit une colonne aux trous (note 01 C4).
 
 ### 2.4 Tables fantômes dupliquées *(legacy Scalingo/scw)*
 La base porte des doublons complets de migration, avec données **et** index :
@@ -78,7 +78,7 @@ Motif systémique : chaque garde-fou, en cas d'échec, **se dégrade silencieuse
 | Lieu | Comportement en cas d'échec | Pourquoi c'est critique |
 |---|---|---|
 | `context_selector.py:192` | selector échoue → **garde toutes les sections** | Le filtre anti-hallucination tombe ouvert : du contexte non pertinent passe à la génération, sans trace |
-| `reranker.py:78` | rerank échoue → **ordre d'origine conservé** | La panne #87/#88 (422) est restée invisible des mois — `warning`, pas d'alerte |
+| `reranker.py:78` | rerank échoue → **ordre d'origine conservé** | La panne #87/#88 (422) est restée invisible des mois — `warning`, pas d'alerte ; depuis #88 le statut est persisté (`v3_reranker_status`), l'alerte reste à créer |
 | `embedder.py:82,106` | embedding échoue → **`return None`** → retriever `return []` | Question sans aucun résultat, vécue comme « no-answer » par l'utilisateur, loggée en `warning` |
 | `retriever.py:271-272` | une table échoue dans le ThreadPool → **résultat partiel** | `rag_chunks_test` absente avalée ; le recall chute sans signal |
 | `retriever.py:903` | `rag_chunks_test` KO → **warning + continue** | Idem : table activée en config mais absente = non-événement |

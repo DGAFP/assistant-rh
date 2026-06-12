@@ -34,7 +34,7 @@ Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme
 
 ### 2.1 Retrieval et scoring — facteur de non-qualité dominant
 
-**C1. Reranker cassé (critique, vérifié).** `reranker.py` envoie `{"model", "prompt", "input", "top_n"}` ; l'API actuelle exige `{"model", "query", "documents"}` → 422 systématique, reproduit en local contre l'API réelle. Le fallback « keeping aggregated order » est silencieux : aucune métrique, aucun log d'alerte agrégé, le port TypeScript n'a pas encore branché le rerank. Avec le payload corrigé, l'endpoint répond normalement (scores 0,96 vs 1,6e-05 sur un test discriminant).
+**C1. Reranker cassé (critique, vérifié).** `reranker.py` envoie `{"model", "prompt", "input", "top_n"}` ; l'API actuelle exige `{"model", "query", "documents"}` → 422 systématique, reproduit en local contre l'API réelle. Le fallback « keeping aggregated order » est silencieux : aucune métrique, aucun log d'alerte agrégé, le port TypeScript n'a pas encore branché le rerank. Avec le payload corrigé, l'endpoint répond normalement (scores 0,96 vs 1,6e-05 sur un test discriminant). **Mise à jour (2026-06-12)** : corrigé via [#88](https://github.com/DGAFP/assistant-rh/pull/88), qui persiste aussi l'état du rerank dans `chat_runs` (`v3_reranker_status`, migration versionnée) ; reste à créer l'alerting sur ce statut.
 
 **C2. Le score fusionné perd l'amplitude de pertinence.** `_merge_cross_source_ranks` applique un RRF (k=60) entre 8 listes (4 tables × 2 chemins chunk/heading) puis normalise au plafond théorique. Le RRF conserve un signal de rang, mais il ne conserve pas l'amplitude des scores de similarité et ne fournit pas un score calibré de pertinence. Conséquences observées :
 - scores quasi plats : 0,167 / 0,164 / … avec peu de discrimination entre sections très pertinentes et bruit ;
@@ -80,8 +80,8 @@ Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme
 
 Le logging `chat_runs` est volumineux (~125 colonnes) mais paradoxalement mal ciblé : il ne donne pas de vision production consolidée (usage, latences P50/P95/P99, pannes provider, no-answer, rerank, traces, alerting) **et** n'enregistre pas les données fines du retrieval (chunks par étape) nécessaires au diagnostic. Le double sujet — rationaliser le schéma et ajouter les bons signaux — est traité en note [02](02_ARCHITECTURE_AUDIT_2026-06.md) A6 et note [05](05_PLAN_AUDIT_ET_COUVERTURE.md) D16.
 
-La trajectoire détaillée est traitée dans le document dédié : [Observabilité RAG & Dashboards Grafana](./RAG_OBSERVABILITY_ROADMAP_2026-06.md). Points à garder dans cette roadmap qualité :
-- l'échec du rerank n'est pas loggé comme tel (aucune colonne, aucun alerting) — une panne totale est restée invisible ;
+La trajectoire détaillée est traitée dans le document dédié : [Observabilité RAG & Dashboards Grafana](03_RAG_OBSERVABILITY_ROADMAP_2026-06.md). Points à garder dans cette roadmap qualité :
+- l'échec du rerank n'était pas loggé comme tel — une panne totale est restée invisible ; depuis [#88](https://github.com/DGAFP/assistant-rh/pull/88), `v3_reranker_status` est persisté, mais l'alerting reste à créer ;
 - les dashboards Grafana doivent couvrir l'usage, la santé RAG, les latences, les providers/infra et les feedbacks qualité ;
 - les traces doivent relier un `turn_id`/`trace_id` à chaque étape : retrieval, rerank, selector, contexte, génération et appels providers.
 
@@ -128,11 +128,11 @@ Deux priorités structurent l'itération, plus un horizon itération 3 :
 
 | Prio | Objectif | Couverture dans ce dossier |
 |---|---|---|
-| **P1 — Intégrer 5 nouveaux ministères** | Étendre le périmètre au-delà du MATTE : ingestion des sources ministérielles, métadonnées normalisées, **scope appliqué côté serveur avant retrieval** et habilitations (ProConnect) | Chantier structurel — cadré note [04](04_OBSERVATIONS_INITIALES_2026-06-05.md) §3 (multi-ministère, auth) et P1.5 ; prérequis qualité ci-dessous (un retrieval non fiable se multiplierait par 6) |
-| **P2 — Améliorer la qualité du RAG** | Fiabiliser scoring, retrieval, couverture d'index, abstention, génération, et la **mesure** qui permet de juger les modifs | Objet principal de cette note — phases 0 à 4 ci-dessous |
+| **P1 — Améliorer la qualité du RAG** | Fiabiliser scoring, retrieval, couverture d'index, abstention, génération, et la **mesure** qui permet de juger les modifs | Objet principal de cette note — phases 0 à 4 ci-dessous |
+| **P2 — Intégrer 5 nouveaux ministères** | Étendre le périmètre au-delà du MATTE : ingestion des sources ministérielles, métadonnées normalisées, **scope appliqué côté serveur avant retrieval** et habilitations (ProConnect) | Chantier structurel — cadré note [04](04_OBSERVATIONS_INITIALES_2026-06-05.md) §3 (multi-ministère, auth) et P1.5 ; prérequis qualité ci-dessus (un retrieval non fiable se multiplierait par 6) |
 | **P3 (itération 3) — Réemploi dans un autre produit** | Industrialiser le pipeline comme brique réutilisable hors Assistant RH | Hors périmètre itération 2 ; à n'envisager qu'une fois P1+P2 stabilisés et le pipeline rendu autonome/testé (note [02](02_ARCHITECTURE_AUDIT_2026-06.md)) |
 
-**Articulation** : P1 et P2 sont menées **en parallèle** mais P2 conditionne P1 — étendre à 6 périmètres un retrieval dont le scoring est plat et la couverture d'index trouée démultiplierait les défauts. Les quick wins (Phase 0) et la mesure (Phase 1) doivent précéder l'extension multi-ministère réelle. La séparation des trois niveaux (autorisation / priorité des sources / autorité documentaire) de la note 04 est un prérequis de P1.
+**Articulation** : P1 et P2 sont menées **en parallèle** mais P1 (qualité) conditionne P2 (extension) — étendre à 6 périmètres un retrieval dont le scoring est plat et la couverture d'index trouée démultiplierait les défauts. Les quick wins (Phase 0) et la mesure (Phase 1) doivent précéder l'extension multi-ministère réelle. La séparation des trois niveaux (autorisation / priorité des sources / autorité documentaire) de la note 04 est un prérequis de P2.
 
 ### Phase 0 — Quick wins (semaine du 16 juin)
 
@@ -150,7 +150,7 @@ Deux priorités structurent l'itération, plus un horizon itération 3 :
 - Constituer le **goldset v1 : 80–120 questions** depuis `chat_feedbacks` (mix positifs/négatifs, tous thèmes, difficultés étiquetées) avec réponses et sources attendues.
 - Harness d'éval automatisé (recall@k chunks/sections, présence de la bonne source dans le contexte final, no-answer justifié ou non, juge LLM sur la réponse) exécutable en CI et en local — en réutilisant `src/goldset/` et `tests/conformance/`.
 - **Baseline chiffrée** avant/après Phase 0 ; tableau de bord hebdo (taux no-answer, helpful rate, échecs provider).
-- Observabilité production : voir le document dédié [Observabilité RAG & Dashboards Grafana](./RAG_OBSERVABILITY_ROADMAP_2026-06.md) pour les dashboards Grafana, traces, alertes et métriques infra/RAG.
+- Observabilité production : voir le document dédié [Observabilité RAG & Dashboards Grafana](03_RAG_OBSERVABILITY_ROADMAP_2026-06.md) pour les dashboards Grafana, traces, alertes et métriques infra/RAG.
 - Réparer l'analyse IA des feedbacks (crashs `NoneType`).
 - Seed local aligné prod (`rag_chunks_test` incluse) ; script unique « run prod-config local ».
 
@@ -246,13 +246,16 @@ Approfondissement suite au signalement « SFT : la fiche est indexée mais ne re
 | MATTE | **17 / 44 documents** — majoritairement des circulaires, dont plusieurs ingérées en 2025 |
 | MSO | **16 / 16 documents** au niveau du retrieval effectif (table `rag_chunks_mso` jamais interrogée) |
 
-Chronologie explicative : `rag_documents`/`rag_sections` SP ont été peuplés par le nouveau pipeline (janv. 2026, sections jusqu'à mai 2026), mais `rag_chunks_service_public` n'a été (re)généré (23 avr.–1er mai) que pour 24 fiches. **Deux générations d'ingestion coexistent : le retrieval ne lit que l'ancienne ; le corpus récent est du poids mort.**
+Chronologie explicative : `rag_documents`/`rag_sections` SP ont été peuplés par le nouveau pipeline (janv. 2026, sections jusqu'à mai 2026), mais `rag_chunks_service_public` n'a été (re)généré (23 avr.–1er mai) que pour 24 fiches — précisément les 24 `fiche_ids` listées dans `config/service_public_fiches.json`.
+
+**Cause racine établie depuis (issue [#89](https://github.com/DGAFP/assistant-rh/issues/89), PRs [#95](https://github.com/DGAFP/assistant-rh/pull/95)–[#98](https://github.com/DGAFP/assistant-rh/pull/98))** : l'ingestion de janvier a laissé un état partiel en base (documents et sections écrits, chunks jamais générés pour 31 fiches), les artefacts silver/gold de ces fiches manquent aussi dans l'Object Storage staging, et les jobs « fail-open » laissaient passer des sorties de chunks manquantes ou vides comme des succès — même famille de panne silencieuse que le reranker (#87). Le rejeu d'avril, limité au fichier de config, ne pouvait pas combler le trou.
 
 ### Conséquences sur l'audit et la roadmap
 
 - Les replays sur questions cibles (§1, §3) **sous-estiment** le problème : une question dont le document n'a pas de chunks échoue quelle que soit la qualité du retrieval. La part réelle de `missing_document` dans les échecs est probablement bien supérieure aux 23 % mesurés sur les feedbacks — beaucoup d'échecs classés `retrieval_issue` sont en réalité des trous d'index.
 - **Nouveau quick win prioritaire (à intégrer en Phase 0/1)** : job de **réconciliation ingestion → index** : pour chaque document `is_indexable`, vérifier ≥ 1 chunk avec embedding non nul dans une table effectivement interrogée par le retriever ; rapport d'écart + backfill ; test CI qui échoue si la couverture régresse. Décider du sort de `rag_chunks_mso` (intégrer au retriever ou retirer du corpus) et de `rag_chunks_test` (créer la table ou désactiver le flag — un flag actif sur une table absente doit être une erreur visible, pas un warning avalé).
-- **Métrique à ajouter au §6** : taux de couverture index = % de documents indexables disposant d'unités de retrieval effectives (cible : 100 %, alerte en CI). C'est une mesure indépendante du jeu de questions — elle corrige le biais « questions cibles » du goldset.
+  **Mise à jour (2026-06-12)** : le volet pipeline est livré pour Service-Public via les PRs [#95](https://github.com/DGAFP/assistant-rh/pull/95)–[#98](https://github.com/DGAFP/assistant-rh/pull/98) (split de #94) : corpus de config étendu à 55 fiches (24 existantes + 31 de l'issue), validation fail-fast par fiche, ingestion complète documents/sections/chunks avec préservation des IDs existants. **Reste à faire** : exécuter le rejeu staging (runbook de #94 : ingestion puis embeddings ciblés `embedding_m3`), puis le job de réconciliation DB → index + test CI ci-dessus, **non couverts** par ces PRs. Les trous **MATTE (17/44)** et **MSO (table jamais interrogée)** restent entièrement ouverts.
+- **Métrique à ajouter au §7** : taux de couverture index = % de documents indexables disposant d'unités de retrieval effectives (cible : 100 %, alerte en CI). C'est une mesure indépendante du jeu de questions — elle corrige le biais « questions cibles » du goldset.
 
 ---
 

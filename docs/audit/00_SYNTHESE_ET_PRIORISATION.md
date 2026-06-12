@@ -12,7 +12,7 @@
 Trois découvertes structurent l'itération 2 :
 
 1. **Le reranker Albert était silencieusement cassé** (API `/rerank` 422, fallback sans alerte). Replay : 0/4 → 3/4 questions corrigées une fois réparé + hybride. **Déjà corrigé en quick win** ([#88](https://github.com/DGAFP/assistant-rh/pull/88), issue #87).
-2. **Trou de couverture d'index** : 58 % des fiches Service-Public ont des sections mais **zéro chunk** — elles sont indexées au sens documentaire mais invisibles au retrieval (cas SFT). Deux générations d'ingestion coexistent.
+2. **Trou de couverture d'index** : 58 % des fiches Service-Public ont des sections mais **zéro chunk** — elles sont indexées au sens documentaire mais invisibles au retrieval (cas SFT). Cause racine établie et corrigée côté code depuis (issue [#89](https://github.com/DGAFP/assistant-rh/issues/89), PRs [#95](https://github.com/DGAFP/assistant-rh/pull/95)–[#98](https://github.com/DGAFP/assistant-rh/pull/98) : config limitée à 24 fiches, artefacts manquants, jobs fail-open) ; **rejeu staging à exécuter**.
 3. **L'observabilité a été conçue puis jamais câblée** : `chat_runs` a 154 colonnes dont 33 jamais écrites — précisément les colonnes de diagnostic (chunks par étape, scores). Et 3 des 4 tables de retrieval n'ont **aucun index vectoriel** (scans séquentiels).
 
 À cela s'ajoute une disparité structurelle **auto-éval vs jugement expert** : tant qu'elle n'est pas mesurée, aucune métrique automatique ne peut arbitrer les futures modifications.
@@ -27,7 +27,7 @@ Trois découvertes structurent l'itération 2 :
 |---|---|---|---|---|
 | 1 | Reranker `/rerank` cassé (422 silencieux) | Critique | ✅ corrigé (#88) | Note [01](01_RAG_QUALITY_AUDIT_2026-06.md) §1 |
 | 2 | Score RRF plat, sans amplitude de pertinence | Élevé | à traiter | Note 01 §2.1 |
-| 3 | 58 % des fiches SP sans chunk (trou d'index, cas SFT) | Élevé | à traiter | Note 01 add. 1 |
+| 3 | 58 % des fiches SP sans chunk (trou d'index, cas SFT) | Élevé | ✅ fix code mergé (#95–#98) ; rejeu staging + réconciliation CI à faire | Note 01 add. 1 |
 | 4 | Disparité auto-éval vs expert, goldset vide | Élevé | à traiter | Note 01 add. 2 |
 | 5 | `chat_runs` : 154 col., 33 de diagnostic jamais écrites | Élevé | à traiter | Note [06](06_AUDIT_CODE_ET_DB.md) §1.1 |
 | 6 | Index vectoriels manquants (matte, dgafp, rgrh) | Élevé | à traiter | Note 06 §2.2 |
@@ -55,7 +55,8 @@ Trois découvertes structurent l'itération 2 :
 ## 4. Priorisation proposée (à valider)
 
 ### P0 — Quick wins (semaine du 16 juin, sans dépendance)
-- ✅ **Fix reranker** (#88) — fait.
+- ✅ **Fix reranker** (#88) — fait, statut `v3_reranker_status` persisté.
+- ✅ **Fix ingestion Service-Public** ([#95](https://github.com/DGAFP/assistant-rh/pull/95)–[#98](https://github.com/DGAFP/assistant-rh/pull/98)) — mergé ; **rejeu staging** (ingestion + embeddings ciblés) à exécuter, puis réconciliation index en CI.
 - **Créer les index vectoriels** (matte, dgafp, rgrh) → latence/coût, prérequis multi-ministère.
 - **Câbler les colonnes de diagnostic déjà présentes** (chunks par étape, scores) → débloque l'observabilité sans changer le schéma.
 - **Compteurs + alertes sur les chemins fail-open** (rerank, embeddings, selector, table vide).

@@ -10,7 +10,7 @@
 Le cœur du pipeline (`packages/rag-pipeline/`) est bien découpé en modules et autonome — c'est le point fort du repo. Les problèmes se concentrent sur quatre axes :
 
 1. **Fiabilité silencieuse** : le système préfère se dégrader sans bruit plutôt qu'échouer visiblement (rerank 422 avalé, table absente avalée, fallbacks sans alerte). C'est la cause racine de la panne de qualité documentée dans la note 01.
-2. **Schéma de base non gouverné** : 1 seule migration versionnée pour ~22 tables ; la dérive local/staging/prod est déjà effective (`rag_chunks_test` absente, tables `_scalingo`/`_scw` fantômes).
+2. **Schéma de base non gouverné** : 2 migrations versionnées seulement pour ~22 tables (bootstrap conformance + statut reranker ajouté par #88) ; la dérive local/staging/prod est déjà effective (`rag_chunks_test` absente, tables `_scalingo`/`_scw` fantômes).
 3. **Le package critique n'a aucun test** : 0 test dans `packages/rag-pipeline/` ; les 142 tests racine couvrent surtout la conformance Mastra et les scripts CI. La régression du reranker était indétectable.
 4. **Surface UI sur-étendue et sous-sécurisée** : 11 pages Streamlit dont des outils d'éval de 1 000–2 500 lignes embarqués en production, XSS possible via le rendu HTML des réponses LLM, SQL interpolé post-auth, conteneurs en root, pas de politique de rétention des logs conversationnels.
 
@@ -32,7 +32,7 @@ Le cœur du pipeline (`packages/rag-pipeline/`) est bien découpé en modules et
 
 **A3 — `rag_config` est un fourre-tout non typé.** ~70 clés JSON dont une majorité de clés v2 mortes (`enable_mmr`, `boost_*`, `dedup_threshold`, `enable_hyde`, `chunk_selection_mode`… 1 seule référence générique dans le code v3). Des valeurs contradictoires y dorment (`v3_token_budget: 8000` alors que le mode WIDE actif utilise 12 000 via getter). Personne ne peut dire quelles clés sont actives sans lire le code de la page Chatbot.
 
-**A4 — Schéma de base non versionné.** `supabase/migrations/` contient **1 migration** (bootstrap conformance, mai 2026) alors que la base compte ~22 tables, dont des fantômes (`rag_chunks_dgafp_scalingo`, `rag_chunks_legifrance_scw`, `rag_chunks_mso` jamais interrogée, `goldset_runs` disparue). Conséquence directe : staging n'a pas `rag_chunks_test` alors que la config l'active, et personne ne l'a vu (note 01, addendum 1). Il n'existe aucune source de vérité du schéma attendu.
+**A4 — Schéma de base non versionné.** `supabase/migrations/` contient **2 migrations** (bootstrap conformance, mai 2026 ; statut reranker `chat_runs` via [#88](https://github.com/DGAFP/assistant-rh/pull/88), juin 2026) alors que la base compte ~22 tables, dont des fantômes (`rag_chunks_dgafp_scalingo`, `rag_chunks_legifrance_scw`, `rag_chunks_mso` jamais interrogée, `goldset_runs` disparue). Conséquence directe : staging n'a pas `rag_chunks_test` alors que la config l'active, et personne ne l'a vu (note 01, addendum 1). Il n'existe aucune source de vérité du schéma attendu.
 
 **A5 — Couches legacy entremêlées.** `src/ui/` (« helpers not yet packaged »), `src/_archive/`, `scripts/` (704 Ko de notebooks historiques), duplication des helpers DB (`src/ui/db_utils.py` vs `packages/rag-pipeline/.../db_helpers.py`), deux générations d'ingestion coexistantes (note 01). Le README annonce `src/goldset/` comme « outils d'évaluation » mais la table cible est vide.
 
@@ -60,7 +60,7 @@ Le paradoxe du repo : `chat_runs` logge ~125 colonnes par tour de chat, mais **a
 - **Aucun APM / error tracking / métrique** : pas de Sentry, Prometheus, OTel ni équivalent. Le logging est du `logging.getLogger` standard sans configuration centrale, visible uniquement dans les logs de conteneur Scaleway.
 - **Les pannes provider sont des warnings de flux** : le rerank cassé loggue « Section reranking failed, keeping aggregated order » à chaque requête depuis des semaines/mois sans qu'aucune alerte n'existe. Idem pour `rag_chunks_test` absente (« Search on X failed » avalé par le ThreadPool, `retriever.py:271-272`) et pour les fallbacks embeddings/LLM.
 - **Pas de health check sémantique** : rien ne vérifie périodiquement que les endpoints Albert (modèles, schémas de payload) répondent comme attendu — alors que le projet a déjà subi deux ruptures d'API silencieuses (rerank, et le schéma `/models`).
-- **Colonnes de log mal conçues pour le diagnostic** : `v3_sections_before/after_rerank` sont des compteurs (impossible de savoir si le rerank a réordonné) ; `v3_top1_score` est à 0 **parce que la colonne n'est jamais écrite** (note [06](06_AUDIT_CODE_ET_DB.md) §1.1, et non parce que les scores seraient nuls) ; l'état du rerank (ok/échec) n'est pas loggé.
+- **Colonnes de log mal conçues pour le diagnostic** : `v3_sections_before/after_rerank` sont des compteurs (impossible de savoir si le rerank a réordonné) ; `v3_top1_score` est à 0 **parce que la colonne n'est jamais écrite** (note [06](06_AUDIT_CODE_ET_DB.md) §1.1, et non parce que les scores seraient nuls) ; l'état du rerank (ok/échec) n'était pas loggé — corrigé depuis par #88 (`v3_reranker_status`), l'alerting reste à créer.
 - **L'analyse automatique des feedbacks crashe** (`'NoneType' object has no attribute 'strip'`) sans supervision.
 
 **Recommandation prioritaire** : (1) error tracking (Sentry self-hosted ou équivalent souverain) sur Streamlit + jobs ; (2) un « provider contract check » quotidien en CI (embeddings + rerank + LLM, payloads réels) ; (3) promouvoir 3 compteurs en alertes : taux d'échec rerank, taux de fallback provider, taux de no-answer.
@@ -97,8 +97,8 @@ Le paradoxe du repo : `chat_runs` logge ~125 colonnes par tour de chat, mais **a
 ## 6. CI/CD et data engineering
 
 - **Workflows complets mais sans gate qualité produit** : la conformance nightly vérifie la parité Python/Mastra, pas la qualité des réponses (goldset vide — note 01, addendum 2). Un déploiement peut dégrader la qualité sans qu'aucun signal CI ne bouge.
-- **Migrations** : le workflow `db-migrations-scaleway.yml` existe mais n'a presque rien à appliquer (1 migration). Le schéma réel a été construit hors bande (notebooks, scripts) — voir A4.
-- **Ingestion non idempotente de bout en bout** : les jobs (medallion, embeddings) écrivent sections et chunks séparément sans étape de réconciliation finale — c'est l'origine des 31 fiches SP sans chunks (note 01). Chaque job devrait se terminer par un check de complétude bloquant.
+- **Migrations** : le workflow `db-migrations-scaleway.yml` existe mais n'a presque rien à appliquer (2 migrations). Le schéma réel a été construit hors bande (notebooks, scripts) — voir A4.
+- **Ingestion non idempotente de bout en bout** : les jobs (medallion, embeddings) écrivaient sections et chunks séparément sans étape de réconciliation finale — c'est l'origine des 31 fiches SP sans chunks (note 01). Chaque job devrait se terminer par un check de complétude bloquant. **Mise à jour (2026-06-12)** : confirmé et corrigé pour Service-Public par les PRs [#95](https://github.com/DGAFP/assistant-rh/pull/95)–[#98](https://github.com/DGAFP/assistant-rh/pull/98) (validation fail-fast par fiche, ingestion unique après validation complète du pipeline, préservation des IDs) ; la réconciliation finale côté base (document indexable → ≥ 1 chunk effectif) reste à mettre en CI, et MATTE/MSO ne sont pas couverts.
 - Bonne pratique notée : preview staging avant promote prod pour la data-engineering.
 
 ---
