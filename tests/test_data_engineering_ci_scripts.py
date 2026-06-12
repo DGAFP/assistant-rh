@@ -78,12 +78,49 @@ def test_workflow_dispatch_main_writes_legifrance_matrix(tmp_path: Path, monkeyp
     assert outputs["service_public"] == "false"
     assert outputs["legifrance"] == "true"
     assert outputs["embeddings"] == "false"
+    assert outputs["run_embeddings"] == "false"
     assert outputs["has_builds"] == "true"
     assert [item["image"] for item in matrix["include"]] == [
         "legifrance-bulk-dump",
         "legifrance-pipeline",
         "legifrance-ingestion",
     ]
+
+
+def test_workflow_dispatch_run_embeddings_adds_embeddings_to_selection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_path = tmp_path / "github-output.txt"
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("INPUT_SOURCE", "service_public")
+    monkeypatch.setenv("INPUT_RUN_EMBEDDINGS", "true")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+
+    assert data_engineering_plan.main() == 0
+
+    outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
+    matrix = json.loads(outputs["matrix"])
+    assert outputs["service_public"] == "true"
+    assert outputs["legifrance"] == "false"
+    assert outputs["embeddings"] == "true"
+    assert outputs["run_embeddings"] == "true"
+    assert [item["image"] for item in matrix["include"]] == [
+        "service-public-pipeline",
+        "service-public-ingestion",
+        "embeddings-job",
+    ]
+
+
+def test_workflow_dispatch_all_selects_embeddings_without_running_backfill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_path = tmp_path / "github-output.txt"
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("INPUT_SOURCE", "all")
+    monkeypatch.delenv("INPUT_RUN_EMBEDDINGS", raising=False)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+
+    assert data_engineering_plan.main() == 0
+
+    outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
+    assert outputs["embeddings"] == "true"
+    assert outputs["run_embeddings"] == "false"
 
 
 def test_scaleway_job_environment_resolves_required_env_groups(monkeypatch: pytest.MonkeyPatch) -> None:
