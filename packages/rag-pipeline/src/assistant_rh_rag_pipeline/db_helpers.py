@@ -175,8 +175,8 @@ def get_prompt_content(name: str) -> Optional[str]:
                 if row:
                     content: str = row[0]
                     return content.replace("{today}", datetime.now().strftime("%Y-%m-%d"))
-        except psycopg.Error:
-            pass
+        except psycopg.Error as exc:
+            logger.debug("Prompt DB lookup failed for %s, falling back to local prompt: %s", name, exc)
         finally:
             conn.close()
 
@@ -207,8 +207,8 @@ def list_prompts(prompt_type: str = "generator") -> List[str]:
                     (prompt_type,),
                 )
                 return [r[0] for r in cur.fetchall()]
-        except psycopg.Error:
-            pass
+        except psycopg.Error as exc:
+            logger.debug("Prompt DB listing failed for type %s, falling back to local prompts: %s", prompt_type, exc)
         finally:
             conn.close()
 
@@ -288,6 +288,7 @@ def create_engine_from_env() -> Optional[Any]:
     Does NOT use Streamlit caching — suitable for scripts, tests, and APIs.
     """
     from sqlalchemy import create_engine, text
+    from sqlalchemy.exc import SQLAlchemyError
 
     try:
         url = get_sqlalchemy_url()
@@ -309,7 +310,7 @@ def create_engine_from_env() -> Optional[Any]:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         return engine
-    except Exception as exc:
+    except (SQLAlchemyError, OSError) as exc:
         logger.warning("DB engine creation failed: %s", exc)
         return None
 

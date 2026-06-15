@@ -7,6 +7,7 @@ Falls back gracefully to score-sorted input if the API is unreachable.
 Environment variables:
   ALBERT_API_KEY, ALBERT_BASE_URL (optional)
 """
+
 from __future__ import annotations
 
 import logging
@@ -43,18 +44,16 @@ class AlbertReranker:
             headers={"Authorization": f"Bearer {self.key}"},
             json={
                 "model": self.model,
-                "prompt": query,
-                "input": texts,
+                "query": query,
+                "documents": texts,
                 "top_n": top_k or len(texts),
             },
             timeout=self.timeout,
         )
         resp.raise_for_status()
-        results = resp.json().get("results") or resp.json().get("data") or []
-        return [
-            (int(r.get("index")), float(r.get("relevance_score") or r.get("score") or 0.0))
-            for r in results
-        ]
+        body = resp.json()
+        results = body.get("data") or body.get("results") or []
+        return [(int(r.get("index")), float(r.get("relevance_score") or r.get("score") or 0.0)) for r in results]
 
 
 def maybe_rerank(
@@ -75,5 +74,5 @@ def maybe_rerank(
     try:
         return AlbertReranker().rerank(query, texts, top_k=top_k)
     except Exception as exc:
-        logger.warning("Reranking failed, keeping original order: %s", exc)
+        logger.error("Reranking failed, keeping original order: %s", exc)
         return [(i, 1.0 - i * 0.001) for i in range(min(top_k or len(texts), len(texts)))]

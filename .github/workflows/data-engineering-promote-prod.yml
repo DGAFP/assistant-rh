@@ -20,6 +20,27 @@ on:
       - "Dockerfile.legifrance_bulk_dump"
       - "Dockerfile.embeddings_job"
   workflow_dispatch:
+    inputs:
+      source:
+        description: "Source a traiter"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - service_public
+          - legifrance
+          - embeddings
+      run_embeddings:
+        description: "Backfill embeddings en plus de la source choisie (implicite si source=embeddings)"
+        required: true
+        default: false
+        type: boolean
+      skip_builds:
+        description: "Reutiliser les images prod-latest existantes au lieu de rebuilder"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -30,7 +51,7 @@ concurrency:
 
 env:
   REGISTRY_HOST: rg.fr-par.scw.cloud
-  PROD_IMAGE_TAG: prod-${{ github.sha }}
+  PROD_IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_builds && 'prod-latest' || format('prod-{0}', github.sha) }}
 
 jobs:
   plan:
@@ -39,6 +60,7 @@ jobs:
       service_public: ${{ steps.plan.outputs.service_public }}
       legifrance: ${{ steps.plan.outputs.legifrance }}
       embeddings: ${{ steps.plan.outputs.embeddings }}
+      run_embeddings: ${{ steps.plan.outputs.run_embeddings }}
       has_builds: ${{ steps.plan.outputs.has_builds }}
       has_runs: ${{ steps.plan.outputs.has_runs }}
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -52,13 +74,14 @@ jobs:
         id: plan
         env:
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
-          INPUT_SOURCE: all
+          INPUT_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
+          INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_embeddings || '' }}
         run: python3 .github/scripts/data_engineering_plan.py
 
   build-prod-images:
     runs-on: ubuntu-latest
     needs: plan
-    if: ${{ needs.plan.outputs.has_builds == 'true' }}
+    if: ${{ needs.plan.outputs.has_builds == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.skip_builds) }}
     timeout-minutes: 90
     environment: scaleway-production
     strategy:
@@ -107,7 +130,7 @@ jobs:
     needs:
       - plan
       - build-prod-images
-    if: ${{ always() && needs.plan.outputs.has_runs == 'true' && needs.build-prod-images.result == 'success' }}
+    if: ${{ always() && needs.plan.outputs.has_runs == 'true' && (needs.build-prod-images.result == 'success' || (needs.build-prod-images.result == 'skipped' && github.event_name == 'workflow_dispatch' && inputs.skip_builds)) }}
     timeout-minutes: 240
     environment: scaleway-production
     env:
@@ -124,6 +147,7 @@ jobs:
       SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
       SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
       SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
+      SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
 
     steps:
       - name: Checkout code
@@ -149,7 +173,7 @@ jobs:
             --legifrance "${{ needs.plan.outputs.legifrance }}" \
             --embeddings "${{ needs.plan.outputs.embeddings }}" \
             --run-ingestion "false" \
-            --run-embeddings "${{ needs.plan.outputs.embeddings }}" \
+            --run-embeddings "${{ needs.plan.outputs.run_embeddings }}" \
             --service-public-fiche-config "config/service_public_fiches.json" \
             --legifrance-article-ids-json "config/legifrance_article_cids.json" \
             --wait

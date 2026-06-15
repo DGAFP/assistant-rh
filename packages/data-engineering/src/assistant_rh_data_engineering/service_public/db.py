@@ -43,6 +43,24 @@ class ServicePublicDbWriter:
             )
             return {row[0]: (row[1], row[2]) for row in cur.fetchall()}
 
+    def _index_predicate(self, conn: psycopg.Connection, index_name: str) -> str | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT pg_get_expr(indexes.indpred, indexes.indrelid)
+                FROM pg_index indexes
+                JOIN pg_class index_class ON index_class.oid = indexes.indexrelid
+                JOIN pg_namespace namespace ON namespace.oid = index_class.relnamespace
+                WHERE index_class.relname = %s
+                  AND namespace.nspname = %s
+                """,
+                (index_name, self.schema),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return str(row[0] or "").strip()
+
     def _prepare_rows(
         self,
         rows: Iterable[dict[str, Any]],
@@ -76,6 +94,8 @@ class ServicePublicDbWriter:
         table: str,
         rows: list[dict[str, Any]],
         conflict_cols: list[str],
+        conflict_where: str | None = None,
+        update_exclude_cols: list[str] | None = None,
     ) -> int:
         if not rows:
             return 0
@@ -87,32 +107,44 @@ class ServicePublicDbWriter:
 
         cols = list(rows[0].keys())
         vector_cols = {col for col in cols if column_types.get(col, ("", None))[0] == "vector"}
-        assignments = [col for col in cols if col not in conflict_cols]
+        update_exclude = set(update_exclude_cols or [])
+        assignments = [col for col in cols if col not in conflict_cols and col not in update_exclude]
 
         placeholders = []
         for col in cols:
             if col in vector_cols:
-                placeholders.append(
-                    sql.SQL("%({})s::vector").format(sql.SQL(col))
-                )
+                placeholders.append(sql.SQL("%({})s::vector").format(sql.SQL(col)))
             else:
                 placeholders.append(sql.SQL("%({})s").format(sql.SQL(col)))
 
-        query = sql.SQL(
-            "INSERT INTO {}.{} ({}) VALUES ({}) ON CONFLICT ({}) DO UPDATE SET {}"
-        ).format(
+        conflict_where_sql = sql.SQL("")
+        if conflict_where:
+            # conflict_where ne doit venir que du catalogue Postgres (pg_get_expr
+            # via _index_predicate), jamais d'une entrée utilisateur: il est
+            # injecté tel quel dans la requête.
+            conflict_where_sql = sql.SQL(" WHERE ") + sql.SQL(conflict_where)
+
+        if assignments:
+            conflict_action_sql = sql.SQL("DO UPDATE SET {}").format(
+                sql.SQL(", ").join(
+                    sql.SQL("{} = EXCLUDED.{}").format(
+                        sql.Identifier(col),
+                        sql.Identifier(col),
+                    )
+                    for col in assignments
+                )
+            )
+        else:
+            conflict_action_sql = sql.SQL("DO NOTHING")
+
+        query = sql.SQL("INSERT INTO {}.{} ({}) VALUES ({}) ON CONFLICT ({}){} {}").format(
             sql.Identifier(self.schema),
             sql.Identifier(table),
             sql.SQL(", ").join(sql.Identifier(col) for col in cols),
             sql.SQL(", ").join(placeholders),
             sql.SQL(", ").join(sql.Identifier(col) for col in conflict_cols),
-            sql.SQL(", ").join(
-                sql.SQL("{} = EXCLUDED.{}").format(
-                    sql.Identifier(col),
-                    sql.Identifier(col),
-                )
-                for col in assignments
-            ),
+            conflict_where_sql,
+            conflict_action_sql,
         )
 
         with conn.cursor() as cur:
@@ -121,13 +153,42 @@ class ServicePublicDbWriter:
 
     def upsert_documents(self, documents: list[dict[str, Any]]) -> int:
         with self._connect() as conn:
-            count = self._upsert(conn, "rag_documents", documents, ["doc_id"])
+            short_id_predicate = self._index_predicate(conn, "uq_rag_documents_short_id")
+            if short_id_predicate is not None:
+                # L'arbitre partiel sur short_id suppose que chaque ligne a un
+                # short_id non NULL: une ligne sans short_id ne matcherait pas
+                # l'index et lèverait une violation de PK sur doc_id en cas de
+                # re-run au lieu d'être mise à jour.
+                count = self._upsert(
+                    conn,
+                    "rag_documents",
+                    documents,
+                    ["short_id"],
+                    conflict_where=short_id_predicate or None,
+                    update_exclude_cols=["doc_id"],
+                )
+            else:
+                count = self._upsert(conn, "rag_documents", documents, ["doc_id"])
             conn.commit()
             return count
 
     def upsert_sections(self, sections: list[dict[str, Any]]) -> int:
         with self._connect() as conn:
-            count = self._upsert(conn, "rag_sections", sections, ["section_id"])
+            doc_index_predicate = self._index_predicate(conn, "uq_rag_sections_doc_index")
+            if doc_index_predicate is not None:
+                # Même contrainte que pour les documents: une section avec
+                # section_index NULL ne matcherait pas l'arbitre (doc_id,
+                # section_index) et lèverait une violation de PK en re-run.
+                count = self._upsert(
+                    conn,
+                    "rag_sections",
+                    sections,
+                    ["doc_id", "section_index"],
+                    conflict_where=doc_index_predicate or None,
+                    update_exclude_cols=["section_id"],
+                )
+            else:
+                count = self._upsert(conn, "rag_sections", sections, ["section_id"])
             conn.commit()
             return count
 
@@ -156,10 +217,7 @@ class ServicePublicDbWriter:
         with self._connect() as conn, conn.cursor() as cur:
             column_types = self._column_types(conn, table)
             if id_column not in column_types:
-                raise RuntimeError(
-                    f"Column {id_column!r} not found in "
-                    f"{self.schema}.{table}."
-                )
+                raise RuntimeError(f"Column {id_column!r} not found in {self.schema}.{table}.")
 
             where_clauses = [
                 sql.SQL("{} IS NOT NULL").format(sql.Identifier(id_column)),
@@ -168,16 +226,10 @@ class ServicePublicDbWriter:
             params: list[Any] = [rf"^{prefix}[0-9]+$"]
 
             if source_value and "source" in column_types:
-                where_clauses.append(
-                    sql.SQL("LOWER({}) = %s").format(
-                        sql.Identifier("source")
-                    )
-                )
+                where_clauses.append(sql.SQL("LOWER({}) = %s").format(sql.Identifier("source")))
                 params.append(source_value.lower())
 
-            query = sql.SQL(
-                "SELECT DISTINCT {} FROM {}.{} WHERE {} ORDER BY {}"
-            ).format(
+            query = sql.SQL("SELECT DISTINCT {} FROM {}.{} WHERE {} ORDER BY {}").format(
                 sql.Identifier(id_column),
                 sql.Identifier(self.schema),
                 sql.Identifier(table),
@@ -191,6 +243,39 @@ class ServicePublicDbWriter:
 
             cur.execute(query, params)
             return [row[0] for row in cur.fetchall()]
+
+    def list_document_ids_by_short_id(self, short_ids: list[str]) -> dict[str, str]:
+        normalized_short_ids = sorted({str(short_id).strip().upper() for short_id in short_ids if str(short_id).strip()})
+        if not normalized_short_ids:
+            return {}
+
+        with self._connect() as conn, conn.cursor() as cur:
+            query = sql.SQL(
+                """
+                SELECT short_id, doc_id
+                FROM {}.{}
+                WHERE UPPER(TRIM(short_id)) = ANY(%s)
+                  AND short_id IS NOT NULL
+                """
+            ).format(sql.Identifier(self.schema), sql.Identifier("rag_documents"))
+            cur.execute(query, (normalized_short_ids,))
+            return {str(row[0]).strip().upper(): str(row[1]) for row in cur.fetchall()}
+
+    def list_section_ids_by_doc_id_and_index(self, doc_ids: list[str]) -> dict[tuple[str, int], str]:
+        if not doc_ids:
+            return {}
+
+        with self._connect() as conn, conn.cursor() as cur:
+            query = sql.SQL(
+                """
+                SELECT doc_id, section_index, section_id
+                FROM {}.{}
+                WHERE doc_id = ANY(%s::uuid[])
+                  AND section_index IS NOT NULL
+                """
+            ).format(sql.Identifier(self.schema), sql.Identifier("rag_sections"))
+            cur.execute(query, (doc_ids,))
+            return {(str(row[0]), int(row[1])): str(row[2]) for row in cur.fetchall()}
 
     def fetch_service_public_chunks(
         self,

@@ -79,3 +79,6 @@ skill-state.json
 .pi/*
 !.pi/settings.json
 !.pi/skills/
+.vscode/launch.json
+.vscode/settings.json
+.vscode/tasks.json
