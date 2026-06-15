@@ -155,6 +155,8 @@ Les seuils initiaux doivent être calibrés en Phase 1 après baseline, mais l'a
 
 ## 6. Plan itération 2 (juin → 31 octobre 2026)
 
+> **Calendrier** : cale sur la [note 00 §4](00_SYNTHESE_ET_PRIORISATION.md), qui fait foi. Le câblage des diagnostics relève de P0 (dès maintenant), les dashboards de P1 ; les phases ci-dessous décrivent la montée en maturité de l'observabilité.
+
 ### Phase 1 — Cadrage et instrumentation (16 juin -> 18 juillet)
 
 - Figer le schéma minimal des métriques production et des champs `chat_runs` nécessaires.

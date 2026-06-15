@@ -124,6 +124,8 @@ La trajectoire détaillée est traitée dans le document dédié : [Observabilit
 
 ## 5. Planification itération 2 (juin → 31 octobre 2026)
 
+> **Plan canonique** : la priorisation et le **calendrier font foi en [note 00 §4](00_SYNTHESE_ET_PRIORISATION.md)**. Les phases ci-dessous en sont le détail RAG-qualité : **Phase 0 = P0** (quick wins) · **Phase 1 = P1** (mesure & observabilité) · **Phase 2 = P1.5** (retrieval / scoring / données) · **Phase 3** = chunking / contexte / génération (prolonge P1.5) · **Phase 4** = stabilisation & bilan.
+
 ### 5.0 Grandes priorités de l'itération 2
 
 Deux priorités structurent l'itération, plus un horizon itération 3 :
@@ -136,18 +138,17 @@ Deux priorités structurent l'itération, plus un horizon itération 3 :
 
 **Articulation** : P1 et P2 sont menées **en parallèle** mais P1 (qualité) conditionne P2 (extension) — étendre à 6 périmètres un retrieval dont le scoring est plat et la couverture d'index trouée démultiplierait les défauts. Les quick wins (Phase 0) et la mesure (Phase 1) doivent précéder l'extension multi-ministère réelle. La séparation des trois niveaux (autorisation / priorité des sources / autorité documentaire) de la note 04 est un prérequis de P2.
 
-### Phase 0 — Quick wins (semaine du 16 juin)
+### Phase 0 — Quick wins (= P0 note 00 ; Aujourd'hui → semaine du 22 juin)
 
 | Chantier | Critère de succès |
 |---|---|
-| Finaliser le suivi du reranker après #88 : **alerte si taux d'échec rerank > 5 %** + traces avant/après exploitables | Rerank actif, statut visible par run, alerte opérationnelle |
-| Passer `search_mode` prod en **hybride** (config DB, réversible) | Replay/goldset archivé avant bascule ; ≥ 6/8 correctes sur les questions de référence |
-| Backfill `embedding_m3` des 146 chunks RGRH | 0 chunk sans embedding sur colonnes actives |
+| Finaliser le suivi du reranker après #88 : **alerte si taux d'échec rerank > 1 %** + traces avant/après exploitables | Rerank actif, statut visible par run, alerte opérationnelle |
+| Backfill `embedding_m3` DGAFP (0/3 992) et RGRH (146) + index vectoriels (matte/dgafp/rgrh) | 0 chunk sans embedding sur colonnes actives ; index présents |
 | Logger les listes retrieval avant/après (`chunks_raw`, fusion, agrégation, rerank, selector, contexte final) | Colonnes ou table de trace exploitables dans `chat_runs`/schéma associé |
 
-*Dépendance : aucune. Risque : l'hybride change l'ordre des résultats → valider sur le jeu de questions avant bascule.*
+*Dépendance : aucune.*
 
-### Phase 1 — Mesure, observabilité et pilotage production (16 juin → 18 juillet)
+### Phase 1 — Mesure, observabilité et pilotage production (29 juin → 18 juillet)
 
 - Constituer le **goldset v2 : 80–120 questions** depuis `chat_feedbacks` (mix positifs/négatifs, tous thèmes, difficultés étiquetées) avec réponses et sources attendues.
 - Harness d'éval automatisé (recall@k chunks/sections, présence de la bonne source dans le contexte final, no-answer justifié ou non, juge LLM sur la réponse) exécutable en CI et en local — en réutilisant `src/goldset/` et `tests/conformance/`.
@@ -165,6 +166,7 @@ Deux priorités structurent l'itération, plus un horizon itération 3 :
 - Étendre la couverture `references_juridiques` (**18,6 % sur staging** → cible 30 % des sections MATTE/SP).
 - Boucle **trous documentaires** : extraction mensuelle des no-answer + `missing_document` → backlog d'ingestion priorisé (RIFSEEP en premier).
 - Revisiter la place de DGAFP (intent gating trop restrictif ? mesurer sur goldset).
+- **Retrieval hybride — conditionnel** : des tests rapides non structurés montrent des gains, mais à valider sur le goldset avant toute bascule (réversible) ; pas un quick win (cf. note 00 P1.5).
 
 *Jalon 29/08 : +X points de recall@10 sur goldset vs baseline (cible : −50 % de `retrieval_issue` sur le goldset). Dépend de Phase 1 pour être mesurable.*
 
