@@ -11,7 +11,7 @@
 **Chiffres (base locale)** : **154 colonnes**, 51 Mo pour 3 058 lignes (**~17 Ko/ligne** ; snapshot du 09/06 légèrement postérieur aux 3 054 lignes de la note 01), 1 seule contrainte (PK), **0 clé étrangère**, **14 index**.
 
 ### 1.1 Colonnes provisionnées et jamais écrites (le point le plus grave)
-Le logger (`chat_logger.build_log_row`) écrit **126 colonnes** ; la table en a **154**. **33 colonnes existent en base mais ne sont jamais alimentées par le code** (décompte au 2026-06-09, avant l'ajout de `v3_reranker_status` écrite par #88). Et ce ne sont pas des reliquats anodins — ce sont précisément **les colonnes de diagnostic** :
+Le logger (`chat_logger.build_log_row`) écrit **126 colonnes** ; la table en a **154**. **33 colonnes existaient en base mais n'étaient jamais alimentées par le code** dans le décompte au 2026-06-09, avant l'ajout de `v3_reranker_status` écrite par #88. Et ce ne sont pas des reliquats anodins — ce sont précisément **des colonnes de diagnostic** :
 
 ```
 v3_chunks_raw, v3_sections_raw, v3_chunks_before_rerank, v3_chunks_after_rerank,
@@ -67,7 +67,7 @@ rag_chunks_legifrance : 429   _scalingo : 429   _scw : 429
 rag_chunks_service_public_scalingo : 1 140
 ```
 
-`AGENTS.md` indique que Scalingo est retiré ; ces tables sont du poids mort (stockage, confusion, risque de requêter la mauvaise). Couplé à la non-gouvernance du schéma (note 02 A4 : 1 seule migration), personne ne sait quelle table fait référence sans lire le code.
+`AGENTS.md` indique que Scalingo est retiré ; ces tables sont du poids mort (stockage, confusion, risque de requêter la mauvaise). Couplé à la non-gouvernance du schéma (note 02 A4 : seulement 2 migrations pour ~22 tables), personne ne sait quelle table fait référence sans lire le code.
 
 ---
 
@@ -78,7 +78,7 @@ Motif systémique : chaque garde-fou, en cas d'échec, **se dégrade silencieuse
 | Lieu | Comportement en cas d'échec | Pourquoi c'est critique |
 |---|---|---|
 | `context_selector.py:192` | selector échoue → **garde toutes les sections** | Le filtre anti-hallucination tombe ouvert : du contexte non pertinent passe à la génération, sans trace |
-| `reranker.py:78` | rerank échoue → **ordre d'origine conservé** | La panne #87/#88 (422) est restée invisible des mois — `warning`, pas d'alerte ; depuis #88 le statut est persisté (`v3_reranker_status`), l'alerte reste à créer |
+| `section_aggregator.py:229-231` | rerank échoue → **ordre d'origine conservé** | La panne #87/#88 (422) est restée invisible des mois ; depuis #88 le statut est persisté (`v3_reranker_status`), l'alerte reste à créer |
 | `embedder.py:82,106` | embedding échoue → **`return None`** → retriever `return []` | Question sans aucun résultat, vécue comme « no-answer » par l'utilisateur, loggée en `warning` |
 | `retriever.py:271-272` | une table échoue dans le ThreadPool → **résultat partiel** | `rag_chunks_test` absente avalée ; le recall chute sans signal |
 | `retriever.py:903` | `rag_chunks_test` KO → **warning + continue** | Idem : table activée en config mais absente = non-événement |
@@ -94,7 +94,7 @@ Ce qui devrait être mesuré et alerté (cf. note [03](03_RAG_OBSERVABILITY_ROAD
 
 | Métrique critique | Source / comment | Alerte cible |
 |---|---|---|
-| Taux d'échec **rerank** | compteur sur `reranker.py` (fail-open) | > 1 % |
+| Taux d'échec **rerank** | agrégation de `v3_reranker_status` + alerte sur le chemin fail-open du `section_aggregator` | > 1 % |
 | Taux d'échec / fallback **embeddings** (Albert→Scaleway) | `embedder.py` circuit breaker | tout déclenchement |
 | Taux de fallback / échec **LLM** (Albert→Scaleway) | `FallbackLLMClient` | tendance |
 | **Selector fail-open** (toutes sections gardées par défaut) | `context_selector.py:192` | tout déclenchement |

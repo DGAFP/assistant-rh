@@ -29,11 +29,11 @@ Trois découvertes structurent l'itération 2 :
 | 2 | Score RRF plat, sans amplitude de pertinence | Élevé | à traiter | Note 01 §2.1 |
 | 3 | 58 % des fiches SP sans chunk (trou d'index, cas SFT) | Élevé | ✅ fix code mergé (#95–#98) ; rejeu staging + réconciliation CI à faire | Note 01 add. 1 |
 | 4 | Disparité auto-éval vs expert, goldset vide | Élevé | à traiter | Note 01 add. 2 |
-| 5 | `chat_runs` : 154 col., 33 de diagnostic jamais écrites | Élevé | à traiter | Note [06](06_AUDIT_CODE_ET_DB.md) §1.1 |
+| 5 | `chat_runs` : 154 col., diagnostics retrieval non câblés ou partiels | Élevé | à traiter | Note [06](06_AUDIT_CODE_ET_DB.md) §1.1 |
 | 6 | Index vectoriels manquants (matte, dgafp, rgrh) | Élevé | à traiter | Note 06 §2.2 |
 | 7 | Erreurs « fail-open » sans métrique (selector, rerank, embedder) | Élevé | à traiter | Note 06 §3 |
 | 8 | Aucune observabilité consolidée / alerting | Élevé | à traiter | Notes [02](02_ARCHITECTURE_AUDIT_2026-06.md) §4, [03](03_RAG_OBSERVABILITY_ROADMAP_2026-06.md) |
-| 9 | 0 test dans le package RAG ; schéma DB non versionné | Moyen | à traiter | Note 02 §3, A4 |
+| 9 | Tests RAG dispersés/incomplets ; schéma DB non versionné | Moyen | à traiter | Note 02 §3, A4 |
 | 10 | Sécurité UI (XSS rendu LLM, SQLi, root, RGPD conversations) | Moyen-élevé | à traiter | Note 02 §5 |
 | 11 | Doublons SP 33 %, chunks-titres, sections géantes | Moyen | à traiter | Note 01 §2.2 |
 | 12 | Données : fraîcheur juridique, embeddings RH non vérifiés | Moyen | à instruire | Notes [04](04_OBSERVATIONS_INITIALES_2026-06-05.md), [05](05_PLAN_AUDIT_ET_COUVERTURE.md) |

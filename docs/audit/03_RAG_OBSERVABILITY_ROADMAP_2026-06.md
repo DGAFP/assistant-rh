@@ -55,7 +55,7 @@ Objectif : savoir quel étage dégrade les réponses.
 | Distribution des intents | `chat_runs.v3_intent` |
 | Nombre de chunks/sections récupérés | `chat_runs` |
 | Sources utilisées dans le contexte final | `chat_runs.v3_source_distribution` |
-| Taux de rerank actif / échec / fallback | nouveaux champs `chat_runs`, logs applicatifs |
+| Taux de rerank actif / échec / fallback | `chat_runs.v3_reranker_status` / `v3_reranker_error`, logs applicatifs |
 | Taux de selector no-answer | `chat_runs.v3_should_proceed`, réponses |
 | Taux de contextes vides ou insuffisants | `chat_runs` |
 
@@ -132,7 +132,7 @@ Règle de diagnostic : un incident qualité doit permettre de partir d'un feedba
 
 ### 5.1 Champs à fiabiliser ou ajouter
 
-- `rerank_ok`, `rerank_error_type`, `rerank_error_message`, `rerank_provider`, `rerank_model`.
+- Fiabiliser `v3_reranker_status` / `v3_reranker_error` et compléter par `rerank_provider`, `rerank_model`, `rerank_error_type`.
 - Listes ou résumés exploitables avant/après rerank, pas seulement des compteurs.
 - Statut provider par étape : embeddings, rerank, selector, génération.
 - `trace_id` dans `chat_runs`.
@@ -156,7 +156,7 @@ Les seuils initiaux doivent être calibrés en Phase 1 après baseline, mais l'a
 ### Phase 1 — Cadrage et instrumentation (16 juin -> 18 juillet)
 
 - Figer le schéma minimal des métriques production et des champs `chat_runs` nécessaires.
-- Ajouter les statuts rerank/provider manquants dans les logs métier.
+- Exploiter les statuts rerank déjà persistés et ajouter les statuts provider manquants dans les logs métier.
 - Propager `turn_id` / `trace_id` dans les logs applicatifs.
 - Construire les dashboards Grafana v1 : exécutif, santé RAG, latence, providers/infra, feedback qualité.
 - Publier une baseline hebdomadaire : request rate, no-answer, helpful rate, P95/P99, provider errors.

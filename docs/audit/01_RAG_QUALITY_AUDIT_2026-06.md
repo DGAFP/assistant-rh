@@ -8,13 +8,13 @@
 
 ## 1. Synthèse pour décision
 
-**Constat principal : le reranker Albert est silencieusement cassé en production.** L'API Albert `/rerank` a changé de schéma (`prompt`/`input` → `query`/`documents`) ; chaque appel renvoie HTTP 422 et le pipeline retombe sans alerte sur l'ordre d'agrégation brut. Or le scoring d'agrégation est un RRF cross-source qui jette l'amplitude de similarité : sans reranker, l'aval ne dispose plus d'un score calibré de pertinence ; il ne reçoit qu'un signal de rang fusionné, peu discriminant.
+**Constat principal au moment de l'audit : le reranker Albert était silencieusement cassé en production.** L'API Albert `/rerank` avait changé de schéma (`prompt`/`input` → `query`/`documents`) ; chaque appel renvoyait HTTP 422 et le pipeline retombait sans alerte sur l'ordre d'agrégation brut. Or le scoring d'agrégation est un RRF cross-source qui jette l'amplitude de similarité : sans reranker, l'aval ne dispose plus d'un score calibré de pertinence ; il ne reçoit qu'un signal de rang fusionné, peu discriminant.
 
 **Preuve d'impact (replay local, 4 questions en échec issues des feedbacks négatifs réels) :**
 
 | Configuration | Réponses correctes |
 |---|---|
-| Production actuelle (rerank cassé, mode sémantique) | 0/4 |
+| Baseline audit pré-#88 (rerank cassé, mode sémantique) | 0/4 |
 | Rerank réparé (payload corrigé, 1 ligne) | 2/4 |
 | Rerank réparé + mode hybride | 3/4 |
 
@@ -34,7 +34,7 @@ Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme
 
 ### 2.1 Retrieval et scoring — facteur de non-qualité dominant
 
-**C1. Reranker cassé (critique, vérifié).** `reranker.py` envoie `{"model", "prompt", "input", "top_n"}` ; l'API actuelle exige `{"model", "query", "documents"}` → 422 systématique, reproduit en local contre l'API réelle. Le fallback « keeping aggregated order » est silencieux : aucune métrique, aucun log d'alerte agrégé, le port TypeScript n'a pas encore branché le rerank. Avec le payload corrigé, l'endpoint répond normalement (scores 0,96 vs 1,6e-05 sur un test discriminant). **Mise à jour (2026-06-12)** : corrigé via [#88](https://github.com/DGAFP/assistant-rh/pull/88), qui persiste aussi l'état du rerank dans `chat_runs` (`v3_reranker_status`, migration versionnée) ; reste à créer l'alerting sur ce statut.
+**C1. Reranker cassé (critique, vérifié).** Avant [#88](https://github.com/DGAFP/assistant-rh/pull/88), `reranker.py` envoyait `{"model", "prompt", "input", "top_n"}` alors que l'API actuelle exige `{"model", "query", "documents"}` → 422 systématique, reproduit en local contre l'API réelle. Le fallback « keeping aggregated order » était silencieux : aucune métrique, aucun log d'alerte agrégé, le port TypeScript n'a pas encore branché le rerank. Avec le payload corrigé, l'endpoint répond normalement (scores 0,96 vs 1,6e-05 sur un test discriminant). **Mise à jour (2026-06-12)** : le payload est corrigé via #88, qui persiste aussi l'état du rerank dans `chat_runs` (`v3_reranker_status`, migration versionnée) ; reste à créer l'alerting sur ce statut.
 
 **C2. Le score fusionné perd l'amplitude de pertinence.** `_merge_cross_source_ranks` applique un RRF (k=60) entre 8 listes (4 tables × 2 chemins chunk/heading) puis normalise au plafond théorique. Le RRF conserve un signal de rang, mais il ne conserve pas l'amplitude des scores de similarité et ne fournit pas un score calibré de pertinence. Conséquences observées :
 - scores quasi plats : 0,167 / 0,164 / … avec peu de discrimination entre sections très pertinentes et bruit ;
@@ -107,7 +107,7 @@ La trajectoire détaillée est traitée dans le document dédié : [Observabilit
 
 | # | Facteur | Étage | Impact | Effort |
 |---|---|---|---|---|
-| 1 | Payload rerank obsolète → 422 silencieux | Reranking | Critique | 1 ligne + test |
+| 1 | Payload rerank obsolète → 422 silencieux | Reranking | Critique | ✅ corrigé via #88 ; alerting à faire |
 | 2 | Score RRF plat sans amplitude de pertinence | Scoring | Élevé | Moyen |
 | 3 | Mode sémantique seul sur termes exacts/acronymes | Retrieval | Élevé | Faible (config) |
 | 4 | Goldset vide, aucune mesure reproductible | Mesure | Élevé (aveugle) | Moyen |
@@ -277,7 +277,7 @@ Audit du dispositif d'évaluation suite au constat d'écart entre les métriques
 
 **4. Juges non calibrés et hétérogènes.** RAGAS tourne avec `gpt-4o-mini` (+ prompts internes RAGAS en anglais, sur du droit français), les judges Golden Beta avec `gpt-4.1`, l'analyse de feedbacks avec un 3e dispositif (qui crashe : `'NoneType' object has no attribute 'strip'`). **Aucune mesure d'accord juge↔expert n'existe** (pas de kappa, pas de set de calibration) ; le seuil `faithfulness < 0.5` est arbitraire.
 
-**5. Dérive de snapshot — on ne mesure pas le même système.** Les notebooks d'éval pointent vers des DSN retirés (`SCALINGO_POSTGRESQL_URL`, `TUNNEL_DSN`) ; la table `goldset_runs` n'existe plus dans la base courante ; `goldset_questions_v2` est vide. Les métriques auto en circulation ont été calculées sur **un ancien corpus et d'anciennes configs**, tandis que les experts évaluent la prod actuelle (reranker cassé + trous d'index). Aucun run auto n'est reproductible aujourd'hui.
+**5. Dérive de snapshot — on ne mesure pas le même système.** Les notebooks d'éval pointent vers des DSN retirés (`SCALINGO_POSTGRESQL_URL`, `TUNNEL_DSN`) ; la table `goldset_runs` n'existe plus dans la base courante ; `goldset_questions_v2` est vide. Les métriques auto en circulation ont été calculées sur **un ancien corpus et d'anciennes configs**, tandis que les experts évaluaient le snapshot de production pré-#88 (reranker cassé + trous d'index). Aucun run auto n'est reproductible aujourd'hui.
 
 **6. Le canal expert est lui-même faible.** 12 lignes seulement dans `chat_reviews` ; les CSV de revue humaine (HF privé) ne sont pas réinjectés en base ; les critères experts (exactitude, complétude, sources) ne sont pas mappés formellement sur les axes des juges LLM ni sur les motifs de feedback utilisateur.
 
