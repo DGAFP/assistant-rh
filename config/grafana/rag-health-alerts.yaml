@@ -1,0 +1,42 @@
+groups:
+  - name: assistant-rh-rag-health
+    rules:
+      - alert: AssistantRhRagHealthExporterDbPollFailed
+        expr: assistant_rh_rag_last_poll_success == 0 or time() - assistant_rh_rag_last_successful_poll_timestamp_seconds > 600
+        for: 10m
+        labels:
+          severity: warning
+          service: assistant-rh
+        annotations:
+          summary: "Assistant RH RAG health polling is failing"
+          description: "The RAG health exporter has not completed a successful DB poll for env={{ $labels.env }}."
+
+      - alert: AssistantRhRagHealthChunkTableEmpty
+        expr: (assistant_rh_rag_table_present{kind="chunks"} == 1) and on (env, table) (sum by (env, table) (assistant_rh_rag_chunks_total) == 0)
+        for: 10m
+        labels:
+          severity: critical
+          service: assistant-rh
+        annotations:
+          summary: "Assistant RH RAG chunk table is empty"
+          description: "A present RAG chunk table has zero rows for env={{ $labels.env }}, table={{ $labels.table }}."
+
+      - alert: AssistantRhRagHealthEmbeddingCoverageLow
+        expr: assistant_rh_rag_embedding_coverage_ratio < 0.99
+        for: 30m
+        labels:
+          severity: warning
+          service: assistant-rh
+        annotations:
+          summary: "Assistant RH RAG embedding coverage is below 99%"
+          description: "Embedding coverage is low for env={{ $labels.env }}, table={{ $labels.table }}, column={{ $labels.column }}."
+
+      - alert: AssistantRhRagHealthIntegrityIssues
+        expr: assistant_rh_rag_integrity_issues_total > 0
+        for: 30m
+        labels:
+          severity: warning
+          service: assistant-rh
+        annotations:
+          summary: "Assistant RH RAG integrity issues detected"
+          description: "Integrity issues detected for env={{ $labels.env }}, table={{ $labels.table }}, reason={{ $labels.reason }}."

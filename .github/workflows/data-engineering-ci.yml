@@ -6,6 +6,7 @@ on:
       - ".github/workflows/data-engineering-*.yml"
       - ".github/scripts/data_engineering_plan.py"
       - ".github/scripts/scaleway_data_jobs.py"
+      - ".github/scripts/scaleway_rag_health_deploy.py"
       - ".github/data-engineering-jobs.json"
       - "apps/data-ingestion-cli/**"
       - "packages/data-engineering/**"
@@ -17,6 +18,7 @@ on:
       - "Dockerfile.legifrance_ingestion"
       - "Dockerfile.legifrance_bulk_dump"
       - "Dockerfile.embeddings_job"
+      - "Dockerfile.rag_health_exporter"
   pull_request:
     branches:
       - main
@@ -24,6 +26,7 @@ on:
       - ".github/workflows/data-engineering-*.yml"
       - ".github/scripts/data_engineering_plan.py"
       - ".github/scripts/scaleway_data_jobs.py"
+      - ".github/scripts/scaleway_rag_health_deploy.py"
       - ".github/data-engineering-jobs.json"
       - "apps/data-ingestion-cli/**"
       - "packages/data-engineering/**"
@@ -35,6 +38,7 @@ on:
       - "Dockerfile.legifrance_ingestion"
       - "Dockerfile.legifrance_bulk_dump"
       - "Dockerfile.embeddings_job"
+      - "Dockerfile.rag_health_exporter"
   workflow_dispatch:
 
 permissions:
@@ -65,6 +69,7 @@ jobs:
           uv run --no-sync ruff check \
             .github/scripts/data_engineering_plan.py \
             .github/scripts/scaleway_data_jobs.py \
+            .github/scripts/scaleway_rag_health_deploy.py \
             apps/data-ingestion-cli/src \
             packages/data-engineering/src \
             packages/shared-config/src \
@@ -95,3 +100,4 @@ jobs:
           uv run --no-sync data-ingestion legifrance ingest --help > /dev/null
           uv run --no-sync data-ingestion embeddings service-public --help > /dev/null
           uv run --no-sync data-ingestion embeddings legifrance --help > /dev/null
+          uv run --no-sync data-ingestion observability rag-health --help > /dev/null
