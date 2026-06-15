@@ -12,5 +12,10 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",
     "cve-lite-cli": "1.19.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild": "0.28.1"
+    }
   }
 }
