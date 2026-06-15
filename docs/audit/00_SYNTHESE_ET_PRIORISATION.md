@@ -76,7 +76,7 @@ Trois découvertes structurent l'itération 2 :
 - **Dédup SP, filtrage chunks-titres, couverture `references_juridiques`.**
 - **Classifier de question + policies RRF par type** ; **abstention stricte** sur contexte faible.
 - **Fraîcheur des données** (droit périmé) ; **embeddings RH** (vocabulaire métier).
-- **Retrieval hybride — conditionnel, non prioritaire** : une première tentative n'a **pas amélioré** les résultats (le sémantique seul reste devant). Ne le ré-ouvrir que si le goldset (P1) révèle un **déficit lexical résiduel** après le scoring v2, et uniquement en **A/B réversible, validé avant/après**. Ce n'est pas un chantier par défaut.
+- **Retrieval hybride — conditionnel, non prioritaire** : des **tests rapides et non structurés** (exploratoires) ont montré des **gains**, mais une bascule de mode de retrieval doit être **validée sur le goldset (P1)** avant adoption, en **A/B réversible**. Pas un quick win P0 : on mesure d'abord.
 
 ### P2 — Chantiers structurels multi-ministère (cible S4 juillet, ~2 semaines en focus ; amorce en parallèle possible dès S1 juillet si Luis peut prêter main-forte)
 - **Scope ministériel côté serveur** (`ministry_id` + filtrage SQL avant retrieval), séparé en 3 niveaux : autorisation / priorité des sources / autorité documentaire.
