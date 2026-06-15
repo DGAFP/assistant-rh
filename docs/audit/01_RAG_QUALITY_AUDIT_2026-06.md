@@ -73,7 +73,7 @@ Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme
 
 ### 2.4 Pipeline aval (selector, contexte, génération)
 
-- Le **selector LLM est le seul garde-fou anti-hallucination** effectif (cf. C2). Il fait globalement son travail (fallback parsing : 20/1 133 runs) mais on lui fait porter la décision no-answer sans signal de score fiable. Feedbacks `selector_*` : 4 cas seulement — le selector n'est pas le problème dominant.
+- Le **selector LLM est le seul garde-fou anti-hallucination** effectif (cf. C2). Il fait globalement son travail (fallback parsing : 20/1 133 runs) mais on lui fait porter la décision no-answer sans score de pertinence calibré. Feedbacks `selector_*` : 4 cas seulement — le selector n'est pas le problème dominant.
 - Côté génération : 14 feedbacks `generator_*` (interprétation erronée, incomplétude, 3 hallucinations). Motif utilisateur n°1 « Incomplet » : cohérent avec un contexte construit sur des sections mal classées.
 - **Écart config documentée / config réelle** : `create_pipeline()` sans argument utilise les défauts de la lib (top_k=15, selector OFF, STANDARD) tandis que la prod mappe `rag_config` (top_k=20, selector ON, WIDE) dans la page Streamlit. Tout script d'éval « naïf » mesure donc un autre système que la prod.
 - Latence query processing observée jusqu'à 5,3 s en local (documentation : 200–500 ms) — à confirmer en prod via `chat_runs`.
@@ -110,7 +110,7 @@ La trajectoire détaillée est traitée dans le document dédié : [Observabilit
 | # | Facteur | Étage | Impact | Effort |
 |---|---|---|---|---|
 | 1 | Payload rerank obsolète → 422 silencieux | Reranking | Critique | ✅ corrigé via #88 ; alerting à faire |
-| 2 | Score RRF plat sans amplitude de pertinence | Scoring | Élevé | Moyen |
+| 2 | Score RRF peu discriminant (rang fusionné, sans pertinence calibrée) | Scoring | Élevé | Moyen |
 | 3 | Mode sémantique seul sur termes exacts/acronymes | Retrieval | Élevé | Faible (config) |
 | 4 | Goldset vide, aucune mesure reproductible | Mesure | Élevé (aveugle) | Moyen |
 | 5 | Doublons SP (33 %) + chunks-titres (20–33 %) | Chunking | Moyen | Moyen |

@@ -8,7 +8,7 @@
 
 ## 0. Verdict
 
-**Le dossier est solide et, fait rare, réellement reproductible : ses diagnostics centraux tiennent contre le code et contre staging.** Le cœur (reranker cassé puis réparé, scoring RRF plat, fail-open systémique, observabilité conçue mais non câblée, dispositif d'éval aveugle) est **exact et grounded**.
+**Le dossier est solide et, fait rare, réellement reproductible : ses diagnostics centraux tiennent contre le code et contre staging.** Le cœur (reranker cassé puis réparé, scoring RRF peu discriminant, fail-open systémique, observabilité conçue mais non câblée, dispositif d'éval aveugle) est **exact et grounded**.
 
 Mais l'audit a été produit sur une **copie locale figée** : plusieurs chiffres sont **périmés** par rapport à staging, et **deux constats doivent être recadrés** car ils changent la priorisation :
 
@@ -73,7 +73,7 @@ Les chiffres **identiques** au dossier (donc validés sur staging) : helpful rat
 | # | Constat du dossier | Verdict staging/code | Note |
 |---|---|---|---|
 | 1 | Reranker `/rerank` cassé (422) | ✅ **réel, réparé, déployé** | payload `query/documents/top_n` ; 24/25 juin `completed` ; reste alerting |
-| 2 | Score RRF plat (k=60, normalisé plafond) | ✅ vérifié (code) | `retriever.py:301-328` ; « 8 listes » → en réalité ~6 |
+| 2 | Score RRF peu discriminant (k=60, normalisé plafond) | ✅ vérifié (code) | `retriever.py:301-328` ; « 8 listes » → en réalité ~6 |
 | 3 | 58 % fiches SP sans chunk | ✅ réel **mais résolu sur staging** | 55/55 ; reporter l'effort sur MATTE/MSO |
 | 4 | Disparité auto-éval/expert, goldset vide | ✅ vérifié | `goldset_questions_v2`=0 ; négatifs déjà catégorisés (amorce de goldset) |
 | 5 | `chat_runs` 154 col, ~33 jamais écrites | ✅ vérifié (156 ; 16 diag nommées **jamais écrites**) | « 126 écrites » → 79 par `build_log_row` |

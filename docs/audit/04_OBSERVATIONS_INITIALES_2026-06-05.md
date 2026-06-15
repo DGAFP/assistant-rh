@@ -20,7 +20,7 @@ Cette note conserve la **vision stratégique de Day 1** : elle a posé, avant to
 | Échecs 1-2★ = surtout documents manquants / mauvais chunks / réponses incomplètes, **pas d'abord de la génération** | ✅ **Confirmé** : 58 % des feedbacks négatifs = `retrieval_issue`, 23 % = `missing_document` ; motif n°1 « Incomplet » | Note 01, §1 et §2.3 |
 | Chunks de mauvaise qualité (titres tronqués, sections fragmentées, navigation mêlée au contenu) | ✅ **Confirmé** : 33 % de doublons SP, 20-33 % de chunks-titres, sections de 6 à 174 k chars, chunks-titres « ANNEXE 5 » / « Astreintes et permanences » | Note 01, §2.2 |
 | Audit chunks = prérequis avant tout tuning RRF | ✅ **Confirmé et étendu** : le vrai blocage est en amont du RRF — 58 % des fiches SP n'ont **aucun chunk** (trou de couverture index, cas SFT) | Note 01, addendum 1 |
-| Besoin d'abstention / refus quand la base ne contient pas l'info | ✅ **Confirmé** : le selector LLM est aujourd'hui le seul garde-fou, sans signal de score fiable (RRF plat) | Note 01, §2.1 et §2.4 |
+| Besoin d'abstention / refus quand la base ne contient pas l'info | ✅ **Confirmé** : le selector LLM est aujourd'hui le seul garde-fou, sans score de pertinence calibré (le RRF ne fournit qu'un signal de rang fusionné, peu discriminant) | Note 01, §2.1 et §2.4 |
 | Manque d'observabilité (signaux non consolidés) | ✅ **Confirmé** : panne reranker restée invisible des mois ; dossier dédié | Notes 02 §4, 03 |
 
 **Le diagnostic central de Day 1 tient** : les défaillances sont majoritairement en amont (couverture, chunking, retrieval, confusion de domaine, absence de refus), et la calibration de l'éval conditionne la mesure de toute amélioration.
@@ -45,7 +45,7 @@ Ces axes restent à instruire — ils dépassent le périmètre des audits quali
 
 **Authentification & habilitations (🆕, structurant).** ProConnect (OIDC), allowlist transitoire, **enforcement du scope dans la retrieval** (pas seulement l'UI), administration déléguée par ministère. Lié à la note 02 §5 (modèle d'autorisation actuel fragile : cookie de groupe) et au sujet RGPD (rétention des conversations).
 
-**Classifier de question + politiques RRF par type (🆕).** Typer la question (procédure ministérielle / réglementaire / rémunération / mobilité / formation / document absent / vague / hors périmètre) puis pondérer les sources : procédure interne → ministériel ; juridique/daté → DGAFP/réglementaire ; donnée de référence → RGRH contrôlante ; pas de couverture → refus/clarification. À valider sur benchmark — et **après** correction du scoring (le RRF plat de la note 01 rend toute pondération illisible aujourd'hui).
+**Classifier de question + politiques RRF par type (🆕).** Typer la question (procédure ministérielle / réglementaire / rémunération / mobilité / formation / document absent / vague / hors périmètre) puis pondérer les sources : procédure interne → ministériel ; juridique/daté → DGAFP/réglementaire ; donnée de référence → RGRH contrôlante ; pas de couverture → refus/clarification. À valider sur benchmark — et **après** correction du scoring (le scoring RRF actuel — signal de rang fusionné, peu discriminant, sans pertinence calibrée (note 01) — rend toute pondération illisible aujourd'hui).
 
 **Clarification vs rebond (🆕).** Clarification *avant* génération (peut bloquer) sur question vague / terme ambigu / dispositifs proches / suite mal rattachée ; rebond *après* génération (UX). Ne pas clarifier quand la question est claire (répondre, ou refus propre si non couvert).
 

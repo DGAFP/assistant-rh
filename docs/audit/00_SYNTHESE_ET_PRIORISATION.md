@@ -27,7 +27,7 @@ Trois découvertes structurent l'itération 2 :
 | # | Constat | Gravité | Statut | Détail |
 |---|---|---|---|---|
 | 1 | Reranker `/rerank` cassé (422 silencieux) | Critique | ✅ corrigé (#88) | Note [01](01_RAG_QUALITY_AUDIT_2026-06.md) §1 |
-| 2 | Score RRF plat, sans amplitude de pertinence | Élevé | à traiter | Note 01 §2.1 |
+| 2 | Score RRF : signal de rang fusionné, peu discriminant, sans pertinence calibrée | Élevé | à traiter | Note 01 §2.1 |
 | 3 | 58 % des fiches SP sans chunk (trou d'index, cas SFT) | Élevé | ✅ **résolu sur staging (55/55 au 15/06)** ; reste MATTE 17/44 + MSO + réconciliation CI | Notes 01 add. 1, [07](07_VERIFICATION_STAGING_ET_PRIORISATION.md) |
 | 4 | Disparité auto-éval vs expert, goldset vide | Élevé | à traiter | Note 01 add. 2 |
 | 5 | `chat_runs` : 154 col., diagnostics retrieval non câblés ou partiels | Élevé | à traiter | Note [06](06_AUDIT_CODE_ET_DB.md) §1.1 |
