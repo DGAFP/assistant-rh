@@ -65,6 +65,10 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
         "assistant_rh_data_engineering.jobs.rag_health_exporter",
         "Expose read-only RAG corpus health metrics for Prometheus/Grafana.",
     ),
+    ("quality", "gates"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.quality_gates",
+        "Run post-ingestion database quality gates.",
+    ),
 }
 
 

@@ -9,6 +9,7 @@ on:
       - ".github/scripts/data_engineering_plan.py"
       - ".github/scripts/scaleway_data_jobs.py"
       - ".github/data-engineering-jobs.json"
+      - "apps/data-ingestion-cli/**"
       - "packages/data-engineering/**"
       - "packages/shared-config/**"
       - "config/**"
@@ -233,3 +234,62 @@ jobs:
             --service-public-fiche-config "${SERVICE_PUBLIC_FICHE_CONFIG}" \
             --legifrance-article-ids-json "${LEGIFRANCE_ARTICLE_IDS_JSON}" \
             --wait
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install Python dependencies
+        run: uv sync --frozen
+
+      - name: Run staging data quality gates
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/data-quality
+
+          QUALITY_SOURCES=()
+          if [[ "${{ needs.plan.outputs.service_public }}" == "true" ]]; then
+            QUALITY_SOURCES+=(--source service_public)
+          fi
+          if [[ "${{ needs.plan.outputs.legifrance }}" == "true" ]]; then
+            QUALITY_SOURCES+=(--source legifrance)
+          fi
+
+          EMBEDDING_ARGS=()
+          if [[ "${RUN_EMBEDDINGS}" == "true" ]]; then
+            EMBEDDING_ARGS+=(--include-embeddings --embedding-source "${EMBEDDING_SOURCE}")
+            if [[ -n "${EMBEDDING_ONLY_COLUMN}" ]]; then
+              EMBEDDING_ARGS+=(--embedding-only-column "${EMBEDDING_ONLY_COLUMN}")
+            fi
+          fi
+
+          BLOCKING_ARGS=()
+          if [[ "${RUN_INGESTION}" == "true" || "${RUN_EMBEDDINGS}" == "true" ]]; then
+            BLOCKING_ARGS+=(--blocking)
+          fi
+
+          uv run --no-sync data-ingestion quality gates \
+            --target-env staging \
+            "${QUALITY_SOURCES[@]}" \
+            "${EMBEDDING_ARGS[@]}" \
+            "${BLOCKING_ARGS[@]}" \
+            --dsn-env SCW_POSTGRES_DSN \
+            --json-output artifacts/data-quality/staging-report.json \
+            --markdown-output artifacts/data-quality/staging-summary.md
+
+      - name: Summarize staging data quality gates
+        if: always()
+        run: |
+          if [[ -f artifacts/data-quality/staging-summary.md ]]; then
+            cat artifacts/data-quality/staging-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload staging data quality reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: data-quality-staging-${{ github.run_attempt }}
+          path: artifacts/data-quality/
+          if-no-files-found: ignore

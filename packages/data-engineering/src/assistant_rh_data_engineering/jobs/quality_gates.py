@@ -1,0 +1,112 @@
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from pathlib import Path
+
+import psycopg
+from dotenv import load_dotenv
+
+cwd = Path.cwd().resolve()
+REPO_ROOT = cwd.parent if cwd.name == "scripts" else cwd
+PYTHONPATH_ENTRIES = [
+    REPO_ROOT,
+    REPO_ROOT / "packages/data-engineering/src",
+    REPO_ROOT / "packages/shared-config/src",
+]
+for entry in reversed(PYTHONPATH_ENTRIES):
+    entry_str = str(entry)
+    if entry_str not in sys.path:
+        sys.path.insert(0, entry_str)
+
+from assistant_rh_data_engineering.quality_gates import (  # noqa: E402
+    PsycopgQualityDatabase,
+    build_error_report,
+    evaluate_quality_gates,
+    load_quality_config,
+    render_markdown_report,
+)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run post-ingestion Postgres quality gates and write JSON/Markdown reports.")
+    parser.add_argument("--config", default="config/data_quality_gates.json", help="Versioned quality gate configuration.")
+    parser.add_argument("--target-env", choices=["staging", "prod"], required=True)
+    parser.add_argument("--schema", default="public")
+    parser.add_argument("--dsn-env", default="SCW_POSTGRES_DSN")
+    parser.add_argument("--dsn", help="Postgres DSN. Takes precedence over --dsn-env.")
+    parser.add_argument("--source", action="append", choices=["service_public", "legifrance"], default=[])
+    parser.add_argument("--include-embeddings", action="store_true")
+    parser.add_argument("--embedding-source", choices=["all", "service_public", "legifrance"], default="all")
+    parser.add_argument("--embedding-only-column", default="", help="When set, only checks the selected embedding column.")
+    parser.add_argument("--blocking", action="store_true", help="Exit non-zero when any blocking quality check fails.")
+    parser.add_argument("--json-output", default="", help="Write the machine-readable report to this path.")
+    parser.add_argument("--markdown-output", default="", help="Write the GitHub-friendly summary to this path.")
+    return parser
+
+
+def write_reports(report: dict, json_output: str, markdown_output: str) -> None:
+    if json_output:
+        path = Path(json_output)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_json_dump(report), encoding="utf-8")
+    markdown = render_markdown_report(report)
+    if markdown_output:
+        path = Path(markdown_output)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(markdown, encoding="utf-8")
+    print(markdown)
+
+
+def _json_dump(report: dict) -> str:
+    import json
+
+    return json.dumps(report, ensure_ascii=False, indent=2, default=str) + "\n"
+
+
+def main() -> int:
+    load_dotenv(REPO_ROOT / ".env")
+    args = build_parser().parse_args()
+    config = load_quality_config(REPO_ROOT / args.config)
+    dsn = args.dsn or os.getenv(args.dsn_env)
+    if not dsn:
+        report = build_error_report(
+            config,
+            f"Missing Postgres DSN: pass --dsn or define {args.dsn_env}.",
+            target_env=args.target_env,
+            sources=args.source,
+            blocking=args.blocking,
+        )
+        write_reports(report, args.json_output, args.markdown_output)
+        return 1 if args.blocking else 0
+
+    try:
+        with psycopg.connect(dsn, connect_timeout=10) as conn:
+            db = PsycopgQualityDatabase(conn, schema=args.schema)
+            report = evaluate_quality_gates(
+                db,
+                config,
+                repo_root=REPO_ROOT,
+                target_env=args.target_env,
+                sources=args.source,
+                include_embeddings=args.include_embeddings,
+                embedding_source=args.embedding_source,
+                embedding_only_column=args.embedding_only_column.strip(),
+                blocking=args.blocking,
+            )
+    except (OSError, psycopg.Error) as exc:
+        report = build_error_report(
+            config,
+            f"Postgres quality gate could not connect or query the database: {exc.__class__.__name__}.",
+            target_env=args.target_env,
+            sources=args.source,
+            blocking=args.blocking,
+        )
+
+    write_reports(report, args.json_output, args.markdown_output)
+    return 1 if args.blocking and report["status"] == "fail" else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

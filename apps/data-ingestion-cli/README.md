@@ -27,6 +27,9 @@ uv run data-ingestion embeddings matte --help
 
 # Observability
 uv run data-ingestion observability rag-health --help
+
+# Quality gates
+uv run data-ingestion quality gates --help
 ```
 
 ## Boundaries
