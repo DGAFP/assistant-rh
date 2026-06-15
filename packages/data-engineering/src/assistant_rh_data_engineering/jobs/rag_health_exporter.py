@@ -213,7 +213,7 @@ class RagHealthCollector:
 
     def _set_statement_timeout(self, conn: psycopg.Connection) -> None:
         with conn.cursor() as cur:
-            cur.execute("SET statement_timeout = %s", (self.statement_timeout_ms,))
+            cur.execute("SELECT set_config('statement_timeout', %s, false)", (str(max(0, self.statement_timeout_ms)),))
 
     def _load_columns(self, conn: psycopg.Connection) -> dict[str, set[str]]:
         with conn.cursor() as cur:

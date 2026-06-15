@@ -29,6 +29,29 @@ def test_render_prometheus_escapes_labels() -> None:
     assert text.endswith("\n")
 
 
+def test_collector_sets_statement_timeout_with_set_config() -> None:
+    calls: list[tuple[str, tuple[str, ...]]] = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def execute(self, query: str, params: tuple[str, ...]) -> None:
+            calls.append((query, params))
+
+    class FakeConnection:
+        def cursor(self) -> FakeCursor:
+            return FakeCursor()
+
+    collector = exporter.RagHealthCollector(env_label="staging", statement_timeout_ms=20_000)
+    collector._set_statement_timeout(FakeConnection())
+
+    assert calls == [("SELECT set_config('statement_timeout', %s, false)", ("20000",))]
+
+
 def test_collector_emits_counts_coverage_and_integrity_for_available_tables(monkeypatch: pytest.MonkeyPatch) -> None:
     collector = exporter.RagHealthCollector(env_label="production")
     columns = {

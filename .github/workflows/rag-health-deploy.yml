@@ -119,7 +119,7 @@ jobs:
       - name: Install Scaleway CLI
         uses: scaleway/action-scw@v0.0.3
         with:
-          version: v2.54.0
+          version: v2.57.0
           save-config: true
           export-config: true
           access-key: ${{ secrets.SCW_ACCESS_KEY }}

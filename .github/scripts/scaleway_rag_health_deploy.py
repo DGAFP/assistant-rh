@@ -7,7 +7,6 @@ from pathlib import Path
 
 from scaleway_streamlit_deploy import (
     DeployResult,
-    container_settings_args,
     create_container,
     create_namespace,
     env_optional,
@@ -17,6 +16,51 @@ from scaleway_streamlit_deploy import (
     get_container,
     update_container,
 )
+
+
+def rag_health_container_settings_args(
+    *,
+    image_uri: str,
+    min_scale: int,
+    max_scale: int,
+    memory_limit_mb: int,
+    cpu_limit_milli: int,
+    timeout_seconds: int,
+    port: int,
+    protocol: str,
+    privacy: str,
+    health_path: str,
+    environment: dict[str, str],
+    secret_environment: dict[str, str],
+) -> list[str]:
+    args = [
+        f"image={image_uri}",
+        f"min-scale={min_scale}",
+        f"max-scale={max_scale}",
+        f"memory-limit-bytes={max(1, (memory_limit_mb + 1023) // 1024)}GB",
+        f"mvcpu-limit={cpu_limit_milli}",
+        f"timeout={timeout_seconds}s",
+        f"privacy={privacy}",
+        f"protocol={protocol}",
+        f"port={port}",
+        f"startup-probe.http.path={health_path}",
+        "startup-probe.failure-threshold=30",
+        "startup-probe.interval=10s",
+        "startup-probe.timeout=5s",
+        f"liveness-probe.http.path={health_path}",
+        "liveness-probe.failure-threshold=3",
+        "liveness-probe.interval=30s",
+        "liveness-probe.timeout=5s",
+        "sandbox=v2",
+    ]
+
+    for key, value in sorted(environment.items()):
+        args.append(f"environment-variables.{key}={value}")
+
+    for key, value in sorted(secret_environment.items()):
+        args.append(f"secret-environment-variables.{key}={value}")
+
+    return args
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,7 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--image-uri", required=True)
     parser.add_argument("--port", type=int, default=9108)
     parser.add_argument("--cpu-limit", type=int, default=250)
-    parser.add_argument("--memory-limit", type=int, default=512)
+    parser.add_argument("--memory-limit", type=int, default=1024)
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--min-scale", type=int, default=1)
     parser.add_argument("--max-scale", type=int, default=1)
@@ -83,7 +127,7 @@ def main() -> int:
         namespace = create_namespace(args.namespace_name, project_id, region, secrets=secret_values)
     namespace_id = str(namespace["id"])
 
-    settings_args = container_settings_args(
+    settings_args = rag_health_container_settings_args(
         image_uri=args.image_uri,
         min_scale=args.min_scale,
         max_scale=args.max_scale,

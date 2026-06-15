@@ -19,6 +19,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 import data_engineering_plan  # noqa: E402
 import scaleway_data_jobs  # noqa: E402
+import scaleway_rag_health_deploy  # noqa: E402
 
 
 def test_classify_from_files_selects_only_changed_data_domains() -> None:
@@ -185,6 +186,33 @@ def test_run_scw_dry_run_redacts_secrets(capsys: pytest.CaptureFixture[str]) -> 
     assert output == "{}"
     assert "plain-secret" not in captured.out
     assert "environment-variables.SECRET=***" in captured.out
+
+
+def test_rag_health_container_settings_use_current_scaleway_container_args() -> None:
+    args = scaleway_rag_health_deploy.rag_health_container_settings_args(
+        image_uri="rg.fr-par.scw.cloud/assistant-rh/rag-health-exporter:staging-sha",
+        min_scale=1,
+        max_scale=1,
+        memory_limit_mb=1024,
+        cpu_limit_milli=250,
+        timeout_seconds=120,
+        port=9108,
+        protocol="http1",
+        privacy="private",
+        health_path="/healthz",
+        environment={"APP_ENV": "staging"},
+        secret_environment={"RAG_HEALTH_POSTGRES_DSN": "postgresql://db"},
+    )
+
+    assert "image=rg.fr-par.scw.cloud/assistant-rh/rag-health-exporter:staging-sha" in args
+    assert "memory-limit-bytes=1GB" in args
+    assert "mvcpu-limit=250" in args
+    assert "startup-probe.http.path=/healthz" in args
+    assert "liveness-probe.http.path=/healthz" in args
+    assert "environment-variables.APP_ENV=staging" in args
+    assert "secret-environment-variables.RAG_HEALTH_POSTGRES_DSN=postgresql://db" in args
+    assert not any(arg.startswith("registry-image=") for arg in args)
+    assert not any(arg.startswith("health-check.") for arg in args)
 
 
 def test_run_scw_failure_redacts_secrets_in_output_and_error(
