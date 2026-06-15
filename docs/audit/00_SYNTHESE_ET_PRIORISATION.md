@@ -55,28 +55,30 @@ Trois découvertes structurent l'itération 2 :
 
 ## 4. Priorisation proposée (à valider)
 
-### P0 — Quick wins (semaine du 16 juin, sans dépendance)
+### P0 — Quick wins (Aujourd'hui → semaine du 22 juin, sans dépendance)
 - ✅ **Fix reranker** (#88) — fait, statut `v3_reranker_status` persisté.
 - ✅ **Fix ingestion Service-Public** ([#95](https://github.com/DGAFP/assistant-rh/pull/95)–[#98](https://github.com/DGAFP/assistant-rh/pull/98)) — mergé **et rejeu staging fait (55/55 au 15/06)** ; reste réconciliation index en CI + couverture MATTE 17/44 et MSO.
 - **Backfill embeddings DGAFP (0/3 992 `embedding_m3`) et RGRH (146/324)**, puis **créer les index vectoriels** (matte, dgafp, rgrh). DGAFP est aujourd'hui **éteint en recherche sémantique** (pas seulement non-indexé) → câbler l'index sans embedding ne sert à rien. cf [note 07](07_VERIFICATION_STAGING_ET_PRIORISATION.md).
 - **Fixer `rag_chunks_test`** (activée en config, table absente sur staging → fail-open à chaque requête) : créer la table ou désactiver le flag, et rendre l'absence bloquante.
-- **Câbler les colonnes de diagnostic déjà présentes** (chunks par étape, scores) → débloque l'observabilité sans changer le schéma.
+- **Câbler les colonnes de diagnostic déjà présentes** (chunks par étape, scores) → débloque l'observabilité retrieval sans changer le schéma.
+- **Observabilité ingestion & monitoring DB** : dashboard Grafana/Cockpit sur l'état réel du corpus prod/staging — ce qui est **réellement ingéré** (docs → chunks), **complétude des embeddings** par corpus et par table (m3, bge), tables interrogées vs réellement présentes — avec **alertes** sur les écarts (corpus à 0 embedding, doc indexable sans chunk, table activée absente).
+- **Vérification anti-doublons à l'ingestion** : contrôle de déduplication systématique (Service-Public à 33 % de doublons) pour détecter et bloquer les chunks dupliqués dès l'ingestion, pas en aval.
 - **Compteurs + alertes sur les chemins fail-open** (rerank, embeddings, selector, table vide).
-- **Passer le retrieval en hybride** (réversible), validé sur le jeu de questions.
 
-### P1 — Mesure & observabilité (16 juin → 18 juillet) — *bloquant : rien n'est jugeable sans ça*
-- **Goldset v1** (80-120 questions beta stratifiées) + **mesure de l'écart auto-éval / expert** (set de calibration, κ cible).
+### P1 — Mesure & observabilité (à partir de la semaine du 29 juin) — *bloquant : rien n'est jugeable sans ça*
+- **Goldset v2** (80-120 questions beta stratifiées) + **mesure de l'écart auto-éval / expert** (set de calibration, κ cible).
 - **Harness d'éval reproductible** (recall, no-answer justifié, juge calibré) en CI/local.
 - **Baseline chiffrée** avant/après ; **dashboards Cockpit/Grafana v1** (usage, qualité, latence, providers) + alertes.
 - **Taxonomie d'erreurs partagée** (note 04, livrable 1) comme socle commun audit/éval/PR.
 
-### P1.5 — Retrieval, scoring, données (après baseline)
+### P1.5 — Retrieval, scoring, données (après baseline — cible S2 juillet, ~2 semaines à 2 itérations/semaine)
 - **Scoring v2** (score reranker comme signal aval, seuil d'abstention).
 - **Dédup SP, filtrage chunks-titres, couverture `references_juridiques`.**
 - **Classifier de question + policies RRF par type** ; **abstention stricte** sur contexte faible.
 - **Fraîcheur des données** (droit périmé) ; **embeddings RH** (vocabulaire métier).
+- **Retrieval hybride — conditionnel, non prioritaire** : une première tentative n'a **pas amélioré** les résultats (le sémantique seul reste devant). Ne le ré-ouvrir que si le goldset (P1) révèle un **déficit lexical résiduel** après le scoring v2, et uniquement en **A/B réversible, validé avant/après**. Ce n'est pas un chantier par défaut.
 
-### P2 — Chantiers structurels multi-ministère (après fondations qualité)
+### P2 — Chantiers structurels multi-ministère (cible S4 juillet, ~2 semaines en focus ; amorce en parallèle possible dès S1 juillet si Luis peut prêter main-forte)
 - **Scope ministériel côté serveur** (`ministry_id` + filtrage SQL avant retrieval), séparé en 3 niveaux : autorisation / priorité des sources / autorité documentaire.
 - **Ingestion sources ministérielles** (MI, MSO, MASA, MEF) + **réconciliation index** (chaque doc indexable a ≥ 1 chunk) + métadonnées normalisées.
 - **ProConnect + habilitations** (enforcement dans la retrieval, pas l'UI) + **blocage des données personnelles / RGPD**.
@@ -113,7 +115,7 @@ Trois découvertes structurent l'itération 2 :
 1. **Valider les grandes priorités** : P1 puis P1.5 qualité d'abord, P2 multi-ministère ensuite, P3 (autre produit) en itération 3 — et le principe « la qualité conditionne l'extension ».
 2. **Valider le séquencement P0 → P2.5** et les cibles chiffrées du §5.
 3. **Arbitrer 2 sujets transverses** : (a) rétention/anonymisation des conversations (RGPD, décision DPO) ; (b) cible Python vs Mastra à terme (la double maintenance pèse sur chaque évolution).
-4. **Acter les quick wins P0** (index vectoriels, câblage observabilité, alertes fail-open, hybride) dès la semaine du 16 juin.
+4. **Acter les quick wins P0** (backfill embeddings + index vectoriels, observabilité retrieval + ingestion/DB, vérification anti-doublons, alertes fail-open) — Aujourd'hui → semaine du 22 juin. *Le retrieval hybride n'est plus un quick win : déplacé en P1.5 et rendu conditionnel (cf. §4).*
 
 ## Sources
 
