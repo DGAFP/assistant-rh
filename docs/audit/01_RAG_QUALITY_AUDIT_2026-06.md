@@ -34,9 +34,9 @@ Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme
 
 ### 2.1 Retrieval et scoring — facteur de non-qualité dominant
 
-**C1. Reranker cassé (critique, vérifié).** Avant [#88](https://github.com/DGAFP/assistant-rh/pull/88), `reranker.py` envoyait `{"model", "prompt", "input", "top_n"}` alors que l'API actuelle exige `{"model", "query", "documents"}` → 422 systématique, reproduit en local contre l'API réelle. Le fallback « keeping aggregated order » était silencieux : aucune métrique, aucun log d'alerte agrégé, le port TypeScript n'a pas encore branché le rerank. Avec le payload corrigé, l'endpoint répond normalement (scores 0,96 vs 1,6e-05 sur un test discriminant). **Mise à jour (2026-06-12)** : le payload est corrigé via #88, qui persiste aussi l'état du rerank dans `chat_runs` (`v3_reranker_status`, migration versionnée) ; reste à créer l'alerting sur ce statut.
+**C1. Reranker cassé (critique, vérifié).** Avant [#88](https://github.com/DGAFP/assistant-rh/pull/88), `reranker.py` envoyait `{"model", "prompt", "input", "top_n"}` alors que l'API actuelle exige `{"model", "query", "documents"}` → 422 systématique, reproduit en local contre l'API réelle. Le fallback « keeping aggregated order » était silencieux : aucune métrique, aucun log d'alerte agrégé. (Correction note 07 : le port TypeScript **branche bien** le rerank via `lib/albert.ts` appelé par le step section-aggregator ; seul le resolver `gateways/albert.ts` reste un stub `TODO`.) Avec le payload corrigé, l'endpoint répond normalement (scores 0,96 vs 1,6e-05 sur un test discriminant). **Mise à jour (2026-06-12)** : le payload est corrigé via #88, qui persiste aussi l'état du rerank dans `chat_runs` (`v3_reranker_status`, migration versionnée) ; reste à créer l'alerting sur ce statut. **Vérifié (2026-06-15, staging réel)** : fix déployé et fonctionnel — `v3_reranker_status='completed'` sur 24/25 runs de juin (1 `failed`).
 
-**C2. Le score fusionné perd l'amplitude de pertinence.** `_merge_cross_source_ranks` applique un RRF (k=60) entre 8 listes (4 tables × 2 chemins chunk/heading) puis normalise au plafond théorique. Le RRF conserve un signal de rang, mais il ne conserve pas l'amplitude des scores de similarité et ne fournit pas un score calibré de pertinence. Conséquences observées :
+**C2. Le score fusionné perd l'amplitude de pertinence.** `_merge_cross_source_ranks` applique un RRF (k=60) entre les listes par source — en prod ~6 (4 chemins chunk + 2 chemins heading, seuls `matte` et `service_public` ayant des sections ; nombre dynamique, pas fixé à 8) — puis normalise au plafond théorique. Le RRF conserve un signal de rang, mais il ne conserve pas l'amplitude des scores de similarité et ne fournit pas un score calibré de pertinence. Conséquences observées :
 - scores quasi plats : 0,167 / 0,164 / … avec peu de discrimination entre sections très pertinentes et bruit ;
 - le #1 d'une table sans aucun contenu pertinent pèse autant que le #1 d'une table avec une réponse exacte ;
 - difficile de distinguer « rien de pertinent dans le corpus » de « réponse exacte trouvée » à partir du score seul — le no-answer repose surtout sur le selector LLM ;
@@ -46,7 +46,7 @@ Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme
 
 **C4. Chunks invisibles silencieusement.** Le retriever filtre `WHERE embedding_m3 IS NOT NULL` : 146/324 chunks RGRH (45 %) n'ont pas d'embedding m3 et sont donc exclus de la recherche sémantique sans aucune trace. (MATTE : 762 nulls sur `bge_scw`/`qwen3`, sans impact tant qu'Albert est primaire — mais le fallback embeddings BGE-Scaleway chercherait dans une colonne aux 762 trous.)
 
-**C5. DGAFP quasi absente des réponses finales.** Les distributions de sources loggées sont dominées par MATTE/Service-Public ; DGAFP n'apparaît pas dans le top des combinaisons malgré 3 992 chunks. Intent gating conditionnel + scores plats + sections standalone (pas de regroupement) l'écartent. Point à confirmer avant arbitrage : sur un DSN actif consulté lors de la revue, `rag_chunks_dgafp` apparaît avec `embedding_m3 IS NULL` et `embedding_bge_scw IS NULL` pour 3 992/3 992 chunks. Si ce DSN est représentatif de staging/prod, DGAFP est invisible en recherche sémantique pure et ne peut revenir que par les chemins lexicaux/hybrides.
+**C5. DGAFP quasi absente des réponses finales.** Les distributions de sources loggées sont dominées par MATTE/Service-Public ; DGAFP n'apparaît pas dans le top des combinaisons malgré 3 992 chunks. Intent gating conditionnel + scores plats + sections standalone (pas de regroupement) l'écartent. **Confirmé (2026-06-15, staging réel)** : `rag_chunks_dgafp` a `embedding_m3 IS NULL` **et** `embedding_bge_scw IS NULL` pour **3 992/3 992 chunks** — DGAFP est donc invisible en recherche sémantique pure et ne revient que par le chemin lexical (tsv), et seulement sur les requêtes à intent juridique (sinon la table est retirée du retrieval). Les embeddings + l'index HNSW existent dans la table fantôme `rag_chunks_dgafp_scalingo`, pas dans la table vive. **Le correctif est un backfill d'embeddings, pas un index** (cf [note 07](07_VERIFICATION_STAGING_ET_PRIORISATION.md)).
 
 ### 2.2 Chunking et structuration
 
@@ -57,6 +57,8 @@ Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme
 | dgafp | 3 992 | 734 | 0 | 0 | 9 chunks > 4 000, max 20 510 |
 | rgrh | 324 | 511 | 11 | 0 | 45 % sans embedding m3 |
 
+> **Mise à jour (2026-06-15, staging réel)** : `service_public` est passé à **2 782 chunks** (ré-ingestion faite) — dont **925 (33 %) < 200 chars** et **756 copies redondantes (27 %)**. Le motif (chunks-titres + doublons massifs) tient sur une base élargie ; matte/dgafp/rgrh inchangés.
+
 - **Chunks-titres** : les chunks < 200 chars sont massivement des intitulés seuls (« ANNEXE 5 », « Durée du contrat », « La démission ») — du bruit qui consomme des places du top-20 par table.
 - **Doublons Service-Public (33 %)** : mêmes textes indexés plusieurs fois → places gaspillées et sur-pondération RRF artificielle (un doublon classé 2 fois cumule deux contributions).
 - **Sections déséquilibrées** : 1 887/5 962 sections < 300 chars (32 %) ; 36 sections > 20 000 chars, max 174 337. Le reranker ne voit que les 1 500 premiers chars d'une section ; le selector reçoit le texte intégral (coût tokens, dilution).
@@ -65,7 +67,7 @@ Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme
 ### 2.3 Données et ingestion
 
 - **RIFSEEP jamais défini** dans le corpus alors que les agents le demandent — symptomatique : 23 % des feedbacks négatifs = `missing_document`. Pas de processus systématique « questions sans réponse → backlog d'ingestion ».
-- Seules 279/5 962 sections (4,7 %) portent des `references_juridiques` exploitables par l'injection de réfs.
+- Seules 279/5 962 sections (4,7 %) portaient des `references_juridiques` sur la copie locale. **Correction (2026-06-15, staging réel)** : 1 136/6 100 sections (**18,6 %**) ont des `references_juridiques` non vides sur staging — le constat « trop peu » tient, mais la base de départ est ~4× plus haute ; à revérifier selon le critère « exploitable » exact.
 - `rag_chunks_test` (activée par défaut en prod, censée améliorer le recall multi-granularité) **n'existe pas dans le seed local** : l'environnement local ne reproduit pas la prod.
 - Le goldset d'évaluation (`goldset_questions_v2`) existe en schéma mais est **vide** : aucune base de mesure.
 
@@ -160,7 +162,7 @@ Deux priorités structurent l'itération, plus un horizon itération 3 :
 
 - **Scoring v2** : conserver le score reranker comme signal principal en aval (agrégation pondérée par scores réels, pas par comptes) ; seuil de pertinence pour court-circuiter avant le selector quand tout est sous le seuil.
 - Dédup Service-Public (518 doublons) + filtrage des chunks-titres à l'ingestion (ou fusion titre+contenu).
-- Étendre la couverture `references_juridiques` (4,7 % → cible 30 % des sections MATTE/SP).
+- Étendre la couverture `references_juridiques` (**18,6 % sur staging** → cible 30 % des sections MATTE/SP).
 - Boucle **trous documentaires** : extraction mensuelle des no-answer + `missing_document` → backlog d'ingestion priorisé (RIFSEEP en premier).
 - Revisiter la place de DGAFP (intent gating trop restrictif ? mesurer sur goldset).
 
@@ -240,11 +242,11 @@ Approfondissement suite au signalement « SFT : la fiche est indexée mais ne re
 
 ### Généralisation (mesuré en local, copie staging)
 
-| Corpus | Documents avec sections mais **zéro chunk** |
-|---|---|
-| Service-Public | **31 / 53 fiches (58 %)** — dont SFT, CET, congés maladie/maternité/parental, télétravail, RTT, vacataire, prime de précarité, Ircantec, fiche de paie… |
-| MATTE | **17 / 44 documents** — majoritairement des circulaires, dont plusieurs ingérées en 2025 |
-| MSO | **16 / 16 documents** au niveau du retrieval effectif (table `rag_chunks_mso` jamais interrogée) |
+| Corpus | Documents avec sections mais **zéro chunk** (copie locale, juin) | **Staging réel (2026-06-15)** |
+|---|---|---|
+| Service-Public | **31 / 53 fiches (58 %)** — dont SFT, CET, congés maladie/maternité/parental, télétravail, RTT, vacataire… | ✅ **0 / 55 — résolu** (2 782 chunks, tous embeddés m3) |
+| MATTE | **17 / 44 documents** — majoritairement des circulaires, dont plusieurs ingérées en 2025 | ❌ **17 / 44 — toujours ouvert** (27 docs seulement ont des chunks) |
+| MSO | **16 / 16 documents** au niveau du retrieval effectif (table `rag_chunks_mso` jamais interrogée) | ❌ **16 / 16 — toujours ouvert** (1 262 chunks embeddés mais table hors `v3_tables`) |
 
 Chronologie explicative : `rag_documents`/`rag_sections` SP ont été peuplés par le nouveau pipeline (janv. 2026, sections jusqu'à mai 2026), mais `rag_chunks_service_public` n'a été (re)généré (23 avr.–1er mai) que pour 24 fiches — précisément les 24 `fiche_ids` listées dans `config/service_public_fiches.json`.
 
@@ -255,6 +257,7 @@ Chronologie explicative : `rag_documents`/`rag_sections` SP ont été peuplés p
 - Les replays sur questions cibles (§1, §3) **sous-estiment** le problème : une question dont le document n'a pas de chunks échoue quelle que soit la qualité du retrieval. La part réelle de `missing_document` dans les échecs est probablement bien supérieure aux 23 % mesurés sur les feedbacks — beaucoup d'échecs classés `retrieval_issue` sont en réalité des trous d'index.
 - **Nouveau quick win prioritaire (à intégrer en Phase 0/1)** : job de **réconciliation ingestion → index** : pour chaque document `is_indexable`, vérifier ≥ 1 chunk avec embedding non nul dans une table effectivement interrogée par le retriever ; rapport d'écart + backfill ; test CI qui échoue si la couverture régresse. Décider du sort de `rag_chunks_mso` (intégrer au retriever ou retirer du corpus) et de `rag_chunks_test` (créer la table ou désactiver le flag — un flag actif sur une table absente doit être une erreur visible, pas un warning avalé).
   **Mise à jour (2026-06-12)** : le volet pipeline est livré pour Service-Public via les PRs [#95](https://github.com/DGAFP/assistant-rh/pull/95)–[#98](https://github.com/DGAFP/assistant-rh/pull/98) (split de #94) : corpus de config étendu à 55 fiches (24 existantes + 31 de l'issue), validation fail-fast par fiche, ingestion complète documents/sections/chunks avec préservation des IDs existants. **Reste à faire** : exécuter le rejeu staging (runbook de #94 : ingestion puis embeddings ciblés `embedding_m3`), puis le job de réconciliation DB → index + test CI ci-dessus, **non couverts** par ces PRs. Les trous **MATTE (17/44)** et **MSO (table jamais interrogée)** restent entièrement ouverts.
+  **Mise à jour (2026-06-15, staging réel)** : le rejeu staging Service-Public **est fait** — 55/55 fiches ont des chunks (2 782 chunks, tous avec `embedding_m3`), trou SP refermé. Restent ouverts : le job de **réconciliation DB → index + test CI**, et les trous **MATTE 17/44** et **MSO 16/16**.
 - **Métrique à ajouter au §7** : taux de couverture index = % de documents indexables disposant d'unités de retrieval effectives (cible : 100 %, alerte en CI). C'est une mesure indépendante du jeu de questions — elle corrige le biais « questions cibles » du goldset.
 
 ---
