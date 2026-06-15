@@ -13,7 +13,7 @@ Trois découvertes structurent l'itération 2 :
 
 1. **Le reranker Albert était silencieusement cassé** (API `/rerank` 422, fallback sans alerte). Replay : 0/4 → 3/4 questions corrigées une fois réparé + hybride. **Déjà corrigé en quick win** ([#88](https://github.com/DGAFP/assistant-rh/pull/88), issue #87).
 2. **Trou de couverture d'index** : 58 % des fiches Service-Public ont des sections mais **zéro chunk** — elles sont indexées au sens documentaire mais invisibles au retrieval (cas SFT). Cause racine établie et corrigée côté code depuis (issue [#89](https://github.com/DGAFP/assistant-rh/issues/89), PRs [#95](https://github.com/DGAFP/assistant-rh/pull/95)–[#98](https://github.com/DGAFP/assistant-rh/pull/98) : config limitée à 24 fiches, artefacts manquants, jobs fail-open) ; **rejeu staging à exécuter**.
-3. **L'observabilité a été conçue puis jamais câblée** : `chat_runs` a 154 colonnes dont 33 jamais écrites — précisément les colonnes de diagnostic (chunks par étape, scores). Et 3 des 4 tables de retrieval n'ont **aucun index vectoriel** (scans séquentiels).
+3. **L'observabilité a été conçue puis reste incomplète** : l'audit a relevé 154 colonnes dans `chat_runs`, dont 33 jamais écrites avant #88. Le statut reranker est maintenant câblé, mais les diagnostics retrieval exploitables restent absents ou partiels (chunks par étape, scores, listes avant/après). Et 3 des 4 tables de retrieval n'ont **aucun index vectoriel** (scans séquentiels).
 
 À cela s'ajoute une disparité structurelle **auto-éval vs jugement expert** : tant qu'elle n'est pas mesurée, aucune métrique automatique ne peut arbitrer les futures modifications.
 

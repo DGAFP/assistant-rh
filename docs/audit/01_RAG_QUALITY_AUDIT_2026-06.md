@@ -26,7 +26,7 @@ Le 4e cas (« Qu'est-ce que le RIFSEEP ? ») est un trou documentaire : le terme
 - 58 % des feedbacks négatifs catégorisés = `retrieval_issue`, 23 % = `missing_document`.
 - Motif négatif n°1 : « Incomplet » (185 occurrences seul ou combiné).
 
-**Recommandation :** corriger le reranker immédiatement (quick win, 1 ligne + test), puis dérouler la planification itération 2 (§5) : d'abord la mesure et l'observabilité, ensuite retrieval/scoring, ensuite données, chunking et stabilisation avant le 31 octobre.
+**Recommandation :** le correctif reranker est livré via #88 ; poursuivre la Phase 0 avec alerting, diagnostics retrieval, indexation et replay archivé, puis dérouler la planification itération 2 (§5) : d'abord la mesure et l'observabilité, ensuite retrieval/scoring, ensuite données, chunking et stabilisation avant le 31 octobre.
 
 ---
 
@@ -138,10 +138,10 @@ Deux priorités structurent l'itération, plus un horizon itération 3 :
 
 | Chantier | Critère de succès |
 |---|---|
-| Fix payload `/rerank` (`query`/`documents`) + test unitaire + **alerte si taux d'échec rerank > 5 %** | Rerank actif en prod, vérifié dans les logs |
-| Passer `search_mode` prod en **hybride** (config DB, réversible) | Replay des 8 questions de référence : ≥ 6/8 correctes |
+| Finaliser le suivi du reranker après #88 : **alerte si taux d'échec rerank > 5 %** + traces avant/après exploitables | Rerank actif, statut visible par run, alerte opérationnelle |
+| Passer `search_mode` prod en **hybride** (config DB, réversible) | Replay/goldset archivé avant bascule ; ≥ 6/8 correctes sur les questions de référence |
 | Backfill `embedding_m3` des 146 chunks RGRH | 0 chunk sans embedding sur colonnes actives |
-| Logger l'état du rerank par run (`rerank_ok`, listes avant/après) | Colonne exploitable dans `chat_runs` |
+| Logger les listes retrieval avant/après (`chunks_raw`, fusion, agrégation, rerank, selector, contexte final) | Colonnes ou table de trace exploitables dans `chat_runs`/schéma associé |
 
 *Dépendance : aucune. Risque : l'hybride change l'ordre des résultats → valider sur le jeu de questions avant bascule.*
 
@@ -196,7 +196,7 @@ Deux priorités structurent l'itération, plus un horizon itération 3 :
 - Les scripts de replay et d'audit SQL utilisés pour produire cette note ne sont pas commités dans cette PR ; les résultats doivent donc être traités comme des constats reproductibles localement, mais pas encore comme un harness d'évaluation maintenu.
 - Les chiffres DB proviennent d'une copie locale Supabase et de vérifications ponctuelles en lecture seule ; il faut confirmer les écarts sensibles sur le DSN staging/prod qui servira d'arbitrage.
 - Le statut des embeddings DGAFP est à confirmer rapidement : si les 3 992 chunks DGAFP sont bien sans `embedding_m3` et sans `embedding_bge_scw` sur l'environnement actif, leur absence des réponses finales est un problème d'indexation/retrieval plus direct que le seul intent gating.
-- La bascule globale en mode hybride doit rester réversible et précédée au minimum d'un mini-jeu de replay/goldset archivé. Le fix du payload reranker, lui, peut être traité comme un bug urgent et isolé.
+- La bascule globale en mode hybride doit rester réversible et précédée au minimum d'un mini-jeu de replay/goldset archivé. Le fix du payload reranker a été traité comme un bug urgent et isolé via #88 ; il reste à compléter par l'alerting opérationnel.
 
 ---
 
@@ -219,9 +219,9 @@ Deux priorités structurent l'itération, plus un horizon itération 3 :
 
 ## 8. Décision demandée pour l'itération 2
 
-1. **Valider le déploiement immédiat des quick wins Phase 0** (fix rerank en premier).
+1. **Valider le déploiement immédiat des quick wins Phase 0 restants** (alerting rerank, diagnostics retrieval, indexation, replay archivé).
 2. Valider le séquencement Phase 1 → 4, jusqu'au 31 octobre 2026, et les cibles chiffrées du §7.
-3. Arbitrer la bascule en mode hybride : directe (recommandé, réversible) ou après goldset v1.
+3. Arbitrer la bascule en mode hybride : après mini-replay/goldset archivé (recommandé, réversible) ou après goldset v1 complet.
 
 ---
 
