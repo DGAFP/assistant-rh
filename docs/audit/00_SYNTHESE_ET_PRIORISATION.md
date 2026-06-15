@@ -2,6 +2,7 @@
 
 > Document de présentation pour validation. Dossier complet : voir [README](README.md).
 > Date : 2026-06-09. Sources : notes 01-06 du dossier (constats vérifiés sur code + base locale copie staging, replays contre l'API Albert réelle).
+> **Vérifié sur staging réel le 2026-06-15 : voir [note 07](07_VERIFICATION_STAGING_ET_PRIORISATION.md) pour les corrections de chiffres et la priorisation re-fondée. Changements majeurs : la couverture Service-Public est déjà refermée sur staging (55/55), et DGAFP a 0 embedding (corpus éteint en sémantique), pas « un index manquant ».**
 
 ---
 
@@ -12,7 +13,7 @@
 Trois découvertes structurent l'itération 2 :
 
 1. **Le reranker Albert était silencieusement cassé** (API `/rerank` 422, fallback sans alerte). Replay : 0/4 → 3/4 questions corrigées une fois réparé + hybride. **Déjà corrigé en quick win** ([#88](https://github.com/DGAFP/assistant-rh/pull/88), issue #87).
-2. **Trou de couverture d'index** : 58 % des fiches Service-Public ont des sections mais **zéro chunk** — elles sont indexées au sens documentaire mais invisibles au retrieval (cas SFT). Cause racine établie et corrigée côté code depuis (issue [#89](https://github.com/DGAFP/assistant-rh/issues/89), PRs [#95](https://github.com/DGAFP/assistant-rh/pull/95)–[#98](https://github.com/DGAFP/assistant-rh/pull/98) : config limitée à 24 fiches, artefacts manquants, jobs fail-open) ; **rejeu staging à exécuter**.
+2. **Trou de couverture d'index** : 58 % des fiches Service-Public avaient des sections mais **zéro chunk** — invisibles au retrieval (cas SFT). Cause racine établie et corrigée côté code (issue [#89](https://github.com/DGAFP/assistant-rh/issues/89), PRs [#95](https://github.com/DGAFP/assistant-rh/pull/95)–[#98](https://github.com/DGAFP/assistant-rh/pull/98)). **Correction (2026-06-15, staging réel) : le rejeu est fait — 55/55 fiches SP ont des chunks, trou refermé. Le problème de couverture vivant est désormais MATTE (17/44 docs) et MSO (16/16, table jamais interrogée), pas SP.**
 3. **L'observabilité a été conçue puis reste incomplète** : l'audit a relevé 154 colonnes dans `chat_runs`, dont 33 jamais écrites avant #88. Le statut reranker est maintenant câblé, mais les diagnostics retrieval exploitables restent absents ou partiels (chunks par étape, scores, listes avant/après). Et 3 des 4 tables de retrieval n'ont **aucun index vectoriel** (scans séquentiels).
 
 À cela s'ajoute une disparité structurelle **auto-éval vs jugement expert** : tant qu'elle n'est pas mesurée, aucune métrique automatique ne peut arbitrer les futures modifications.
@@ -27,10 +28,10 @@ Trois découvertes structurent l'itération 2 :
 |---|---|---|---|---|
 | 1 | Reranker `/rerank` cassé (422 silencieux) | Critique | ✅ corrigé (#88) | Note [01](01_RAG_QUALITY_AUDIT_2026-06.md) §1 |
 | 2 | Score RRF plat, sans amplitude de pertinence | Élevé | à traiter | Note 01 §2.1 |
-| 3 | 58 % des fiches SP sans chunk (trou d'index, cas SFT) | Élevé | ✅ fix code mergé (#95–#98) ; rejeu staging + réconciliation CI à faire | Note 01 add. 1 |
+| 3 | 58 % des fiches SP sans chunk (trou d'index, cas SFT) | Élevé | ✅ **résolu sur staging (55/55 au 15/06)** ; reste MATTE 17/44 + MSO + réconciliation CI | Notes 01 add. 1, [07](07_VERIFICATION_STAGING_ET_PRIORISATION.md) |
 | 4 | Disparité auto-éval vs expert, goldset vide | Élevé | à traiter | Note 01 add. 2 |
 | 5 | `chat_runs` : 154 col., diagnostics retrieval non câblés ou partiels | Élevé | à traiter | Note [06](06_AUDIT_CODE_ET_DB.md) §1.1 |
-| 6 | Index vectoriels manquants (matte, dgafp, rgrh) | Élevé | à traiter | Note 06 §2.2 |
+| 6 | Index vectoriels manquants (matte, rgrh) ; **DGAFP : 0 embedding (corpus éteint, pas un pb d'index)** | Élevé | à traiter | Notes 06 §2.2, [07](07_VERIFICATION_STAGING_ET_PRIORISATION.md) §2 |
 | 7 | Erreurs « fail-open » sans métrique (selector, rerank, embedder) | Élevé | à traiter | Note 06 §3 |
 | 8 | Aucune observabilité consolidée / alerting | Élevé | à traiter | Notes [02](02_ARCHITECTURE_AUDIT_2026-06.md) §4, [03](03_RAG_OBSERVABILITY_ROADMAP_2026-06.md) |
 | 9 | Tests RAG dispersés/incomplets ; schéma DB non versionné | Moyen | à traiter | Note 02 §3, A4 |
@@ -56,8 +57,9 @@ Trois découvertes structurent l'itération 2 :
 
 ### P0 — Quick wins (semaine du 16 juin, sans dépendance)
 - ✅ **Fix reranker** (#88) — fait, statut `v3_reranker_status` persisté.
-- ✅ **Fix ingestion Service-Public** ([#95](https://github.com/DGAFP/assistant-rh/pull/95)–[#98](https://github.com/DGAFP/assistant-rh/pull/98)) — mergé ; **rejeu staging** (ingestion + embeddings ciblés) à exécuter, puis réconciliation index en CI.
-- **Créer les index vectoriels** (matte, dgafp, rgrh) → latence/coût, prérequis multi-ministère.
+- ✅ **Fix ingestion Service-Public** ([#95](https://github.com/DGAFP/assistant-rh/pull/95)–[#98](https://github.com/DGAFP/assistant-rh/pull/98)) — mergé **et rejeu staging fait (55/55 au 15/06)** ; reste réconciliation index en CI + couverture MATTE 17/44 et MSO.
+- **Backfill embeddings DGAFP (0/3 992 `embedding_m3`) et RGRH (146/324)**, puis **créer les index vectoriels** (matte, dgafp, rgrh). DGAFP est aujourd'hui **éteint en recherche sémantique** (pas seulement non-indexé) → câbler l'index sans embedding ne sert à rien. cf [note 07](07_VERIFICATION_STAGING_ET_PRIORISATION.md).
+- **Fixer `rag_chunks_test`** (activée en config, table absente sur staging → fail-open à chaque requête) : créer la table ou désactiver le flag, et rendre l'absence bloquante.
 - **Câbler les colonnes de diagnostic déjà présentes** (chunks par étape, scores) → débloque l'observabilité sans changer le schéma.
 - **Compteurs + alertes sur les chemins fail-open** (rerank, embeddings, selector, table vide).
 - **Passer le retrieval en hybride** (réversible), validé sur le jeu de questions.
