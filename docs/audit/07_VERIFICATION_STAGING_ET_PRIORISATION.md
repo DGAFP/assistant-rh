@@ -80,7 +80,7 @@ Les chiffres **identiques** au dossier (donc validés sur staging) : helpful rat
 | 6 | Index vectoriels manquants (matte, dgafp, rgrh) | ◐ **à recadrer** | matte = vrai (959 emb, seq scan) ; **dgafp = 0 emb (index moot)** ; rgrh tiny |
 | 7 | Fail-open sans métrique | ✅ vérifié | sauf reranker (persiste désormais le statut) |
 | 8 | Pas d'observabilité / alerting | ✅ vérifié | 0 APM, diag non câblés |
-| 9 | Tests RAG dispersés ; schéma non versionné | ✅ vérifié | 0 test dans le package ; 2 migrations ; schéma `chat_runs` hors code |
+| 9 | Tests RAG dispersés ; schéma partiellement versionné | ✅ vérifié | 0 test dans le package ; 2 migrations + `config/sql` (SP/Legifrance + ivfflat) ; `matte`/`dgafp`/`rgrh` & `chat_runs` hors repo |
 | 10 | Sécurité UI (XSS, SQLi, root, RGPD) | ✅ vérifié | XSS `01_Chatbot.py:1188` ; SQLi `09:517-545` (**pas** copié en page 11) ; 7 Dockerfiles root |
 | 11 | Doublons SP 33 %, chunks-titres, sections géantes | ✅ vérifié | 756 doublons (27 %), 33 % <200, max 174 337 |
 | 12 | DGAFP quasi absente | ✅ **confirmé + cause établie** | 0 embedding + drop hors legal-intent |
@@ -105,8 +105,10 @@ Le dossier est mergeable comme document de cadrage, mais ces points devraient ê
 ## 5. Priorisation refondée sur l'état réel
 
 > Principe inchangé du dossier : **mesurable et observable d'abord, retrieval/données ensuite, multi-ministère après**. Mais le **contenu de P0 change** : SP est fait ; les vraies pannes silencieuses vivantes sont DGAFP/MSO/chunks_test/index, toutes vérifiées sur staging et toutes bon marché.
+>
+> **Liste canonique** : la présentation de validation est la [note 00 §4](00_SYNTHESE_ET_PRIORISATION.md) ; cette section en est la version détaillée et grounded sur staging. En cas d'écart de calendrier ou d'intitulé, la note 00 fait foi.
 
-### P0 — Pannes silencieuses vivantes + couverture (semaine du 16/06, risque faible, fort impact)
+### P0 — Pannes silencieuses vivantes + couverture (Aujourd'hui → semaine du 22/06, risque faible, fort impact)
 
 > Toutes mesurables sur staging *maintenant*. Même classe que le reranker : un sous-système éteint sans bruit.
 
@@ -117,14 +119,15 @@ Le dossier est mergeable comme document de cadrage, mais ces points devraient ê
 | P0.3 | **Index vectoriel MATTE** (959 emb, seq scan à chaque requête) | S | latence/coût |
 | P0.4 | **Backfill `embedding_m3` RGRH (146/324)** | S | recall corpus RGRH contrôlant |
 | P0.5 | **Alerting reranker** (fix vivant, 1 `failed`/25) : alerte si taux `v3_reranker_status='failed'` > 1 % | S | non-régression du fix |
-| P0.6 | **Check de réconciliation index en CI** : tout doc indexable → ≥ 1 chunk embeddé dans une table *interrogée*. Aurait attrapé DGAFP/MSO/MATTE/SP | S-M | couverture, anti-récidive |
+| P0.6 | **Gates qualité post-ingestion + réconciliation index en CI** (🚧 [#114](https://github.com/DGAFP/assistant-rh/pull/114), issue #36) : tout doc indexable → ≥ 1 chunk embeddé dans une table *interrogée* ; gates bloquants (table vide / IDs manquants / seuils) ; y ajouter l'anti-doublons. Aurait attrapé DGAFP/MSO/MATTE/SP | S-M | couverture, anti-récidive |
 | P0.7 | **MSO (1 262 chunks, 16 docs, non interrogé)** : câbler au retriever **ou** retirer du corpus (décision) | S→M | couverture |
 | P0.8 | **MATTE 17/44 docs sans chunk** : rejouer le backfill chunk/embeddings (même schéma que SP) | M | couverture |
+| P0.9 | **Observabilité ingestion & monitoring DB** (🚧 [#115](https://github.com/DGAFP/assistant-rh/pull/115)) : exporter read-only + dashboard Grafana/Cockpit (corpus ingéré, complétude embeddings, fraîcheur, intégrité) + alertes | en cours | observabilité données |
+| P0.10 | **Câbler les colonnes de diagnostic déjà présentes** (`v3_top1_score`, `v3_chunks_before/after_rerank`, scores) **ou** table de traces → observabilité retrieval sans toucher au schéma | S | observabilité retrieval |
 
-### P1 — Rendre mesurable (bloquant : rien n'est jugeable sans ça, 16/06 → 18/07)
+### P1 — Rendre mesurable (bloquant : rien n'est jugeable sans ça ; à partir de la semaine du 29/06)
 
-- **Goldset v1** (80-120 Q) depuis `chat_feedbacks` — les **197 négatifs sont déjà catégorisés + thématisés** (amorce). **Inclure** `missing_document`/no-answer (ne pas les exclure comme aujourd'hui).
-- **Câbler les ~33 colonnes diag déjà présentes** (`v3_top1_score`, `v3_chunks_before/after_rerank`, scores) **ou** table de traces → observabilité retrieval sans toucher au schéma.
+- **Goldset v2** (80-120 Q) depuis `chat_feedbacks` — les **197 négatifs sont déjà catégorisés + thématisés** (amorce). **Inclure** `missing_document`/no-answer (ne pas les exclure comme aujourd'hui).
 - **Set de calibration** auto-éval vs expert (κ ≥ 0,7) — conditionne l'usage de toute métrique auto.
 - **Dashboards** (usage, helpful, latence p50/p95 par étage, échecs provider) + **3 alertes** (rerank, fallback, no-answer).
 - **Relancer la collecte de feedback** (éteinte depuis avril ; 60 runs en juin).
@@ -132,7 +135,7 @@ Le dossier est mergeable comme document de cadrage, mais ces points devraient ê
 ### P1.5 — Retrieval / scoring / données (après baseline)
 
 - **Scoring v2** : score reranker comme signal aval ; **câbler `relevance_threshold`** (0,3 est en config — vérifier qu'il est appliqué) pour l'abstention.
-- **Bascule hybride** réversible, validée sur le goldset (le sémantique domine : 816 vs 237 runs).
+- **Retrieval hybride — conditionnel, non prioritaire** : des tests rapides et non structurés ont montré des **gains**, mais à valider sur le goldset avant toute bascule (réversible). Le sémantique domine l'usage actuel (816 vs 237 runs).
 - **Dédup SP** (756 copies) + filtrage chunks-titres (33 % < 200) à l'ingestion.
 - **Étendre `references_juridiques`** (18,6 % → cible).
 - **Boucle trous documentaires** (classe RIFSEEP) : no-answer/`missing_document` → backlog ingestion.

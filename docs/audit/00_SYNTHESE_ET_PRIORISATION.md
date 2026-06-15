@@ -14,7 +14,7 @@ Trois découvertes structurent l'itération 2 :
 
 1. **Le reranker Albert était silencieusement cassé** (API `/rerank` 422, fallback sans alerte). Replay : 0/4 → 3/4 questions corrigées une fois réparé + hybride. **Déjà corrigé en quick win** ([#88](https://github.com/DGAFP/assistant-rh/pull/88), issue #87).
 2. **Trou de couverture d'index** : 58 % des fiches Service-Public avaient des sections mais **zéro chunk** — invisibles au retrieval (cas SFT). Cause racine établie et corrigée côté code (issue [#89](https://github.com/DGAFP/assistant-rh/issues/89), PRs [#95](https://github.com/DGAFP/assistant-rh/pull/95)–[#98](https://github.com/DGAFP/assistant-rh/pull/98)). **Correction (2026-06-15, staging réel) : le rejeu est fait — 55/55 fiches SP ont des chunks, trou refermé. Le problème de couverture vivant est désormais MATTE (17/44 docs) et MSO (16/16, table jamais interrogée), pas SP.**
-3. **L'observabilité a été conçue puis reste incomplète** : l'audit a relevé 154 colonnes dans `chat_runs`, dont 33 jamais écrites avant #88. Le statut reranker est maintenant câblé, mais les diagnostics retrieval exploitables restent absents ou partiels (chunks par étape, scores, listes avant/après). Et 3 des 4 tables de retrieval n'ont **aucun index vectoriel** (scans séquentiels).
+3. **L'observabilité a été conçue puis reste incomplète** : l'audit a relevé un `chat_runs` obèse — **156 colonnes en base sur staging** (≈124 seulement déclarées dans le repo : schéma dérivé), dont **79 réellement écrites** par le logger (~33 colonnes de diagnostic déclarées mais jamais peuplées). Le statut reranker est maintenant câblé, mais les diagnostics retrieval exploitables restent absents ou partiels (chunks par étape, scores, listes avant/après). Et 3 des 4 tables de retrieval n'ont **aucun index vectoriel** (scans séquentiels).
 
 À cela s'ajoute une disparité structurelle **auto-éval vs jugement expert** : tant qu'elle n'est pas mesurée, aucune métrique automatique ne peut arbitrer les futures modifications.
 
@@ -30,11 +30,11 @@ Trois découvertes structurent l'itération 2 :
 | 2 | Score RRF : signal de rang fusionné, peu discriminant, sans pertinence calibrée | Élevé | à traiter | Note 01 §2.1 |
 | 3 | 58 % des fiches SP sans chunk (trou d'index, cas SFT) | Élevé | ✅ **résolu sur staging (55/55 au 15/06)** ; reste MATTE 17/44 + MSO + réconciliation CI | Notes 01 add. 1, [07](07_VERIFICATION_STAGING_ET_PRIORISATION.md) |
 | 4 | Disparité auto-éval vs expert, goldset vide | Élevé | à traiter | Note 01 add. 2 |
-| 5 | `chat_runs` : 154 col., diagnostics retrieval non câblés ou partiels | Élevé | à traiter | Note [06](06_AUDIT_CODE_ET_DB.md) §1.1 |
+| 5 | `chat_runs` : 156 col. en base (~124 déclarées repo, 79 écrites) ; diagnostics retrieval non câblés | Élevé | à traiter | Note [06](06_AUDIT_CODE_ET_DB.md) §1.1 |
 | 6 | Index vectoriels manquants (matte, rgrh) ; **DGAFP : 0 embedding (corpus éteint, pas un pb d'index)** | Élevé | à traiter | Notes 06 §2.2, [07](07_VERIFICATION_STAGING_ET_PRIORISATION.md) §2 |
 | 7 | Erreurs « fail-open » sans métrique (selector, rerank, embedder) | Élevé | à traiter | Note 06 §3 |
 | 8 | Aucune observabilité consolidée / alerting | Élevé | à traiter | Notes [02](02_ARCHITECTURE_AUDIT_2026-06.md) §4, [03](03_RAG_OBSERVABILITY_ROADMAP_2026-06.md) |
-| 9 | Tests RAG dispersés/incomplets ; schéma DB non versionné | Moyen | à traiter | Note 02 §3, A4 |
+| 9 | Tests RAG dispersés/incomplets ; schéma DB partiellement versionné (SP/Legifrance dans `config/sql`, reste hors repo) | Moyen | à traiter | Note 02 §3, A4 |
 | 10 | Sécurité UI (XSS rendu LLM, SQLi, root, RGPD conversations) | Moyen-élevé | à traiter | Note 02 §5 |
 | 11 | Doublons SP 33 %, chunks-titres, sections géantes | Moyen | à traiter | Note 01 §2.2 |
 | 12 | Données : fraîcheur juridique, embeddings RH non vérifiés | Moyen | à instruire | Notes [04](04_OBSERVATIONS_INITIALES_2026-06-05.md), [05](05_PLAN_AUDIT_ET_COUVERTURE.md) |
@@ -61,8 +61,8 @@ Trois découvertes structurent l'itération 2 :
 - **Backfill embeddings DGAFP (0/3 992 `embedding_m3`) et RGRH (146/324)**, puis **créer les index vectoriels** (matte, dgafp, rgrh). DGAFP est aujourd'hui **éteint en recherche sémantique** (pas seulement non-indexé) → câbler l'index sans embedding ne sert à rien. cf [note 07](07_VERIFICATION_STAGING_ET_PRIORISATION.md).
 - **Fixer `rag_chunks_test`** (activée en config, table absente sur staging → fail-open à chaque requête) : créer la table ou désactiver le flag, et rendre l'absence bloquante.
 - **Câbler les colonnes de diagnostic déjà présentes** (chunks par étape, scores) → débloque l'observabilité retrieval sans changer le schéma.
-- **Observabilité ingestion & monitoring DB** : dashboard Grafana/Cockpit sur l'état réel du corpus prod/staging — ce qui est **réellement ingéré** (docs → chunks), **complétude des embeddings** par corpus et par table (m3, bge), tables interrogées vs réellement présentes — avec **alertes** sur les écarts (corpus à 0 embedding, doc indexable sans chunk, table activée absente).
-- **Vérification anti-doublons à l'ingestion** : contrôle de déduplication systématique (Service-Public à 33 % de doublons) pour détecter et bloquer les chunks dupliqués dès l'ingestion, pas en aval.
+- **Observabilité ingestion & monitoring DB** (🚧 en cours, [#115](https://github.com/DGAFP/assistant-rh/pull/115)) : exporter read-only + dashboard Grafana/Cockpit sur l'état réel du corpus prod/staging — ce qui est **réellement ingéré** (docs → chunks), **complétude des embeddings** par corpus et par table (m3, bge), fraîcheur, intégrité — avec **alertes** sur les écarts (corpus à 0 embedding, doc indexable sans chunk, table activée absente).
+- **Gates qualité post-ingestion** (🚧 en cours, [#114](https://github.com/DGAFP/assistant-rh/pull/114), issue #36) : gates bloquants en CI sur l'état DB produit (table vide, IDs sources manquants, seuils) + diagnostics JSON/Markdown ; couvre la **réconciliation index** (tout doc indexable → ≥ 1 chunk). **Y ajouter le contrôle anti-doublons** (Service-Public à 33 %) comme gate dédié.
 - **Compteurs + alertes sur les chemins fail-open** (rerank, embeddings, selector, table vide).
 
 ### P1 — Mesure & observabilité (à partir de la semaine du 29 juin) — *bloquant : rien n'est jugeable sans ça*
