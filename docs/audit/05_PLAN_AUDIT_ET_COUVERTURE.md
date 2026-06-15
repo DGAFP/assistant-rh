@@ -50,6 +50,7 @@ Légende : ✅ couvert · ◐ partiel · ⬜ à faire.
 ### D10 — Fraîcheur & qualité des données d'ingestion *(risque métier élevé)*
 - **Objet** : âge des sources vs aujourd'hui (Légifrance/Service-Public/MATTE) — risque de réponses sur du droit abrogé ; doublons de documents ; complétude du parsing PDF (Poppler/Tesseract) ; cohérence des `references_juridiques`.
 - **Méthode** : SQL sur `last_updated_date`/`publication_date` de `rag_documents` ; échantillonnage de parsing ; vérification de dates d'effet. **Dépendances** : accès données. **Effort** : M.
+- **Drift vs référentiel source (Grist / La Suite num)** *(🆕)* : le référentiel des sources vit dans **Grist** et évolue dans le temps ; brancher un **diff continu** référentiel ↔ corpus ingéré (sous-ingestion / orphelins / fraîcheur) plutôt qu'un contrôle ponctuel. Extension naturelle de l'exporter data-health [#115](https://github.com/DGAFP/assistant-rh/pull/115) (source Grist via API → métriques de drift + alertes) et/ou gate qualité [#114](https://github.com/DGAFP/assistant-rh/pull/114). C'est l'amont du check de réconciliation index (D2). Cf. note [04](04_OBSERVATIONS_INITIALES_2026-06-05.md) §3.
 
 ### D11 — Sécurité du prompt & comportement conversationnel
 - **Objet** : résistance à l'injection (corpus et requête — l'assistant est public), robustesse multi-tours (`follow_up` tronqué à 8 messages), comportement hors-périmètre / sujets sensibles, cohérence de l'anti-hallucination, fuite de prompt système.
