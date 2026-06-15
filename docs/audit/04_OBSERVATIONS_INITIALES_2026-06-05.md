@@ -68,7 +68,7 @@ Ces axes restent à instruire — ils dépassent le périmètre des audits quali
 ## 4. Trois livrables immédiats (revue Lucie) — alignés itération 2
 
 1. **Schéma d'erreur RAG partagé** : taxonomie commune (source absente / non ingérée / mal chunkée / chunk non retrouvé / mal classé / source prioritaire absente / selector incomplet / génération incomplète / extrapolation / trop assertive sur contexte faible / clarification / hors périmètre / contradiction-obsolescence / citation insuffisante). Base de l'audit, de l'éval et des futures PR. → Recoupe directement la Phase 1 (Mesure) de la note 01.
-2. **Petit benchmark diagnostique figé** : 50-80 cas issus de la beta, stratifiés (note / thème / type d'échec / présence supposée du document / cas sensibles), rejouables avant/après. → C'est le goldset v1 de la note 01, Phase 1.
+2. **Petit benchmark diagnostique figé** : 50-80 cas issus de la beta, stratifiés (note / thème / type d'échec / présence supposée du document / cas sensibles), rejouables avant/après. → C'est le goldset v2 de la note 01, Phase 1.
 3. **Audit chunks/sources sur les thèmes les plus fragiles** (Renouvellement/Mobilité, Formation, Rémunération/Paie, Recrutement) : pour chaque cas, dérouler la chaîne document existe ? → ingéré ? → bien chunké ? → contexte parent ? → remonté ? → conservé par le selector ? → exploité par le generator ? → source citée exploitable ? → dit précisément quel est le prochain chantier.
 
 ---

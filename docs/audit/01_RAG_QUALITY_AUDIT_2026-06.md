@@ -149,7 +149,7 @@ Deux priorités structurent l'itération, plus un horizon itération 3 :
 
 ### Phase 1 — Mesure, observabilité et pilotage production (16 juin → 18 juillet)
 
-- Constituer le **goldset v1 : 80–120 questions** depuis `chat_feedbacks` (mix positifs/négatifs, tous thèmes, difficultés étiquetées) avec réponses et sources attendues.
+- Constituer le **goldset v2 : 80–120 questions** depuis `chat_feedbacks` (mix positifs/négatifs, tous thèmes, difficultés étiquetées) avec réponses et sources attendues.
 - Harness d'éval automatisé (recall@k chunks/sections, présence de la bonne source dans le contexte final, no-answer justifié ou non, juge LLM sur la réponse) exécutable en CI et en local — en réutilisant `src/goldset/` et `tests/conformance/`.
 - **Baseline chiffrée** avant/après Phase 0 ; tableau de bord hebdo (taux no-answer, helpful rate, échecs provider).
 - Observabilité production : voir le document dédié [Observabilité RAG & Dashboards Grafana](03_RAG_OBSERVABILITY_ROADMAP_2026-06.md) pour les dashboards Grafana, traces, alertes et métriques infra/RAG.
@@ -223,7 +223,7 @@ Deux priorités structurent l'itération, plus un horizon itération 3 :
 
 1. **Valider le déploiement immédiat des quick wins Phase 0 restants** (alerting rerank, diagnostics retrieval, indexation, replay archivé).
 2. Valider le séquencement Phase 1 → 4, jusqu'au 31 octobre 2026, et les cibles chiffrées du §7.
-3. Arbitrer la bascule en mode hybride : après mini-replay/goldset archivé (recommandé, réversible) ou après goldset v1 complet.
+3. Arbitrer la bascule en mode hybride : après mini-replay/goldset archivé (recommandé, réversible) ou après goldset v2 complet.
 
 ---
 
