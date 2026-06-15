@@ -18,6 +18,10 @@ if [ -z "$RAG_HEALTH_ENV_LABEL" ]; then
   exit 1
 fi
 
+export RAG_HEALTH_EXPORTER_PORT
+export DB_HEALTH_POLL_INTERVAL_SECONDS
+export RAG_HEALTH_ENV_LABEL
+
 python - <<'PY'
 from __future__ import annotations
 
@@ -47,8 +51,9 @@ exporter_pid=$!
 
 cleanup() {
   kill "$exporter_pid" 2>/dev/null || true
+  wait "$exporter_pid" 2>/dev/null || true
 }
 
 trap cleanup INT TERM EXIT
 
-exec alloy run /tmp/rag-health.alloy
+alloy run /tmp/rag-health.alloy

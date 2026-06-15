@@ -57,16 +57,19 @@ def test_collector_emits_counts_coverage_and_integrity_for_available_tables(monk
     monkeypatch.setattr(collector, "_count_rows", lambda conn, table: {"rag_sections": 2, "rag_chunks_test": 1}.get(table, 0))
     monkeypatch.setattr(collector, "_count_sections_by_document_source", lambda conn: {"service_public": 2})
     monkeypatch.setattr(collector, "_count_chunks_test_by_document_source", lambda conn: {"test": 1})
-    monkeypatch.setattr(
-        collector,
-        "_count_embedding",
-        lambda conn, table, column: (3, 2) if column == "embedding_m3" else (3, 3),
-    )
-    monkeypatch.setattr(
-        collector,
-        "_count_chunks_test_embedding",
-        lambda conn, column: (1, 1) if column == "embedding_raw" else (1, 0),
-    )
+    direct_embedding_calls: list[tuple[str, tuple[str, ...]]] = []
+    chunks_test_embedding_calls: list[tuple[str, ...]] = []
+
+    def fake_count_embeddings(conn, table: str, embedding_columns: tuple[str, ...]) -> dict[str, tuple[int, int]]:
+        direct_embedding_calls.append((table, embedding_columns))
+        return {column: (3, 2) if column == "embedding_m3" else (3, 3) for column in embedding_columns}
+
+    def fake_count_chunks_test_embeddings(conn, embedding_columns: tuple[str, ...]) -> dict[str, tuple[int, int]]:
+        chunks_test_embedding_calls.append(embedding_columns)
+        return {column: (1, 1) if column == "embedding_raw" else (1, 0) for column in embedding_columns}
+
+    monkeypatch.setattr(collector, "_count_embeddings", fake_count_embeddings)
+    monkeypatch.setattr(collector, "_count_chunks_test_embeddings", fake_count_chunks_test_embeddings)
     monkeypatch.setattr(
         collector,
         "_count_missing_reference",
@@ -122,6 +125,8 @@ def test_collector_emits_counts_coverage_and_integrity_for_available_tables(monk
         ).value
         == 1
     )
+    assert direct_embedding_calls == [("rag_chunks_service_public", ("embedding_m3", "embedding_bge_scw"))]
+    assert chunks_test_embedding_calls == [("embedding_raw", "embedding_bge")]
 
 
 def test_metrics_state_reports_failure_without_dropping_previous_samples() -> None:

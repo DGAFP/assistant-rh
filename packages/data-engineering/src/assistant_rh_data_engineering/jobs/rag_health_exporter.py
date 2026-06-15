@@ -296,14 +296,23 @@ class RagHealthCollector:
         if table_spec.table not in columns:
             return []
         samples: list[MetricSample] = []
+        present_embeddings: list[EmbeddingColumn] = []
         for embedding in table_spec.embeddings:
             labels = {"table": table_spec.table, "column": embedding.column, "model": embedding.model}
             if embedding.column not in columns[table_spec.table]:
                 samples.append(metric("assistant_rh_rag_embedding_column_present", self.env_label, 0, **labels))
                 continue
-            total, present = self._count_embedding(conn, table_spec.table, embedding.column)
-            missing = max(0, total - present)
+            present_embeddings.append(embedding)
             samples.append(metric("assistant_rh_rag_embedding_column_present", self.env_label, 1, **labels))
+
+        if not present_embeddings:
+            return samples
+
+        counts = self._count_embeddings(conn, table_spec.table, tuple(embedding.column for embedding in present_embeddings))
+        for embedding in present_embeddings:
+            labels = {"table": table_spec.table, "column": embedding.column, "model": embedding.model}
+            total, present = counts.get(embedding.column, (0, 0))
+            missing = max(0, total - present)
             samples.append(metric("assistant_rh_rag_embeddings_present_total", self.env_label, present, **labels))
             samples.append(metric("assistant_rh_rag_embeddings_missing_total", self.env_label, missing, **labels))
             samples.append(metric("assistant_rh_rag_embedding_coverage_ratio", self.env_label, present / total if total else 1, **labels))
@@ -313,14 +322,23 @@ class RagHealthCollector:
         if "rag_chunks_test" not in columns:
             return []
         samples: list[MetricSample] = []
+        present_embeddings: list[EmbeddingColumn] = []
         for embedding in CHUNKS_TEST_EMBEDDINGS:
             labels = {"table": "rag_chunks_test", "column": embedding.column, "model": embedding.model}
             if "rag_chunk_embeddings" not in columns or embedding.column not in columns["rag_chunk_embeddings"]:
                 samples.append(metric("assistant_rh_rag_embedding_column_present", self.env_label, 0, **labels))
                 continue
-            total, present = self._count_chunks_test_embedding(conn, embedding.column)
-            missing = max(0, total - present)
+            present_embeddings.append(embedding)
             samples.append(metric("assistant_rh_rag_embedding_column_present", self.env_label, 1, **labels))
+
+        if not present_embeddings:
+            return samples
+
+        counts = self._count_chunks_test_embeddings(conn, tuple(embedding.column for embedding in present_embeddings))
+        for embedding in present_embeddings:
+            labels = {"table": "rag_chunks_test", "column": embedding.column, "model": embedding.model}
+            total, present = counts.get(embedding.column, (0, 0))
+            missing = max(0, total - present)
             samples.append(metric("assistant_rh_rag_embeddings_present_total", self.env_label, present, **labels))
             samples.append(metric("assistant_rh_rag_embeddings_missing_total", self.env_label, missing, **labels))
             samples.append(metric("assistant_rh_rag_embedding_coverage_ratio", self.env_label, present / total if total else 1, **labels))
@@ -424,23 +442,37 @@ class RagHealthCollector:
         """
         return self._fetch_count_map(conn, query, ("test",), "test")
 
-    def _count_embedding(self, conn: psycopg.Connection, table: str, column: str) -> tuple[int, int]:
-        query = f"SELECT COUNT(*) AS total, COUNT({quote_identifier(column)}) AS present FROM {self.schema_sql}.{quote_identifier(table)}"
+    def _count_embeddings(self, conn: psycopg.Connection, table: str, embedding_columns: tuple[str, ...]) -> dict[str, tuple[int, int]]:
+        if not embedding_columns:
+            return {}
+        select_parts = ["COUNT(*) AS total"]
+        select_parts.extend(f"COUNT({quote_identifier(column)}) AS present_{index}" for index, column in enumerate(embedding_columns))
+        query = f"SELECT {', '.join(select_parts)} FROM {self.schema_sql}.{quote_identifier(table)}"
         with conn.cursor() as cur:
             cur.execute(query)
             row = cur.fetchone()
-        return (int(row[0] or 0), int(row[1] or 0)) if row else (0, 0)
+        if not row:
+            return {column: (0, 0) for column in embedding_columns}
+        total = int(row[0] or 0)
+        return {column: (total, int(row[index + 1] or 0)) for index, column in enumerate(embedding_columns)}
 
-    def _count_chunks_test_embedding(self, conn: psycopg.Connection, column: str) -> tuple[int, int]:
+    def _count_chunks_test_embeddings(self, conn: psycopg.Connection, embedding_columns: tuple[str, ...]) -> dict[str, tuple[int, int]]:
+        if not embedding_columns:
+            return {}
+        select_parts = ['COUNT(t."chunk_id") AS total']
+        select_parts.extend(f"COUNT(e.{quote_identifier(column)}) AS present_{index}" for index, column in enumerate(embedding_columns))
         query = f"""
-            SELECT COUNT(t."chunk_id") AS total, COUNT(e.{quote_identifier(column)}) AS present
+            SELECT {", ".join(select_parts)}
             FROM {self.schema_sql}."rag_chunks_test" t
             LEFT JOIN {self.schema_sql}."rag_chunk_embeddings" e ON e."chunk_id" = t."chunk_id"
         """
         with conn.cursor() as cur:
             cur.execute(query)
             row = cur.fetchone()
-        return (int(row[0] or 0), int(row[1] or 0)) if row else (0, 0)
+        if not row:
+            return {column: (0, 0) for column in embedding_columns}
+        total = int(row[0] or 0)
+        return {column: (total, int(row[index + 1] or 0)) for index, column in enumerate(embedding_columns)}
 
     def _count_missing_reference(
         self,
