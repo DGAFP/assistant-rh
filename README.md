@@ -232,7 +232,7 @@ The root `pnpm-lock.yaml` is scanned with [OWASP CVE Lite CLI](https://github.co
 pnpm security:scan:js
 ```
 
-The scan fails on high or critical OSV findings. The pre-push hook is change-aware: it blocks pushes that modify JavaScript dependency manifests or lockfiles (`package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc`, or `apps/mastra-pipeline/package.json`). For unrelated changes, run the scan manually or rely on the scheduled/CI security scan so existing lockfile findings remain visible without freezing all repository work.
+The scan fails on high or critical OSV findings. The pre-push hook is change-aware: it blocks pushes that modify JavaScript dependency manifests or lockfiles (any `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, or `.npmrc`). For unrelated changes, run the scan manually or rely on the scheduled/CI security scan so existing lockfile findings remain visible without freezing all repository work.
 
 ### Pre-commit hooks
 

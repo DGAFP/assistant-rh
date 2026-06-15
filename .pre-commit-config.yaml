@@ -21,7 +21,7 @@ repos:
         name: CVE Lite JS dependency scan
         entry: pnpm security:scan:js
         language: system
-        files: ^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|apps/mastra-pipeline/package\.json)$
+        files: ^((.*/)?package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc)$
         pass_filenames: false
         stages: [pre-push]
 
