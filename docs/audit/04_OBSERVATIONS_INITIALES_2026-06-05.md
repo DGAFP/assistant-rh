@@ -21,7 +21,7 @@ Cette note conserve la **vision stratégique de Day 1** : elle a posé, avant to
 | Chunks de mauvaise qualité (titres tronqués, sections fragmentées, navigation mêlée au contenu) | ✅ **Confirmé** : 33 % de doublons SP, 20-33 % de chunks-titres, sections de 6 à 174 k chars, chunks-titres « ANNEXE 5 » / « Astreintes et permanences » | Note 01, §2.2 |
 | Audit chunks = prérequis avant tout tuning RRF | ✅ **Confirmé et étendu** : le vrai blocage est en amont du RRF — 58 % des fiches SP n'ont **aucun chunk** (trou de couverture index, cas SFT) | Note 01, addendum 1 |
 | Besoin d'abstention / refus quand la base ne contient pas l'info | ✅ **Confirmé** : le selector LLM est aujourd'hui le seul garde-fou, sans score de pertinence calibré (le RRF ne fournit qu'un signal de rang fusionné, peu discriminant) | Note 01, §2.1 et §2.4 |
-| Manque d'observabilité (signaux non consolidés) | ✅ **Confirmé** : panne reranker restée invisible des mois ; dossier dédié | Notes 02 §4, 03 |
+| Manque d'observabilité (signaux non consolidés) | ✅ **Confirmé** : panne reranker restée invisible faute d'alerting ; dossier dédié | Notes 02 §4, 03 |
 
 **Le diagnostic central de Day 1 tient** : les défaillances sont majoritairement en amont (couverture, chunking, retrieval, confusion de domaine, absence de refus), et la calibration de l'éval conditionne la mesure de toute amélioration.
 

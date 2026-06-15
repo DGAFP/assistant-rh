@@ -67,7 +67,7 @@ rag_chunks_legifrance : 429   _scalingo : 429   _scw : 429
 rag_chunks_service_public_scalingo : 1 140
 ```
 
-`AGENTS.md` indique que Scalingo est retiré ; ces tables sont du poids mort (stockage, confusion, risque de requêter la mauvaise). Couplé à la non-gouvernance du schéma (note 02 A4 : seulement 2 migrations pour ~22 tables), personne ne sait quelle table fait référence sans lire le code.
+`AGENTS.md` indique que Scalingo est retiré ; ces tables sont du poids mort (stockage, confusion, risque de requêter la mauvaise). Couplé à la non-gouvernance du schéma (note 02 A4 : seulement 2 migrations pour ~22 tables), la table de référence n'est identifiable qu'en lisant le code.
 
 ---
 
@@ -78,7 +78,7 @@ Motif systémique : chaque garde-fou, en cas d'échec, **se dégrade silencieuse
 | Lieu | Comportement en cas d'échec | Pourquoi c'est critique |
 |---|---|---|
 | `context_selector.py:192` | selector échoue → **garde toutes les sections** | Le filtre anti-hallucination tombe ouvert : du contexte non pertinent passe à la génération, sans trace |
-| `section_aggregator.py:229-231` | rerank échoue → **ordre d'origine conservé** | La panne #87/#88 (422) est restée invisible des mois ; depuis #88 le statut est persisté (`v3_reranker_status`), l'alerte reste à créer |
+| `section_aggregator.py:229-231` | rerank échoue → **ordre d'origine conservé** | La panne #87/#88 (422) est restée invisible faute d'alerting ; depuis #88 le statut est persisté (`v3_reranker_status`), l'alerte reste à créer |
 | `embedder.py:82,106` | embedding échoue → **`return None`** → retriever `return []` | Question sans aucun résultat, vécue comme « no-answer » par l'utilisateur, loggée en `warning` |
 | `retriever.py:271-272` | une table échoue dans le ThreadPool → **résultat partiel** | `rag_chunks_test` absente avalée ; le recall chute sans signal |
 | `retriever.py:903` | `rag_chunks_test` KO → **warning + continue** | Idem : table activée en config mais absente = non-événement |

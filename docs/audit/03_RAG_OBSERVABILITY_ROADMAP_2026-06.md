@@ -33,6 +33,8 @@ Principe de mise en œuvre : ne pas remplacer `chat_runs` par Grafana, mais reli
 
 ## 3. Dashboards Grafana v1
 
+> **En préparation (PR dédiée)** : une première brique est déjà portée par [#115](https://github.com/DGAFP/assistant-rh/pull/115) « RAG data health monitoring » — exporter read-only + **dashboard Grafana « santé des données »** (corpus ingéré, complétude des embeddings, fraîcheur, intégrité) + alertes, remote-write vers Scaleway Cockpit. Les dashboards qualité / usage / latence ci-dessous s'y ajoutent. *Calendrier de déploiement à caler sur la [note 00 §4](00_SYNTHESE_ET_PRIORISATION.md).*
+
 ### 3.1 Vue exécutive
 
 Objectif : suivre l'état global du service sans connaître le détail du pipeline.
