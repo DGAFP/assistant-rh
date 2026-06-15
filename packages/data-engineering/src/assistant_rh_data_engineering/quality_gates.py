@@ -251,14 +251,34 @@ def load_quality_config(path: Path) -> dict[str, Any]:
 
 
 def resolve_expected_ids(repo_root: Path, source_name: str, source_config: dict[str, Any]) -> list[str]:
-    spec = source_config.get("expected_ids") or {}
-    path = repo_root / str(spec.get("path") or "")
-    field = str(spec.get("field") or "")
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    values = payload.get(field) if isinstance(payload, dict) else None
-    if not isinstance(values, list):
-        raise ValueError(f"Expected ID field {field!r} in {path} must be a list.")
-    return normalize_ids(source_name, values)
+    spec = source_config.get("expected_ids")
+    if not isinstance(spec, dict):
+        raise ValueError(f"Source {source_name!r} configuration is missing 'expected_ids'.")
+
+    path_value = spec.get("path")
+    if not path_value:
+        raise ValueError(f"Source {source_name!r} 'expected_ids' configuration is missing 'path'.")
+
+    field_value = spec.get("field")
+    if not field_value:
+        raise ValueError(f"Source {source_name!r} 'expected_ids' configuration is missing 'field'.")
+    field = str(field_value)
+
+    path = repo_root / str(path_value)
+    if not path.is_file():
+        raise FileNotFoundError(f"Expected IDs file not found: {path}")
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Failed to parse JSON from {path}: {exc}") from exc
+    else:
+        if payload is None:
+            raise ValueError(f"JSON file {path} resolved to null.")
+        values = payload.get(field) if isinstance(payload, dict) else None
+        if not isinstance(values, list):
+            raise ValueError(f"Expected ID field {field!r} in {path} must be a list.")
+        return normalize_ids(source_name, values)
 
 
 def normalize_ids(source_name: str, values: list[Any]) -> list[str]:

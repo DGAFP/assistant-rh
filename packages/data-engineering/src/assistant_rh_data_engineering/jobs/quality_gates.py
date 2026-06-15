@@ -36,14 +36,29 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--schema", default="public")
     parser.add_argument("--dsn-env", default="SCW_POSTGRES_DSN")
     parser.add_argument("--dsn", help="Postgres DSN. Takes precedence over --dsn-env.")
-    parser.add_argument("--source", action="append", choices=["service_public", "legifrance"], default=[])
+    parser.add_argument("--source", action="append", default=[])
     parser.add_argument("--include-embeddings", action="store_true")
-    parser.add_argument("--embedding-source", choices=["all", "service_public", "legifrance"], default="all")
+    parser.add_argument("--embedding-source", default="all")
     parser.add_argument("--embedding-only-column", default="", help="When set, only checks the selected embedding column.")
     parser.add_argument("--blocking", action="store_true", help="Exit non-zero when any blocking quality check fails.")
     parser.add_argument("--json-output", default="", help="Write the machine-readable report to this path.")
     parser.add_argument("--markdown-output", default="", help="Write the GitHub-friendly summary to this path.")
     return parser
+
+
+def validate_requested_sources(parser: argparse.ArgumentParser, args: argparse.Namespace, config: dict) -> None:
+    known_sources = set(config["sources"].keys())
+    for source in args.source:
+        if source not in known_sources:
+            parser.error(f"argument --source: invalid choice: {source!r} (choose from {_format_choices(sorted(known_sources))})")
+    if args.embedding_source != "all" and args.embedding_source not in known_sources:
+        parser.error(
+            f"argument --embedding-source: invalid choice: {args.embedding_source!r} (choose from 'all', {_format_choices(sorted(known_sources))})"
+        )
+
+
+def _format_choices(values: list[str]) -> str:
+    return ", ".join(repr(value) for value in values)
 
 
 def write_reports(report: dict, json_output: str, markdown_output: str) -> None:
@@ -67,8 +82,10 @@ def _json_dump(report: dict) -> str:
 
 def main() -> int:
     load_dotenv(REPO_ROOT / ".env")
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
     config = load_quality_config(REPO_ROOT / args.config)
+    validate_requested_sources(parser, args, config)
     dsn = args.dsn or os.getenv(args.dsn_env)
     if not dsn:
         report = build_error_report(

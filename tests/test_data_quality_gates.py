@@ -5,7 +5,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from assistant_rh_data_engineering.quality_gates import evaluate_quality_gates, render_markdown_report
+import pytest
+from assistant_rh_data_engineering.jobs.quality_gates import build_parser, validate_requested_sources
+from assistant_rh_data_engineering.quality_gates import evaluate_quality_gates, render_markdown_report, resolve_expected_ids
 from assistant_rh_data_ingestion_cli.main import _resolve_command
 
 
@@ -163,6 +165,58 @@ def test_quality_gates_cli_route_is_registered() -> None:
     spec, job_args = resolved
     assert spec.module == "assistant_rh_data_engineering.jobs.quality_gates"
     assert job_args == ["--target-env", "staging"]
+
+
+def test_resolve_expected_ids_reports_missing_config() -> None:
+    with pytest.raises(ValueError, match="missing 'expected_ids'"):
+        resolve_expected_ids(Path.cwd(), "custom", {})
+
+
+def test_resolve_expected_ids_requires_path_and_field(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="missing 'path'"):
+        resolve_expected_ids(tmp_path, "custom", {"expected_ids": {"field": "ids"}})
+
+    with pytest.raises(ValueError, match="missing 'field'"):
+        resolve_expected_ids(tmp_path, "custom", {"expected_ids": {"path": "ids.json"}})
+
+
+def test_resolve_expected_ids_reports_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="Expected IDs file not found"):
+        resolve_expected_ids(tmp_path, "custom", {"expected_ids": {"path": "missing.json", "field": "ids"}})
+
+
+def test_resolve_expected_ids_reports_invalid_json(tmp_path: Path) -> None:
+    path = tmp_path / "ids.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Failed to parse JSON"):
+        resolve_expected_ids(tmp_path, "custom", {"expected_ids": {"path": "ids.json", "field": "ids"}})
+
+
+def test_resolve_expected_ids_rejects_null_json(tmp_path: Path) -> None:
+    path = tmp_path / "ids.json"
+    path.write_text("null", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="resolved to null"):
+        resolve_expected_ids(tmp_path, "custom", {"expected_ids": {"path": "ids.json", "field": "ids"}})
+
+
+def test_quality_gates_cli_accepts_config_driven_sources() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["--target-env", "staging", "--source", "custom", "--embedding-source", "custom"])
+
+    validate_requested_sources(parser, args, {"sources": {"custom": {}}})
+
+    assert args.source == ["custom"]
+    assert args.embedding_source == "custom"
+
+
+def test_quality_gates_cli_rejects_unknown_config_sources() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["--target-env", "staging", "--source", "unknown", "--embedding-source", "missing"])
+
+    with pytest.raises(SystemExit):
+        validate_requested_sources(parser, args, {"sources": {"service_public": {}}})
 
 
 def _write_config(tmp_path: Path) -> dict[str, Any]:
