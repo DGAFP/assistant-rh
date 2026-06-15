@@ -2,7 +2,7 @@
 
 > Document de présentation pour validation. Dossier complet : voir [README](README.md).
 > Date : 2026-06-09. Sources : notes 01-06 du dossier (constats vérifiés sur code + base locale copie staging, replays contre l'API Albert réelle).
-> **Vérifié sur staging réel le 2026-06-15 : voir [note 07](07_VERIFICATION_STAGING_ET_PRIORISATION.md) pour les corrections de chiffres et la priorisation re-fondée. Changements majeurs : la couverture Service-Public est déjà refermée sur staging (55/55), et DGAFP a 0 embedding (corpus éteint en sémantique), pas « un index manquant ».**
+> **Vérifié sur staging réel le 2026-06-15 : voir [note 07](07_VERIFICATION_STAGING_ET_PRIORISATION.md) pour les corrections de chiffres et la priorisation refondée. Changements majeurs : le trou de couverture Service-Public est déjà refermé sur staging (55/55), et DGAFP a 0 embedding (corpus éteint en sémantique), pas « un index manquant ».**
 
 ---
 

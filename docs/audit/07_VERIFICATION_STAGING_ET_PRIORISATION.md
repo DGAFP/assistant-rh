@@ -1,7 +1,7 @@
-# Vérification sur staging réel & priorisation re-fondée
+# Vérification sur staging réel & priorisation refondée
 
 > Dossier d'audit : voir [README](README.md). Date : 2026-06-15.
-> Objet : **contre-audit** des notes 00-06 contre (a) le **code actuel de `main`** (incluant les fix #87/#88 et #95-#98) et (b) la **base staging réelle** via `SCW_POSTGRES_DSN_STAGING` (et non plus une copie locale). But : confirmer ce qui tient, corriger les chiffres périmés, et **re-prioriser sur l'état réel de staging au 15 juin**.
+> Objet : **contre-audit** des notes 00-06 contre (a) le **code actuel de `main`** (incluant les fix #87/#88 et #95-#98) et (b) la **base staging réelle** via `SCW_POSTGRES_DSN_STAGING` (et non plus une copie locale). But : confirmer ce qui tient, corriger les chiffres périmés, et **reprioriser sur l'état réel de staging au 15 juin**.
 > Méthode : 3 passes de relecture croisée du code (reranker/retriever/scoring/fail-open, logging `chat_runs`, sécurité/archi) + 8 requêtes SQL en lecture seule sur staging (`SET default_transaction_read_only=on`). Aucune écriture.
 
 ---
@@ -102,7 +102,7 @@ Le dossier est mergeable comme document de cadrage, mais ces points devraient ê
 
 ---
 
-## 5. Priorisation re-fondée sur l'état réel
+## 5. Priorisation refondée sur l'état réel
 
 > Principe inchangé du dossier : **mesurable et observable d'abord, retrieval/données ensuite, multi-ministère après**. Mais le **contenu de P0 change** : SP est fait ; les vraies pannes silencieuses vivantes sont DGAFP/MSO/chunks_test/index, toutes vérifiées sur staging et toutes bon marché.
 
@@ -123,7 +123,7 @@ Le dossier est mergeable comme document de cadrage, mais ces points devraient ê
 
 ### P1 — Rendre mesurable (bloquant : rien n'est jugeable sans ça, 16/06 → 18/07)
 
-- **Goldset v1** (80-120 Q) depuis `chat_feedbacks` — les **197 négatifs sont déjà catégorisés + thémés** (amorce). **Inclure** `missing_document`/no-answer (ne pas les exclure comme aujourd'hui).
+- **Goldset v1** (80-120 Q) depuis `chat_feedbacks` — les **197 négatifs sont déjà catégorisés + thématisés** (amorce). **Inclure** `missing_document`/no-answer (ne pas les exclure comme aujourd'hui).
 - **Câbler les ~33 colonnes diag déjà présentes** (`v3_top1_score`, `v3_chunks_before/after_rerank`, scores) **ou** table de traces → observabilité retrieval sans toucher au schéma.
 - **Set de calibration** auto-éval vs expert (κ ≥ 0,7) — conditionne l'usage de toute métrique auto.
 - **Dashboards** (usage, helpful, latence p50/p95 par étage, échecs provider) + **3 alertes** (rerank, fallback, no-answer).
@@ -132,7 +132,7 @@ Le dossier est mergeable comme document de cadrage, mais ces points devraient ê
 ### P1.5 — Retrieval / scoring / données (après baseline)
 
 - **Scoring v2** : score reranker comme signal aval ; **câbler `relevance_threshold`** (0,3 est en config — vérifier qu'il est appliqué) pour l'abstention.
-- **Bascule hybride** réversible, validée goldset (le sémantique domine : 816 vs 237 runs).
+- **Bascule hybride** réversible, validée sur le goldset (le sémantique domine : 816 vs 237 runs).
 - **Dédup SP** (756 copies) + filtrage chunks-titres (33 % < 200) à l'ingestion.
 - **Étendre `references_juridiques`** (18,6 % → cible).
 - **Boucle trous documentaires** (classe RIFSEEP) : no-answer/`missing_document` → backlog ingestion.
@@ -170,7 +170,7 @@ Réemploi pipeline, deep-research borné, GraphRAG, upload — conditionnels aux
 ## 7. Limites / non vérifié
 
 - **Prod jamais touchée** : tout ci-dessus est staging. À reconfirmer en prod : embeddings DGAFP, présence `rag_chunks_test`, déploiement du fix reranker, latences.
-- **Cause racine DGAFP 0-embedding partiellement établie** : les embeddings (m3, bge_scw, qwen3) + l'index HNSW sont **complets dans le fantôme `rag_chunks_dgafp_scalingo` (3 992/3 992)**, vides dans la table vive `rag_chunks_dgafp` et dans `_scw` — les colonnes partagent les mêmes clés (`chunk_id`, `cid`). Hypothèse : migration des chunks faite sans report des embeddings. **Avant de re-embedder, tester une copie keyed depuis `_scalingo`** (vérifier que le `chunk_text` est identique entre les deux).
+- **Cause racine DGAFP 0-embedding partiellement établie** : les embeddings (m3, bge_scw, qwen3) + l'index HNSW sont **complets dans le fantôme `rag_chunks_dgafp_scalingo` (3 992/3 992)**, vides dans la table vive `rag_chunks_dgafp` et dans `_scw` — les colonnes partagent les mêmes clés (`chunk_id`, `cid`). Hypothèse : migration des chunks faite sans report des embeddings. **Avant de ré-générer les embeddings, tester une copie par clé depuis `_scalingo`** (vérifier que le `chunk_text` est identique entre les deux).
 - **`relevance_threshold=0.3`** est en config ; non confirmé qu'il soit appliqué dans le code de scoring (à vérifier en P1.5).
 - Latences sur sous-ensemble de runs v3 avec timing rempli (n ≈ 180-700) — indicatif.
 
