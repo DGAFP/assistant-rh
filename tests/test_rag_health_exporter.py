@@ -52,6 +52,20 @@ def test_collector_sets_statement_timeout_with_set_config() -> None:
     assert calls == [("SELECT set_config('statement_timeout', %s, false)", ("20000",))]
 
 
+def test_missing_reference_check_casts_join_columns_to_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    collector = exporter.RagHealthCollector(env_label="staging")
+    captured: dict[str, str] = {}
+
+    def fake_fetch_one(conn, query: str, params=()):
+        captured["query"] = query
+        return 0
+
+    monkeypatch.setattr(collector, "_fetch_one", fake_fetch_one)
+
+    assert collector._count_missing_reference(object(), "rag_chunks_service_public", "source_document_id", "rag_documents", "doc_id") == 0
+    assert 'target_table."doc_id"::text = source_table."source_document_id"::text' in captured["query"]
+
+
 def test_collector_emits_counts_coverage_and_integrity_for_available_tables(monkeypatch: pytest.MonkeyPatch) -> None:
     collector = exporter.RagHealthCollector(env_label="production")
     columns = {

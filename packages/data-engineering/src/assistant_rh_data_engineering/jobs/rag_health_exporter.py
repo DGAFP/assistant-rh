@@ -428,7 +428,7 @@ class RagHealthCollector:
         query = f"""
             SELECT COALESCE(NULLIF(TRIM(d."source"::text), ''), %s) AS source, COUNT(*)
             FROM {self.schema_sql}."rag_sections" s
-            LEFT JOIN {self.schema_sql}."rag_documents" d ON d."doc_id" = s."doc_id"
+            LEFT JOIN {self.schema_sql}."rag_documents" d ON d."doc_id"::text = s."doc_id"::text
             GROUP BY 1
         """
         return self._fetch_count_map(conn, query, ("unknown",), "unknown")
@@ -437,7 +437,7 @@ class RagHealthCollector:
         query = f"""
             SELECT COALESCE(NULLIF(TRIM(d."source"::text), ''), %s) AS source, COUNT(*)
             FROM {self.schema_sql}."rag_chunks_test" c
-            LEFT JOIN {self.schema_sql}."rag_documents" d ON d."doc_id" = c."doc_id"
+            LEFT JOIN {self.schema_sql}."rag_documents" d ON d."doc_id"::text = c."doc_id"::text
             GROUP BY 1
         """
         return self._fetch_count_map(conn, query, ("test",), "test")
@@ -486,7 +486,7 @@ class RagHealthCollector:
             SELECT COUNT(*)
             FROM {self.schema_sql}.{quote_identifier(source_table)} source_table
             LEFT JOIN {self.schema_sql}.{quote_identifier(target_table)} target_table
-              ON target_table.{quote_identifier(target_column)} = source_table.{quote_identifier(source_column)}
+              ON target_table.{quote_identifier(target_column)}::text = source_table.{quote_identifier(source_column)}::text
             WHERE source_table.{quote_identifier(source_column)} IS NOT NULL
               AND target_table.{quote_identifier(target_column)} IS NULL
         """
