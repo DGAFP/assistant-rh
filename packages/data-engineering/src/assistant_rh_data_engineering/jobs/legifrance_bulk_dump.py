@@ -19,9 +19,7 @@ for entry in reversed(PYTHONPATH_ENTRIES):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Télécharge et extrait le dump LEGI dans bronze/raw/legi_bulk."
-    )
+    parser = argparse.ArgumentParser(description="Télécharge et extrait le dump LEGI dans bronze/raw/legi_bulk.")
     parser.add_argument(
         "--lake-root",
         default="data/lake/legifrance",
@@ -76,6 +74,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--article-ids-json",
         help="Chemin d'un manifest JSON contenant les LEGIARTI... à extraire depuis l'archive DILA.",
     )
+    parser.add_argument(
+        "--strict-articles",
+        action="store_true",
+        help=(
+            "Échec non-zéro si --article-ids-json demande N LEGIARTI et que "
+            "l'extraction (snapshot + deltas) en trouve strictement moins. "
+            "Activé par défaut avec --article-ids-json ; utiliser "
+            "--allow-partial pour conserver l'ancien comportement."
+        ),
+    )
+    parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help=(
+            "Désactive --strict-articles : tolère un --article-ids-json "
+            "extrait partiellement (utile pour le mode migration où des "
+            "articles LEGIARTI sont déjà connus absents de l'archive)."
+        ),
+    )
     return parser
 
 
@@ -112,12 +129,17 @@ def main() -> int:
     )
     snapshot = client.resolve_snapshot(raw_dir)
     extracted_count = None
+    requested_count = None
+    missing_ids: list[str] = []
     deleted_local_archive = False
     extraction_mode = "none"
     if args.article_ids_json:
         article_ids = load_article_ids_from_json(args.article_ids_json)
-        extracted_count = len(client.extract_articles(snapshot, article_ids))
+        requested_count = len(article_ids)
+        extracted = client.extract_articles(snapshot, article_ids)
+        extracted_count = len(extracted)
         extraction_mode = "article_ids_json"
+        missing_ids = sorted(set(article_ids) - set(extracted))
         if args.delete_local_archive:
             deleted_local_archive = client.delete_local_archive(snapshot)
     elif args.extract_full_snapshot:
@@ -136,6 +158,34 @@ def main() -> int:
             delete=args.delete_remote,
         )
 
+    # Échec strict par défaut sur --article-ids-json : évite qu'une extraction
+    # incomplète (snapshot partiel + deltas manquants) ne se propage en aval.
+    strict_articles = bool(args.strict_articles) or (bool(args.article_ids_json) and not args.allow_partial)
+    if args.article_ids_json and missing_ids and strict_articles:
+        message = (
+            f"Extraction incomplète pour --article-ids-json: "
+            f"{len(missing_ids)}/{requested_count} article(s) absent(s) "
+            f"du snapshot et des deltas. Premiers manquants: "
+            f"{missing_ids[:5]}. Réessayer avec un snapshot plus récent ou "
+            f"utiliser --allow-partial pour ignorer."
+        )
+        print(
+            json.dumps(
+                {
+                    "status": "error",
+                    "reason": "incomplete_article_extraction",
+                    "requested_count": requested_count,
+                    "extracted_xml_count": extracted_count,
+                    "missing_count": len(missing_ids),
+                    "missing_ids_sample": missing_ids[:5],
+                    "article_ids_json": args.article_ids_json,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        raise SystemExit(message)
+
     print(
         json.dumps(
             {
@@ -147,7 +197,11 @@ def main() -> int:
                 "extract_full_snapshot": args.extract_full_snapshot,
                 "article_ids_json": args.article_ids_json,
                 "extraction_mode": extraction_mode,
+                "requested_article_ids": requested_count,
                 "extracted_xml_count": extracted_count,
+                "missing_article_ids": missing_ids,
+                "missing_article_count": len(missing_ids),
+                "strict_articles": strict_articles,
                 "delete_local_archive": args.delete_local_archive,
                 "deleted_local_archive": deleted_local_archive,
                 "target_env": args.target_env,
