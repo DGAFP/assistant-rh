@@ -60,6 +60,7 @@ def test_parse_real_amelioration_notebook_when_present(audit_mod) -> None:
 
     paths = audit_mod.parse_pdf_paths_from_notebook(notebook)
 
+    # TODO(review): relax to `>= 1` — `== 3` couples test to current notebook content.
     assert len(paths) == 3
     assert all(path.endswith(".pdf") for path in paths)
 
@@ -84,15 +85,27 @@ def test_sql_statements_are_select_only(audit_mod) -> None:
     for statement in statements:
         sql = statement["sql"].strip().upper()
         assert sql.startswith("SELECT")
+        # TODO(review): substring guard is a smoke check, not a security boundary — would miss `-- update later` comments.
         assert all(keyword not in sql for keyword in ["UPDATE ", "INSERT ", "DELETE ", "CREATE ", "DROP ", "ALTER "])
 
 
 def test_cli_outputs_json_report(audit_mod, tmp_path, monkeypatch, capsys) -> None:
     scripts = tmp_path / "scripts"
     write_notebook(scripts / "amelioration_matte.ipynb", ["PDF_PATHS = [Path('./source.pdf')]\n"])
-    monkeypatch.setattr("sys.argv", ["audit_matte_ingestion", "--repo-root", str(tmp_path), "--sql-only"])
+    monkeypatch.setattr("sys.argv", ["audit_matte_ingestion", "--repo-root", str(tmp_path)])
 
     assert audit_mod.main() == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["repo_root"] == str(tmp_path.resolve())
+    assert payload["sql_statements"]
+    assert payload["pdf_paths_declared"] == ["./source.pdf"]
+    assert payload["notebooks"]
+
+
+def test_cli_sql_only_omits_repo_inspection(audit_mod, tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setattr("sys.argv", ["audit_matte_ingestion", "--repo-root", str(tmp_path), "--sql-only"])
+
+    assert audit_mod.main() == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert list(payload.keys()) == ["sql_statements"]
     assert payload["sql_statements"]

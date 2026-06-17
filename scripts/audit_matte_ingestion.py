@@ -3,7 +3,8 @@
 
 The script inspects repository state only and emits SQL statements that an
 operator can run separately. It never opens a DB connection and never writes
-data. See docs/MATTE_SOURCE_INGESTION_AUDIT.md for the full runbook.
+data. See ``docs/MATTE_SOURCE_INGESTION_AUDIT.md`` (delivered in the companion
+docs PR #129) for the full runbook.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 CANONICAL_TABLE = "rag_chunks_matte"
+# TODO(review): rename to CANONICAL_EMBED_COL_BGE_M3 — `embedding_m3` stores BGE-M3 vectors, not Albert.
 CANONICAL_EMBED_COL_ALBERT = "embedding_m3"
 CANONICAL_EMBED_COL_BGE = "embedding_bge_scw"
 KNOWN_EMBED_COLS = ["embedding_m3", "embedding_bge_scw", "embedding_qwen3", "embedding_ctx", "embedding_bge"]
@@ -31,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--sql-only",
         action="store_true",
-        help="Conserve le comportement offline : émet uniquement le rapport et les requêtes SQL.",
+        help="Émet uniquement les requêtes SQL (sans inspection du repo).",
     )
     return parser
 
@@ -46,6 +48,7 @@ def parse_pdf_paths_from_notebook(notebook_path: Path) -> list[str]:
 
     paths: list[str] = []
     seen: set[str] = set()
+    # TODO(review): only matches literal `Path("...pdf")` — misses Path(f"{base}/file.pdf") or concatenation.
     pattern = re.compile(r"Path\([\"']([^\"']+\.pdf)[\"']\)")
     for cell in payload.get("cells", []):
         if cell.get("cell_type") != "code":
@@ -141,8 +144,11 @@ def build_report(repo_root: Path) -> dict[str, Any]:
 
 def main() -> int:
     args = build_parser().parse_args()
-    report = build_report(Path(args.repo_root))
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    if args.sql_only:
+        payload: dict[str, Any] = {"sql_statements": build_sql_statements()}
+    else:
+        payload = build_report(Path(args.repo_root))
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
 
