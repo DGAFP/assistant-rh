@@ -1,5 +1,15 @@
 # Mastra Port: Executive Summary
 
+## Current status — paused implementation
+
+**Status (2026-06-17): Mastra implementation is paused.** This summary is retained as an audit record of the Mastra investigation and as planning material for a possible future restart; it is not an active delivery plan while the port is paused.
+
+Priority implication:
+
+- Mastra conformance failures are informational/backlog while implementation is paused and should not be treated as P0 operational work.
+- Current P0 work is RAG/data quality: missing DGAFP embeddings, source ingestion audits, and related coverage issues on the active Python v3 production path.
+- The Mastra plan and conformance gates become active again only if Mastra work is explicitly resumed.
+
 ## Context
 
 The assistant-rh chatbot currently runs on a Python-based pipeline with a Streamlit interface. This technology stack has served its purpose but is showing its age: the code is difficult to maintain, errors are hard to diagnose, and adding new features requires significant effort.

@@ -1,5 +1,33 @@
 # Mastra pipeline port — implementation plan (compatibility-first)
 
+> **Status (2026-06-17): Mastra implementation is PAUSED.**
+>
+> Per Paul's reprioritization, the Mastra pipeline port described in this
+> document is currently paused. The compatibility-first PR milestones below
+> remain the *plan of record* for when work resumes; no milestone PRs should
+> be opened or merged while the port is paused unless Mastra work is
+> explicitly resumed.
+>
+> **Priority implications while paused:**
+>
+> - Conformance failures (Conformance Nightly, Mastra-vs-Python parity,
+>   replay-cache misses on the Mastra path) are classified as
+>   **informational / backlog**. They are not P0 operational work and must
+>   not block other PRs or daily triage.
+> - The production path remains the Python v3 RAG pipeline in
+>   `packages/rag-pipeline/`. Conformance tooling (`tests/conformance/`,
+>   `scripts/run_mastra_conformance.py`, the replay-cache helpers, and the
+>   associated workflows) is retained as documentation/tooling so the
+>   pending plan stays reproducible when work resumes, but it is **not** a
+>   P0 production gate during the pause.
+> - Current P0 work is **RAG / data quality**: missing DGAFP embeddings,
+>   source ingestion audits (DGAFP, MATTE, Service-Public, RGRH), and other
+>   data-coverage issues tracked separately from the Mastra port.
+>
+> This note is factual and reversible: it does not delete historical
+> implementation details, and it can be removed when Mastra work is
+> explicitly resumed.
+
 ## Objective
 
 Implement the Mastra pipeline port in a **new worktree** as a sequence of focused, testable PRs, while preserving behavioral parity with the current Python v3 custom pipeline.
@@ -203,6 +231,14 @@ Implement the Mastra pipeline port in a **new worktree** as a sequence of focuse
   - P1 (warn/fix quickly): ranking/order/context drift
   - P2 (monitor): latency/cost deltas
 - PR blocked if any P0 metric fails threshold.
+
+> **Status note (paused Mastra):** while the Mastra implementation is paused,
+> any Conformance Nightly / Mastra-vs-Python / replay-cache failures that
+> originate from the paused Mastra path are **informational / backlog** by
+> default. They must not be treated as P0 production gates, and they must
+> not pre-empt the real P0 RAG / data-quality work (missing DGAFP
+> embeddings, source ingestion audits). This classification reverts to the
+> table above only when Mastra work is explicitly resumed.
 
 ## Execution order I will follow once approved
 
