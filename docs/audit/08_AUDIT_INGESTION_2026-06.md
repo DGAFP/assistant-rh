@@ -60,7 +60,7 @@ Storage côté DB : 6 tables `rag_chunks_*` (service_public, dgafp legacy, legif
 
 ### 2.3 Idempotence et déduplication
 
-- **Hash chunk déterministe** : `hash_id = sha1(source_name | qa_id | role | chunk_index | text[:256])` ([service_public/gold.py:68-77](packages/data-engineering/src/assistant_rh_data_engineering/service_public/gold.py)). Même algorithme côté Légifrance ([legifrance/db.py:88-90](packages/data-engineering/src/assistant_rh_data_engineering/legifrance/db.py)).
+- **Hash chunk déterministe** : `hash_id = sha1(source_name | qa_id | role | chunk_index | text[:256])` ([service_public/gold.py:68-77](packages/data-engineering/src/assistant_rh_data_engineering/service_public/gold.py)). Même algorithme côté Légifrance via `_build_legacy_chunk_id` ([legifrance/gold.py:88-90](packages/data-engineering/src/assistant_rh_data_engineering/legifrance/gold.py)).
 - **UPSERT** par `hash_id` (chunks), `short_id` ou `(doc_id, section_index)` (sections/docs) — [service_public/db.py:154-198](packages/data-engineering/src/assistant_rh_data_engineering/service_public/db.py).
 - **Aucune table `ingestion_runs`** ni colonne `model_version`/`embedded_at` sur les chunks.
 - **Aucun delete-then-upsert** pour fiches supprimées en amont : les chunks orphelins persistent silencieusement.
