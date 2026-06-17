@@ -62,7 +62,7 @@ Choix techniques marquants (et conformes aux meilleures pratiques 2026) :
 Choix présents dans la `RAGConfig` mais **non implémentés** :
 
 - `QueryProcessorConfig.enable_hyde` : option exposée, aucun code ne la consomme. → recommander de supprimer (§5).
-- `SectionAggregationConfig.enable_chunk_reranker` : retourne l'identité. → implémenter ou supprimer.
+- `RetrievalConfig.enable_chunk_reranker` ([config.py:122](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/config.py:122)) : retourne l'identité. → implémenter ou supprimer. À distinguer de `SectionAggregationConfig.enable_section_reranker` ([config.py:142](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/config.py:142)), qui lui est bien câblé et utilisé.
 
 ---
 
@@ -171,7 +171,12 @@ Repères 2026 :
 
 ### 3.7 Échéance opérationnelle Albert : 15 février 2026
 
-DINUM (Etalab) a annoncé l'abandon des alias `albert-*` au profit des alias `openweight-*`, avec **dual-alias jusqu'au 15 février 2026** (source : github.com/etalab-ia/albert). Le code utilise déjà `openweight-medium`, `openweight-large`, `openweight-embeddings` (vérifié dans [config.py](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/config.py)). **À vérifier** :
+DINUM (Etalab) a annoncé l'abandon des alias `albert-*` au profit des alias `openweight-*`, avec **dual-alias jusqu'au 15 février 2026** (source : github.com/etalab-ia/albert). Le code utilise déjà ces alias :
+
+- LLM : `openweight-large` et `openweight-medium` dans [config.py:194,205,219](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/config.py:194) (génération, fallback, intent).
+- Embeddings : `openweight-embeddings` dans [embedder.py:28,68](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/embedder.py:28) (le model id Albert ; côté `RAGConfig`, l'`EmbeddingModel` enum n'utilise que les valeurs logiques `"albert"` / `"bge_scaleway"`, qui mappent ensuite vers ces alias dans `embedder.py`).
+
+**À vérifier** :
 
 - Tout `albert-*` résiduel dans les variables d'environnement, secrets GitHub, scripts d'ingestion, app Mastra.
 - `apps/mastra-pipeline/` (port TS) en particulier.
