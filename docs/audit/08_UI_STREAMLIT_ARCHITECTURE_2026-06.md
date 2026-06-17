@@ -14,7 +14,7 @@ L'UI Streamlit est **opérationnellement propre pour un pilote** — auth admin 
 
 Trois constats structurants :
 
-1. **Frontière UI ↔ pipeline absente.** L'UI importe le pipeline en process (`from assistant_rh_rag_pipeline import create_pipeline_v3_clean`) et lit directement les internes (`pipeline_v3.last_result.context_items / timing / metadata`, [01_Chatbot.py:1345-1390](../../apps/streamlit-ui/pages/01_Chatbot.py)). Tout changement de schéma `RAGResult` casse l'UI silencieusement. Ce couplage rend par ailleurs **impossible le partage d'UI** entre le pipeline Python et le port Mastra — chaque évolution se paie deux fois (cf. note 02 §A1).
+1. **Frontière UI ↔ pipeline absente.** L'UI importe le pipeline en process (`from assistant_rh_rag_pipeline import create_pipeline_v3_clean`) et lit directement les internes (`pipeline_v3.last_result.context_items / timing / metadata`, [01_Chatbot.py:1345-1390](../../apps/streamlit-ui/pages/01_Chatbot.py)). Tout changement de schéma `PipelineResult` casse l'UI silencieusement. Ce couplage rend par ailleurs **impossible le partage d'UI** entre le pipeline Python et le port Mastra — chaque évolution se paie deux fois (cf. note 02 §A1).
 
 2. **`st.session_state` lié au websocket = classe de panne réelle en production gouv.** Confirmé structurel par les issues Streamlit [#4297](https://github.com/streamlit/streamlit/issues/4297) et [#8901](https://github.com/streamlit/streamlit/issues/8901) : un timeout de reverse-proxy efface l'historique de chat. Derrière AgentConnect/FranceConnect (toujours via un proxy), c'est une vraie source d'incidents — d'autant que l'historique vit aujourd'hui **uniquement en mémoire de session**, pas en DB côté UI (la persistance `chat_runs` est append-only, non rechargée à la reconnexion).
 
@@ -80,7 +80,7 @@ User input
 | # | Smell | Localisation | Conséquence |
 |---|---|---|---|
 | U1 | God-page Chatbot (1 468 l.) — healthcheck, init, sidebar, orchestration, streaming, feedback, logging | [`01_Chatbot.py`](../../apps/streamlit-ui/pages/01_Chatbot.py) | Non testable, merge-conflict bait, coût de modification élevé |
-| U2 | Couplage direct UI → internes pipeline (`pipeline_v3.last_result.context_items / timing / metadata`) | `01_Chatbot.py:1345-1390` | Tout changement `RAGResult` casse l'UI silencieusement ; aucun adapter |
+| U2 | Couplage direct UI → internes pipeline (`pipeline_v3.last_result.context_items / timing / metadata`) | `01_Chatbot.py:1345-1390` | Tout changement `PipelineResult` casse l'UI silencieusement ; aucun adapter |
 | U3 | Pipeline ré-instancié à chaque tour (`create_pipeline_v3_clean(config_v3)`) | `01_Chatbot.py:1220-1330` | Acceptable aujourd'hui, gaspillage net si retrieval s'alourdit |
 | U4 | `st.session_state` = dict global non typé (~50 clés) + lié au websocket | `01_Chatbot.py:611-965` + [issue Streamlit #4297](https://github.com/streamlit/streamlit/issues/4297) | Régressions silencieuses sur typo de clé ; perte d'historique sur drop websocket (proxy idle timeout) |
 | U5 | Init scattered : `rag_config_initialized` L611, `health_check_done` L176, `config_logged` L782 | `01_Chatbot.py` | Pas de point d'entrée unique — ajouter une étape d'init est risqué |
@@ -182,7 +182,7 @@ Priorisation P0 = fondation, P1 = sortie de dette, P2 = trajectoire long terme. 
 | 2 | Persister l'historique de conversation côté DB et le recharger à la reconnexion (résout U4) | P0 | S | — |
 | 3 | Sortir le fallback Albert → Scaleway de l'UI vers la gateway (LiteLLM ou couche FastAPI) ; supprimer le hardcode `chatbot_llm.py:52-60` | P0 | S | Smell U7 |
 | 4 | Réduire `01_Chatbot.py` < 600 l. — extraire orchestration / sidebar / feedback dans `src/ui/` ; introduire un `SessionState` typé (TypedDict ou dataclass) | P1 | M | Smells U1, U4, U5 |
-| 5 | Adapter pattern entre `RAGResult` et l'UI : un module unique de mapping (côté pipeline ou côté `src/ui/`), figeant le contrat | P1 | S | Smell U2 |
+| 5 | Adapter pattern entre `PipelineResult` et l'UI : un module unique de mapping (côté pipeline ou côté `src/ui/`), figeant le contrat | P1 | S | Smell U2 |
 | 6 | Mutualiser les `@dataclass` des pages d'éval 08–11 dans un module partagé ; déduire le mapping `rag_config → RAGConfig` une seule fois (rejoint note 02 action #6) | P1 | M | Smell U6 |
 | 7 | Tests pytest pour `src/ui/` (parser SOURCES, `is_negative_response`, `should_hide_sources`, `stream_with_fallback` en path d'erreur) — comble la zone aveugle note 02 §3 | P1 | M | Smell U9 |
 | 8 | Bouton refresh manuel sur le healthcheck + raccourcir TTL à 60 s ; alerter si DB/LLM down détectés (rejoint note 03) | P1 | S | Smell U8 |
