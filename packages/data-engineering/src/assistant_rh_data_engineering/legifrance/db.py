@@ -192,16 +192,12 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                     sql.Identifier(self.schema),
                     sql.Identifier(self.legacy_table_name),
                 ),
-                sql.SQL(
-                    "CREATE INDEX IF NOT EXISTS {} ON {}.{} USING GIN (chunk_text_tsv)"
-                ).format(
+                sql.SQL("CREATE INDEX IF NOT EXISTS {} ON {}.{} USING GIN (chunk_text_tsv)").format(
                     sql.Identifier(f"idx_{self.legacy_table_name}_chunk_text_tsv"),
                     sql.Identifier(self.schema),
                     sql.Identifier(self.legacy_table_name),
                 ),
-                sql.SQL(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS {} ON {}.{} (chunk_id)"
-                ).format(
+                sql.SQL("CREATE UNIQUE INDEX IF NOT EXISTS {} ON {}.{} (chunk_id)").format(
                     sql.Identifier(f"idx_{self.legacy_table_name}_chunk_id_unique"),
                     sql.Identifier(self.schema),
                     sql.Identifier(self.legacy_table_name),
@@ -292,35 +288,19 @@ class LegifranceDbWriter(ServicePublicDbWriter):
 
     @staticmethod
     def project_legacy_chunk(chunk: dict) -> dict:
-        return {
-            column: chunk.get(column)
-            for column in LEGACY_TARGET_COLUMNS
-            if not column.endswith("_tsv")
-        }
+        return {column: chunk.get(column) for column in LEGACY_TARGET_COLUMNS if not column.endswith("_tsv")}
 
     @staticmethod
     def project_modern_chunk(chunk: dict) -> dict:
-        return {
-            column: chunk.get(column)
-            for column in MODERN_TARGET_COLUMNS
-            if not column.endswith("_tsv")
-        }
+        return {column: chunk.get(column) for column in MODERN_TARGET_COLUMNS if not column.endswith("_tsv")}
 
     @classmethod
     def project_legacy_chunks(cls, chunks: list[dict]) -> list[dict]:
-        return [
-            cls.project_legacy_chunk(chunk)
-            for chunk in chunks
-            if "legacy" in (chunk.get("_targets") or ["legacy", "modern"])
-        ]
+        return [cls.project_legacy_chunk(chunk) for chunk in chunks if "legacy" in (chunk.get("_targets") or ["legacy", "modern"])]
 
     @classmethod
     def project_modern_chunks(cls, chunks: list[dict]) -> list[dict]:
-        return [
-            cls.project_modern_chunk(chunk)
-            for chunk in chunks
-            if "modern" in (chunk.get("_targets") or ["legacy", "modern"])
-        ]
+        return [cls.project_modern_chunk(chunk) for chunk in chunks if "modern" in (chunk.get("_targets") or ["legacy", "modern"])]
 
     def upsert_legacy_chunks(self, chunks: list[dict]) -> int:
         with self._connect() as conn:
@@ -330,6 +310,9 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                 self.legacy_table_name,
                 self.project_legacy_chunks(chunks),
                 ["chunk_id"],
+                preserve_on_null_cols=[
+                    col for col in ("embedding_m3", "embedding_bge_scw", "embedding_qwen3") if col in self._column_types(conn, self.legacy_table_name)
+                ],
             )
             conn.commit()
             return count
@@ -342,6 +325,9 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                 self.modern_table_name,
                 self.project_modern_chunks(chunks),
                 ["hash_id"],
+                preserve_on_null_cols=[
+                    col for col in ("embedding_m3", "embedding_bge_scw") if col in self._column_types(conn, self.modern_table_name)
+                ],
             )
             conn.commit()
             return count
