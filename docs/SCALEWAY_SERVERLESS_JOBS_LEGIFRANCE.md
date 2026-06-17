@@ -225,3 +225,53 @@ The monthly generation run writes to:
 - Keep `dgafp_compatible` as the default chunk strategy for migration parity.
 - Use the smoke JSON before running the full monthly job.
 - If the workload grows later, split comparison and validation into a separate job.
+
+## Audit read-only : couverture d'embeddings Légifrance
+
+Pour vérifier la couverture d'embeddings sans appeler d'API ni écrire en
+base, utiliser le mode `--check-only` du job `embeddings-backfill` (issu
+de `data-ingestion embeddings legifrance`) :
+
+```bash
+# Audit global Légifrance (read-only, exit 1 si sous le seuil)
+uv run data-ingestion embeddings legifrance \
+  --check-only \
+  --coverage-min-pct 95
+
+# Audit ciblé DGAFP / m3
+uv run data-ingestion embeddings legifrance \
+  --check-only \
+  --only-table rag_chunks_dgafp \
+  --only-column embedding_m3 \
+  --coverage-min-pct 100
+```
+
+Ce mode n'importe pas `sentence_transformers`, ne crée pas de
+`ScalewayBgeClient`, et n'exécute aucun `UPDATE`. Il peut être utilisé
+depuis un workflow CI, un Cockpit check, ou un Scaleway
+`workflow_dispatch` ad hoc (voir aussi
+`docs/SCALEWAY_SERVERLESS_JOBS_SERVICE_PUBLIC.md` pour la version
+Service-Public).
+
+## Idempotence embeddings sur rerun `--no-embed`
+
+`legifrance-ingestion` (et indirectement `legifrance-medallion --no-embed`)
+utilise désormais un upsert qui préserve les embeddings existants :
+
+- les colonnes `embedding_m3`, `embedding_bge_scw` et `embedding_qwen3`
+  (legacy) ou `embedding_m3` / `embedding_bge_scw` (moderne) sont
+  émises en `COALESCE(EXCLUDED.col, <table>.col)` ;
+- un rerun `--no-embed` n'écrase donc plus un vecteur persisté avec
+  `NULL`.
+
+Le backfill Légifrance reste le job dédié
+`embeddings-legifrance` (cf. `data-engineering-jobs.json`).
+
+## Fail-fast extraction incomplète
+
+`legifrance-bulk-dump` est désormais strict par défaut avec
+`--article-ids-json` : si le manifest référence N LEGIARTI et que
+l'extraction en trouve strictement moins, le job sort en erreur avec
+un payload JSON `status=error reason=incomplete_article_extraction`.
+Pour tolérer un manifest connu partiellement absent (migration
+depuis un export de référence), passer `--allow-partial`.
