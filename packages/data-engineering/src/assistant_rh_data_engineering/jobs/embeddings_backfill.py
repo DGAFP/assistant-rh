@@ -459,6 +459,7 @@ def main() -> int:
         "only_table": args.only_table,
         "only_column": args.only_column,
         "check_only": bool(args.check_only),
+        "tables": {},
     }
 
     with psycopg.connect(dsn) as conn:

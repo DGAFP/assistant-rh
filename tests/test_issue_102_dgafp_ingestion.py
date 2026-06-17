@@ -658,6 +658,61 @@ def test_check_only_main_does_not_import_models_or_call_apis(
     update_embeddings_called.assert_not_called()
 
 
+def test_normal_backfill_main_initializes_tables_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Régression : sans ``--check-only``, ``main()`` écrit
+    ``summary["tables"][table] = ...`` à la fin de chaque table. La clé
+    ``"tables"`` doit donc être initialisée à ``{}`` dans le summary,
+    sinon le run normal lève ``KeyError`` à la première table traitée.
+    """
+    config_path = _make_config(
+        tmp_path,
+        tables=[
+            {
+                "table": "rag_chunks_dgafp",
+                "id_column": "chunk_id",
+                "text_column": "chunk_text",
+                "embeddings": [
+                    {"column": "embedding_m3", "algorithm": "m3"},
+                    {"column": "embedding_bge_scw", "algorithm": "bge_scaleway"},
+                ],
+            }
+        ],
+    )
+
+    fake_conn = _FakeConnection()
+
+    monkeypatch.setenv("SCW_POSTGRES_DSN", "postgresql://placeholder")
+    monkeypatch.setattr(
+        embeddings_backfill,
+        "psycopg",
+        SimpleNamespace(connect=lambda dsn: fake_conn),
+    )
+
+    monkeypatch.setattr(embeddings_backfill, "backfill_m3", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(embeddings_backfill, "backfill_bge_scaleway", lambda *args, **kwargs: 0)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "data-ingestion embeddings legifrance",
+            "--config",
+            str(config_path),
+        ],
+    )
+
+    exit_code = embeddings_backfill.main()
+    assert exit_code == 0
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out.strip())
+    assert payload["check_only"] is False
+    assert payload["tables"] == {"rag_chunks_dgafp": {"embedding_m3": 0, "embedding_bge_scw": 0}}
+
+
 # ---------------------------------------------------------------------------
 # 3. Fail-fast Légifrance sur extraction incomplète
 # ---------------------------------------------------------------------------
