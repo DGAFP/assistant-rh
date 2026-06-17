@@ -224,14 +224,16 @@ Le mode `--sql-only` (par défaut) imprime un rapport JSON-encadré :
 
 - Présence/absence des 3 notebooks `extract_matte.ipynb` / `amelioration_matte.ipynb` / `ingestion_matte.ipynb` dans le repo
 - Liste des **PDF déclarés** dans la `PDF_PATHS` du notebook `amelioration_matte.ipynb` (parsing statique de la liste Python)
-- Présence (ou non) des artefacts JSONL/Parquet/NPY sous `data/out/` — **non bloquant**, juste informatif
-- Présence de la table MATTE et des variables `MATTE_*` dans `.env.example`
+- Requêtes SQL `SELECT` à exécuter manuellement avec une connexion read-only approuvée
 - Diagnostic : `STALE_NOTEBOOKS` si `extract_matte.ipynb` / `ingestion_matte.ipynb` manquent sur `origin/main`
 
-### 5.2 Audit local des artefacts générés (optionnel)
+### 5.2 Audit local des artefacts générés (optionnel — follow-up)
 
-Si `data/out/matte_temps_du_travail_amelioration_chunks_baai_bge_m3_with_emb.jsonl`
-existe localement, l'outil vérifie (sans jamais l'écrire) :
+L'audit des artefacts locaux `data/out/*.jsonl`, `*.parquet` et `*.npy` est
+utile mais **n'est pas inclus dans la première tranche d'outillage** afin de
+rester sous la limite de taille PR (objectif ~300 additions, plafond souple
+400). Si nécessaire, il doit faire l'objet d'une PR dédiée et vérifier sans
+jamais écrire :
 
 - nombre de lignes,
 - unicité de `hash_id`,
@@ -239,21 +241,14 @@ existe localement, l'outil vérifie (sans jamais l'écrire) :
 - cohérence entre la dimension de `embedding_m3` et l'attendu (1024),
 - ratio embedding-array-len / row-count = 1 (1 vecteur par ligne).
 
-### 5.3 Audit DB en lecture seule (nécessite DSN, désactivé en CI)
+### 5.3 Audit DB en lecture seule (manuel, hors outillage initial)
 
-Si une variable `MATTE_AUDIT_DSN` est définie, l'outil **exécute en lecture
-seule** les requêtes `coverage_embedding.sql` / `coverage_duplicates.sql` /
-`coverage_indexes.sql` émises en §5.5 et imprime un rapport. **Aucun**
-`UPDATE`, `INSERT`, `DELETE`, `CREATE INDEX`, `DROP`, `ALTER` n'est autorisé
-dans ce mode.
+La première tranche de `scripts/audit_matte_ingestion.py` **n'ouvre pas de
+connexion DB**. Elle émet seulement les requêtes `SELECT` ci-dessous.
 
-```bash
-MATTE_AUDIT_DSN="postgresql://readonly:…@host:5432/db?sslmode=require" \
-  uv run python scripts/audit_matte_ingestion.py --repo-root . --db-readonly
-```
-
-En CI / tests, ne **jamais** exporter cette variable : l'outil refuse de
-démarrer en mode DB si `MATTE_AUDIT_DSN` est absente (mode `--sql-only`).
+Toute exécution DB doit rester manuelle, avec une connexion read-only
+explicitement approuvée. Un éventuel mode `--db-readonly` automatisé devra être
+livré plus tard dans une PR séparée, avec garde-fous dédiés et tests ciblés.
 
 ### 5.4 Audit DB read-only — requêtes SQL à exécuter manuellement
 
@@ -368,10 +363,9 @@ qui expliquent les classements P0/P1 dans l'audit global :
 Cette PR apporte **uniquement** :
 
 - ce document d'audit (référentiel pour les chantiers de remédiation) ;
-- un outil read-only (`scripts/audit_matte_ingestion.py`) qui peut tourner
+- un outil offline/read-only (`scripts/audit_matte_ingestion.py`) qui peut tourner
   en CI sans DB ni réseau ;
-- une suite de tests qui couvre le parsing du notebook, la génération de SQL,
-  et l'audit des artefacts générés en local.
+- une suite de tests qui couvre le parsing du notebook et la génération de SQL.
 
 Elle ne fait **pas** : de ré-ingestion, de backfill, de migration, d'index,
 ni d'écriture staging/prod. Toute commande de remédiation (§5.5) reste
