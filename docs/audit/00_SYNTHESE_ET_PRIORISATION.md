@@ -4,6 +4,9 @@
 > Date : 2026-06-09. Sources : notes 01-06 du dossier (constats vérifiés sur code + base locale copie staging, replays contre l'API Albert réelle).
 > **Vérifié sur staging réel le 2026-06-15 : voir [note 07](07_VERIFICATION_STAGING_ET_PRIORISATION.md) pour les corrections de chiffres et la priorisation refondée. Changements majeurs : le trou de couverture Service-Public est déjà refermé sur staging (55/55), et DGAFP a 0 embedding (corpus éteint en sémantique), pas « un index manquant ».**
 
+> **Statut Mastra (2026-06-17) : mise en œuvre en pause.** La piste Mastra reste documentée comme option d'architecture et comme matière de reprise future, mais elle n'est pas un chantier actif de l'itération. Les échecs de conformance liés au chemin Mastra (nightly, replay, comparaison Python↔Mastra) sont donc à classer **informatif / backlog**, pas P0 opérationnel, tant que la reprise Mastra n'est pas explicitement décidée. Le P0 actuel reste la qualité RAG sur le chemin Python v3 en production : embeddings DGAFP, audits d'ingestion des sources, couverture et observabilité des données.
+>
+
 ---
 
 ## 1. En une page
