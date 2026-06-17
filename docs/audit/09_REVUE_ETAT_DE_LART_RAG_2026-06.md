@@ -29,9 +29,9 @@ Le reste du dossier liste des évolutions **incrémentales** de l'architecture e
 | [03](03_RAG_OBSERVABILITY_ROADMAP_2026-06.md) | Observabilité RAG sur Scaleway Cockpit / Grafana | **Précise** : la 08 nomme la spec (OpenInference) et le backend self-host candidat (Langfuse) compatibles avec la trajectoire de la 03. |
 | [04](04_OBSERVATIONS_INITIALES_2026-06-05.md) | Vision produit : multi-ministère, abstention, autorité des sources | **Confirme** : l'axe abstention/autorité de la 04 est **renforcé** par les évidences empiriques (cf. §3.1). |
 | [06](06_AUDIT_CODE_ET_DB.md) | Anti-patterns code/DB, fail-open, métriques absentes | **Indépendant**. |
-| [07](07_VERIFICATION_STAGING_ET_PRIORISATION.md) | Vérification staging, priorisation refondée | **Indépendant**, mais la 08 confirme la ligne directrice (mesurer avant de modifier). |
+| [07](07_VERIFICATION_STAGING_ET_PRIORISATION.md) | Vérification staging, priorisation refondée | **Indépendant**, mais la 09 confirme la ligne directrice (mesurer avant de modifier). |
 
-**À lire après les notes 00 et 07.** La 08 prend pour hypothèse que les P0 « réparer ce qui est cassé » (DGAFP embeddings, observabilité de base, goldset) sont en cours ou planifiés.
+**À lire après les notes 00 et 07.** La 09 prend pour hypothèse que les P0 « réparer ce qui est cassé » (DGAFP embeddings, observabilité de base, goldset) sont en cours ou planifiés.
 
 ---
 
