@@ -2,6 +2,28 @@
 
 This document defines the execution model for validating Mastra parity against the current Python v3 pipeline.
 
+> **Status (2026-06-17): Mastra implementation is PAUSED.**
+>
+> Per Paul's reprioritization, the Mastra implementation is paused. This
+> conformance testing document is retained as **documentation / tooling** for
+> the pending Mastra port and to keep the parity plan reproducible when work
+> resumes. It is **not** a P0 production gate while the port is paused.
+>
+> Concretely:
+>
+> - Conformance Nightly / Mastra-vs-Python / replay-cache failures on the
+>   paused Mastra path are **informational / backlog** by default. They must
+>   not be escalated as P0, and they must not block other PRs.
+> - The production path remains the Python v3 RAG pipeline in
+>   `packages/rag-pipeline/`. Failures on that path are still first-class
+>   P0s.
+> - Current P0 work is **RAG / data quality**: missing DGAFP embeddings,
+>   source ingestion audits, and other data-coverage issues tracked
+>   separately from the Mastra port.
+>
+> This note is factual and reversible; nothing below is deleted and the
+> gating language above is restored when Mastra work is explicitly resumed.
+
 ## Principles
 
 1. **Compatibility first**: migration is accepted only if user-visible behavior stays aligned.

@@ -5,6 +5,26 @@ This folder contains fixtures and output reports for parity checks between:
 - **Baseline:** current Python `assistant_rh_rag_pipeline`
 - **Candidate:** Mastra OpenAI-compatible endpoint
 
+> **Status (2026-06-17): Mastra implementation is PAUSED.**
+>
+> The Mastra pipeline port is currently paused. This conformance harness
+> (fixtures, baselines, replay cache, runner scripts, and CI workflows) is
+> retained as **documentation / tooling** so the parity plan stays
+> reproducible when work resumes. While paused:
+>
+> - Conformance failures originating from the paused Mastra path
+>   (Conformance Nightly, replay-cache misses, Python-vs-Mastra comparison
+>   regressions, `conformance.yml` smoke failures on Mastra stages) are
+>   **informational / backlog** by default. They must not be treated as P0
+>   operational work and must not block unrelated PRs.
+> - Failures on the Python v3 baseline path remain first-class P0s.
+> - Current P0 work is **RAG / data quality**: missing DGAFP embeddings,
+>   source ingestion audits, and other data-coverage issues tracked
+>   separately from the Mastra port.
+>
+> This banner is factual and reversible; it does not delete any historical
+> details, and it is removed when Mastra work is explicitly resumed.
+
 ## Query fixture format
 
 `queries.sample.jsonl` uses one JSON object per line:
