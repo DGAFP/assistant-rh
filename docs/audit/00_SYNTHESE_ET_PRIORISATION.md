@@ -124,3 +124,4 @@ Trois découvertes structurent l'itération 2 :
 
 - Notes [01](01_RAG_QUALITY_AUDIT_2026-06.md) à [06](06_AUDIT_CODE_ET_DB.md) du présent dossier et le [plan d'audit](05_PLAN_AUDIT_ET_COUVERTURE.md).
 - Issue [#83](https://github.com/DGAFP/assistant-rh/issues/83) ; quick win reranker [#88](https://github.com/DGAFP/assistant-rh/pull/88).
+- Issue [#102](https://github.com/DGAFP/assistant-rh/issues/102) (audit DGAFP/Légifrance) — voir addendum dans [LEGIFRANCE_DGAFP_AUTOMATION_PLAN.md](../LEGIFRANCE_DGAFP_AUTOMATION_PLAN.md#issue-102--dgafpl%C3%A9gifrance-ingestion-audit-addendum-2026-06) : ingestion idempotente des embeddings, mode `--check-only` read-only, fail-fast `--strict-articles` sur `legifrance-bulk-dump`.
