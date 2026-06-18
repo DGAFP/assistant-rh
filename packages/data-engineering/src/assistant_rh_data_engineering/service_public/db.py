@@ -96,6 +96,7 @@ class ServicePublicDbWriter:
         conflict_cols: list[str],
         conflict_where: str | None = None,
         update_exclude_cols: list[str] | None = None,
+        preserve_on_null_cols: list[str] | None = None,
     ) -> int:
         if not rows:
             return 0
@@ -108,7 +109,9 @@ class ServicePublicDbWriter:
         cols = list(rows[0].keys())
         vector_cols = {col for col in cols if column_types.get(col, ("", None))[0] == "vector"}
         update_exclude = set(update_exclude_cols or [])
+        preserve_on_null = set(preserve_on_null_cols or [])
         assignments = [col for col in cols if col not in conflict_cols and col not in update_exclude]
+        preserve_on_null.intersection_update(assignments)
 
         placeholders = []
         for col in cols:
@@ -125,15 +128,21 @@ class ServicePublicDbWriter:
             conflict_where_sql = sql.SQL(" WHERE ") + sql.SQL(conflict_where)
 
         if assignments:
-            conflict_action_sql = sql.SQL("DO UPDATE SET {}").format(
-                sql.SQL(", ").join(
-                    sql.SQL("{} = EXCLUDED.{}").format(
-                        sql.Identifier(col),
-                        sql.Identifier(col),
+            assignment_exprs: list[sql.Composable] = []
+            for col in assignments:
+                col_id = sql.Identifier(col)
+                if col in preserve_on_null:
+                    assignment_exprs.append(
+                        sql.SQL("{} = COALESCE(EXCLUDED.{}, {}.{})").format(
+                            col_id,
+                            col_id,
+                            sql.Identifier(table),
+                            col_id,
+                        )
                     )
-                    for col in assignments
-                )
-            )
+                else:
+                    assignment_exprs.append(sql.SQL("{} = EXCLUDED.{}").format(col_id, col_id))
+            conflict_action_sql = sql.SQL("DO UPDATE SET {}").format(sql.SQL(", ").join(assignment_exprs))
         else:
             conflict_action_sql = sql.SQL("DO NOTHING")
 
