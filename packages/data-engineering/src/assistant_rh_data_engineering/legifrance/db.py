@@ -310,9 +310,7 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                 self.legacy_table_name,
                 self.project_legacy_chunks(chunks),
                 ["chunk_id"],
-                preserve_on_null_cols=[
-                    col for col in ("embedding_m3", "embedding_bge_scw", "embedding_qwen3") if col in self._column_types(conn, self.legacy_table_name)
-                ],
+                preserve_on_null_cols=["embedding_m3", "embedding_bge_scw", "embedding_qwen3"],
             )
             conn.commit()
             return count
@@ -325,9 +323,7 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                 self.modern_table_name,
                 self.project_modern_chunks(chunks),
                 ["hash_id"],
-                preserve_on_null_cols=[
-                    col for col in ("embedding_m3", "embedding_bge_scw") if col in self._column_types(conn, self.modern_table_name)
-                ],
+                preserve_on_null_cols=["embedding_m3", "embedding_bge_scw"],
             )
             conn.commit()
             return count
