@@ -111,7 +111,7 @@ class ServicePublicDbWriter:
         update_exclude = set(update_exclude_cols or [])
         preserve_on_null = set(preserve_on_null_cols or [])
         assignments = [col for col in cols if col not in conflict_cols and col not in update_exclude]
-        preserve_on_null = {col for col in preserve_on_null if col in assignments}
+        preserve_on_null.intersection_update(assignments)
 
         placeholders = []
         for col in cols:
