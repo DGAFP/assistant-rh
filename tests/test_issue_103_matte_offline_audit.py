@@ -89,6 +89,31 @@ def test_sql_statements_are_select_only(audit_mod) -> None:
         assert all(keyword not in sql for keyword in ["UPDATE ", "INSERT ", "DELETE ", "CREATE ", "DROP ", "ALTER "])
 
 
+def test_canonical_embedding_columns_sql_lists_every_known_column(audit_mod) -> None:
+    statements = {item["name"]: item["sql"] for item in audit_mod.build_sql_statements()}
+
+    canonical_sql = statements["canonical_embedding_columns"]
+    for column in audit_mod.KNOWN_EMBED_COLS:
+        assert f"'{column}'" in canonical_sql, f"{column} missing from canonical_embedding_columns IN clause"
+
+
+def test_parse_pdf_paths_handles_null_cells(audit_mod, tmp_path) -> None:
+    notebook = tmp_path / "broken.ipynb"
+    notebook.write_text(
+        json.dumps({"cells": None, "metadata": {}, "nbformat": 4, "nbformat_minor": 5}),
+        encoding="utf-8",
+    )
+
+    assert audit_mod.parse_pdf_paths_from_notebook(notebook) == []
+
+
+def test_parse_pdf_paths_returns_empty_on_non_dict_payload(audit_mod, tmp_path) -> None:
+    notebook = tmp_path / "list.ipynb"
+    notebook.write_text(json.dumps([]), encoding="utf-8")
+
+    assert audit_mod.parse_pdf_paths_from_notebook(notebook) == []
+
+
 def test_cli_outputs_json_report(audit_mod, tmp_path, monkeypatch, capsys) -> None:
     scripts = tmp_path / "scripts"
     write_notebook(scripts / "amelioration_matte.ipynb", ["PDF_PATHS = [Path('./source.pdf')]\n"])

@@ -45,13 +45,15 @@ def parse_pdf_paths_from_notebook(notebook_path: Path) -> list[str]:
         payload = json.loads(notebook_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"Impossible de parser {notebook_path}") from exc
+    if not isinstance(payload, dict):
+        return []
 
     paths: list[str] = []
     seen: set[str] = set()
     # TODO(review): only matches literal `Path("...pdf")` — misses Path(f"{base}/file.pdf") or concatenation.
     pattern = re.compile(r"Path\([\"']([^\"']+\.pdf)[\"']\)")
-    for cell in payload.get("cells", []):
-        if cell.get("cell_type") != "code":
+    for cell in payload.get("cells") or []:
+        if not isinstance(cell, dict) or cell.get("cell_type") != "code":
             continue
         source = cell.get("source") or []
         text = "".join(source) if isinstance(source, list) else str(source)
@@ -79,6 +81,7 @@ def inspect_expected_notebooks(repo_root: Path) -> list[dict[str, Any]]:
 
 def build_sql_statements() -> list[dict[str, str]]:
     embed_cols = ", ".join(f"COUNT(*) FILTER (WHERE {col} IS NULL) AS {col}_null" for col in KNOWN_EMBED_COLS)
+    known_cols_in = ", ".join(f"'{col}'" for col in KNOWN_EMBED_COLS)
     return [
         {
             "name": "embedding_coverage",
@@ -93,7 +96,7 @@ def build_sql_statements() -> list[dict[str, str]]:
                 "FROM information_schema.columns "
                 "WHERE table_schema = 'public' "
                 f"AND table_name = '{CANONICAL_TABLE}' "
-                "AND column_name IN ('embedding_m3','embedding_bge_scw','embedding_qwen3','embedding_ctx','embedding_bge') "
+                f"AND column_name IN ({known_cols_in}) "
                 "ORDER BY column_name;"
             ),
         },
