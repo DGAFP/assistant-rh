@@ -71,20 +71,19 @@ Trois découvertes structurent l'itération 2 :
 ### P1 — Mesure & observabilité (à partir de la semaine du 29 juin) — *bloquant : rien n'est jugeable sans ça*
 - **Goldset v2** (80-120 questions beta stratifiées) + **mesure de l'écart auto-éval / expert** (set de calibration, κ cible).
 - **Harness d'éval reproductible** (recall, no-answer justifié, juge calibré) en CI/local.
-- **Baseline chiffrée** avant/après ; **dashboards Cockpit/Grafana v1** (usage, qualité, latence, providers) + alertes.
-- **Taxonomie d'erreurs partagée** (note 04, livrable 1) comme socle commun audit/éval/PR.
-
-### P1.5 — Retrieval, scoring, données (après baseline — cible S2 juillet, ~2 semaines à 2 itérations/semaine)
-- **Scoring v2** (score reranker comme signal aval, seuil d'abstention).
-- **Dédup SP, filtrage chunks-titres, couverture `references_juridiques`.**
-- **Classifier de question + policies RRF par type** ; **abstention stricte** sur contexte faible.
-- **Fraîcheur des données** (droit périmé) ; **embeddings RH** (vocabulaire métier).
-- **Retrieval hybride — conditionnel, non prioritaire** : des **tests rapides et non structurés** (exploratoires) ont montré des **gains**, mais une bascule de mode de retrieval doit être **validée sur le goldset (P1)** avant adoption, en **A/B réversible**. Pas un quick win P0 : on mesure d'abord.
+- **Baseline chiffrée** avant/après ; 
 
 ### P2 — Chantiers structurels multi-ministère (cible S4 juillet, ~2 semaines en focus ; amorce en parallèle possible dès S1 juillet si Luis peut prêter main-forte)
 - **Scope ministériel côté serveur** (`ministry_id` + filtrage SQL avant retrieval), séparé en 3 niveaux : autorisation / priorité des sources / autorité documentaire.
 - **Ingestion sources ministérielles** (MI, MSO, MASA, MEF) + **réconciliation index** (chaque doc indexable a ≥ 1 chunk) + métadonnées normalisées.
 - **ProConnect + habilitations** (enforcement dans la retrieval, pas l'UI) + **blocage des données personnelles / RGPD**.
+
+### P2 — Retrieval, scoring, données (après baseline — cible S2 juillet, ~2 semaines à 2 itérations/semaine)
+- **Scoring v2** (score reranker comme signal aval, seuil d'abstention).
+- **Dédup SP, filtrage chunks-titres, couverture `references_juridiques`.**
+- **Classifier de question + policies RRF par type** ; **abstention stricte** sur contexte faible.
+- **Fraîcheur des données** (droit périmé) ; **embeddings RH** (vocabulaire métier).
+- **Retrieval hybride — conditionnel, non prioritaire** : des **tests rapides et non structurés** (exploratoires) ont montré des **gains**, mais une bascule de mode de retrieval doit être **validée sur le goldset (P1)** avant adoption, en **A/B réversible**. Pas un quick win P0 : on mesure d'abord.
 
 ### P2.5 — Produit & UX (après baseline)
 - Affichage enrichi des sources (dates, fraîcheur, contradictions, PDF page ciblée) ; rebond conversationnel ; historique ; disclaimer permanent.
@@ -93,6 +92,8 @@ Trois découvertes structurent l'itération 2 :
 
 ### P3 — Exploratoire / itération 3
 - Réemploi du pipeline dans un autre produit ; agentic deep research borné ; GraphRAG documentaire ; upload utilisateur. **Conditionnels** à des fondations stabilisées.
+- **dashboards Cockpit/Grafana v1** (usage, qualité, latence, providers) + alertes.
+- **Taxonomie d'erreurs partagée** (note 04, livrable 1) comme socle commun audit/éval/PR.
 
 ---
 
