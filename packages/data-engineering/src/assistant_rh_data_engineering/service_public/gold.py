@@ -52,10 +52,7 @@ class ServicePublicGoldBuilder:
                     chunk={
                         **chunk,
                         "section_id": section_id,
-                        "references_juridiques": (matched_section or {}).get(
-                            "references_juridiques",
-                            [],
-                        ),
+                        "references_juridiques": (matched_section or {}).get("references_juridiques") or [],
                     },
                 )
             )
@@ -93,7 +90,7 @@ class ServicePublicGoldBuilder:
             "chunk_text": chunk["text"],
             "thematique": chunk["thematique"],
             "lang": chunk["lang"],
-            "references_juridiques": chunk.get("references_juridiques", []),
+            "references_juridiques": chunk.get("references_juridiques") or [],
             "source_document_id": document["doc_id"],
             "section_id": chunk.get("section_id"),
             "short_id": document["short_id"],
@@ -154,7 +151,7 @@ class ServicePublicGoldBuilder:
                             "text": text,
                             "thematique": thematique,
                             "lang": document.get("lang") or "fr",
-                            "references_juridiques": section.get("references_juridiques", []),
+                            "references_juridiques": section.get("references_juridiques") or [],
                             "section_id": section_id,
                         },
                     )
