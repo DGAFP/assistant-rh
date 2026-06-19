@@ -28,3 +28,12 @@ def test_dashboard_queries_use_shared_env_selector() -> None:
 
     assert expressions
     assert all('env=~"$env"' in expression for expression in expressions)
+
+
+def test_dashboard_panels_use_resolved_prometheus_datasource() -> None:
+    dashboard = _dashboard()
+    datasources = [panel["datasource"] for panel in dashboard["panels"]]
+
+    assert datasources
+    assert all(datasource["type"] == "prometheus" for datasource in datasources)
+    assert all(datasource["uid"] == "dfp8eneiuegaob" for datasource in datasources)
