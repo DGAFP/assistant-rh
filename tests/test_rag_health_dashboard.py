@@ -30,10 +30,20 @@ def test_dashboard_queries_use_shared_env_selector() -> None:
     assert all('env=~"$env"' in expression for expression in expressions)
 
 
-def test_dashboard_panels_use_resolved_prometheus_datasource() -> None:
+def test_dashboard_declares_prometheus_datasource_variable() -> None:
+    variables = _dashboard()["templating"]["list"]
+    datasource_variable = next(variable for variable in variables if variable["name"] == "datasource")
+
+    assert datasource_variable["type"] == "datasource"
+    assert datasource_variable["query"] == "prometheus"
+    assert datasource_variable["includeAll"] is False
+
+
+def test_dashboard_panels_use_prometheus_datasource_variable() -> None:
     dashboard = _dashboard()
     datasources = [panel["datasource"] for panel in dashboard["panels"]]
 
     assert datasources
     assert all(datasource["type"] == "prometheus" for datasource in datasources)
-    assert all(datasource["uid"] == "dfp8eneiuegaob" for datasource in datasources)
+    assert all(datasource["uid"] == "$datasource" for datasource in datasources)
+    assert all(not datasource["uid"].startswith("${") for datasource in datasources)
