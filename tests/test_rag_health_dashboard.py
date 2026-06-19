@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD_PATH = REPO_ROOT / "config" / "grafana" / "rag-health-dashboard.json"
 
@@ -25,12 +24,7 @@ def test_dashboard_env_selector_includes_staging_and_prod_without_metric_bootstr
 
 def test_dashboard_queries_use_shared_env_selector() -> None:
     dashboard = _dashboard()
-    expressions = [
-        target["expr"]
-        for panel in dashboard["panels"]
-        for target in panel.get("targets", [])
-        if target.get("expr")
-    ]
+    expressions = [target["expr"] for panel in dashboard["panels"] for target in panel.get("targets", []) if target.get("expr")]
 
     assert expressions
     assert all('env=~"$env"' in expression for expression in expressions)

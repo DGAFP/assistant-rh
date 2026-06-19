@@ -283,6 +283,8 @@ class RagHealthCollector:
             counts = self._count_by_column(conn, table_spec.table, table_spec.source_column, table_spec.default_source)
         else:
             counts = {table_spec.default_source: self._count_rows(conn, table_spec.table)}
+        if not counts:
+            counts = {table_spec.default_source: 0}
         return [
             metric("assistant_rh_rag_chunks_total", self.env_label, count, table=table_spec.table, source=source) for source, count in counts.items()
         ]

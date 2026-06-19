@@ -166,6 +166,36 @@ def test_collector_emits_counts_coverage_and_integrity_for_available_tables(monk
     assert chunks_test_embedding_calls == [("embedding_raw", "embedding_bge")]
 
 
+@pytest.mark.parametrize(
+    ("table_spec", "columns"),
+    [
+        (
+            exporter.DIRECT_CHUNK_TABLES[1],
+            {"rag_chunks_service_public": {"source"}},
+        ),
+        (
+            exporter.CHUNKS_TEST_TABLE,
+            {
+                "rag_documents": {"doc_id", "source"},
+                "rag_chunks_test": {"doc_id"},
+            },
+        ),
+    ],
+)
+def test_chunk_metrics_emit_zero_for_empty_grouped_counts(
+    table_spec: exporter.ChunkTable,
+    columns: dict[str, set[str]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    collector = exporter.RagHealthCollector(env_label="staging")
+    monkeypatch.setattr(collector, "_count_by_column", lambda conn, table, column, default: {})
+    monkeypatch.setattr(collector, "_count_chunks_test_by_document_source", lambda conn: {})
+
+    samples = collector._chunk_metrics(object(), columns, table_spec)
+
+    assert _sample(samples, "assistant_rh_rag_chunks_total", table=table_spec.table, source=table_spec.default_source).value == 0
+
+
 def test_metrics_state_reports_failure_without_dropping_previous_samples() -> None:
     state = exporter.MetricsState("staging")
     state.record_success(
