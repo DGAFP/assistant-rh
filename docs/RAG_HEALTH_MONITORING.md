@@ -40,7 +40,12 @@ The workflow builds `Dockerfile.rag_health_exporter`, pushes `rag-health-exporte
 
 ## Dashboard and alerts
 
-Import `config/grafana/rag-health-dashboard.json` into the Cockpit Grafana instance and select the Cockpit Prometheus-compatible data source.
+Import `config/grafana/rag-health-dashboard.json` into the Cockpit Grafana instance and select the Cockpit Prometheus-compatible
+data source.
+
+The dashboard environment selector is explicit: `staging`, `prod`, or `All`. If `prod` panels are empty, run the `RAG Health
+Deploy` workflow for `scaleway-production` and confirm that the production environment has the same Cockpit values plus a
+production `RAG_HEALTH_POSTGRES_DSN` or `SCW_POSTGRES_DSN`.
 
 Alert rule examples are in `config/grafana/rag-health-alerts.yaml`:
 
@@ -55,6 +60,13 @@ Run a one-shot collection against your configured local DB:
 
 ```bash
 uv run data-ingestion observability rag-health --env-label staging --once
+```
+
+For a production DSN, use the prod label:
+
+```bash
+RAG_HEALTH_POSTGRES_DSN="$SCW_POSTGRES_DSN" \
+uv run data-ingestion observability rag-health --env-label prod --once
 ```
 
 Run the HTTP exporter locally:
