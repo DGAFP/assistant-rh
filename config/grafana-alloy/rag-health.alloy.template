@@ -1,0 +1,18 @@
+prometheus.scrape "rag_health" {
+  targets = [
+    {"__address__" = "127.0.0.1:${RAG_HEALTH_EXPORTER_PORT}"},
+  ]
+
+  scrape_interval = "60s"
+  scrape_timeout  = "10s"
+  forward_to      = [prometheus.remote_write.cockpit.receiver]
+}
+
+prometheus.remote_write "cockpit" {
+  endpoint {
+    url = ${COCKPIT_METRICS_PUSH_URL_JSON}
+    headers = {
+      "X-TOKEN" = ${COCKPIT_TOKEN_SECRET_KEY_JSON},
+    }
+  }
+}

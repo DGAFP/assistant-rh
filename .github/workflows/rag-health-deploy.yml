@@ -1,0 +1,161 @@
+name: RAG Health Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "GitHub environment to deploy"
+        required: true
+        type: choice
+        default: scaleway-staging
+        options:
+          - scaleway-staging
+          - scaleway-production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rag-health-deploy-${{ inputs.target_environment }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY_HOST: rg.fr-par.scw.cloud
+  IMAGE_NAME: rag-health-exporter
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: ${{ inputs.target_environment }}
+    env:
+      SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
+      SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+      SCW_DEFAULT_PROJECT_ID: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+      SCW_DEFAULT_ORGANIZATION_ID: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+      SCW_CONTAINER_REGISTRY_NAMESPACE: ${{ vars.SCW_CONTAINER_REGISTRY_NAMESPACE }}
+      SCW_DEFAULT_REGION: ${{ vars.SCW_DEFAULT_REGION || 'fr-par' }}
+      RAG_HEALTH_POSTGRES_DSN: ${{ secrets.RAG_HEALTH_POSTGRES_DSN || secrets.SCW_POSTGRES_DSN }}
+      COCKPIT_METRICS_PUSH_URL: ${{ vars.COCKPIT_METRICS_PUSH_URL || secrets.COCKPIT_METRICS_PUSH_URL }}
+      COCKPIT_TOKEN_SECRET_KEY: ${{ secrets.COCKPIT_TOKEN_SECRET_KEY }}
+      DB_HEALTH_POLL_INTERVAL_SECONDS: ${{ vars.DB_HEALTH_POLL_INTERVAL_SECONDS || '300' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Resolve target metadata
+        id: target
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.target_environment }}" == "scaleway-production" ]]; then
+            TARGET_ENV="prod"
+            IMAGE_TAG="prod-${GITHUB_SHA}"
+            LATEST_TAG="prod-latest"
+            NAMESPACE_NAME="assistant-rh-rag-health-prod"
+            CONTAINER_NAME="assistant-rh-rag-health-prod"
+          else
+            TARGET_ENV="staging"
+            IMAGE_TAG="staging-${GITHUB_SHA}"
+            LATEST_TAG="staging-latest"
+            NAMESPACE_NAME="assistant-rh-rag-health-staging"
+            CONTAINER_NAME="assistant-rh-rag-health-staging"
+          fi
+          REGISTRY_NAMESPACE="${SCW_CONTAINER_REGISTRY_NAMESPACE:-assistant-rh}"
+          IMAGE_URI="${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/${IMAGE_NAME}:${IMAGE_TAG}"
+          LATEST_URI="${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/${IMAGE_NAME}:${LATEST_TAG}"
+          echo "target_env=${TARGET_ENV}" >> "$GITHUB_OUTPUT"
+          echo "registry_namespace=${REGISTRY_NAMESPACE}" >> "$GITHUB_OUTPUT"
+          echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+          echo "latest_uri=${LATEST_URI}" >> "$GITHUB_OUTPUT"
+          echo "namespace_name=${NAMESPACE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "container_name=${CONTAINER_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate required deployment configuration
+        run: |
+          set -euo pipefail
+          missing=()
+          required=(
+            SCW_ACCESS_KEY
+            SCW_SECRET_KEY
+            SCW_DEFAULT_PROJECT_ID
+            SCW_DEFAULT_ORGANIZATION_ID
+            RAG_HEALTH_POSTGRES_DSN
+            COCKPIT_METRICS_PUSH_URL
+            COCKPIT_TOKEN_SECRET_KEY
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "Missing required secret/variable(s): ${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Scaleway Container Registry
+        run: |
+          set -euo pipefail
+          printf '%s' "$SCW_SECRET_KEY" | docker login \
+            "${REGISTRY_HOST}/${{ steps.target.outputs.registry_namespace }}" \
+            -u nologin \
+            --password-stdin
+
+      - name: Build and push RAG health image
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/amd64 \
+            -f Dockerfile.rag_health_exporter \
+            -t "${{ steps.target.outputs.image_uri }}" \
+            -t "${{ steps.target.outputs.latest_uri }}" \
+            --push \
+            .
+
+      - name: Install Scaleway CLI
+        uses: scaleway/action-scw@v0.0.3
+        with:
+          version: v2.57.0
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+      - name: Deploy RAG health container
+        id: deploy
+        run: |
+          set -euo pipefail
+          OUTPUT_JSON="$RUNNER_TEMP/rag-health-deploy.json"
+          python3 .github/scripts/scaleway_rag_health_deploy.py \
+            --target-env "${{ steps.target.outputs.target_env }}" \
+            --project-id "$SCW_DEFAULT_PROJECT_ID" \
+            --region "$SCW_DEFAULT_REGION" \
+            --namespace-name "${{ steps.target.outputs.namespace_name }}" \
+            --container-name "${{ steps.target.outputs.container_name }}" \
+            --image-uri "${{ steps.target.outputs.image_uri }}" \
+            --output-json "$OUTPUT_JSON"
+          echo "deploy_json_path=$OUTPUT_JSON" >> "$GITHUB_OUTPUT"
+          echo "container_id=$(jq -r '.container_id' "$OUTPUT_JSON")" >> "$GITHUB_OUTPUT"
+          echo "domain_name=$(jq -r '.container_domain_name' "$OUTPUT_JSON")" >> "$GITHUB_OUTPUT"
+          echo "action=$(jq -r '.action' "$OUTPUT_JSON")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish deployment summary
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "## RAG health deployment"
+            echo ""
+            echo "- Target: \`${{ steps.target.outputs.target_env || 'n/a' }}\`"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Image: \`${{ steps.target.outputs.image_uri || 'n/a' }}\`"
+            echo "- Container action: \`${{ steps.deploy.outputs.action || 'n/a' }}\`"
+            echo "- Container ID: \`${{ steps.deploy.outputs.container_id || 'n/a' }}\`"
+            echo "- Domain: \`${{ steps.deploy.outputs.domain_name || 'private/n/a' }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -23,6 +23,9 @@ uv run data-ingestion legifrance ingest --help
 uv run data-ingestion embeddings backfill --help
 uv run data-ingestion embeddings service-public --help
 uv run data-ingestion embeddings legifrance --help
+
+# Observability
+uv run data-ingestion observability rag-health --help
 ```
 
 ## Boundaries

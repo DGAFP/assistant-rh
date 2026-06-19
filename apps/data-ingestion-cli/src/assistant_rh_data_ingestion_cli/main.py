@@ -56,6 +56,10 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
         "Backfill Legifrance DB embeddings.",
         ("--config", "config/legifrance_embedding_tables.json"),
     ),
+    ("observability", "rag-health"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.rag_health_exporter",
+        "Expose read-only RAG corpus health metrics for Prometheus/Grafana.",
+    ),
 }
 
 
@@ -106,6 +110,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0 if result is None else int(result)
     finally:
         sys.argv = previous_argv
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
