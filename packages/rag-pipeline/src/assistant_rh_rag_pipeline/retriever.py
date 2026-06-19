@@ -13,6 +13,7 @@ Dependencies (internal only):
   - embedder (FallbackEmbedder)
   - models (RetrievedChunk)
 """
+
 from __future__ import annotations
 
 import logging
@@ -128,11 +129,7 @@ class Retriever:
 
     @classmethod
     def _tokenize_for_heading_match(cls, value: str) -> set[str]:
-        return {
-            token
-            for token in cls._normalize_text(value).split()
-            if len(token) > 1 and token not in _HEADING_STOPWORDS
-        }
+        return {token for token in cls._normalize_text(value).split() if len(token) > 1 and token not in _HEADING_STOPWORDS}
 
     @classmethod
     def _heading_match_score(cls, heading: str, heading_path: str, query: str) -> float:
@@ -196,9 +193,7 @@ class Retriever:
         fallback/retry paths without mutating ``self.config``.
         """
         t0 = time.time()
-        _force_names = {
-            CHUNK_TABLES[k].name for k in (force_hybrid_tables or set()) if k in CHUNK_TABLES
-        }
+        _force_names = {CHUNK_TABLES[k].name for k in (force_hybrid_tables or set()) if k in CHUNK_TABLES}
 
         embedding = self.embedder.embed_query(query)
         if embedding is None:
@@ -221,48 +216,59 @@ class Retriever:
         with ThreadPoolExecutor(max_workers=max(n_workers, 1)) as pool:
             futures = {
                 pool.submit(
-                    self._search_table, tbl, embedding, embed_model_used, query,
+                    self._search_table,
+                    tbl,
+                    embedding,
+                    embed_model_used,
+                    query,
                     force_hybrid=(tbl.name in _force_names),
                     search_mode=effective_search_mode,
                     top_k=effective_top_k,
                 ): tbl.name
                 for tbl in chunk_tables
             }
-            futures.update({
-                pool.submit(self._search_table_headings, tbl, query, top_k=effective_top_k): f"{_HEADING_SOURCE_PREFIX}{tbl.name}"
-                for tbl in chunk_tables
-                if tbl.has_sections
-            })
+            futures.update(
+                {
+                    pool.submit(self._search_table_headings, tbl, query, top_k=effective_top_k): f"{_HEADING_SOURCE_PREFIX}{tbl.name}"
+                    for tbl in chunk_tables
+                    if tbl.has_sections
+                }
+            )
             if self.config.enable_chunks_test:
                 if is_hybrid:
-                    futures[pool.submit(
-                        self._search_chunks_test_hybrid,
-                        embedding,
-                        embed_model_used,
-                        query,
-                        top_k=effective_top_k,
-                    )] = "rag_chunks_test"
+                    futures[
+                        pool.submit(
+                            self._search_chunks_test_hybrid,
+                            embedding,
+                            embed_model_used,
+                            query,
+                            top_k=effective_top_k,
+                        )
+                    ] = "rag_chunks_test"
                 elif is_lexical:
-                    futures[pool.submit(
-                        self._search_chunks_test_lexical, query, top_k=effective_top_k,
-                    )] = "rag_chunks_test"
+                    futures[
+                        pool.submit(
+                            self._search_chunks_test_lexical,
+                            query,
+                            top_k=effective_top_k,
+                        )
+                    ] = "rag_chunks_test"
                 else:
-                    futures[pool.submit(
-                        self._search_chunks_test, embedding, embed_model_used, top_k=effective_top_k,
-                    )] = "rag_chunks_test"
+                    futures[
+                        pool.submit(
+                            self._search_chunks_test,
+                            embedding,
+                            embed_model_used,
+                            top_k=effective_top_k,
+                        )
+                    ] = "rag_chunks_test"
 
             for future in as_completed(futures):
                 name = futures[future]
                 try:
                     result = future.result()
                     if result and "source_score_mode" not in result[0].metadata:
-                        inferred_mode = (
-                            "lexical"
-                            if is_lexical
-                            else "hybrid"
-                            if is_hybrid
-                            else "semantic"
-                        )
+                        inferred_mode = "lexical" if is_lexical else "hybrid" if is_hybrid else "semantic"
                         for chunk in result:
                             chunk.metadata.setdefault("source_score_mode", inferred_mode)
                     self._sort_chunks_deterministically(result)
@@ -279,7 +285,10 @@ class Retriever:
         mode_label = effective_search_mode.value
         logger.info(
             "Retrieved %d chunks from %d sources (%s, cross-source RRF + source-ceiling score calibration) in %.0fms",
-            len(all_chunks), n_workers, mode_label, (time.time() - t0) * 1000,
+            len(all_chunks),
+            n_workers,
+            mode_label,
+            (time.time() - t0) * 1000,
         )
         return all_chunks
 
@@ -420,6 +429,34 @@ class Retriever:
             return expected
         return [col for col in expected if col in existing]
 
+    def _document_meta_select_sql(self, table: ChunkTable) -> str:
+        """Expose canonical document metadata for chunk tables carrying short_id.
+
+        Legacy Service-Public chunk tables do not always store section_id or
+        source_document_id. When section resolution fails, this metadata lets
+        downstream source pills still display the rag_documents title and URL
+        instead of falling back to values such as ``F527.xml`` with no link.
+        """
+        existing = self._get_table_columns(table.name)
+        if "short_id" not in existing:
+            return ""
+
+        return """
+                , t.short_id AS doc_short_id
+                , (
+                    SELECT d.title
+                    FROM rag_documents d
+                    WHERE d.short_id = t.short_id
+                    LIMIT 1
+                ) AS doc_title
+                , (
+                    SELECT d.source_url
+                    FROM rag_documents d
+                    WHERE d.short_id = t.short_id
+                    LIMIT 1
+                ) AS doc_url
+            """
+
     def _search_table_headings(
         self,
         table: ChunkTable,
@@ -499,15 +536,17 @@ class Retriever:
                     if row.get(key) is not None:
                         meta[key] = row.get(key)
 
-                chunks.append(RetrievedChunk(
-                    chunk_id=str(row["chunk_id"]),
-                    text=row["chunk_text"] or "",
-                    score=match_score,
-                    table_source=table.publisher,
-                    metadata=meta,
-                    section_id=row.get("section_id"),
-                    embedding_model_used="heading",
-                ))
+                chunks.append(
+                    RetrievedChunk(
+                        chunk_id=str(row["chunk_id"]),
+                        text=row["chunk_text"] or "",
+                        score=match_score,
+                        table_source=table.publisher,
+                        metadata=meta,
+                        section_id=row.get("section_id"),
+                        embedding_model_used="heading",
+                    )
+                )
         except Exception as exc:
             logger.error("Heading query on %s failed (%s): %s", table.name, type(exc).__name__, exc)
 
@@ -560,10 +599,7 @@ class Retriever:
         """Search a DE table. Uses hybrid RRF when tsvector is available, else semantic."""
         effective_search_mode = search_mode or self.config.search_mode
         effective_top_k = top_k or self.config.initial_top_k
-        use_hybrid = (
-            (effective_search_mode in (SearchMode.HYBRID, SearchMode.LEXICAL) or force_hybrid)
-            and table.tsv_col
-        )
+        use_hybrid = (effective_search_mode in (SearchMode.HYBRID, SearchMode.LEXICAL) or force_hybrid) and table.tsv_col
         if effective_search_mode == SearchMode.LEXICAL and table.tsv_col:
             mode = "lexical"
         else:
@@ -580,7 +616,10 @@ class Retriever:
             )
         else:
             chunks = self._search_table_semantic(
-                table, embedding, model_used, top_k=effective_top_k,
+                table,
+                embedding,
+                model_used,
+                top_k=effective_top_k,
             )
 
         for chunk in chunks:
@@ -603,6 +642,7 @@ class Retriever:
         extra_cols = self._select_existing_meta_cols(table)
         extra_sql = "".join(f", t.{c}" for c in extra_cols)
         section_sql = self._section_select_sql(table)
+        doc_meta_sql = self._document_meta_select_sql(table)
 
         sql = f"""
             SELECT
@@ -611,6 +651,7 @@ class Retriever:
                 1 - (t.{embed_col} <=> %s::vector) AS score
                 {extra_sql}
                 {section_sql}
+                {doc_meta_sql}
             FROM {table.name} t
             WHERE t.{embed_col} IS NOT NULL
             ORDER BY t.{embed_col} <=> %s::vector, t.{table.id_col}
@@ -641,6 +682,7 @@ class Retriever:
         extra_cols = self._select_existing_meta_cols(table)
         extra_sql = "".join(f", t.{c}" for c in extra_cols)
         section_sql = self._section_select_sql(table)
+        doc_meta_sql = self._document_meta_select_sql(table)
         tsq = _TSQUERY_OR.format(p="%s")
 
         if is_lexical_only:
@@ -654,6 +696,7 @@ class Retriever:
                     ts_rank_cd(t.{tsv}, pq.q) AS score
                     {extra_sql}
                     {section_sql}
+                    {doc_meta_sql}
                 FROM {table.name} t
                 CROSS JOIN parsed_query pq
                 WHERE t.{tsv} @@ pq.q
@@ -698,18 +741,27 @@ class Retriever:
                 r.rrf_score AS score
                 {extra_sql}
                 {section_sql}
+                {doc_meta_sql}
             FROM rrf r
             JOIN {table.name} t ON t.{table.id_col} = r.chunk_id
             ORDER BY r.rrf_score DESC, t.{table.id_col}
             LIMIT %s
         """
         params = (
-            query, query, query,                           # parsed_query
-            embedding, embedding, top_k,                   # semantic_ranked
-            top_k,                                         # lexical_ranked
-            alpha, rrf_k, top_k,                           # rrf semantic part
-            alpha, rrf_k, top_k,                           # rrf lexical part
-            top_k,                                         # final limit
+            query,
+            query,
+            query,  # parsed_query
+            embedding,
+            embedding,
+            top_k,  # semantic_ranked
+            top_k,  # lexical_ranked
+            alpha,
+            rrf_k,
+            top_k,  # rrf semantic part
+            alpha,
+            rrf_k,
+            top_k,  # rrf lexical part
+            top_k,  # final limit
         )
         return self._exec_de_table(table, sql, params, model_used)
 
@@ -729,16 +781,21 @@ class Retriever:
 
             for row in rows:
                 meta = {c: row.get(c) for c in extra_cols if row.get(c) is not None}
+                for key in ("doc_short_id", "doc_title", "doc_url"):
+                    if row.get(key) is not None:
+                        meta[key] = row.get(key)
 
-                chunks.append(RetrievedChunk(
-                    chunk_id=str(row["chunk_id"]),
-                    text=row["chunk_text"] or "",
-                    score=float(row["score"]),
-                    table_source=table.publisher,
-                    metadata=meta,
-                    section_id=row.get("section_id"),
-                    embedding_model_used=model_used,
-                ))
+                chunks.append(
+                    RetrievedChunk(
+                        chunk_id=str(row["chunk_id"]),
+                        text=row["chunk_text"] or "",
+                        score=float(row["score"]),
+                        table_source=table.publisher,
+                        metadata=meta,
+                        section_id=row.get("section_id"),
+                        embedding_model_used=model_used,
+                    )
+                )
         except Exception as exc:
             logger.error("Query on %s failed (%s): %s", table.name, type(exc).__name__, exc)
 
@@ -829,12 +886,20 @@ class Retriever:
             LIMIT %s
         """
         params: Tuple = (
-            query, query, query,                           # parsed_query (3 refs)
-            embedding, embedding, top_k,                   # semantic_ranked
-            top_k,                                         # lexical_ranked
-            alpha, rrf_k, top_k,                           # rrf semantic part
-            alpha, rrf_k, top_k,                           # rrf lexical part
-            top_k,                                         # final limit
+            query,
+            query,
+            query,  # parsed_query (3 refs)
+            embedding,
+            embedding,
+            top_k,  # semantic_ranked
+            top_k,  # lexical_ranked
+            alpha,
+            rrf_k,
+            top_k,  # rrf semantic part
+            alpha,
+            rrf_k,
+            top_k,  # rrf lexical part
+            top_k,  # final limit
         )
         return self._exec_chunks_test(sql, params, model_used)
 
@@ -888,17 +953,20 @@ class Retriever:
                 meta = row.get("metadata") or {}
                 if isinstance(meta, str):
                     import json
+
                     meta = json.loads(meta)
 
-                chunks.append(RetrievedChunk(
-                    chunk_id=str(row["chunk_id"]),
-                    text=row["chunk_text"] or "",
-                    score=float(row["score"]),
-                    table_source=tbl.publisher,
-                    metadata=meta,
-                    section_id=row.get("section_id"),
-                    embedding_model_used=model_used,
-                ))
+                chunks.append(
+                    RetrievedChunk(
+                        chunk_id=str(row["chunk_id"]),
+                        text=row["chunk_text"] or "",
+                        score=float(row["score"]),
+                        table_source=tbl.publisher,
+                        metadata=meta,
+                        section_id=row.get("section_id"),
+                        embedding_model_used=model_used,
+                    )
+                )
         except psycopg.Error as exc:
             logger.warning("Query on rag_chunks_test failed: %s", exc)
 

@@ -103,13 +103,17 @@ class SectionAggregator:
             doc_id = meta.get("doc_id") or first.metadata.get("source_document_id")
             first_meta = first.metadata
 
-            doc_short_id = meta.get("doc_short_id") or first_meta.get("source_document_id") or ""
+            doc_short_id = (
+                meta.get("doc_short_id") or first_meta.get("doc_short_id") or first_meta.get("short_id") or first_meta.get("source_document_id") or ""
+            )
+            doc_title = meta.get("doc_title") or first_meta.get("doc_title") or first_meta.get("source_name", "")
+            doc_url = meta.get("doc_url") or first_meta.get("doc_url") or first_meta.get("url")
 
             sec_metadata = {
                 "doc_id": str(doc_id) if doc_id else "",
                 "doc_short_id": str(doc_short_id) if doc_short_id else "",
-                "doc_title": meta.get("doc_title", first_meta.get("source_name", "")),
-                "doc_url": meta.get("doc_url") or first_meta.get("url"),
+                "doc_title": doc_title,
+                "doc_url": doc_url,
                 "doc_publisher": meta.get("doc_publisher", first.table_source),
                 "doc_date": str(meta["doc_date"]) if meta.get("doc_date") else "",
                 "doc_token_count": meta.get("doc_token_count", 0),
@@ -129,7 +133,7 @@ class SectionAggregator:
             sections.append(
                 AggregatedSection(
                     section_id=None if is_standalone else key,
-                    heading=meta.get("heading", first_meta.get("source_name", "")),
+                    heading=meta.get("heading") or first_meta.get("doc_title") or first_meta.get("source_name", ""),
                     markdown=meta.get("section_markdown", first.text),
                     chunks=group,
                     score=agg_score,

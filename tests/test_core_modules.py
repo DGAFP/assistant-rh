@@ -3,6 +3,7 @@ Tests for core RAG V3 Clean pipeline modules.
 
 Tests are designed to run without a database connection (mocked where needed).
 """
+
 from __future__ import annotations
 
 import json
@@ -18,6 +19,7 @@ from assistant_rh_rag_pipeline.models import (
 # ---------------------------------------------------------------------------
 # models.estimate_tokens
 # ---------------------------------------------------------------------------
+
 
 class TestEstimateTokens:
     def test_empty_string(self):
@@ -44,6 +46,7 @@ class TestEstimateTokens:
 # ---------------------------------------------------------------------------
 # context_selector._parse_response / _parse_reason / _extract_json
 # ---------------------------------------------------------------------------
+
 
 class TestSelectorParsing:
     def test_parse_json_with_selected_ids(self):
@@ -118,6 +121,7 @@ class TestSelectorParsing:
 # db_helpers.load_prompt
 # ---------------------------------------------------------------------------
 
+
 class TestLoadPrompt:
     @patch("assistant_rh_rag_pipeline.db_helpers.get_prompt_content")
     def test_returns_primary_when_found(self, mock_get):
@@ -152,6 +156,7 @@ class TestLoadPrompt:
 # ---------------------------------------------------------------------------
 # section_aggregator — grouping & scoring
 # ---------------------------------------------------------------------------
+
 
 class TestSectionAggregator:
     def _make_chunk(self, chunk_id, section_id=None, score=0.9, table="MATTE"):
@@ -231,21 +236,56 @@ class TestSectionAggregator:
         sections = agg.aggregate(chunks)
         assert abs(sections[0].score - 0.5) < 0.01
 
+    @patch("assistant_rh_rag_pipeline.section_aggregator.SectionAggregator._fetch_sections")
+    def test_standalone_service_public_chunk_uses_canonical_document_metadata(self, mock_fetch):
+        from assistant_rh_rag_pipeline.config import SectionAggregationConfig
+        from assistant_rh_rag_pipeline.section_aggregator import SectionAggregator
+
+        mock_fetch.return_value = {}
+        agg = SectionAggregator(SectionAggregationConfig(), dsn="unused")
+        chunk = RetrievedChunk(
+            chunk_id="c-f527",
+            text="Chunk text",
+            score=0.8,
+            table_source="Service-Public",
+            metadata={
+                "source_name": "F527.xml",
+                "doc_short_id": "F527",
+                "doc_title": "Remboursement des frais de déplacement dans la fonction publique",
+                "doc_url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F527",
+            },
+            section_id=None,
+        )
+
+        sections = agg.aggregate([chunk])
+
+        assert len(sections) == 1
+        assert sections[0].heading == "Remboursement des frais de déplacement dans la fonction publique"
+        assert sections[0].metadata["doc_short_id"] == "F527"
+        assert sections[0].metadata["doc_title"] == "Remboursement des frais de déplacement dans la fonction publique"
+        assert sections[0].metadata["doc_url"] == "https://www.service-public.gouv.fr/particuliers/vosdroits/F527"
+
 
 # ---------------------------------------------------------------------------
 # context_builder — ref collection
 # ---------------------------------------------------------------------------
+
 
 class TestContextBuilderRefs:
     def test_collect_ref_numbers_from_json_string(self):
         from assistant_rh_rag_pipeline.context_builder import ContextBuilder
 
         item = ContextItem(
-            section_id="s1", heading="Test", content="c", score=0.9,
-            references_juridiques=json.dumps([
-                {"number": "L332-2", "title": "CGFP"},
-                {"number": "L332-6", "title": "CGFP"},
-            ]),
+            section_id="s1",
+            heading="Test",
+            content="c",
+            score=0.9,
+            references_juridiques=json.dumps(
+                [
+                    {"number": "L332-2", "title": "CGFP"},
+                    {"number": "L332-6", "title": "CGFP"},
+                ]
+            ),
         )
         numbers = ContextBuilder._collect_ref_numbers([item])
         assert set(numbers) == {"L332-2", "L332-6"}
@@ -254,7 +294,10 @@ class TestContextBuilderRefs:
         from assistant_rh_rag_pipeline.context_builder import ContextBuilder
 
         item = ContextItem(
-            section_id="s1", heading="Test", content="c", score=0.9,
+            section_id="s1",
+            heading="Test",
+            content="c",
+            score=0.9,
             references_juridiques=[{"number": "R123-4"}],
         )
         numbers = ContextBuilder._collect_ref_numbers([item])
@@ -264,7 +307,10 @@ class TestContextBuilderRefs:
         from assistant_rh_rag_pipeline.context_builder import ContextBuilder
 
         item = ContextItem(
-            section_id="s1", heading="Test", content="c", score=0.9,
+            section_id="s1",
+            heading="Test",
+            content="c",
+            score=0.9,
             references_juridiques="not valid json",
         )
         numbers = ContextBuilder._collect_ref_numbers([item])
@@ -274,7 +320,10 @@ class TestContextBuilderRefs:
         from assistant_rh_rag_pipeline.context_builder import ContextBuilder
 
         item = ContextItem(
-            section_id="s1", heading="Test", content="c", score=0.9,
+            section_id="s1",
+            heading="Test",
+            content="c",
+            score=0.9,
             references_juridiques=None,
         )
         assert ContextBuilder._collect_ref_numbers([item]) == []
@@ -284,14 +333,17 @@ class TestContextBuilderRefs:
 # context_builder — format_for_prompt (static)
 # ---------------------------------------------------------------------------
 
+
 class TestContextBuilderFormat:
     def test_format_includes_heading_and_content(self):
         from assistant_rh_rag_pipeline.context_builder import ContextBuilder
 
         items = [
             ContextItem(
-                section_id="s1", heading="Mon Titre",
-                content="Contenu de la section", score=0.9,
+                section_id="s1",
+                heading="Mon Titre",
+                content="Contenu de la section",
+                score=0.9,
                 publisher="MATTE",
             ),
         ]
