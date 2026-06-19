@@ -642,31 +642,33 @@
   "templating": {
     "list": [
       {
+        "allValue": "staging|prod",
         "current": {
-          "selected": false,
+          "selected": true,
           "text": "All",
           "value": "$__all"
         },
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
-        },
-        "definition": "label_values(assistant_rh_rag_last_poll_success, env)",
+        "definition": "staging,prod",
         "hide": 0,
         "includeAll": true,
         "label": "Environment",
         "multi": true,
         "name": "env",
-        "options": [],
-        "query": {
-          "query": "label_values(assistant_rh_rag_last_poll_success, env)",
-          "refId": "PrometheusVariableQueryEditor-VariableQuery"
-        },
-        "refresh": 1,
-        "regex": "",
+        "options": [
+          {
+            "selected": false,
+            "text": "staging",
+            "value": "staging"
+          },
+          {
+            "selected": false,
+            "text": "prod",
+            "value": "prod"
+          }
+        ],
+        "query": "staging,prod",
         "skipUrlSync": false,
-        "sort": 1,
-        "type": "query"
+        "type": "custom"
       }
     ]
   },
