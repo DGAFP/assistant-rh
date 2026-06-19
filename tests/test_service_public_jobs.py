@@ -9,7 +9,9 @@ from typing import Any
 import pytest
 from assistant_rh_data_engineering.jobs import service_public_ingestion, service_public_medallion
 from assistant_rh_data_engineering.service_public import pipeline as service_public_pipeline
+from assistant_rh_data_engineering.service_public.config import EmbeddingConfig, GoldConfig
 from assistant_rh_data_engineering.service_public.db import ServicePublicDbWriter
+from assistant_rh_data_engineering.service_public.gold import ServicePublicGoldBuilder
 from assistant_rh_data_engineering.utils.helpers import stable_section_uuid
 
 
@@ -370,6 +372,64 @@ def test_pipeline_ingest_remaps_existing_ids_before_upsert(monkeypatch: pytest.M
     assert calls["doc_ids"] == ["same-doc"]
     assert calls["sections"][0]["section_id"] == "existing-section"
     assert calls["chunks"][0]["section_id"] == "existing-section"
+
+
+def test_gold_builder_adds_chunks_for_heading_sections_missed_by_qna_parser() -> None:
+    builder = ServicePublicGoldBuilder(
+        EmbeddingConfig(enable_m3=False, enable_bge_scaleway=False),
+        GoldConfig(export_parquet=False, export_npy=False),
+    )
+    document = {
+        "doc_id": "doc-f12163",
+        "short_id": "F12163",
+        "title": "Remboursement des frais de transport domicile-travail (fonction publique)",
+        "metadata": {"theme": "Travail"},
+        "doc_markdown": "\n\n".join(
+            [
+                "## Transports en commun",
+                "### Quel est le montant de la prise en charge des frais de transports en commun d'un agent public?",
+                "Votre administration employeur prend en charge les **3/4 du tarif de votre abonnement**. "
+                "La participation ne peut pas dépasser **104,04 €** par mois.",
+                "## Deux roues ou covoiturage",
+                "Q: Quel est le montant du forfait mobilités durables?",
+                "R: 100 €, 200 € ou 300 € selon le nombre de jours d'utilisation.",
+            ]
+        ),
+    }
+    sections = [
+        {
+            "section_id": "section-amount",
+            "heading": "Quel est le montant de la prise en charge des frais de transports en commun d'un agent public?",
+            "heading_path": "Transports en commun > Quel est le montant de la prise en charge des frais de transports en commun d'un agent public?",
+            "section_markdown": (
+                "### Quel est le montant de la prise en charge des frais de transports en commun d'un agent public?\n\n"
+                "Votre administration employeur prend en charge les **3/4 du tarif de votre abonnement**. "
+                "La participation ne peut pas dépasser **104,04 €** par mois."
+            ),
+            "is_indexable": True,
+            "references_juridiques": [],
+        },
+        {
+            "section_id": "section-mobility",
+            "heading": "Deux roues ou covoiturage",
+            "heading_path": "Deux roues ou covoiturage",
+            "section_markdown": "## Deux roues ou covoiturage\n\nForfait mobilités durables.",
+            "is_indexable": True,
+            "references_juridiques": [],
+        },
+    ]
+
+    chunks = builder.build_chunks(document, sections)
+
+    amount_chunks = [
+        chunk
+        for chunk in chunks
+        if chunk.get("section_id") == "section-amount" and ("3/4" in chunk.get("chunk_text", "") or "104,04" in chunk.get("chunk_text", ""))
+    ]
+    assert amount_chunks
+    assert amount_chunks[0]["role"] == "SECTION_ATOMIC"
+    assert amount_chunks[0]["section_path"] == sections[0]["heading_path"]
+    assert amount_chunks[0]["short_id"] == "F12163"
 
 
 def test_db_writer_upserts_documents_on_short_id_when_available(monkeypatch: pytest.MonkeyPatch) -> None:

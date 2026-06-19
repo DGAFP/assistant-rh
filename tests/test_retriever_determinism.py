@@ -111,6 +111,22 @@ def test_retriever_resolves_section_id_from_service_public_short_id(monkeypatch)
     assert "s.heading_path = t.section_path" in section_sql
 
 
+def test_retriever_exposes_document_metadata_from_short_id(monkeypatch):
+    retriever = Retriever(RetrievalConfig(), dsn="unused")
+    monkeypatch.setattr(
+        retriever,
+        "_get_table_columns",
+        lambda _table_name: {"hash_id", "short_id", "section_path"},
+    )
+
+    doc_meta_sql = retriever._document_meta_select_sql(CHUNK_TABLES["service_public"])
+
+    assert "t.short_id AS doc_short_id" in doc_meta_sql
+    assert "SELECT d.title" in doc_meta_sql
+    assert "SELECT d.source_url" in doc_meta_sql
+    assert "WHERE d.short_id = t.short_id" in doc_meta_sql
+
+
 def test_heading_match_score_rewards_exact_and_near_title_matches():
     retriever = Retriever(RetrievalConfig(), dsn="unused")
 
