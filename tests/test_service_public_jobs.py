@@ -348,10 +348,6 @@ def test_ingestion_main_wipes_existing_chunks_before_reingestion(
             events.append(("list_sections", doc_ids))
             return {}
 
-        def delete_chunks_by_short_ids(self, short_ids: list[str]) -> int:
-            events.append(("delete_chunks", short_ids))
-            return 2
-
         def upsert_documents(self, rows: list[dict[str, Any]]) -> int:
             events.append(("upsert_documents", len(rows)))
             return len(rows)
@@ -360,9 +356,15 @@ def test_ingestion_main_wipes_existing_chunks_before_reingestion(
             events.append(("upsert_sections", len(rows)))
             return len(rows)
 
-        def upsert_chunks(self, rows: list[dict[str, Any]]) -> int:
-            events.append(("upsert_chunks", len(rows)))
-            return len(rows)
+        def replace_chunks_by_short_ids(
+            self,
+            short_ids: list[str],
+            chunks: list[dict[str, Any]],
+            *,
+            batch_size: int = 1000,
+        ) -> tuple[int, int]:
+            events.append(("replace_chunks", short_ids, len(chunks), batch_size))
+            return 2, len(chunks)
 
     import assistant_rh_data_engineering.service_public.db as service_public_db
 
@@ -391,10 +393,9 @@ def test_ingestion_main_wipes_existing_chunks_before_reingestion(
     assert events == [
         ("list_documents", ["F32513"]),
         ("list_sections", []),
-        ("delete_chunks", ["F32513"]),
         ("upsert_documents", 1),
         ("upsert_sections", 1),
-        ("upsert_chunks", 1),
+        ("replace_chunks", ["F32513"], 1, 1000),
     ]
 
 
@@ -665,6 +666,77 @@ def test_db_writer_deletes_service_public_chunks_by_short_id(monkeypatch: pytest
     assert calls["params"] == (["F12163", "F32513"],)
     assert "rag_chunks_service_public" in repr(calls["query"])
     assert calls["committed"] is True
+
+
+def test_db_writer_replaces_service_public_chunks_in_one_transaction(monkeypatch: pytest.MonkeyPatch) -> None:
+    writer = ServicePublicDbWriter(schema="staging", dsn="postgresql://unused")
+    calls: list[Any] = []
+
+    class DummyConnection:
+        def __enter__(self):
+            calls.append("enter")
+            return self
+
+        def __exit__(self, exc_type: object, *args: object) -> None:
+            calls.append(("exit", exc_type))
+            return None
+
+        def commit(self) -> None:
+            calls.append("commit")
+
+    connection = DummyConnection()
+    chunks = [{"hash_id": "chunk-1"}, {"hash_id": "chunk-2"}]
+
+    def fake_delete(conn: object, short_ids: list[str], table: str = "rag_chunks_service_public") -> int:
+        calls.append(("delete", conn, short_ids, table))
+        return 3
+
+    def fake_upsert(conn: object, table: str, rows: list[dict[str, Any]], conflict_cols: list[str]) -> int:
+        calls.append(("upsert", conn, table, rows, conflict_cols))
+        return len(rows)
+
+    monkeypatch.setattr(writer, "_connect", lambda: connection)
+    monkeypatch.setattr(writer, "_delete_chunks_by_short_ids", fake_delete)
+    monkeypatch.setattr(writer, "_upsert", fake_upsert)
+
+    assert writer.replace_chunks_by_short_ids(["F32513"], chunks, batch_size=1) == (3, 2)
+    assert calls == [
+        "enter",
+        ("delete", connection, ["F32513"], "rag_chunks_service_public"),
+        ("upsert", connection, "rag_chunks_service_public", [{"hash_id": "chunk-1"}], ["hash_id"]),
+        ("upsert", connection, "rag_chunks_service_public", [{"hash_id": "chunk-2"}], ["hash_id"]),
+        "commit",
+        ("exit", None),
+    ]
+
+
+def test_db_writer_replace_chunks_does_not_commit_when_reinsert_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    writer = ServicePublicDbWriter(schema="staging", dsn="postgresql://unused")
+    calls: list[Any] = []
+
+    class DummyConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type: object, *args: object) -> None:
+            calls.append(("exit", exc_type))
+            return None
+
+        def commit(self) -> None:
+            calls.append("commit")
+
+    monkeypatch.setattr(writer, "_connect", lambda: DummyConnection())
+    monkeypatch.setattr(writer, "_delete_chunks_by_short_ids", lambda conn, short_ids, table="rag_chunks_service_public": 3)
+
+    def fail_upsert(conn: object, table: str, rows: list[dict[str, Any]], conflict_cols: list[str]) -> int:
+        raise RuntimeError("insert failed")
+
+    monkeypatch.setattr(writer, "_upsert", fail_upsert)
+
+    with pytest.raises(RuntimeError, match="insert failed"):
+        writer.replace_chunks_by_short_ids(["F32513"], [{"hash_id": "chunk-1"}])
+
+    assert calls == [("exit", RuntimeError)]
 
 
 def test_db_writer_index_predicate_is_schema_qualified() -> None:

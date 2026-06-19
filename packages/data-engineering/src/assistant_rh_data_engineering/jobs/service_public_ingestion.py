@@ -371,16 +371,19 @@ def main() -> int:
         writer.list_section_ids_by_doc_id_and_index(list(existing_doc_ids_by_short_id.values())),
     )
 
-    deleted_existing_chunks = 0
-    if args.wipe_existing_chunks:
-        deleted_existing_chunks = writer.delete_chunks_by_short_ids(short_ids)
-
     ingested = {"documents": 0, "sections": 0, "chunks": 0}
     for batch in chunked(documents, args.batch_size):
         ingested["documents"] += writer.upsert_documents(batch)
     for batch in chunked(sections, args.batch_size):
         ingested["sections"] += writer.upsert_sections(batch)
-    if not args.skip_chunks:
+    deleted_existing_chunks = 0
+    if args.wipe_existing_chunks:
+        deleted_existing_chunks, ingested["chunks"] = writer.replace_chunks_by_short_ids(
+            short_ids,
+            chunks,
+            batch_size=args.batch_size,
+        )
+    elif not args.skip_chunks:
         for batch in chunked(chunks, args.batch_size):
             ingested["chunks"] += writer.upsert_chunks(batch)
 

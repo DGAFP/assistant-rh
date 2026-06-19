@@ -36,12 +36,12 @@ on:
         default: true
         type: boolean
       wipe_existing_chunks:
-        description: "Supprimer les chunks Service-Public existants avant re-ingestion"
+        description: "Supprimer les chunks Service-Public existants avant re-ingestion (requiert run_embeddings=true et embedding_source=service_public/all)"
         required: true
         default: false
         type: boolean
       run_embeddings:
-        description: "Backfill embeddings si l'image embeddings est concernee"
+        description: "Backfill embeddings si l'image embeddings est concernee (obligatoire avec wipe_existing_chunks)"
         required: true
         default: false
         type: boolean
@@ -167,6 +167,7 @@ jobs:
     environment: scaleway-staging
     env:
       # Phase 2: preview job execution is manual-only (workflow_dispatch + run_preview_jobs=true).
+      SERVICE_PUBLIC_SELECTED: ${{ needs.plan.outputs.service_public }}
       RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ingestion || false }}
       WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}
       RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && (inputs.run_embeddings || inputs.source == 'embeddings') || false }}
@@ -192,6 +193,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Validate Service-Public wipe/backfill selection
+        run: |
+          if [[ "${SERVICE_PUBLIC_SELECTED}" == "true" && "${RUN_INGESTION}" == "true" && "${WIPE_EXISTING_CHUNKS}" == "true" ]]; then
+            if [[ "${RUN_EMBEDDINGS}" != "true" || "${EMBEDDING_SOURCE}" == "legifrance" ]]; then
+              echo "::error::wipe_existing_chunks deletes Service-Public chunk embeddings. Select run_embeddings=true and embedding_source=service_public or all."
+              exit 1
+            fi
+          fi
 
       - name: Install Scaleway CLI
         uses: scaleway/action-scw@v0.0.3

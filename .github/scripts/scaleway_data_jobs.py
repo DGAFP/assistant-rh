@@ -271,6 +271,22 @@ def should_run(spec: dict[str, Any], args: argparse.Namespace) -> bool:
     return True
 
 
+def validate_wipe_existing_chunks_selection(selected_specs: list[dict[str, Any]], args: argparse.Namespace) -> None:
+    if not getattr(args, "wipe_existing_chunks", False):
+        return
+
+    keys = {str(spec.get("key") or "") for spec in selected_specs}
+    if "service-public-ingestion" not in keys:
+        return
+    if "embeddings-service-public" in keys:
+        return
+
+    raise RuntimeError(
+        "--wipe-existing-chunks requires selecting the Service-Public embeddings backfill too: "
+        "set run_embeddings=true and embedding_source=service_public or all."
+    )
+
+
 def start_definition(
     job_id: str,
     spec: dict[str, Any],
@@ -343,6 +359,7 @@ def upsert_and_start_jobs(args: argparse.Namespace) -> int:
     }
     definitions = list_definitions(project_id, region, secrets=secrets, dry_run=args.dry_run)
     selected_specs = [spec for spec in config["jobs"] if should_run(spec, args)]
+    validate_wipe_existing_chunks_selection(selected_specs, args)
 
     if not selected_specs:
         print("No Scaleway data engineering job selected.")

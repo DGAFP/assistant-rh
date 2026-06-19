@@ -512,6 +512,19 @@ def test_upsert_and_start_jobs_appends_wipe_existing_chunks_to_service_public_in
                         "env_groups": [],
                         "args": ["service-public", "ingest", "--target-env", "{target_env}"],
                     },
+                    {
+                        "key": "embeddings-service-public",
+                        "domain": "embeddings",
+                        "image": "embeddings-job",
+                        "description": "Service-Public embeddings",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_embeddings": True,
+                        "env_groups": [],
+                        "args": ["embeddings", "service-public", "--dsn-env", "SCW_POSTGRES_DSN"],
+                    },
                 ],
             }
         ),
@@ -536,10 +549,12 @@ def test_upsert_and_start_jobs_appends_wipe_existing_chunks_to_service_public_in
         image_tag="sha-123",
         service_public=True,
         legifrance=False,
-        embeddings=False,
+        embeddings=True,
         run_ingestion=True,
-        run_embeddings=False,
+        run_embeddings=True,
         wipe_existing_chunks=True,
+        embedding_source="service_public",
+        embedding_only_column="",
         service_public_fiche_config="config/service_public_fiches.json",
         legifrance_article_ids_json="config/legifrance_article_cids.json",
         wait=False,
@@ -551,7 +566,75 @@ def test_upsert_and_start_jobs_appends_wipe_existing_chunks_to_service_public_in
     assert started == [
         ["service-public", "medallion", "--target-env", "staging"],
         ["service-public", "ingest", "--target-env", "staging", "--wipe-existing-chunks"],
+        ["embeddings", "service-public", "--dsn-env", "SCW_POSTGRES_DSN"],
     ]
+
+
+def test_upsert_and_start_jobs_rejects_wipe_existing_chunks_without_service_public_backfill(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "jobs.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "job_name_template": "assistant-rh-{target_env}-{key}",
+                "jobs": [
+                    {
+                        "key": "service-public-ingestion",
+                        "domain": "service_public",
+                        "image": "service-public-ingestion",
+                        "description": "Ingestion",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_ingestion": True,
+                        "env_groups": [],
+                        "args": ["service-public", "ingest"],
+                    },
+                    {
+                        "key": "embeddings-service-public",
+                        "domain": "embeddings",
+                        "image": "embeddings-job",
+                        "description": "Service-Public embeddings",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_embeddings": True,
+                        "env_groups": [],
+                        "args": ["embeddings", "service-public"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("SCW_DEFAULT_PROJECT_ID", "project-id")
+    monkeypatch.setattr(scaleway_data_jobs, "list_definitions", lambda project_id, region, *, secrets, dry_run: {})
+
+    args = SimpleNamespace(
+        config=str(config_path),
+        target_env="staging",
+        image_tag="sha-123",
+        service_public=True,
+        legifrance=False,
+        embeddings=False,
+        run_ingestion=True,
+        run_embeddings=False,
+        wipe_existing_chunks=True,
+        embedding_source="service_public",
+        embedding_only_column="",
+        service_public_fiche_config="config/service_public_fiches.json",
+        legifrance_article_ids_json="config/legifrance_article_cids.json",
+        wait=False,
+        dry_run=False,
+    )
+
+    with pytest.raises(RuntimeError, match="Service-Public embeddings backfill"):
+        scaleway_data_jobs.upsert_and_start_jobs(args)
 
 
 def test_upsert_and_start_jobs_filters_embeddings_source_and_appends_only_column(
