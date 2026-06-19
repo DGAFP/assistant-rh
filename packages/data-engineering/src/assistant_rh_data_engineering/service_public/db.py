@@ -207,6 +207,27 @@ class ServicePublicDbWriter:
             conn.commit()
             return count
 
+    def delete_chunks_by_short_ids(
+        self,
+        short_ids: list[str],
+        table: str = "rag_chunks_service_public",
+    ) -> int:
+        normalized_short_ids = sorted({str(short_id).strip().upper() for short_id in short_ids if str(short_id).strip()})
+        if not normalized_short_ids:
+            return 0
+
+        with self._connect() as conn, conn.cursor() as cur:
+            query = sql.SQL(
+                """
+                DELETE FROM {}.{}
+                WHERE UPPER(TRIM(short_id)) = ANY(%s)
+                """
+            ).format(sql.Identifier(self.schema), sql.Identifier(table))
+            cur.execute(query, (normalized_short_ids,))
+            deleted = int(cur.rowcount or 0)
+            conn.commit()
+            return deleted
+
     def list_fiche_ids(
         self,
         table: str = "rag_chunks_service_public",

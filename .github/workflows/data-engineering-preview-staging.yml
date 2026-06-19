@@ -35,6 +35,11 @@ on:
         required: true
         default: true
         type: boolean
+      wipe_existing_chunks:
+        description: "Supprimer les chunks Service-Public existants avant re-ingestion"
+        required: true
+        default: false
+        type: boolean
       run_embeddings:
         description: "Backfill embeddings si l'image embeddings est concernee"
         required: true
@@ -163,6 +168,7 @@ jobs:
     env:
       # Phase 2: preview job execution is manual-only (workflow_dispatch + run_preview_jobs=true).
       RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ingestion || false }}
+      WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}
       RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && (inputs.run_embeddings || inputs.source == 'embeddings') || false }}
       EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_source || 'all' }}
       EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
@@ -207,6 +213,7 @@ jobs:
             --legifrance "${{ needs.plan.outputs.legifrance }}" \
             --embeddings "${{ needs.plan.outputs.embeddings }}" \
             --run-ingestion "${RUN_INGESTION}" \
+            --wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}" \
             --run-embeddings "${RUN_EMBEDDINGS}" \
             --embedding-source "${EMBEDDING_SOURCE}" \
             --embedding-only-column "${EMBEDDING_ONLY_COLUMN}" \

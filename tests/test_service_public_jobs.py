@@ -324,6 +324,97 @@ def test_ingestion_main_upserts_documents_sections_and_chunks(
     assert calls == {"listed_documents": 1, "listed_sections": 0, "documents": 1, "sections": 1, "chunks": 1}
 
 
+def test_ingestion_main_wipes_existing_chunks_before_reingestion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    lake_root = tmp_path / "lake"
+    _write_service_public_artifacts(lake_root, "F32513")
+    config_path = tmp_path / "service_public_fiches.json"
+    _write_json(config_path, {"fiche_ids": ["F32513"]})
+    events: list[tuple[str, Any]] = []
+
+    class DummyWriter:
+        def __init__(self, schema: str = "public", dsn: str | None = None):
+            self.schema = schema
+            self.dsn = dsn
+
+        def list_document_ids_by_short_id(self, short_ids: list[str]) -> dict[str, str]:
+            events.append(("list_documents", short_ids))
+            return {}
+
+        def list_section_ids_by_doc_id_and_index(self, doc_ids: list[str]) -> dict[tuple[str, int], str]:
+            events.append(("list_sections", doc_ids))
+            return {}
+
+        def delete_chunks_by_short_ids(self, short_ids: list[str]) -> int:
+            events.append(("delete_chunks", short_ids))
+            return 2
+
+        def upsert_documents(self, rows: list[dict[str, Any]]) -> int:
+            events.append(("upsert_documents", len(rows)))
+            return len(rows)
+
+        def upsert_sections(self, rows: list[dict[str, Any]]) -> int:
+            events.append(("upsert_sections", len(rows)))
+            return len(rows)
+
+        def upsert_chunks(self, rows: list[dict[str, Any]]) -> int:
+            events.append(("upsert_chunks", len(rows)))
+            return len(rows)
+
+    import assistant_rh_data_engineering.service_public.db as service_public_db
+
+    monkeypatch.setattr(service_public_db, "ServicePublicDbWriter", DummyWriter)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "service-public-ingestion",
+            "--lake-root",
+            str(lake_root),
+            "--fiche-config",
+            str(config_path),
+            "--dsn",
+            "postgresql://unused",
+            "--wipe-existing-chunks",
+        ],
+    )
+
+    assert service_public_ingestion.main() == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["wipe_existing_chunks"] is True
+    assert payload["deleted_existing_chunks"] == 2
+    assert payload["ingested"] == {"documents": 1, "sections": 1, "chunks": 1}
+    assert events == [
+        ("list_documents", ["F32513"]),
+        ("list_sections", []),
+        ("delete_chunks", ["F32513"]),
+        ("upsert_documents", 1),
+        ("upsert_sections", 1),
+        ("upsert_chunks", 1),
+    ]
+
+
+def test_ingestion_main_rejects_wipe_existing_chunks_with_skip_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "service-public-ingestion",
+            "--dsn",
+            "postgresql://unused",
+            "--skip-chunks",
+            "--wipe-existing-chunks",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="--wipe-existing-chunks"):
+        service_public_ingestion.main()
+
+
 def test_pipeline_ingest_remaps_existing_ids_before_upsert(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: dict[str, Any] = {}
 
@@ -535,6 +626,44 @@ def test_db_writer_falls_back_to_section_id_when_doc_index_is_absent(monkeypatch
     assert calls["conflict_cols"] == ["section_id"]
     assert calls["conflict_where"] is None
     assert calls["update_exclude_cols"] is None
+    assert calls["committed"] is True
+
+
+def test_db_writer_deletes_service_public_chunks_by_short_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    writer = ServicePublicDbWriter(schema="staging", dsn="postgresql://unused")
+    calls: dict[str, Any] = {}
+
+    class DummyCursor:
+        rowcount = 3
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def execute(self, query: object, params: tuple[list[str]]) -> None:
+            calls["query"] = query
+            calls["params"] = params
+
+    class DummyConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def cursor(self) -> DummyCursor:
+            return DummyCursor()
+
+        def commit(self) -> None:
+            calls["committed"] = True
+
+    monkeypatch.setattr(writer, "_connect", lambda: DummyConnection())
+
+    assert writer.delete_chunks_by_short_ids(["f32513", "F32513", " F12163 "]) == 3
+    assert calls["params"] == (["F12163", "F32513"],)
+    assert "rag_chunks_service_public" in repr(calls["query"])
     assert calls["committed"] is True
 
 

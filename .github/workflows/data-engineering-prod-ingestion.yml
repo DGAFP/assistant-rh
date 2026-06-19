@@ -12,6 +12,11 @@ on:
           - all
           - service_public
           - legifrance
+      wipe_existing_chunks:
+        description: "Supprimer les chunks Service-Public existants avant re-ingestion"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -36,6 +41,7 @@ jobs:
       SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
       SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
       SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
+      WIPE_EXISTING_CHUNKS: ${{ github.event.inputs.wipe_existing_chunks || 'false' }}
 
     steps:
       - name: Checkout code
@@ -53,11 +59,17 @@ jobs:
       - name: Ingest Service-Public into Scaleway prod
         if: ${{ github.event.inputs.source == 'all' || github.event.inputs.source == 'service_public' }}
         run: |
+          WIPE_ARGS=()
+          if [[ "${WIPE_EXISTING_CHUNKS}" == "true" ]]; then
+            WIPE_ARGS+=(--wipe-existing-chunks)
+          fi
+
           uv run --no-sync data-ingestion service-public ingest \
             --fiche-config config/service_public_fiches.json \
             --target-env prod \
             --from-object-storage \
-            --dsn "${SCW_POSTGRES_DSN}"
+            --dsn "${SCW_POSTGRES_DSN}" \
+            "${WIPE_ARGS[@]}"
 
       - name: Ingest Legifrance into Scaleway prod
         if: ${{ github.event.inputs.source == 'all' || github.event.inputs.source == 'legifrance' }}

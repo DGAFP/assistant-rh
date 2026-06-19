@@ -314,6 +314,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="N'ingère pas rag_chunks_service_public.",
     )
+    parser.add_argument(
+        "--wipe-existing-chunks",
+        action="store_true",
+        help="Supprime les chunks Service-Public existants des fiches ciblées avant ré-ingestion.",
+    )
     return parser
 
 
@@ -326,6 +331,8 @@ def main() -> int:
 
     load_dotenv(REPO_ROOT / ".env")
     args = build_parser().parse_args()
+    if args.wipe_existing_chunks and args.skip_chunks:
+        raise SystemExit("--wipe-existing-chunks ne peut pas être combiné avec --skip-chunks.")
 
     fiche_config_path = REPO_ROOT / args.fiche_config
     fiche_config = load_fiche_config(fiche_config_path)
@@ -364,6 +371,10 @@ def main() -> int:
         writer.list_section_ids_by_doc_id_and_index(list(existing_doc_ids_by_short_id.values())),
     )
 
+    deleted_existing_chunks = 0
+    if args.wipe_existing_chunks:
+        deleted_existing_chunks = writer.delete_chunks_by_short_ids(short_ids)
+
     ingested = {"documents": 0, "sections": 0, "chunks": 0}
     for batch in chunked(documents, args.batch_size):
         ingested["documents"] += writer.upsert_documents(batch)
@@ -389,6 +400,8 @@ def main() -> int:
                 },
                 "per_fiche": per_fiche,
                 "remapped_existing_ids": remapped,
+                "wipe_existing_chunks": args.wipe_existing_chunks,
+                "deleted_existing_chunks": deleted_existing_chunks,
                 "ingested": ingested,
                 "from_object_storage": args.from_object_storage,
             },
