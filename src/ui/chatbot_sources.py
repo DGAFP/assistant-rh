@@ -134,7 +134,7 @@ def context_items_to_v1_chunks(
             "cid": meta.get("cid", ""),
         }
         if is_sp:
-            v1_meta["sid"] = item.section_id or "sp"
+            v1_meta["sid"] = meta.get("doc_short_id") or item.section_id or "sp"
 
         v1_chunks.append(Chunk(
             id=item.section_id or item.heading or "",
