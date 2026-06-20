@@ -21,6 +21,18 @@ class ServicePublicDbWriter:
         return psycopg.connect(self.dsn or get_dsn())
 
     @staticmethod
+    def _normalize_short_ids(short_ids: list[str]) -> list[str]:
+        return sorted({str(short_id).strip().upper() for short_id in short_ids if str(short_id).strip()})
+
+    @staticmethod
+    def _batched_rows(rows: list[dict[str, Any]], batch_size: int) -> Iterable[list[dict[str, Any]]]:
+        if batch_size <= 0:
+            yield rows
+            return
+        for index in range(0, len(rows), batch_size):
+            yield rows[index : index + batch_size]
+
+    @staticmethod
     def _fit_varchar(value: str, max_length: int | None) -> str:
         if max_length is None or len(value) <= max_length:
             return value
@@ -206,6 +218,53 @@ class ServicePublicDbWriter:
             count = self._upsert(conn, "rag_chunks_service_public", chunks, ["hash_id"])
             conn.commit()
             return count
+
+    def _delete_chunks_by_short_ids(
+        self,
+        conn: psycopg.Connection,
+        short_ids: list[str],
+        table: str = "rag_chunks_service_public",
+    ) -> int:
+        normalized_short_ids = self._normalize_short_ids(short_ids)
+        if not normalized_short_ids:
+            return 0
+
+        with conn.cursor() as cur:
+            query = sql.SQL(
+                """
+                DELETE FROM {}.{}
+                WHERE short_id = ANY(%s)
+                """
+            ).format(sql.Identifier(self.schema), sql.Identifier(table))
+            cur.execute(query, (normalized_short_ids,))
+            return int(cur.rowcount or 0)
+
+    def delete_chunks_by_short_ids(
+        self,
+        short_ids: list[str],
+        table: str = "rag_chunks_service_public",
+    ) -> int:
+        with self._connect() as conn:
+            deleted = self._delete_chunks_by_short_ids(conn, short_ids, table=table)
+            conn.commit()
+            return deleted
+
+    def replace_chunks_by_short_ids(
+        self,
+        short_ids: list[str],
+        chunks: list[dict[str, Any]],
+        *,
+        batch_size: int = 1000,
+        table: str = "rag_chunks_service_public",
+    ) -> tuple[int, int]:
+        """Delete targeted Service-Public chunks and insert replacements atomically."""
+        with self._connect() as conn:
+            deleted = self._delete_chunks_by_short_ids(conn, short_ids, table=table)
+            inserted = 0
+            for batch in self._batched_rows(chunks, batch_size):
+                inserted += self._upsert(conn, table, batch, ["hash_id"])
+            conn.commit()
+            return deleted, inserted
 
     def list_fiche_ids(
         self,

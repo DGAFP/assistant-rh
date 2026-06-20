@@ -110,6 +110,42 @@ def test_workflow_dispatch_run_embeddings_adds_embeddings_to_selection(tmp_path:
     ]
 
 
+def test_preview_staging_plan_receives_run_embeddings_input() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-preview-staging.yml").read_text(encoding="utf-8")
+    plan_step = workflow.split("- name: Detect changed data engineering jobs", 1)[1].split(
+        "run: python3 .github/scripts/data_engineering_plan.py",
+        1,
+    )[0]
+
+    assert "INPUT_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}" in plan_step
+    assert "INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_embeddings || false }}" in plan_step
+
+
+def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-promote-prod.yml").read_text(encoding="utf-8")
+    start_step = workflow.split("- name: Start selected Scaleway production jobs", 1)[1]
+
+    assert "run_ingestion:" in workflow
+    assert "wipe_existing_chunks:" in workflow
+    assert "embedding_source:" in workflow
+    assert 'RUN_INGESTION: ${{ github.event_name == \'workflow_dispatch\' && inputs.run_ingestion || false }}' in workflow
+    assert 'WIPE_EXISTING_CHUNKS: ${{ github.event_name == \'workflow_dispatch\' && inputs.wipe_existing_chunks || false }}' in workflow
+    assert 'EMBEDDING_SOURCE: ${{ github.event_name == \'workflow_dispatch\' && inputs.embedding_source || \'all\' }}' in workflow
+    assert '--run-ingestion "${RUN_INGESTION}"' in start_step
+    assert '--wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}"' in start_step
+    assert '--embedding-source "${EMBEDDING_SOURCE}"' in start_step
+
+
+def test_prod_ingestion_workflow_does_not_run_embedding_backfill_on_github_runner() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-prod-ingestion.yml").read_text(encoding="utf-8")
+
+    assert "wipe_existing_chunks:" not in workflow
+    assert "run_embeddings:" not in workflow
+    assert "--wipe-existing-chunks" not in workflow
+    assert "data-ingestion embeddings service-public" not in workflow
+    assert "SCALEWAY_API_KEY" not in workflow
+
+
 def test_workflow_dispatch_all_selects_embeddings_without_running_backfill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     output_path = tmp_path / "github-output.txt"
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
@@ -475,6 +511,367 @@ def test_upsert_and_start_jobs_appends_prod_args_for_production(
     assert scaleway_data_jobs.upsert_and_start_jobs(args) == 0
 
     assert started == [["legifrance", "bulk-dump", "--target-env", "prod", "--delete-remote"]]
+
+
+def test_upsert_and_start_jobs_appends_wipe_existing_chunks_to_service_public_ingestion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "jobs.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "job_name_template": "assistant-rh-{target_env}-{key}",
+                "jobs": [
+                    {
+                        "key": "service-public-medallion",
+                        "domain": "service_public",
+                        "image": "service-public-pipeline",
+                        "description": "Pipeline",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "env_groups": [],
+                        "args": ["service-public", "medallion", "--target-env", "{target_env}"],
+                    },
+                    {
+                        "key": "service-public-ingestion",
+                        "domain": "service_public",
+                        "image": "service-public-ingestion",
+                        "description": "Ingestion",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_ingestion": True,
+                        "env_groups": [],
+                        "args": ["service-public", "ingest", "--target-env", "{target_env}"],
+                    },
+                    {
+                        "key": "embeddings-service-public",
+                        "domain": "embeddings",
+                        "image": "embeddings-job",
+                        "description": "Service-Public embeddings",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_embeddings": True,
+                        "env_groups": [],
+                        "args": ["embeddings", "service-public", "--dsn-env", "SCW_POSTGRES_DSN"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    started: list[list[str]] = []
+
+    monkeypatch.setenv("SCW_DEFAULT_PROJECT_ID", "project-id")
+    monkeypatch.delenv("SCW_DEFAULT_REGION", raising=False)
+    monkeypatch.delenv("SCW_CONTAINER_REGISTRY_NAMESPACE", raising=False)
+    monkeypatch.setattr(scaleway_data_jobs, "list_definitions", lambda project_id, region, *, secrets, dry_run: {})
+    monkeypatch.setattr(scaleway_data_jobs, "create_definition", lambda spec, name, image, project_id, region, *, secrets, dry_run: "new-id")
+    monkeypatch.setattr(
+        scaleway_data_jobs,
+        "start_definition",
+        lambda job_id, spec, command_args, environment, region, *, wait, secrets, dry_run: started.append(command_args),
+    )
+
+    args = SimpleNamespace(
+        config=str(config_path),
+        target_env="staging",
+        image_tag="sha-123",
+        service_public=True,
+        legifrance=False,
+        embeddings=True,
+        run_ingestion=True,
+        run_embeddings=True,
+        wipe_existing_chunks=True,
+        embedding_source="service_public",
+        embedding_only_column="",
+        service_public_fiche_config="config/service_public_fiches.json",
+        legifrance_article_ids_json="config/legifrance_article_cids.json",
+        wait=False,
+        dry_run=False,
+    )
+
+    assert scaleway_data_jobs.upsert_and_start_jobs(args) == 0
+
+    assert started == [
+        ["service-public", "medallion", "--target-env", "staging"],
+        ["service-public", "ingest", "--target-env", "staging", "--wipe-existing-chunks"],
+        ["embeddings", "service-public", "--dsn-env", "SCW_POSTGRES_DSN"],
+    ]
+
+
+def test_upsert_and_start_jobs_rejects_wipe_existing_chunks_without_service_public_backfill(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "jobs.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "job_name_template": "assistant-rh-{target_env}-{key}",
+                "jobs": [
+                    {
+                        "key": "service-public-ingestion",
+                        "domain": "service_public",
+                        "image": "service-public-ingestion",
+                        "description": "Ingestion",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_ingestion": True,
+                        "env_groups": [],
+                        "args": ["service-public", "ingest"],
+                    },
+                    {
+                        "key": "embeddings-service-public",
+                        "domain": "embeddings",
+                        "image": "embeddings-job",
+                        "description": "Service-Public embeddings",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_embeddings": True,
+                        "env_groups": [],
+                        "args": ["embeddings", "service-public"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("SCW_DEFAULT_PROJECT_ID", "project-id")
+    monkeypatch.setattr(scaleway_data_jobs, "list_definitions", lambda project_id, region, *, secrets, dry_run: {})
+
+    args = SimpleNamespace(
+        config=str(config_path),
+        target_env="staging",
+        image_tag="sha-123",
+        service_public=True,
+        legifrance=False,
+        embeddings=False,
+        run_ingestion=True,
+        run_embeddings=False,
+        wipe_existing_chunks=True,
+        embedding_source="service_public",
+        embedding_only_column="",
+        service_public_fiche_config="config/service_public_fiches.json",
+        legifrance_article_ids_json="config/legifrance_article_cids.json",
+        wait=False,
+        dry_run=False,
+    )
+
+    with pytest.raises(RuntimeError, match="Service-Public embeddings backfill"):
+        scaleway_data_jobs.upsert_and_start_jobs(args)
+
+
+def test_upsert_and_start_jobs_runs_service_public_backfill_right_after_wipe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "jobs.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "job_name_template": "assistant-rh-{target_env}-{key}",
+                "jobs": [
+                    {
+                        "key": "service-public-medallion",
+                        "domain": "service_public",
+                        "image": "service-public-pipeline",
+                        "description": "Pipeline",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "env_groups": [],
+                        "args": ["service-public", "medallion"],
+                    },
+                    {
+                        "key": "service-public-ingestion",
+                        "domain": "service_public",
+                        "image": "service-public-ingestion",
+                        "description": "Ingestion",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_ingestion": True,
+                        "env_groups": [],
+                        "args": ["service-public", "ingest"],
+                    },
+                    {
+                        "key": "legifrance-bulk-dump",
+                        "domain": "legifrance",
+                        "image": "legifrance-bulk-dump",
+                        "description": "Legifrance dump",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "env_groups": [],
+                        "args": ["legifrance", "bulk-dump"],
+                    },
+                    {
+                        "key": "legifrance-ingestion",
+                        "domain": "legifrance",
+                        "image": "legifrance-ingestion",
+                        "description": "Legifrance ingestion",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_ingestion": True,
+                        "env_groups": [],
+                        "args": ["legifrance", "ingest"],
+                    },
+                    {
+                        "key": "embeddings-service-public",
+                        "domain": "embeddings",
+                        "image": "embeddings-job",
+                        "description": "Service-Public embeddings",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_embeddings": True,
+                        "env_groups": [],
+                        "args": ["embeddings", "service-public"],
+                    },
+                    {
+                        "key": "embeddings-legifrance",
+                        "domain": "embeddings",
+                        "image": "embeddings-job",
+                        "description": "Legifrance embeddings",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_embeddings": True,
+                        "env_groups": [],
+                        "args": ["embeddings", "legifrance"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    started: list[list[str]] = []
+
+    monkeypatch.setenv("SCW_DEFAULT_PROJECT_ID", "project-id")
+    monkeypatch.delenv("SCW_DEFAULT_REGION", raising=False)
+    monkeypatch.delenv("SCW_CONTAINER_REGISTRY_NAMESPACE", raising=False)
+    monkeypatch.setattr(scaleway_data_jobs, "list_definitions", lambda project_id, region, *, secrets, dry_run: {})
+    monkeypatch.setattr(scaleway_data_jobs, "create_definition", lambda spec, name, image, project_id, region, *, secrets, dry_run: "new-id")
+    monkeypatch.setattr(
+        scaleway_data_jobs,
+        "start_definition",
+        lambda job_id, spec, command_args, environment, region, *, wait, secrets, dry_run: started.append(command_args),
+    )
+
+    args = SimpleNamespace(
+        config=str(config_path),
+        target_env="staging",
+        image_tag="sha-123",
+        service_public=True,
+        legifrance=True,
+        embeddings=True,
+        run_ingestion=True,
+        run_embeddings=True,
+        wipe_existing_chunks=True,
+        embedding_source="all",
+        embedding_only_column="",
+        service_public_fiche_config="config/service_public_fiches.json",
+        legifrance_article_ids_json="config/legifrance_article_cids.json",
+        wait=False,
+        dry_run=False,
+    )
+
+    assert scaleway_data_jobs.upsert_and_start_jobs(args) == 0
+
+    assert started == [
+        ["service-public", "medallion"],
+        ["service-public", "ingest", "--wipe-existing-chunks"],
+        ["embeddings", "service-public"],
+        ["legifrance", "bulk-dump"],
+        ["legifrance", "ingest"],
+        ["embeddings", "legifrance"],
+    ]
+
+
+def test_upsert_and_start_jobs_rejects_wipe_existing_chunks_with_partial_backfill(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "jobs.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "job_name_template": "assistant-rh-{target_env}-{key}",
+                "jobs": [
+                    {
+                        "key": "service-public-ingestion",
+                        "domain": "service_public",
+                        "image": "service-public-ingestion",
+                        "description": "Ingestion",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_ingestion": True,
+                        "env_groups": [],
+                        "args": ["service-public", "ingest"],
+                    },
+                    {
+                        "key": "embeddings-service-public",
+                        "domain": "embeddings",
+                        "image": "embeddings-job",
+                        "description": "Service-Public embeddings",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_embeddings": True,
+                        "env_groups": [],
+                        "args": ["embeddings", "service-public"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("SCW_DEFAULT_PROJECT_ID", "project-id")
+    monkeypatch.setattr(scaleway_data_jobs, "list_definitions", lambda project_id, region, *, secrets, dry_run: {})
+
+    args = SimpleNamespace(
+        config=str(config_path),
+        target_env="staging",
+        image_tag="sha-123",
+        service_public=True,
+        legifrance=False,
+        embeddings=True,
+        run_ingestion=True,
+        run_embeddings=True,
+        wipe_existing_chunks=True,
+        embedding_source="service_public",
+        embedding_only_column="embedding_m3",
+        service_public_fiche_config="config/service_public_fiches.json",
+        legifrance_article_ids_json="config/legifrance_article_cids.json",
+        wait=False,
+        dry_run=False,
+    )
+
+    with pytest.raises(RuntimeError, match="full Service-Public embeddings backfill"):
+        scaleway_data_jobs.upsert_and_start_jobs(args)
 
 
 def test_upsert_and_start_jobs_filters_embeddings_source_and_appends_only_column(

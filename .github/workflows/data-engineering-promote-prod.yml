@@ -31,11 +31,30 @@ on:
           - service_public
           - legifrance
           - embeddings
+      run_ingestion:
+        description: "Ingerer aussi dans la base Scaleway production via les jobs serverless"
+        required: true
+        default: false
+        type: boolean
+      wipe_existing_chunks:
+        description: "Supprimer les chunks Service-Public existants avant re-ingestion (requiert run_embeddings=true et embedding_source=service_public/all)"
+        required: true
+        default: false
+        type: boolean
       run_embeddings:
         description: "Backfill embeddings en plus de la source choisie (implicite si source=embeddings)"
         required: true
         default: false
         type: boolean
+      embedding_source:
+        description: "Source embeddings a backfiller"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - service_public
+          - legifrance
       skip_builds:
         description: "Reutiliser les images prod-latest existantes au lieu de rebuilder"
         required: true
@@ -148,6 +167,9 @@ jobs:
       SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
       SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
       SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
+      RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ingestion || false }}
+      WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}
+      EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_source || 'all' }}
 
     steps:
       - name: Checkout code
@@ -172,8 +194,10 @@ jobs:
             --service-public "${{ needs.plan.outputs.service_public }}" \
             --legifrance "${{ needs.plan.outputs.legifrance }}" \
             --embeddings "${{ needs.plan.outputs.embeddings }}" \
-            --run-ingestion "false" \
+            --run-ingestion "${RUN_INGESTION}" \
+            --wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}" \
             --run-embeddings "${{ needs.plan.outputs.run_embeddings }}" \
+            --embedding-source "${EMBEDDING_SOURCE}" \
             --service-public-fiche-config "config/service_public_fiches.json" \
             --legifrance-article-ids-json "config/legifrance_article_cids.json" \
             --wait
