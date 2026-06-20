@@ -121,6 +121,31 @@ def test_preview_staging_plan_receives_run_embeddings_input() -> None:
     assert "INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_embeddings || false }}" in plan_step
 
 
+def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-promote-prod.yml").read_text(encoding="utf-8")
+    start_step = workflow.split("- name: Start selected Scaleway production jobs", 1)[1]
+
+    assert "run_ingestion:" in workflow
+    assert "wipe_existing_chunks:" in workflow
+    assert "embedding_source:" in workflow
+    assert 'RUN_INGESTION: ${{ github.event_name == \'workflow_dispatch\' && inputs.run_ingestion || false }}' in workflow
+    assert 'WIPE_EXISTING_CHUNKS: ${{ github.event_name == \'workflow_dispatch\' && inputs.wipe_existing_chunks || false }}' in workflow
+    assert 'EMBEDDING_SOURCE: ${{ github.event_name == \'workflow_dispatch\' && inputs.embedding_source || \'all\' }}' in workflow
+    assert '--run-ingestion "${RUN_INGESTION}"' in start_step
+    assert '--wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}"' in start_step
+    assert '--embedding-source "${EMBEDDING_SOURCE}"' in start_step
+
+
+def test_prod_ingestion_workflow_does_not_run_embedding_backfill_on_github_runner() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-prod-ingestion.yml").read_text(encoding="utf-8")
+
+    assert "wipe_existing_chunks:" not in workflow
+    assert "run_embeddings:" not in workflow
+    assert "--wipe-existing-chunks" not in workflow
+    assert "data-ingestion embeddings service-public" not in workflow
+    assert "SCALEWAY_API_KEY" not in workflow
+
+
 def test_workflow_dispatch_all_selects_embeddings_without_running_backfill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     output_path = tmp_path / "github-output.txt"
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
