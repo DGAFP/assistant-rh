@@ -233,7 +233,7 @@ class ServicePublicDbWriter:
             query = sql.SQL(
                 """
                 DELETE FROM {}.{}
-                WHERE UPPER(TRIM(short_id)) = ANY(%s)
+                WHERE short_id = ANY(%s)
                 """
             ).format(sql.Identifier(self.schema), sql.Identifier(table))
             cur.execute(query, (normalized_short_ids,))

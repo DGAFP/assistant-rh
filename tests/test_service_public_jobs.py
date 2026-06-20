@@ -664,7 +664,11 @@ def test_db_writer_deletes_service_public_chunks_by_short_id(monkeypatch: pytest
 
     assert writer.delete_chunks_by_short_ids(["f32513", "F32513", " F12163 "]) == 3
     assert calls["params"] == (["F12163", "F32513"],)
-    assert "rag_chunks_service_public" in repr(calls["query"])
+    query_text = " ".join(repr(calls["query"]).split())
+    assert "rag_chunks_service_public" in query_text
+    assert "short_id = ANY" in query_text
+    assert "UPPER" not in query_text
+    assert "TRIM" not in query_text
     assert calls["committed"] is True
 
 
