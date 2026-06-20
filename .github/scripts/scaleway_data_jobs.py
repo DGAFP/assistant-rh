@@ -278,6 +278,11 @@ def validate_wipe_existing_chunks_selection(selected_specs: list[dict[str, Any]]
     keys = {str(spec.get("key") or "") for spec in selected_specs}
     if "service-public-ingestion" not in keys:
         return
+    if str(getattr(args, "embedding_only_column", "") or "").strip():
+        raise RuntimeError(
+            "--wipe-existing-chunks requires a full Service-Public embeddings backfill: "
+            "do not set --embedding-only-column."
+        )
     if "embeddings-service-public" in keys:
         return
 
@@ -285,6 +290,26 @@ def validate_wipe_existing_chunks_selection(selected_specs: list[dict[str, Any]]
         "--wipe-existing-chunks requires selecting the Service-Public embeddings backfill too: "
         "set run_embeddings=true and embedding_source=service_public or all."
     )
+
+
+def order_specs_for_wipe_existing_chunks(selected_specs: list[dict[str, Any]], args: argparse.Namespace) -> list[dict[str, Any]]:
+    if not getattr(args, "wipe_existing_chunks", False):
+        return selected_specs
+
+    backfill_spec = next((spec for spec in selected_specs if spec.get("key") == "embeddings-service-public"), None)
+    has_ingestion = any(spec.get("key") == "service-public-ingestion" for spec in selected_specs)
+    if backfill_spec is None or not has_ingestion:
+        return selected_specs
+
+    ordered_specs: list[dict[str, Any]] = []
+    for spec in selected_specs:
+        key = spec.get("key")
+        if key == "embeddings-service-public":
+            continue
+        ordered_specs.append(spec)
+        if key == "service-public-ingestion":
+            ordered_specs.append(backfill_spec)
+    return ordered_specs
 
 
 def start_definition(
@@ -360,6 +385,7 @@ def upsert_and_start_jobs(args: argparse.Namespace) -> int:
     definitions = list_definitions(project_id, region, secrets=secrets, dry_run=args.dry_run)
     selected_specs = [spec for spec in config["jobs"] if should_run(spec, args)]
     validate_wipe_existing_chunks_selection(selected_specs, args)
+    selected_specs = order_specs_for_wipe_existing_chunks(selected_specs, args)
 
     if not selected_specs:
         print("No Scaleway data engineering job selected.")
