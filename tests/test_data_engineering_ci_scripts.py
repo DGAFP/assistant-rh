@@ -110,6 +110,17 @@ def test_workflow_dispatch_run_embeddings_adds_embeddings_to_selection(tmp_path:
     ]
 
 
+def test_preview_staging_plan_receives_run_embeddings_input() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-preview-staging.yml").read_text(encoding="utf-8")
+    plan_step = workflow.split("- name: Detect changed data engineering jobs", 1)[1].split(
+        "run: python3 .github/scripts/data_engineering_plan.py",
+        1,
+    )[0]
+
+    assert "INPUT_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}" in plan_step
+    assert "INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_embeddings || false }}" in plan_step
+
+
 def test_workflow_dispatch_all_selects_embeddings_without_running_backfill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     output_path = tmp_path / "github-output.txt"
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")

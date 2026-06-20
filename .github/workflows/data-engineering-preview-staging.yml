@@ -108,6 +108,7 @@ jobs:
         env:
           GITHUB_EVENT_BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           INPUT_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
+          INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_embeddings || false }}
         run: python3 .github/scripts/data_engineering_plan.py
 
   build-staging-images:
