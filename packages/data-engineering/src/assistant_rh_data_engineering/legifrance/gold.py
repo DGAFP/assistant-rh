@@ -4,10 +4,40 @@ import hashlib
 import re
 from typing import Any
 
-from ..service_public.qna_chunking import chunk_markdown_like_notebook
 from ..utils.gold import GoldBundle, GoldRepository, build_embedders
 from ..utils.helpers import utc_now_iso
 from .config import EmbeddingConfig, GoldConfig
+
+_LEGACY_PAGE_MARKER_RE = re.compile(r"^\[PAGE\s+\d+\]$", re.IGNORECASE)
+_LEGACY_PAGE_COUNT_RE = re.compile(
+    r"^\d+\s+sur\s+\d+(?:\s+\d{1,2}/\d{1,2}/\d{4},\s*\d{1,2}:\d{2})?$",
+    re.IGNORECASE,
+)
+_LEGACY_LEGIFRANCE_URL_RE = re.compile(r"https?://www\.legifrance\.gouv\.fr/\S+", re.IGNORECASE)
+_LEGAL_ARTICLE_HEADING_RE = re.compile(
+    r"^(Article|Art\.)\s+"
+    r"(?P<number>"
+    r"(?:[A-Z]{1,4}\.?\s*)?\d+(?:[-‑–]\d+)*(?:\s*(?:bis|ter|quater|quinquies|sexies|septies|octies|nonies|decies))?"
+    r"|1er"
+    r")"
+    r"(?:\s*\([^)]{1,80}\))?"
+    r"\s*$",
+    re.IGNORECASE,
+)
+_LEGAL_CONTEXT_HEADING_RE = re.compile(
+    r"^(?:#{1,6}\s*)?"
+    r"(?P<kind>Livre|Titre|Chapitre|Section|Sous-section|Paragraphe|Annexe)\b",
+    re.IGNORECASE,
+)
+_LEGAL_CONTEXT_LEVELS = {
+    "livre": 1,
+    "titre": 2,
+    "chapitre": 3,
+    "section": 4,
+    "sous-section": 5,
+    "paragraphe": 6,
+    "annexe": 3,
+}
 
 
 def _hard_wrap(text: str, max_chars: int) -> list[str]:
@@ -62,6 +92,153 @@ def split_legal_chunks(text: str, max_chars: int, min_chars: int) -> list[str]:
         else:
             merged.append(chunk)
     return merged
+
+
+def _normalize_legacy_heading(line: str) -> str:
+    return re.sub(r"^#{1,6}\s+", "", line).strip()
+
+
+def _is_legacy_export_residue(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if _LEGACY_PAGE_MARKER_RE.match(stripped):
+        return True
+    if _LEGACY_PAGE_COUNT_RE.match(stripped):
+        return True
+    if stripped.lower() == "légifrance":
+        return True
+    return bool(_LEGACY_LEGIFRANCE_URL_RE.search(stripped))
+
+
+def clean_legacy_legal_text(text: str) -> str:
+    lines: list[str] = []
+    for raw_line in (text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = raw_line.strip()
+        if _is_legacy_export_residue(line):
+            continue
+        lines.append(line)
+    cleaned = "\n".join(lines).strip()
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned
+
+
+def _legal_context_level(line: str) -> int | None:
+    match = _LEGAL_CONTEXT_HEADING_RE.match(line)
+    if not match:
+        return None
+    return _LEGAL_CONTEXT_LEVELS.get(match.group("kind").lower())
+
+
+def _build_legacy_section_path(source_title: str, context: list[tuple[int, str]], heading: str | None) -> str:
+    parts = [source_title.strip()]
+    parts.extend(title for _, title in context if title)
+    if heading:
+        parts.append(heading)
+    return " > ".join(dict.fromkeys(part for part in parts if part))
+
+
+def _split_legacy_legal_blocks(text: str, source_title: str) -> list[dict[str, Any]]:
+    context: list[tuple[int, str]] = []
+    pending_lines: list[str] = []
+    current_heading: str | None = None
+    current_lines: list[str] = []
+    blocks: list[dict[str, Any]] = []
+
+    def flush_current() -> None:
+        nonlocal current_heading, current_lines
+        block_text = "\n".join(line for line in current_lines if line is not None).strip()
+        if block_text:
+            blocks.append(
+                {
+                    "heading": current_heading,
+                    "section_path": _build_legacy_section_path(source_title, context, current_heading),
+                    "text": block_text,
+                }
+            )
+        current_heading = None
+        current_lines = []
+
+    for raw_line in text.split("\n"):
+        line = raw_line.strip()
+        if not line:
+            if current_lines and current_lines[-1] != "":
+                current_lines.append("")
+            elif pending_lines and pending_lines[-1] != "":
+                pending_lines.append("")
+            continue
+
+        article_match = _LEGAL_ARTICLE_HEADING_RE.match(line)
+        if article_match:
+            flush_current()
+            current_heading = _normalize_legacy_heading(line)
+            current_lines = [current_heading, *pending_lines]
+            pending_lines = []
+            continue
+
+        context_level = _legal_context_level(line)
+        if context_level is not None:
+            flush_current()
+            heading = _normalize_legacy_heading(line)
+            context = [(level, title) for level, title in context if level < context_level]
+            context.append((context_level, heading))
+            pending_lines = []
+            continue
+
+        if current_heading is None:
+            pending_lines.append(line)
+        else:
+            current_lines.append(line)
+
+    flush_current()
+    if not blocks:
+        fallback_text = "\n".join(line for line in pending_lines if line is not None).strip()
+        if fallback_text:
+            blocks.append(
+                {
+                    "heading": None,
+                    "section_path": _build_legacy_section_path(source_title, context, None),
+                    "text": fallback_text,
+                }
+            )
+    return blocks
+
+
+def chunk_legacy_legal_text(
+    text: str,
+    source_name: str,
+    thematique: str = "",
+    max_chars: int = 1200,
+    min_chars: int = 350,
+) -> list[dict[str, Any]]:
+    source_title = source_name.replace(" - Légifrance.txt", "").replace(" - Légifrance.txt", "").replace(".txt", "")
+    cleaned = clean_legacy_legal_text(text)
+    blocks = _split_legacy_legal_blocks(cleaned, source_title or source_name)
+    rows: list[dict[str, Any]] = []
+    for block in blocks:
+        heading = block.get("heading")
+        role = "LEGAL_ARTICLE" if heading else "LEGAL_TEXT"
+        qa_id = hashlib.sha1(f"{source_name}|{block['section_path']}|{heading or ''}".encode("utf-8")).hexdigest()
+        for part_index, part in enumerate(split_legal_chunks(block["text"], max_chars=max_chars, min_chars=min_chars)):
+            chunk_text = part.strip()
+            if heading and not chunk_text.startswith(str(heading)):
+                contextualized = f"{heading}\n\n{chunk_text}"
+                if len(contextualized) <= max_chars:
+                    chunk_text = contextualized
+            rows.append(
+                {
+                    "qa_id": qa_id,
+                    "parent_qa_id": qa_id if part_index else None,
+                    "role": role,
+                    "section_path": block["section_path"],
+                    "chunk_index": len(rows),
+                    "text": chunk_text,
+                    "source_name": source_name,
+                    "lang": "fr",
+                    "thematique": thematique,
+                }
+            )
+    return rows
 
 
 class LegifranceGoldBuilder:
@@ -155,12 +332,12 @@ class LegifranceGoldBuilder:
         if not source_name or not raw_text:
             return []
 
-        raw_chunks = chunk_markdown_like_notebook(
+        raw_chunks = chunk_legacy_legal_text(
             raw_text,
             source_name=source_name,
             thematique=thematique,
             max_chars=self.gold_config.max_chunk_chars,
-            overlap=max(200, self.gold_config.chunk_overlap_chars),
+            min_chars=self.gold_config.min_chunk_chars,
         )
         section_id = sections[0]["section_id"] if len(sections) == 1 else None
         created_at = utc_now_iso()
@@ -232,10 +409,7 @@ class LegifranceGoldBuilder:
         thematique = metadata.get("category") or metadata.get("thematique") or ""
         article_id = str(metadata.get("cid") or metadata.get("article_id") or short_id)
         full_sections_title = str(
-            metadata.get("full_sections_title")
-            or metadata.get("subtitles")
-            or metadata.get("section_parent_titre")
-            or ""
+            metadata.get("full_sections_title") or metadata.get("subtitles") or metadata.get("section_parent_titre") or ""
         ).strip()
         created_at = utc_now_iso()
         chunks: list[dict[str, Any]] = []
@@ -244,9 +418,7 @@ class LegifranceGoldBuilder:
             for index, body in enumerate(self._build_article_chunk_bodies(section)):
                 chunk_text = self._build_article_chunk_text(document, metadata, body)
                 chunk_id = self._build_article_chunk_id(article_id, index)
-                qa_id = hashlib.sha1(
-                    f"{short_id}|{section.get('heading_path') or section.get('heading') or ''}|{index}".encode("utf-8")
-                ).hexdigest()
+                qa_id = hashlib.sha1(f"{short_id}|{section.get('heading_path') or section.get('heading') or ''}|{index}".encode("utf-8")).hexdigest()
                 link_citations = self._normalize_legacy_links(metadata.get("lien_citations"))
                 link_modifications = self._normalize_legacy_links(metadata.get("lien_modifications"))
                 link_concordes = self._normalize_legacy_links(metadata.get("lien_concordes"))

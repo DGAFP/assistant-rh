@@ -77,6 +77,53 @@ def test_local_raw_pipeline_projects_articles_to_dgafp_and_legacy_texts_to_legif
     assert all(row.get("number") is None for row in modern_rows)
 
 
+def test_legacy_texts_use_legal_chunking_and_drop_export_residue(tmp_path: Path) -> None:
+    pipeline = make_pipeline(tmp_path)
+
+    txt_path = pipeline.bronze_repo.legacy_text_sources_dir / "decret-legacy.txt"
+    txt_path.write_text(
+        "\n".join(
+            [
+                "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales a... https://www.legifrance.gouv.fr/loda/id/JORFTEXT000000699956",
+                "6 sur 45 09/10/2025, 16:01",
+                "[PAGE 7]",
+                "Titre Ier bis : Dispositions propres au contrat de projet (Articles 2-4 à 2-12)",
+                "Modifié par Décret n°2024-1038 du 6 novembre 2024 - art. 10",
+                "Article 2-2 (abrogé)",
+                "Le contrat de projet est établi par écrit.",
+                "755-10 du code de la sécurité sociale.",
+                "",
+                "Article 2-3",
+                "Lorsque le contrat de projet a été conclu pour une durée inférieure à six ans, il peut être renouvelé.",
+                "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales a... https://www.legifrance.gouv.fr/loda/id/JORFTEXT000000699956",
+                "7 sur 45 09/10/2025, 16:01",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    bronze_assets = pipeline.run_bronze()
+    silver_bundles = pipeline.run_silver(bronze_assets)
+    gold_bundles = pipeline.run_gold(silver_bundles)
+    gold_chunks = [chunk for bundle in gold_bundles for chunk in bundle.chunks]
+    modern_rows = LegifranceDbWriter.project_modern_chunks(gold_chunks)
+
+    assert len(bronze_assets) == 1
+    assert [row["role"] for row in modern_rows] == ["LEGAL_ARTICLE", "LEGAL_ARTICLE"]
+    assert all(row["role"] != "Q_ONLY" for row in modern_rows)
+    assert all("755-10 du code de la sécurité sociale" not in row["section_path"] for row in modern_rows)
+    assert modern_rows[0]["section_path"].endswith(
+        "Titre Ier bis : Dispositions propres au contrat de projet (Articles 2-4 à 2-12) > Article 2-2 (abrogé)"
+    )
+    assert modern_rows[1]["section_path"].endswith("Titre Ier bis : Dispositions propres au contrat de projet (Articles 2-4 à 2-12) > Article 2-3")
+
+    combined_text = "\n".join(row["chunk_text"] for row in modern_rows)
+    assert "[PAGE" not in combined_text
+    assert "sur 45" not in combined_text
+    assert "legifrance.gouv.fr" not in combined_text
+    assert "755-10 du code de la sécurité sociale." in combined_text
+
+
 def test_local_raw_pipeline_loads_articles_from_xml_dump(tmp_path: Path) -> None:
     pipeline = make_pipeline(tmp_path)
     xml_dir = pipeline.bronze_repo.bulk_articles_dir / "Freemium_legi_global_20250713-140000"
@@ -197,9 +244,7 @@ def test_non_code_articles_use_loda_urls_and_historical_chunk_format(tmp_path: P
     assert legacy_rows[0]["title"] == "Décret n°2002-141"
     assert legacy_rows[0]["full_title"].startswith("Décret n°2002-141 du 4 février 2002")
     assert legacy_rows[0]["text"] == "Les services du ministère peuvent déroger aux garanties minimales."
-    assert legacy_rows[0]["chunk_text"].startswith(
-        "Décret n°2002-141 du 4 février 2002 portant dérogations"
-    )
+    assert legacy_rows[0]["chunk_text"].startswith("Décret n°2002-141 du 4 février 2002 portant dérogations")
     assert "\nArticle 1\nStatut: VIGUEUR\n\nLes services du ministère" in legacy_rows[0]["chunk_text"]
     assert legacy_rows[0]["end_date"] is None
     assert legacy_rows[0]["ministry"] is None
