@@ -45,13 +45,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         dest="check_only",
         action="store_true",
-        help="Audit read-only: report embedding coverage without loading models, calling APIs, or writing to DB.",
+        help=(
+            "Read-only audit: open a connection (autocommit), run aggregate SELECTs, "
+            "and report embedding coverage. Does not load models, call APIs, or write to DB."
+        ),
     )
     parser.add_argument(
         "--coverage-min-pct",
         type=float,
         default=None,
-        help="Coverage threshold used by --check-only. Defaults to 100.",
+        help="Coverage threshold used by --check-only (compared against raw non_null/total, not rounded). Defaults to 100.",
     )
     return parser
 
@@ -102,9 +105,20 @@ def filter_table_specs(
     for spec in table_specs:
         if only_table and spec["table"] != only_table:
             continue
-        embeddings = spec.get("embeddings") or []
-        if only_column:
-            embeddings = [embedding for embedding in embeddings if str(embedding.get("column") or "").strip() == only_column]
+        embeddings: list[dict[str, Any]] = []
+        for embedding in spec.get("embeddings") or []:
+            column = str(embedding.get("column") or "").strip()
+            algorithm = str(embedding.get("algorithm") or "").strip()
+            if not column or not algorithm:
+                logger.warning(
+                    "Skipping embedding in %s: missing column or algorithm (%r).",
+                    spec.get("table"),
+                    embedding,
+                )
+                continue
+            if only_column and column != only_column:
+                continue
+            embeddings.append(embedding)
         if embeddings:
             filtered.append({**spec, "embeddings": embeddings})
     return filtered
@@ -147,11 +161,14 @@ def audit_embedding_coverage(
                         """
                         SELECT
                             COUNT(*) AS total,
-                            COUNT({col}) FILTER (WHERE {col} IS NOT NULL) AS non_null,
+                            COUNT({col}) AS non_null,
                             COUNT(*) FILTER (
-                                WHERE {col} IS NULL AND COALESCE({text_col}, '') <> ''
+                                WHERE {col} IS NULL
+                                  AND LENGTH(TRIM(COALESCE({text_col}, ''))) > 0
                             ) AS missing_with_text,
-                            COUNT(*) FILTER (WHERE COALESCE({text_col}, '') = '') AS empty_text
+                            COUNT(*) FILTER (
+                                WHERE LENGTH(TRIM(COALESCE({text_col}, ''))) = 0
+                            ) AS empty_text
                         FROM {schema}.{table}
                         """
                     ).format(
@@ -167,7 +184,8 @@ def audit_embedding_coverage(
                 "non_null": non_null,
                 "missing_with_text": missing_with_text,
                 "empty_text": empty_text,
-                "coverage_pct": round(100.0 * non_null / total, 2) if total else 100.0,
+                "is_empty": total == 0,
+                "coverage_pct": round(100.0 * non_null / total, 2) if total else 0.0,
             }
         report["tables"][table] = table_summary
     return report
@@ -178,9 +196,14 @@ def evaluate_coverage_report(report: dict[str, Any], *, coverage_min_pct: float 
     problems = [f"Table absente: {table}" for table in report.get("missing_tables", [])]
     for table, columns in (report.get("tables") or {}).items():
         for column, stats in columns.items():
-            coverage_pct = float(stats.get("coverage_pct") or 0.0)
-            if coverage_pct < threshold:
-                problems.append(f"{table}.{column}: couverture {coverage_pct}% < seuil {threshold}%")
+            total = int(stats.get("total") or 0)
+            non_null = int(stats.get("non_null") or 0)
+            if total == 0:
+                problems.append(f"{table}.{column}: table vide (0 ligne), aucune couverture possible")
+                continue
+            raw_pct = 100.0 * non_null / total
+            if raw_pct < threshold:
+                problems.append(f"{table}.{column}: couverture {round(raw_pct, 2)}% < seuil {threshold}%")
     return (1 if problems else 0), problems
 
 
@@ -402,7 +425,14 @@ def main() -> int:
     table_specs = load_table_specs(config_path)
     table_specs = filter_table_specs(table_specs, only_table=args.only_table, only_column=args.only_column)
     if not table_specs:
-        raise SystemExit("Aucune table sélectionnée pour le backfill embeddings.")
+        filters_desc = (
+            ", ".join(f"{name}={value!r}" for name, value in (("--only-table", args.only_table), ("--only-column", args.only_column)) if value)
+            or "(no filter)"
+        )
+        raise SystemExit(
+            f"Aucune table sélectionnée pour le backfill embeddings (filtres: {filters_desc}). "
+            f"Vérifier --only-table / --only-column par rapport au manifest {config_path}."
+        )
 
     summary: dict[str, Any] = {
         "config": str(config_path),
@@ -410,13 +440,13 @@ def main() -> int:
         "only_table": args.only_table,
         "only_column": args.only_column,
         "check_only": bool(args.check_only),
-        "tables": {},
     }
     with psycopg.connect(dsn) as conn:
         if args.check_only:
+            conn.autocommit = True
             report = audit_embedding_coverage(conn, args.schema, table_specs)
             exit_code, problems = evaluate_coverage_report(report, coverage_min_pct=args.coverage_min_pct)
-            summary.update(report)
+            summary["coverage"] = report
             summary["problems"] = problems
             summary["exit_code"] = exit_code
             print(json.dumps(summary, ensure_ascii=False, indent=2))
@@ -424,13 +454,12 @@ def main() -> int:
                 logger.warning(problem)
             return exit_code
 
+        summary["tables"] = {}
         for table_spec in table_specs:
             table_summary: dict[str, int] = {}
             for embedding_spec in table_spec["embeddings"]:
                 embedding_column = str(embedding_spec.get("column") or "").strip()
                 algorithm = str(embedding_spec.get("algorithm") or "").strip().lower()
-                if not embedding_column or not algorithm:
-                    continue
                 if algorithm in {"m3", "embedding_m3", "bge-m3"}:
                     table_summary[embedding_column] = backfill_m3(
                         conn,
