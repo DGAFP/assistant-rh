@@ -185,8 +185,12 @@ def build_log_row(
     refs_injected = len(getattr(pipeline._context_builder, "last_resolved_refs", {}) or {})
     resolved_refs = getattr(pipeline._context_builder, "last_resolved_refs", {}) or {}
 
-    # Query processing results
-    needs_legal_llm = qr.needs_legal_search
+    # Query processing results. `needs_legal_search` is the merged decision
+    # (LLM ∪ heuristic). `needs_legal_search_llm` is the original LLM signal
+    # (None when classify failed or gating was off). Log both so dashboards
+    # can distinguish LLM-driven from heuristic-driven decisions.
+    needs_legal_final = qr.needs_legal_search
+    needs_legal_llm = qr.needs_legal_search_llm
     query_for_retrieval = qr.query_for_retrieval
     intent = qr.intent_reason or ""
     should_proceed = qr.should_proceed
@@ -254,6 +258,7 @@ def build_log_row(
             "v3_intent_gating_enabled": config.query_processor.enable_intent_gating,
             "v3_should_proceed": should_proceed,
             "v3_needs_legal_llm": needs_legal_llm,
+            "v3_needs_legal_final": needs_legal_final,
             "v3_detected_theme": detected_theme or "",
             "v3_reformulated_query": reformulated_query or "",
             "v3_was_enriched": was_enriched,

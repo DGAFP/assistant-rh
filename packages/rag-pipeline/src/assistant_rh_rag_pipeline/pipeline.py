@@ -14,6 +14,7 @@ Wires together all pipeline stages in a single ``run`` / ``run_stream`` call:
 
 Dependencies: all internal to ``rag_v3_clean``.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -384,19 +385,14 @@ class Pipeline:
         attempts.append(retry_attempt)
         retry_has_context = bool(retry_attempt.context_items_ref)
         self._set_latest_attempt_state(state, retry_attempt, attempts)
-        state.stage_refs["selector_retry_succeeded"] = (
-            retry_has_context and not retry_attempt.selector_all_rejected
-        )
+        state.stage_refs["selector_retry_succeeded"] = retry_has_context and not retry_attempt.selector_all_rejected
         # If the retry also failed to produce context, preserve the no-answer
         # signal so run()/run_stream() takes the no-answer path regardless
         # of whether the retry selector explicitly rejected or just returned
         # empty sections.
         if not retry_has_context:
             state.stage_refs["selector_all_rejected"] = True
-            state.stage_refs["selector_rejection_reason"] = (
-                retry_attempt.selector_rejection_reason
-                or initial_attempt.selector_rejection_reason
-            )
+            state.stage_refs["selector_rejection_reason"] = retry_attempt.selector_rejection_reason or initial_attempt.selector_rejection_reason
         return state.stage_refs.get("_latest_context_items", [])
 
     def _run_retrieval_attempt(
@@ -451,12 +447,8 @@ class Pipeline:
         diagnostics = aggregation_result.diagnostics
         state.timing[f"aggregation_{name}_ms"] = (time.time() - t0) * 1000
 
-        attempt.sections_before_rerank = int(
-            getattr(diagnostics, "sections_before_rerank", 0) or 0
-        )
-        attempt.sections_after_rerank = int(
-            getattr(diagnostics, "sections_after_rerank", 0) or 0
-        )
+        attempt.sections_before_rerank = int(getattr(diagnostics, "sections_before_rerank", 0) or 0)
+        attempt.sections_after_rerank = int(getattr(diagnostics, "sections_after_rerank", 0) or 0)
         attempt.reranker_status = str(getattr(diagnostics, "reranker_status", "") or "")
         attempt.reranker_error = str(getattr(diagnostics, "reranker_error", "") or "")
         attempt.aggregated_sections = [
@@ -539,18 +531,10 @@ class Pipeline:
         )
         state.aggregation_diagnostics = diagnostics
 
-        state.timing["retrieval_ms"] = sum(
-            state.timing.get(f"retrieval_{attempt.name}_ms", 0.0) for attempt in attempts
-        )
-        state.timing["aggregation_ms"] = sum(
-            state.timing.get(f"aggregation_{attempt.name}_ms", 0.0) for attempt in attempts
-        )
-        state.timing["selector_ms"] = sum(
-            state.timing.get(f"selector_{attempt.name}_ms", 0.0) for attempt in attempts
-        )
-        state.timing["context_build_ms"] = sum(
-            state.timing.get(f"context_build_{attempt.name}_ms", 0.0) for attempt in attempts
-        )
+        state.timing["retrieval_ms"] = sum(state.timing.get(f"retrieval_{attempt.name}_ms", 0.0) for attempt in attempts)
+        state.timing["aggregation_ms"] = sum(state.timing.get(f"aggregation_{attempt.name}_ms", 0.0) for attempt in attempts)
+        state.timing["selector_ms"] = sum(state.timing.get(f"selector_{attempt.name}_ms", 0.0) for attempt in attempts)
+        state.timing["context_build_ms"] = sum(state.timing.get(f"context_build_{attempt.name}_ms", 0.0) for attempt in attempts)
 
     def _build_result(
         self,
@@ -570,13 +554,15 @@ class Pipeline:
             if key in seen:
                 continue
             seen.add(key)
-            sources.append({
-                "heading": item.heading,
-                "publisher": item.publisher,
-                "document_title": item.document_title,
-                "document_url": item.document_url,
-                "score": item.score,
-            })
+            sources.append(
+                {
+                    "heading": item.heading,
+                    "publisher": item.publisher,
+                    "document_title": item.document_title,
+                    "document_url": item.document_url,
+                    "score": item.score,
+                }
+            )
 
         metadata: Dict[str, Any] = {
             "original_query": query,
@@ -588,6 +574,7 @@ class Pipeline:
             "enriched_query": qr.enriched_query,
             "query_for_retrieval": qr.query_for_retrieval,
             "needs_legal_search": qr.needs_legal_search,
+            "needs_legal_search_llm": qr.needs_legal_search_llm,
             "tables_searched": state.stage_refs.get("tables_searched", []),
             "selector_enabled": self.config.selector.enabled,
             "generator_model": self.config.generation.model,
@@ -705,6 +692,7 @@ class Pipeline:
                         "intent": qr.intent.value,
                         "theme": qr.theme,
                         "needs_legal_search": qr.needs_legal_search,
+                        "needs_legal_search_llm": qr.needs_legal_search_llm,
                         "should_proceed": qr.should_proceed,
                         "processed_query": qr.processed_query,
                         "enriched_query": qr.enriched_query,
@@ -734,11 +722,7 @@ class Pipeline:
                 },
                 "section-aggregator": {
                     "input": {
-                        "retrieved_chunk_ids": [
-                            item.get("chunk_id")
-                            for item in retrieved_chunks
-                            if isinstance(item, dict)
-                        ],
+                        "retrieved_chunk_ids": [item.get("chunk_id") for item in retrieved_chunks if isinstance(item, dict)],
                     },
                     "output": {
                         "aggregated_sections": [
@@ -758,11 +742,7 @@ class Pipeline:
                 "context-selector": {
                     "input": {
                         "query": qr.query_for_retrieval,
-                        "aggregated_section_ids": [
-                            item.get("section_id")
-                            for item in aggregated_sections
-                            if isinstance(item, dict)
-                        ],
+                        "aggregated_section_ids": [item.get("section_id") for item in aggregated_sections if isinstance(item, dict)],
                     },
                     "output": {
                         "selector_enabled": bool(metadata.get("selector_enabled", False)),
@@ -859,6 +839,7 @@ class Pipeline:
                 "enriched": qr.enriched_query,
                 "retrieval": qr.query_for_retrieval,
                 "needs_legal_search": qr.needs_legal_search,
+                "needs_legal_search_llm": qr.needs_legal_search_llm,
             },
             "retrieval": {
                 "tables_searched": metadata.get("tables_searched", []),
@@ -882,8 +863,7 @@ class Pipeline:
                 "raw_response": metadata.get("selector_raw_response", ""),
             },
             "selector_retry": {
-                "enabled": metadata.get("selector_enabled", False)
-                and self.config.retrieval.enable_selector_retry,
+                "enabled": metadata.get("selector_enabled", False) and self.config.retrieval.enable_selector_retry,
                 "triggered": metadata.get("selector_retry_triggered", False),
                 "succeeded": metadata.get("selector_retry_succeeded", False),
                 "search_mode": self.config.retrieval.selector_retry_search_mode.value,

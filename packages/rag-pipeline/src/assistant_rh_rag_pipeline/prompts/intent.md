@@ -88,10 +88,14 @@ Si des **acronymes RH** ont été détectés dans la question, tu dois les inté
 ### 4. Détecte le besoin de recherche juridique
 
 `needs_legal_search = true` si la question demande explicitement :
-- Une référence légale, un article de loi, un décret, une circulaire
+- Un article numéroté (« article L. 132-1 », « article 3-2 », « articles R7-2 »)
+- Un texte qualifié : un décret nommé/numéroté (« décret n° 86-83 », « décret du 17 janvier 1986 »), un arrêté qualifié (« arrêté ministériel », « arrêté du … »), une circulaire, une ordonnance, la jurisprudence
+- Une loi qualifiée (« loi n° 84-16 », « loi du 26 janvier 1984 », « loi organique », « loi de finances ») — pas le mot « loi » seul utilisé idiomatiquement (« la loi du plus fort »)
 - Le fondement juridique ou la base légale d'une règle
-- Une citation du Code de la fonction publique (CGFP)
-- Une preuve réglementaire ("selon quel texte ?", "c'est écrit où ?")
+- Une citation du Code de la fonction publique (CGFP), Code du travail, Code de la sécurité sociale
+- Une preuve réglementaire (« selon quel texte ? », « c'est écrit où ? »)
+
+Important : `needs_legal_search` reste `false` lorsque l'utilisateur évoque la loi/le décret de façon idiomatique sans demander la référence (« la loi prévoit-elle… » ne suffit pas — il faut un texte qualifié ou une demande explicite de référence).
 
 ### 5. Détecte une source spécifique demandée
 

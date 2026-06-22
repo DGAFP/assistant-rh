@@ -18,6 +18,38 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
+def _coerce_bool(value: Any) -> bool | None:
+    """Normalize a metadata flag to a real bool.
+
+    Tolerates JSON-stringified booleans ("true"/"false") that can appear when
+    metadata round-trips through a loosely-typed transport — a plain
+    ``bool("false")`` would wrongly be ``True``. Returns None for missing or
+    unrecognized values so the caller can treat it as "not comparable".
+    """
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in ("true", "1", "yes"):
+            return True
+        if v in ("false", "0", "no", ""):
+            return False
+    return None
+
+
+def _bool_match(a: Any, b: Any) -> bool | None:
+    """Three-state equality on two boolean-ish flags; None if either is absent."""
+    ca = _coerce_bool(a)
+    cb = _coerce_bool(b)
+    if ca is None or cb is None:
+        return None
+    return ca == cb
+
+
 def normalize_tokens(text: str) -> list[str]:
     """Normalize answer text into lowercase whitespace tokens."""
     return (text or "").lower().split()
@@ -68,6 +100,10 @@ class QueryConformance:
     intent_match: bool | None
     theme_match: bool | None
     needs_legal_search_match: bool | None
+    # LLM-only comparison: Python's pre-heuristic `needs_legal_search_llm`
+    # vs Mastra's (LLM-only) `needs_legal_search`. Separates LLM agreement
+    # from heuristic-driven divergence.
+    needs_legal_search_llm_match: bool | None
     retrieval_overlap_topk: float | None
     section_overlap_topk: float | None
     context_overlap_topk: float | None
@@ -114,11 +150,19 @@ def compare_query_runs(
     ca_theme = ca_meta.get("theme")
     theme_match = None if py_theme is None or ca_theme is None else py_theme == ca_theme
 
-    py_needs_legal = py_meta.get("needs_legal_search")
     ca_needs_legal = ca_meta.get("needs_legal_search")
-    needs_legal_search_match = (
-        None if py_needs_legal is None or ca_needs_legal is None else bool(py_needs_legal) == bool(ca_needs_legal)
-    )
+    # End-to-end (merged) gating parity: Python's FINAL needs_legal_search
+    # (LLM ∪ deterministic heuristic) vs the candidate's. Against an LLM-only
+    # candidate (Mastra has no heuristic) a mismatch here legitimately reflects
+    # heuristic-driven divergence, NOT an LLM disagreement — read
+    # needs_legal_search_llm_match below to isolate whether the underlying
+    # classifiers actually disagree.
+    needs_legal_search_match = _bool_match(py_meta.get("needs_legal_search"), ca_needs_legal)
+
+    # LLM-only parity: Python's pre-heuristic decision vs the candidate's. This
+    # factors out the Python guardrail so the metric tracks classifier agreement
+    # rather than dropping every time the heuristic forces a True the LLM didn't.
+    needs_legal_search_llm_match = _bool_match(py_meta.get("needs_legal_search_llm"), ca_needs_legal)
 
     retrieval_overlap_topk = ranked_overlap_jaccard(
         py_meta.get("retrieved_chunks") or [],
@@ -152,6 +196,7 @@ def compare_query_runs(
         intent_match=intent_match,
         theme_match=theme_match,
         needs_legal_search_match=needs_legal_search_match,
+        needs_legal_search_llm_match=needs_legal_search_llm_match,
         retrieval_overlap_topk=retrieval_overlap_topk,
         section_overlap_topk=section_overlap_topk,
         context_overlap_topk=context_overlap_topk,
@@ -186,6 +231,7 @@ def aggregate_conformance(items: list[QueryConformance]) -> dict[str, Any]:
         "intent_match_rate": _match_rate([i.intent_match for i in items]),
         "theme_match_rate": _match_rate([i.theme_match for i in items]),
         "needs_legal_search_match_rate": _match_rate([i.needs_legal_search_match for i in items]),
+        "needs_legal_search_llm_match_rate": _match_rate([i.needs_legal_search_llm_match for i in items]),
         "retrieval_overlap_topk_avg": _avg([i.retrieval_overlap_topk for i in items]),
         "section_overlap_topk_avg": _avg([i.section_overlap_topk for i in items]),
         "context_overlap_topk_avg": _avg([i.context_overlap_topk for i in items]),

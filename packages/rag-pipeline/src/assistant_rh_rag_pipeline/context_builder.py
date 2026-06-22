@@ -13,6 +13,7 @@ Dependencies (internal only):
   - config (ContextBuildConfig, get_dsn)
   - models (AggregatedSection, ContextItem)
 """
+
 from __future__ import annotations
 
 import json
@@ -63,19 +64,27 @@ class ContextBuilder:
         tokens_used = 0
         full_doc_count = 0
 
-        # Group by document (only sections that have a document_id)
+        # Group by document (only sections that have a document_id). Sections
+        # without a document_id are picked up by the Step-2 loop directly.
         by_doc: Dict[str, List[AggregatedSection]] = defaultdict(list)
-        standalone: List[AggregatedSection] = []
         for s in sections:
             if s.document_id:
                 by_doc[str(s.document_id)].append(s)
-            else:
-                standalone.append(s)
 
-        # Sort doc groups by best section score (descending)
-        sorted_docs = sorted(by_doc.items(), key=lambda kv: max(s.score for s in kv[1]), reverse=True)
+        # Sort doc groups by best section score (descending); compute the max
+        # once and reuse it (used both for sort and for the inner gate).
+        doc_max_score: Dict[str, float] = {doc_id: max((s.score or 0.0) for s in secs) for doc_id, secs in by_doc.items()}
+        sorted_docs = sorted(by_doc.items(), key=lambda kv: doc_max_score[kv[0]], reverse=True)
 
-        # Step 1 – doc-entire for small documents: load full document from rag_documents
+        def _section_key(s: AggregatedSection) -> str:
+            # Unique-and-stable across both loops. `id(s)` is fine because the
+            # input list is stable for the lifetime of this build().
+            return s.section_id or s.heading or f"_obj_{id(s)}"
+
+        # Step 1 – doc-entire for small documents. We always include qualifying
+        # small docs (within budget and the max_full_docs cap); the original
+        # legifrance-q2 ordering bug is fixed by the score-sort at the end of
+        # Step 2 below, not by suppressing doc-entires here.
         for doc_id, doc_sections in sorted_docs:
             if full_doc_count >= max_full_docs:
                 break
@@ -91,16 +100,19 @@ class ContextBuilder:
 
             item = self._full_doc_to_item(doc_row, doc_sections)
             item.metadata["is_doc_entire"] = True
+            # ContextItem.score on a doc-entire reflects the best section score
+            # of its constituents, so the post-Step-2 sort places it correctly.
+            item.score = doc_max_score[doc_id]
             selected.append(item)
             for s in doc_sections:
-                used_ids.add(s.section_id or s.heading)
+                used_ids.add(_section_key(s))
             tokens_used += item.token_estimate
             full_doc_count += 1
             logger.info("Doc-entire included doc %s (%s): ~%d tokens", doc_id, item.document_title[:40], item.token_estimate)
 
         # Step 2 – fill with top individual sections (from selector/reranker order)
         for s in sections:
-            key = s.section_id or s.heading
+            key = _section_key(s)
             if key in used_ids:
                 continue
             item = self._section_to_item(s)
@@ -112,36 +124,42 @@ class ContextBuilder:
             used_ids.add(key)
             tokens_used += item.token_estimate
 
-        # Include standalone chunks (no section_id, e.g. DGAFP)
-        for s in standalone:
-            key = s.section_id or s.heading or str(id(s))
-            if key in used_ids:
-                continue
-            item = self._section_to_item(s)
-            if tokens_used + item.token_estimate > budget:
-                continue
-            if len(selected) >= max_sections:
-                break
-            selected.append(item)
-            used_ids.add(key)
-            tokens_used += item.token_estimate
+        # The sort key puts highest-scoring items first; on exact score ties,
+        # standalone chunks beat doc-entires (promotion intent from review
+        # finding #7) and Python's stable sort preserves retrieval order for
+        # the remaining ties.
+        def _sort_key(item):
+            return (-(item.score or 0.0), 1 if item.metadata.get("is_doc_entire") else 0)
+
+        # Determine the "primary publisher" for triangulation BEFORE appending —
+        # use the highest-scored section in the input rather than `selected[0]`
+        # so triangulation depends on the data, not on insertion ordering.
+        primary_publisher = None
+        if sections:
+            top_section = max(sections, key=lambda s: s.score or 0.0)
+            primary_publisher = top_section.publisher
 
         # Step 3 – triangulation (ignores budget to guarantee publisher diversity)
-        primary_publisher = selected[0].publisher if selected else None
         tri_added = 0
         for s in sections:
             if tri_added >= self.config.triangulation_sections:
                 break
             if s.publisher == primary_publisher:
                 continue
-            key = s.section_id or s.heading
+            key = _section_key(s)
             if key in used_ids:
                 continue
             item = self._section_to_item(s)
+            item.metadata["is_triangulation"] = True
             selected.append(item)
             used_ids.add(key)
             tokens_used += item.token_estimate
             tri_added += 1
+
+        # Single sort at the very end so triangulation items participate in the
+        # final ordering — the LLM always sees the strongest evidence first,
+        # regardless of which step contributed each item.
+        selected.sort(key=_sort_key)
 
         # Step 4 – resolve legal references from rag_chunks_dgafp and inject
         refs_tokens = 0
@@ -149,7 +167,13 @@ class ContextBuilder:
         cid_map = self._resolve_cids(all_ref_numbers) if all_ref_numbers else {}
         self.last_resolved_refs = cid_map
 
-        for item in list(selected):
+        # Allocate the legal-refs budget primary-content-first: triangulation
+        # items are publisher-diversity fillers and must not consume refs_budget
+        # ahead of the answer-bearing primary sources, even when they outscore
+        # them. Stable sort preserves the score order within each group, so the
+        # prompt order (``selected``) is untouched — only the refs pass reorders.
+        refs_order = sorted(selected, key=lambda it: bool(it.metadata.get("is_triangulation")))
+        for item in refs_order:
             if item.references_juridiques and refs_tokens < refs_budget:
                 self._enrich_refs_with_cid(item, cid_map)
                 ref_text = self._format_references(item.references_juridiques)
@@ -162,8 +186,12 @@ class ContextBuilder:
 
         logger.info(
             "Context built: %d items, ~%d tokens (budget %d, mode %s), %d full docs, %d legal refs",
-            len(selected), tokens_used, budget, self.config.context_mode.value,
-            full_doc_count, len(cid_map),
+            len(selected),
+            tokens_used,
+            budget,
+            self.config.context_mode.value,
+            full_doc_count,
+            len(cid_map),
         )
         return selected
 
@@ -272,10 +300,7 @@ class ContextBuilder:
         try:
             with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
                 rows = conn.execute(sql, (numbers,)).fetchall()
-            return {
-                r["number"]: {"cid": r["cid"] or "", "url": r["url"] or "", "title": r["full_title"] or ""}
-                for r in rows if r.get("cid")
-            }
+            return {r["number"]: {"cid": r["cid"] or "", "url": r["url"] or "", "title": r["full_title"] or ""} for r in rows if r.get("cid")}
         except psycopg.Error as exc:
             logger.warning("CID resolution failed: %s", exc)
             return {}

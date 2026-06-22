@@ -76,6 +76,7 @@ class _MockQR:
     intent_raw_response: str = '{"intent":"rag_query"}'
     should_proceed: bool = True
     needs_legal_search: bool = False
+    needs_legal_search_llm: Optional[bool] = None
     query_for_retrieval: str = "droits RTT"
     expanded_acronyms: List[str] = field(default_factory=list)
     detected_acronyms: Dict[str, str] = field(default_factory=dict)
@@ -292,6 +293,8 @@ class TestBuildLogRow:
         "v3_retrieval_ms",
         "v3_generation_ms",
         "v3_reranker_status",
+        "v3_needs_legal_llm",
+        "v3_needs_legal_final",
     ]
 
     def _build_row(self, metadata_overrides: Optional[dict] = None):

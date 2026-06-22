@@ -53,6 +53,17 @@ def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _llm_needs_legal(output: dict[str, Any]) -> Any:
+    """Replay ground-truth for needs_legal_search.
+
+    Use the LLM-only signal so the Mastra side (which has no Python heuristic)
+    compares like-for-like; fall back to the merged value when the LLM signal
+    isn't recorded, preserving pre-fix behavior for older baselines.
+    """
+    llm = output.get("needs_legal_search_llm")
+    return llm if llm is not None else output.get("needs_legal_search")
+
+
 def _build_response_payload(stage: dict[str, Any]) -> dict[str, Any]:
     output = stage.get("output") or {}
     query_for_retrieval = output.get("query_for_retrieval")
@@ -60,7 +71,7 @@ def _build_response_payload(stage: dict[str, Any]) -> dict[str, Any]:
     return {
         "intent": output.get("intent"),
         "theme": output.get("theme"),
-        "needs_legal_search": output.get("needs_legal_search"),
+        "needs_legal_search": _llm_needs_legal(output),
         "reformulated_query": output.get("reformulated_query"),
         "query_for_retrieval": query_for_retrieval,
         "confidence": output.get("confidence", 1),
@@ -136,7 +147,10 @@ def build_cache(*, baseline_dir: Path, created_at: str, existing_created_at: dic
                 "source": "baseline-01_query_processor",
                 "intent": output.get("intent"),
                 "theme": output.get("theme"),
-                "needsLegalSearch": output.get("needs_legal_search"),
+                # LLM-only value when available, post-heuristic otherwise.
+                "needsLegalSearch": _llm_needs_legal(output),
+                # Always preserve the merged value separately for analytics.
+                "needsLegalSearchMerged": output.get("needs_legal_search"),
             },
         )
         entries.append(entry)

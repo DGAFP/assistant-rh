@@ -13,11 +13,13 @@ Dependencies (internal only):
   - config.get_acronym_dict, config.get_prompt_content, config.QueryProcessorConfig
   - llm_client.LLMClient
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -32,6 +34,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 # Intent enum and direct responses
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class Intent(str, Enum):
     RAG_QUERY = "rag_query"
@@ -62,18 +65,117 @@ _DIRECT_RESPONSES = {
 }
 
 AVAILABLE_THEMES = [
-    "recrutement", "typologie_contrats", "remuneration", "renouvellement_mobilite",
-    "fin_contrat_licenciement", "temps_de_travail", "conges", "formation",
-    "action_sociale", "psc", "sante_securite", "retraite", "apprentis",
-    "deontologie", "autre",
+    "recrutement",
+    "typologie_contrats",
+    "remuneration",
+    "renouvellement_mobilite",
+    "fin_contrat_licenciement",
+    "temps_de_travail",
+    "conges",
+    "formation",
+    "action_sociale",
+    "psc",
+    "sante_securite",
+    "retraite",
+    "apprentis",
+    "deontologie",
+    "autre",
 ]
 
 BETA_EXCLUDED_THEMES = {"action_sociale", "psc", "retraite", "apprentis"}
 
 
+# Word/PDF/Légifrance pastes often carry typographic dashes (U+2010..U+2015,
+# U+2212) that NFKD does NOT decompose to ASCII `-`. Normalize them explicitly
+# so the article regex doesn't miss `article L‑132-1`.
+_DASH_TRANSLATION = str.maketrans(
+    {
+        "‐": "-",  # hyphen
+        "‑": "-",  # non-breaking hyphen
+        "‒": "-",  # figure dash
+        "–": "-",  # en dash
+        "—": "-",  # em dash
+        "―": "-",  # horizontal bar
+        "−": "-",  # minus sign
+    }
+)
+
+
+def _fold(text: str) -> str:
+    """Lowercase + dash-normalize + NFKD-decompose + strip combining marks.
+
+    Why: regex patterns target French legal vocabulary. Inputs reach us in mixed
+    forms (NFC from browsers, NFD from macOS clipboards, ASCII-only from mobile
+    autocorrect). Folding once at matching time lets patterns stay accent-free.
+    """
+    if not text:
+        return ""
+    text = text.translate(_DASH_TRANSLATION)
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+
+# Patterns operate on the folded haystack (lowercase, no diacritics, ASCII dashes).
+_LEGAL_SEARCH_HINT_PATTERNS = (
+    # Canonical Légifrance article citations: "article L. 132-1", "article L 132",
+    # "articles R123-4", "article 3-2". The section letter may be glued to a
+    # `.`/`-`/digit, OR separated by a space — but the spaced form is restricted
+    # to the real code letters [lrd] so the French verb/preposition "a" in
+    # "cet article a 5 ans" is not mistaken for a citation. A bare number must be
+    # hyphenated ("3-2") or short ("4") — a 4-digit run ("article 2025 du blog")
+    # is rejected as a year, not an article.
+    re.compile(r"\barticles?\s+(?:[a-z]\.\s*\d|[a-z]\s*-\s*\d|[a-z]\d|[lrd]\s+\d|\d+-\d|\d{1,3}(?!\d))"),
+    # Specific legal code names (CGFP, etc.).
+    re.compile(r"\b(?:cgfp|code general de la fonction publique|code de la securite sociale|code du travail)\b"),
+    # Decree/circular/jurisprudence keywords. After accent folding, the verb
+    # `arrête` collapses to the same `arrete` as the noun `arrêté`, so the
+    # decree noun is matched two disambiguated ways instead of as a bare word:
+    #   (a) followed by a qualifier (`n°`, `du <date>`, ministériel, …), or
+    #   (b) preceded by a determiner that cannot precede the finite verb
+    #       (`quel/un/cet/des arrêté` is the noun; `il/les arrête` is the verb).
+    re.compile(r"\b(?:decret|circulaire|ordonnance|jurisprudence)\b"),
+    re.compile(r"\barretes?\s+(?:n[°o]\s*\d|du\s+\d|ministeriel|prefectoral|interministeriel|royal|conjoint)"),
+    re.compile(r"\b(?:un|une|cet|cette|quels?|quelles?|du|des|aux|nouvel|nouvelle)\s+arretes?\b"),
+    # `loi` is excluded as a bare word (matches idioms like "la loi du plus
+    # fort"). The qualifier must include an actual number after `n°`/`no` to
+    # avoid `loi nouvelle/normale/notre/nous` collapsing to `loi n…`.
+    re.compile(r"\bloi\s+(?:n[°o]\s*\d|du\s+\d|organique|de\s+finances?|de\s+\d)"),
+    # Explicit asks for the legal basis.
+    re.compile(r"\b(?:fondement juridique|base legale|selon quel texte|c'est ecrit ou|preuve reglementaire)\b"),
+)
+
+# RH topic vocabulary. ``is_high_signal=True`` items short-circuit the
+# two-hit-required rule so a single match suffices when combined with
+# ``_LEGAL_SEARCH_RULE_PATTERN``.
+_LEGAL_SEARCH_TOPIC_PATTERNS: tuple = (
+    # (pattern, is_high_signal)
+    (re.compile(r"\bagents?\s+contractuels?\b"), False),
+    (re.compile(r"\bcontrats?\s+de\s+projet\b"), True),
+    (re.compile(r"\bemplois?\s+permanents?\b"), True),
+    (re.compile(r"\bconges?\s+parent(?:al|aux|ale|ales)\b"), True),
+    (re.compile(r"\bsubrog\w*\b"), True),
+    (re.compile(r"\bindemnites?\s+journalieres?\b"), False),
+    (re.compile(r"\bprestations?\s+en\s+especes\b"), True),
+    (re.compile(r"\bpensions?\s+de\s+vieillesse\b"), True),
+    (re.compile(r"\bcasiers?\s+judiciaires?\b"), False),
+    (re.compile(r"\bservice\s+national\b"), False),
+    (re.compile(r"\bdroit\s+au\s+sejour\b"), True),
+    (re.compile(r"\bruptures?\s+anticipees?\b"), True),
+    (re.compile(r"\brenouvel\w*\b"), True),
+)
+
+_LEGAL_SEARCH_RULE_PATTERN = re.compile(
+    r"\b(?:(?:dans|sous|a|au|pour)\s+)?"
+    r"(?:quels?\s+cas|a\s+partir\s+de\s+quand|quelles?\s+informations?|"
+    r"quelles?\s+verifications?|quels?\s+montants?|quels?\s+delais?|quelles?\s+clauses?|"
+    r"quelles?\s+conditions?)\b",
+)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Result dataclass
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class QueryProcessResult:
@@ -90,6 +192,10 @@ class QueryProcessResult:
     intent_confidence: float = 1.0
     intent_reason: Optional[str] = None
     needs_legal_search: bool = False
+    # Preserved LLM-only value (None when classify failed or gating was off).
+    # Lets observability/conformance compare the LLM against the post-heuristic
+    # decision instead of seeing only the merged flag.
+    needs_legal_search_llm: Optional[bool] = None
 
     theme: Optional[str] = None
     was_enriched: bool = False
@@ -110,6 +216,7 @@ class QueryProcessResult:
 # ─────────────────────────────────────────────────────────────────────────────
 # Processor
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class QueryProcessor:
     """
@@ -135,7 +242,11 @@ class QueryProcessor:
         query: str,
         conversation_history: Optional[List[Dict[str, str]]] = None,
     ) -> QueryProcessResult:
-
+        # Canonicalize the user input at the API boundary so the LLM, retriever,
+        # and replay cache all see the same byte sequence regardless of whether
+        # the client sent NFC (Chrome) or NFD (macOS clipboard).
+        if query:
+            query = unicodedata.normalize("NFC", query)
         processed = query
         detected = self._detect_acronyms(query)
 
@@ -144,6 +255,21 @@ class QueryProcessor:
             intent_data = self._classify(query, conversation_history, detected)
         else:
             intent_data = self._fallback_expand(query, detected)
+
+        llm_needs_legal: Optional[bool] = intent_data.get("needs_legal")
+        # Heuristic only runs when intent gating is on AND classify succeeded.
+        # ``classify_ok`` flag is set on the success path; absent on the
+        # exception fallback so we preserve the deterministic-False safe default
+        # on LLM outage.
+        heuristic_eligible = self.config.enable_intent_gating and intent_data.get("classify_ok", False)
+        if heuristic_eligible:
+            needs_legal = self._should_force_legal_search(
+                query=query,
+                processed_query=intent_data.get("query_for_retrieval") or query,
+                intent_data=intent_data,
+            )
+        else:
+            needs_legal = bool(llm_needs_legal)
 
         is_in_scope = intent_data["intent"] in (Intent.RAG_QUERY, Intent.FOLLOW_UP)
         qfr = intent_data.get("query_for_retrieval")
@@ -163,7 +289,8 @@ class QueryProcessor:
             intent=intent_data["intent"],
             intent_confidence=intent_data.get("confidence", 1.0),
             intent_reason=intent_data.get("reasoning"),
-            needs_legal_search=intent_data.get("needs_legal", False),
+            needs_legal_search=needs_legal,
+            needs_legal_search_llm=llm_needs_legal,
             theme=intent_data.get("theme"),
             was_enriched=bool(intent_data.get("enriched_query")),
             direct_response=intent_data.get("direct_response"),
@@ -233,17 +360,18 @@ class QueryProcessor:
                 "intent": intent,
                 "confidence": float(data.get("confidence", 0.8)),
                 "reasoning": data.get("reasoning", ""),
-                "needs_legal": data.get("needs_legal_search", False),
+                "needs_legal": bool(data.get("needs_legal_search", False)),
                 "theme": theme,
                 "enriched_query": data.get("reformulated_query") or "",
                 "query_for_retrieval": data.get("query_for_retrieval"),
                 "direct_response": _DIRECT_RESPONSES.get(intent),
                 "raw": raw,
+                "classify_ok": True,
             }
 
         except Exception as exc:
             logger.warning("Intent classification failed (%s), defaulting to rag_query", exc)
-            return {"intent": Intent.RAG_QUERY, "confidence": 0.5, "reasoning": str(exc)}
+            return {"intent": Intent.RAG_QUERY, "confidence": 0.5, "reasoning": str(exc), "classify_ok": False}
 
     def _fallback_expand(self, query: str, detected: Dict[str, str]) -> Dict[str, Any]:
         """When intent gating is disabled, just expand acronyms inline."""
@@ -255,3 +383,49 @@ class QueryProcessor:
             "confidence": 1.0,
             "query_for_retrieval": expanded if expanded != query else None,
         }
+
+    def _should_force_legal_search(
+        self,
+        *,
+        query: str,
+        processed_query: str,
+        intent_data: Dict[str, Any],
+    ) -> bool:
+        """Apply deterministic guardrails when the LLM under-classifies legal queries.
+
+        DGAFP is completely excluded from retrieval unless ``needs_legal_search`` is
+        true. A narrow prompt-only definition is not robust enough for legal RH
+        questions that mention the rule directly without explicitly asking for the
+        article or decree. The heuristic stays conservative:
+        - always preserve explicit LLM ``true``
+        - force legal search for obvious legal markers
+        - force legal search for legal-ish RH rule questions when at least two
+          domain signals are present (or one high-signal topic)
+        """
+        llm_decision = bool(intent_data.get("needs_legal", False))
+        if llm_decision:
+            return True
+
+        intent = intent_data.get("intent", Intent.RAG_QUERY)
+        if intent not in (Intent.RAG_QUERY, Intent.FOLLOW_UP):
+            return False
+
+        # Fold once: accent-strip + lowercase so patterns are NFC/NFD/ASCII agnostic
+        # and `re.IGNORECASE` is no longer needed (already lowercase).
+        raw = query if processed_query == query else f"{query}\n{processed_query}"
+        haystack = _fold(raw)
+        if any(pattern.search(haystack) for pattern in _LEGAL_SEARCH_HINT_PATTERNS):
+            return True
+
+        if not _LEGAL_SEARCH_RULE_PATTERN.search(haystack):
+            return False
+
+        topic_hits = 0
+        high_signal_topic = False
+        for pattern, is_high in _LEGAL_SEARCH_TOPIC_PATTERNS:
+            if pattern.search(haystack):
+                topic_hits += 1
+                if is_high:
+                    high_signal_topic = True
+                    break  # one high-signal topic is enough
+        return high_signal_topic or topic_hits >= 2
