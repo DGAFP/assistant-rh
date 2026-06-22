@@ -68,6 +68,10 @@ class QueryConformance:
     intent_match: bool | None
     theme_match: bool | None
     needs_legal_search_match: bool | None
+    # LLM-only comparison: Python's pre-heuristic `needs_legal_search_llm`
+    # vs Mastra's (LLM-only) `needs_legal_search`. Separates LLM agreement
+    # from heuristic-driven divergence.
+    needs_legal_search_llm_match: bool | None
     retrieval_overlap_topk: float | None
     section_overlap_topk: float | None
     context_overlap_topk: float | None
@@ -116,9 +120,17 @@ def compare_query_runs(
 
     py_needs_legal = py_meta.get("needs_legal_search")
     ca_needs_legal = ca_meta.get("needs_legal_search")
-    needs_legal_search_match = (
-        None if py_needs_legal is None or ca_needs_legal is None else bool(py_needs_legal) == bool(ca_needs_legal)
-    )
+    needs_legal_search_match = None if py_needs_legal is None or ca_needs_legal is None else bool(py_needs_legal) == bool(ca_needs_legal)
+
+    # LLM-only comparison: Python's pre-heuristic decision vs Mastra's (which
+    # has no heuristic). This isolates LLM agreement from drift introduced by
+    # the Python deterministic guardrail.
+    py_needs_legal_llm = py_meta.get("needs_legal_search_llm")
+    needs_legal_search_llm_match: bool | None
+    if py_needs_legal_llm is None or ca_needs_legal is None:
+        needs_legal_search_llm_match = None
+    else:
+        needs_legal_search_llm_match = bool(py_needs_legal_llm) == bool(ca_needs_legal)
 
     retrieval_overlap_topk = ranked_overlap_jaccard(
         py_meta.get("retrieved_chunks") or [],
@@ -152,6 +164,7 @@ def compare_query_runs(
         intent_match=intent_match,
         theme_match=theme_match,
         needs_legal_search_match=needs_legal_search_match,
+        needs_legal_search_llm_match=needs_legal_search_llm_match,
         retrieval_overlap_topk=retrieval_overlap_topk,
         section_overlap_topk=section_overlap_topk,
         context_overlap_topk=context_overlap_topk,
@@ -186,6 +199,7 @@ def aggregate_conformance(items: list[QueryConformance]) -> dict[str, Any]:
         "intent_match_rate": _match_rate([i.intent_match for i in items]),
         "theme_match_rate": _match_rate([i.theme_match for i in items]),
         "needs_legal_search_match_rate": _match_rate([i.needs_legal_search_match for i in items]),
+        "needs_legal_search_llm_match_rate": _match_rate([i.needs_legal_search_llm_match for i in items]),
         "retrieval_overlap_topk_avg": _avg([i.retrieval_overlap_topk for i in items]),
         "section_overlap_topk_avg": _avg([i.section_overlap_topk for i in items]),
         "context_overlap_topk_avg": _avg([i.context_overlap_topk for i in items]),

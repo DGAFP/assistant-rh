@@ -274,6 +274,67 @@ def _make_classify_return(theme: str = "remuneration", needs_legal: bool = False
             True,
             "loi_du_year_qualifier",
         ),
+        # Review v2 finding: `loi n[°o]` over-matched `loi nouvelle/normale`
+        # because `n[°o]` consumed the bare letter `o` followed by anything.
+        (
+            "Quelle loi nouvelle s'applique ?",
+            False,
+            "loi_nouvelle_no_false_positive",
+        ),
+        (
+            "La loi normale prévoit-elle des exceptions ?",
+            False,
+            "loi_normale_no_false_positive",
+        ),
+        # Qualified `loi n° <digit>` must still trigger.
+        (
+            "Selon la loi n° 84-16, quelles règles s'appliquent ?",
+            True,
+            "loi_numero_qualifier",
+        ),
+        # Review v2 finding: article regex over-fired on `article a 5 ans`
+        # (`[a-z]?` consumed the lone preposition `a`).
+        (
+            "Cet article a 5 ans, faut-il le relire ?",
+            False,
+            "article_a_5_ans_no_false_positive",
+        ),
+        (
+            "L'article du blog a 3 jours seulement.",
+            False,
+            "article_du_blog_no_false_positive",
+        ),
+        # Review v2 finding: `arrête` (verb imperative) folds to `arrete`
+        # same as the noun `arrêté` (decree) — must not match without a
+        # qualifying context.
+        (
+            "Arrête de m'embêter avec ces questions !",
+            False,
+            "arrete_verb_no_false_positive",
+        ),
+        (
+            "Il arrête de venir au bureau.",
+            False,
+            "arrete_indicative_no_false_positive",
+        ),
+        # Qualified arrêté noun must still trigger.
+        (
+            "Selon l'arrêté ministériel du 17 janvier 1986, quels droits ?",
+            True,
+            "arrete_ministeriel_qualified",
+        ),
+        # Review v2 finding: Unicode dashes (U+2010..U+2014) used by Word/PDF
+        # paste must be normalized in _fold() so canonical citations match.
+        (
+            "Selon l'article L‑132‑1 du CGFP, quels droits ?",  # U+2011 non-breaking hyphen
+            True,
+            "article_unicode_nbhyphen",
+        ),
+        (
+            "L'article L–132 fixe les modalités.",  # U+2013 en dash
+            True,
+            "article_unicode_endash",
+        ),
     ],
 )
 @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
@@ -335,6 +396,31 @@ class TestLegalSearchGating:
         # Effective decision is heuristic True, but the LLM value (False) is preserved.
         assert result.needs_legal_search is True
         assert result.needs_legal_search_llm is False
+
+
+class TestQueryProcessorNFCNormalization:
+    """NFC-normalize at process() entry so the LLM, retriever, and replay cache
+    all see the same byte sequence regardless of client clipboard form."""
+
+    @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
+    @patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
+    def test_nfd_and_nfc_inputs_normalize_to_same_processed_query(self, mock_classify, _mock_acronyms):
+        import unicodedata as _u
+
+        mock_classify.return_value = _make_classify_return()
+        proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
+
+        nfc_query = "Quelles vérifications administratives ?"
+        nfd_query = _u.normalize("NFD", nfc_query)
+        assert nfc_query != nfd_query, "NFC and NFD inputs must differ for the test to be meaningful"
+
+        result_nfc = proc.process(nfc_query)
+        result_nfd = proc.process(nfd_query)
+
+        # Both inputs round-trip to the same NFC string.
+        assert _u.is_normalized("NFC", result_nfc.original_query)
+        assert _u.is_normalized("NFC", result_nfd.original_query)
+        assert result_nfc.original_query == result_nfd.original_query
 
 
 # ---------------------------------------------------------------------------

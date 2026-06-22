@@ -64,14 +64,12 @@ class ContextBuilder:
         tokens_used = 0
         full_doc_count = 0
 
-        # Group by document (only sections that have a document_id)
+        # Group by document (only sections that have a document_id). Sections
+        # without a document_id are picked up by the Step-2 loop directly.
         by_doc: Dict[str, List[AggregatedSection]] = defaultdict(list)
-        standalone: List[AggregatedSection] = []
         for s in sections:
             if s.document_id:
                 by_doc[str(s.document_id)].append(s)
-            else:
-                standalone.append(s)
 
         # Sort doc groups by best section score (descending); compute the max
         # once and reuse it (used both for sort and for the inner gate).
@@ -126,18 +124,22 @@ class ContextBuilder:
             used_ids.add(key)
             tokens_used += item.token_estimate
 
-        # Restore score-ordered priority: the highest-scoring item must appear
-        # first so the LLM sees the strongest evidence before any lower-scored
-        # doc-entire (legifrance-q2 regression fix). On exact score ties,
-        # standalone chunks beat doc-entires (the promotion intent for ties
-        # from review finding #7) and Python's stable sort preserves retrieval
-        # order for the remaining ties.
-        selected.sort(
-            key=lambda item: (-(item.score or 0.0), 1 if item.metadata.get("is_doc_entire") else 0),
-        )
+        # The sort key puts highest-scoring items first; on exact score ties,
+        # standalone chunks beat doc-entires (promotion intent from review
+        # finding #7) and Python's stable sort preserves retrieval order for
+        # the remaining ties.
+        def _sort_key(item):
+            return (-(item.score or 0.0), 1 if item.metadata.get("is_doc_entire") else 0)
+
+        # Determine the "primary publisher" for triangulation BEFORE appending —
+        # use the highest-scored section in the input rather than `selected[0]`
+        # so triangulation depends on the data, not on insertion ordering.
+        primary_publisher = None
+        if sections:
+            top_section = max(sections, key=lambda s: s.score or 0.0)
+            primary_publisher = top_section.publisher
 
         # Step 3 – triangulation (ignores budget to guarantee publisher diversity)
-        primary_publisher = selected[0].publisher if selected else None
         tri_added = 0
         for s in sections:
             if tri_added >= self.config.triangulation_sections:
@@ -152,6 +154,11 @@ class ContextBuilder:
             used_ids.add(key)
             tokens_used += item.token_estimate
             tri_added += 1
+
+        # Single sort at the very end so triangulation items participate in the
+        # final ordering — the LLM always sees the strongest evidence first,
+        # regardless of which step contributed each item.
+        selected.sort(key=_sort_key)
 
         # Step 4 – resolve legal references from rag_chunks_dgafp and inject
         refs_tokens = 0

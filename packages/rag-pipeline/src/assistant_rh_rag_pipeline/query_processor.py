@@ -85,8 +85,24 @@ AVAILABLE_THEMES = [
 BETA_EXCLUDED_THEMES = {"action_sociale", "psc", "retraite", "apprentis"}
 
 
+# Word/PDF/Légifrance pastes often carry typographic dashes (U+2010..U+2015,
+# U+2212) that NFKD does NOT decompose to ASCII `-`. Normalize them explicitly
+# so the article regex doesn't miss `article L‑132-1`.
+_DASH_TRANSLATION = str.maketrans(
+    {
+        "‐": "-",  # hyphen
+        "‑": "-",  # non-breaking hyphen
+        "‒": "-",  # figure dash
+        "–": "-",  # en dash
+        "—": "-",  # em dash
+        "―": "-",  # horizontal bar
+        "−": "-",  # minus sign
+    }
+)
+
+
 def _fold(text: str) -> str:
-    """Lowercase + NFKD-decompose + strip combining marks for accent-insensitive match.
+    """Lowercase + dash-normalize + NFKD-decompose + strip combining marks.
 
     Why: regex patterns target French legal vocabulary. Inputs reach us in mixed
     forms (NFC from browsers, NFD from macOS clipboards, ASCII-only from mobile
@@ -94,22 +110,30 @@ def _fold(text: str) -> str:
     """
     if not text:
         return ""
+    text = text.translate(_DASH_TRANSLATION)
     nfkd = unicodedata.normalize("NFKD", text)
     return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
 
 
-# Patterns operate on the folded haystack (lowercase, no diacritics).
+# Patterns operate on the folded haystack (lowercase, no diacritics, ASCII dashes).
 _LEGAL_SEARCH_HINT_PATTERNS = (
     # Canonical Légifrance article citations: "article L. 132-1", "articles R123-4",
-    # "article 3-2"; tolerates space or no space after the dot/dash.
-    re.compile(r"\barticles?\s+[a-z]?\s*[\.\-]?\s*\d"),
+    # "article 3-2". The letter (when present) must be glued to a `.`, `-`, or
+    # digit — bare `<letter> <digit>` is rejected to filter out casual French
+    # like "cet article a 5 ans".
+    re.compile(r"\barticles?\s+(?:[a-z]\.\s*\d|[a-z]\s*-\s*\d|[a-z]\d|\d)"),
     # Specific legal code names (CGFP, etc.).
     re.compile(r"\b(?:cgfp|code general de la fonction publique|code de la securite sociale|code du travail)\b"),
-    # Decree/circular/jurisprudence keywords. `loi` is intentionally excluded —
-    # the bare word matches idioms ("la loi du plus fort"); rely on "loi n°…"
-    # or other markers instead.
-    re.compile(r"\b(?:decret|arrete|circulaire|ordonnance|jurisprudence)\b"),
-    re.compile(r"\bloi\s+(?:n[°o]|du\s+\d|organique|de\s+finances?|de\s+\d)"),
+    # Decree/circular/jurisprudence keywords. After accent folding, the verb
+    # `arrête` collapses to the same `arrete` as the noun `arrêté`, so the
+    # decree noun must require a qualifier (`n°`, `du <date>`, ministerial,
+    # …) to avoid matching the imperative verb.
+    re.compile(r"\b(?:decret|circulaire|ordonnance|jurisprudence)\b"),
+    re.compile(r"\barretes?\s+(?:n[°o]\s*\d|du\s+\d|ministeriel|prefectoral|interministeriel|royal|conjoint)"),
+    # `loi` is excluded as a bare word (matches idioms like "la loi du plus
+    # fort"). The qualifier must include an actual number after `n°`/`no` to
+    # avoid `loi nouvelle/normale/notre/nous` collapsing to `loi n…`.
+    re.compile(r"\bloi\s+(?:n[°o]\s*\d|du\s+\d|organique|de\s+finances?|de\s+\d)"),
     # Explicit asks for the legal basis.
     re.compile(r"\b(?:fondement juridique|base legale|selon quel texte|c'est ecrit ou|preuve reglementaire)\b"),
 )
@@ -135,8 +159,8 @@ _LEGAL_SEARCH_TOPIC_PATTERNS: tuple = (
 )
 
 _LEGAL_SEARCH_RULE_PATTERN = re.compile(
-    r"(?:(?:dans|sous|a|au|pour)\s+)?"
-    r"\b(?:quels?\s+cas|a\s+partir\s+de\s+quand|quelles?\s+informations?|"
+    r"\b(?:(?:dans|sous|a|au|pour)\s+)?"
+    r"(?:quels?\s+cas|a\s+partir\s+de\s+quand|quelles?\s+informations?|"
     r"quelles?\s+verifications?|quels?\s+montants?|quels?\s+delais?|quelles?\s+clauses?|"
     r"quelles?\s+conditions?)\b",
 )
@@ -212,6 +236,11 @@ class QueryProcessor:
         query: str,
         conversation_history: Optional[List[Dict[str, str]]] = None,
     ) -> QueryProcessResult:
+        # Canonicalize the user input at the API boundary so the LLM, retriever,
+        # and replay cache all see the same byte sequence regardless of whether
+        # the client sent NFC (Chrome) or NFD (macOS clipboard).
+        if query:
+            query = unicodedata.normalize("NFC", query)
         processed = query
         detected = self._detect_acronyms(query)
 
@@ -255,7 +284,7 @@ class QueryProcessor:
             intent_confidence=intent_data.get("confidence", 1.0),
             intent_reason=intent_data.get("reasoning"),
             needs_legal_search=needs_legal,
-            needs_legal_search_llm=llm_needs_legal if llm_needs_legal is not None else None,
+            needs_legal_search_llm=llm_needs_legal,
             theme=intent_data.get("theme"),
             was_enriched=bool(intent_data.get("enriched_query")),
             direct_response=intent_data.get("direct_response"),
