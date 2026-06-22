@@ -328,7 +328,8 @@ Log complet de chaque interaction chatbot. Table principale d'observabilité (~1
 | `v3_was_enriched` | `BOOLEAN` | Requête enrichie avec l'historique |
 | `v3_enriched_query` | `TEXT` | Requête après enrichissement (max 2000 chars) |
 | `v3_acronyms_expanded` | `TEXT` | Acronymes détectés et expandés |
-| `v3_needs_legal_llm` | `BOOLEAN` | Besoin de recherche juridique détecté par le LLM |
+| `v3_needs_legal_llm` | `BOOLEAN` | Besoin de recherche juridique détecté par le LLM (signal LLM seul, avant heuristique) |
+| `v3_needs_legal_final` | `BOOLEAN` | Décision finale de recherche juridique (LLM ∪ garde-fou déterministe) |
 | `v3_intent_llm_response` | `TEXT` | Réponse brute du LLM intent (max 5000 chars) |
 
 #### V3 – Retrieval & Agrégation

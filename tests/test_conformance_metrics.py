@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from assistant_rh_rag_pipeline.conformance import (
+    _bool_match,
+    _coerce_bool,
     aggregate_conformance,
     compare_query_runs,
     jaccard_similarity,
@@ -9,6 +11,54 @@ from assistant_rh_rag_pipeline.conformance import (
 
 def test_jaccard_similarity_basic():
     assert jaccard_similarity(["a", "b"], ["b", "c"]) == 1 / 3
+
+
+def test_coerce_bool_handles_real_and_stringified_values():
+    assert _coerce_bool(True) is True
+    assert _coerce_bool(False) is False
+    assert _coerce_bool(None) is None
+    # Stringified booleans (loosely-typed transport) must not collapse to True
+    # the way bool("false") would.
+    assert _coerce_bool("false") is False
+    assert _coerce_bool("true") is True
+    assert _coerce_bool("False") is False
+    assert _coerce_bool(0) is False
+    assert _coerce_bool(1) is True
+    assert _coerce_bool("garbage") is None
+
+
+def test_bool_match_three_state():
+    assert _bool_match(True, True) is True
+    assert _bool_match(True, False) is False
+    # Real agreement reported correctly even when one side is stringified.
+    assert _bool_match(False, "false") is True
+    assert _bool_match(True, "false") is False
+    # Missing side → not comparable.
+    assert _bool_match(None, True) is None
+
+
+def test_compare_query_runs_llm_match_isolates_heuristic():
+    """needs_legal_search_match (merged) vs needs_legal_search_llm_match (LLM-only)."""
+    py_run = {
+        "answer": "x",
+        "timing": {"pipeline_total_ms": 100},
+        "metadata": {
+            # Python heuristic forced True; the LLM itself said False.
+            "needs_legal_search": True,
+            "needs_legal_search_llm": False,
+        },
+    }
+    ca_run = {
+        "answer": "x",
+        "timing": {"pipeline_total_ms": 100},
+        # Candidate (no heuristic) agrees with the LLM: False.
+        "metadata": {"needs_legal_search": False},
+    }
+    result = compare_query_runs(query_id="q", python_run=py_run, candidate_run=ca_run)
+    # Merged decisions diverge (heuristic-driven) ...
+    assert result.needs_legal_search_match is False
+    # ... but the underlying LLM classifiers actually agree.
+    assert result.needs_legal_search_llm_match is True
 
 
 def test_compare_query_runs_extracts_stage_overlaps():

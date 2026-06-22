@@ -335,6 +335,65 @@ def _make_classify_return(theme: str = "remuneration", needs_legal: bool = False
             True,
             "article_unicode_endash",
         ),
+        # Review v3 finding #2: space-separated citation form (letter + space +
+        # digit, no dot/dash) must match — it regressed in v2.
+        (
+            "Que dit l'article L 132-1 du CGFP ?",
+            True,
+            "article_letter_space_digit",
+        ),
+        (
+            "Selon l'article L 5212-1, quelles obligations ?",
+            True,
+            "article_letter_space_long",
+        ),
+        # …but the verb/preposition "a" between "article" and a number must NOT
+        # (the spaced form is restricted to code letters [lrd]).
+        (
+            "Cet article a 5 ans, faut-il le relire ?",
+            False,
+            "article_a_space_digit_still_rejected",
+        ),
+        # Review v3 finding #6: a bare 4-digit run is a year, not an article.
+        (
+            "Mon article 2025 du blog parle de RH.",
+            False,
+            "article_year_no_false_positive",
+        ),
+        (
+            "L'article 1958 de la constitution.",
+            False,
+            "article_year_1958_no_false_positive",
+        ),
+        # Bare short article number and hyphenated sub-article still match.
+        (
+            "Que prévoit l'article 3-2 pour les contractuels ?",
+            True,
+            "article_hyphenated_subarticle",
+        ),
+        # Review v3 finding #5: bare-noun arrêté preceded by a determiner must
+        # trigger (it regressed to False in v2).
+        (
+            "Quel arrêté fixe la prime de service des agents contractuels ?",
+            True,
+            "arrete_determiner_quel",
+        ),
+        (
+            "Un arrêté encadre-t-il les congés des contractuels ?",
+            True,
+            "arrete_determiner_un",
+        ),
+        # …but the imperative/indicative verb "arrête" must still NOT trigger.
+        (
+            "Arrête de poser des questions, merci.",
+            False,
+            "arrete_imperative_still_rejected",
+        ),
+        (
+            "Il les arrête à la frontière.",
+            False,
+            "arrete_object_pronoun_still_rejected",
+        ),
     ],
 )
 @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
@@ -787,6 +846,68 @@ class TestContextBuilderBuild:
         # Stable sort keeps retrieval order on tie; DGAFP arrived first in
         # the input list, so it stays at position 0.
         assert result[0].publisher == "DGAFP"
+
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._load_full_document", return_value=None)
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._resolve_cids", return_value={})
+    def test_triangulation_does_not_starve_primary_refs_budget(self, _mock_refs, _mock_load):
+        """Review v3 finding #4: moving the sort after triangulation let a
+        higher-scored triangulation (diversity) item consume the legal-refs
+        budget ahead of a lower-scored primary-content item. The refs pass must
+        allocate primary-content-first."""
+        from assistant_rh_rag_pipeline.config import ContextBuildConfig
+        from assistant_rh_rag_pipeline.context_builder import ContextBuilder
+        from assistant_rh_rag_pipeline.models import estimate_tokens
+
+        refs_primary = [{"number": "L-PRIMARY"}]
+        refs_tri = [{"number": "L-TRIANG"}]
+        one_block = estimate_tokens(ContextBuilder._format_references(refs_primary))
+
+        # Budget fits exactly one refs block.
+        builder = ContextBuilder(
+            ContextBuildConfig(max_sections=2, doc_entire_threshold=0, legal_refs_budget=one_block),
+            dsn="unused",
+        )
+        sections = [
+            # Highest score → sets primary_publisher = DGAFP; carries no refs.
+            AggregatedSection(
+                section_id="a",
+                heading="A",
+                markdown="A",
+                chunks=[],
+                score=0.9,
+                publisher="DGAFP",
+            ),
+            # Primary-content item, low score, HAS refs. Survives Step 2.
+            AggregatedSection(
+                section_id="b",
+                heading="B",
+                markdown="B",
+                chunks=[],
+                score=0.5,
+                publisher="DGAFP",
+                references_juridiques=refs_primary,
+            ),
+            # Triangulation candidate: different publisher, high score, HAS refs.
+            # Excluded from Step 2 by max_sections, force-added by triangulation.
+            AggregatedSection(
+                section_id="c",
+                heading="C",
+                markdown="C",
+                chunks=[],
+                score=0.85,
+                publisher="MATTE",
+                references_juridiques=refs_tri,
+            ),
+        ]
+
+        result = builder.build(sections)
+        by_id = {it.section_id: it for it in result}
+        # Triangulation item C was indeed added and flagged.
+        assert by_id["c"].metadata.get("is_triangulation") is True
+        # The primary-content item B got its refs block; the triangulation item
+        # C did not (budget fit only one, and primary wins).
+        assert "References juridiques" in by_id["b"].content
+        assert "References juridiques" not in by_id["c"].content
 
 
 # ---------------------------------------------------------------------------

@@ -117,19 +117,25 @@ def _fold(text: str) -> str:
 
 # Patterns operate on the folded haystack (lowercase, no diacritics, ASCII dashes).
 _LEGAL_SEARCH_HINT_PATTERNS = (
-    # Canonical Légifrance article citations: "article L. 132-1", "articles R123-4",
-    # "article 3-2". The letter (when present) must be glued to a `.`, `-`, or
-    # digit — bare `<letter> <digit>` is rejected to filter out casual French
-    # like "cet article a 5 ans".
-    re.compile(r"\barticles?\s+(?:[a-z]\.\s*\d|[a-z]\s*-\s*\d|[a-z]\d|\d)"),
+    # Canonical Légifrance article citations: "article L. 132-1", "article L 132",
+    # "articles R123-4", "article 3-2". The section letter may be glued to a
+    # `.`/`-`/digit, OR separated by a space — but the spaced form is restricted
+    # to the real code letters [lrd] so the French verb/preposition "a" in
+    # "cet article a 5 ans" is not mistaken for a citation. A bare number must be
+    # hyphenated ("3-2") or short ("4") — a 4-digit run ("article 2025 du blog")
+    # is rejected as a year, not an article.
+    re.compile(r"\barticles?\s+(?:[a-z]\.\s*\d|[a-z]\s*-\s*\d|[a-z]\d|[lrd]\s+\d|\d+-\d|\d{1,3}(?!\d))"),
     # Specific legal code names (CGFP, etc.).
     re.compile(r"\b(?:cgfp|code general de la fonction publique|code de la securite sociale|code du travail)\b"),
     # Decree/circular/jurisprudence keywords. After accent folding, the verb
     # `arrête` collapses to the same `arrete` as the noun `arrêté`, so the
-    # decree noun must require a qualifier (`n°`, `du <date>`, ministerial,
-    # …) to avoid matching the imperative verb.
+    # decree noun is matched two disambiguated ways instead of as a bare word:
+    #   (a) followed by a qualifier (`n°`, `du <date>`, ministériel, …), or
+    #   (b) preceded by a determiner that cannot precede the finite verb
+    #       (`quel/un/cet/des arrêté` is the noun; `il/les arrête` is the verb).
     re.compile(r"\b(?:decret|circulaire|ordonnance|jurisprudence)\b"),
     re.compile(r"\barretes?\s+(?:n[°o]\s*\d|du\s+\d|ministeriel|prefectoral|interministeriel|royal|conjoint)"),
+    re.compile(r"\b(?:un|une|cet|cette|quels?|quelles?|du|des|aux|nouvel|nouvelle)\s+arretes?\b"),
     # `loi` is excluded as a bare word (matches idioms like "la loi du plus
     # fort"). The qualifier must include an actual number after `n°`/`no` to
     # avoid `loi nouvelle/normale/notre/nous` collapsing to `loi n…`.

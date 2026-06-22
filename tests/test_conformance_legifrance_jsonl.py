@@ -22,14 +22,24 @@ _FIXTURE_PATH = Path(__file__).parent / "conformance" / "queries.legifrance-sour
 
 
 def _load_cases() -> list[dict]:
+    """Load fixture rows. A malformed line or a row missing ``id`` raises with
+    the offending line number rather than an opaque module-collection error, so
+    a future fixture typo fails one clearly-named case instead of the whole
+    module."""
     if not _FIXTURE_PATH.exists():
         return []
     cases: list[dict] = []
-    for line in _FIXTURE_PATH.read_text(encoding="utf-8").splitlines():
+    for lineno, line in enumerate(_FIXTURE_PATH.read_text(encoding="utf-8").splitlines(), start=1):
         line = line.strip()
         if not line:
             continue
-        cases.append(json.loads(line))
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{_FIXTURE_PATH.name}:{lineno}: malformed JSON ({exc})") from exc
+        if "id" not in row:
+            raise ValueError(f"{_FIXTURE_PATH.name}:{lineno}: row missing required 'id' key")
+        cases.append(row)
     return cases
 
 
@@ -38,18 +48,12 @@ _CASE_IDS = [c["id"] for c in _CASES]
 
 
 def _intent_for(expected_intent: str) -> Intent:
-    """Translate the JSONL string into the Intent enum."""
-    mapping = {
-        "rag_query": Intent.RAG_QUERY,
-        "out_of_scope": Intent.OUT_OF_SCOPE,
-        "chit_chat": Intent.CHIT_CHAT,
-        "clarification": Intent.CLARIFICATION,
-        "follow_up": Intent.FOLLOW_UP,
-        "document_request": Intent.DOCUMENT_REQUEST,
-    }
-    if expected_intent not in mapping:
-        raise ValueError(f"Unknown expected_intent: {expected_intent}")
-    return mapping[expected_intent]
+    """Translate the JSONL string into the Intent enum.
+
+    ``Intent`` is a ``(str, Enum)``, so ``Intent(value)`` resolves the member
+    directly and raises ``ValueError`` on an unknown value.
+    """
+    return Intent(expected_intent)
 
 
 @pytest.mark.parametrize("case", _CASES, ids=_CASE_IDS)

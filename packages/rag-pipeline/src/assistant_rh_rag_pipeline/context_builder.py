@@ -150,6 +150,7 @@ class ContextBuilder:
             if key in used_ids:
                 continue
             item = self._section_to_item(s)
+            item.metadata["is_triangulation"] = True
             selected.append(item)
             used_ids.add(key)
             tokens_used += item.token_estimate
@@ -166,7 +167,13 @@ class ContextBuilder:
         cid_map = self._resolve_cids(all_ref_numbers) if all_ref_numbers else {}
         self.last_resolved_refs = cid_map
 
-        for item in list(selected):
+        # Allocate the legal-refs budget primary-content-first: triangulation
+        # items are publisher-diversity fillers and must not consume refs_budget
+        # ahead of the answer-bearing primary sources, even when they outscore
+        # them. Stable sort preserves the score order within each group, so the
+        # prompt order (``selected``) is untouched — only the refs pass reorders.
+        refs_order = sorted(selected, key=lambda it: bool(it.metadata.get("is_triangulation")))
+        for item in refs_order:
             if item.references_juridiques and refs_tokens < refs_budget:
                 self._enrich_refs_with_cid(item, cid_map)
                 ref_text = self._format_references(item.references_juridiques)
