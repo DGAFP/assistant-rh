@@ -14,6 +14,7 @@ import psycopg
 import requests
 from assistant_rh_shared import Config
 from dotenv import load_dotenv
+from psycopg import sql
 
 from assistant_rh_data_engineering.utils.helpers import vector_to_pgvector
 
@@ -39,6 +40,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--only-table")
     parser.add_argument("--only-column")
+    parser.add_argument(
+        "--check-only",
+        "--dry-run",
+        dest="check_only",
+        action="store_true",
+        help=(
+            "Read-only audit: open a connection (autocommit), run aggregate SELECTs, "
+            "and report embedding coverage. Does not load models, call APIs, or write to DB."
+        ),
+    )
+    parser.add_argument(
+        "--coverage-min-pct",
+        type=float,
+        default=None,
+        help="Coverage threshold used by --check-only (compared against raw non_null/total, not rounded). Defaults to 100.",
+    )
     return parser
 
 
@@ -76,6 +93,123 @@ def _normalize_vector(vector: list[float]) -> list[float]:
     if norm == 0:
         return [float(value) for value in vector]
     return [float(value) / norm for value in vector]
+
+
+def filter_table_specs(
+    table_specs: list[dict[str, Any]],
+    *,
+    only_table: str | None,
+    only_column: str | None,
+) -> list[dict[str, Any]]:
+    filtered: list[dict[str, Any]] = []
+    for spec in table_specs:
+        if only_table and spec["table"] != only_table:
+            continue
+        embeddings: list[dict[str, Any]] = []
+        for embedding in spec.get("embeddings") or []:
+            column = str(embedding.get("column") or "").strip()
+            algorithm = str(embedding.get("algorithm") or "").strip()
+            if not column or not algorithm:
+                logger.warning(
+                    "Skipping embedding in %s: missing column or algorithm (%r).",
+                    spec.get("table"),
+                    embedding,
+                )
+                continue
+            if only_column and column != only_column:
+                continue
+            embeddings.append(embedding)
+        if embeddings:
+            filtered.append({**spec, "embeddings": embeddings})
+    return filtered
+
+
+def table_exists(conn: psycopg.Connection, schema: str, table: str) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = %s AND table_name = %s
+            """,
+            (schema, table),
+        )
+        return cur.fetchone() is not None
+
+
+def audit_embedding_coverage(
+    conn: psycopg.Connection,
+    schema: str,
+    table_specs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Return read-only embedding coverage stats per configured table/column."""
+
+    report: dict[str, Any] = {"schema": schema, "tables": {}, "missing_tables": []}
+    for spec in table_specs:
+        table = spec["table"]
+        if not table_exists(conn, schema, table):
+            report["missing_tables"].append(table)
+            continue
+        table_summary: dict[str, Any] = {}
+        for embedding_spec in spec["embeddings"]:
+            column = str(embedding_spec.get("column") or "").strip()
+            if not column:
+                continue
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql.SQL(
+                        """
+                        SELECT
+                            COUNT(*) AS total,
+                            COUNT({col}) AS non_null,
+                            COUNT(*) FILTER (
+                                WHERE {col} IS NULL
+                                  AND LENGTH(TRIM(COALESCE({text_col}, ''))) > 0
+                            ) AS missing_with_text,
+                            COUNT(*) FILTER (
+                                WHERE LENGTH(TRIM(COALESCE({text_col}, ''))) = 0
+                            ) AS empty_text
+                        FROM {schema}.{table}
+                        """
+                    ).format(
+                        col=sql.Identifier(column),
+                        text_col=sql.Identifier(spec["text_column"]),
+                        schema=sql.Identifier(schema),
+                        table=sql.Identifier(table),
+                    )
+                )
+                total, non_null, missing_with_text, empty_text = (int(value or 0) for value in cur.fetchone())
+            table_summary[column] = {
+                "total": total,
+                "non_null": non_null,
+                "missing_with_text": missing_with_text,
+                "empty_text": empty_text,
+                "is_empty": total == 0,
+                "coverage_pct": round(100.0 * non_null / total, 2) if total else 0.0,
+            }
+        report["tables"][table] = table_summary
+    return report
+
+
+def evaluate_coverage_report(report: dict[str, Any], *, coverage_min_pct: float | None) -> tuple[int, list[str]]:
+    threshold = coverage_min_pct if coverage_min_pct is not None else 100.0
+    problems = [f"Table absente: {table}" for table in report.get("missing_tables", [])]
+    for table, columns in (report.get("tables") or {}).items():
+        for column, stats in columns.items():
+            total = int(stats.get("total") or 0)
+            non_null = int(stats.get("non_null") or 0)
+            # TODO: "empty table = problem" is hard-coded with no opt-out. A new
+            # table awaiting first load currently hard-fails --check-only with
+            # no escape other than dropping it from the manifest or setting
+            # --coverage-min-pct 0. Consider an --allow-empty-tables flag or a
+            # per-table `allow_empty: true` marker in the manifest.
+            if stats.get("is_empty") or total == 0:
+                problems.append(f"{table}.{column}: table vide (0 ligne), aucune couverture possible")
+                continue
+            raw_pct = 100.0 * non_null / total
+            if raw_pct < threshold:
+                problems.append(f"{table}.{column}: couverture {round(raw_pct, 2)}% < seuil {threshold}%")
+    return (1 if problems else 0), problems
 
 
 class ScalewayBgeClient:
@@ -142,11 +276,14 @@ def fetch_missing_rows(
     embedding_column: str,
     limit: int | None,
 ) -> list[dict[str, Any]]:
+    # Predicate must stay aligned with audit_embedding_coverage's "row has text"
+    # check (LENGTH(TRIM(COALESCE(...))) > 0) so the audit and the backfill agree
+    # on which rows are embeddable. Whitespace-only rows are skipped on both sides.
     query = f"""
         SELECT {id_column} AS id, {text_column} AS text
         FROM {schema}.{table}
         WHERE {embedding_column} IS NULL
-          AND COALESCE({text_column}, '') <> ''
+          AND LENGTH(TRIM(COALESCE({text_column}, ''))) > 0
         ORDER BY {id_column}
     """
     if limit:
@@ -294,25 +431,51 @@ def main() -> int:
     if not config_path.is_absolute():
         config_path = REPO_ROOT / config_path
     table_specs = load_table_specs(config_path)
-    if args.only_table:
-        table_specs = [spec for spec in table_specs if spec["table"] == args.only_table]
+    table_specs = filter_table_specs(table_specs, only_table=args.only_table, only_column=args.only_column)
     if not table_specs:
-        raise SystemExit("Aucune table sélectionnée pour le backfill embeddings.")
+        filters_desc = (
+            ", ".join(f"{name}={value!r}" for name, value in (("--only-table", args.only_table), ("--only-column", args.only_column)) if value)
+            or "(no filter)"
+        )
+        raise SystemExit(
+            f"Aucune table sélectionnée pour le backfill embeddings (filtres: {filters_desc}). "
+            f"Vérifier --only-table / --only-column par rapport au manifest {config_path}."
+        )
 
     summary: dict[str, Any] = {
         "config": str(config_path),
         "schema": args.schema,
-        "tables": {},
+        "only_table": args.only_table,
+        "only_column": args.only_column,
+        "check_only": bool(args.check_only),
     }
     with psycopg.connect(dsn) as conn:
+        if args.check_only:
+            conn.autocommit = True
+            report = audit_embedding_coverage(conn, args.schema, table_specs)
+            exit_code, problems = evaluate_coverage_report(report, coverage_min_pct=args.coverage_min_pct)
+            # TODO: output shape diverges between modes — check-only emits
+            # summary["coverage"]["tables"], backfill emits summary["tables"]
+            # (line below). Unify once external consumers (Grafana, jq scripts,
+            # GH Actions) are known so we don't break them silently.
+            summary["coverage"] = report
+            summary["problems"] = problems
+            summary["exit_code"] = exit_code
+            print(json.dumps(summary, ensure_ascii=False, indent=2))
+            for problem in problems:
+                logger.warning(problem)
+            return exit_code
+
+        summary["tables"] = {}
         for table_spec in table_specs:
             table_summary: dict[str, int] = {}
             for embedding_spec in table_spec["embeddings"]:
                 embedding_column = str(embedding_spec.get("column") or "").strip()
                 algorithm = str(embedding_spec.get("algorithm") or "").strip().lower()
+                # Defense-in-depth: filter_table_specs is the primary gate, but
+                # this guard keeps the inner loop safe if a future entrypoint
+                # bypasses the filter.
                 if not embedding_column or not algorithm:
-                    continue
-                if args.only_column and embedding_column != args.only_column:
                     continue
                 if algorithm in {"m3", "embedding_m3", "bge-m3"}:
                     table_summary[embedding_column] = backfill_m3(
