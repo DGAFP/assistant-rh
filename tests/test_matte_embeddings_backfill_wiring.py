@@ -11,6 +11,7 @@ CONFIG_PATH = REPO_ROOT / "config" / "matte_embedding_tables.json"
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 SCALEWAY_SCRIPT = SCRIPTS_DIR / "create_scaleway_matte_embeddings_job.sh"
 CLI_MAIN_PATH = REPO_ROOT / "apps" / "data-ingestion-cli" / "src" / "assistant_rh_data_ingestion_cli" / "main.py"
+DATA_ENGINEERING_JOBS_CONFIG = REPO_ROOT / ".github" / "data-engineering-jobs.json"
 
 _CRON_RE = re.compile(r'cron-schedule\.schedule="([^"]+)"')
 
@@ -26,9 +27,11 @@ def _embeddings_job_schedules() -> dict[str, str]:
 
 
 def _load_cli_main():
+    if "data_ingestion_cli_main" in sys.modules:
+        return sys.modules["data_ingestion_cli_main"]
     spec = importlib.util.spec_from_file_location("data_ingestion_cli_main", CLI_MAIN_PATH)
     module = importlib.util.module_from_spec(spec)
-    sys.modules.setdefault("data_ingestion_cli_main", module)
+    sys.modules["data_ingestion_cli_main"] = module
     assert spec and spec.loader
     spec.loader.exec_module(module)
     return module
@@ -73,6 +76,7 @@ def test_scaleway_job_script_targets_matte() -> None:
     assert "JOB_NAME:-matte-embeddings-" in content
     assert "args.0=embeddings" in content
     assert "args.1=matte" in content
+    assert "11aa88cb-ec5b-4df9-bcb4-e9e82576ae58" not in content
 
 
 def test_matte_embeddings_cron_slot_does_not_collide() -> None:
@@ -91,8 +95,13 @@ def test_matte_embeddings_cron_slot_does_not_collide() -> None:
 
 def test_matte_embeddings_job_wired_into_deploy() -> None:
     deploy_script = (SCRIPTS_DIR / "deploy_embeddings_jobs.sh").read_text(encoding="utf-8")
+    jobs_config = json.loads(DATA_ENGINEERING_JOBS_CONFIG.read_text(encoding="utf-8"))
 
     # The deploy orchestrator must invoke the MATTE job script, otherwise the
     # standard deploy creates only the Service-Public and Legifrance jobs and
     # MATTE is never scheduled on Scaleway.
     assert "create_scaleway_matte_embeddings_job.sh" in deploy_script
+
+    matte_job = next((job for job in jobs_config["jobs"] if job["key"] == "embeddings-matte"), None)
+    assert matte_job is not None
+    assert matte_job["args"] == ["embeddings", "matte", "--dsn-env", "SCW_POSTGRES_DSN"]

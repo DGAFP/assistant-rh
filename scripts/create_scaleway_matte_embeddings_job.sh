@@ -19,7 +19,7 @@ JOB_TIMEOUT="${JOB_TIMEOUT:-14400s}"
 M3_BATCH_SIZE="${M3_BATCH_SIZE:-64}"
 BGE_BATCH_SIZE="${BGE_BATCH_SIZE:-32}"
 BGE_WORKERS="${BGE_WORKERS:-2}"
-SCALEWAY_BASE_URL_VALUE="${SCALEWAY_BASE_URL:-https://api.scaleway.ai/11aa88cb-ec5b-4df9-bcb4-e9e82576ae58/v1}"
+SCALEWAY_BASE_URL_VALUE="${SCALEWAY_BASE_URL:-https://api.scaleway.ai/v1}"
 
 scw jobs definition create \
   name="${JOB_NAME}" \

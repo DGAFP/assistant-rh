@@ -29,6 +29,7 @@ on:
           - all
           - service_public
           - legifrance
+          - matte
           - embeddings
       run_ingestion:
         description: "Ingerer aussi dans la base Scaleway staging"

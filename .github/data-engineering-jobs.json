@@ -145,6 +145,24 @@
         "--dsn-env",
         "SCW_POSTGRES_DSN"
       ]
+    },
+    {
+      "key": "embeddings-matte",
+      "domain": "embeddings",
+      "image": "embeddings-job",
+      "description": "CI/CD MATTE embeddings backfill.",
+      "cpu_limit": 2000,
+      "memory_limit": 8192,
+      "local_storage_capacity": 8192,
+      "job_timeout": "14400s",
+      "requires_embeddings": true,
+      "env_groups": ["postgres", "embeddings_api"],
+      "args": [
+        "embeddings",
+        "matte",
+        "--dsn-env",
+        "SCW_POSTGRES_DSN"
+      ]
     }
   ]
 }
