@@ -24,10 +24,22 @@ _LEGAL_ARTICLE_HEADING_RE = re.compile(
     r"\s*$",
     re.IGNORECASE,
 )
+# A structural heading is a kind keyword followed by a numbering token (roman/arabic/ordinal),
+# a bare keyword on its own line (e.g. "Annexe"), or a colon-introduced title. The numbering must
+# end the line or be followed by a separator, otherwise ordinary sentences that merely start with a
+# structural word ("Section syndicale dans l'entreprise…", "Chapitre premier du présent règlement…")
+# would be misread as headings and their text dropped. The roman class stays uppercase-only so that
+# lowercase words containing roman letters ("Livre ouvert…", "Chapitre divers…") cannot match.
 _LEGAL_CONTEXT_HEADING_RE = re.compile(
     r"^(?:#{1,6}\s*)?"
-    r"(?P<kind>Livre|Titre|Chapitre|Section|Sous-section|Paragraphe|Annexe)\b",
-    re.IGNORECASE,
+    r"(?i:(?P<kind>Livre|Titre|Chapitre|Sous-section|Section|Paragraphe|Annexe))"
+    r"(?:"
+    r"\s+(?:[IVXLCDM]+(?i:er|re|e|ème|nd|nde)?|\d+(?i:er|re|e|ème|nd|nde)?|(?i:premier|première|unique|préliminaire|liminaire))"
+    r"(?:\s+(?i:bis|ter|quater|quinquies|sexies|septies|octies|nonies|decies))?"
+    r"(?=\s*$|\s*[:.)\-–—])"
+    r"|\s*:"
+    r"|\s*$"
+    r")",
 )
 _LEGAL_CONTEXT_LEVELS = {
     "livre": 1,
@@ -159,6 +171,19 @@ def _split_legacy_legal_blocks(text: str, source_title: str) -> list[dict[str, A
         current_heading = None
         current_lines = []
 
+    def flush_pending() -> None:
+        nonlocal pending_lines
+        pending_text = "\n".join(line for line in pending_lines if line is not None).strip()
+        if pending_text:
+            blocks.append(
+                {
+                    "heading": None,
+                    "section_path": _build_legacy_section_path(source_title, context, None),
+                    "text": pending_text,
+                }
+            )
+        pending_lines = []
+
     for raw_line in text.split("\n"):
         line = raw_line.strip()
         if not line:
@@ -179,10 +204,12 @@ def _split_legacy_legal_blocks(text: str, source_title: str) -> list[dict[str, A
         context_level = _legal_context_level(line)
         if context_level is not None:
             flush_current()
+            # Body seen before this heading belongs to the context it appeared under, not the next
+            # one — emit it as a LEGAL_TEXT block instead of discarding it.
+            flush_pending()
             heading = _normalize_legacy_heading(line)
             context = [(level, title) for level, title in context if level < context_level]
             context.append((context_level, heading))
-            pending_lines = []
             continue
 
         if current_heading is None:
@@ -191,16 +218,7 @@ def _split_legacy_legal_blocks(text: str, source_title: str) -> list[dict[str, A
             current_lines.append(line)
 
     flush_current()
-    if not blocks:
-        fallback_text = "\n".join(line for line in pending_lines if line is not None).strip()
-        if fallback_text:
-            blocks.append(
-                {
-                    "heading": None,
-                    "section_path": _build_legacy_section_path(source_title, context, None),
-                    "text": fallback_text,
-                }
-            )
+    flush_pending()
     return blocks
 
 

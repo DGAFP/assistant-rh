@@ -7,6 +7,7 @@ import pytest
 from assistant_rh_data_engineering.legifrance import LegifrancePipeline, LegifrancePipelineConfig
 from assistant_rh_data_engineering.legifrance.config import LakePaths
 from assistant_rh_data_engineering.legifrance.db import LegifranceDbWriter
+from assistant_rh_data_engineering.legifrance.gold import chunk_legacy_legal_text
 
 
 def make_pipeline(tmp_path: Path) -> LegifrancePipeline:
@@ -122,6 +123,65 @@ def test_legacy_texts_use_legal_chunking_and_drop_export_residue(tmp_path: Path)
     assert "sur 45" not in combined_text
     assert "legifrance.gouv.fr" not in combined_text
     assert "755-10 du code de la sécurité sociale." in combined_text
+
+
+def test_legacy_chunking_preserves_text_between_structural_headings() -> None:
+    # Body that appears between two structural headings (an intro sentence under a Titre,
+    # before a Chapitre) must be emitted as a LEGAL_TEXT block, not silently dropped.
+    text = "\n".join(
+        [
+            "Titre Ier : Dispositions générales",
+            "Le présent décret fixe les règles applicables à tous les agents.",
+            "Chapitre Ier : Champ d'application",
+            "Article 1er",
+            "Le texte de l'article un.",
+        ]
+    )
+    rows = chunk_legacy_legal_text(text, source_name="decret.txt")
+
+    intro_rows = [row for row in rows if "tous les agents" in row["text"]]
+    assert intro_rows, "intro sentence under the Titre was lost"
+    assert intro_rows[0]["role"] == "LEGAL_TEXT"
+    assert intro_rows[0]["section_path"] == "decret > Titre Ier : Dispositions générales"
+    article_rows = [row for row in rows if row["role"] == "LEGAL_ARTICLE"]
+    assert article_rows and article_rows[0]["section_path"].endswith("> Article 1er")
+
+
+def test_legacy_chunking_does_not_treat_sentences_as_structural_headings() -> None:
+    # A sentence that merely starts with a structural keyword ("Section …") must stay body
+    # text and must not pollute the surrounding article section paths.
+    text = "\n".join(
+        [
+            "Article 1",
+            "Les dispositions suivantes s'appliquent.",
+            "Section syndicale dans l'entreprise : les agents peuvent adhérer librement.",
+            "Article 2",
+            "Autre disposition.",
+        ]
+    )
+    rows = chunk_legacy_legal_text(text, source_name="loi.txt")
+
+    combined = "\n".join(row["text"] for row in rows)
+    assert "les agents peuvent adhérer librement" in combined
+    assert all("adhérer" not in row["section_path"] for row in rows)
+    assert all(row["section_path"] in {"loi > Article 1", "loi > Article 2"} for row in rows)
+
+
+def test_legacy_chunking_recognizes_uppercase_and_numbered_headings() -> None:
+    # All-caps and arabic-numbered Légifrance headings must still nest into section_path.
+    text = "\n".join(
+        [
+            "TITRE IER : DISPOSITIONS GÉNÉRALES",
+            "Chapitre 2 : Régime applicable",
+            "Article 5",
+            "Contenu de l'article cinq.",
+        ]
+    )
+    rows = chunk_legacy_legal_text(text, source_name="code.txt")
+
+    article_rows = [row for row in rows if row["role"] == "LEGAL_ARTICLE"]
+    assert article_rows
+    assert article_rows[0]["section_path"].endswith("TITRE IER : DISPOSITIONS GÉNÉRALES > Chapitre 2 : Régime applicable > Article 5")
 
 
 def test_local_raw_pipeline_loads_articles_from_xml_dump(tmp_path: Path) -> None:
