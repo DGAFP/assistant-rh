@@ -38,7 +38,7 @@ class ContextMode(str, Enum):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Table definitions for the 4 DE chunk tables
+# Table definitions for the DE chunk tables
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -84,6 +84,13 @@ CHUNK_TABLES: Dict[str, ChunkTable] = {
         publisher="DGAFP",
         has_sections=False,
     ),
+    "legifrance": ChunkTable(
+        "rag_chunks_legifrance",
+        embed_col_albert="embedding_m3",
+        tsv_col="text_tsv",
+        publisher="Légifrance",
+        has_sections=True,
+    ),
     "dgafp_scw": ChunkTable(
         os.getenv("DGAFP_COMPARE_TABLE", "rag_chunks_dgafp_scw"),
         id_col="chunk_id",
@@ -117,7 +124,7 @@ class RetrievalConfig:
     embedding_model: EmbeddingModel = EmbeddingModel.ALBERT
     initial_top_k: int = 15
     alpha: float = 0.5
-    tables: List[str] = field(default_factory=lambda: ["matte", "service_public", "dgafp", "rgrh"])
+    tables: List[str] = field(default_factory=lambda: ["matte", "service_public", "dgafp", "legifrance", "rgrh"])
     enable_chunks_test: bool = False
     enable_chunk_reranker: bool = False
     chunk_rerank_top_k: int = 30

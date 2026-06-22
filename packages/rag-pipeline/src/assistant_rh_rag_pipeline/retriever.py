@@ -381,6 +381,16 @@ class Retriever:
         "rag_chunks_service_public": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
         CHUNK_TABLES["service_public_scw"].name: ["source_name", "section_path", "role", "thematique", "short_id", "source"],
         "rag_chunks_dgafp": ["title", "full_title", "number", "category", "url", "cid"],
+        "rag_chunks_legifrance": [
+            "source_name",
+            "section_path",
+            "role",
+            "thematique",
+            "references_juridiques",
+            "source_document_id",
+            "short_id",
+            "url",
+        ],
         CHUNK_TABLES["dgafp_scw"].name: ["title", "full_title", "number", "category", "url", "cid"],
         "rag_chunks_rgrh": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
     }

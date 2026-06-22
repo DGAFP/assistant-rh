@@ -19,6 +19,7 @@ from assistant_rh_rag_pipeline.models import (
     PipelineResult,
     RetrievedChunk,
 )
+from assistant_rh_rag_pipeline.pipeline import select_active_retrieval_tables
 from assistant_rh_rag_pipeline.query_processor import Intent, QueryProcessResult
 from assistant_rh_rag_pipeline.section_aggregator import (
     SectionAggregationDiagnostics,
@@ -97,6 +98,18 @@ FAKE_QUERY_RESULT = QueryProcessResult(
     intent=Intent.RAG_QUERY,
     needs_legal_search=False,
 )
+
+
+def test_select_active_retrieval_tables_gates_legal_sources():
+    configured = ["matte", "service_public", "dgafp", "legifrance", "rgrh"]
+
+    active, forced = select_active_retrieval_tables(configured, needs_legal_search=False)
+    assert active == ["matte", "service_public", "rgrh"]
+    assert forced == set()
+
+    active, forced = select_active_retrieval_tables(configured, needs_legal_search=True)
+    assert active == configured
+    assert forced == {"dgafp", "legifrance"}
 
 
 # ---------------------------------------------------------------------------

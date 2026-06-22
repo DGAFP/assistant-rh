@@ -5,7 +5,7 @@ Wires together all pipeline stages in a single ``run`` / ``run_stream`` call:
 
   Query
     → QueryProcessor    (intent + acronyms + reformulation)
-    → Retriever          (parallel search on 4 DE tables)
+    → Retriever          (parallel search on configured DE tables)
     → SectionAggregator  (chunk → section + rerank)
     → ContextSelector    (optional LLM filter)
     → ContextBuilder     (token budget + triangulation + legal refs)
@@ -34,6 +34,14 @@ from .retriever import Retriever
 from .section_aggregator import SectionAggregator
 
 logger = logging.getLogger(__name__)
+
+_LEGAL_RETRIEVAL_TABLES = {"dgafp", "legifrance"}
+
+
+def select_active_retrieval_tables(configured_tables: list[str], needs_legal_search: bool) -> tuple[list[str], set[str]]:
+    if needs_legal_search:
+        return list(configured_tables), {table for table in configured_tables if table in _LEGAL_RETRIEVAL_TABLES}
+    return [table for table in configured_tables if table not in _LEGAL_RETRIEVAL_TABLES], set()
 
 
 @dataclass
@@ -338,12 +346,7 @@ class Pipeline:
         retrieval_query = qr.query_for_retrieval
 
         configured_tables = list(self._retriever.config.tables)
-        force_hybrid_tables: set[str] = set()
-        if qr.needs_legal_search:
-            active_tables = configured_tables
-            force_hybrid_tables.add("dgafp")
-        else:
-            active_tables = [t for t in configured_tables if t != "dgafp"]
+        active_tables, force_hybrid_tables = select_active_retrieval_tables(configured_tables, qr.needs_legal_search)
 
         initial_attempt = self._run_retrieval_attempt(
             name="initial",

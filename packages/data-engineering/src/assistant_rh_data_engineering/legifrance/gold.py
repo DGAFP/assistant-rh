@@ -24,6 +24,19 @@ _LEGAL_ARTICLE_HEADING_RE = re.compile(
     r"\s*$",
     re.IGNORECASE,
 )
+_LEGAL_ARTICLE_NOTICE_RE = re.compile(
+    r"^(?:"
+    r"Modifi(?:é|ée)s?\s+par|"
+    r"Abrog(?:é|ée)s?\s+par|"
+    r"Cré(?:é|ée)s?\s+par|"
+    r"Création\s+|"
+    r"Rétabli(?:e)?\s+par|"
+    r"Transféré(?:e)?\s+par|"
+    r"Version\s+en\s+vigueur|"
+    r"NOTA\s*:)"
+    r".*",
+    re.IGNORECASE,
+)
 # A structural heading is a kind keyword followed by a numbering token (roman/arabic/ordinal),
 # a bare keyword on its own line (e.g. "Annexe"), or a colon-introduced title. The numbering must
 # end the line or be followed by a separator, otherwise ordinary sentences that merely start with a
@@ -150,6 +163,22 @@ def _build_legacy_section_path(source_title: str, context: list[tuple[int, str]]
     return " > ".join(dict.fromkeys(part for part in parts if part))
 
 
+def _take_trailing_article_notices(lines: list[str]) -> list[str]:
+    notices_reversed: list[str] = []
+    while lines:
+        line = lines[-1]
+        if not line:
+            if notices_reversed:
+                notices_reversed.append(lines.pop())
+                continue
+            break
+        if _LEGAL_ARTICLE_NOTICE_RE.match(line):
+            notices_reversed.append(lines.pop())
+            continue
+        break
+    return list(reversed(notices_reversed))
+
+
 def _split_legacy_legal_blocks(text: str, source_title: str) -> list[dict[str, Any]]:
     context: list[tuple[int, str]] = []
     pending_lines: list[str] = []
@@ -196,9 +225,10 @@ def _split_legacy_legal_blocks(text: str, source_title: str) -> list[dict[str, A
         article_match = _LEGAL_ARTICLE_HEADING_RE.match(line)
         if article_match:
             flush_current()
+            article_notices = _take_trailing_article_notices(pending_lines)
+            flush_pending()
             current_heading = _normalize_legacy_heading(line)
-            current_lines = [current_heading, *pending_lines]
-            pending_lines = []
+            current_lines = [current_heading, *article_notices]
             continue
 
         context_level = _legal_context_level(line)

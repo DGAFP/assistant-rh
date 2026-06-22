@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -147,6 +148,29 @@ def test_legacy_chunking_preserves_text_between_structural_headings() -> None:
     assert article_rows and article_rows[0]["section_path"].endswith("> Article 1er")
 
 
+def test_legacy_chunking_preserves_chapter_body_before_first_article() -> None:
+    text = "\n".join(
+        [
+            "Titre Ier : Dispositions générales",
+            "Chapitre Ier : Champ d'application",
+            "Ce chapitre fixe les conditions communes applicables aux agents.",
+            "Article 1er",
+            "Le texte de l'article un.",
+        ]
+    )
+    rows = chunk_legacy_legal_text(text, source_name="decret.txt")
+
+    chapter_rows = [row for row in rows if "conditions communes" in row["text"]]
+    assert chapter_rows
+    assert chapter_rows[0]["role"] == "LEGAL_TEXT"
+    assert chapter_rows[0]["section_path"] == "decret > Titre Ier : Dispositions générales > Chapitre Ier : Champ d'application"
+
+    article_rows = [row for row in rows if row["role"] == "LEGAL_ARTICLE"]
+    assert len(article_rows) == 1
+    assert "conditions communes" not in article_rows[0]["text"]
+    assert article_rows[0]["section_path"].endswith("> Article 1er")
+
+
 def test_legacy_chunking_does_not_treat_sentences_as_structural_headings() -> None:
     # A sentence that merely starts with a structural keyword ("Section …") must stay body
     # text and must not pollute the surrounding article section paths.
@@ -182,6 +206,47 @@ def test_legacy_chunking_recognizes_uppercase_and_numbered_headings() -> None:
     article_rows = [row for row in rows if row["role"] == "LEGAL_ARTICLE"]
     assert article_rows
     assert article_rows[0]["section_path"].endswith("TITRE IER : DISPOSITIONS GÉNÉRALES > Chapitre 2 : Régime applicable > Article 5")
+
+
+def test_legacy_chunking_replay_fixture_before_after_symptoms() -> None:
+    replay_rows = json.loads(Path("tests/legifrance_local_qna_replay.json").read_text(encoding="utf-8"))
+    before_texts = [str(row.get("text") or "") for row in replay_rows]
+    before_polluted = [
+        text
+        for text in before_texts
+        if re.search(r"\[PAGE\s+\d+\]|\n\d+\s+sur\s+\d+|legifrance\.gouv\.fr", text, re.IGNORECASE)
+    ]
+    before_false_questions = [text for text in before_texts if re.match(r"Q:\s*(?:\d|[-–])", text)]
+
+    assert len(replay_rows) == 100
+    assert len(before_polluted) >= 39
+    assert before_false_questions
+
+    after_rows = chunk_legacy_legal_text(
+        "\n".join(
+            [
+                "[PAGE 7]",
+                "Titre Ier bis : Dispositions propres au contrat de projet (Articles 2-4 à 2-12)",
+                "Ce titre précise les règles propres au contrat de projet.",
+                "Modifié par Décret n°2024-1038 du 6 novembre 2024 - art. 10",
+                "Article 2-2 (abrogé)",
+                "Le contrat de projet est établi par écrit.",
+                "755-10 du code de la sécurité sociale.",
+                "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales a... https://www.legifrance.gouv.fr/loda/id/JORFTEXT000000699956",
+                "7 sur 45 09/10/2025, 16:01",
+                "Article 2-3",
+                "Lorsque le contrat de projet a été conclu pour une durée inférieure à six ans, il peut être renouvelé.",
+            ]
+        ),
+        source_name="decret-replay.txt",
+    )
+    combined_after = "\n".join(row["text"] for row in after_rows)
+
+    assert all(row["role"] != "Q_ONLY" for row in after_rows)
+    assert not re.search(r"\[PAGE\s+\d+\]|\n\d+\s+sur\s+\d+|legifrance\.gouv\.fr", combined_after, re.IGNORECASE)
+    assert all("755-10 du code de la sécurité sociale" not in row["section_path"] for row in after_rows)
+    assert any(row["role"] == "LEGAL_TEXT" and "règles propres" in row["text"] for row in after_rows)
+    assert any(row["role"] == "LEGAL_ARTICLE" and row["section_path"].endswith("> Article 2-2 (abrogé)") for row in after_rows)
 
 
 def test_local_raw_pipeline_loads_articles_from_xml_dump(tmp_path: Path) -> None:

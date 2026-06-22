@@ -96,6 +96,19 @@ def test_retriever_ignores_missing_metadata_columns(monkeypatch):
     assert cols == ["source_name", "section_path", "role", "thematique"]
 
 
+def test_legifrance_table_is_default_section_backed_retrieval_source():
+    config = RetrievalConfig()
+    table = CHUNK_TABLES["legifrance"]
+    retriever = Retriever(config, dsn="unused")
+
+    assert "legifrance" in config.tables
+    assert table.name == "rag_chunks_legifrance"
+    assert table.id_col == "hash_id"
+    assert table.tsv_col == "text_tsv"
+    assert table.has_sections is True
+    assert "section_path" in retriever._TABLE_META_COLS[table.name]
+
+
 def test_retriever_resolves_section_id_from_service_public_short_id(monkeypatch):
     retriever = Retriever(RetrievalConfig(), dsn="unused")
     monkeypatch.setattr(
