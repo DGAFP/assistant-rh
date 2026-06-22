@@ -13,6 +13,13 @@ class FakeCursor:
         self._next_kind: str | None = None
 
     def execute(self, query, params=None):
+        # TODO: query-kind classification is heuristic (substring matching).
+        # It works today because the table_exists query is the only one that
+        # hits information_schema. Extending this fake to test write paths
+        # (update_embeddings touches information_schema.columns) or refactoring
+        # the audit SQL will misclassify silently — replace with explicit
+        # query routing (sentinel marker, per-method fake, or real psycopg
+        # in-memory substitute) before reusing.
         text = str(query)
         self.conn.queries.append(text)
         self.conn.params.append(params)

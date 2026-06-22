@@ -198,7 +198,12 @@ def evaluate_coverage_report(report: dict[str, Any], *, coverage_min_pct: float 
         for column, stats in columns.items():
             total = int(stats.get("total") or 0)
             non_null = int(stats.get("non_null") or 0)
-            if total == 0:
+            # TODO: "empty table = problem" is hard-coded with no opt-out. A new
+            # table awaiting first load currently hard-fails --check-only with
+            # no escape other than dropping it from the manifest or setting
+            # --coverage-min-pct 0. Consider an --allow-empty-tables flag or a
+            # per-table `allow_empty: true` marker in the manifest.
+            if stats.get("is_empty") or total == 0:
                 problems.append(f"{table}.{column}: table vide (0 ligne), aucune couverture possible")
                 continue
             raw_pct = 100.0 * non_null / total
@@ -271,11 +276,14 @@ def fetch_missing_rows(
     embedding_column: str,
     limit: int | None,
 ) -> list[dict[str, Any]]:
+    # Predicate must stay aligned with audit_embedding_coverage's "row has text"
+    # check (LENGTH(TRIM(COALESCE(...))) > 0) so the audit and the backfill agree
+    # on which rows are embeddable. Whitespace-only rows are skipped on both sides.
     query = f"""
         SELECT {id_column} AS id, {text_column} AS text
         FROM {schema}.{table}
         WHERE {embedding_column} IS NULL
-          AND COALESCE({text_column}, '') <> ''
+          AND LENGTH(TRIM(COALESCE({text_column}, ''))) > 0
         ORDER BY {id_column}
     """
     if limit:
@@ -446,6 +454,10 @@ def main() -> int:
             conn.autocommit = True
             report = audit_embedding_coverage(conn, args.schema, table_specs)
             exit_code, problems = evaluate_coverage_report(report, coverage_min_pct=args.coverage_min_pct)
+            # TODO: output shape diverges between modes — check-only emits
+            # summary["coverage"]["tables"], backfill emits summary["tables"]
+            # (line below). Unify once external consumers (Grafana, jq scripts,
+            # GH Actions) are known so we don't break them silently.
             summary["coverage"] = report
             summary["problems"] = problems
             summary["exit_code"] = exit_code
@@ -460,6 +472,11 @@ def main() -> int:
             for embedding_spec in table_spec["embeddings"]:
                 embedding_column = str(embedding_spec.get("column") or "").strip()
                 algorithm = str(embedding_spec.get("algorithm") or "").strip().lower()
+                # Defense-in-depth: filter_table_specs is the primary gate, but
+                # this guard keeps the inner loop safe if a future entrypoint
+                # bypasses the filter.
+                if not embedding_column or not algorithm:
+                    continue
                 if algorithm in {"m3", "embedding_m3", "bge-m3"}:
                     table_summary[embedding_column] = backfill_m3(
                         conn,
