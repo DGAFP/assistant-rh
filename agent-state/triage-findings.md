@@ -1,80 +1,66 @@
 # Triage Findings
 
-**Last updated:** 2026-06-17T12:20Z
+**Last updated:** 2026-06-18T06:00Z
 **Triage agent:** Triage (agent-905cabae)
 **Repo:** DGAFP/assistant-rh
 
 ---
 
-## Open Issues
+## Executive Summary
 
-**45 open issues** total. Breakdown by label:
-
-| Label | Count | Key Issues |
-|-------|-------|------------|
-| qualité | 12 | #111, #106, #105, #104, #103, #102, #101, #82, #79, #78, #36, #23, #22, #21, #14, #6 |
-| Interministériel | 8 | #27, #26, #25, #24, #20, #19, #18, #17, #12 |
-| enhancement | 2 | #79, #78 |
-| security | 1 | #111 |
-| dependencies | 1 | #111 |
-| good first issue | 2 | #36, #33 |
-| documentation | 1 | #33 |
-
-### Recently Created (last 7 days)
-
-| # | Title | Labels | Created |
-|---|-------|--------|---------|
-| 111 | Créer une skill d'analyse pour arbitrer CVE Lite et minimumReleaseAge | dependencies, security | 2026-06-15 |
-| 106 | Golden set : récupérer les réponses du beta test depuis l'ancienne DB Scalingo | qualité | 2026-06-12 |
-| 105 | Source MSO : auditer l'ingestion notebook (documents internes pdf/pptx/docx) | qualité | 2026-06-12 |
-| 104 | Source RGRH : auditer l'ingestion notebook (exports Excel manuels) | qualité | 2026-06-12 |
-| 103 | Source MATTE : auditer l'ingestion notebook (exports PDF manuels) | qualité | 2026-06-12 |
-| 102 | Source Légifrance/DGAFP : auditer l'ingestion et le mode d'acquisition | qualité | 2026-06-12 |
-| 101 | Audit des sources d'ingestion : étendre les garanties Service-Public aux autres corpus | qualité | 2026-06-12 |
-| 100 | feat(ingestion): job de réconciliation Service-Public (config vs lake vs RAG) | — | 2026-06-12 |
-| 99 | chore(ci): protéger les json.loads restants de scaleway_data_jobs.py | — | 2026-06-12 |
-
-### Stale / Backlog Issues (pre-June)
-
-- #31: [Plan Omar] Stabilisation ingestion + déploiement Scaleway (mai 2026) — still open
-- #30: [Durcissement migrations] Définir un workflow de migrations robuste
-- #29: [Réconciliation schéma] Cadrer la fusion à 3 voies
-- #36: [Backlog] Ajouter des quality gates post-ingestion — good first issue
+7 new issues opened since last triage (2026-06-17), including 2 P0 and 1 P0/P1. CI has recovered from yesterday's failures. The DGAFP embedding gap (0% coverage, 3,992 chunks) remains the most critical confirmed data defect — the ghost `rag_chunks_dgafp_scalingo` table has 100% coverage, making keyed reconciliation viable. Missing vector indexes on matte, legifrance, and rgrh tables are a newly confirmed gap. PR #140 (MATTE embeddings backfill) is open but unmerged. No user feedback in 7 days. Grafana/Cockpit API unreachable from this machine.
 
 ---
 
-## CI Failures
+## Open Issues
 
-### 1. Streamlit Deploy Staging — FAILED (2026-06-17T09:26Z)
+**45 open issues** total. Key changes since last triage:
 
-- **Workflow:** Streamlit Deploy Staging (push to main)
-- **Job:** `deploy`
-- **Root cause:** Docker registry timeout — `Error response from daemon: Get "https://rg.fr-par.scw.cloud/v2/": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`
-- **Impact:** Staging UI not deployed from latest main push (commit `128c778`)
-- **Severity:** P1 — blocks staging validation; likely transient Scaleway Container Registry networking issue
+### New Issues (2026-06-17)
 
-### 2. Conformance Nightly — FAILED (2026-06-17T07:33Z)
+| # | Title | Severity | Labels | Key point |
+|---|-------|----------|--------|-----------|
+| 120 | [P0] Rendre rag_chunks_test fail-fast ou explicitement optionnelle | P0 | bug, qualité | Table absent in staging but config enables it; fail-open behavior |
+| 121 | [P0] Restaurer la recherche sémantique DGAFP depuis les embeddings du fantôme rag_chunks_dgafp_scalingo | P0 | bug, qualité | 3,992 chunks with 0% embedding coverage; ghost table has 100% |
+| 122 | [P0/P1] Ajouter l'alerting opérationnel sur les échecs du reranker section-level | P0/P1 | qualité, observability | Reranker failures invisible without structured alerting |
+| 123 | [P1] Normaliser les diagnostics de retrieval par étape | P1 | enhancement, qualité, observability | Cannot explain why relevant chunks are lost between stages |
+| 124 | [P1] Versionner les index vectoriels manquants des tables RAG vivantes | P1 | enhancement, qualité | **Confirmed**: matte, legifrance, rgrh have no vector indexes |
+| 125 | [P1] Clarifier le dashboard RAG health avec une taxonomie corpus/source/table | P1 | enhancement, qualité, observability | Dashboard shows physical tables, not logical corpus structure |
+| 126 | [P1] Ajouter des alertes de qualité de chunking au dashboard RAG health | P1 | enhancement, qualité, observability | No chunking quality alerts on RAG health dashboard |
 
-- **Workflow:** Conformance Nightly (scheduled)
-- **Job:** `nightly-conformance`
-- **Root cause:** `No eligible rows for nightly selection (gold_sources is NULL or empty for all rows). Eligible row count (0) is below nightly limit (100).`
-- **Impact:** Nightly conformance tests cannot run — no gold-set data available
-- **Severity:** P1 — **directly confirmed by DB**: `goldset_questions_v2` table has **0 rows**. This is a data gap, not a CI bug.
+### Previously Tracked Issues (unchanged status)
 
-### 3. Conformance Nightly — FAILED (2026-06-16T08:26Z)
+| # | Title | Severity | Status |
+|---|-------|----------|--------|
+| 111 | CVE Lite / minimumReleaseAge skill | security | Open |
+| 106 | Golden set recovery from old Scalingo DB | qualité | Open — related to P0 goldset gap |
+| 105 | MSO ingestion audit | qualité | Open |
+| 104 | RGRH ingestion audit | qualité | Open — was next candidate |
+| 103 | MATTE ingestion audit | qualité | Open — PRs #129, #134 open |
+| 102 | Légifrance/DGAFP ingestion audit | qualité | Open — PRs #131, #132, #133 open |
+| 101 | Extend Service-Public guarantees to other corpora | qualité | Open |
+| 100 | Service-Public reconciliation job | — | Open |
+| 99 | json.loads protection in CI | — | Open |
+| 82 | Embedding sync audit | qualité | Open |
 
-- Same root cause as above (goldset empty). **Two consecutive nightly failures.**
+---
 
-### Other CI (healthy)
+## CI Status
 
-| Workflow | Status | Notes |
-|----------|--------|-------|
-| CI Tests (push main) | ✅ success | |
-| Security Audit (push main) | ✅ success | |
-| Release Please (push main) | ✅ success | |
-| Data Engineering CI (push main) | ✅ success | |
-| Conformance (PR) | ✅ success | On release-please branch |
-| CI Tests (PR) | ✅ success | On release-please branch |
+### Current State: ALL GREEN
+
+| Workflow | Status | Change since last triage |
+|----------|--------|--------------------------|
+| CI Tests | ✅ success | No change (was green) |
+| Data Engineering CI | ✅ success | No change (was green) |
+| Conformance | ✅ success | No change (was green) |
+| Streamlit Deploy Staging | ✅ success | **RECOVERED** — was failing (Docker registry timeout) |
+| Security Audit | ✅ success | No change |
+
+### Previously Failed (now resolved)
+
+1. **Streamlit Deploy Staging** — was failing 2026-06-17T09:26Z with Docker registry timeout. Now passing since 2026-06-17T18:59Z.
+2. **Conformance Nightly** — was failing due to empty `goldset_questions_v2`. No recent nightly runs visible in the last 50 CI runs (may be scheduled outside recent window). **Goldset table still empty** — this will fail again on next nightly run.
 
 ---
 
@@ -83,68 +69,90 @@
 ### PostgreSQL Staging (Scaleway)
 
 - **Version:** PostgreSQL 17.10
-- **Connection:** ✅ healthy (1 active / 13 total connections)
-- **Dead tuples:** None > 1000 (healthy)
-- **Long-running queries:** None > 5min (healthy)
+- **Connection:** ✅ healthy (1 active / 13 idle connections)
+- **Access method:** Python/psycopg via `.env` DSN (no psql/scalingo CLI available)
 
 ### Critical Findings
 
-#### 1. Empty goldset_questions_v2 table — P0
+#### 1. Empty goldset_questions_v2 table — P0 (UNCHANGED)
 
-- **0 rows** in `goldset_questions_v2` — this is why Conformance Nightly fails
+- **0 rows** in `goldset_questions_v2` — Conformance Nightly CI will fail on next scheduled run
 - `intent_eval_goldset` has 73 rows but no `gold_sources` column
 - **Action needed:** Populate goldset_questions_v2 or fix the nightly job to use intent_eval_goldset
+- **Confidence:** High (confirmed by direct DB query)
+- **Source:** `SELECT COUNT(*) FROM goldset_questions_v2`
+- **Suspected cause:** Migration gap — goldset data exists in old format but not in the v2 table the nightly job expects
+- **Recommended next action:** Issue #106 (golden set recovery) or direct backfill from intent_eval_goldset
 
-#### 2. Missing embeddings in rag_chunks_dgafp — P1
+#### 2. Missing embeddings in rag_chunks_dgafp — P0 (UNCHANGED, now tracked as #121)
 
-- **3,992 chunks with 0% embedding coverage** (embedding_m3 column is NULL for all rows)
-- This means DGAFP circulaires are completely unsearchable by vector similarity
-- Other tables: service_public (100%), matte (100%), legifrance (100%), mso (100%), rgrh (54.9%)
+- **3,992 chunks with 0% embedding coverage** (embedding_m3 IS NULL for all rows)
+- Ghost table `rag_chunks_dgafp_scalingo` has **3,992 rows with 100% embedding coverage**
+- Keyed reconciliation is viable: same chunk count, ghost table fully populated
+- **Action needed:** Copy embeddings from ghost table to live table by chunk_id key
+- **Confidence:** High (confirmed by direct DB query)
+- **Source:** `SELECT COUNT(*) FROM rag_chunks_dgafp WHERE embedding_m3 IS NOT NULL` → 0
+- **Suspected cause:** Migration from Scalingo to Scaleway did not copy embeddings to the live table
+- **Recommended next action:** Issue #121 — implement keyed copy with text-hash guard
 
-#### 3. Partial embeddings in rag_chunks_rgrh — P2
+#### 3. Missing vector indexes — P1 (NEW, tracked as #124)
+
+| Table | Has vector index? | Embedding coverage |
+|-------|-------------------|--------------------|
+| rag_chunks_service_public | ✅ idx_rag_chunks_service_public_embedding_m3 | 100% |
+| rag_chunks_mso | ✅ idx_rag_chunks_mso_embedding_m3 | 100% |
+| rag_chunks_dgafp_scalingo | ✅ idx_dgafp_embedding | 100% (ghost) |
+| rag_chunks_matte | ❌ None | 100% |
+| rag_chunks_legifrance | ❌ None | 100% |
+| rag_chunks_rgrh | ❌ None | 54.9% |
+| rag_chunks_dgafp (live) | ❌ None | 0% (no embeddings) |
+
+- **Impact:** Vector similarity search on matte, legifrance, rgrh uses sequential scans — slower retrieval and no ANN optimization
+- **Confidence:** High (confirmed by `pg_indexes` query)
+- **Source:** `SELECT indexname, tablename FROM pg_indexes WHERE indexdef LIKE '%vector%'`
+- **Suspected cause:** Vector indexes were never created for these tables after migration
+- **Recommended next action:** Issue #124 — create vector indexes; prioritize matte (959 chunks, 100% coverage)
+
+#### 4. rag_chunks_test absent — P0 (NEW, tracked as #120)
+
+- Table `rag_chunks_test` does **not exist** in staging DB
+- Config enables `v3_enable_chunks_test` by default
+- Runtime silently swallows `UndefinedTable` errors and returns empty results
+- **Impact:** Source announced as "searched" but never contributes; false `tables_searched` entries
+- **Confidence:** High (confirmed by `information_schema.tables` query)
+- **Source:** `SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='rag_chunks_test')` → false
+- **Suspected cause:** Table was never created in staging; test-only artifact
+- **Recommended next action:** Issue #120 — make fail-fast or explicitly optional per environment
+
+#### 5. Partial embeddings in rag_chunks_rgrh — P2 (UNCHANGED)
 
 - **178/324 chunks embedded (54.9%)** — 146 missing
-- RGRH source partially searchable
+- No vector index even on the 178 embedded rows
+- **Recommended next action:** Backfill remaining 146 chunks, then add vector index
 
-#### 4. Scalingo → Scaleway chunk sync discrepancy — P2
+#### 6. Scalingo → Scaleway chunk sync discrepancy — P2 (UNCHANGED)
 
-| Table | Base | _scw | _scalingo |
-|-------|------|------|-----------|
-| rag_chunks_dgafp | 3,992 | 3,992 | 3,992 |
-| rag_chunks_legifrance | 429 | 429 | 429 |
-| rag_chunks_service_public | 2,782 | N/A | 1,140 |
+| Table | Live | _scalingo |
+|-------|------|-----------|
+| rag_chunks_service_public | 2,782 | 1,140 |
+| rag_chunks_dgafp | 3,992 | 3,992 |
+| rag_chunks_legifrance | 429 | 429 |
 
-- **service_public:** base has 2,782 chunks but _scalingo only has 1,140; _scw table doesn't exist
-- This suggests incomplete migration from Scalingo to Scaleway for service_public source
+- **service_public:** live has 2,782 chunks but _scalingo only 1,140 — incomplete migration
+- **Recommended next action:** Issue #100 (reconciliation job)
 
-#### 5. No recent user feedback — P2
+### Performance & Activity (last 7 days)
 
-- **0 feedback entries in last 7 days** (out of 761 total)
-- May indicate low usage or broken feedback collection
+| Metric | Value | Change |
+|--------|-------|--------|
+| Total chat runs | 3,096 | +3 since last triage |
+| Runs last 7d | 41 | +2 |
+| Runs last 24h | 3 | Low activity |
+| Latest run | 2026-06-17T14:02Z | Yesterday |
+| Reranker errors last 7d | 0 | Was 1 last week |
+| Feedback last 7d | 0 | Unchanged — 0 for 2nd consecutive triage |
 
-#### 6. Chat activity
-
-- **3,093 total chat runs**, 39 in last 7 days, 10 in last 24h
-- Latest run: 2026-06-16T15:27Z (yesterday)
-
-### Performance (last 7 days)
-
-| Metric | Value |
-|--------|-------|
-| avg total time | 10,064ms |
-| p50 total time | 8,699ms |
-| p95 total time | 14,084ms |
-| max total time | 58,406ms |
-| v3 avg generation | 3,463ms |
-| v3 avg retrieval | 1,298ms |
-| v3 avg selector | 2,239ms |
-
-### Reranker Issues
-
-- 1 reranker failure in last 7 days: `502 Server Error: Bad Gateway for url: https://albert.api.etalab.gouv.fr/v1/rerank`
-- 34 runs with `v3_reranker_status=completed` (healthy)
-
-### Feedback Breakdown
+### Feedback Breakdown (cumulative, 761 total)
 
 | Category | Count |
 |----------|-------|
@@ -165,16 +173,41 @@
 
 ## Grafana Alerts
 
-**Status: ACCESS OK**
+**Status: ACCESS FAILED**
 
-- Auth works with `SCW_SECRET_KEY` from `.env` as `X-Auth-Token` against the direct Grafana API.
-- Custom dashboard visible: **Assistant RH - RAG Data Health** (`assistant-rh-rag-data-health`).
-- Datasources visible:
-  - Assistant RH RAG Health - fr-par (`dfp8eneiuegaob`, Prometheus)
-  - Scaleway Metrics - fr-par (`bfj2tut7o4pvka`, Prometheus)
-  - Scaleway Logs - fr-par (`afj2tuu81eqrkf`, Loki)
-- Grafana unified alert rules endpoint returned **0 alert rules**. No firing Grafana alerts detected from configured alert rules.
-- Note: Triage initially attempted the wrong Cockpit endpoint; runbook has been corrected.
+- Cockpit API endpoint `https://cockpit.fr-par.scw.cloud/api/search` returned HTTP 000 (connection refused/timeout)
+- Auth method: `X-Auth-Token: $SCW_SECRET_KEY` — previously worked on 2026-06-17
+- **Error:** Connection timeout — likely network/firewall issue on this machine, not auth failure
+- **Impact:** Cannot verify Grafana alert rules or dashboard data from this environment
+- **Recommended next action:** Verify network access to cockpit.fr-par.scw.cloud; check if VPN or specific network required
+
+---
+
+## Open PRs
+
+| # | Branch | Title | Status | Notes |
+|---|--------|-------|--------|-------|
+| 140 | chore/backfill-matte-embeddings | chore(ingestion): wire MATTE embeddings backfill | Open | **NEW** — addresses MATTE embedding backfill |
+| 138 | letta/backend-proconnect-synthesis | docs: recommend backend and ProConnect path | Open | Architecture docs |
+| 134 | chore/issue-103-matte-offline-audit-tooling | chore(ingestion): add MATTE offline audit tooling | Open | Part of #103 split |
+| 133 | feat/issue-102-legifrance-embedding-check-only | feat(ingestion): add read-only embedding coverage audit | Open | Part of #102 work |
+| 132 | fix/issue-102-strict-legifrance-articles | fix(ingestion): fail fast on missing Legifrance articles | Open | Part of #102 work |
+| 131 | fix/issue-102-preserve-legifrance-embeddings | fix(ingestion): preserve Legifrance embeddings on upsert | Open | Part of #102 work |
+| 129 | docs/issue-103-matte-audit-runbook | docs(ingestion): add MATTE source audit runbook | Open | Part of #103 split |
+| 128 | chore/aidev-harness | chore: add aidev harness (rtk + agentloop state) | Open | Infrastructure |
+| 115 | codex-rag-health-monitoring | feat: add RAG data health monitoring | Open | RAG health monitoring |
+| 114 | feat/issue-36-quality-gates | feat: add post-ingestion quality gates | Open | Quality gates |
+
+### Recently Merged (since last triage)
+
+| # | Title | Merged |
+|---|-------|--------|
+| 139 | docs(audit): renumber concurrent notes as 08/09/10 | 2026-06-17T19:06Z |
+| 137 | docs(audit): add ingestion architecture audit vs. 2025/2026 SOTA | 2026-06-17T18:59Z |
+| 136 | docs(audit): add note 08 — RAG architecture review | 2026-06-17T18:58Z |
+| 135 | docs(audit): Streamlit UI architecture review (note 08) | 2026-06-17T18:56Z |
+| 130 | docs(ingestion): document Legifrance DGAFP audit workflow | 2026-06-17T15:58Z |
+| 118 | docs: clarify paused Mastra conformance priority | 2026-06-17T14:36Z |
 
 ---
 
@@ -182,34 +215,48 @@
 
 ### P0 — Immediate
 
-| # | Issue | Impact |
-|---|-------|--------|
-| 1 | Empty `goldset_questions_v2` table | Conformance Nightly CI has failed 2 consecutive nights; no quality regression testing is running |
-| 2 | Missing embeddings in `rag_chunks_dgafp` (3,992 chunks, 0% coverage) | DGAFP circulaires corpus is completely invisible to vector search; users cannot retrieve this content via semantic query |
+| # | Issue | Impact | Confidence |
+|---|-------|--------|------------|
+| 1 | Empty `goldset_questions_v2` (0 rows) | Conformance Nightly will fail again; no quality regression testing | High |
+| 2 | Missing embeddings in `rag_chunks_dgafp` (3,992 chunks, 0% coverage) | DGAFP circulaires invisible to vector search; keyed reconciliation from ghost table viable | High |
+| 3 | `rag_chunks_test` absent but enabled in config (#120) | Fail-open: source announced as searched but never contributes; false `tables_searched` | High |
 
 ### P1 — This Sprint
 
-| # | Issue | Impact |
-|---|-------|--------|
-| 3 | Streamlit Deploy Staging CI failure | Staging UI not deployed; likely transient registry timeout but needs re-trigger or investigation |
-| 4 | Scalingo→Scaleway migration gap for service_public chunks | 2,782 vs 1,140 row discrepancy; _scw table missing |
-| 5 | Issue #106: Golden set recovery from old Scalingo DB | Directly related to P0 #1; needs turn_id join with eval LLM judge |
-| 6 | Issue #100: Reconciliation job for Service-Public | Would address the sync discrepancy |
+| # | Issue | Impact | Confidence |
+|---|-------|--------|------------|
+| 4 | Missing vector indexes on matte, legifrance, rgrh (#124) | Sequential scan on vector search; slower retrieval | High |
+| 5 | Reranker failure alerting (#122) | Reranker errors invisible without structured alerting | High |
+| 6 | Scalingo→Scaleway migration gap for service_public (2,782 vs 1,140) | Incomplete migration; _scw table missing | High |
+| 7 | Issue #106: Golden set recovery | Directly related to P0 #1; needs turn_id join | Medium |
+| 8 | Issue #100: Reconciliation job for Service-Public | Would address the sync discrepancy | Medium |
 
 ### P2 — Next Sprint
 
-| # | Issue | Impact |
-|---|-------|--------|
-| 7 | Partial embeddings in `rag_chunks_rgrh` (54.9%) | 146 chunks unsearchable |
-| 8 | No user feedback in last 7 days | Possible broken collection or low engagement |
-| 9 | Issues #101–105: Ingestion audit across all sources | Quality gates for all corpora |
-| 10 | Issue #99: json.loads protection in CI | Fragile CI parsing |
-| 11 | Cockpit/Grafana access | Need monitoring visibility; grant API key permissions |
+| # | Issue | Impact | Confidence |
+|---|-------|--------|------------|
+| 9 | Partial embeddings in `rag_chunks_rgrh` (54.9%) | 146 chunks unsearchable | High |
+| 10 | No user feedback in 7+ days (2 consecutive triages) | Possible broken collection or low engagement | Medium |
+| 11 | Retrieval diagnostics normalization (#123) | Cannot explain chunk loss between stages | Medium |
+| 12 | RAG health dashboard taxonomy (#125) | Dashboard shows physical tables, not logical corpus | Medium |
+| 13 | Chunking quality alerts (#126) | No chunking quality monitoring | Medium |
+| 14 | Issue #99: json.loads protection in CI | Fragile CI parsing | High |
 
 ### P3 — Backlog
 
 | # | Issue | Impact |
 |---|-------|--------|
-| 12 | Issues #30, #29: Migration workflow & schema reconciliation | Infrastructure debt |
-| 13 | Issue #31: Plan Omar stabilisation | Still open past target date |
-| 14 | Issue #36: Quality gates post-ingestion | Good first issue, aligned with P1 priorities |
+| 15 | Issues #30, #29: Migration workflow & schema reconciliation | Infrastructure debt |
+| 16 | Issue #31: Plan Omar stabilisation | Still open past target date |
+| 17 | Issue #36: Quality gates post-ingestion | Good first issue, aligned with P1 priorities |
+| 18 | Mastra conformance (#78, #79) | Paused per PROGRESS.md |
+
+---
+
+## Recommended Daily Plan Seed
+
+1. **[P0] DGAFP embedding reconciliation** (#121) — Implement keyed copy from `rag_chunks_dgafp_scalingo` to live table with text-hash guard. Ghost table has 100% coverage, same row count. Highest-impact data fix.
+2. **[P0] rag_chunks_test fail-fast** (#120) — Make source explicitly optional or fail-fast when table absent. Small, well-scoped code change.
+3. **[P0] Goldset population** — Backfill `goldset_questions_v2` from `intent_eval_goldset` or recover from old Scalingo DB (#106). Unblocks Conformance Nightly.
+4. **[P1] Create vector indexes** (#124) — Add `hnsw` indexes on matte, legifrance, rgrh tables. Quick win for retrieval performance.
+5. **[P1] Review/merge open ingestion PRs** — #129, #131, #132, #133, #134 are all open and unmerged. Consider merging the #102 stack (Legifrance) first since it's most complete.
