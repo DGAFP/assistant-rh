@@ -73,17 +73,23 @@ class ContextBuilder:
             else:
                 standalone.append(s)
 
-        # Sort doc groups by best section score (descending)
-        sorted_docs = sorted(by_doc.items(), key=lambda kv: max(s.score for s in kv[1]), reverse=True)
-        best_standalone_score = max((s.score for s in standalone), default=None)
+        # Sort doc groups by best section score (descending); compute the max
+        # once and reuse it (used both for sort and for the inner gate).
+        doc_max_score: Dict[str, float] = {doc_id: max((s.score or 0.0) for s in secs) for doc_id, secs in by_doc.items()}
+        sorted_docs = sorted(by_doc.items(), key=lambda kv: doc_max_score[kv[0]], reverse=True)
 
-        # Step 1 – doc-entire for small documents: load full document from rag_documents
+        def _section_key(s: AggregatedSection) -> str:
+            # Unique-and-stable across both loops. `id(s)` is fine because the
+            # input list is stable for the lifetime of this build().
+            return s.section_id or s.heading or f"_obj_{id(s)}"
+
+        # Step 1 – doc-entire for small documents. We always include qualifying
+        # small docs (within budget and the max_full_docs cap); the original
+        # legifrance-q2 ordering bug is fixed by the score-sort at the end of
+        # Step 2 below, not by suppressing doc-entires here.
         for doc_id, doc_sections in sorted_docs:
             if full_doc_count >= max_full_docs:
                 break
-            doc_best_score = max(s.score for s in doc_sections)
-            if best_standalone_score is not None and doc_best_score < best_standalone_score:
-                continue
             doc_token_count = doc_sections[0].metadata.get("doc_token_count", 0) or 0
             if doc_token_count <= 0 or doc_token_count > doc_threshold:
                 continue
@@ -96,16 +102,19 @@ class ContextBuilder:
 
             item = self._full_doc_to_item(doc_row, doc_sections)
             item.metadata["is_doc_entire"] = True
+            # ContextItem.score on a doc-entire reflects the best section score
+            # of its constituents, so the post-Step-2 sort places it correctly.
+            item.score = doc_max_score[doc_id]
             selected.append(item)
             for s in doc_sections:
-                used_ids.add(s.section_id or s.heading)
+                used_ids.add(_section_key(s))
             tokens_used += item.token_estimate
             full_doc_count += 1
             logger.info("Doc-entire included doc %s (%s): ~%d tokens", doc_id, item.document_title[:40], item.token_estimate)
 
         # Step 2 – fill with top individual sections (from selector/reranker order)
         for s in sections:
-            key = s.section_id or s.heading
+            key = _section_key(s)
             if key in used_ids:
                 continue
             item = self._section_to_item(s)
@@ -117,19 +126,15 @@ class ContextBuilder:
             used_ids.add(key)
             tokens_used += item.token_estimate
 
-        # Include standalone chunks (no section_id, e.g. DGAFP)
-        for s in standalone:
-            key = s.section_id or s.heading or str(id(s))
-            if key in used_ids:
-                continue
-            item = self._section_to_item(s)
-            if tokens_used + item.token_estimate > budget:
-                continue
-            if len(selected) >= max_sections:
-                break
-            selected.append(item)
-            used_ids.add(key)
-            tokens_used += item.token_estimate
+        # Restore score-ordered priority: the highest-scoring item must appear
+        # first so the LLM sees the strongest evidence before any lower-scored
+        # doc-entire (legifrance-q2 regression fix). On exact score ties,
+        # standalone chunks beat doc-entires (the promotion intent for ties
+        # from review finding #7) and Python's stable sort preserves retrieval
+        # order for the remaining ties.
+        selected.sort(
+            key=lambda item: (-(item.score or 0.0), 1 if item.metadata.get("is_doc_entire") else 0),
+        )
 
         # Step 3 – triangulation (ignores budget to guarantee publisher diversity)
         primary_publisher = selected[0].publisher if selected else None
@@ -139,7 +144,7 @@ class ContextBuilder:
                 break
             if s.publisher == primary_publisher:
                 continue
-            key = s.section_id or s.heading
+            key = _section_key(s)
             if key in used_ids:
                 continue
             item = self._section_to_item(s)

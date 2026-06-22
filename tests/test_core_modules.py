@@ -9,13 +9,15 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
+import pytest
+from assistant_rh_rag_pipeline.config import QueryProcessorConfig
 from assistant_rh_rag_pipeline.models import (
     AggregatedSection,
     ContextItem,
     RetrievedChunk,
     estimate_tokens,
 )
-from assistant_rh_rag_pipeline.query_processor import Intent
+from assistant_rh_rag_pipeline.query_processor import Intent, QueryProcessor
 
 # ---------------------------------------------------------------------------
 # models.estimate_tokens
@@ -159,156 +161,180 @@ class TestLoadPrompt:
 # ---------------------------------------------------------------------------
 
 
-class TestQueryProcessorLegalSearchHeuristics:
-    @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
-    @patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
-    def test_forces_legal_search_for_legal_rh_rule_question(self, mock_classify, _mock_acronyms):
-        from assistant_rh_rag_pipeline.config import QueryProcessorConfig
-        from assistant_rh_rag_pipeline.query_processor import QueryProcessor
+def _make_classify_return(theme: str = "remuneration", needs_legal: bool = False) -> dict:
+    """Mock for QueryProcessor._classify success path."""
+    return {
+        "intent": Intent.RAG_QUERY,
+        "confidence": 0.95,
+        "reasoning": "Question RH",
+        "needs_legal": needs_legal,
+        "theme": theme,
+        "enriched_query": "",
+        "query_for_retrieval": None,
+        "direct_response": None,
+        "raw": "{}",
+        "classify_ok": True,
+    }
 
-        mock_classify.return_value = {
-            "intent": Intent.RAG_QUERY,
-            "confidence": 0.95,
-            "reasoning": "Question RH métier",
-            "needs_legal": False,
-            "theme": "remuneration",
-            "enriched_query": "",
-            "query_for_retrieval": None,
-            "direct_response": None,
-            "raw": "{}",
-        }
 
-        proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
-        result = proc.process("Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel ?")
-
-        assert result.intent == Intent.RAG_QUERY
-        assert result.needs_legal_search is True
-
-    @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
-    @patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
-    def test_preserves_non_legal_search_for_generic_rh_question(self, mock_classify, _mock_acronyms):
-        from assistant_rh_rag_pipeline.config import QueryProcessorConfig
-        from assistant_rh_rag_pipeline.query_processor import QueryProcessor
-
-        mock_classify.return_value = {
-            "intent": Intent.RAG_QUERY,
-            "confidence": 0.95,
-            "reasoning": "Question RH générique",
-            "needs_legal": False,
-            "theme": "conges",
-            "enriched_query": "",
-            "query_for_retrieval": None,
-            "direct_response": None,
-            "raw": "{}",
-        }
-
-        proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
-        result = proc.process("Comment demander des congés annuels à son manager ?")
-
-        assert result.intent == Intent.RAG_QUERY
-        assert result.needs_legal_search is False
-
-    @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
-    @patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
-    def test_forces_legal_search_for_contract_project_rule_question(self, mock_classify, _mock_acronyms):
-        from assistant_rh_rag_pipeline.config import QueryProcessorConfig
-        from assistant_rh_rag_pipeline.query_processor import QueryProcessor
-
-        mock_classify.return_value = {
-            "intent": Intent.RAG_QUERY,
-            "confidence": 0.95,
-            "reasoning": "Question contrat",
-            "needs_legal": False,
-            "theme": "typologie_contrats",
-            "enriched_query": "",
-            "query_for_retrieval": None,
-            "direct_response": None,
-            "raw": "{}",
-        }
-
-        proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
-        result = proc.process(
-            "Dans quel délai l'administration doit-elle notifier à l'agent son intention de renouveler ou non un contrat de projet ?"
-        )
-
-        assert result.intent == Intent.RAG_QUERY
-        assert result.needs_legal_search is True
-
-    @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
-    @patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
-    def test_forces_legal_search_for_recruitment_eligibility_checks(self, mock_classify, _mock_acronyms):
-        from assistant_rh_rag_pipeline.config import QueryProcessorConfig
-        from assistant_rh_rag_pipeline.query_processor import QueryProcessor
-
-        mock_classify.return_value = {
-            "intent": Intent.RAG_QUERY,
-            "confidence": 0.95,
-            "reasoning": "Question recrutement",
-            "needs_legal": False,
-            "theme": "recrutement",
-            "enriched_query": "",
-            "query_for_retrieval": None,
-            "direct_response": None,
-            "raw": "{}",
-        }
-
-        proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
-        result = proc.process(
+@pytest.mark.parametrize(
+    "query, expected_needs_legal, label",
+    [
+        # Original singular forms (regression coverage)
+        (
+            "Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel ?",
+            True,
+            "subrogation+indemnites+agent_contractuel",
+        ),
+        (
+            "Dans quel délai l'administration doit-elle notifier à l'agent son intention de renouveler ou non un contrat de projet ?",
+            True,
+            "contrat_projet+rule",
+        ),
+        (
             "Quelles vérifications administratives peuvent empêcher le recrutement "
             "d'un agent contractuel, notamment sur le casier judiciaire, la "
-            "situation au regard du service national ou le droit au séjour ?"
-        )
+            "situation au regard du service national ou le droit au séjour ?",
+            True,
+            "verifications+casier+sejour",
+        ),
+        (
+            "Quelle vérification administrative peut empêcher le recrutement d'un agent contractuel au regard du droit au séjour ?",
+            True,
+            "singular_rule_phrase",
+        ),
+        (
+            "Sous quelles conditions l'agent est-il réemployé sur son précédent emploi au terme d'un congé parental ?",
+            True,
+            "conditions+conge_parental",
+        ),
+        # ── French plural morphology (review finding #1) ─────────────────────
+        (
+            "Sous quelles conditions les agents contractuels sont-ils réemployés en congés parentaux ?",
+            True,
+            "plural_agents+conges_parentaux",
+        ),
+        (
+            "Quels délais s'appliquent au renouvellement des contrats de projet ?",
+            True,
+            "plural_contrats_de_projet",
+        ),
+        (
+            "À partir de quand les emplois permanents peuvent-ils être confiés à des agents contractuels ?",
+            True,
+            "plural_emplois_permanents",
+        ),
+        # ── Canonical Légifrance citation (review finding #2) ────────────────
+        (
+            "Que dit l'article L. 132-1 sur le congé de maladie ?",
+            True,
+            "article_L_dot_space",
+        ),
+        (
+            "Pour les articles R. 7-2 et suivants, quelle est la procédure ?",
+            True,
+            "articles_plural_dot_space",
+        ),
+        # ── Unaccented French typing (review finding #9) ─────────────────────
+        (
+            "A partir de quand peut-on recruter un agent contractuel sur un emploi permanent ?",
+            True,
+            "ascii_a_partir_de_quand",
+        ),
+        (
+            "Quelles verifications administratives peuvent empecher le recrutement d'un agent contractuel au regard du droit au sejour ?",
+            True,
+            "ascii_verifications",
+        ),
+        # ── NFD-decomposed input (review finding #10) ────────────────────────
+        (
+            # Same text as the first case, but NFD-decomposed (Mac clipboard).
+            __import__("unicodedata").normalize(
+                "NFD",
+                "Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel ?",
+            ),
+            True,
+            "nfd_subrogation",
+        ),
+        # ── Negative cases ───────────────────────────────────────────────────
+        (
+            "Comment demander des congés annuels à son manager ?",
+            False,
+            "generic_conges_question",
+        ),
+        # Bare `loi` no longer triggers (review finding #8: false positives).
+        (
+            "Est-ce que la loi du plus fort règne dans ce service ?",
+            False,
+            "loi_idiom_no_qualifier",
+        ),
+        # Qualified `loi du <year>` still triggers.
+        (
+            "La loi du 26 janvier 1984 prévoit-elle des congés parentaux ?",
+            True,
+            "loi_du_year_qualifier",
+        ),
+    ],
+)
+@patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
+@patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
+def test_legal_search_heuristic_matrix(mock_classify, _mock_acronyms, query, expected_needs_legal, label):
+    """Single matrix covering plural/accent/canonical-citation/loi-FP/regression cases."""
+    mock_classify.return_value = _make_classify_return()
+    proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
+    result = proc.process(query)
+    assert result.intent == Intent.RAG_QUERY
+    assert result.needs_legal_search is expected_needs_legal, f"[{label}] expected needs_legal_search={expected_needs_legal} for: {query!r}"
+    # LLM signal is preserved separately so observability can distinguish
+    # LLM-driven from heuristic-driven decisions.
+    assert result.needs_legal_search_llm is False
 
-        assert result.intent == Intent.RAG_QUERY
-        assert result.needs_legal_search is True
+
+class TestLegalSearchGating:
+    """Heuristic must be gated on classify success AND enable_intent_gating."""
 
     @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
     @patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
-    def test_forces_legal_search_for_singular_rule_phrase(self, mock_classify, _mock_acronyms):
-        from assistant_rh_rag_pipeline.config import QueryProcessorConfig
-        from assistant_rh_rag_pipeline.query_processor import QueryProcessor
-
+    def test_heuristic_skipped_on_classify_failure(self, mock_classify, _mock_acronyms):
+        # Simulate the exception fallback (no classify_ok flag, no needs_legal key).
         mock_classify.return_value = {
             "intent": Intent.RAG_QUERY,
-            "confidence": 0.95,
-            "reasoning": "Question recrutement",
-            "needs_legal": False,
-            "theme": "recrutement",
-            "enriched_query": "",
-            "query_for_retrieval": None,
-            "direct_response": None,
-            "raw": "{}",
+            "confidence": 0.5,
+            "reasoning": "LLM outage",
+            "classify_ok": False,
         }
-
         proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
-        result = proc.process("Quelle vérification administrative peut empêcher le recrutement d'un agent contractuel au regard du droit au séjour ?")
+        result = proc.process("Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel ?")
+        # Pre-PR safe default of False is preserved on LLM outage.
+        assert result.needs_legal_search is False
+        assert result.needs_legal_search_llm is None
 
-        assert result.intent == Intent.RAG_QUERY
-        assert result.needs_legal_search is True
+    @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
+    def test_heuristic_skipped_when_intent_gating_disabled(self, _mock_acronyms):
+        proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=False))
+        result = proc.process("Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel ?")
+        # Heuristic does not run; fallback path keeps needs_legal_search=False.
+        assert result.needs_legal_search is False
+        assert result.needs_legal_search_llm is None
 
     @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
     @patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
-    def test_forces_legal_search_for_optional_preposition_variant(self, mock_classify, _mock_acronyms):
-        from assistant_rh_rag_pipeline.config import QueryProcessorConfig
-        from assistant_rh_rag_pipeline.query_processor import QueryProcessor
-
-        mock_classify.return_value = {
-            "intent": Intent.RAG_QUERY,
-            "confidence": 0.95,
-            "reasoning": "Question congés",
-            "needs_legal": False,
-            "theme": "conges",
-            "enriched_query": "",
-            "query_for_retrieval": None,
-            "direct_response": None,
-            "raw": "{}",
-        }
-
+    def test_llm_true_is_always_preserved(self, mock_classify, _mock_acronyms):
+        mock_classify.return_value = _make_classify_return(needs_legal=True)
         proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
-        result = proc.process("Sous quelles conditions l'agent est-il réemployé sur son précédent emploi au terme d'un congé parental ?")
-
-        assert result.intent == Intent.RAG_QUERY
+        result = proc.process("Comment demander des congés annuels ?")
         assert result.needs_legal_search is True
+        assert result.needs_legal_search_llm is True
+
+    @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
+    @patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
+    def test_observability_preserves_llm_false_under_heuristic_override(self, mock_classify, _mock_acronyms):
+        mock_classify.return_value = _make_classify_return(needs_legal=False)
+        proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
+        result = proc.process("Dans quel délai l'administration doit-elle notifier le renouvellement d'un contrat de projet ?")
+        # Effective decision is heuristic True, but the LLM value (False) is preserved.
+        assert result.needs_legal_search is True
+        assert result.needs_legal_search_llm is False
 
 
 # ---------------------------------------------------------------------------
@@ -498,9 +524,21 @@ class TestContextBuilderBuild:
 
         result = builder.build(sections)
 
+        # Highest-scoring item wins position 0, regardless of whether it's
+        # standalone or doc-entire. A lower-score doc-entire may follow, but
+        # it must not preempt the standalone.
         assert result[0].publisher == "DGAFP"
         assert result[0].content == "Réponse DGAFP prioritaire"
-        assert all(not (item.publisher == "Service-Public" and item.metadata.get("is_doc_entire")) for item in result)
+        doc_entire_idx = next(
+            (i for i, item in enumerate(result) if item.publisher == "Service-Public" and item.metadata.get("is_doc_entire")),
+            None,
+        )
+        if doc_entire_idx is not None:
+            assert doc_entire_idx > 0, "lower-score doc-entire preempted the standalone"
+
+        # Uniqueness: a standalone with empty section_id/heading must not appear twice.
+        dgafp_count = sum(1 for item in result if item.publisher == "DGAFP")
+        assert dgafp_count == 1, f"DGAFP item duplicated: {dgafp_count} copies"
 
     @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._load_full_document")
     @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._resolve_cids", return_value={})
@@ -543,6 +581,126 @@ class TestContextBuilderBuild:
 
         assert result[0].publisher == "Service-Public"
         assert result[0].metadata.get("is_doc_entire") is True
+
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._load_full_document")
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._resolve_cids", return_value={})
+    def test_multiple_small_docs_all_included(self, _mock_refs, mock_load_doc):
+        """Review finding #5: snapshot best_standalone_score should not suppress
+        sibling small docs whose best chunk falls below the standalone."""
+        from assistant_rh_rag_pipeline.config import ContextBuildConfig
+        from assistant_rh_rag_pipeline.context_builder import ContextBuilder
+
+        def _doc(doc_id):
+            return {
+                "doc_id": doc_id,
+                "title": f"Doc {doc_id}",
+                "source_url": f"https://example.test/{doc_id}",
+                "publisher": "Service-Public",
+                "doc_markdown": f"Contenu {doc_id}",
+                "token_count": 200,
+            }
+
+        mock_load_doc.side_effect = lambda doc_id: _doc(doc_id)
+        builder = ContextBuilder(
+            ContextBuildConfig(max_full_docs=3, doc_entire_threshold=500, max_sections=10),
+            dsn="unused",
+        )
+        sections = [
+            AggregatedSection(
+                section_id=None,
+                heading="",
+                markdown="DGAFP",
+                chunks=[],
+                score=0.90,
+                publisher="DGAFP",
+            ),
+            AggregatedSection(
+                section_id="sec-a",
+                heading="A",
+                markdown="A",
+                chunks=[],
+                score=0.91,
+                document_id="doc-a",
+                publisher="Service-Public",
+                metadata={"doc_token_count": 200},
+            ),
+            AggregatedSection(
+                section_id="sec-b",
+                heading="B",
+                markdown="B",
+                chunks=[],
+                score=0.88,
+                document_id="doc-b",
+                publisher="Service-Public",
+                metadata={"doc_token_count": 200},
+            ),
+            AggregatedSection(
+                section_id="sec-c",
+                heading="C",
+                markdown="C",
+                chunks=[],
+                score=0.87,
+                document_id="doc-c",
+                publisher="Service-Public",
+                metadata={"doc_token_count": 200},
+            ),
+        ]
+
+        result = builder.build(sections)
+        doc_entire_ids = {item.metadata.get("doc_id") for item in result if item.metadata.get("is_doc_entire")}
+        # All three small docs must surface as doc-entire (up to max_full_docs).
+        # Pre-fix code suppressed doc-b (0.88) and doc-c (0.87) because they
+        # both fell below the frozen best_standalone_score (0.90).
+        assert doc_entire_ids == {"doc-a", "doc-b", "doc-c"}, doc_entire_ids
+        # Final ordering reflects score: doc-a (0.91) > DGAFP (0.90) > doc-b (0.88) > doc-c (0.87).
+        publishers_in_order = [item.publisher for item in result if item in result[:4]]
+        assert publishers_in_order[0] == "Service-Public"  # doc-a 0.91
+        assert publishers_in_order[1] == "DGAFP"  # 0.90
+
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._load_full_document")
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._resolve_cids", return_value={})
+    def test_tied_scores_do_not_let_doc_entire_preempt_standalone(self, _mock_refs, mock_load_doc):
+        """Review finding #7: strict `<` defeated promotion intent on ties."""
+        from assistant_rh_rag_pipeline.config import ContextBuildConfig
+        from assistant_rh_rag_pipeline.context_builder import ContextBuilder
+
+        mock_load_doc.return_value = {
+            "doc_id": "doc-sp",
+            "title": "Document Service-Public",
+            "source_url": "https://example.test/service-public",
+            "publisher": "Service-Public",
+            "doc_markdown": "Contenu",
+            "token_count": 200,
+        }
+
+        builder = ContextBuilder(
+            ContextBuildConfig(max_full_docs=1, doc_entire_threshold=500, max_sections=5),
+            dsn="unused",
+        )
+        sections = [
+            AggregatedSection(
+                section_id=None,
+                heading="",
+                markdown="DGAFP",
+                chunks=[],
+                score=0.9,
+                publisher="DGAFP",
+            ),
+            AggregatedSection(
+                section_id="sec-sp",
+                heading="A",
+                markdown="A",
+                chunks=[],
+                score=0.9,
+                document_id="doc-sp",
+                publisher="Service-Public",
+                metadata={"doc_token_count": 200},
+            ),
+        ]
+        result = builder.build(sections)
+        # Stable sort keeps retrieval order on tie; DGAFP arrived first in
+        # the input list, so it stays at position 0.
+        assert result[0].publisher == "DGAFP"
 
 
 # ---------------------------------------------------------------------------

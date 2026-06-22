@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -83,42 +84,61 @@ AVAILABLE_THEMES = [
 
 BETA_EXCLUDED_THEMES = {"action_sociale", "psc", "retraite", "apprentis"}
 
+
+def _fold(text: str) -> str:
+    """Lowercase + NFKD-decompose + strip combining marks for accent-insensitive match.
+
+    Why: regex patterns target French legal vocabulary. Inputs reach us in mixed
+    forms (NFC from browsers, NFD from macOS clipboards, ASCII-only from mobile
+    autocorrect). Folding once at matching time lets patterns stay accent-free.
+    """
+    if not text:
+        return ""
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+
+# Patterns operate on the folded haystack (lowercase, no diacritics).
 _LEGAL_SEARCH_HINT_PATTERNS = (
-    re.compile(r"\barticle\s+[a-z]?\s*[\.\-]?\d", re.IGNORECASE),
-    re.compile(r"\b(?:cgfp|code général de la fonction publique|code de la sécurité sociale|code du travail)\b", re.IGNORECASE),
-    re.compile(r"\b(?:décret|arrete|arrêté|circulaire|loi|ordonnance|jurisprudence)\b", re.IGNORECASE),
-    re.compile(r"\b(?:fondement juridique|base légale|selon quel texte|c['’]est écrit où|preuve réglementaire)\b", re.IGNORECASE),
+    # Canonical Légifrance article citations: "article L. 132-1", "articles R123-4",
+    # "article 3-2"; tolerates space or no space after the dot/dash.
+    re.compile(r"\barticles?\s+[a-z]?\s*[\.\-]?\s*\d"),
+    # Specific legal code names (CGFP, etc.).
+    re.compile(r"\b(?:cgfp|code general de la fonction publique|code de la securite sociale|code du travail)\b"),
+    # Decree/circular/jurisprudence keywords. `loi` is intentionally excluded —
+    # the bare word matches idioms ("la loi du plus fort"); rely on "loi n°…"
+    # or other markers instead.
+    re.compile(r"\b(?:decret|arrete|circulaire|ordonnance|jurisprudence)\b"),
+    re.compile(r"\bloi\s+(?:n[°o]|du\s+\d|organique|de\s+finances?|de\s+\d)"),
+    # Explicit asks for the legal basis.
+    re.compile(r"\b(?:fondement juridique|base legale|selon quel texte|c'est ecrit ou|preuve reglementaire)\b"),
 )
 
-_LEGAL_SEARCH_RH_TOPIC_PATTERNS = (
-    re.compile(r"\bagent contractuel\b", re.IGNORECASE),
-    re.compile(r"\bcontrat de projet\b", re.IGNORECASE),
-    re.compile(r"\bemploi permanent\b", re.IGNORECASE),
-    re.compile(r"\bcongé parental\b", re.IGNORECASE),
-    re.compile(r"\bsubrog\w*\b", re.IGNORECASE),
-    re.compile(r"\bindemnités? journalières?\b", re.IGNORECASE),
-    re.compile(r"\bprestations? en espèces\b", re.IGNORECASE),
-    re.compile(r"\bpensions? de vieillesse\b", re.IGNORECASE),
-    re.compile(r"\bcasier judiciaire\b", re.IGNORECASE),
-    re.compile(r"\bservice national\b", re.IGNORECASE),
-    re.compile(r"\bdroit au séjour\b", re.IGNORECASE),
-    re.compile(r"\brupture anticipée\b", re.IGNORECASE),
-    re.compile(r"\brenouvel(?:er|lement)\b", re.IGNORECASE),
+# RH topic vocabulary. ``is_high_signal=True`` items short-circuit the
+# two-hit-required rule so a single match suffices when combined with
+# ``_LEGAL_SEARCH_RULE_PATTERN``.
+_LEGAL_SEARCH_TOPIC_PATTERNS: tuple = (
+    # (pattern, is_high_signal)
+    (re.compile(r"\bagents?\s+contractuels?\b"), False),
+    (re.compile(r"\bcontrats?\s+de\s+projet\b"), True),
+    (re.compile(r"\bemplois?\s+permanents?\b"), True),
+    (re.compile(r"\bconges?\s+parent(?:al|aux|ale|ales)\b"), True),
+    (re.compile(r"\bsubrog\w*\b"), True),
+    (re.compile(r"\bindemnites?\s+journalieres?\b"), False),
+    (re.compile(r"\bprestations?\s+en\s+especes\b"), True),
+    (re.compile(r"\bpensions?\s+de\s+vieillesse\b"), True),
+    (re.compile(r"\bcasiers?\s+judiciaires?\b"), False),
+    (re.compile(r"\bservice\s+national\b"), False),
+    (re.compile(r"\bdroit\s+au\s+sejour\b"), True),
+    (re.compile(r"\bruptures?\s+anticipees?\b"), True),
+    (re.compile(r"\brenouvel\w*\b"), True),
 )
 
 _LEGAL_SEARCH_RULE_PATTERN = re.compile(
-    r"\b(?:(?:dans )?quels? cas|à partir de quand|quelles? informations?|"
-    r"quelles? vérifications?|quels? montants?|quels? délais?|quelles? clauses?|"
-    r"(?:(?:dans|sous) )?quelles? conditions?)\b",
-    re.IGNORECASE,
-)
-
-_LEGAL_SEARCH_HIGH_SIGNAL_TOPIC_PATTERN = re.compile(
-    r"\b(?:contrat de projet|congé parental|emploi permanent|subrog\w*|"
-    r"prestations? en espèces|pensions? de vieillesse|casier judiciaire|"
-    r"service national|droit au séjour|rupture anticipée|"
-    r"renouvel(?:er|lement))\b",
-    re.IGNORECASE,
+    r"(?:(?:dans|sous|a|au|pour)\s+)?"
+    r"\b(?:quels?\s+cas|a\s+partir\s+de\s+quand|quelles?\s+informations?|"
+    r"quelles?\s+verifications?|quels?\s+montants?|quels?\s+delais?|quelles?\s+clauses?|"
+    r"quelles?\s+conditions?)\b",
 )
 
 
@@ -142,6 +162,10 @@ class QueryProcessResult:
     intent_confidence: float = 1.0
     intent_reason: Optional[str] = None
     needs_legal_search: bool = False
+    # Preserved LLM-only value (None when classify failed or gating was off).
+    # Lets observability/conformance compare the LLM against the post-heuristic
+    # decision instead of seeing only the merged flag.
+    needs_legal_search_llm: Optional[bool] = None
 
     theme: Optional[str] = None
     was_enriched: bool = False
@@ -197,11 +221,20 @@ class QueryProcessor:
         else:
             intent_data = self._fallback_expand(query, detected)
 
-        intent_data["needs_legal"] = self._should_force_legal_search(
-            query=query,
-            processed_query=intent_data.get("query_for_retrieval") or query,
-            intent_data=intent_data,
-        )
+        llm_needs_legal: Optional[bool] = intent_data.get("needs_legal")
+        # Heuristic only runs when intent gating is on AND classify succeeded.
+        # ``classify_ok`` flag is set on the success path; absent on the
+        # exception fallback so we preserve the deterministic-False safe default
+        # on LLM outage.
+        heuristic_eligible = self.config.enable_intent_gating and intent_data.get("classify_ok", False)
+        if heuristic_eligible:
+            needs_legal = self._should_force_legal_search(
+                query=query,
+                processed_query=intent_data.get("query_for_retrieval") or query,
+                intent_data=intent_data,
+            )
+        else:
+            needs_legal = bool(llm_needs_legal)
 
         is_in_scope = intent_data["intent"] in (Intent.RAG_QUERY, Intent.FOLLOW_UP)
         qfr = intent_data.get("query_for_retrieval")
@@ -221,7 +254,8 @@ class QueryProcessor:
             intent=intent_data["intent"],
             intent_confidence=intent_data.get("confidence", 1.0),
             intent_reason=intent_data.get("reasoning"),
-            needs_legal_search=intent_data.get("needs_legal", False),
+            needs_legal_search=needs_legal,
+            needs_legal_search_llm=llm_needs_legal if llm_needs_legal is not None else None,
             theme=intent_data.get("theme"),
             was_enriched=bool(intent_data.get("enriched_query")),
             direct_response=intent_data.get("direct_response"),
@@ -291,17 +325,18 @@ class QueryProcessor:
                 "intent": intent,
                 "confidence": float(data.get("confidence", 0.8)),
                 "reasoning": data.get("reasoning", ""),
-                "needs_legal": data.get("needs_legal_search", False),
+                "needs_legal": bool(data.get("needs_legal_search", False)),
                 "theme": theme,
                 "enriched_query": data.get("reformulated_query") or "",
                 "query_for_retrieval": data.get("query_for_retrieval"),
                 "direct_response": _DIRECT_RESPONSES.get(intent),
                 "raw": raw,
+                "classify_ok": True,
             }
 
         except Exception as exc:
             logger.warning("Intent classification failed (%s), defaulting to rag_query", exc)
-            return {"intent": Intent.RAG_QUERY, "confidence": 0.5, "reasoning": str(exc)}
+            return {"intent": Intent.RAG_QUERY, "confidence": 0.5, "reasoning": str(exc), "classify_ok": False}
 
     def _fallback_expand(self, query: str, detected: Dict[str, str]) -> Dict[str, Any]:
         """When intent gating is disabled, just expand acronyms inline."""
@@ -330,7 +365,7 @@ class QueryProcessor:
         - always preserve explicit LLM ``true``
         - force legal search for obvious legal markers
         - force legal search for legal-ish RH rule questions when at least two
-          domain signals are present
+          domain signals are present (or one high-signal topic)
         """
         llm_decision = bool(intent_data.get("needs_legal", False))
         if llm_decision:
@@ -340,11 +375,22 @@ class QueryProcessor:
         if intent not in (Intent.RAG_QUERY, Intent.FOLLOW_UP):
             return False
 
-        haystack = f"{query}\n{processed_query}".strip()
+        # Fold once: accent-strip + lowercase so patterns are NFC/NFD/ASCII agnostic
+        # and `re.IGNORECASE` is no longer needed (already lowercase).
+        raw = query if processed_query == query else f"{query}\n{processed_query}"
+        haystack = _fold(raw)
         if any(pattern.search(haystack) for pattern in _LEGAL_SEARCH_HINT_PATTERNS):
             return True
 
-        topic_hits = sum(1 for pattern in _LEGAL_SEARCH_RH_TOPIC_PATTERNS if pattern.search(haystack))
-        asks_for_rule = bool(_LEGAL_SEARCH_RULE_PATTERN.search(haystack))
-        high_signal_topic = bool(_LEGAL_SEARCH_HIGH_SIGNAL_TOPIC_PATTERN.search(haystack))
-        return asks_for_rule and (topic_hits >= 2 or high_signal_topic)
+        if not _LEGAL_SEARCH_RULE_PATTERN.search(haystack):
+            return False
+
+        topic_hits = 0
+        high_signal_topic = False
+        for pattern, is_high in _LEGAL_SEARCH_TOPIC_PATTERNS:
+            if pattern.search(haystack):
+                topic_hits += 1
+                if is_high:
+                    high_signal_topic = True
+                    break  # one high-signal topic is enough
+        return high_signal_topic or topic_hits >= 2
