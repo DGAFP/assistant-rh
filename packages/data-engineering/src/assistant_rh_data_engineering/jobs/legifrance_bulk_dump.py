@@ -72,26 +72,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--article-ids-json",
-        help="Chemin d'un manifest JSON contenant les LEGIARTI... à extraire depuis l'archive DILA.",
-    )
-    parser.add_argument(
-        "--strict-articles",
-        action="store_true",
         help=(
-            "Échec non-zéro si --article-ids-json demande N LEGIARTI et que l'extraction "
-            "en trouve moins. Activé par défaut avec --article-ids-json ; utiliser "
-            "--allow-partial pour conserver l'ancien comportement."
+            "Chemin d'un manifest JSON contenant les LEGIARTI... à extraire. "
+            "Échec non-zéro si un seul ID demandé est absent du snapshot ; "
+            "utiliser --allow-partial pour tolérer une extraction incomplète."
         ),
     )
     parser.add_argument(
         "--allow-partial",
         action="store_true",
-        help="Désactive --strict-articles et tolère une extraction partielle.",
+        help="Tolère une extraction --article-ids-json incomplète au lieu d'échouer.",
     )
     return parser
 
 
-def load_article_ids_from_json(path_str: str) -> list[str]:
+def load_article_ids_from_json(path_str: str) -> tuple[list[str], int]:
+    """Returns (deduped_normalized_ids, raw_requested_count_before_dedup)."""
     path = Path(path_str)
     payload = json.loads(path.read_text(encoding="utf-8"))
     if isinstance(payload, list):
@@ -100,10 +96,11 @@ def load_article_ids_from_json(path_str: str) -> list[str]:
         article_ids = payload.get("article_cids") or payload.get("article_ids") or []
     else:
         article_ids = []
+    raw_count = sum(1 for item in article_ids if str(item).strip())
     normalized = sorted({str(item).strip() for item in article_ids if str(item).strip()})
     if not normalized:
         raise RuntimeError(f"Aucun article_id exploitable trouvé dans {path}")
-    return normalized
+    return normalized, raw_count
 
 
 def main() -> int:
@@ -114,6 +111,13 @@ def main() -> int:
     args = build_parser().parse_args()
     paths = LakePaths(root_dir=Path(args.lake_root))
     raw_dir = paths.bronze_dir / "raw"
+
+    # Validate cheap inputs (manifest path + parse) before any network I/O.
+    article_ids: list[str] | None = None
+    requested_article_ids: int | None = None
+    if args.article_ids_json:
+        article_ids, requested_article_ids = load_article_ids_from_json(args.article_ids_json)
+
     client = LegiBulkDumpClient(
         LegiBulkDumpConfig(
             index_url=args.index_url,
@@ -123,25 +127,53 @@ def main() -> int:
         )
     )
     snapshot = client.resolve_snapshot(raw_dir)
-    extracted_count = None
-    requested_count = None
+
+    extracted_count: int | None = None
     missing_ids: list[str] = []
-    deleted_local_archive = False
     extraction_mode = "none"
-    if args.article_ids_json:
-        article_ids = load_article_ids_from_json(args.article_ids_json)
-        requested_count = len(article_ids)
+    if article_ids is not None:
         extracted = client.extract_articles(snapshot, article_ids)
         extracted_count = len(extracted)
         missing_ids = sorted(set(article_ids) - set(extracted))
         extraction_mode = "article_ids_json"
-        if args.delete_local_archive:
-            deleted_local_archive = client.delete_local_archive(snapshot)
     elif args.extract_full_snapshot:
         extracted_count = len(client.extract_full_snapshot(snapshot))
         extraction_mode = "full_snapshot"
-        if args.delete_local_archive:
-            deleted_local_archive = client.delete_local_archive(snapshot)
+
+    strict_articles: bool | None = None
+    missing_article_count: int | None = None
+    missing_article_ids_sample: list[str] | None = None
+    if extraction_mode == "article_ids_json":
+        strict_articles = not args.allow_partial
+        missing_article_count = len(missing_ids)
+        missing_article_ids_sample = missing_ids[:5]
+
+    # Fail-fast BEFORE any success-only side-effects (sync, delete_local_archive)
+    # so partial data is never pushed remote and the local archive remains
+    # available for the operator to retry against the same snapshot.
+    if missing_ids and strict_articles:
+        print(
+            json.dumps(
+                {
+                    "status": "error",
+                    "reason": "incomplete_article_extraction",
+                    "extraction_mode": extraction_mode,
+                    "requested_article_ids": requested_article_ids,
+                    "extracted_xml_count": extracted_count,
+                    "missing_article_count": missing_article_count,
+                    "missing_article_ids_sample": missing_article_ids_sample,
+                    "article_ids_json": args.article_ids_json,
+                    "strict_articles": strict_articles,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        raise SystemExit(
+            "Extraction incomplète pour --article-ids-json: "
+            f"{len(missing_ids)}/{requested_article_ids} article(s) absent(s). "
+            "Réessayer avec un snapshot plus récent ou utiliser --allow-partial."
+        )
 
     object_storage = None
     if args.sync_object_storage:
@@ -153,32 +185,14 @@ def main() -> int:
             delete=args.delete_remote,
         )
 
-    strict_articles = bool(args.strict_articles) or (bool(args.article_ids_json) and not args.allow_partial)
-    if args.article_ids_json and missing_ids and strict_articles:
-        print(
-            json.dumps(
-                {
-                    "status": "error",
-                    "reason": "incomplete_article_extraction",
-                    "requested_count": requested_count,
-                    "extracted_xml_count": extracted_count,
-                    "missing_count": len(missing_ids),
-                    "missing_ids_sample": missing_ids[:5],
-                    "article_ids_json": args.article_ids_json,
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
-        raise SystemExit(
-            "Extraction incomplète pour --article-ids-json: "
-            f"{len(missing_ids)}/{requested_count} article(s) absent(s). "
-            "Réessayer avec un snapshot plus récent ou utiliser --allow-partial."
-        )
+    deleted_local_archive = False
+    if args.delete_local_archive and extraction_mode != "none":
+        deleted_local_archive = client.delete_local_archive(snapshot)
 
     print(
         json.dumps(
             {
+                "status": "ok",
                 "lake_root": str(Path(args.lake_root)),
                 "archive_name": snapshot.archive_name,
                 "archive_url": snapshot.archive_url,
@@ -187,10 +201,10 @@ def main() -> int:
                 "extract_full_snapshot": args.extract_full_snapshot,
                 "article_ids_json": args.article_ids_json,
                 "extraction_mode": extraction_mode,
-                "requested_article_ids": requested_count,
+                "requested_article_ids": requested_article_ids,
                 "extracted_xml_count": extracted_count,
-                "missing_article_ids": missing_ids,
-                "missing_article_count": len(missing_ids),
+                "missing_article_count": missing_article_count,
+                "missing_article_ids_sample": missing_article_ids_sample,
                 "strict_articles": strict_articles,
                 "delete_local_archive": args.delete_local_archive,
                 "deleted_local_archive": deleted_local_archive,
