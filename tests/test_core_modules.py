@@ -262,6 +262,54 @@ class TestQueryProcessorLegalSearchHeuristics:
         assert result.intent == Intent.RAG_QUERY
         assert result.needs_legal_search is True
 
+    @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
+    @patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
+    def test_forces_legal_search_for_singular_rule_phrase(self, mock_classify, _mock_acronyms):
+        from assistant_rh_rag_pipeline.config import QueryProcessorConfig
+        from assistant_rh_rag_pipeline.query_processor import QueryProcessor
+
+        mock_classify.return_value = {
+            "intent": Intent.RAG_QUERY,
+            "confidence": 0.95,
+            "reasoning": "Question recrutement",
+            "needs_legal": False,
+            "theme": "recrutement",
+            "enriched_query": "",
+            "query_for_retrieval": None,
+            "direct_response": None,
+            "raw": "{}",
+        }
+
+        proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
+        result = proc.process("Quelle vérification administrative peut empêcher le recrutement d'un agent contractuel au regard du droit au séjour ?")
+
+        assert result.intent == Intent.RAG_QUERY
+        assert result.needs_legal_search is True
+
+    @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
+    @patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
+    def test_forces_legal_search_for_optional_preposition_variant(self, mock_classify, _mock_acronyms):
+        from assistant_rh_rag_pipeline.config import QueryProcessorConfig
+        from assistant_rh_rag_pipeline.query_processor import QueryProcessor
+
+        mock_classify.return_value = {
+            "intent": Intent.RAG_QUERY,
+            "confidence": 0.95,
+            "reasoning": "Question congés",
+            "needs_legal": False,
+            "theme": "conges",
+            "enriched_query": "",
+            "query_for_retrieval": None,
+            "direct_response": None,
+            "raw": "{}",
+        }
+
+        proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
+        result = proc.process("Sous quelles conditions l'agent est-il réemployé sur son précédent emploi au terme d'un congé parental ?")
+
+        assert result.intent == Intent.RAG_QUERY
+        assert result.needs_legal_search is True
+
 
 # ---------------------------------------------------------------------------
 # section_aggregator — grouping & scoring

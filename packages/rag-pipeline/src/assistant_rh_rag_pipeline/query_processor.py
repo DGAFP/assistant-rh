@@ -107,9 +107,9 @@ _LEGAL_SEARCH_RH_TOPIC_PATTERNS = (
 )
 
 _LEGAL_SEARCH_RULE_PATTERN = re.compile(
-    r"\b(?:dans quels cas|à partir de quand|quelles informations|"
-    r"quelles vérifications|quel montant|quel délai|quelles clauses|"
-    r"dans quelles conditions)\b",
+    r"\b(?:(?:dans )?quels? cas|à partir de quand|quelles? informations?|"
+    r"quelles? vérifications?|quels? montants?|quels? délais?|quelles? clauses?|"
+    r"(?:(?:dans|sous) )?quelles? conditions?)\b",
     re.IGNORECASE,
 )
 
