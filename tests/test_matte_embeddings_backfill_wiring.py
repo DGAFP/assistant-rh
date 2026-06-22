@@ -2,13 +2,27 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "config" / "matte_embedding_tables.json"
-SCALEWAY_SCRIPT = REPO_ROOT / "scripts" / "create_scaleway_matte_embeddings_job.sh"
+SCRIPTS_DIR = REPO_ROOT / "scripts"
+SCALEWAY_SCRIPT = SCRIPTS_DIR / "create_scaleway_matte_embeddings_job.sh"
 CLI_MAIN_PATH = REPO_ROOT / "apps" / "data-ingestion-cli" / "src" / "assistant_rh_data_ingestion_cli" / "main.py"
+
+_CRON_RE = re.compile(r'cron-schedule\.schedule="([^"]+)"')
+
+
+def _embeddings_job_schedules() -> dict[str, str]:
+    """Map each Scaleway embeddings job script to its declared monthly cron slot."""
+    schedules: dict[str, str] = {}
+    for script in sorted(SCRIPTS_DIR.glob("create_scaleway_*_embeddings_job.sh")):
+        match = _CRON_RE.search(script.read_text(encoding="utf-8"))
+        if match:
+            schedules[script.name] = match.group(1)
+    return schedules
 
 
 def _load_cli_main():
@@ -59,3 +73,26 @@ def test_scaleway_job_script_targets_matte() -> None:
     assert "JOB_NAME:-matte-embeddings-" in content
     assert "args.0=embeddings" in content
     assert "args.1=matte" in content
+
+
+def test_matte_embeddings_cron_slot_does_not_collide() -> None:
+    schedules = _embeddings_job_schedules()
+
+    # MATTE must be wired with its own monthly cron slot.
+    assert "create_scaleway_matte_embeddings_job.sh" in schedules
+
+    # Every embeddings job hits the same Scaleway BGE API, so each must own a
+    # distinct slot to keep concurrent load staggered. Two jobs sharing a slot
+    # (e.g. MATTE on Service-Public's "40 3 1 * *") would fire simultaneously
+    # and contend on the shared rate limit.
+    slots = list(schedules.values())
+    assert len(slots) == len(set(slots)), f"Colliding embeddings cron slots: {schedules}"
+
+
+def test_matte_embeddings_job_wired_into_deploy() -> None:
+    deploy_script = (SCRIPTS_DIR / "deploy_embeddings_jobs.sh").read_text(encoding="utf-8")
+
+    # The deploy orchestrator must invoke the MATTE job script, otherwise the
+    # standard deploy creates only the Service-Public and Legifrance jobs and
+    # MATTE is never scheduled on Scaleway.
+    assert "create_scaleway_matte_embeddings_job.sh" in deploy_script

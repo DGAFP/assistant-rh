@@ -44,7 +44,7 @@ scw jobs definition create \
   environment-variables.SCALEWAY_BASE_URL="${SCALEWAY_BASE_URL_VALUE}" \
   environment-variables.SCW_POSTGRES_DSN="${SCW_POSTGRES_DSN}" \
   job-timeout="${JOB_TIMEOUT}" \
-  cron-schedule.schedule="40 3 1 * *" \
+  cron-schedule.schedule="20 4 1 * *" \
   cron-schedule.timezone="Europe/Paris" \
   project-id="${SCW_DEFAULT_PROJECT_ID}" \
   region="${REGION}"
