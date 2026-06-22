@@ -13,6 +13,7 @@ Dependencies (internal only):
   - config.get_acronym_dict, config.get_prompt_content, config.QueryProcessorConfig
   - llm_client.LLMClient
 """
+
 from __future__ import annotations
 
 import json
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 # Intent enum and direct responses
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class Intent(str, Enum):
     RAG_QUERY = "rag_query"
@@ -62,18 +64,68 @@ _DIRECT_RESPONSES = {
 }
 
 AVAILABLE_THEMES = [
-    "recrutement", "typologie_contrats", "remuneration", "renouvellement_mobilite",
-    "fin_contrat_licenciement", "temps_de_travail", "conges", "formation",
-    "action_sociale", "psc", "sante_securite", "retraite", "apprentis",
-    "deontologie", "autre",
+    "recrutement",
+    "typologie_contrats",
+    "remuneration",
+    "renouvellement_mobilite",
+    "fin_contrat_licenciement",
+    "temps_de_travail",
+    "conges",
+    "formation",
+    "action_sociale",
+    "psc",
+    "sante_securite",
+    "retraite",
+    "apprentis",
+    "deontologie",
+    "autre",
 ]
 
 BETA_EXCLUDED_THEMES = {"action_sociale", "psc", "retraite", "apprentis"}
+
+_LEGAL_SEARCH_HINT_PATTERNS = (
+    re.compile(r"\barticle\s+[a-z]?\s*[\.\-]?\d", re.IGNORECASE),
+    re.compile(r"\b(?:cgfp|code général de la fonction publique|code de la sécurité sociale|code du travail)\b", re.IGNORECASE),
+    re.compile(r"\b(?:décret|arrete|arrêté|circulaire|loi|ordonnance|jurisprudence)\b", re.IGNORECASE),
+    re.compile(r"\b(?:fondement juridique|base légale|selon quel texte|c['’]est écrit où|preuve réglementaire)\b", re.IGNORECASE),
+)
+
+_LEGAL_SEARCH_RH_TOPIC_PATTERNS = (
+    re.compile(r"\bagent contractuel\b", re.IGNORECASE),
+    re.compile(r"\bcontrat de projet\b", re.IGNORECASE),
+    re.compile(r"\bemploi permanent\b", re.IGNORECASE),
+    re.compile(r"\bcongé parental\b", re.IGNORECASE),
+    re.compile(r"\bsubrog\w*\b", re.IGNORECASE),
+    re.compile(r"\bindemnités? journalières?\b", re.IGNORECASE),
+    re.compile(r"\bprestations? en espèces\b", re.IGNORECASE),
+    re.compile(r"\bpensions? de vieillesse\b", re.IGNORECASE),
+    re.compile(r"\bcasier judiciaire\b", re.IGNORECASE),
+    re.compile(r"\bservice national\b", re.IGNORECASE),
+    re.compile(r"\bdroit au séjour\b", re.IGNORECASE),
+    re.compile(r"\brupture anticipée\b", re.IGNORECASE),
+    re.compile(r"\brenouvel(?:er|lement)\b", re.IGNORECASE),
+)
+
+_LEGAL_SEARCH_RULE_PATTERN = re.compile(
+    r"\b(?:dans quels cas|à partir de quand|quelles informations|"
+    r"quelles vérifications|quel montant|quel délai|quelles clauses|"
+    r"dans quelles conditions)\b",
+    re.IGNORECASE,
+)
+
+_LEGAL_SEARCH_HIGH_SIGNAL_TOPIC_PATTERN = re.compile(
+    r"\b(?:contrat de projet|congé parental|emploi permanent|subrog\w*|"
+    r"prestations? en espèces|pensions? de vieillesse|casier judiciaire|"
+    r"service national|droit au séjour|rupture anticipée|"
+    r"renouvel(?:er|lement))\b",
+    re.IGNORECASE,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Result dataclass
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class QueryProcessResult:
@@ -111,6 +163,7 @@ class QueryProcessResult:
 # Processor
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class QueryProcessor:
     """
     Pre-process a user query before retrieval.
@@ -135,7 +188,6 @@ class QueryProcessor:
         query: str,
         conversation_history: Optional[List[Dict[str, str]]] = None,
     ) -> QueryProcessResult:
-
         processed = query
         detected = self._detect_acronyms(query)
 
@@ -144,6 +196,12 @@ class QueryProcessor:
             intent_data = self._classify(query, conversation_history, detected)
         else:
             intent_data = self._fallback_expand(query, detected)
+
+        intent_data["needs_legal"] = self._should_force_legal_search(
+            query=query,
+            processed_query=intent_data.get("query_for_retrieval") or query,
+            intent_data=intent_data,
+        )
 
         is_in_scope = intent_data["intent"] in (Intent.RAG_QUERY, Intent.FOLLOW_UP)
         qfr = intent_data.get("query_for_retrieval")
@@ -255,3 +313,38 @@ class QueryProcessor:
             "confidence": 1.0,
             "query_for_retrieval": expanded if expanded != query else None,
         }
+
+    def _should_force_legal_search(
+        self,
+        *,
+        query: str,
+        processed_query: str,
+        intent_data: Dict[str, Any],
+    ) -> bool:
+        """Apply deterministic guardrails when the LLM under-classifies legal queries.
+
+        DGAFP is completely excluded from retrieval unless ``needs_legal_search`` is
+        true. A narrow prompt-only definition is not robust enough for legal RH
+        questions that mention the rule directly without explicitly asking for the
+        article or decree. The heuristic stays conservative:
+        - always preserve explicit LLM ``true``
+        - force legal search for obvious legal markers
+        - force legal search for legal-ish RH rule questions when at least two
+          domain signals are present
+        """
+        llm_decision = bool(intent_data.get("needs_legal", False))
+        if llm_decision:
+            return True
+
+        intent = intent_data.get("intent", Intent.RAG_QUERY)
+        if intent not in (Intent.RAG_QUERY, Intent.FOLLOW_UP):
+            return False
+
+        haystack = f"{query}\n{processed_query}".strip()
+        if any(pattern.search(haystack) for pattern in _LEGAL_SEARCH_HINT_PATTERNS):
+            return True
+
+        topic_hits = sum(1 for pattern in _LEGAL_SEARCH_RH_TOPIC_PATTERNS if pattern.search(haystack))
+        asks_for_rule = bool(_LEGAL_SEARCH_RULE_PATTERN.search(haystack))
+        high_signal_topic = bool(_LEGAL_SEARCH_HIGH_SIGNAL_TOPIC_PATTERN.search(haystack))
+        return asks_for_rule and (topic_hits >= 2 or high_signal_topic)

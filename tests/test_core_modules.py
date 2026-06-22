@@ -3,6 +3,7 @@ Tests for core RAG V3 Clean pipeline modules.
 
 Tests are designed to run without a database connection (mocked where needed).
 """
+
 from __future__ import annotations
 
 import json
@@ -14,10 +15,12 @@ from assistant_rh_rag_pipeline.models import (
     RetrievedChunk,
     estimate_tokens,
 )
+from assistant_rh_rag_pipeline.query_processor import Intent
 
 # ---------------------------------------------------------------------------
 # models.estimate_tokens
 # ---------------------------------------------------------------------------
+
 
 class TestEstimateTokens:
     def test_empty_string(self):
@@ -44,6 +47,7 @@ class TestEstimateTokens:
 # ---------------------------------------------------------------------------
 # context_selector._parse_response / _parse_reason / _extract_json
 # ---------------------------------------------------------------------------
+
 
 class TestSelectorParsing:
     def test_parse_json_with_selected_ids(self):
@@ -118,6 +122,7 @@ class TestSelectorParsing:
 # db_helpers.load_prompt
 # ---------------------------------------------------------------------------
 
+
 class TestLoadPrompt:
     @patch("assistant_rh_rag_pipeline.db_helpers.get_prompt_content")
     def test_returns_primary_when_found(self, mock_get):
@@ -150,8 +155,118 @@ class TestLoadPrompt:
 
 
 # ---------------------------------------------------------------------------
+# query_processor — legal-search guardrails
+# ---------------------------------------------------------------------------
+
+
+class TestQueryProcessorLegalSearchHeuristics:
+    @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
+    @patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
+    def test_forces_legal_search_for_legal_rh_rule_question(self, mock_classify, _mock_acronyms):
+        from assistant_rh_rag_pipeline.config import QueryProcessorConfig
+        from assistant_rh_rag_pipeline.query_processor import QueryProcessor
+
+        mock_classify.return_value = {
+            "intent": Intent.RAG_QUERY,
+            "confidence": 0.95,
+            "reasoning": "Question RH métier",
+            "needs_legal": False,
+            "theme": "remuneration",
+            "enriched_query": "",
+            "query_for_retrieval": None,
+            "direct_response": None,
+            "raw": "{}",
+        }
+
+        proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
+        result = proc.process("Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel ?")
+
+        assert result.intent == Intent.RAG_QUERY
+        assert result.needs_legal_search is True
+
+    @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
+    @patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
+    def test_preserves_non_legal_search_for_generic_rh_question(self, mock_classify, _mock_acronyms):
+        from assistant_rh_rag_pipeline.config import QueryProcessorConfig
+        from assistant_rh_rag_pipeline.query_processor import QueryProcessor
+
+        mock_classify.return_value = {
+            "intent": Intent.RAG_QUERY,
+            "confidence": 0.95,
+            "reasoning": "Question RH générique",
+            "needs_legal": False,
+            "theme": "conges",
+            "enriched_query": "",
+            "query_for_retrieval": None,
+            "direct_response": None,
+            "raw": "{}",
+        }
+
+        proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
+        result = proc.process("Comment demander des congés annuels à son manager ?")
+
+        assert result.intent == Intent.RAG_QUERY
+        assert result.needs_legal_search is False
+
+    @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
+    @patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
+    def test_forces_legal_search_for_contract_project_rule_question(self, mock_classify, _mock_acronyms):
+        from assistant_rh_rag_pipeline.config import QueryProcessorConfig
+        from assistant_rh_rag_pipeline.query_processor import QueryProcessor
+
+        mock_classify.return_value = {
+            "intent": Intent.RAG_QUERY,
+            "confidence": 0.95,
+            "reasoning": "Question contrat",
+            "needs_legal": False,
+            "theme": "typologie_contrats",
+            "enriched_query": "",
+            "query_for_retrieval": None,
+            "direct_response": None,
+            "raw": "{}",
+        }
+
+        proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
+        result = proc.process(
+            "Dans quel délai l'administration doit-elle notifier à l'agent son intention de renouveler ou non un contrat de projet ?"
+        )
+
+        assert result.intent == Intent.RAG_QUERY
+        assert result.needs_legal_search is True
+
+    @patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={})
+    @patch("assistant_rh_rag_pipeline.query_processor.QueryProcessor._classify")
+    def test_forces_legal_search_for_recruitment_eligibility_checks(self, mock_classify, _mock_acronyms):
+        from assistant_rh_rag_pipeline.config import QueryProcessorConfig
+        from assistant_rh_rag_pipeline.query_processor import QueryProcessor
+
+        mock_classify.return_value = {
+            "intent": Intent.RAG_QUERY,
+            "confidence": 0.95,
+            "reasoning": "Question recrutement",
+            "needs_legal": False,
+            "theme": "recrutement",
+            "enriched_query": "",
+            "query_for_retrieval": None,
+            "direct_response": None,
+            "raw": "{}",
+        }
+
+        proc = QueryProcessor(QueryProcessorConfig(enable_acronym_expansion=False, enable_intent_gating=True))
+        result = proc.process(
+            "Quelles vérifications administratives peuvent empêcher le recrutement "
+            "d'un agent contractuel, notamment sur le casier judiciaire, la "
+            "situation au regard du service national ou le droit au séjour ?"
+        )
+
+        assert result.intent == Intent.RAG_QUERY
+        assert result.needs_legal_search is True
+
+
+# ---------------------------------------------------------------------------
 # section_aggregator — grouping & scoring
 # ---------------------------------------------------------------------------
+
 
 class TestSectionAggregator:
     def _make_chunk(self, chunk_id, section_id=None, score=0.9, table="MATTE"):
@@ -236,16 +351,22 @@ class TestSectionAggregator:
 # context_builder — ref collection
 # ---------------------------------------------------------------------------
 
+
 class TestContextBuilderRefs:
     def test_collect_ref_numbers_from_json_string(self):
         from assistant_rh_rag_pipeline.context_builder import ContextBuilder
 
         item = ContextItem(
-            section_id="s1", heading="Test", content="c", score=0.9,
-            references_juridiques=json.dumps([
-                {"number": "L332-2", "title": "CGFP"},
-                {"number": "L332-6", "title": "CGFP"},
-            ]),
+            section_id="s1",
+            heading="Test",
+            content="c",
+            score=0.9,
+            references_juridiques=json.dumps(
+                [
+                    {"number": "L332-2", "title": "CGFP"},
+                    {"number": "L332-6", "title": "CGFP"},
+                ]
+            ),
         )
         numbers = ContextBuilder._collect_ref_numbers([item])
         assert set(numbers) == {"L332-2", "L332-6"}
@@ -254,7 +375,10 @@ class TestContextBuilderRefs:
         from assistant_rh_rag_pipeline.context_builder import ContextBuilder
 
         item = ContextItem(
-            section_id="s1", heading="Test", content="c", score=0.9,
+            section_id="s1",
+            heading="Test",
+            content="c",
+            score=0.9,
             references_juridiques=[{"number": "R123-4"}],
         )
         numbers = ContextBuilder._collect_ref_numbers([item])
@@ -264,7 +388,10 @@ class TestContextBuilderRefs:
         from assistant_rh_rag_pipeline.context_builder import ContextBuilder
 
         item = ContextItem(
-            section_id="s1", heading="Test", content="c", score=0.9,
+            section_id="s1",
+            heading="Test",
+            content="c",
+            score=0.9,
             references_juridiques="not valid json",
         )
         numbers = ContextBuilder._collect_ref_numbers([item])
@@ -274,15 +401,106 @@ class TestContextBuilderRefs:
         from assistant_rh_rag_pipeline.context_builder import ContextBuilder
 
         item = ContextItem(
-            section_id="s1", heading="Test", content="c", score=0.9,
+            section_id="s1",
+            heading="Test",
+            content="c",
+            score=0.9,
             references_juridiques=None,
         )
         assert ContextBuilder._collect_ref_numbers([item]) == []
 
 
+class TestContextBuilderBuild:
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._load_full_document")
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._resolve_cids", return_value={})
+    def test_prefers_higher_scoring_standalone_before_doc_entire(self, _mock_refs, mock_load_doc):
+        from assistant_rh_rag_pipeline.config import ContextBuildConfig
+        from assistant_rh_rag_pipeline.context_builder import ContextBuilder
+
+        mock_load_doc.return_value = {
+            "doc_id": "doc-sp",
+            "title": "Document Service-Public",
+            "source_url": "https://example.test/service-public",
+            "publisher": "Service-Public",
+            "doc_markdown": "Contenu complet service-public",
+            "token_count": 200,
+        }
+
+        builder = ContextBuilder(ContextBuildConfig(max_full_docs=1, doc_entire_threshold=500, max_sections=5), dsn="unused")
+        sections = [
+            AggregatedSection(
+                section_id=None,
+                heading="",
+                markdown="Réponse DGAFP prioritaire",
+                chunks=[],
+                score=0.9,
+                publisher="DGAFP",
+            ),
+            AggregatedSection(
+                section_id="sec-sp",
+                heading="Question annexe",
+                markdown="Extrait Service-Public",
+                chunks=[],
+                score=0.2,
+                document_id="doc-sp",
+                publisher="Service-Public",
+                metadata={"doc_token_count": 200, "doc_title": "Document Service-Public", "doc_url": "https://example.test/service-public"},
+            ),
+        ]
+
+        result = builder.build(sections)
+
+        assert result[0].publisher == "DGAFP"
+        assert result[0].content == "Réponse DGAFP prioritaire"
+        assert all(not (item.publisher == "Service-Public" and item.metadata.get("is_doc_entire")) for item in result)
+
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._load_full_document")
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._resolve_cids", return_value={})
+    def test_keeps_doc_entire_when_document_beats_standalone(self, _mock_refs, mock_load_doc):
+        from assistant_rh_rag_pipeline.config import ContextBuildConfig
+        from assistant_rh_rag_pipeline.context_builder import ContextBuilder
+
+        mock_load_doc.return_value = {
+            "doc_id": "doc-sp",
+            "title": "Document Service-Public",
+            "source_url": "https://example.test/service-public",
+            "publisher": "Service-Public",
+            "doc_markdown": "Contenu complet service-public",
+            "token_count": 200,
+        }
+
+        builder = ContextBuilder(ContextBuildConfig(max_full_docs=1, doc_entire_threshold=500, max_sections=5), dsn="unused")
+        sections = [
+            AggregatedSection(
+                section_id="sec-sp",
+                heading="Question annexe",
+                markdown="Extrait Service-Public",
+                chunks=[],
+                score=0.9,
+                document_id="doc-sp",
+                publisher="Service-Public",
+                metadata={"doc_token_count": 200, "doc_title": "Document Service-Public", "doc_url": "https://example.test/service-public"},
+            ),
+            AggregatedSection(
+                section_id=None,
+                heading="",
+                markdown="Réponse DGAFP secondaire",
+                chunks=[],
+                score=0.2,
+                publisher="DGAFP",
+            ),
+        ]
+
+        result = builder.build(sections)
+
+        assert result[0].publisher == "Service-Public"
+        assert result[0].metadata.get("is_doc_entire") is True
+
+
 # ---------------------------------------------------------------------------
 # context_builder — format_for_prompt (static)
 # ---------------------------------------------------------------------------
+
 
 class TestContextBuilderFormat:
     def test_format_includes_heading_and_content(self):
@@ -290,8 +508,10 @@ class TestContextBuilderFormat:
 
         items = [
             ContextItem(
-                section_id="s1", heading="Mon Titre",
-                content="Contenu de la section", score=0.9,
+                section_id="s1",
+                heading="Mon Titre",
+                content="Contenu de la section",
+                score=0.9,
                 publisher="MATTE",
             ),
         ]

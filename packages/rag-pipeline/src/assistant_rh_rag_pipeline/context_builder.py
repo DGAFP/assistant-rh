@@ -13,6 +13,7 @@ Dependencies (internal only):
   - config (ContextBuildConfig, get_dsn)
   - models (AggregatedSection, ContextItem)
 """
+
 from __future__ import annotations
 
 import json
@@ -74,11 +75,15 @@ class ContextBuilder:
 
         # Sort doc groups by best section score (descending)
         sorted_docs = sorted(by_doc.items(), key=lambda kv: max(s.score for s in kv[1]), reverse=True)
+        best_standalone_score = max((s.score for s in standalone), default=None)
 
         # Step 1 – doc-entire for small documents: load full document from rag_documents
         for doc_id, doc_sections in sorted_docs:
             if full_doc_count >= max_full_docs:
                 break
+            doc_best_score = max(s.score for s in doc_sections)
+            if best_standalone_score is not None and doc_best_score < best_standalone_score:
+                continue
             doc_token_count = doc_sections[0].metadata.get("doc_token_count", 0) or 0
             if doc_token_count <= 0 or doc_token_count > doc_threshold:
                 continue
@@ -162,8 +167,12 @@ class ContextBuilder:
 
         logger.info(
             "Context built: %d items, ~%d tokens (budget %d, mode %s), %d full docs, %d legal refs",
-            len(selected), tokens_used, budget, self.config.context_mode.value,
-            full_doc_count, len(cid_map),
+            len(selected),
+            tokens_used,
+            budget,
+            self.config.context_mode.value,
+            full_doc_count,
+            len(cid_map),
         )
         return selected
 
@@ -272,10 +281,7 @@ class ContextBuilder:
         try:
             with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
                 rows = conn.execute(sql, (numbers,)).fetchall()
-            return {
-                r["number"]: {"cid": r["cid"] or "", "url": r["url"] or "", "title": r["full_title"] or ""}
-                for r in rows if r.get("cid")
-            }
+            return {r["number"]: {"cid": r["cid"] or "", "url": r["url"] or "", "title": r["full_title"] or ""} for r in rows if r.get("cid")}
         except psycopg.Error as exc:
             logger.warning("CID resolution failed: %s", exc)
             return {}
