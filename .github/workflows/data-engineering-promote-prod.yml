@@ -43,7 +43,7 @@ on:
         default: false
         type: boolean
       run_embeddings:
-        description: "Backfill embeddings en plus de la source choisie (implicite si source=embeddings)"
+        description: "Backfill embeddings en plus de la source choisie (implicite si source=embeddings ou matte)"
         required: true
         default: false
         type: boolean
@@ -56,6 +56,12 @@ on:
           - all
           - service_public
           - legifrance
+          - matte
+      embedding_only_column:
+        description: "Colonne embeddings cible optionnelle, ex: embedding_bge_scw"
+        required: false
+        default: ""
+        type: string
       skip_builds:
         description: "Reutiliser les images prod-latest existantes au lieu de rebuilder"
         required: true
@@ -170,7 +176,8 @@ jobs:
       SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
       RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ingestion || false }}
       WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}
-      EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_source || 'all' }}
+      EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && (inputs.source == 'matte' && 'matte' || inputs.embedding_source) || 'all' }}
+      EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
 
     steps:
       - name: Checkout code
@@ -199,6 +206,7 @@ jobs:
             --wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}" \
             --run-embeddings "${{ needs.plan.outputs.run_embeddings }}" \
             --embedding-source "${EMBEDDING_SOURCE}" \
+            --embedding-only-column "${EMBEDDING_ONLY_COLUMN}" \
             --service-public-fiche-config "config/service_public_fiches.json" \
             --legifrance-article-ids-json "config/legifrance_article_cids.json" \
             --wait

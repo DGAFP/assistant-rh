@@ -79,6 +79,13 @@ def test_scaleway_job_script_targets_matte() -> None:
     assert "11aa88cb-ec5b-4df9-bcb4-e9e82576ae58" not in content
 
 
+def test_matte_wrapper_uses_packaged_backfill_entrypoint() -> None:
+    content = (SCRIPTS_DIR / "backfill_matte_embeddings.py").read_text(encoding="utf-8")
+
+    assert "assistant_rh_data_engineering.jobs.embeddings_backfill" in content
+    assert "scripts.backfill_db_embeddings" not in content
+
+
 def test_matte_embeddings_cron_slot_does_not_collide() -> None:
     schedules = _embeddings_job_schedules()
 

@@ -110,6 +110,26 @@ def test_workflow_dispatch_run_embeddings_adds_embeddings_to_selection(tmp_path:
     ]
 
 
+def test_workflow_dispatch_matte_selects_embeddings_backfill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_path = tmp_path / "github-output.txt"
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("INPUT_SOURCE", "matte")
+    monkeypatch.delenv("INPUT_RUN_EMBEDDINGS", raising=False)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+
+    assert data_engineering_plan.main() == 0
+
+    outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
+    matrix = json.loads(outputs["matrix"])
+    assert outputs["service_public"] == "false"
+    assert outputs["legifrance"] == "false"
+    assert outputs["embeddings"] == "true"
+    assert outputs["run_embeddings"] == "true"
+    assert outputs["has_builds"] == "true"
+    assert outputs["has_runs"] == "true"
+    assert matrix["include"] == [{"image": "embeddings-job", "dockerfile": "Dockerfile.embeddings_job"}]
+
+
 def test_preview_staging_plan_receives_run_embeddings_input() -> None:
     workflow = (REPO_ROOT / ".github/workflows/data-engineering-preview-staging.yml").read_text(encoding="utf-8")
     plan_step = workflow.split("- name: Detect changed data engineering jobs", 1)[1].split(
@@ -121,19 +141,38 @@ def test_preview_staging_plan_receives_run_embeddings_input() -> None:
     assert "INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_embeddings || false }}" in plan_step
 
 
+def test_preview_staging_exposes_matte_embedding_dispatch() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-preview-staging.yml").read_text(encoding="utf-8")
+    source_block = workflow.split("source:", 1)[1].split("run_ingestion:", 1)[0]
+    embedding_source_block = workflow.split("embedding_source:", 1)[1].split("embedding_only_column:", 1)[0]
+
+    assert "- matte" in source_block
+    assert "- matte" in embedding_source_block
+    assert "inputs.source == 'embeddings' || inputs.source == 'matte'" in workflow
+    assert "inputs.source == 'matte' && 'matte' || inputs.embedding_source" in workflow
+
+
 def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:
     workflow = (REPO_ROOT / ".github/workflows/data-engineering-promote-prod.yml").read_text(encoding="utf-8")
     start_step = workflow.split("- name: Start selected Scaleway production jobs", 1)[1]
+    embedding_source_block = workflow.split("embedding_source:", 1)[1].split("embedding_only_column:", 1)[0]
 
     assert "run_ingestion:" in workflow
     assert "wipe_existing_chunks:" in workflow
     assert "embedding_source:" in workflow
+    assert "embedding_only_column:" in workflow
+    assert "- matte" in embedding_source_block
     assert 'RUN_INGESTION: ${{ github.event_name == \'workflow_dispatch\' && inputs.run_ingestion || false }}' in workflow
     assert 'WIPE_EXISTING_CHUNKS: ${{ github.event_name == \'workflow_dispatch\' && inputs.wipe_existing_chunks || false }}' in workflow
-    assert 'EMBEDDING_SOURCE: ${{ github.event_name == \'workflow_dispatch\' && inputs.embedding_source || \'all\' }}' in workflow
+    assert (
+        "EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' "
+        "&& (inputs.source == 'matte' && 'matte' || inputs.embedding_source) || 'all' }}"
+    ) in workflow
+    assert "EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}" in workflow
     assert '--run-ingestion "${RUN_INGESTION}"' in start_step
     assert '--wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}"' in start_step
     assert '--embedding-source "${EMBEDDING_SOURCE}"' in start_step
+    assert '--embedding-only-column "${EMBEDDING_ONLY_COLUMN}"' in start_step
 
 
 def test_prod_ingestion_workflow_does_not_run_embedding_backfill_on_github_runner() -> None:
