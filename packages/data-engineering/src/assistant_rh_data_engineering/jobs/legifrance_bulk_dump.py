@@ -114,9 +114,9 @@ def main() -> int:
 
     # Validate cheap inputs (manifest path + parse) before any network I/O.
     article_ids: list[str] | None = None
-    requested_article_ids: int | None = None
+    manifest_entries_count: int | None = None
     if args.article_ids_json:
-        article_ids, requested_article_ids = load_article_ids_from_json(args.article_ids_json)
+        article_ids, manifest_entries_count = load_article_ids_from_json(args.article_ids_json)
 
     client = LegiBulkDumpClient(
         LegiBulkDumpConfig(
@@ -141,12 +141,18 @@ def main() -> int:
         extraction_mode = "full_snapshot"
 
     strict_articles: bool | None = None
+    requested_article_ids: int | None = None
     missing_article_count: int | None = None
     missing_article_ids_sample: list[str] | None = None
+    extracted_articles_report_path: str | None = None
     if extraction_mode == "article_ids_json":
+        assert article_ids is not None  # narrowed by extraction_mode above
         strict_articles = not args.allow_partial
+        requested_article_ids = len(article_ids)
         missing_article_count = len(missing_ids)
         missing_article_ids_sample = missing_ids[:5]
+        # extract_articles always writes a sidecar with the full missing_ids list.
+        extracted_articles_report_path = str(snapshot.extract_dir / "extracted_articles.json")
 
     # Fail-fast BEFORE any success-only side-effects (sync, delete_local_archive)
     # so partial data is never pushed remote and the local archive remains
@@ -159,9 +165,11 @@ def main() -> int:
                     "reason": "incomplete_article_extraction",
                     "extraction_mode": extraction_mode,
                     "requested_article_ids": requested_article_ids,
+                    "manifest_entries_count": manifest_entries_count,
                     "extracted_xml_count": extracted_count,
                     "missing_article_count": missing_article_count,
                     "missing_article_ids_sample": missing_article_ids_sample,
+                    "missing_article_ids_report": extracted_articles_report_path,
                     "article_ids_json": args.article_ids_json,
                     "strict_articles": strict_articles,
                 },
@@ -171,7 +179,10 @@ def main() -> int:
         )
         raise SystemExit(
             "Extraction incomplète pour --article-ids-json: "
-            f"{len(missing_ids)}/{requested_article_ids} article(s) absent(s). "
+            f"{len(missing_ids)}/{requested_article_ids} article(s) absent(s) "
+            f"(manifest brut: {manifest_entries_count} entrées). "
+            "Liste complète des manquants dans "
+            f"{extracted_articles_report_path}. "
             "Réessayer avec un snapshot plus récent ou utiliser --allow-partial."
         )
 
@@ -202,9 +213,11 @@ def main() -> int:
                 "article_ids_json": args.article_ids_json,
                 "extraction_mode": extraction_mode,
                 "requested_article_ids": requested_article_ids,
+                "manifest_entries_count": manifest_entries_count,
                 "extracted_xml_count": extracted_count,
                 "missing_article_count": missing_article_count,
                 "missing_article_ids_sample": missing_article_ids_sample,
+                "missing_article_ids_report": extracted_articles_report_path,
                 "strict_articles": strict_articles,
                 "delete_local_archive": args.delete_local_archive,
                 "deleted_local_archive": deleted_local_archive,

@@ -82,9 +82,11 @@ def test_article_manifest_is_strict_by_default(tmp_path, stub_bulk_dump, monkeyp
     assert payload["reason"] == "incomplete_article_extraction"
     assert payload["extraction_mode"] == "article_ids_json"
     assert payload["requested_article_ids"] == 2
+    assert payload["manifest_entries_count"] == 2
     assert payload["extracted_xml_count"] == 1
     assert payload["missing_article_count"] == 1
     assert payload["missing_article_ids_sample"] == ["MISSING_LEGIARTI0002"]
+    assert payload["missing_article_ids_report"].endswith("extracted_articles.json")
     assert payload["strict_articles"] is True
 
 
@@ -134,10 +136,14 @@ def test_allow_partial_keeps_previous_success_behavior(tmp_path, stub_bulk_dump,
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "ok"
     assert payload["requested_article_ids"] == 2
+    assert payload["manifest_entries_count"] == 2
     assert payload["extracted_xml_count"] == 1
     assert payload["missing_article_count"] == 1
     assert payload["missing_article_ids_sample"] == ["MISSING_LEGIARTI0002"]
+    assert payload["missing_article_ids_report"].endswith("extracted_articles.json")
     assert payload["strict_articles"] is False
+    # Bounded payload — full list lives in the sidecar at missing_article_ids_report.
+    assert "missing_article_ids" not in payload
 
 
 def test_strict_succeeds_when_all_articles_are_found(tmp_path, stub_bulk_dump, monkeypatch, capsys) -> None:
@@ -164,8 +170,8 @@ def test_strict_succeeds_when_all_articles_are_found(tmp_path, stub_bulk_dump, m
     assert payload["strict_articles"] is True
 
 
-def test_duplicate_manifest_entries_reported_as_raw_count(tmp_path, stub_bulk_dump, monkeypatch, capsys) -> None:
-    """requested_article_ids must reflect the raw manifest count, not the deduped set."""
+def test_duplicate_manifest_entries_exposed_via_two_counts(tmp_path, stub_bulk_dump, monkeypatch, capsys) -> None:
+    """requested_article_ids = unique IDs queried; manifest_entries_count = raw manifest size."""
     from assistant_rh_data_engineering.jobs import legifrance_bulk_dump
 
     manifest = write_manifest(tmp_path, ["LEGIARTI0001", "LEGIARTI0001", "LEGIARTI0002"])
@@ -182,8 +188,35 @@ def test_duplicate_manifest_entries_reported_as_raw_count(tmp_path, stub_bulk_du
 
     assert legifrance_bulk_dump.main() == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["requested_article_ids"] == 3
+    assert payload["requested_article_ids"] == 2  # deduped — what was actually queried
+    assert payload["manifest_entries_count"] == 3  # raw — for operator sanity-check vs source manifest
     assert payload["extracted_xml_count"] == 2
+
+
+def test_strict_success_runs_sync_and_local_delete(tmp_path, stub_bulk_dump, monkeypatch) -> None:
+    """Happy-path: sync and delete must run after a successful strict extraction."""
+    from assistant_rh_data_engineering.jobs import legifrance_bulk_dump
+
+    manifest = write_manifest(tmp_path, ["LEGIARTI0001", "LEGIARTI0002"])
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "legifrance-bulk-dump",
+            "--lake-root",
+            str(tmp_path / "lake"),
+            "--article-ids-json",
+            str(manifest),
+            "--sync-object-storage",
+            "--delete-remote",
+            "--delete-local-archive",
+        ],
+    )
+
+    assert legifrance_bulk_dump.main() == 0
+    assert len(stub_bulk_dump.sync_calls) == 1
+    assert stub_bulk_dump.sync_calls[0]["source_name"] == "legifrance"
+    assert stub_bulk_dump.sync_calls[0]["delete"] is True
+    assert len(stub_bulk_dump.delete_calls) == 1
 
 
 def test_full_snapshot_payload_marks_article_fields_as_not_applicable(tmp_path, stub_bulk_dump, monkeypatch, capsys) -> None:
@@ -204,6 +237,10 @@ def test_full_snapshot_payload_marks_article_fields_as_not_applicable(tmp_path, 
     payload = json.loads(capsys.readouterr().out)
     assert payload["extraction_mode"] == "full_snapshot"
     assert payload["requested_article_ids"] is None
+    assert payload["manifest_entries_count"] is None
     assert payload["missing_article_count"] is None
     assert payload["missing_article_ids_sample"] is None
+    assert payload["missing_article_ids_report"] is None
     assert payload["strict_articles"] is None
+    # Stub.extract_full_snapshot returns {} so the count is 0 — verify it surfaces, not None.
+    assert payload["extracted_xml_count"] == 0
