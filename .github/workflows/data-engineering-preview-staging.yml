@@ -200,7 +200,7 @@ jobs:
       - name: Validate Service-Public wipe/backfill selection
         run: |
           if [[ "${SERVICE_PUBLIC_SELECTED}" == "true" && "${RUN_INGESTION}" == "true" && "${WIPE_EXISTING_CHUNKS}" == "true" ]]; then
-            if [[ "${RUN_EMBEDDINGS}" != "true" || "${EMBEDDING_SOURCE}" == "legifrance" ]]; then
+            if [[ "${RUN_EMBEDDINGS}" != "true" || ( "${EMBEDDING_SOURCE}" != "service_public" && "${EMBEDDING_SOURCE}" != "all" ) ]]; then
               echo "::error::wipe_existing_chunks deletes Service-Public chunk embeddings. Select run_embeddings=true and embedding_source=service_public or all."
               exit 1
             fi
