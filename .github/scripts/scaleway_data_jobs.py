@@ -257,6 +257,8 @@ def should_run(spec: dict[str, Any], args: argparse.Namespace) -> bool:
         return False
     if domain == "embeddings" and not args.embeddings:
         return False
+    if os.getenv("GITHUB_EVENT_NAME") == "push" and spec.get("auto_start_on_push") is False:
+        return False
     if domain == "embeddings":
         embedding_source = getattr(args, "embedding_source", "all")
         key = str(spec.get("key") or "")

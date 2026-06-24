@@ -156,6 +156,7 @@
       "local_storage_capacity": 8192,
       "job_timeout": "14400s",
       "requires_embeddings": true,
+      "auto_start_on_push": false,
       "env_groups": ["postgres", "embeddings_api"],
       "args": [
         "embeddings",

@@ -111,4 +111,5 @@ def test_matte_embeddings_job_wired_into_deploy() -> None:
 
     matte_job = next((job for job in jobs_config["jobs"] if job["key"] == "embeddings-matte"), None)
     assert matte_job is not None
+    assert matte_job["auto_start_on_push"] is False
     assert matte_job["args"] == ["embeddings", "matte", "--dsn-env", "SCW_POSTGRES_DSN"]

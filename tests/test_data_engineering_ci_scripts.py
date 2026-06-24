@@ -130,6 +130,14 @@ def test_workflow_dispatch_matte_selects_embeddings_backfill(tmp_path: Path, mon
     assert matrix["include"] == [{"image": "embeddings-job", "dockerfile": "Dockerfile.embeddings_job"}]
 
 
+def test_data_engineering_ci_runs_for_embeddings_script_changes() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-ci.yml").read_text(encoding="utf-8")
+
+    assert '- "scripts/backfill_*_embeddings.py"' in workflow
+    assert '- "scripts/create_scaleway_*_embeddings_job.sh"' in workflow
+    assert '- "scripts/deploy_embeddings_jobs.sh"' in workflow
+
+
 def test_preview_staging_plan_receives_run_embeddings_input() -> None:
     workflow = (REPO_ROOT / ".github/workflows/data-engineering-preview-staging.yml").read_text(encoding="utf-8")
     plan_step = workflow.split("- name: Detect changed data engineering jobs", 1)[1].split(
@@ -1035,6 +1043,7 @@ def test_upsert_and_start_jobs_filters_matte_embeddings_source(
                         "local_storage_capacity": 1024,
                         "job_timeout": "3600s",
                         "requires_embeddings": True,
+                        "auto_start_on_push": False,
                         "env_groups": [],
                         "args": ["embeddings", "matte", "--dsn-env", "SCW_POSTGRES_DSN"],
                     },
@@ -1076,3 +1085,97 @@ def test_upsert_and_start_jobs_filters_matte_embeddings_source(
     assert scaleway_data_jobs.upsert_and_start_jobs(args) == 0
 
     assert started == [["embeddings", "matte", "--dsn-env", "SCW_POSTGRES_DSN", "--only-column", "embedding_bge_scw"]]
+
+
+def test_upsert_and_start_jobs_skips_matte_auto_start_on_push(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "jobs.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "job_name_template": "assistant-rh-{target_env}-{key}",
+                "jobs": [
+                    {
+                        "key": "embeddings-service-public",
+                        "domain": "embeddings",
+                        "image": "embeddings-job",
+                        "description": "Service-Public embeddings",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_embeddings": True,
+                        "env_groups": [],
+                        "args": ["embeddings", "service-public", "--dsn-env", "SCW_POSTGRES_DSN"],
+                    },
+                    {
+                        "key": "embeddings-legifrance",
+                        "domain": "embeddings",
+                        "image": "embeddings-job",
+                        "description": "Legifrance embeddings",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_embeddings": True,
+                        "env_groups": [],
+                        "args": ["embeddings", "legifrance", "--dsn-env", "SCW_POSTGRES_DSN"],
+                    },
+                    {
+                        "key": "embeddings-matte",
+                        "domain": "embeddings",
+                        "image": "embeddings-job",
+                        "description": "MATTE embeddings",
+                        "cpu_limit": 1000,
+                        "memory_limit": 2048,
+                        "local_storage_capacity": 1024,
+                        "job_timeout": "3600s",
+                        "requires_embeddings": True,
+                        "auto_start_on_push": False,
+                        "env_groups": [],
+                        "args": ["embeddings", "matte", "--dsn-env", "SCW_POSTGRES_DSN"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    started: list[list[str]] = []
+
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    monkeypatch.setenv("SCW_DEFAULT_PROJECT_ID", "project-id")
+    monkeypatch.delenv("SCW_DEFAULT_REGION", raising=False)
+    monkeypatch.delenv("SCW_CONTAINER_REGISTRY_NAMESPACE", raising=False)
+    monkeypatch.setattr(scaleway_data_jobs, "list_definitions", lambda project_id, region, *, secrets, dry_run: {})
+    monkeypatch.setattr(scaleway_data_jobs, "create_definition", lambda spec, name, image, project_id, region, *, secrets, dry_run: "new-id")
+    monkeypatch.setattr(
+        scaleway_data_jobs,
+        "start_definition",
+        lambda job_id, spec, command_args, environment, region, *, wait, secrets, dry_run: started.append(command_args),
+    )
+
+    args = SimpleNamespace(
+        config=str(config_path),
+        target_env="prod",
+        image_tag="sha-123",
+        service_public=False,
+        legifrance=False,
+        embeddings=True,
+        run_ingestion=False,
+        run_embeddings=True,
+        embedding_source="all",
+        embedding_only_column="",
+        service_public_fiche_config="config/service_public_fiches.json",
+        legifrance_article_ids_json="config/legifrance_article_cids.json",
+        wait=False,
+        dry_run=False,
+    )
+
+    assert scaleway_data_jobs.upsert_and_start_jobs(args) == 0
+
+    assert started == [
+        ["embeddings", "service-public", "--dsn-env", "SCW_POSTGRES_DSN"],
+        ["embeddings", "legifrance", "--dsn-env", "SCW_POSTGRES_DSN"],
+    ]
