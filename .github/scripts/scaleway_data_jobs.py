@@ -38,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--service-public-fiche-config", default="config/service_public_fiches.json")
     parser.add_argument("--wipe-existing-chunks", type=parse_bool, default=False)
     parser.add_argument("--legifrance-article-ids-json", default="config/legifrance_article_cids.json")
-    parser.add_argument("--embedding-source", choices=("all", "service_public", "legifrance"), default="all")
+    parser.add_argument("--embedding-source", choices=("all", "service_public", "legifrance", "matte"), default="all")
     parser.add_argument("--embedding-only-column", default="")
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -257,12 +257,16 @@ def should_run(spec: dict[str, Any], args: argparse.Namespace) -> bool:
         return False
     if domain == "embeddings" and not args.embeddings:
         return False
+    if os.getenv("GITHUB_EVENT_NAME") == "push" and spec.get("auto_start_on_push") is False:
+        return False
     if domain == "embeddings":
         embedding_source = getattr(args, "embedding_source", "all")
         key = str(spec.get("key") or "")
         if embedding_source == "service_public" and key != "embeddings-service-public":
             return False
         if embedding_source == "legifrance" and key != "embeddings-legifrance":
+            return False
+        if embedding_source == "matte" and key != "embeddings-matte":
             return False
     if spec.get("requires_ingestion") and not args.run_ingestion:
         return False

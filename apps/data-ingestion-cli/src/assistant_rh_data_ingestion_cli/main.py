@@ -56,6 +56,11 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
         "Backfill Legifrance DB embeddings.",
         ("--config", "config/legifrance_embedding_tables.json"),
     ),
+    ("embeddings", "matte"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.embeddings_backfill",
+        "Backfill MATTE DB embeddings.",
+        ("--config", "config/matte_embedding_tables.json"),
+    ),
     ("observability", "rag-health"): CommandSpec(
         "assistant_rh_data_engineering.jobs.rag_health_exporter",
         "Expose read-only RAG corpus health metrics for Prometheus/Grafana.",

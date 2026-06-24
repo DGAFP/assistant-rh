@@ -12,6 +12,9 @@ on:
       - "packages/data-engineering/**"
       - "packages/shared-config/**"
       - "config/**"
+      - "scripts/backfill_*_embeddings.py"
+      - "scripts/create_scaleway_*_embeddings_job.sh"
+      - "scripts/deploy_embeddings_jobs.sh"
       - "Dockerfile.service_public_pipeline"
       - "Dockerfile.service_public_ingestion"
       - "Dockerfile.legifrance_pipeline"
@@ -32,6 +35,9 @@ on:
       - "packages/data-engineering/**"
       - "packages/shared-config/**"
       - "config/**"
+      - "scripts/backfill_*_embeddings.py"
+      - "scripts/create_scaleway_*_embeddings_job.sh"
+      - "scripts/deploy_embeddings_jobs.sh"
       - "Dockerfile.service_public_pipeline"
       - "Dockerfile.service_public_ingestion"
       - "Dockerfile.legifrance_pipeline"
@@ -100,4 +106,5 @@ jobs:
           uv run --no-sync data-ingestion legifrance ingest --help > /dev/null
           uv run --no-sync data-ingestion embeddings service-public --help > /dev/null
           uv run --no-sync data-ingestion embeddings legifrance --help > /dev/null
+          uv run --no-sync data-ingestion embeddings matte --help > /dev/null
           uv run --no-sync data-ingestion observability rag-health --help > /dev/null

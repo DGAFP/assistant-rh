@@ -55,7 +55,7 @@ def classify_from_source(source: str) -> dict[str, bool]:
     return {
         "service_public": source in {"all", "service_public"},
         "legifrance": source in {"all", "legifrance"},
-        "embeddings": source in {"all", "embeddings"},
+        "embeddings": source in {"all", "embeddings", "matte"},
     }
 
 
@@ -142,7 +142,7 @@ def main() -> int:
     if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
         source = os.getenv("INPUT_SOURCE") or "all"
         selected = classify_from_source(source)
-        run_embeddings = source == "embeddings" or os.getenv("INPUT_RUN_EMBEDDINGS", "").strip().lower() == "true"
+        run_embeddings = source in {"embeddings", "matte"} or os.getenv("INPUT_RUN_EMBEDDINGS", "").strip().lower() == "true"
         if run_embeddings:
             selected["embeddings"] = True
         files: list[str] = []

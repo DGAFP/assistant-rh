@@ -52,4 +52,5 @@ if (( CREATE )); then
   : "${SCW_POSTGRES_DSN:?SCW_POSTGRES_DSN is required}"
   TARGET_ENV="${TARGET_ENV}" IMAGE_TAG="${IMAGE_TAG}" ./scripts/create_scaleway_service_public_embeddings_job.sh
   TARGET_ENV="${TARGET_ENV}" IMAGE_TAG="${IMAGE_TAG}" ./scripts/create_scaleway_legifrance_embeddings_job.sh
+  TARGET_ENV="${TARGET_ENV}" IMAGE_TAG="${IMAGE_TAG}" ./scripts/create_scaleway_matte_embeddings_job.sh
 fi
