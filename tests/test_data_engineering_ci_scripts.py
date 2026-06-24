@@ -1054,6 +1054,7 @@ def test_upsert_and_start_jobs_filters_matte_embeddings_source(
     )
     started: list[list[str]] = []
 
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     monkeypatch.setenv("SCW_DEFAULT_PROJECT_ID", "project-id")
     monkeypatch.delenv("SCW_DEFAULT_REGION", raising=False)
     monkeypatch.delenv("SCW_CONTAINER_REGISTRY_NAMESPACE", raising=False)
