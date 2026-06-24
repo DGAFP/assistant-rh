@@ -104,7 +104,7 @@ Evidence:
 
 - 34/34 matched rows have `v3_needs_legal_final = false`.
 - DGAFP/Legifrance sources are therefore not requested by the pipeline in these runs.
-- The orientation-sexuality/discrimination case could be a legal-routing candidate, but it was not routed as legal.
+- The sexual orientation / discrimination case could be a legal-routing candidate, but it was not routed as legal.
 
 The local pipeline code also excludes DGAFP when `needs_legal_search` is false:
 
