@@ -49,7 +49,7 @@ class ContextBuilder:
         self.dsn = dsn or get_dsn()
         self.last_resolved_refs: Dict[str, Dict[str, str]] = {}
 
-    def build(self, sections: List[AggregatedSection]) -> List[ContextItem]:
+    def build(self, sections: List[AggregatedSection], query: str | None = None) -> List[ContextItem]:
         if not sections:
             return []
 
@@ -61,6 +61,7 @@ class ContextBuilder:
 
         selected: List[ContextItem] = []
         used_ids: Set[str] = set()
+        full_doc_ids: Set[str] = set()
         tokens_used = 0
         full_doc_count = 0
 
@@ -106,9 +107,44 @@ class ContextBuilder:
             selected.append(item)
             for s in doc_sections:
                 used_ids.add(_section_key(s))
+            full_doc_ids.add(str(doc_id))
             tokens_used += item.token_estimate
             full_doc_count += 1
             logger.info("Doc-entire included doc %s (%s): ~%d tokens", doc_id, item.document_title[:40], item.token_estimate)
+
+        # Service-Public fiches often carry eligibility/definition facts in the
+        # Introduction section while retrieval favors later condition headings.
+        # When a Service-Public document is selected but too large for doc-entire,
+        # include its introduction once as a compact document preamble.
+        intro_doc_ids: list[str] = []
+        if self._should_include_document_intro(query):
+            for doc_id, doc_sections in sorted_docs:
+                if doc_id in full_doc_ids:
+                    continue
+                if any((s.heading or "").strip().lower() == "introduction" for s in doc_sections):
+                    continue
+                if not any((s.publisher or "").strip().lower() == "service-public" for s in doc_sections):
+                    continue
+                intro_doc_ids.append(str(doc_id))
+                break
+
+        intro_sections = self._load_intro_sections(intro_doc_ids) if intro_doc_ids else []
+        for intro_section in intro_sections:
+            key = _section_key(intro_section)
+            if key in used_ids:
+                continue
+            intro_doc_id = str(intro_section.document_id or "")
+            if intro_doc_id in doc_max_score:
+                intro_section.score = doc_max_score[intro_doc_id]
+            item = self._section_to_item(intro_section)
+            if tokens_used + item.token_estimate > budget:
+                continue
+            if len(selected) >= max_sections:
+                break
+            item.metadata["is_document_intro"] = True
+            selected.append(item)
+            used_ids.add(key)
+            tokens_used += item.token_estimate
 
         # Step 2 – fill with top individual sections (from selector/reranker order)
         for s in sections:
@@ -210,6 +246,31 @@ class ContextBuilder:
             parts.append(f"### {header}\n\n```markdown\n{item.content}\n```\n\n---\n")
         return "\n".join(parts)
 
+    @staticmethod
+    def _should_include_document_intro(query: str | None) -> bool:
+        """Return whether a query benefits from a document-level preamble."""
+        if not query:
+            return False
+
+        normalized = " ".join(query.casefold().replace("’", "'").split())
+        return any(
+            marker in normalized
+            for marker in (
+                "condition",
+                "éligib",
+                "eligib",
+                "droit",
+                "percevoir",
+                "bénéficier",
+                "beneficier",
+                "qui peut",
+                "qu'est-ce",
+                "qu est ce",
+                "définition",
+                "definition",
+            )
+        )
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
@@ -227,6 +288,70 @@ class ContextBuilder:
         except psycopg.Error as exc:
             logger.warning("Failed to load full document %s: %s", doc_id, exc)
             return None
+
+    def _load_intro_sections(self, doc_ids: list[str]) -> List[AggregatedSection]:
+        """Load Introduction sections for selected Service-Public documents."""
+        if not doc_ids:
+            return []
+
+        sql = """
+            WITH requested(doc_id, ord) AS (
+                SELECT *
+                FROM unnest(%s::text[]) WITH ORDINALITY
+            )
+            SELECT
+                s.section_id,
+                s.heading,
+                s.section_markdown,
+                s.heading_path,
+                s.references_juridiques,
+                s.doc_id,
+                d.short_id AS doc_short_id,
+                d.title AS doc_title,
+                d.source_url AS doc_url,
+                d.token_count AS doc_token_count,
+                d.publisher AS doc_publisher,
+                d.last_updated_date AS doc_date
+            FROM requested r
+            JOIN rag_sections s ON s.doc_id::text = r.doc_id
+            LEFT JOIN rag_documents d ON d.doc_id = s.doc_id
+            WHERE lower(trim(s.heading)) = 'introduction'
+            ORDER BY r.ord, s.section_index NULLS LAST
+        """
+        try:
+            with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+                rows = conn.execute(sql, (doc_ids,)).fetchall()
+        except psycopg.Error as exc:
+            logger.warning("Failed to load Service-Public introduction sections: %s", exc)
+            return []
+
+        sections: List[AggregatedSection] = []
+        for row in rows:
+            metadata = {
+                "doc_id": str(row.get("doc_id") or ""),
+                "doc_short_id": str(row.get("doc_short_id") or ""),
+                "doc_title": row.get("doc_title") or "",
+                "doc_url": row.get("doc_url"),
+                "doc_publisher": row.get("doc_publisher") or "Service-Public",
+                "doc_date": str(row["doc_date"]) if row.get("doc_date") else "",
+                "doc_token_count": row.get("doc_token_count", 0),
+                "is_document_intro": True,
+            }
+            sections.append(
+                AggregatedSection(
+                    section_id=str(row["section_id"]),
+                    heading=row.get("heading") or "Introduction",
+                    markdown=row.get("section_markdown") or "",
+                    chunks=[],
+                    score=0.0,
+                    document_id=str(row.get("doc_id") or ""),
+                    publisher=row.get("doc_publisher") or "Service-Public",
+                    references_juridiques=row.get("references_juridiques"),
+                    heading_path=row.get("heading_path"),
+                    metadata=metadata,
+                )
+            )
+        return sections
 
     def _full_doc_to_item(self, doc_row: dict, matched_sections: List[AggregatedSection]) -> ContextItem:
         """Convert a rag_documents row into a single ContextItem with the full document content."""

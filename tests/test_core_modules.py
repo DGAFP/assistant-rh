@@ -876,6 +876,102 @@ class TestContextBuilderBuild:
         # the input list, so it stays at position 0.
         assert result[0].publisher == "DGAFP"
 
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._load_intro_sections")
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._load_full_document", return_value=None)
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._resolve_cids", return_value={})
+    def test_injects_service_public_intro_for_large_selected_document(self, _mock_refs, _mock_load_doc, mock_load_intro):
+        from assistant_rh_rag_pipeline.config import ContextBuildConfig
+        from assistant_rh_rag_pipeline.context_builder import ContextBuilder
+
+        mock_load_intro.return_value = [
+            AggregatedSection(
+                section_id="intro-sp",
+                heading="Introduction",
+                markdown=(
+                    "# Supplément familial de traitement (SFT)\n\n"
+                    "Le SFT est versé à tout agent public qui a au moins 1 enfant "
+                    "de moins de 20 ans à charge."
+                ),
+                chunks=[],
+                score=0.0,
+                document_id="doc-sp",
+                publisher="Service-Public",
+                metadata={
+                    "doc_id": "doc-sp",
+                    "doc_title": "Supplément familial de traitement (SFT)",
+                    "doc_url": "https://example.test/F32513",
+                    "doc_publisher": "Service-Public",
+                    "doc_token_count": 9000,
+                },
+            )
+        ]
+        builder = ContextBuilder(
+            ContextBuildConfig(max_full_docs=1, doc_entire_threshold=500, max_sections=5),
+            dsn="unused",
+        )
+        sections = [
+            AggregatedSection(
+                section_id="sec-sp",
+                heading="En cas de séparation des parents",
+                markdown="Les conditions de versement du SFT varient selon le mode de garde.",
+                chunks=[],
+                score=0.8,
+                document_id="doc-sp",
+                publisher="Service-Public",
+                metadata={
+                    "doc_id": "doc-sp",
+                    "doc_title": "Supplément familial de traitement (SFT)",
+                    "doc_url": "https://example.test/F32513",
+                    "doc_publisher": "Service-Public",
+                    "doc_token_count": 9000,
+                },
+            )
+        ]
+
+        result = builder.build(sections, query="Sous quelles conditions un agent peut-il percevoir le SFT ?")
+
+        mock_load_intro.assert_called_once_with(["doc-sp"])
+        assert result[0].heading == "Introduction"
+        assert result[0].metadata.get("is_document_intro") is True
+        assert "moins de 20 ans" in result[0].content
+        assert any(item.section_id == "sec-sp" for item in result)
+
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._load_intro_sections")
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._load_full_document", return_value=None)
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._resolve_cids", return_value={})
+    def test_does_not_inject_service_public_intro_for_precise_section_question(self, _mock_refs, _mock_load_doc, mock_load_intro):
+        from assistant_rh_rag_pipeline.config import ContextBuildConfig
+        from assistant_rh_rag_pipeline.context_builder import ContextBuilder
+
+        builder = ContextBuilder(
+            ContextBuildConfig(max_full_docs=1, doc_entire_threshold=500, max_sections=5),
+            dsn="unused",
+        )
+        sections = [
+            AggregatedSection(
+                section_id="sec-sp",
+                heading="Quel est le montant du supplément familial de traitement?",
+                markdown="Le montant du SFT dépend du nombre d'enfants à charge.",
+                chunks=[],
+                score=0.8,
+                document_id="doc-sp",
+                publisher="Service-Public",
+                metadata={
+                    "doc_id": "doc-sp",
+                    "doc_title": "Supplément familial de traitement (SFT)",
+                    "doc_url": "https://example.test/F32513",
+                    "doc_publisher": "Service-Public",
+                    "doc_token_count": 9000,
+                },
+            )
+        ]
+
+        result = builder.build(sections, query="Quel est le montant du SFT ?")
+
+        mock_load_intro.assert_not_called()
+        assert len(result) == 1
+        assert result[0].section_id == "sec-sp"
+
     @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._load_full_document", return_value=None)
     @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._resolve_cids", return_value={})
     def test_triangulation_does_not_starve_primary_refs_budget(self, _mock_refs, _mock_load):

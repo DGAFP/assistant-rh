@@ -485,7 +485,7 @@ class Pipeline:
                 return attempt
 
         t0 = time.time()
-        items = self._context_builder.build(sections)
+        items = self._context_builder.build(sections, query=retrieval_query)
         state.timing[f"context_build_{name}_ms"] = (time.time() - t0) * 1000
         attempt.context_items_ref = [
             {
