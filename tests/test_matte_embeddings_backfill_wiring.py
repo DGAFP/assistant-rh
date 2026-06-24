@@ -76,14 +76,20 @@ def test_scaleway_job_script_targets_matte() -> None:
     assert "JOB_NAME:-matte-embeddings-" in content
     assert "args.0=embeddings" in content
     assert "args.1=matte" in content
-    assert "11aa88cb-ec5b-4df9-bcb4-e9e82576ae58" not in content
+    # MATTE shares the siblings' project-scoped Scaleway AI base URL so a
+    # cron-fired run (which bakes this default into the job definition) hits the
+    # same endpoint as the Service-Public and Legifrance embeddings jobs.
+    assert "https://api.scaleway.ai/11aa88cb-ec5b-4df9-bcb4-e9e82576ae58/v1" in content
 
 
-def test_matte_wrapper_uses_packaged_backfill_entrypoint() -> None:
+def test_matte_wrapper_matches_sibling_backfill_entrypoint() -> None:
     content = (SCRIPTS_DIR / "backfill_matte_embeddings.py").read_text(encoding="utf-8")
 
-    assert "assistant_rh_data_engineering.jobs.embeddings_backfill" in content
-    assert "scripts.backfill_db_embeddings" not in content
+    # MATTE's local wrapper must use the same backfill implementation as the
+    # Service-Public and Legifrance wrappers (scripts.backfill_db_embeddings),
+    # not a divergent packaged entrypoint.
+    assert "scripts.backfill_db_embeddings" in content
+    assert "assistant_rh_data_engineering.jobs.embeddings_backfill" not in content
 
 
 def test_matte_embeddings_cron_slot_does_not_collide() -> None:
