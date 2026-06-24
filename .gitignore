@@ -41,7 +41,10 @@ mlartifacts/
 
 
 # Notebooks (evaluation notebooks tracked separately)
-notebooks/
+notebooks/*
+!notebooks/
+!notebooks/generation_ok_retrieval_probe.ipynb
+!notebooks/single_question_retrieval_probe.ipynb
 
 # Local files (backups, one-off scripts, generated artifacts)
 tmp/
