@@ -61,6 +61,10 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
         "Backfill MATTE DB embeddings.",
         ("--config", "config/matte_embedding_tables.json"),
     ),
+    ("chunks", "backfill-text"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.chunk_text_backfill",
+        "Backfill chunk_text from text where empty (default rag_chunks_matte).",
+    ),
     ("observability", "rag-health"): CommandSpec(
         "assistant_rh_data_engineering.jobs.rag_health_exporter",
         "Expose read-only RAG corpus health metrics for Prometheus/Grafana.",
