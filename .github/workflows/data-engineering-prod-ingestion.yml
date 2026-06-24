@@ -85,7 +85,6 @@ jobs:
             --target-env prod \
             "${QUALITY_SOURCES[@]}" \
             --blocking \
-            --dsn-env SCW_POSTGRES_DSN \
             --json-output artifacts/data-quality/prod-ingestion-report.json \
             --markdown-output artifacts/data-quality/prod-ingestion-summary.md
 

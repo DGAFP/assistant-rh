@@ -20,6 +20,8 @@ for entry in reversed(PYTHONPATH_ENTRIES):
     if entry_str not in sys.path:
         sys.path.insert(0, entry_str)
 
+from assistant_rh_shared.db_helpers import DSN_ENV_KEYS, get_dsn  # noqa: E402
+
 from assistant_rh_data_engineering.quality_gates import (  # noqa: E402
     PsycopgQualityDatabase,
     build_error_report,
@@ -34,12 +36,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", default="config/data_quality_gates.json", help="Versioned quality gate configuration.")
     parser.add_argument("--target-env", choices=["staging", "prod"], required=True)
     parser.add_argument("--schema", default="public")
-    parser.add_argument("--dsn-env", default="SCW_POSTGRES_DSN")
-    parser.add_argument("--dsn", help="Postgres DSN. Takes precedence over --dsn-env.")
+    parser.add_argument("--dsn-env", default="", help="Env var holding the Postgres DSN. Overrides the canonical resolution.")
+    parser.add_argument("--dsn", help="Postgres DSN. Takes precedence over --dsn-env and the canonical resolution.")
     parser.add_argument("--source", action="append", default=[])
-    parser.add_argument("--include-embeddings", action="store_true")
-    parser.add_argument("--embedding-source", default="all")
-    parser.add_argument("--embedding-only-column", default="", help="When set, only checks the selected embedding column.")
     parser.add_argument("--blocking", action="store_true", help="Exit non-zero when any blocking quality check fails.")
     parser.add_argument("--json-output", default="", help="Write the machine-readable report to this path.")
     parser.add_argument("--markdown-output", default="", help="Write the GitHub-friendly summary to this path.")
@@ -51,10 +50,6 @@ def validate_requested_sources(parser: argparse.ArgumentParser, args: argparse.N
     for source in args.source:
         if source not in known_sources:
             parser.error(f"argument --source: invalid choice: {source!r} (choose from {_format_choices(sorted(known_sources))})")
-    if args.embedding_source != "all" and args.embedding_source not in known_sources:
-        parser.error(
-            f"argument --embedding-source: invalid choice: {args.embedding_source!r} (choose from 'all', {_format_choices(sorted(known_sources))})"
-        )
 
 
 def _format_choices(values: list[str]) -> str:
@@ -80,17 +75,33 @@ def _json_dump(report: dict) -> str:
     return json.dumps(report, ensure_ascii=False, indent=2, default=str) + "\n"
 
 
+def _resolve_dsn(args: argparse.Namespace) -> str:
+    """Resolve the Postgres DSN.
+
+    Priority: explicit --dsn, then an explicit --dsn-env override, then the
+    canonical resolution shared with the rest of the data pipeline (get_dsn).
+    """
+    if args.dsn:
+        return args.dsn
+    if args.dsn_env:
+        return os.getenv(args.dsn_env, "")
+    try:
+        return get_dsn()
+    except RuntimeError:
+        return ""
+
+
 def main() -> int:
     load_dotenv(REPO_ROOT / ".env")
     parser = build_parser()
     args = parser.parse_args()
     config = load_quality_config(REPO_ROOT / args.config)
     validate_requested_sources(parser, args, config)
-    dsn = args.dsn or os.getenv(args.dsn_env)
+    dsn = _resolve_dsn(args)
     if not dsn:
         report = build_error_report(
             config,
-            f"Missing Postgres DSN: pass --dsn or define {args.dsn_env}.",
+            f"Missing Postgres DSN: pass --dsn, set --dsn-env, or define one of {', '.join(DSN_ENV_KEYS)}.",
             target_env=args.target_env,
             sources=args.source,
             blocking=args.blocking,
@@ -107,9 +118,6 @@ def main() -> int:
                 repo_root=REPO_ROOT,
                 target_env=args.target_env,
                 sources=args.source,
-                include_embeddings=args.include_embeddings,
-                embedding_source=args.embedding_source,
-                embedding_only_column=args.embedding_only_column.strip(),
                 blocking=args.blocking,
             )
     except (OSError, psycopg.Error) as exc:

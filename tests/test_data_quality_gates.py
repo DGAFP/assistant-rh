@@ -30,10 +30,6 @@ class FakeQualityDatabase:
         self.section_distinct = 2
         self.section_missing: list[str] = []
         self.section_blank_counts: dict[str, int] = {}
-        self.embedding = {
-            ("rag_chunks_service_public", "embedding_m3"): (2, 2),
-            ("rag_chunks_service_public", "embedding_bge_scw"): (2, 2),
-        }
 
     def table_columns(self, table: str) -> set[str]:
         return self.columns.get(table, set())
@@ -65,9 +61,6 @@ class FakeQualityDatabase:
     def blank_section_text_count(self, text_column: str, expected_ids: list[str], document_source: Any) -> int:
         return self.section_blank_counts.get(text_column, 0)
 
-    def embedding_coverage(self, table: str, embedding_column: str, filter_column: str, expected_ids: list[str]) -> tuple[int, int]:
-        return self.embedding.get((table, embedding_column), (0, 0))
-
 
 def test_quality_gates_pass_for_selected_source(tmp_path: Path) -> None:
     config = _write_config(tmp_path)
@@ -78,9 +71,6 @@ def test_quality_gates_pass_for_selected_source(tmp_path: Path) -> None:
         repo_root=tmp_path,
         target_env="staging",
         sources=["service_public"],
-        include_embeddings=False,
-        embedding_source="all",
-        embedding_only_column="",
         blocking=True,
     )
 
@@ -101,9 +91,6 @@ def test_quality_gates_report_missing_expected_ids(tmp_path: Path) -> None:
         repo_root=tmp_path,
         target_env="staging",
         sources=["service_public"],
-        include_embeddings=False,
-        embedding_source="all",
-        embedding_only_column="",
         blocking=False,
     )
 
@@ -126,9 +113,6 @@ def test_quality_gates_fail_on_stale_freshness(tmp_path: Path) -> None:
         repo_root=tmp_path,
         target_env="staging",
         sources=["service_public"],
-        include_embeddings=False,
-        embedding_source="all",
-        embedding_only_column="",
         blocking=True,
     )
 
@@ -136,26 +120,20 @@ def test_quality_gates_fail_on_stale_freshness(tmp_path: Path) -> None:
     assert any(check["table"] == "rag_documents" and check["check"] == "freshness" for check in failures)
 
 
-def test_quality_gates_check_selected_embedding_column_only(tmp_path: Path) -> None:
+def test_quality_gates_does_not_emit_embedding_checks(tmp_path: Path) -> None:
     config = _write_config(tmp_path)
-    db = FakeQualityDatabase()
-    db.embedding[("rag_chunks_service_public", "embedding_bge_scw")] = (2, 0)
 
     report = evaluate_quality_gates(
-        db,
+        FakeQualityDatabase(),
         config,
         repo_root=tmp_path,
         target_env="staging",
         sources=["service_public"],
-        include_embeddings=True,
-        embedding_source="service_public",
-        embedding_only_column="embedding_m3",
         blocking=True,
     )
 
-    assert report["status"] == "pass"
-    skipped = [check for check in report["checks"] if check["check"] == "embedding_coverage:embedding_bge_scw"]
-    assert skipped[0]["observed"] == "not selected"
+    # Embedding coverage is delegated to `data-ingestion embeddings --check-only`.
+    assert not any(check["check"].startswith("embedding_coverage") for check in report["checks"])
 
 
 def test_quality_gates_cli_route_is_registered() -> None:
@@ -203,20 +181,26 @@ def test_resolve_expected_ids_rejects_null_json(tmp_path: Path) -> None:
 
 def test_quality_gates_cli_accepts_config_driven_sources() -> None:
     parser = build_parser()
-    args = parser.parse_args(["--target-env", "staging", "--source", "custom", "--embedding-source", "custom"])
+    args = parser.parse_args(["--target-env", "staging", "--source", "custom"])
 
     validate_requested_sources(parser, args, {"sources": {"custom": {}}})
 
     assert args.source == ["custom"]
-    assert args.embedding_source == "custom"
 
 
 def test_quality_gates_cli_rejects_unknown_config_sources() -> None:
     parser = build_parser()
-    args = parser.parse_args(["--target-env", "staging", "--source", "unknown", "--embedding-source", "missing"])
+    args = parser.parse_args(["--target-env", "staging", "--source", "unknown"])
 
     with pytest.raises(SystemExit):
         validate_requested_sources(parser, args, {"sources": {"service_public": {}}})
+
+
+def test_quality_gates_cli_has_no_embedding_flags() -> None:
+    parser = build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--target-env", "staging", "--include-embeddings"])
 
 
 def _write_config(tmp_path: Path) -> dict[str, Any]:
@@ -228,7 +212,6 @@ def _write_config(tmp_path: Path) -> dict[str, Any]:
                 "expected_ids": {"path": "ids.json", "field": "fiche_ids"},
                 "source_filter": {"column": "source", "value": "service_public"},
                 "freshness_max_age_hours": {"staging": 1, "prod": 1},
-                "min_embedding_coverage_ratio": 1.0,
                 "tables": [
                     {
                         "name": "rag_documents",
@@ -248,13 +231,6 @@ def _write_config(tmp_path: Path) -> dict[str, Any]:
                         "text_columns": ["chunk_text"],
                         "freshness_column": "updated_at",
                     },
-                ],
-                "embedding_tables": [
-                    {
-                        "name": "rag_chunks_service_public",
-                        "filter_id_column": "short_id",
-                        "embedding_columns": ["embedding_m3", "embedding_bge_scw"],
-                    }
                 ],
             }
         },

@@ -17,7 +17,6 @@
         "staging": 1080,
         "prod": 1080
       },
-      "min_embedding_coverage_ratio": 1.0,
       "tables": [
         {
           "name": "rag_documents",
@@ -42,13 +41,6 @@
           "min_distinct_expected_id_ratio": 1.0,
           "text_columns": ["chunk_text"],
           "freshness_column": "updated_at"
-        }
-      ],
-      "embedding_tables": [
-        {
-          "name": "rag_chunks_service_public",
-          "filter_id_column": "short_id",
-          "embedding_columns": ["embedding_m3", "embedding_bge_scw"]
         }
       ]
     },
@@ -67,7 +59,6 @@
         "staging": 1080,
         "prod": 1080
       },
-      "min_embedding_coverage_ratio": 1.0,
       "tables": [
         {
           "name": "rag_documents",
@@ -100,18 +91,6 @@
           "min_distinct_expected_id_ratio": 1.0,
           "text_columns": ["chunk_text"],
           "freshness_column": "updated_at"
-        }
-      ],
-      "embedding_tables": [
-        {
-          "name": "rag_chunks_dgafp",
-          "filter_id_column": "cid",
-          "embedding_columns": ["embedding_m3", "embedding_bge_scw"]
-        },
-        {
-          "name": "rag_chunks_legifrance",
-          "filter_id_column": "cid",
-          "embedding_columns": ["embedding_m3", "embedding_bge_scw"]
         }
       ]
     }

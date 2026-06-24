@@ -70,8 +70,6 @@ class QualityDatabase(Protocol):
 
     def blank_section_text_count(self, text_column: str, expected_ids: list[str], document_source: SourceFilter) -> int: ...
 
-    def embedding_coverage(self, table: str, embedding_column: str, filter_column: str, expected_ids: list[str]) -> tuple[int, int]: ...
-
 
 class PsycopgQualityDatabase:
     def __init__(self, conn: psycopg.Connection, schema: str = "public"):
@@ -181,24 +179,6 @@ class PsycopgQualityDatabase:
             cur.execute(query, params)
             return int(cur.fetchone()[0])
 
-    def embedding_coverage(self, table: str, embedding_column: str, filter_column: str, expected_ids: list[str]) -> tuple[int, int]:
-        query = sql.SQL(
-            """
-            SELECT COUNT(*), COUNT(*) FILTER (WHERE {} IS NOT NULL)
-            FROM {}.{}
-            WHERE {} = ANY(%s)
-            """
-        ).format(
-            sql.Identifier(embedding_column),
-            sql.Identifier(self.schema),
-            sql.Identifier(table),
-            sql.Identifier(filter_column),
-        )
-        with self.conn.cursor() as cur:
-            cur.execute(query, (expected_ids,))
-            total, with_embedding = cur.fetchone()
-        return int(total), int(with_embedding)
-
     def _table_query(
         self,
         base: sql.Composed,
@@ -302,35 +282,20 @@ def evaluate_quality_gates(
     repo_root: Path,
     target_env: str,
     sources: list[str],
-    include_embeddings: bool,
-    embedding_source: str,
-    embedding_only_column: str,
     blocking: bool,
 ) -> dict[str, Any]:
-    selected_sources = _selected_sources(config, sources, include_embeddings, embedding_source)
+    selected_sources = _selected_sources(config, sources)
     checks: list[CheckResult] = []
-    expected_by_source: dict[str, list[str]] = {}
     for source_name in selected_sources:
         source_config = config["sources"][source_name]
         expected_ids = resolve_expected_ids(repo_root, source_name, source_config)
-        expected_by_source[source_name] = expected_ids
         checks.extend(_evaluate_source_tables(db, source_name, source_config, expected_ids, target_env))
-
-    if include_embeddings:
-        embedding_sources = _embedding_sources(config, selected_sources, embedding_source)
-        for source_name in embedding_sources:
-            source_config = config["sources"][source_name]
-            expected_ids = expected_by_source.get(source_name) or resolve_expected_ids(repo_root, source_name, source_config)
-            checks.extend(_evaluate_embedding_tables(db, source_name, source_config, expected_ids, embedding_only_column))
 
     return build_report(
         config,
         checks,
         target_env=target_env,
         sources=selected_sources,
-        include_embeddings=include_embeddings,
-        embedding_source=embedding_source,
-        embedding_only_column=embedding_only_column,
         blocking=blocking,
     )
 
@@ -352,9 +317,6 @@ def build_error_report(config: dict[str, Any], message: str, *, target_env: str,
         [check],
         target_env=target_env,
         sources=sources,
-        include_embeddings=False,
-        embedding_source="all",
-        embedding_only_column="",
         blocking=blocking,
     )
 
@@ -365,9 +327,6 @@ def build_report(
     *,
     target_env: str,
     sources: list[str],
-    include_embeddings: bool,
-    embedding_source: str,
-    embedding_only_column: str,
     blocking: bool,
 ) -> dict[str, Any]:
     counts = {status: sum(1 for check in checks if check.status == status) for status in ("pass", "fail", "warn", "skip")}
@@ -378,9 +337,6 @@ def build_report(
         "blocking": blocking,
         "status": "fail" if counts["fail"] else "pass",
         "sources": sources,
-        "include_embeddings": include_embeddings,
-        "embedding_source": embedding_source,
-        "embedding_only_column": embedding_only_column or None,
         "summary": counts,
         "checks": [check.as_dict() for check in checks],
     }
@@ -435,22 +391,10 @@ def _md_cell(value: Any) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
-def _selected_sources(config: dict[str, Any], sources: list[str], include_embeddings: bool, embedding_source: str) -> list[str]:
-    known_sources = sorted(config["sources"].keys())
+def _selected_sources(config: dict[str, Any], sources: list[str]) -> list[str]:
     if sources:
         return sources
-    if include_embeddings and embedding_source != "all":
-        return [embedding_source]
-    return known_sources
-
-
-def _embedding_sources(config: dict[str, Any], selected_sources: list[str], embedding_source: str) -> list[str]:
-    known_sources = sorted(config["sources"].keys())
-    if embedding_source == "all":
-        return [source for source in selected_sources if source in known_sources]
-    if embedding_source not in config["sources"]:
-        raise ValueError(f"Unknown embedding source: {embedding_source}")
-    return [embedding_source]
+    return sorted(config["sources"].keys())
 
 
 def _evaluate_source_tables(
@@ -612,67 +556,6 @@ def _evaluate_freshness(
             "Max updated_at is recent enough.",
         )
     ]
-
-
-def _evaluate_embedding_tables(
-    db: QualityDatabase,
-    source_name: str,
-    source_config: dict[str, Any],
-    expected_ids: list[str],
-    embedding_only_column: str,
-) -> list[CheckResult]:
-    checks: list[CheckResult] = []
-    min_ratio = float(source_config.get("min_embedding_coverage_ratio", 1))
-    for table_config in source_config.get("embedding_tables", []):
-        table = str(table_config["name"])
-        filter_column = str(table_config["filter_id_column"])
-        columns = db.table_columns(table)
-        if not columns:
-            checks.append(_check(source_name, table, "embedding_table_exists", False, "missing", "present", "Embedding table is missing."))
-            continue
-        for embedding_column in table_config.get("embedding_columns", []):
-            embedding_column = str(embedding_column)
-            if embedding_only_column and embedding_column != embedding_only_column:
-                checks.append(
-                    _check(
-                        source_name,
-                        table,
-                        f"embedding_coverage:{embedding_column}",
-                        True,
-                        "not selected",
-                        "not selected",
-                        "Embedding column skipped by input.",
-                    )
-                )
-                continue
-            if embedding_column not in columns:
-                checks.append(
-                    _check(
-                        source_name,
-                        table,
-                        f"embedding_coverage:{embedding_column}",
-                        False,
-                        "missing column",
-                        "column present",
-                        "Embedding column is missing.",
-                    )
-                )
-                continue
-            total, with_embedding = db.embedding_coverage(table, embedding_column, filter_column, expected_ids)
-            expected = _minimum_expected(total, min_ratio)
-            checks.append(
-                _check(
-                    source_name,
-                    table,
-                    f"embedding_coverage:{embedding_column}",
-                    total > 0 and with_embedding >= expected,
-                    with_embedding,
-                    expected,
-                    "Embedding coverage meets the threshold.",
-                    {"total_rows": total, "coverage_ratio": round(with_embedding / total, 4) if total else 0},
-                )
-            )
-    return checks
 
 
 def _source_filter(source_config: dict[str, Any]) -> SourceFilter:

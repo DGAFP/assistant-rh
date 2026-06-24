@@ -221,6 +221,9 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --frozen
 
+      # Promotion validates artifacts already vetted on staging, so the
+      # structural gate runs report-only here; embedding coverage below is the
+      # blocking gate when a backfill ran.
       - name: Run production data quality gates
         run: |
           set -euo pipefail
@@ -234,24 +237,49 @@ jobs:
             QUALITY_SOURCES+=(--source legifrance)
           fi
 
-          EMBEDDING_ARGS=()
-          if [[ "${RUN_EMBEDDINGS}" == "true" ]]; then
-            EMBEDDING_ARGS+=(--include-embeddings --embedding-source all)
-          fi
-
-          BLOCKING_ARGS=()
-          if [[ "${RUN_EMBEDDINGS}" == "true" ]]; then
-            BLOCKING_ARGS+=(--blocking)
-          fi
-
           uv run --no-sync data-ingestion quality gates \
             --target-env prod \
             "${QUALITY_SOURCES[@]}" \
-            "${EMBEDDING_ARGS[@]}" \
-            "${BLOCKING_ARGS[@]}" \
-            --dsn-env SCW_POSTGRES_DSN \
             --json-output artifacts/data-quality/prod-promote-report.json \
             --markdown-output artifacts/data-quality/prod-promote-summary.md
+
+      # Embedding coverage is gated by the read-only audit shipped in
+      # `data-ingestion embeddings <source> --check-only` (issue #133) so a single
+      # implementation owns embedding-coverage logic (see issue #172).
+      - name: Run production embedding coverage gate
+        if: ${{ env.RUN_EMBEDDINGS == 'true' }}
+        env:
+          COVERAGE_MIN_PCT: "100"
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/data-quality
+
+          EMBED_CMDS=()
+          case "${EMBEDDING_SOURCE}" in
+            all) EMBED_CMDS=(service-public legifrance) ;;
+            service_public) EMBED_CMDS=(service-public) ;;
+            legifrance) EMBED_CMDS=(legifrance) ;;
+            matte) EMBED_CMDS=(matte) ;;
+            *) echo "Unknown EMBEDDING_SOURCE='${EMBEDDING_SOURCE}'; skipping embedding gate"; EMBED_CMDS=() ;;
+          esac
+
+          ONLY_COLUMN_ARGS=()
+          if [[ -n "${EMBEDDING_ONLY_COLUMN}" ]]; then
+            ONLY_COLUMN_ARGS+=(--only-column "${EMBEDDING_ONLY_COLUMN}")
+          fi
+
+          status=0
+          for cmd in "${EMBED_CMDS[@]}"; do
+            echo "::group::Embedding coverage gate — ${cmd}"
+            if ! uv run --no-sync data-ingestion embeddings "${cmd}" \
+                  --check-only --coverage-min-pct "${COVERAGE_MIN_PCT}" \
+                  "${ONLY_COLUMN_ARGS[@]}" \
+                  > "artifacts/data-quality/prod-promote-embeddings-${cmd}.json"; then
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "${status}"
 
       - name: Summarize production data quality gates
         if: always()
