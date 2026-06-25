@@ -594,6 +594,46 @@ class TestSectionAggregator:
         assert sections[0].metadata["doc_title"] == "Remboursement des frais de déplacement dans la fonction publique"
         assert sections[0].metadata["doc_url"] == "https://www.service-public.gouv.fr/particuliers/vosdroits/F527"
 
+    @patch("assistant_rh_rag_pipeline.section_aggregator.SectionAggregator._fetch_sections")
+    def test_standalone_dgafp_chunk_promotes_legal_metadata(self, mock_fetch):
+        from assistant_rh_rag_pipeline.config import SectionAggregationConfig
+        from assistant_rh_rag_pipeline.section_aggregator import SectionAggregator
+
+        mock_fetch.return_value = {}
+        agg = SectionAggregator(SectionAggregationConfig(), dsn="unused")
+        chunk = RetrievedChunk(
+            chunk_id="LEGIARTI000045662634_0",
+            text="Article 1-3 text",
+            score=0.99,
+            table_source="DGAFP",
+            metadata={
+                "cid": "LEGIARTI000045662634",
+                "full_title": ("Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat"),
+                "title": "Décret n° 86-83 du 17 janvier 1986",
+                "number": "Article 1-3",
+                "url": "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000045662634",
+            },
+            section_id=None,
+        )
+
+        sections = agg.aggregate([chunk])
+
+        assert len(sections) == 1
+        assert sections[0].section_id is None
+        assert sections[0].document_id is None
+        assert (
+            sections[0].heading
+            == "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat"
+        )
+        assert sections[0].metadata["doc_id"] == "LEGIARTI000045662634"
+        assert sections[0].metadata["doc_short_id"] == "LEGIARTI000045662634"
+        assert (
+            sections[0].metadata["doc_title"]
+            == "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat"
+        )
+        assert sections[0].metadata["cid"] == "LEGIARTI000045662634"
+        assert sections[0].metadata["number"] == "Article 1-3"
+
 
 # ---------------------------------------------------------------------------
 # context_builder — ref collection

@@ -269,6 +269,11 @@ class TestDynamicSQL:
             sql = _build_upsert_sql({"turn_id": "x", col: "[]"})
             assert f"CAST(:{col} AS jsonb)" in sql
 
+    def test_restored_legacy_json_columns_cast_applied(self):
+        for col in ("retrieved", "chunks_sent_to_selector", "sources_used_content", "dist_before_rerank"):
+            sql = _build_upsert_sql({"turn_id": "x", col: "[]"})
+            assert f"CAST(:{col} AS jsonb)" in sql
+
     def test_non_jsonb_no_cast(self):
         sql = _build_upsert_sql({"turn_id": "x", "question": "q"})
         assert "CAST(:question" not in sql
@@ -309,10 +314,17 @@ class TestBuildLogRow:
         "v3_needs_legal_final",
     ]
 
-    def _build_row(self, metadata_overrides: Optional[dict] = None):
+    def _build_row(
+        self,
+        metadata_overrides: Optional[dict] = None,
+        context_items: Optional[list] = None,
+        legal_refs_v3: Optional[list] = None,
+    ):
         pipeline, qr, config, runtime, items, v1_chunks = _build_mock_objects()
         if metadata_overrides:
             pipeline.last_result.metadata.update(metadata_overrides)
+        if context_items is not None:
+            items = context_items
         return build_log_row(
             turn_id="abc12345",
             query="Quels sont mes droits RTT ?",
@@ -325,7 +337,7 @@ class TestBuildLogRow:
             total_time_ms=2500.0,
             context_items=items,
             v1_chunks_for_display=v1_chunks,
-            legal_refs_v3=[],
+            legal_refs_v3=[] if legal_refs_v3 is None else legal_refs_v3,
         )
 
     def test_all_required_columns_present(self):
@@ -352,6 +364,60 @@ class TestBuildLogRow:
         details = json.loads(row["v3_legal_refs_details"])
         assert len(details) == 1
         assert details[0]["number"] == "L332-2"
+
+    def test_legacy_observability_columns_populated(self):
+        row = self._build_row(
+            metadata_overrides={
+                "tables_searched": ["dgafp", "service_public", "rag_chunks_test"],
+                "context_before_selector": [
+                    {
+                        "chunk_id": "LEGIARTI000045662634_0",
+                        "doc_publisher": "DGAFP",
+                        "final_score": 0.9986,
+                        "section_id": "",
+                        "doc_title": "Décret n° 86-83",
+                    }
+                ],
+            },
+            legal_refs_v3=[MagicMock(number="L332-2", cid="LEGIARTI000044426716", title="CGFP", url="https://example.test/L332-2")],
+        )
+
+        assert row["provider"] == "albert"
+        assert row["model"] == "openweight-large"
+        assert row["temperature"] == 0.15
+        assert row["table"] == "rag_chunks_dgafp,rag_chunks_service_public,rag_chunks_test"
+        assert row["embed_col"] == "embedding_m3,embedding_raw"
+        assert row["retrieval_mode"] == "semantic"
+        assert row["chunk_selection_mode"] == "V3_STANDARD"
+        assert row["chunks_before_pick"] == 2
+        assert row["chunks_after_pick"] == 1
+        assert row["sources_used_indices"] == "0"
+        assert row["expanded_refs_count"] == 1
+
+        retrieved = json.loads(row["retrieved"])
+        assert retrieved[0]["id"] == "chunk1"
+        assert retrieved[0]["source_name"] == "MATTE"
+
+        chunks_sent = json.loads(row["chunks_sent_to_selector"])
+        assert chunks_sent[0]["chunk_id"] == "LEGIARTI000045662634_0"
+        assert chunks_sent[0]["table"] == "rag_chunks_dgafp"
+
+    def test_expanded_refs_count_tracks_display_refs_not_context_total(self):
+        items = [
+            _MockContextItem(
+                publisher="DGAFP",
+                references_juridiques=[
+                    {"number": "L332-2", "cid": "LEGIARTI000044426716", "title": "CGFP"},
+                    {"number": "L332-3", "cid": "LEGIARTI000044426717", "title": "CGFP"},
+                ],
+            )
+        ]
+        matched_ref = MagicMock(number="L332-2", cid="LEGIARTI000044426716", title="CGFP", url="https://example.test/L332-2")
+
+        row = self._build_row(context_items=items, legal_refs_v3=[matched_ref])
+
+        assert row["v3_legal_refs_total"] == 2
+        assert row["expanded_refs_count"] == 1
 
     def test_selector_confidence_ratio(self):
         row = self._build_row()
@@ -903,10 +969,10 @@ class TestDBRoundTrip:
             legal_refs_v3=[],
         )
 
-        missing = [c for c in row if c.startswith("v3_") and c not in db_columns]
+        missing = [c for c in row if c not in db_columns]
         if missing:
             raise AssertionError(f"Columns in code but missing in DB: {missing}")
-        print(f"  ✅ All {len([c for c in row if c.startswith('v3_')])} V3 columns validated")
+        print(f"  ✅ All {len(row)} chat_runs columns emitted by build_log_row validated")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

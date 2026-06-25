@@ -89,13 +89,30 @@ def make_trace_event(
 
 def chunk_ref(chunk: Any) -> dict[str, Any]:
     metadata = getattr(chunk, "metadata", {}) or {}
+    document_id = (
+        metadata.get("source_document_id")
+        or metadata.get("doc_id")
+        or metadata.get("doc_short_id")
+        or metadata.get("short_id")
+        or metadata.get("cid")
+    )
+    heading = (
+        metadata.get("heading")
+        or metadata.get("matched_heading")
+        or metadata.get("doc_title")
+        or metadata.get("source_name")
+        or metadata.get("full_title")
+        or metadata.get("title")
+        or metadata.get("number")
+        or ""
+    )
     return {
         "chunk_id": str(getattr(chunk, "chunk_id", "") or ""),
         "table": str(getattr(chunk, "table_source", "") or ""),
         "score": round(float(getattr(chunk, "score", 0.0) or 0.0), 4),
         "section_id": str(getattr(chunk, "section_id", "") or ""),
-        "document_id": str(metadata.get("source_document_id") or metadata.get("doc_id") or ""),
-        "heading": bounded_preview(metadata.get("heading") or metadata.get("doc_title") or metadata.get("source_name") or "", 160),
+        "document_id": str(document_id or ""),
+        "heading": bounded_preview(heading, 160),
         "retrieval_path": metadata.get("retrieval_path", "chunk"),
         "preview": bounded_preview(getattr(chunk, "text", ""), DEFAULT_PREVIEW_CHARS),
     }
@@ -104,10 +121,19 @@ def chunk_ref(chunk: Any) -> dict[str, Any]:
 def section_ref(section: Any, *, include_chunks: bool = True) -> dict[str, Any]:
     metadata = getattr(section, "metadata", {}) or {}
     chunks = getattr(section, "chunks", []) or []
+    document_id = getattr(section, "document_id", "") or metadata.get("doc_id") or metadata.get("doc_short_id") or metadata.get("cid")
+    heading = (
+        getattr(section, "heading", "")
+        or metadata.get("doc_title")
+        or metadata.get("full_title")
+        or metadata.get("title")
+        or metadata.get("number")
+        or ""
+    )
     out = {
         "section_id": str(getattr(section, "section_id", "") or ""),
-        "document_id": str(getattr(section, "document_id", "") or metadata.get("doc_id") or ""),
-        "heading": bounded_preview(getattr(section, "heading", ""), 180),
+        "document_id": str(document_id or ""),
+        "heading": bounded_preview(heading, 180),
         "publisher": str(getattr(section, "publisher", "") or ""),
         "score": round(float(getattr(section, "score", 0.0) or 0.0), 4),
         "chunk_count": len(chunks),
@@ -121,10 +147,19 @@ def section_ref(section: Any, *, include_chunks: bool = True) -> dict[str, Any]:
 
 def context_item_ref(item: Any) -> dict[str, Any]:
     metadata = getattr(item, "metadata", {}) or {}
+    document_id = metadata.get("doc_id") or metadata.get("doc_short_id") or metadata.get("cid")
+    heading = (
+        getattr(item, "heading", "")
+        or metadata.get("doc_title")
+        or metadata.get("full_title")
+        or metadata.get("title")
+        or metadata.get("number")
+        or ""
+    )
     return {
         "section_id": str(getattr(item, "section_id", "") or ""),
-        "document_id": str(metadata.get("doc_id", "") or ""),
-        "heading": bounded_preview(getattr(item, "heading", ""), 180),
+        "document_id": str(document_id or ""),
+        "heading": bounded_preview(heading, 180),
         "publisher": str(getattr(item, "publisher", "") or ""),
         "score": round(float(getattr(item, "score", 0.0) or 0.0), 4),
         "tokens": int(getattr(item, "token_estimate", 0) or 0),
