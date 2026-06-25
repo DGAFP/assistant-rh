@@ -393,10 +393,13 @@ class QueryProcessor:
     ) -> bool:
         """Apply deterministic guardrails when the LLM under-classifies legal queries.
 
-        DGAFP is completely excluded from retrieval unless ``needs_legal_search`` is
-        true. A narrow prompt-only definition is not robust enough for legal RH
-        questions that mention the rule directly without explicitly asking for the
-        article or decree. The heuristic stays conservative:
+        ``needs_legal_search`` no longer gates whether DGAFP is retrieved: as of the
+        always-on retrieval change, DGAFP is searched whenever it is in the configured
+        tables, regardless of this flag. The flag now only feeds logging and
+        conformance metadata, but a robust classification still matters there because a
+        narrow prompt-only definition under-counts legal RH questions that mention the
+        rule directly without explicitly asking for the article or decree. The
+        heuristic stays conservative:
         - always preserve explicit LLM ``true``
         - force legal search for obvious legal markers
         - force legal search for legal-ish RH rule questions when at least two

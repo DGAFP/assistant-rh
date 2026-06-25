@@ -440,17 +440,24 @@ class TestPipelineE2E:
         assert result.metadata["selector_retry_succeeded"] is True
         assert result.metadata["selector_all_rejected"] is False
         assert mock_retriever.retrieve.call_count == 2
+        initial_call = mock_retriever.retrieve.call_args_list[0]
+        assert initial_call.kwargs["tables"] == ["matte", "service_public", "dgafp"]
+        assert initial_call.kwargs["force_hybrid_tables"] == {"dgafp"}
         retry_call = mock_retriever.retrieve.call_args_list[1]
         assert retry_call.kwargs["search_mode"] == SearchMode.HYBRID
         assert retry_call.kwargs["top_k"] == 30
-        assert retry_call.kwargs["tables"] == ["matte", "service_public"]
+        assert retry_call.kwargs["tables"] == ["matte", "service_public", "dgafp"]
+        assert retry_call.kwargs["force_hybrid_tables"] == {"dgafp"}
         MockGenerator.return_value.generate.assert_called_once()
 
+        assert result.metadata["tables_searched"] == ["matte", "service_public", "dgafp"]
         attempts = result.metadata["rag_diagnostics"]["attempts"]
         assert [attempt["name"] for attempt in attempts] == ["initial", "selector_retry"]
+        assert attempts[0]["tables_searched"] == ["matte", "service_public", "dgafp"]
         assert attempts[0]["selector"]["all_rejected"] is True
         assert attempts[0]["search_mode"] == "semantic"
         assert len(attempts[0]["aggregated_sections"]) == 1
+        assert attempts[1]["tables_searched"] == ["matte", "service_public", "dgafp"]
         assert attempts[1]["selector"]["all_rejected"] is False
         assert attempts[1]["search_mode"] == "hybrid"
         assert attempts[1]["top_k"] == 30
