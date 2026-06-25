@@ -81,6 +81,19 @@ jobs:
             exit 1
           fi
 
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.98.2
+
+      - name: Push Supabase migrations to Scaleway staging
+        run: |
+          set -euo pipefail
+          supabase db push \
+            --db-url "$SCW_POSTGRES_DSN" \
+            --workdir . \
+            --yes
+
       - name: Resolve image metadata
         id: image
         run: |
