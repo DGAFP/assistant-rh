@@ -595,7 +595,7 @@ class TestSectionAggregator:
         assert sections[0].metadata["doc_url"] == "https://www.service-public.gouv.fr/particuliers/vosdroits/F527"
 
     @patch("assistant_rh_rag_pipeline.section_aggregator.SectionAggregator._fetch_sections")
-    def test_standalone_dgafp_chunk_promotes_legal_metadata(self, mock_fetch):
+    def test_standalone_dgafp_chunk_keeps_legal_metadata_without_prompt_promotion(self, mock_fetch):
         from assistant_rh_rag_pipeline.config import SectionAggregationConfig
         from assistant_rh_rag_pipeline.section_aggregator import SectionAggregator
 
@@ -621,14 +621,12 @@ class TestSectionAggregator:
         assert len(sections) == 1
         assert sections[0].section_id is None
         assert sections[0].document_id is None
+        assert sections[0].heading == ""
+        assert sections[0].metadata["doc_id"] == ""
+        assert sections[0].metadata["doc_short_id"] == ""
+        assert sections[0].metadata["doc_title"] == ""
         assert (
-            sections[0].heading
-            == "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat"
-        )
-        assert sections[0].metadata["doc_id"] == "LEGIARTI000045662634"
-        assert sections[0].metadata["doc_short_id"] == "LEGIARTI000045662634"
-        assert (
-            sections[0].metadata["doc_title"]
+            sections[0].metadata["full_title"]
             == "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat"
         )
         assert sections[0].metadata["cid"] == "LEGIARTI000045662634"

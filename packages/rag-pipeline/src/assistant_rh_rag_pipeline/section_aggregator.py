@@ -104,36 +104,13 @@ class SectionAggregator:
 
             first_meta = first.metadata or {}
 
-            standalone_doc_id = (
-                first_meta.get("doc_id")
-                or first_meta.get("doc_short_id")
-                or first_meta.get("short_id")
-                or first_meta.get("source_document_id")
-                or first_meta.get("cid")
-                or ""
-            )
-            standalone_title = (
-                first_meta.get("doc_title") or first_meta.get("source_name") or first_meta.get("full_title") or first_meta.get("title") or ""
-            )
-            standalone_heading = first_meta.get("heading") or standalone_title or first_meta.get("number") or ""
-
-            doc_id = meta.get("doc_id") or first_meta.get("source_document_id") or (standalone_doc_id if is_standalone else "")
+            doc_id = meta.get("doc_id") or first_meta.get("source_document_id")
 
             doc_short_id = (
-                meta.get("doc_short_id")
-                or first_meta.get("doc_short_id")
-                or first_meta.get("short_id")
-                or first_meta.get("source_document_id")
-                or (standalone_doc_id if is_standalone else "")
-                or ""
+                meta.get("doc_short_id") or first_meta.get("doc_short_id") or first_meta.get("short_id") or first_meta.get("source_document_id") or ""
             )
-            doc_title = (
-                meta.get("doc_title") or first_meta.get("doc_title") or first_meta.get("source_name") or (standalone_title if is_standalone else "")
-            )
+            doc_title = meta.get("doc_title") or first_meta.get("doc_title") or first_meta.get("source_name", "")
             doc_url = meta.get("doc_url") or first_meta.get("doc_url") or first_meta.get("url")
-            heading = (
-                meta.get("heading") or first_meta.get("doc_title") or first_meta.get("source_name") or (standalone_heading if is_standalone else "")
-            )
 
             sec_metadata = {
                 "doc_id": str(doc_id) if doc_id else "",
@@ -159,11 +136,11 @@ class SectionAggregator:
             sections.append(
                 AggregatedSection(
                     section_id=None if is_standalone else key,
-                    heading=heading,
+                    heading=meta.get("heading") or first_meta.get("doc_title") or first_meta.get("source_name", ""),
                     markdown=meta.get("section_markdown", first.text),
                     chunks=group,
                     score=agg_score,
-                    document_id=str(doc_id) if doc_id and not is_standalone else None,
+                    document_id=str(doc_id) if doc_id else None,
                     publisher=meta.get("doc_publisher") or first.table_source,
                     references_juridiques=meta.get("references_juridiques"),
                     heading_path=meta.get("heading_path"),

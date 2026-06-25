@@ -206,6 +206,18 @@ _BGE_EMBED_COL_BY_TABLE = {
     "rag_chunks_test": "embedding_bge",
 }
 
+_TABLE_LABEL_BY_TABLE = {
+    "rag_chunks_matte": "matte",
+    "rag_chunks_service_public": "sp",
+    "rag_chunks_service_public_scw": "sp_scw",
+    "rag_chunks_dgafp": "dgafp",
+    "rag_chunks_dgafp_scw": "dgafp_scw",
+    "rag_chunks_rgrh": "rgrh",
+    "rag_chunks_test": "test",
+}
+
+_LEGACY_VARCHAR_30_LIMIT = 30
+
 
 def _enum_value(value: Any) -> Any:
     return getattr(value, "value", value)
@@ -245,6 +257,14 @@ def _embed_columns_for_tables(table_names: list[str], embedding_model: str) -> s
             cols.append(col)
             seen.add(col)
     return ",".join(cols)
+
+
+def _legacy_table_label(table_names: list[str]) -> str:
+    """Compact table list for legacy ``chat_runs`` varchar(30) columns."""
+    label = ",".join(_TABLE_LABEL_BY_TABLE.get(table, table) for table in table_names)
+    if len(label) <= _LEGACY_VARCHAR_30_LIMIT:
+        return label
+    return label[:_LEGACY_VARCHAR_30_LIMIT]
 
 
 def _chunk_table_for_ref(ref: dict[str, Any]) -> str:
@@ -455,7 +475,7 @@ def build_log_row(
     if getattr(retrieval_config, "enable_chunks_test", False) or getattr(runtime_config, "v3_enable_chunks_test", False):
         configured_tables.append("rag_chunks_test")
     table_names = _table_names(v3_metadata.get("tables_searched") or configured_tables)
-    table_label = ",".join(table_names)
+    table_label = _legacy_table_label(table_names)
     embedding_model_logged = str(
         v3_metadata.get("embedding_model")
         or getattr(runtime_config, "embedding_model", "")
@@ -787,6 +807,7 @@ def _append_csv_row(path: Path, fieldnames: list[str], row: dict):
     from filelock import FileLock
 
     row = {k: ("" if k in _CSV_REDACTED_FIELDS else row.get(k, "")) for k in fieldnames}
+    path.parent.mkdir(parents=True, exist_ok=True)
     lock = FileLock(str(path) + ".lock")
     with lock:
         exists = path.exists()
@@ -811,6 +832,10 @@ def _prepare_data(data: dict) -> dict:
 
     if isinstance(out.get("chunks_sent_to_selector"), (dict, list)):
         out["chunks_sent_to_selector"] = json.dumps(out["chunks_sent_to_selector"], ensure_ascii=False)
+
+    for col in ("table", "cascade_source"):
+        if isinstance(out.get(col), str) and len(out[col]) > _LEGACY_VARCHAR_30_LIMIT:
+            out[col] = out[col][:_LEGACY_VARCHAR_30_LIMIT]
 
     for col in ("rag_version", "chunk_selection_mode", "cascade_source", "expanded_refs_count", "user_group"):
         if col not in out:
