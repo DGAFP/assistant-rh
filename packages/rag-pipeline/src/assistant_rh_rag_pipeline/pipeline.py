@@ -104,6 +104,13 @@ class _RetrievalAttempt:
         }
 
 
+def _intent_value(qr: QueryProcessResult) -> str:
+    intent = getattr(qr, "intent", None)
+    if intent is None:
+        return "unknown"
+    return str(getattr(intent, "value", intent) or "unknown")
+
+
 class Pipeline:
     """
     End-to-end RAG pipeline.
@@ -187,7 +194,7 @@ class Pipeline:
 
         if not qr.should_proceed:
             metadata: Dict[str, Any] = {
-                "intent": qr.intent.value,
+                "intent": _intent_value(qr),
                 "intent_reason": qr.intent_reason,
                 "turn_id": state.turn_id,
                 "trace_id": state.trace_id,
@@ -689,7 +696,7 @@ class Pipeline:
 
         metadata: Dict[str, Any] = {
             "original_query": query,
-            "intent": qr.intent.value,
+            "intent": _intent_value(qr),
             "intent_confidence": qr.intent_confidence,
             "theme": qr.theme,
             "was_expanded": qr.was_expanded,
@@ -768,7 +775,7 @@ class Pipeline:
                     "conversation_history_count": len(conversation_history or []),
                 },
                 output_ref={
-                    "intent": qr.intent.value,
+                    "intent": _intent_value(qr),
                     "theme": qr.theme or "",
                     "should_proceed": qr.should_proceed,
                     "processed_query": bounded_preview(qr.processed_query, 1_000),
@@ -875,7 +882,7 @@ class Pipeline:
                         "conversation_history": history,
                     },
                     "output": {
-                        "intent": qr.intent.value,
+                        "intent": _intent_value(qr),
                         "theme": qr.theme,
                         "needs_legal_search": qr.needs_legal_search,
                         "needs_legal_search_llm": qr.needs_legal_search_llm,

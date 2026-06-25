@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import os
 from unittest.mock import patch
 
 from assistant_rh_rag_pipeline.tracing import (
     _build_otlp_payload,
+    _send_otlp_payload,
     bounded_preview,
     export_events_to_otel,
     make_trace_event,
@@ -69,20 +69,37 @@ def test_export_events_to_otel_noops_when_disabled(monkeypatch) -> None:
     mock_post.assert_not_called()
 
 
-def test_export_events_to_otel_posts_when_enabled(monkeypatch) -> None:
+def test_export_events_to_otel_starts_background_thread_when_enabled(monkeypatch) -> None:
     monkeypatch.setenv("RAG_TRACING_ENABLED", "true")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://tempo.example")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Bearer token")
     event = make_trace_event(stage="generator", output_ref={"answer_preview": "ok"})
+
+    with (
+        patch("assistant_rh_rag_pipeline.tracing.threading.Thread") as mock_thread,
+        patch("assistant_rh_rag_pipeline.tracing.requests.post") as mock_post,
+    ):
+        export_events_to_otel(turn_id="turn1", trace_id="d" * 32, events=[event], env_label="prod")
+
+    _, kwargs = mock_thread.call_args
+    assert kwargs["target"] is _send_otlp_payload
+    assert kwargs["args"][0] == "https://tempo.example/v1/traces"
+    assert kwargs["daemon"] is True
+    mock_thread.return_value.start.assert_called_once()
+    mock_post.assert_not_called()
+
+
+def test_send_otlp_payload_posts(monkeypatch) -> None:
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Bearer token")
 
     class _Response:
         def raise_for_status(self) -> None:
             return None
 
     with patch("assistant_rh_rag_pipeline.tracing.requests.post", return_value=_Response()) as mock_post:
-        export_events_to_otel(turn_id="turn1", trace_id="d" * 32, events=[event], env_label="prod")
+        _send_otlp_payload("https://tempo.example/v1/traces", {"resourceSpans": []})
 
     args, kwargs = mock_post.call_args
     assert args[0] == "https://tempo.example/v1/traces"
     assert kwargs["headers"]["Authorization"] == "Bearer token"
-    assert os.path.basename(args[0]) == "traces"
+    assert kwargs["timeout"] == 3

@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 import time
 import uuid
 from typing import Any
@@ -202,6 +203,13 @@ def export_events_to_otel(
             events=events,
             env_label=env_label,
         )
+        threading.Thread(target=_send_otlp_payload, args=(endpoint, payload), daemon=True).start()
+    except Exception as exc:
+        logger.warning("RAG trace OTLP export failed: %s", exc)
+
+
+def _send_otlp_payload(endpoint: str, payload: dict[str, Any]) -> None:
+    try:
         requests.post(endpoint, headers=_otlp_headers(), data=json.dumps(payload), timeout=3).raise_for_status()
     except Exception as exc:
         logger.warning("RAG trace OTLP export failed: %s", exc)

@@ -638,8 +638,7 @@ def log_trace_events(
 
             sql = _build_trace_event_upsert_sql()
             with engine.connect() as conn:
-                for row in rows:
-                    conn.execute(text(sql), row)
+                conn.execute(text(sql), rows)
                 conn.commit()
         except Exception as exc:
             logger.warning("PostgreSQL trace-event log failed: %s", exc)

@@ -99,6 +99,16 @@ FAKE_QUERY_RESULT = QueryProcessResult(
 )
 
 
+def test_intent_value_handles_missing_intent() -> None:
+    from assistant_rh_rag_pipeline.pipeline import _intent_value
+
+    qr = QueryProcessResult(original_query="q", processed_query="q")
+    assert _intent_value(qr) == "rag_query"
+
+    qr.intent = None
+    assert _intent_value(qr) == "unknown"
+
+
 # ---------------------------------------------------------------------------
 # Test: full pipeline run (non-streaming)
 # ---------------------------------------------------------------------------

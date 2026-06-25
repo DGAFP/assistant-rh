@@ -561,6 +561,9 @@ class TestTraceEvents:
             )
 
         mock_conn.execute.assert_called_once()
+        _, params = mock_conn.execute.call_args.args
+        assert isinstance(params, list)
+        assert params[0]["stage"] == "retriever"
         mock_conn.commit.assert_called_once()
         mock_export.assert_called_once()
 
