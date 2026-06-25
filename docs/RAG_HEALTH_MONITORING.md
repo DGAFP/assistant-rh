@@ -2,6 +2,9 @@
 
 This runbook describes the Assistant RH RAG data-health exporter and the Scaleway Cockpit/Grafana dashboard.
 
+For per-turn pipeline traces and the Tempo/PostgreSQL dashboard, see
+[`RAG_TRACE_OBSERVABILITY.md`](RAG_TRACE_OBSERVABILITY.md).
+
 ## Architecture
 
 The monitoring container runs two processes:

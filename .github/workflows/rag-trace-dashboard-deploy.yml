@@ -1,0 +1,80 @@
+name: RAG Trace Dashboard Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "GitHub environment containing Grafana access"
+        required: true
+        type: choice
+        default: scaleway-staging
+        options:
+          - scaleway-staging
+          - scaleway-production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rag-trace-dashboard-deploy-${{ inputs.target_environment }}
+  cancel-in-progress: true
+
+jobs:
+  import-dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.target_environment }}
+    env:
+      GRAFANA_URL: ${{ vars.COCKPIT_GRAFANA_URL || vars.GRAFANA_URL || secrets.COCKPIT_GRAFANA_URL || secrets.GRAFANA_URL }}
+      GRAFANA_API_TOKEN: ${{ secrets.COCKPIT_GRAFANA_API_TOKEN || secrets.GRAFANA_API_TOKEN }}
+      GRAFANA_FOLDER_UID: ${{ vars.RAG_TRACE_GRAFANA_FOLDER_UID || vars.GRAFANA_FOLDER_UID }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Validate required dashboard configuration
+        run: |
+          set -euo pipefail
+          missing=()
+          required=(
+            GRAFANA_URL
+            GRAFANA_API_TOKEN
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "Missing required secret/variable(s): ${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Import RAG trace dashboard
+        id: import
+        run: |
+          set -euo pipefail
+          OUTPUT_JSON="$RUNNER_TEMP/rag-trace-dashboard-import.json"
+          python3 .github/scripts/grafana_dashboard_import.py \
+            --dashboard config/grafana/rag-trace-explorer-dashboard.json \
+            --message "GitHub Actions import for ${GITHUB_SHA}" \
+            --output-json "$OUTPUT_JSON"
+          echo "import_json_path=$OUTPUT_JSON" >> "$GITHUB_OUTPUT"
+          echo "dashboard_url=$(jq -r '.url // empty' "$OUTPUT_JSON")" >> "$GITHUB_OUTPUT"
+          echo "dashboard_uid=$(jq -r '.uid // empty' "$OUTPUT_JSON")" >> "$GITHUB_OUTPUT"
+          echo "status=$(jq -r '.status // empty' "$OUTPUT_JSON")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish import summary
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "## RAG trace dashboard import"
+            echo ""
+            echo "- Target environment: \`${{ inputs.target_environment }}\`"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Dashboard UID: \`${{ steps.import.outputs.dashboard_uid || 'assistant-rh-rag-trace-explorer' }}\`"
+            echo "- Import status: \`${{ steps.import.outputs.status || 'n/a' }}\`"
+            echo "- Dashboard URL: \`${{ steps.import.outputs.dashboard_url || 'n/a' }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
