@@ -1,0 +1,432 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "$trace_datasource"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "limit": 20,
+          "query": "{ resource.service.name = \"assistant-rh\" && span.rag.turn_id =~ \"$turn_id\" && span.rag.trace_id =~ \"$trace_id\" && span.rag.stage =~ \"$stage\" && span.rag.status =~ \"$status\" }",
+          "queryType": "traceql",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent RAG traces",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "$trace_datasource"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 2,
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "limit": 50,
+          "query": "{ resource.service.name = \"assistant-rh\" && span.rag.turn_id =~ \"$turn_id\" && span.rag.trace_id =~ \"$trace_id\" } | select(span.rag.stage, span.rag.status, span.rag.duration_ms, span.rag.attempt_name, span.rag.source_tables, span.rag.chunk_ids)",
+          "queryType": "traceql",
+          "refId": "A"
+        }
+      ],
+      "title": "Pipeline stage timeline",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "$postgres_datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 3,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH chunk_events AS (\n  SELECT\n    e.created_at,\n    e.turn_id,\n    e.trace_id,\n    e.stage,\n    e.attempt_name,\n    e.status,\n    item AS chunk\n  FROM rag_trace_events e\n  CROSS JOIN LATERAL jsonb_array_elements(\n    CASE\n      WHEN e.output_ref ? 'retrieved_chunks' THEN e.output_ref->'retrieved_chunks'\n      WHEN e.output_ref ? 'aggregated_sections' THEN e.output_ref->'aggregated_sections'\n      WHEN e.output_ref ? 'context_items' THEN e.output_ref->'context_items'\n      ELSE '[]'::jsonb\n    END\n  ) AS item\n  WHERE ('$turn_id' = '' OR e.turn_id = '$turn_id')\n    AND ('$trace_id' = '' OR e.trace_id = '$trace_id')\n    AND ('$stage' = '.*' OR e.stage = '$stage')\n    AND ('$status' = '.*' OR e.status = '$status')\n    AND ('$env' = '.*' OR e.env = '$env')\n)\nSELECT\n  created_at,\n  turn_id,\n  trace_id,\n  stage,\n  attempt_name,\n  status,\n  COALESCE(chunk->>'chunk_id', chunk->>'section_id', '') AS chunk_id,\n  COALESCE(chunk->>'table', chunk->>'publisher', '') AS source_table,\n  NULLIF(chunk->>'score', '')::double precision AS score,\n  chunk->>'section_id' AS section_id,\n  chunk->>'heading' AS heading,\n  chunk->>'preview' AS preview\nFROM chunk_events\nWHERE ('$source_table' = '' OR COALESCE(chunk->>'table', chunk->>'publisher', '') ILIKE '%' || '$source_table' || '%')\nORDER BY created_at DESC, stage ASC, score DESC NULLS LAST\nLIMIT 500;",
+          "refId": "A"
+        }
+      ],
+      "title": "Chunks by stage (bounded previews)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "$postgres_datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 26
+      },
+      "id": 4,
+      "options": {
+        "displayLabels": [],
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH items AS (\n  SELECT item\n  FROM rag_trace_events e\n  CROSS JOIN LATERAL jsonb_array_elements(\n    CASE\n      WHEN e.output_ref ? 'retrieved_chunks' THEN e.output_ref->'retrieved_chunks'\n      WHEN e.output_ref ? 'aggregated_sections' THEN e.output_ref->'aggregated_sections'\n      WHEN e.output_ref ? 'context_items' THEN e.output_ref->'context_items'\n      ELSE '[]'::jsonb\n    END\n  ) AS item\n  WHERE ('$turn_id' = '' OR e.turn_id = '$turn_id')\n    AND ('$trace_id' = '' OR e.trace_id = '$trace_id')\n    AND ('$env' = '.*' OR e.env = '$env')\n)\nSELECT COALESCE(item->>'table', item->>'publisher', 'unknown') AS source_table, COUNT(*) AS count\nFROM items\nWHERE ('$source_table' = '' OR COALESCE(item->>'table', item->>'publisher', '') ILIKE '%' || '$source_table' || '%')\nGROUP BY source_table\nORDER BY count DESC;",
+          "refId": "A"
+        }
+      ],
+      "title": "Sources interrogated and retained",
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "$postgres_datasource"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 26
+      },
+      "id": 5,
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT created_at, turn_id, trace_id, stage, attempt_name, status, error_type, error_message, metrics\nFROM rag_trace_events\nWHERE ('$turn_id' = '' OR turn_id = '$turn_id')\n  AND ('$trace_id' = '' OR trace_id = '$trace_id')\n  AND ('$stage' = '.*' OR stage = '$stage')\n  AND ('$status' = '.*' OR status = '$status')\n  AND ('$env' = '.*' OR env = '$env')\n  AND (status IN ('failed', 'error') OR error_type <> '' OR metrics ? 'reranker_status')\nORDER BY created_at DESC, event_index ASC\nLIMIT 200;",
+          "refId": "A"
+        }
+      ],
+      "title": "Errors, fallbacks, and provider status",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "$postgres_datasource"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "id": 6,
+      "options": {
+        "content": "Use `turn_id` to correlate this dashboard with the Streamlit admin Chat Logs page. Grafana intentionally shows bounded chunk previews only; use the admin-only DB or Chat Logs drilldown for complete prompt/chunk content.",
+        "mode": "markdown"
+      },
+      "title": "Admin drilldown",
+      "type": "text"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "assistant-rh",
+    "rag",
+    "tracing",
+    "issue-143"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "includeAll": false,
+        "label": "Trace datasource",
+        "name": "trace_datasource",
+        "query": "tempo",
+        "refresh": 1,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "includeAll": false,
+        "label": "Postgres datasource",
+        "name": "postgres_datasource",
+        "query": "postgres",
+        "refresh": 1,
+        "type": "datasource"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "includeAll": true,
+        "label": "Environment",
+        "name": "env",
+        "options": [
+          {
+            "selected": false,
+            "text": "staging",
+            "value": "staging"
+          },
+          {
+            "selected": false,
+            "text": "prod",
+            "value": "prod"
+          }
+        ],
+        "query": "staging,prod",
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "label": "Turn ID",
+        "name": "turn_id",
+        "query": "",
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "label": "Trace ID",
+        "name": "trace_id",
+        "query": "",
+        "type": "textbox"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "includeAll": true,
+        "label": "Stage",
+        "name": "stage",
+        "options": [
+          {
+            "selected": false,
+            "text": "query-processor",
+            "value": "query-processor"
+          },
+          {
+            "selected": false,
+            "text": "retriever",
+            "value": "retriever"
+          },
+          {
+            "selected": false,
+            "text": "section-aggregator",
+            "value": "section-aggregator"
+          },
+          {
+            "selected": false,
+            "text": "context-selector",
+            "value": "context-selector"
+          },
+          {
+            "selected": false,
+            "text": "context-builder",
+            "value": "context-builder"
+          },
+          {
+            "selected": false,
+            "text": "generator",
+            "value": "generator"
+          }
+        ],
+        "query": "query-processor,retriever,section-aggregator,context-selector,context-builder,generator",
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "label": "Source table",
+        "name": "source_table",
+        "query": "",
+        "type": "textbox"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "includeAll": true,
+        "label": "Status",
+        "name": "status",
+        "options": [
+          {
+            "selected": false,
+            "text": "ok",
+            "value": "ok"
+          },
+          {
+            "selected": false,
+            "text": "empty",
+            "value": "empty"
+          },
+          {
+            "selected": false,
+            "text": "all_rejected",
+            "value": "all_rejected"
+          },
+          {
+            "selected": false,
+            "text": "failed",
+            "value": "failed"
+          },
+          {
+            "selected": false,
+            "text": "disabled",
+            "value": "disabled"
+          }
+        ],
+        "query": "ok,empty,all_rejected,failed,disabled",
+        "type": "custom"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Assistant RH - RAG trace explorer",
+  "uid": "assistant-rh-rag-trace-explorer",
+  "version": 1,
+  "weekStart": ""
+}

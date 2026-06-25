@@ -8,6 +8,7 @@ a valid PipelineResult with answer, sources, context, and timing.
 Usage:
     pytest tests/test_pipeline_e2e.py -v
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -28,6 +29,7 @@ from assistant_rh_rag_pipeline.section_aggregator import (
 # ---------------------------------------------------------------------------
 # Fixtures: realistic fake data
 # ---------------------------------------------------------------------------
+
 
 def _make_chunk(idx: int, table: str = "matte", score: float = 0.9) -> RetrievedChunk:
     return RetrievedChunk(
@@ -55,8 +57,6 @@ def _make_section(idx: int, publisher: str = "MATTE") -> AggregatedSection:
         references_juridiques=[{"cid": f"LEGIARTI{idx}", "title": "CGFP", "number": f"L332-{idx}"}],
         metadata={"document_id": f"doc_{idx}"},
     )
-
-
 
 
 def _aggregation_result(
@@ -99,9 +99,20 @@ FAKE_QUERY_RESULT = QueryProcessResult(
 )
 
 
+def test_intent_value_handles_missing_intent() -> None:
+    from assistant_rh_rag_pipeline.pipeline import _intent_value
+
+    qr = QueryProcessResult(original_query="q", processed_query="q")
+    assert _intent_value(qr) == "rag_query"
+
+    qr.intent = None
+    assert _intent_value(qr) == "unknown"
+
+
 # ---------------------------------------------------------------------------
 # Test: full pipeline run (non-streaming)
 # ---------------------------------------------------------------------------
+
 
 class TestPipelineE2E:
     """End-to-end test: question → query processing → retrieval → aggregation → selection → context build → generation → result."""
@@ -165,6 +176,7 @@ class TestPipelineE2E:
         config = RAGConfig()
         config.selector = SelectorConfig(enabled=True)
         from assistant_rh_rag_pipeline.pipeline import Pipeline
+
         pipe = Pipeline(config)
         result = pipe.run("Qu'est-ce que le congé de mobilité ?")
 
@@ -216,6 +228,7 @@ class TestPipelineE2E:
 
         config = RAGConfig()
         from assistant_rh_rag_pipeline.pipeline import Pipeline
+
         pipe = Pipeline(config)
         result = pipe.run("Bonjour, comment vas-tu ?")
 
@@ -271,6 +284,7 @@ class TestPipelineE2E:
         config = RAGConfig()
         config.selector = SelectorConfig(enabled=True)
         from assistant_rh_rag_pipeline.pipeline import Pipeline
+
         pipe = Pipeline(config)
         result = pipe.run_with_trace("Quelle est la durée du congé spatial ?")
 
@@ -306,6 +320,10 @@ class TestPipelineE2E:
         assert selector_output["selector_retry_triggered"] is True
         assert selector_output["selector_retry_succeeded"] is False
         assert stage_trace["stages"]["retriever"]["output"]["attempts"][1]["name"] == "selector_retry"
+        trace_events = result.metadata["rag_trace_events"]
+        assert result.metadata["trace_id"]
+        assert [event["stage"] for event in trace_events].count("retriever") == 2
+        assert any(event["stage"] == "generator" and event["status"] == "skipped_no_context" for event in trace_events)
         # Generator should NOT have been called
         MockGenerator.return_value.generate.assert_not_called()
         assert MockRetriever.return_value.retrieve.call_count == 2
@@ -353,7 +371,7 @@ class TestPipelineE2E:
         from assistant_rh_rag_pipeline.pipeline import Pipeline
 
         pipe = Pipeline(config)
-        chunks = list(pipe.run_stream(FAKE_QUERY_RESULT))
+        chunks = list(pipe.run_stream(FAKE_QUERY_RESULT, turn_id="turn123", trace_id="a" * 32))
 
         assert len(chunks) == 1
         assert "pas trouvé" in chunks[0].lower() or "base de connaissances" in chunks[0].lower()
@@ -361,9 +379,13 @@ class TestPipelineE2E:
         assert pipe.last_result.context_items == []
         assert pipe.last_result.metadata["selector_all_rejected"] is True
         assert pipe.last_result.metadata["selector_decision"] == "all_rejected"
-        assert pipe.last_result.metadata["rag_diagnostics"]["selector"]["rejection_reason"] == (
-            "Aucune section pertinente."
+        assert pipe.last_result.metadata["turn_id"] == "turn123"
+        assert pipe.last_result.metadata["trace_id"] == "a" * 32
+        assert any(event["stage"] == "retriever" for event in pipe.last_result.metadata["rag_trace_events"])
+        assert any(
+            event["stage"] == "generator" and event["status"] == "skipped_no_context" for event in pipe.last_result.metadata["rag_trace_events"]
         )
+        assert pipe.last_result.metadata["rag_diagnostics"]["selector"]["rejection_reason"] == ("Aucune section pertinente.")
         MockContextBuilder.return_value.build.assert_not_called()
         MockGenerator.return_value.stream.assert_not_called()
 
@@ -656,11 +678,21 @@ class TestPipelineE2E:
         from assistant_rh_rag_pipeline.pipeline import Pipeline
 
         pipe = Pipeline(config)
-        result = pipe.run_with_trace("Qu'est-ce que le congé de mobilité ?")
+        result = pipe.run_with_trace("Qu'est-ce que le congé de mobilité ?", turn_id="turn123", trace_id="a" * 32)
 
         stage_trace = result.metadata.get("stage_trace")
         assert isinstance(stage_trace, dict)
         assert stage_trace.get("schema_version") == "2026-05-05"
+        assert result.metadata["turn_id"] == "turn123"
+        assert result.metadata["trace_id"] == "a" * 32
+        assert [event["stage"] for event in result.metadata["rag_trace_events"]] == [
+            "query-processor",
+            "retriever",
+            "section-aggregator",
+            "context-selector",
+            "context-builder",
+            "generator",
+        ]
 
         stages = stage_trace.get("stages")
         assert isinstance(stages, dict)

@@ -50,6 +50,7 @@ from assistant_rh_rag_pipeline import get_default_config
 from assistant_rh_rag_pipeline.admin import get_rag_config, init_config_table
 from assistant_rh_rag_pipeline.chat_logger import build_log_row, build_non_rag_row
 from assistant_rh_rag_pipeline.chat_logger import log_run as _log_run_v3
+from assistant_rh_rag_pipeline.chat_logger import log_trace_events as _log_trace_events_v3
 from assistant_rh_rag_pipeline.config import (
     DEFAULT_SYSTEM_PROMPT,
     get_prompt_content,
@@ -350,6 +351,7 @@ for p in [RUNS_CSV.parent, FEEDS_CSV.parent, REVIEWS_CSV.parent]:
 RUNS_FIELDS = [
     "ts",
     "turn_id",
+    "trace_id",
     "question",
     "answer",
     "provider",
@@ -527,6 +529,11 @@ def log_run_row(row: dict):
     Delegates to ``chat_logger.log_run`` for the dynamic UPSERT.
     """
     _log_run_v3(row, engine=get_engine(), csv_path=RUNS_CSV, csv_fields=RUNS_FIELDS)
+
+
+def log_trace_event_rows(events: list[dict], *, turn_id: str, trace_id: str):
+    """Persist detailed RAG trace events and optionally export OTEL spans."""
+    _log_trace_events_v3(events, turn_id=turn_id, trace_id=trace_id, engine=get_engine())
 
 
 def upsert_reviews(turn_ids: list[str], reviewed: bool):
@@ -1059,9 +1066,7 @@ def render_debug_chunks(
                     f"Embed: **{ctx.get('embed_col')}** · Filtres: "
                     f"{', '.join(f'{k}={v}' for k, v in (ctx.get('filters') or {}).items() if v) or '—'}"
                 )
-                st.caption(
-                    "Tips: vérifie `ALBERT_API_KEY`, le DSN (`SCW_POSTGRES_DSN`), les filtres et que la colonne d'embedding n'est pas vide."
-                )
+                st.caption("Tips: vérifie `ALBERT_API_KEY`, le DSN (`SCW_POSTGRES_DSN`), les filtres et que la colonne d'embedding n'est pas vide.")
             return
 
         # Compter les chunks par source
@@ -1212,6 +1217,9 @@ if hasattr(st.session_state, "suggested_query") and st.session_state.suggested_q
     st.session_state.suggested_query = None  # Réinitialiser
 
 if query:
+    turn_id = str(uuid.uuid4())[:8]
+    trace_id = uuid.uuid4().hex
+
     with st.chat_message("user", avatar="🧑‍💻"):
         st.markdown(query)
 
@@ -1280,7 +1288,6 @@ if query:
                 with st.chat_message("assistant"):
                     v3_response = qr_v3.direct_response or ""
                     st.markdown(v3_response)
-                turn_id = str(uuid.uuid4())[:8]
                 turn_obj = Turn(id=turn_id, user=query, assistant=v3_response, retrieved=[], prompt_used="")
                 st.session_state.turns.append(turn_obj)
 
@@ -1294,6 +1301,7 @@ if query:
                         pipeline_v3,
                         dict(st.session_state),
                         runtime_config=rag_config,
+                        trace_id=trace_id,
                     )
                     log_run_row(row)
                 except Exception as e:
@@ -1312,7 +1320,13 @@ if query:
                 def _update_status(msg: str):
                     status_placeholder.caption(f"⏳ {msg}")
 
-                stream_generator = pipeline_v3.run_stream(qr_v3, conversation_history_v3, on_status=_update_status)
+                stream_generator = pipeline_v3.run_stream(
+                    qr_v3,
+                    conversation_history_v3,
+                    on_status=_update_status,
+                    turn_id=turn_id,
+                    trace_id=trace_id,
+                )
 
                 def _stream_clear_on_first(gen, loader):
                     """Keep loader visible during retrieval, clear on first token."""
@@ -1407,7 +1421,6 @@ if query:
             # ═══════════════════════════════════════════════════════════════════
             # 📊 Créer le Turn pour l'historique
             # ═══════════════════════════════════════════════════════════════════
-            turn_id = str(uuid.uuid4())[:8]
             turn_obj = Turn(
                 id=turn_id,
                 user=query,
@@ -1435,8 +1448,10 @@ if query:
                     context_items=context_items,
                     v1_chunks_for_display=v1_chunks_for_display,
                     legal_refs_v3=legal_refs_v3,
+                    trace_id=trace_id,
                 )
                 log_run_row(row)
+                log_trace_event_rows(v3_metadata.get("rag_trace_events", []), turn_id=turn_id, trace_id=trace_id)
             except Exception as e:
                 import logging as _logging
                 import traceback
