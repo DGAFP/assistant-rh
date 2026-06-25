@@ -214,6 +214,8 @@ class RagHealthCollector:
         samples.extend(self._trace_metrics(conn, columns, now))
 
         for table in EXPECTED_TABLES:
+            if table == "rag_trace_events":
+                continue
             samples.extend(self._freshness_metrics(conn, columns, table, now))
 
         samples.append(metric("assistant_rh_rag_poll_duration_seconds", self.env_label, time.time() - started))
@@ -246,6 +248,8 @@ class RagHealthCollector:
             return "documents"
         if table == "rag_sections":
             return "sections"
+        if table == "rag_trace_events":
+            return "traces"
         if table == "rag_chunk_embeddings":
             return "embeddings"
         return "chunks"
@@ -403,7 +407,7 @@ class RagHealthCollector:
         ]
 
     def _trace_metrics(self, conn: psycopg.Connection, columns: dict[str, set[str]], now: float) -> list[MetricSample]:
-        expected_columns = {"turn_id", "stage", "duration_ms", "status", "error_type", "created_at"}
+        expected_columns = {"turn_id", "env", "stage", "duration_ms", "status", "error_type", "error_message", "created_at"}
         if "rag_trace_events" not in columns or not expected_columns.issubset(columns["rag_trace_events"]):
             return []
 
@@ -449,7 +453,7 @@ class RagHealthCollector:
                 )
             )
 
-        timestamp = self._max_epoch(conn, "rag_trace_events", "created_at")
+        timestamp = self._trace_last_event_epoch(conn)
         if timestamp is not None:
             samples.append(metric("assistant_rh_rag_trace_last_event_timestamp_seconds", self.env_label, timestamp))
             samples.append(metric("assistant_rh_rag_trace_freshness_seconds", self.env_label, max(0, now - timestamp)))
@@ -577,9 +581,10 @@ class RagHealthCollector:
         query = f"""
             SELECT COUNT(DISTINCT "turn_id")
             FROM {self.schema_sql}."rag_trace_events"
-            WHERE "created_at" >= now() - interval '24 hours'
+            WHERE "env" = %s
+              AND "created_at" >= now() - interval '24 hours'
         """
-        return int(self._fetch_one(conn, query) or 0)
+        return int(self._fetch_one(conn, query, (self.env_label,)) or 0)
 
     def _trace_event_counts(self, conn: psycopg.Connection) -> list[tuple[str, str, int]]:
         query = f"""
@@ -588,11 +593,12 @@ class RagHealthCollector:
                 COALESCE(NULLIF(TRIM("status"), ''), 'unknown') AS status,
                 COUNT(*) AS count
             FROM {self.schema_sql}."rag_trace_events"
-            WHERE "created_at" >= now() - interval '24 hours'
+            WHERE "env" = %s
+              AND "created_at" >= now() - interval '24 hours'
             GROUP BY 1, 2
         """
         with conn.cursor() as cur:
-            cur.execute(query)
+            cur.execute(query, (self.env_label,))
             rows = cur.fetchall()
         return [(normalize_label_value(stage), normalize_label_value(status), int(count or 0)) for stage, status, count in rows]
 
@@ -603,12 +609,13 @@ class RagHealthCollector:
                 percentile_cont(0.50) WITHIN GROUP (ORDER BY GREATEST("duration_ms", 0)) / 1000.0 AS p50_seconds,
                 percentile_cont(0.95) WITHIN GROUP (ORDER BY GREATEST("duration_ms", 0)) / 1000.0 AS p95_seconds
             FROM {self.schema_sql}."rag_trace_events"
-            WHERE "created_at" >= now() - interval '24 hours'
+            WHERE "env" = %s
+              AND "created_at" >= now() - interval '24 hours'
               AND "duration_ms" IS NOT NULL
             GROUP BY 1
         """
         with conn.cursor() as cur:
-            cur.execute(query)
+            cur.execute(query, (self.env_label,))
             rows = cur.fetchall()
         quantiles: list[tuple[str, str, float]] = []
         for stage, p50_seconds, p95_seconds in rows:
@@ -626,7 +633,8 @@ class RagHealthCollector:
                 COALESCE(NULLIF(TRIM("error_type"), ''), NULLIF(TRIM("status"), ''), 'unknown') AS error_type,
                 COUNT(*) AS count
             FROM {self.schema_sql}."rag_trace_events"
-            WHERE "created_at" >= now() - interval '24 hours'
+            WHERE "env" = %s
+              AND "created_at" >= now() - interval '24 hours'
               AND (
                 "error_type" <> ''
                 OR "error_message" <> ''
@@ -635,9 +643,18 @@ class RagHealthCollector:
             GROUP BY 1, 2
         """
         with conn.cursor() as cur:
-            cur.execute(query)
+            cur.execute(query, (self.env_label,))
             rows = cur.fetchall()
         return [(normalize_label_value(stage), normalize_label_value(error_type), int(count or 0)) for stage, error_type, count in rows]
+
+    def _trace_last_event_epoch(self, conn: psycopg.Connection) -> float | None:
+        query = f"""
+            SELECT EXTRACT(EPOCH FROM MAX("created_at"))
+            FROM {self.schema_sql}."rag_trace_events"
+            WHERE "env" = %s
+        """
+        value = self._fetch_one(conn, query, (self.env_label,))
+        return float(value) if value is not None else None
 
     def _max_epoch(self, conn: psycopg.Connection, table: str, column: str) -> float | None:
         query = f"SELECT EXTRACT(EPOCH FROM MAX({quote_identifier(column)})) FROM {self.schema_sql}.{quote_identifier(table)}"
