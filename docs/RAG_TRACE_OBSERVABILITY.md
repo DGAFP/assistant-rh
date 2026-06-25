@@ -64,7 +64,8 @@ After import, select the Grafana variables:
 2. Confirm the turn appears in `chat_runs` with a `trace_id`.
 3. Confirm `rag_trace_events` has rows for the same `turn_id` and `trace_id`.
 4. Confirm the RAG Health exporter exposes `assistant_rh_rag_trace_*` metrics on `/metrics`.
-5. Open the Grafana dashboard and filter by that `turn_id` or `trace_id`.
-6. Confirm the Tempo panels show spans and the Prometheus panels show trace volume, latency, error, and freshness metrics.
+5. Open the Grafana dashboard and use the `Recent RAG traces` table to find the turn or trace.
+6. Click the trace ID to populate the dashboard `trace_id` variable.
+7. Confirm the selected trace waterfall shows the pipeline spans and the Prometheus panels show trace volume, latency, error, and freshness metrics.
 
 Trace export is best effort. PostgreSQL persistence remains the primary admin debugging source if the external trace backend is unavailable, but the Grafana dashboard intentionally avoids a direct PostgreSQL data source requirement.

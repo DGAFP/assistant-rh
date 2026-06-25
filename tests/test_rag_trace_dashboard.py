@@ -46,7 +46,7 @@ def test_trace_dashboard_contains_required_panels() -> None:
     titles = {panel["title"] for panel in _dashboard()["panels"]}
 
     assert "Recent RAG traces" in titles
-    assert "Pipeline stage timeline" in titles
+    assert "Selected trace waterfall" in titles
     assert "Trace events by stage and status" in titles
     assert "Stage duration p95" in titles
     assert "Errors and fallback events" in titles
@@ -73,10 +73,44 @@ def test_trace_dashboard_uses_rag_health_prometheus_metrics_instead_of_postgres(
     assert "full_prompt" not in serialized
 
 
+def test_recent_traces_table_hides_nested_tempo_fields_and_links_to_selected_trace() -> None:
+    panel = next(panel for panel in _dashboard()["panels"] if panel["title"] == "Recent RAG traces")
+    transformations = {transformation["id"]: transformation["options"] for transformation in panel["transformations"]}
+    organize = transformations["organize"]
+
+    assert panel["type"] == "table"
+    assert organize["excludeByName"]["spanSet"] is True
+    assert organize["excludeByName"]["spanSets"] is True
+    assert organize["excludeByName"]["serviceStats"] is True
+    assert organize["renameByName"]["traceID"] == "Trace ID"
+
+    trace_id_override = next(
+        override
+        for override in panel["fieldConfig"]["overrides"]
+        if override["matcher"]["id"] == "byName" and override["matcher"]["options"] == "traceID"
+    )
+    links = next(property_["value"] for property_ in trace_id_override["properties"] if property_["id"] == "links")
+
+    assert links[0]["title"] == "Show trace in this dashboard"
+    assert "var-trace_id=${__data.fields.traceID}" in links[0]["url"]
+
+
+def test_selected_trace_uses_native_traces_panel() -> None:
+    panel = next(panel for panel in _dashboard()["panels"] if panel["title"] == "Selected trace waterfall")
+
+    assert panel["type"] == "traces"
+    assert panel["datasource"]["type"] == "tempo"
+    assert panel["targets"][0]["query"] == "$trace_id"
+    assert panel["targets"][0]["queryType"] == "traceql"
+
+
 def test_traceql_panels_filter_by_turn_and_trace() -> None:
     dashboard = _dashboard()
     traceql_queries = [
-        target["query"] for panel in dashboard["panels"] for target in panel.get("targets", []) if target.get("queryType") == "traceql"
+        target["query"]
+        for panel in dashboard["panels"]
+        for target in panel.get("targets", [])
+        if target.get("queryType") == "traceql" and panel.get("type") == "table"
     ]
 
     assert traceql_queries

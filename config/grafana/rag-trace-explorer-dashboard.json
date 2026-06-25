@@ -16,10 +16,32 @@
       },
       "fieldConfig": {
         "defaults": {},
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traceID"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Trace ID"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show trace in this dashboard",
+                    "url": "/d/assistant-rh-rag-trace-explorer/assistant-rh-rag-trace-explorer?orgId=1&from=${__from}&to=${__to}&var-trace_datasource=$trace_datasource&var-metrics_datasource=$metrics_datasource&var-env=$env&var-turn_id=$turn_id&var-trace_id=${__data.fields.traceID}&var-stage=$stage&var-status=$status"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 24,
         "x": 0,
         "y": 0
@@ -36,6 +58,32 @@
           "refId": "A"
         }
       ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "serviceStats": true,
+              "spanSet": true,
+              "spanSets": true
+            },
+            "indexByName": {
+              "durationMs": 4,
+              "rootServiceName": 1,
+              "rootTraceName": 2,
+              "startTimeUnixNano": 3,
+              "traceID": 0
+            },
+            "renameByName": {
+              "durationMs": "Duration (ms)",
+              "rootServiceName": "Service",
+              "rootTraceName": "Root span",
+              "startTimeUnixNano": "Start",
+              "traceID": "Trace ID"
+            }
+          }
+        }
+      ],
       "title": "Recent RAG traces",
       "type": "table"
     },
@@ -49,25 +97,22 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 10,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 7
       },
       "id": 2,
-      "options": {
-        "showHeader": true
-      },
+      "options": {},
       "targets": [
         {
-          "limit": 50,
-          "query": "{ resource.service.name = \"assistant-rh\" && span.rag.turn_id =~ \"$turn_id\" && span.rag.trace_id =~ \"$trace_id\" } | select(span.rag.stage, span.rag.status, span.rag.duration_ms, span.rag.attempt_name, span.rag.source_tables, span.rag.chunk_ids)",
+          "query": "$trace_id",
           "queryType": "traceql",
           "refId": "A"
         }
       ],
-      "title": "Pipeline stage timeline",
-      "type": "table"
+      "title": "Selected trace waterfall",
+      "type": "traces"
     },
     {
       "datasource": {
@@ -84,7 +129,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 17
       },
       "id": 3,
       "options": {
@@ -126,7 +171,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 17
       },
       "id": 4,
       "options": {
@@ -168,7 +213,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 24
+        "y": 25
       },
       "id": 5,
       "options": {
@@ -218,7 +263,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 24
+        "y": 25
       },
       "id": 6,
       "options": {
@@ -254,11 +299,11 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 32
+        "y": 33
       },
       "id": 7,
       "options": {
-        "content": "This dashboard intentionally uses only Cockpit-synchronized datasources: Tempo for trace drilldown and Prometheus metrics exported by the existing RAG Health container. Use `turn_id` or `trace_id` to correlate with the Streamlit admin Chat Logs page when full chunk or prompt details are needed.",
+        "content": "This dashboard intentionally uses only Cockpit-synchronized datasources: Tempo for trace drilldown and Prometheus metrics exported by the existing RAG Health container. Use the Recent RAG traces table to select a trace, then inspect the selected trace waterfall. Use Streamlit admin Chat Logs when full chunk or prompt details are needed.",
         "mode": "markdown"
       },
       "title": "Admin drilldown",
