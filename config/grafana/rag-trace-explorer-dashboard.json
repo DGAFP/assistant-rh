@@ -71,88 +71,11 @@
     },
     {
       "datasource": {
-        "type": "postgres",
-        "uid": "$postgres_datasource"
+        "type": "prometheus",
+        "uid": "$metrics_datasource"
       },
       "fieldConfig": {
         "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "inspect": false
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 16
-      },
-      "id": 3,
-      "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
-          ],
-          "show": false
-        },
-        "showHeader": true
-      },
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "WITH chunk_events AS (\n  SELECT\n    e.created_at,\n    e.turn_id,\n    e.trace_id,\n    e.stage,\n    e.attempt_name,\n    e.status,\n    item AS chunk\n  FROM rag_trace_events e\n  CROSS JOIN LATERAL jsonb_array_elements(\n    CASE\n      WHEN e.output_ref ? 'retrieved_chunks' THEN e.output_ref->'retrieved_chunks'\n      WHEN e.output_ref ? 'aggregated_sections' THEN e.output_ref->'aggregated_sections'\n      WHEN e.output_ref ? 'context_items' THEN e.output_ref->'context_items'\n      ELSE '[]'::jsonb\n    END\n  ) AS item\n  WHERE ('$turn_id' = '' OR e.turn_id = '$turn_id')\n    AND ('$trace_id' = '' OR e.trace_id = '$trace_id')\n    AND ('$stage' = '.*' OR e.stage = '$stage')\n    AND ('$status' = '.*' OR e.status = '$status')\n    AND ('$env' = '.*' OR e.env = '$env')\n)\nSELECT\n  created_at,\n  turn_id,\n  trace_id,\n  stage,\n  attempt_name,\n  status,\n  COALESCE(chunk->>'chunk_id', chunk->>'section_id', '') AS chunk_id,\n  COALESCE(chunk->>'table', chunk->>'publisher', '') AS source_table,\n  NULLIF(chunk->>'score', '')::double precision AS score,\n  chunk->>'section_id' AS section_id,\n  chunk->>'heading' AS heading,\n  chunk->>'preview' AS preview\nFROM chunk_events\nWHERE ('$source_table' = '' OR COALESCE(chunk->>'table', chunk->>'publisher', '') ILIKE '%' || '$source_table' || '%')\nORDER BY created_at DESC, stage ASC, score DESC NULLS LAST\nLIMIT 500;",
-          "refId": "A"
-        }
-      ],
-      "title": "Chunks by stage (bounded previews)",
-      "type": "table"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "$postgres_datasource"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
           "unit": "short"
         },
         "overrides": []
@@ -161,71 +84,168 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 26
+        "y": 16
       },
-      "id": 4,
+      "id": 3,
       "options": {
-        "displayLabels": [],
         "legend": {
-          "displayMode": "list",
-          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
           "showLegend": true
         },
-        "pieType": "pie",
-        "reduceOptions": {
-          "calcs": [
-            "sum"
-          ],
-          "fields": "",
-          "values": false
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
         }
       },
       "targets": [
         {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "WITH items AS (\n  SELECT item\n  FROM rag_trace_events e\n  CROSS JOIN LATERAL jsonb_array_elements(\n    CASE\n      WHEN e.output_ref ? 'retrieved_chunks' THEN e.output_ref->'retrieved_chunks'\n      WHEN e.output_ref ? 'aggregated_sections' THEN e.output_ref->'aggregated_sections'\n      WHEN e.output_ref ? 'context_items' THEN e.output_ref->'context_items'\n      ELSE '[]'::jsonb\n    END\n  ) AS item\n  WHERE ('$turn_id' = '' OR e.turn_id = '$turn_id')\n    AND ('$trace_id' = '' OR e.trace_id = '$trace_id')\n    AND ('$env' = '.*' OR e.env = '$env')\n)\nSELECT COALESCE(item->>'table', item->>'publisher', 'unknown') AS source_table, COUNT(*) AS count\nFROM items\nWHERE ('$source_table' = '' OR COALESCE(item->>'table', item->>'publisher', '') ILIKE '%' || '$source_table' || '%')\nGROUP BY source_table\nORDER BY count DESC;",
+          "expr": "sum(assistant_rh_rag_trace_events_24h_total{env=~\"$env\",stage=~\"$stage\",status=~\"$status\"}) by (env, stage, status)",
+          "legendFormat": "{{env}} / {{stage}} / {{status}}",
           "refId": "A"
         }
       ],
-      "title": "Sources interrogated and retained",
-      "type": "piechart"
+      "title": "Trace events by stage and status",
+      "type": "timeseries"
     },
     {
       "datasource": {
-        "type": "postgres",
-        "uid": "$postgres_datasource"
+        "type": "prometheus",
+        "uid": "$metrics_datasource"
       },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "unit": "s"
+        },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 26
+        "y": 16
       },
-      "id": 5,
+      "id": 4,
       "options": {
-        "showHeader": true
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
       },
       "targets": [
         {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT created_at, turn_id, trace_id, stage, attempt_name, status, error_type, error_message, metrics\nFROM rag_trace_events\nWHERE ('$turn_id' = '' OR turn_id = '$turn_id')\n  AND ('$trace_id' = '' OR trace_id = '$trace_id')\n  AND ('$stage' = '.*' OR stage = '$stage')\n  AND ('$status' = '.*' OR status = '$status')\n  AND ('$env' = '.*' OR env = '$env')\n  AND (status IN ('failed', 'error') OR error_type <> '' OR metrics ? 'reranker_status')\nORDER BY created_at DESC, event_index ASC\nLIMIT 200;",
+          "expr": "assistant_rh_rag_trace_stage_duration_seconds{env=~\"$env\",stage=~\"$stage\",quantile=\"0.95\"}",
+          "legendFormat": "{{env}} / {{stage}} p95",
           "refId": "A"
         }
       ],
-      "title": "Errors, fallbacks, and provider status",
-      "type": "table"
+      "title": "Stage duration p95",
+      "type": "timeseries"
     },
     {
       "datasource": {
-        "type": "postgres",
-        "uid": "$postgres_datasource"
+        "type": "prometheus",
+        "uid": "$metrics_datasource"
       },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "id": 5,
+      "options": {
+        "displayMode": "gradient",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "minVizHeight": 10,
+        "minVizWidth": 0,
+        "namePlacement": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "targets": [
+        {
+          "expr": "sum(assistant_rh_rag_trace_errors_24h_total{env=~\"$env\",stage=~\"$stage\"}) by (env, stage, error_type)",
+          "legendFormat": "{{env}} / {{stage}} / {{error_type}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Errors and fallback events",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$metrics_datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "assistant_rh_rag_trace_freshness_seconds{env=~\"$env\"}",
+          "legendFormat": "{{env}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Trace freshness",
+      "type": "stat"
+    },
+    {
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -234,11 +254,11 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 34
+        "y": 32
       },
-      "id": 6,
+      "id": 7,
       "options": {
-        "content": "Use `turn_id` to correlate this dashboard with the Streamlit admin Chat Logs page. Grafana intentionally shows bounded chunk previews only; use the admin-only DB or Chat Logs drilldown for complete prompt/chunk content.",
+        "content": "This dashboard intentionally uses only Cockpit-synchronized datasources: Tempo for trace drilldown and Prometheus metrics exported by the existing RAG Health container. Use `turn_id` or `trace_id` to correlate with the Streamlit admin Chat Logs page when full chunk or prompt details are needed.",
         "mode": "markdown"
       },
       "title": "Admin drilldown",
@@ -268,9 +288,9 @@
       {
         "current": {},
         "includeAll": false,
-        "label": "Postgres datasource",
-        "name": "postgres_datasource",
-        "query": "postgres",
+        "label": "Metrics datasource",
+        "name": "metrics_datasource",
+        "query": "prometheus",
         "refresh": 1,
         "type": "datasource"
       },
@@ -365,17 +385,6 @@
         ],
         "query": "query-processor,retriever,section-aggregator,context-selector,context-builder,generator",
         "type": "custom"
-      },
-      {
-        "current": {
-          "selected": false,
-          "text": "",
-          "value": ""
-        },
-        "label": "Source table",
-        "name": "source_table",
-        "query": "",
-        "type": "textbox"
       },
       {
         "allValue": ".*",

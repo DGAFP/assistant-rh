@@ -66,6 +66,10 @@ def test_missing_reference_check_casts_join_columns_to_text(monkeypatch: pytest.
     assert 'target_table."doc_id"::text = source_table."source_document_id"::text' in captured["query"]
 
 
+def test_trace_events_table_is_reported_as_trace_kind() -> None:
+    assert exporter.RagHealthCollector._table_kind("rag_trace_events") == "traces"
+
+
 def test_collector_emits_counts_coverage_and_integrity_for_available_tables(monkeypatch: pytest.MonkeyPatch) -> None:
     collector = exporter.RagHealthCollector(env_label="production")
     columns = {
@@ -164,6 +168,92 @@ def test_collector_emits_counts_coverage_and_integrity_for_available_tables(monk
     )
     assert direct_embedding_calls == [("rag_chunks_service_public", ("embedding_m3", "embedding_bge_scw"))]
     assert chunks_test_embedding_calls == [("embedding_raw", "embedding_bge")]
+
+
+def test_collector_emits_trace_metrics_when_trace_table_is_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    collector = exporter.RagHealthCollector(env_label="staging")
+    columns = {
+        "rag_trace_events": {
+            "turn_id",
+            "env",
+            "stage",
+            "duration_ms",
+            "status",
+            "error_type",
+            "error_message",
+            "created_at",
+        }
+    }
+
+    monkeypatch.setattr(collector, "_set_statement_timeout", lambda conn: None)
+    monkeypatch.setattr(collector, "_load_columns", lambda conn: columns)
+    monkeypatch.setattr(collector, "_count_recent_trace_turns", lambda conn: 4)
+    monkeypatch.setattr(collector, "_trace_event_counts", lambda conn: [("retriever", "ok", 5), ("generator", "failed", 1)])
+    monkeypatch.setattr(collector, "_trace_stage_duration_quantiles", lambda conn: [("retriever", "0.95", 0.42)])
+    monkeypatch.setattr(collector, "_trace_error_counts", lambda conn: [("generator", "provider_error", 1)])
+    monkeypatch.setattr(collector, "_trace_last_event_epoch", lambda conn: 100.0)
+
+    samples = collector.collect_from_connection(object())
+
+    assert _sample(samples, "assistant_rh_rag_trace_turns_24h_total").value == 4
+    assert _sample(samples, "assistant_rh_rag_trace_events_24h_total", stage="retriever", status="ok").value == 5
+    assert _sample(samples, "assistant_rh_rag_trace_stage_duration_seconds", stage="retriever", quantile="0.95").value == 0.42
+    assert _sample(samples, "assistant_rh_rag_trace_errors_24h_total", stage="generator", error_type="provider_error").value == 1
+    assert _sample(samples, "assistant_rh_rag_trace_last_event_timestamp_seconds").value == 100
+
+
+def test_trace_metrics_noop_when_trace_table_is_partially_migrated() -> None:
+    collector = exporter.RagHealthCollector(env_label="staging")
+    columns = {
+        "rag_trace_events": {
+            "turn_id",
+            "env",
+            "stage",
+            "duration_ms",
+            "status",
+            "error_type",
+            "created_at",
+        }
+    }
+
+    assert collector._trace_metrics(object(), columns, now=100.0) == []
+
+
+def test_trace_queries_filter_by_collector_env() -> None:
+    executed: list[tuple[str, tuple[str, ...]]] = []
+
+    class FakeCursor:
+        def __enter__(self) -> "FakeCursor":
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> bool:
+            return False
+
+        def execute(self, query: str, params: tuple[str, ...] = ()) -> None:
+            executed.append((query, params))
+
+        def fetchone(self) -> tuple[int]:
+            return (0,)
+
+        def fetchall(self) -> list:
+            return []
+
+    class FakeConnection:
+        def cursor(self) -> FakeCursor:
+            return FakeCursor()
+
+    collector = exporter.RagHealthCollector(env_label="production")
+    conn = FakeConnection()
+
+    collector._count_recent_trace_turns(conn)
+    collector._trace_event_counts(conn)
+    collector._trace_stage_duration_quantiles(conn)
+    collector._trace_error_counts(conn)
+    collector._trace_last_event_epoch(conn)
+
+    assert executed
+    assert all('"env" = %s' in query for query, _params in executed)
+    assert all(params == ("prod",) for _query, params in executed)
 
 
 @pytest.mark.parametrize(

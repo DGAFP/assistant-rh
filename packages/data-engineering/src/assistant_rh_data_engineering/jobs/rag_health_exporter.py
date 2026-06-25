@@ -86,6 +86,7 @@ CHUNKS_TEST_EMBEDDINGS: tuple[EmbeddingColumn, ...] = (
 EXPECTED_TABLES = (
     "rag_documents",
     "rag_sections",
+    "rag_trace_events",
     *(table.table for table in DIRECT_CHUNK_TABLES),
     CHUNKS_TEST_TABLE.table,
     "rag_chunk_embeddings",
@@ -103,6 +104,12 @@ METRIC_HELP = {
     "assistant_rh_rag_integrity_issues_total": "Detected RAG data integrity issues by table and reason.",
     "assistant_rh_rag_table_last_update_timestamp_seconds": "Unix timestamp of the latest updated_at or created_at value for a table.",
     "assistant_rh_rag_table_freshness_seconds": "Seconds since the latest updated_at or created_at value for a table.",
+    "assistant_rh_rag_trace_turns_24h_total": "Distinct RAG turns with trace events created in the last 24 hours.",
+    "assistant_rh_rag_trace_events_24h_total": "RAG trace events created in the last 24 hours by stage and status.",
+    "assistant_rh_rag_trace_stage_duration_seconds": "RAG trace stage duration quantiles over events created in the last 24 hours.",
+    "assistant_rh_rag_trace_errors_24h_total": "RAG trace error or fallback events created in the last 24 hours by stage and error type.",
+    "assistant_rh_rag_trace_last_event_timestamp_seconds": "Unix timestamp of the latest RAG trace event.",
+    "assistant_rh_rag_trace_freshness_seconds": "Seconds since the latest RAG trace event.",
     "assistant_rh_rag_last_poll_success": "Whether the last database polling attempt succeeded.",
     "assistant_rh_rag_last_poll_timestamp_seconds": "Unix timestamp of the last database polling attempt.",
     "assistant_rh_rag_last_successful_poll_timestamp_seconds": "Unix timestamp of the last successful database polling attempt.",
@@ -204,8 +211,11 @@ class RagHealthCollector:
 
         samples.extend(self._chunks_test_embedding_metrics(conn, columns))
         samples.extend(self._chunks_test_embedding_integrity(conn, columns))
+        samples.extend(self._trace_metrics(conn, columns, now))
 
         for table in EXPECTED_TABLES:
+            if table == "rag_trace_events":
+                continue
             samples.extend(self._freshness_metrics(conn, columns, table, now))
 
         samples.append(metric("assistant_rh_rag_poll_duration_seconds", self.env_label, time.time() - started))
@@ -238,6 +248,8 @@ class RagHealthCollector:
             return "documents"
         if table == "rag_sections":
             return "sections"
+        if table == "rag_trace_events":
+            return "traces"
         if table == "rag_chunk_embeddings":
             return "embeddings"
         return "chunks"
@@ -394,6 +406,59 @@ class RagHealthCollector:
             ),
         ]
 
+    def _trace_metrics(self, conn: psycopg.Connection, columns: dict[str, set[str]], now: float) -> list[MetricSample]:
+        expected_columns = {"turn_id", "env", "stage", "duration_ms", "status", "error_type", "error_message", "created_at"}
+        if "rag_trace_events" not in columns or not expected_columns.issubset(columns["rag_trace_events"]):
+            return []
+
+        samples: list[MetricSample] = []
+        samples.append(
+            metric(
+                "assistant_rh_rag_trace_turns_24h_total",
+                self.env_label,
+                self._count_recent_trace_turns(conn),
+            )
+        )
+
+        for stage, status, count in self._trace_event_counts(conn):
+            samples.append(
+                metric(
+                    "assistant_rh_rag_trace_events_24h_total",
+                    self.env_label,
+                    count,
+                    stage=stage,
+                    status=status,
+                )
+            )
+
+        for stage, quantile, duration_seconds in self._trace_stage_duration_quantiles(conn):
+            samples.append(
+                metric(
+                    "assistant_rh_rag_trace_stage_duration_seconds",
+                    self.env_label,
+                    duration_seconds,
+                    stage=stage,
+                    quantile=quantile,
+                )
+            )
+
+        for stage, error_type, count in self._trace_error_counts(conn):
+            samples.append(
+                metric(
+                    "assistant_rh_rag_trace_errors_24h_total",
+                    self.env_label,
+                    count,
+                    stage=stage,
+                    error_type=error_type,
+                )
+            )
+
+        timestamp = self._trace_last_event_epoch(conn)
+        if timestamp is not None:
+            samples.append(metric("assistant_rh_rag_trace_last_event_timestamp_seconds", self.env_label, timestamp))
+            samples.append(metric("assistant_rh_rag_trace_freshness_seconds", self.env_label, max(0, now - timestamp)))
+        return samples
+
     def _freshness_metrics(
         self,
         conn: psycopg.Connection,
@@ -511,6 +576,85 @@ class RagHealthCollector:
             WHERE t."chunk_id" IS NULL
         """
         return int(self._fetch_one(conn, query) or 0)
+
+    def _count_recent_trace_turns(self, conn: psycopg.Connection) -> int:
+        query = f"""
+            SELECT COUNT(DISTINCT "turn_id")
+            FROM {self.schema_sql}."rag_trace_events"
+            WHERE "env" = %s
+              AND "created_at" >= now() - interval '24 hours'
+        """
+        return int(self._fetch_one(conn, query, (self.env_label,)) or 0)
+
+    def _trace_event_counts(self, conn: psycopg.Connection) -> list[tuple[str, str, int]]:
+        query = f"""
+            SELECT
+                COALESCE(NULLIF(TRIM("stage"), ''), 'unknown') AS stage,
+                COALESCE(NULLIF(TRIM("status"), ''), 'unknown') AS status,
+                COUNT(*) AS count
+            FROM {self.schema_sql}."rag_trace_events"
+            WHERE "env" = %s
+              AND "created_at" >= now() - interval '24 hours'
+            GROUP BY 1, 2
+        """
+        with conn.cursor() as cur:
+            cur.execute(query, (self.env_label,))
+            rows = cur.fetchall()
+        return [(normalize_label_value(stage), normalize_label_value(status), int(count or 0)) for stage, status, count in rows]
+
+    def _trace_stage_duration_quantiles(self, conn: psycopg.Connection) -> list[tuple[str, str, float]]:
+        query = f"""
+            SELECT
+                COALESCE(NULLIF(TRIM("stage"), ''), 'unknown') AS stage,
+                percentile_cont(0.50) WITHIN GROUP (ORDER BY GREATEST("duration_ms", 0)) / 1000.0 AS p50_seconds,
+                percentile_cont(0.95) WITHIN GROUP (ORDER BY GREATEST("duration_ms", 0)) / 1000.0 AS p95_seconds
+            FROM {self.schema_sql}."rag_trace_events"
+            WHERE "env" = %s
+              AND "created_at" >= now() - interval '24 hours'
+              AND "duration_ms" IS NOT NULL
+            GROUP BY 1
+        """
+        with conn.cursor() as cur:
+            cur.execute(query, (self.env_label,))
+            rows = cur.fetchall()
+        quantiles: list[tuple[str, str, float]] = []
+        for stage, p50_seconds, p95_seconds in rows:
+            normalized_stage = normalize_label_value(stage)
+            if p50_seconds is not None:
+                quantiles.append((normalized_stage, "0.50", float(p50_seconds)))
+            if p95_seconds is not None:
+                quantiles.append((normalized_stage, "0.95", float(p95_seconds)))
+        return quantiles
+
+    def _trace_error_counts(self, conn: psycopg.Connection) -> list[tuple[str, str, int]]:
+        query = f"""
+            SELECT
+                COALESCE(NULLIF(TRIM("stage"), ''), 'unknown') AS stage,
+                COALESCE(NULLIF(TRIM("error_type"), ''), NULLIF(TRIM("status"), ''), 'unknown') AS error_type,
+                COUNT(*) AS count
+            FROM {self.schema_sql}."rag_trace_events"
+            WHERE "env" = %s
+              AND "created_at" >= now() - interval '24 hours'
+              AND (
+                "error_type" <> ''
+                OR "error_message" <> ''
+                OR "status" NOT IN ('ok', 'success')
+              )
+            GROUP BY 1, 2
+        """
+        with conn.cursor() as cur:
+            cur.execute(query, (self.env_label,))
+            rows = cur.fetchall()
+        return [(normalize_label_value(stage), normalize_label_value(error_type), int(count or 0)) for stage, error_type, count in rows]
+
+    def _trace_last_event_epoch(self, conn: psycopg.Connection) -> float | None:
+        query = f"""
+            SELECT EXTRACT(EPOCH FROM MAX("created_at"))
+            FROM {self.schema_sql}."rag_trace_events"
+            WHERE "env" = %s
+        """
+        value = self._fetch_one(conn, query, (self.env_label,))
+        return float(value) if value is not None else None
 
     def _max_epoch(self, conn: psycopg.Connection, table: str, column: str) -> float | None:
         query = f"SELECT EXTRACT(EPOCH FROM MAX({quote_identifier(column)})) FROM {self.schema_sql}.{quote_identifier(table)}"

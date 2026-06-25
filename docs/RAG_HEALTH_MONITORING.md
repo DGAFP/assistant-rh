@@ -2,6 +2,9 @@
 
 This runbook describes the Assistant RH RAG data-health exporter and the Scaleway Cockpit/Grafana dashboard.
 
+For per-turn pipeline traces and the Tempo/RAG Health metrics dashboard, see
+[`RAG_TRACE_OBSERVABILITY.md`](RAG_TRACE_OBSERVABILITY.md).
+
 ## Architecture
 
 The monitoring container runs two processes:
@@ -9,7 +12,7 @@ The monitoring container runs two processes:
 - `data-ingestion observability rag-health`, a read-only Python exporter on `/metrics` and `/healthz`
 - Grafana Alloy, scraping the local exporter and remote-writing metrics to Scaleway Cockpit
 
-The exporter polls PostgreSQL every `DB_HEALTH_POLL_INTERVAL_SECONDS` seconds. It reports document, section, chunk, embedding, freshness, and integrity metrics with low-cardinality labels.
+The exporter polls PostgreSQL every `DB_HEALTH_POLL_INTERVAL_SECONDS` seconds. It reports document, section, chunk, embedding, freshness, integrity, and aggregate RAG trace metrics with low-cardinality labels.
 
 ## Cockpit prerequisites
 
@@ -53,6 +56,8 @@ Alert rule examples are in `config/grafana/rag-health-alerts.yaml`:
 - present chunk table with zero rows
 - embedding coverage below 99%
 - orphan or missing-reference integrity issues
+
+The same exporter also emits `assistant_rh_rag_trace_*` metrics from `rag_trace_events` so the RAG trace dashboard can use Cockpit Tempo plus Cockpit metrics without requiring a direct Grafana PostgreSQL data source.
 
 ## Local checks
 
