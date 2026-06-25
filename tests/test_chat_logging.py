@@ -30,12 +30,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from assistant_rh_rag_pipeline.chat_logger import (
     SafeEncoder,
+    _build_trace_event_upsert_sql,
     _build_upsert_sql,
     _jdumps,
     _prepare_data,
+    _prepare_trace_event_rows,
     build_log_row,
     build_non_rag_row,
     log_run,
+    log_trace_events,
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -272,6 +275,7 @@ class TestBuildLogRow:
     REQUIRED_COLUMNS = [
         "ts",
         "turn_id",
+        "trace_id",
         "question",
         "answer",
         "backend",
@@ -388,6 +392,10 @@ class TestBuildLogRow:
         assert row["v3_reranker_status"] == ""
         assert row["v3_reranker_error"] == ""
 
+    def test_trace_id_from_metadata(self):
+        row = self._build_row(metadata_overrides={"trace_id": "abc123"})
+        assert row["trace_id"] == "abc123"
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TESTS – build_non_rag_row
@@ -412,6 +420,7 @@ class TestBuildNonRagRow:
             qr=qr,
             pipeline=pipeline,
             session_state={"session_id": "s1", "conversation_id": "c1", "turns": []},
+            trace_id="trace-non-rag",
         )
 
     def test_backend_is_intent_gating(self):
@@ -428,9 +437,13 @@ class TestBuildNonRagRow:
 
     def test_required_fields_present(self):
         row = self._build_row()
-        required = ["ts", "turn_id", "question", "answer", "session_id", "conversation_id", "turn_index", "rag_version", "v3_intent"]
+        required = ["ts", "turn_id", "trace_id", "question", "answer", "session_id", "conversation_id", "turn_index", "rag_version", "v3_intent"]
         missing = [c for c in required if c not in row]
         assert not missing, f"Missing: {missing}"
+
+    def test_trace_id_present(self):
+        row = self._build_row()
+        assert row["trace_id"] == "trace-non-rag"
 
     def test_serializable(self):
         row = self._build_row()
@@ -494,6 +507,62 @@ class TestLogRun:
         row = {"turn_id": "abc", "question": "hello"}
         log_run(row, engine=mock_engine, csv_path=csv_path, csv_fields=["turn_id", "question"])
         assert csv_path.exists()
+
+
+class TestTraceEvents:
+    def test_trace_event_sql_uses_jsonb_casts(self):
+        sql = _build_trace_event_upsert_sql()
+        assert "INSERT INTO rag_trace_events" in sql
+        assert "ON CONFLICT (turn_id, event_index)" in sql
+        assert "CAST(:input_ref AS jsonb)" in sql
+        assert "CAST(:output_ref AS jsonb)" in sql
+        assert "CAST(:metrics AS jsonb)" in sql
+
+    def test_prepare_trace_event_rows_bounds_defaults(self):
+        rows = _prepare_trace_event_rows(
+            turn_id="abc",
+            trace_id="trace-id",
+            env_label="staging",
+            events=[
+                {
+                    "stage": "retriever",
+                    "attempt_name": "initial",
+                    "duration_ms": 12.9,
+                    "status": "ok",
+                    "input_ref": {"query": "q"},
+                    "output_ref": {"retrieved_chunks": [{"chunk_id": "c1"}]},
+                    "metrics": {"chunk_count": 1},
+                    "error_message": "x" * 3000,
+                }
+            ],
+        )
+
+        assert rows[0]["turn_id"] == "abc"
+        assert len(rows[0]["trace_id"]) == 32
+        assert rows[0]["env"] == "staging"
+        assert rows[0]["event_index"] == 0
+        assert rows[0]["duration_ms"] == 12
+        assert json.loads(rows[0]["output_ref"])["retrieved_chunks"][0]["chunk_id"] == "c1"
+        assert len(rows[0]["error_message"]) == 2000
+
+    def test_log_trace_events_calls_db_and_commit(self):
+        mock_conn = MagicMock()
+        mock_engine = MagicMock()
+        mock_engine.connect.return_value.__enter__ = lambda _: mock_conn
+        mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("assistant_rh_rag_pipeline.chat_logger.export_events_to_otel") as mock_export:
+            log_trace_events(
+                [{"stage": "retriever", "duration_ms": 1, "output_ref": {"retrieved_chunks": []}}],
+                turn_id="abc",
+                trace_id="def",
+                engine=mock_engine,
+                env_label="staging",
+            )
+
+        mock_conn.execute.assert_called_once()
+        mock_conn.commit.assert_called_once()
+        mock_export.assert_called_once()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

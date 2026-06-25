@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from .models import estimate_tokens
+from .tracing import export_events_to_otel, normalize_trace_id
 
 if TYPE_CHECKING:
     from .config import RAGConfig
@@ -81,6 +82,24 @@ JSONB_COLUMNS: set[str] = {
     "v3_sections_after_rerank",
 }
 
+TRACE_EVENT_JSONB_COLUMNS: set[str] = {"input_ref", "output_ref", "metrics"}
+
+TRACE_EVENT_COLUMNS: tuple[str, ...] = (
+    "turn_id",
+    "trace_id",
+    "env",
+    "event_index",
+    "stage",
+    "attempt_name",
+    "duration_ms",
+    "status",
+    "input_ref",
+    "output_ref",
+    "metrics",
+    "error_type",
+    "error_message",
+)
+
 
 # ---------------------------------------------------------------------------
 # Dynamic SQL generation
@@ -98,6 +117,16 @@ def _build_upsert_sql(data: dict) -> str:
     update_set = ", ".join(f'"{c}" = EXCLUDED."{c}"' if c == "table" else f"{c} = EXCLUDED.{c}" for c in update_cols)
     col_names = ", ".join(f'"{c}"' if c == "table" else c for c in cols)
     return f"INSERT INTO chat_runs ({col_names}) VALUES ({', '.join(values)}) ON CONFLICT (turn_id) DO UPDATE SET {update_set}"
+
+
+def _build_trace_event_upsert_sql() -> str:
+    values = [f"CAST(:{c} AS jsonb)" if c in TRACE_EVENT_JSONB_COLUMNS else f":{c}" for c in TRACE_EVENT_COLUMNS]
+    updates = [c for c in TRACE_EVENT_COLUMNS if c not in ("turn_id", "event_index")]
+    update_set = ", ".join(f"{c} = EXCLUDED.{c}" for c in updates)
+    return (
+        f"INSERT INTO rag_trace_events ({', '.join(TRACE_EVENT_COLUMNS)}) VALUES ({', '.join(values)}) "
+        f"ON CONFLICT (turn_id, event_index) DO UPDATE SET {update_set}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +178,7 @@ def build_log_row(
     context_items: list,
     v1_chunks_for_display: list,
     legal_refs_v3: list,
+    trace_id: str | None = None,
 ) -> dict:
     """Build a complete logging dict from pipeline objects.
 
@@ -222,6 +252,7 @@ def build_log_row(
     row: dict = {
         "ts": dt.datetime.now(dt.UTC).isoformat(),
         "turn_id": turn_id,
+        "trace_id": trace_id or v3_metadata.get("trace_id", ""),
         "question": query,
         "answer": response,
         "rag_version": "v3",
@@ -364,12 +395,14 @@ def build_non_rag_row(
     pipeline: "Pipeline",
     session_state: dict,
     runtime_config: Any = None,
+    trace_id: str | None = None,
 ) -> dict:
     """Build a minimal log row for non-RAG turns (chit-chat, out-of-scope)."""
     _intent_val = qr.intent.value if qr.intent else "unknown"
     return {
         "ts": dt.datetime.now(dt.UTC).isoformat(),
         "turn_id": turn_id,
+        "trace_id": trace_id or "",
         "question": query,
         "answer": response,
         "provider": getattr(runtime_config, "llm_provider", "") if runtime_config else "",
@@ -537,3 +570,78 @@ def log_run(row: dict, engine=None, csv_path: Optional[Path] = None, csv_fields:
 
     if csv_path and csv_fields:
         _append_csv_row(csv_path, csv_fields, data)
+
+
+def _env_label(explicit: str | None = None) -> str:
+    import os
+
+    value = (explicit or os.getenv("APP_ENV") or os.getenv("APP_SCALEWAY_ENV") or "").strip().lower()
+    if value == "production":
+        return "prod"
+    return value
+
+
+def _prepare_trace_event_rows(
+    *,
+    turn_id: str,
+    trace_id: str,
+    events: list[dict[str, Any]],
+    env_label: str,
+) -> list[dict[str, Any]]:
+    normalized_trace_id = normalize_trace_id(trace_id)
+    rows: list[dict[str, Any]] = []
+    for index, event in enumerate(events):
+        if not isinstance(event, dict):
+            continue
+        rows.append(
+            {
+                "turn_id": turn_id,
+                "trace_id": normalized_trace_id,
+                "env": env_label,
+                "event_index": index,
+                "stage": str(event.get("stage", "") or ""),
+                "attempt_name": str(event.get("attempt_name", "") or ""),
+                "duration_ms": int(event.get("duration_ms", 0) or 0),
+                "status": str(event.get("status", "ok") or "ok"),
+                "input_ref": _jdumps(event.get("input_ref", {})),
+                "output_ref": _jdumps(event.get("output_ref", {})),
+                "metrics": _jdumps(event.get("metrics", {})),
+                "error_type": str(event.get("error_type", "") or ""),
+                "error_message": str(event.get("error_message", "") or "")[:2000],
+            }
+        )
+    return rows
+
+
+def log_trace_events(
+    events: list[dict[str, Any]],
+    *,
+    turn_id: str,
+    trace_id: str,
+    engine=None,
+    env_label: str | None = None,
+) -> None:
+    """Persist per-stage RAG trace events and export compact OTEL spans.
+
+    This function is best effort. Database errors and OTEL export failures are
+    logged but do not propagate to the caller.
+    """
+    if not events:
+        return
+    env = _env_label(env_label)
+    normalized_trace_id = normalize_trace_id(trace_id)
+    rows = _prepare_trace_event_rows(turn_id=turn_id, trace_id=normalized_trace_id, events=events, env_label=env)
+
+    if engine and rows:
+        try:
+            from sqlalchemy import text
+
+            sql = _build_trace_event_upsert_sql()
+            with engine.connect() as conn:
+                for row in rows:
+                    conn.execute(text(sql), row)
+                conn.commit()
+        except Exception as exc:
+            logger.warning("PostgreSQL trace-event log failed: %s", exc)
+
+    export_events_to_otel(turn_id=turn_id, trace_id=normalized_trace_id, events=events, env_label=env)
