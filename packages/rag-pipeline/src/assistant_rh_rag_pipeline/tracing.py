@@ -16,6 +16,7 @@ import threading
 import time
 import uuid
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
@@ -226,8 +227,13 @@ def _resolve_otlp_traces_endpoint() -> str:
     base = (os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or "").strip().rstrip("/")
     if not base:
         return ""
-    if base.endswith("/v1/traces"):
+    if base.endswith(("/v1/traces", "/otlp/v1/traces")):
         return base
+    parsed = urlparse(base)
+    if ".traces.cockpit." in parsed.netloc:
+        if parsed.path.rstrip("/").endswith("/otlp"):
+            return f"{base}/v1/traces"
+        return f"{base}/otlp/v1/traces"
     return f"{base}/v1/traces"
 
 

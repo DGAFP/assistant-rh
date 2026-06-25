@@ -25,6 +25,15 @@ def test_trace_dashboard_declares_expected_variables() -> None:
         assert name in variables
 
 
+def test_trace_dashboard_defaults_text_filters_to_match_all_regex() -> None:
+    variables = {variable["name"]: variable for variable in _dashboard()["templating"]["list"]}
+
+    assert variables["turn_id"]["current"]["value"] == ".*"
+    assert variables["turn_id"]["current"]["text"] == ".*"
+    assert variables["trace_id"]["current"]["value"] == ".*"
+    assert variables["trace_id"]["current"]["text"] == ".*"
+
+
 def test_trace_dashboard_uses_portable_datasource_uids() -> None:
     datasources = [panel["datasource"] for panel in _dashboard()["panels"] if "datasource" in panel]
 

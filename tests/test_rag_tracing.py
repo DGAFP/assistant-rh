@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from assistant_rh_rag_pipeline.tracing import (
     _build_otlp_payload,
+    _resolve_otlp_traces_endpoint,
     _send_otlp_payload,
     bounded_preview,
     export_events_to_otel,
@@ -87,6 +88,28 @@ def test_export_events_to_otel_starts_background_thread_when_enabled(monkeypatch
     assert kwargs["daemon"] is True
     mock_thread.return_value.start.assert_called_once()
     mock_post.assert_not_called()
+
+
+def test_resolve_otlp_endpoint(monkeypatch) -> None:
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
+    cases = [
+        ("https://tempo.example", "https://tempo.example/v1/traces"),
+        ("https://tempo.example/v1/traces", "https://tempo.example/v1/traces"),
+        ("https://trace-id.traces.cockpit.fr-par.scw.cloud", "https://trace-id.traces.cockpit.fr-par.scw.cloud/otlp/v1/traces"),
+        ("https://trace-id.traces.cockpit.fr-par.scw.cloud/otlp", "https://trace-id.traces.cockpit.fr-par.scw.cloud/otlp/v1/traces"),
+        ("https://trace-id.traces.cockpit.fr-par.scw.cloud/otlp/v1/traces", "https://trace-id.traces.cockpit.fr-par.scw.cloud/otlp/v1/traces"),
+    ]
+
+    for configured_endpoint, expected_endpoint in cases:
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", configured_endpoint)
+        assert _resolve_otlp_traces_endpoint() == expected_endpoint
+
+
+def test_resolve_otlp_endpoint_prefers_explicit_traces_endpoint(monkeypatch) -> None:
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://trace-id.traces.cockpit.fr-par.scw.cloud")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "https://custom.example/custom/path")
+
+    assert _resolve_otlp_traces_endpoint() == "https://custom.example/custom/path"
 
 
 def test_send_otlp_payload_posts(monkeypatch) -> None:

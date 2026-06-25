@@ -23,11 +23,12 @@ Set these values on the GitHub environment used by the Streamlit deploy workflow
 ```bash
 RAG_TRACING_ENABLED=true
 OTEL_SERVICE_NAME=assistant-rh
-OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://.../v1/traces
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://<trace-datasource-id>.traces.cockpit.fr-par.scw.cloud/otlp/v1/traces
 OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer ...
 ```
 
-`OTEL_EXPORTER_OTLP_ENDPOINT` is also supported. When only the base endpoint is set, the application appends `/v1/traces`.
+`OTEL_EXPORTER_OTLP_ENDPOINT` is also supported. When only the base endpoint is set, the application appends `/v1/traces` for standard
+OTLP endpoints and `/otlp/v1/traces` for Scaleway Cockpit trace endpoints.
 
 Keep `OTEL_EXPORTER_OTLP_HEADERS` as a GitHub secret. The Streamlit deploy helper passes it to the Scaleway container as a secret environment variable.
 

@@ -322,8 +322,8 @@
       {
         "current": {
           "selected": false,
-          "text": "",
-          "value": ""
+          "text": ".*",
+          "value": ".*"
         },
         "label": "Turn ID",
         "name": "turn_id",
@@ -333,8 +333,8 @@
       {
         "current": {
           "selected": false,
-          "text": "",
-          "value": ""
+          "text": ".*",
+          "value": ".*"
         },
         "label": "Trace ID",
         "name": "trace_id",
