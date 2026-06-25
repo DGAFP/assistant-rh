@@ -4,7 +4,7 @@ This runbook describes the Assistant RH per-turn RAG trace pipeline:
 
 - Streamlit writes compact stage events to `rag_trace_events`.
 - Streamlit optionally exports the same events as OTLP/HTTP spans.
-- Grafana reads traces from a Tempo-compatible data source and joins drilldown tables from PostgreSQL.
+- Grafana reads trace drilldowns from a Tempo-compatible data source and aggregate trace metrics from the existing RAG Health Prometheus exporter.
 
 ## Cockpit and Grafana prerequisites
 
@@ -13,8 +13,8 @@ Create or identify these in the target Scaleway Cockpit/Grafana workspace:
 - a traces/Tempo-compatible OTLP HTTP ingest endpoint
 - a token or header value accepted by that OTLP ingest endpoint
 - a Grafana API token allowed to import dashboards
-- a Grafana PostgreSQL data source that can read `rag_trace_events`
 - a Grafana Tempo data source connected to the same trace ingest backend
+- the RAG Health exporter deployed for the target environment, so `assistant_rh_rag_trace_*` metrics are pushed to Cockpit metrics
 
 ## Streamlit trace export configuration
 
@@ -54,7 +54,7 @@ Run the manual `RAG Trace Dashboard Deploy` workflow and select the target envir
 After import, select the Grafana variables:
 
 - `trace_datasource`: the Tempo-compatible trace source
-- `postgres_datasource`: the PostgreSQL source connected to the Assistant RH database
+- `metrics_datasource`: the Cockpit Prometheus-compatible source used by RAG Health
 - `env`: `staging`, `prod`, or `All`
 
 ## Verification
@@ -62,7 +62,8 @@ After import, select the Grafana variables:
 1. Ask a RAG question in the deployed Streamlit app.
 2. Confirm the turn appears in `chat_runs` with a `trace_id`.
 3. Confirm `rag_trace_events` has rows for the same `turn_id` and `trace_id`.
-4. Open the Grafana dashboard and filter by that `turn_id` or `trace_id`.
-5. Confirm the Tempo panels show spans and the PostgreSQL panels show bounded stage/chunk drilldowns.
+4. Confirm the RAG Health exporter exposes `assistant_rh_rag_trace_*` metrics on `/metrics`.
+5. Open the Grafana dashboard and filter by that `turn_id` or `trace_id`.
+6. Confirm the Tempo panels show spans and the Prometheus panels show trace volume, latency, error, and freshness metrics.
 
-Trace export is best effort. PostgreSQL persistence remains the primary debugging source if the external trace backend is unavailable.
+Trace export is best effort. PostgreSQL persistence remains the primary admin debugging source if the external trace backend is unavailable, but the Grafana dashboard intentionally avoids a direct PostgreSQL data source requirement.

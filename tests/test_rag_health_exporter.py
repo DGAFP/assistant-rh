@@ -166,6 +166,37 @@ def test_collector_emits_counts_coverage_and_integrity_for_available_tables(monk
     assert chunks_test_embedding_calls == [("embedding_raw", "embedding_bge")]
 
 
+def test_collector_emits_trace_metrics_when_trace_table_is_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    collector = exporter.RagHealthCollector(env_label="staging")
+    columns = {
+        "rag_trace_events": {
+            "turn_id",
+            "stage",
+            "duration_ms",
+            "status",
+            "error_type",
+            "error_message",
+            "created_at",
+        }
+    }
+
+    monkeypatch.setattr(collector, "_set_statement_timeout", lambda conn: None)
+    monkeypatch.setattr(collector, "_load_columns", lambda conn: columns)
+    monkeypatch.setattr(collector, "_count_recent_trace_turns", lambda conn: 4)
+    monkeypatch.setattr(collector, "_trace_event_counts", lambda conn: [("retriever", "ok", 5), ("generator", "failed", 1)])
+    monkeypatch.setattr(collector, "_trace_stage_duration_quantiles", lambda conn: [("retriever", "0.95", 0.42)])
+    monkeypatch.setattr(collector, "_trace_error_counts", lambda conn: [("generator", "provider_error", 1)])
+    monkeypatch.setattr(collector, "_max_epoch", lambda conn, table, column: 100.0)
+
+    samples = collector.collect_from_connection(object())
+
+    assert _sample(samples, "assistant_rh_rag_trace_turns_24h_total").value == 4
+    assert _sample(samples, "assistant_rh_rag_trace_events_24h_total", stage="retriever", status="ok").value == 5
+    assert _sample(samples, "assistant_rh_rag_trace_stage_duration_seconds", stage="retriever", quantile="0.95").value == 0.42
+    assert _sample(samples, "assistant_rh_rag_trace_errors_24h_total", stage="generator", error_type="provider_error").value == 1
+    assert _sample(samples, "assistant_rh_rag_trace_last_event_timestamp_seconds").value == 100
+
+
 @pytest.mark.parametrize(
     ("table_spec", "columns"),
     [
