@@ -339,12 +339,10 @@ class Pipeline:
         retrieval_query = qr.query_for_retrieval
 
         configured_tables = list(self._retriever.config.tables)
+        active_tables = configured_tables
         force_hybrid_tables: set[str] = set()
-        if qr.needs_legal_search:
-            active_tables = configured_tables
+        if "dgafp" in active_tables:
             force_hybrid_tables.add("dgafp")
-        else:
-            active_tables = [t for t in configured_tables if t != "dgafp"]
 
         initial_attempt = self._run_retrieval_attempt(
             name="initial",

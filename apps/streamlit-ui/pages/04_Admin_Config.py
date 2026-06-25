@@ -337,7 +337,7 @@ with tab_config:
             "Tables DE activées",
             tables_available,
             default=current_tables,
-            help="dgafp automatiquement filtré sauf requêtes juridiques (intent gater)",
+            help="Sources interrogées par le retrieval V3. DGAFP/Légifrance reste actif si sélectionné.",
             key="multiselect_v3_tables"
         )
         if set(new_tables) != set(current_tables):
