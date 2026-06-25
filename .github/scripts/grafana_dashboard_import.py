@@ -63,8 +63,13 @@ def import_dashboard(
 
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            response_body = response.read().decode("utf-8")
-            return json.loads(response_body or "{}")
+            response_body = response.read().decode("utf-8", errors="replace")
+            try:
+                return json.loads(response_body or "{}")
+            except json.JSONDecodeError as exc:
+                status = getattr(response, "status", "unknown")
+                response_preview = response_body[:500]
+                raise RuntimeError(f"Grafana import returned non-JSON response with HTTP {status}: {response_preview}") from exc
     except urllib.error.HTTPError as exc:
         response_body = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Grafana import failed with HTTP {exc.code}: {response_body}") from exc

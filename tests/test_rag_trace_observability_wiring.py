@@ -92,6 +92,32 @@ def test_grafana_import_payload_rejects_uidless_dashboard() -> None:
         grafana_dashboard_import.build_payload({"title": "no uid"})
 
 
+def test_grafana_import_reports_non_json_success_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Response:
+        status = 200
+
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b"<html>Bad Gateway</html>"
+
+    def urlopen(*_args: object, **_kwargs: object) -> Response:
+        return Response()
+
+    monkeypatch.setattr(grafana_dashboard_import.urllib.request, "urlopen", urlopen)
+
+    with pytest.raises(RuntimeError, match="non-JSON response with HTTP 200"):
+        grafana_dashboard_import.import_dashboard(
+            grafana_url="https://grafana.example",
+            api_token="token",
+            payload={"dashboard": {"uid": "assistant-rh-rag-trace-explorer"}, "overwrite": True},
+        )
+
+
 def test_rag_trace_dashboard_workflow_imports_expected_dashboard() -> None:
     workflow = (REPO_ROOT / ".github/workflows/rag-trace-dashboard-deploy.yml").read_text(encoding="utf-8")
 
