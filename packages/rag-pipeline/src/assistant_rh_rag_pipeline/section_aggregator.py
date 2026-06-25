@@ -18,15 +18,15 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
-from typing import Dict, List
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
 
 import psycopg
 from psycopg.rows import dict_row
 
 from .config import SectionAggregationConfig
 from .db_helpers import get_dsn
-from .models import AggregatedSection, RetrievedChunk
+from .models import AggregatedSection, RetrievedChunk, serialize_section_chunks
 from .reranker import AlbertReranker
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,8 @@ class SectionAggregationDiagnostics:
     sections_after_rerank: int = 0
     reranker_status: str = "not_run"
     reranker_error: str = ""
+    chunks_before_rerank: list[dict[str, Any]] = field(default_factory=list)
+    chunks_after_rerank: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -148,14 +150,17 @@ class SectionAggregator:
         sections.sort(key=lambda s: s.score, reverse=True)
 
         sections_before_rerank = len(sections)
+        chunks_before_rerank = serialize_section_chunks(sections)
         reranker_status = "not_run"
         reranker_error = ""
+        reranked = False
         if not self.config.enable_section_reranker:
             reranker_status = "disabled"
         elif not query:
             reranker_status = "skipped_no_query"
         else:
             sections, reranker_status, reranker_error = self._rerank(query, sections)
+            reranked = reranker_status == "completed"
 
         return SectionAggregationResult(
             sections=sections,
@@ -164,6 +169,8 @@ class SectionAggregator:
                 sections_after_rerank=len(sections),
                 reranker_status=reranker_status,
                 reranker_error=reranker_error,
+                chunks_before_rerank=chunks_before_rerank,
+                chunks_after_rerank=serialize_section_chunks(sections, include_rerank_score=reranked),
             ),
         )
 
