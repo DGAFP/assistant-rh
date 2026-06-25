@@ -385,7 +385,9 @@ class TestBuildLogRow:
         assert row["provider"] == "albert"
         assert row["model"] == "openweight-large"
         assert row["temperature"] == 0.15
-        assert row["table"] == "rag_chunks_dgafp,rag_chunks_service_public,rag_chunks_test"
+        assert row["table"] == "dgafp,sp,test"
+        assert row["cascade_source"] == "dgafp,sp,test"
+        assert len(row["table"]) <= 30
         assert row["embed_col"] == "embedding_m3,embedding_raw"
         assert row["retrieval_mode"] == "semantic"
         assert row["chunk_selection_mode"] == "V3_STANDARD"
@@ -605,6 +607,11 @@ class TestPrepareData:
         assert out.get("rag_version") is None
         assert out.get("user_group") is None
 
+    def test_legacy_short_columns_are_bounded(self):
+        out = _prepare_data({"table": "x" * 40, "cascade_source": "y" * 40})
+        assert out["table"] == "x" * 30
+        assert out["cascade_source"] == "y" * 30
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TESTS – log_run (mocked DB)
@@ -639,6 +646,12 @@ class TestLogRun:
         csv_path = tmp_path / "test.csv"
         row = {"turn_id": "abc", "question": "hello"}
         log_run(row, engine=mock_engine, csv_path=csv_path, csv_fields=["turn_id", "question"])
+        assert csv_path.exists()
+
+    def test_csv_fallback_creates_parent_directory(self, tmp_path):
+        csv_path = tmp_path / "missing" / "chat_runs.csv"
+        row = {"turn_id": "abc", "question": "hello"}
+        log_run(row, engine=None, csv_path=csv_path, csv_fields=["turn_id", "question"])
         assert csv_path.exists()
 
 
