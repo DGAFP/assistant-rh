@@ -29,7 +29,7 @@ from .context_builder import ContextBuilder
 from .context_selector import ContextSelector
 from .db_helpers import get_dsn
 from .generator import StreamingGenerator
-from .models import ContextItem, PipelineResult, estimate_tokens
+from .models import ContextItem, PipelineResult, estimate_tokens, serialize_raw_chunks, serialize_section_chunks
 from .query_processor import QueryProcessor, QueryProcessResult
 from .retriever import Retriever
 from .section_aggregator import SectionAggregator
@@ -65,6 +65,10 @@ class _RetrievalAttempt:
     retrieved_chunks: list[dict[str, Any]] = field(default_factory=list)
     aggregated_sections: list[dict[str, Any]] = field(default_factory=list)
     context_items_ref: list[dict[str, Any]] = field(default_factory=list)
+    chunks_raw: list[dict[str, Any]] = field(default_factory=list)
+    chunks_before_rerank: list[dict[str, Any]] = field(default_factory=list)
+    chunks_after_rerank: list[dict[str, Any]] = field(default_factory=list)
+    context_before_selector: list[dict[str, Any]] = field(default_factory=list)
     selector_decisions: dict[str, Any] = field(default_factory=dict)
     selector_reasoning: str = ""
     selector_raw_response: str = ""
@@ -86,6 +90,10 @@ class _RetrievalAttempt:
             "retrieved_chunks": self.retrieved_chunks,
             "aggregated_sections": self.aggregated_sections,
             "context_items_ref": self.context_items_ref,
+            "chunks_raw": self.chunks_raw,
+            "chunks_before_rerank": self.chunks_before_rerank,
+            "chunks_after_rerank": self.chunks_after_rerank,
+            "context_before_selector": self.context_before_selector,
             "selector": {
                 "decisions": self.selector_decisions,
                 "reason": self.selector_reasoning,
@@ -476,6 +484,7 @@ class Pipeline:
             }
             for c in chunks
         ]
+        attempt.chunks_raw = serialize_raw_chunks(chunks)
         state.trace_events.append(
             make_trace_event(
                 stage="retriever",
@@ -508,6 +517,8 @@ class Pipeline:
         attempt.sections_after_rerank = int(getattr(diagnostics, "sections_after_rerank", 0) or 0)
         attempt.reranker_status = str(getattr(diagnostics, "reranker_status", "") or "")
         attempt.reranker_error = str(getattr(diagnostics, "reranker_error", "") or "")
+        attempt.chunks_before_rerank = list(getattr(diagnostics, "chunks_before_rerank", []) or [])
+        attempt.chunks_after_rerank = list(getattr(diagnostics, "chunks_after_rerank", []) or [])
         attempt.aggregated_sections = [
             {
                 "section_id": str(s.section_id) if s.section_id else "",
@@ -520,6 +531,10 @@ class Pipeline:
             }
             for s in sections
         ]
+        attempt.context_before_selector = serialize_section_chunks(
+            sections,
+            include_rerank_score=attempt.reranker_status == "completed",
+        )
         aggregation_status = "failed" if attempt.reranker_status == "failed" else "ok" if sections else "empty"
         state.trace_events.append(
             make_trace_event(
@@ -640,6 +655,10 @@ class Pipeline:
         state.stage_refs["retrieved_chunks"] = latest.retrieved_chunks
         state.stage_refs["aggregated_sections"] = latest.aggregated_sections
         state.stage_refs["context_items_ref"] = latest.context_items_ref
+        state.stage_refs["chunks_raw"] = latest.chunks_raw
+        state.stage_refs["chunks_before_rerank"] = latest.chunks_before_rerank
+        state.stage_refs["chunks_after_rerank"] = latest.chunks_after_rerank
+        state.stage_refs["context_before_selector"] = latest.context_before_selector
         state.stage_refs["selector_decisions"] = latest.selector_decisions
         state.stage_refs["selector_reasoning"] = latest.selector_reasoning
         state.stage_refs["selector_raw_response"] = latest.selector_raw_response
@@ -710,6 +729,10 @@ class Pipeline:
             "retrieved_chunks": state.stage_refs.get("retrieved_chunks", []),
             "aggregated_sections": state.stage_refs.get("aggregated_sections", []),
             "context_items_ref": state.stage_refs.get("context_items_ref", []),
+            "chunks_raw": state.stage_refs.get("chunks_raw", []),
+            "chunks_before_rerank": state.stage_refs.get("chunks_before_rerank", []),
+            "chunks_after_rerank": state.stage_refs.get("chunks_after_rerank", []),
+            "context_before_selector": state.stage_refs.get("context_before_selector", []),
             "selector_decisions": state.stage_refs.get("selector_decisions", {}),
             "selector_reasoning": state.stage_refs.get("selector_reasoning", ""),
             "selector_rejection_reason": state.stage_refs.get("selector_rejection_reason", ""),

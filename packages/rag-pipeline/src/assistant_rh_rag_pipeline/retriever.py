@@ -955,6 +955,11 @@ class Retriever:
                     import json
 
                     meta = json.loads(meta)
+                if not isinstance(meta, dict):
+                    meta = {}
+                meta = dict(meta)
+                if row.get("doc_id") is not None:
+                    meta.setdefault("doc_id", row.get("doc_id"))
 
                 chunks.append(
                     RetrievedChunk(

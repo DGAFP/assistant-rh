@@ -15,10 +15,12 @@ from unittest.mock import MagicMock, patch
 
 from assistant_rh_rag_pipeline.config import RAGConfig, SearchMode, SelectorConfig
 from assistant_rh_rag_pipeline.models import (
+    CHUNK_LOG_KEYS,
     AggregatedSection,
     ContextItem,
     PipelineResult,
     RetrievedChunk,
+    serialize_section_chunks,
 )
 from assistant_rh_rag_pipeline.query_processor import Intent, QueryProcessResult
 from assistant_rh_rag_pipeline.section_aggregator import (
@@ -72,6 +74,8 @@ def _aggregation_result(
             sections_before_rerank=len(sections) if before is None else before,
             sections_after_rerank=len(sections) if after is None else after,
             reranker_status=reranker_status,
+            chunks_before_rerank=serialize_section_chunks(sections),
+            chunks_after_rerank=serialize_section_chunks(sections, include_rerank_score=reranker_status == "completed"),
         ),
     )
 
@@ -198,6 +202,20 @@ class TestPipelineE2E:
 
         # Timing should be populated
         assert isinstance(result.timing, dict)
+
+        # Chunk-level traces are carried through v3_metadata for chat_runs logging.
+        meta = result.metadata
+        assert len(meta["chunks_raw"]) == 6
+        raw_entry = meta["chunks_raw"][0]
+        assert tuple(raw_entry.keys()) == CHUNK_LOG_KEYS
+        assert raw_entry["doc_id"] == "doc_0"
+        assert raw_entry["doc_publisher"] == "MATTE"
+        assert raw_entry["section_heading"] == "Section 0"
+        assert raw_entry["rerank_score"] is None
+        assert meta["chunks_before_rerank"][0]["rerank_score"] is None
+        assert meta["chunks_after_rerank"][0]["rerank_score"] is not None
+        assert meta["context_before_selector"][0]["rerank_score"] is not None
+        assert meta["retrieval_attempts"][0]["chunks_raw"] == meta["chunks_raw"]
 
     @patch("assistant_rh_rag_pipeline.pipeline.StreamingGenerator")
     @patch("assistant_rh_rag_pipeline.pipeline.ContextBuilder")

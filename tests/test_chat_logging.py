@@ -40,6 +40,14 @@ from assistant_rh_rag_pipeline.chat_logger import (
     log_run,
     log_trace_events,
 )
+from assistant_rh_rag_pipeline.models import (
+    CHUNK_LOG_KEYS,
+    CHUNK_LOG_MARKDOWN_PREVIEW,
+    AggregatedSection,
+    RetrievedChunk,
+    serialize_raw_chunks,
+    serialize_section_chunks,
+)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # MOCK PIPELINE OBJECTS
@@ -395,6 +403,65 @@ class TestBuildLogRow:
     def test_trace_id_from_metadata(self):
         row = self._build_row(metadata_overrides={"trace_id": "abc123"})
         assert row["trace_id"] == "abc123"
+
+    def test_chunk_trace_columns_are_persisted_from_metadata(self):
+        chunk = RetrievedChunk(
+            chunk_id="LEGIARTI000044426716#1",
+            text="x" * (CHUNK_LOG_MARKDOWN_PREVIEW + 50),
+            score=0.123456789,
+            table_source="DGAFP",
+            metadata={
+                "cid": "LEGIARTI000044426716",
+                "full_title": "Code général de la fonction publique",
+                "title": "Article L332-2",
+                "number": "L332-2",
+                "heading": "Article L332-2",
+            },
+        )
+        section = AggregatedSection(
+            section_id=None,
+            heading="",
+            markdown=chunk.text,
+            chunks=[chunk],
+            score=0.987654321,
+            publisher="DGAFP",
+            metadata={
+                "cid": "LEGIARTI000044426716",
+                "full_title": "Code général de la fonction publique",
+                "title": "Article L332-2",
+                "number": "L332-2",
+            },
+        )
+        chunks_raw = serialize_raw_chunks([chunk])
+        chunks_before_rerank = serialize_section_chunks([section])
+        chunks_after_rerank = serialize_section_chunks([section], include_rerank_score=True)
+
+        row = self._build_row(
+            metadata_overrides={
+                "chunks_raw": chunks_raw,
+                "chunks_before_rerank": chunks_before_rerank,
+                "chunks_after_rerank": chunks_after_rerank,
+                "context_before_selector": chunks_after_rerank,
+            }
+        )
+
+        raw = json.loads(row["v3_chunks_raw"])
+        before = json.loads(row["v3_chunks_before_rerank"])
+        after = json.loads(row["v3_chunks_after_rerank"])
+        context = json.loads(row["v3_context_before_selector"])
+
+        for entries in (raw, before, after, context):
+            assert len(entries) == 1
+            assert tuple(entries[0].keys()) == CHUNK_LOG_KEYS
+            assert len(entries[0]["chunk_markdown"]) == CHUNK_LOG_MARKDOWN_PREVIEW
+
+        assert raw[0]["doc_id"] == "LEGIARTI000044426716"
+        assert raw[0]["doc_title"] == "Code général de la fonction publique"
+        assert raw[0]["section_heading"] == "Article L332-2"
+        assert raw[0]["rerank_score"] is None
+        assert before[0]["rerank_score"] is None
+        assert after[0]["rerank_score"] == 0.987654
+        assert context[0] == after[0]
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
