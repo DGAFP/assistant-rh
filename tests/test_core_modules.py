@@ -607,6 +607,7 @@ class TestSectionAggregator:
             score=0.99,
             table_source="DGAFP",
             metadata={
+                "source_document_id": "LEGIARTI000045662634",
                 "cid": "LEGIARTI000045662634",
                 "full_title": ("Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat"),
                 "title": "Décret n° 86-83 du 17 janvier 1986",
@@ -622,8 +623,8 @@ class TestSectionAggregator:
         assert sections[0].section_id is None
         assert sections[0].document_id is None
         assert sections[0].heading == ""
-        assert sections[0].metadata["doc_id"] == ""
-        assert sections[0].metadata["doc_short_id"] == ""
+        assert sections[0].metadata["doc_id"] == "LEGIARTI000045662634"
+        assert sections[0].metadata["doc_short_id"] == "LEGIARTI000045662634"
         assert sections[0].metadata["doc_title"] == ""
         assert (
             sections[0].metadata["full_title"]
@@ -631,6 +632,36 @@ class TestSectionAggregator:
         )
         assert sections[0].metadata["cid"] == "LEGIARTI000045662634"
         assert sections[0].metadata["number"] == "Article 1-3"
+
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._load_full_document")
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._resolve_cids", return_value={})
+    @patch("assistant_rh_rag_pipeline.section_aggregator.SectionAggregator._fetch_sections")
+    def test_standalone_source_document_id_does_not_trigger_doc_entire(self, mock_fetch, _mock_refs, mock_load_doc):
+        from assistant_rh_rag_pipeline.config import ContextBuildConfig, SectionAggregationConfig
+        from assistant_rh_rag_pipeline.context_builder import ContextBuilder
+        from assistant_rh_rag_pipeline.section_aggregator import SectionAggregator
+
+        mock_fetch.return_value = {}
+        chunk = RetrievedChunk(
+            chunk_id="LEGIARTI000045662634_0",
+            text="Article 1-3 text",
+            score=0.99,
+            table_source="DGAFP",
+            metadata={
+                "source_document_id": "LEGIARTI000045662634",
+                "cid": "LEGIARTI000045662634",
+                "number": "Article 1-3",
+            },
+            section_id=None,
+        )
+
+        sections = SectionAggregator(SectionAggregationConfig(), dsn="unused").aggregate([chunk])
+        result = ContextBuilder(ContextBuildConfig(max_full_docs=1, doc_entire_threshold=500, max_sections=5), dsn="unused").build(sections)
+
+        mock_load_doc.assert_not_called()
+        assert len(result) == 1
+        assert result[0].metadata.get("is_doc_entire") is not True
+        assert result[0].metadata["doc_id"] == "LEGIARTI000045662634"
 
 
 # ---------------------------------------------------------------------------

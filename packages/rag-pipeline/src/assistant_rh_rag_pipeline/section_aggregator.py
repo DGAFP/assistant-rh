@@ -140,7 +140,7 @@ class SectionAggregator:
                     markdown=meta.get("section_markdown", first.text),
                     chunks=group,
                     score=agg_score,
-                    document_id=str(doc_id) if doc_id else None,
+                    document_id=str(doc_id) if doc_id and not is_standalone else None,
                     publisher=meta.get("doc_publisher") or first.table_source,
                     references_juridiques=meta.get("references_juridiques"),
                     heading_path=meta.get("heading_path"),
