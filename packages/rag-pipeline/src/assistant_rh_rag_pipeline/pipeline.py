@@ -338,8 +338,7 @@ class Pipeline:
     def _retrieve_and_build(self, qr: QueryProcessResult, state: _RunState) -> List[ContextItem]:
         retrieval_query = qr.query_for_retrieval
 
-        configured_tables = list(self._retriever.config.tables)
-        active_tables = configured_tables
+        active_tables = list(self._retriever.config.tables)
         force_hybrid_tables: set[str] = set()
         if "dgafp" in active_tables:
             force_hybrid_tables.add("dgafp")
