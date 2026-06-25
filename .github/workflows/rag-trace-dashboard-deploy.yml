@@ -27,6 +27,7 @@ jobs:
     env:
       GRAFANA_URL: ${{ vars.COCKPIT_GRAFANA_URL || vars.GRAFANA_URL || secrets.COCKPIT_GRAFANA_URL || secrets.GRAFANA_URL }}
       GRAFANA_API_TOKEN: ${{ secrets.COCKPIT_GRAFANA_API_TOKEN || secrets.GRAFANA_API_TOKEN }}
+      GRAFANA_BASIC_AUTH: ${{ secrets.COCKPIT_GRAFANA_BASIC_AUTH || secrets.GRAFANA_BASIC_AUTH }}
       GRAFANA_FOLDER_UID: ${{ vars.RAG_TRACE_GRAFANA_FOLDER_UID || vars.GRAFANA_FOLDER_UID }}
 
     steps:
@@ -39,13 +40,15 @@ jobs:
           missing=()
           required=(
             GRAFANA_URL
-            GRAFANA_API_TOKEN
           )
           for name in "${required[@]}"; do
             if [[ -z "${!name:-}" ]]; then
               missing+=("$name")
             fi
           done
+          if [[ -z "${GRAFANA_API_TOKEN:-}" && -z "${GRAFANA_BASIC_AUTH:-}" ]]; then
+            missing+=("GRAFANA_API_TOKEN or GRAFANA_BASIC_AUTH")
+          fi
           if (( ${#missing[@]} > 0 )); then
             echo "Missing required secret/variable(s): ${missing[*]}" >&2
             exit 1

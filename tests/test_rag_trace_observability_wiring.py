@@ -92,6 +92,16 @@ def test_grafana_import_payload_rejects_uidless_dashboard() -> None:
         grafana_dashboard_import.build_payload({"title": "no uid"})
 
 
+def test_grafana_import_auth_headers_support_bearer_and_basic() -> None:
+    assert grafana_dashboard_import.auth_headers(api_token="grafana-token") == {"Authorization": "Bearer grafana-token"}
+    assert grafana_dashboard_import.auth_headers(basic_auth="user:password") == {"Authorization": "Basic dXNlcjpwYXNzd29yZA=="}
+
+
+def test_grafana_import_auth_headers_require_credentials() -> None:
+    with pytest.raises(RuntimeError, match="GRAFANA_API_TOKEN or GRAFANA_BASIC_AUTH"):
+        grafana_dashboard_import.auth_headers()
+
+
 def test_grafana_import_reports_non_json_success_response(monkeypatch: pytest.MonkeyPatch) -> None:
     class Response:
         status = 200
@@ -125,4 +135,6 @@ def test_rag_trace_dashboard_workflow_imports_expected_dashboard() -> None:
     assert "grafana_dashboard_import.py" in workflow
     assert "COCKPIT_GRAFANA_URL" in workflow
     assert "COCKPIT_GRAFANA_API_TOKEN" in workflow
+    assert "COCKPIT_GRAFANA_BASIC_AUTH" in workflow
+    assert "GRAFANA_API_TOKEN or GRAFANA_BASIC_AUTH" in workflow
     assert "RAG_TRACE_GRAFANA_FOLDER_UID" in workflow
