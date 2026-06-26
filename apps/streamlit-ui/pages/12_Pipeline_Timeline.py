@@ -480,4 +480,4 @@ st.markdown("")  # spacer
 for i, row in events.iterrows():
     render_event(row)
     if i < len(events) - 1:
-        st.markdown("<div style='text-align:center;color:#9ca3af'>⬇️</div>", unsafe_allow_html=True)
+        st.divider()
