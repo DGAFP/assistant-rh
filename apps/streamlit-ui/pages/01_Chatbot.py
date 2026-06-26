@@ -619,6 +619,11 @@ cookies = EncryptedCookieManager(prefix="assistant_rh_", password=resolve_cookie
 if not cookies.ready():
     st.stop()
 
+# Logout: a previous run cleared the group cookie and asked to return to the
+# group picker. Do it now (the cookie write has flushed on this rerun).
+if st.session_state.pop("_pending_logout", False):
+    st.switch_page("Home.py")
+
 _cookies_to_save = {}
 
 
@@ -677,6 +682,12 @@ if group_needs_save:
     _cookies_to_save["user_group"] = user_group
 st.session_state.user_group = user_group
 
+# Enforce the group picker: a visitor who reaches the chatbot without an
+# identified group ("default") is sent back to the homepage to pick one. Admins
+# (authenticated via the password form, no group cookie) are exempt.
+if user_group == "default" and not is_admin():
+    st.switch_page("Home.py")
+
 # Page navigation visibility: admins keep the full sidebar page list; every
 # other group has it hidden so only the chatbot is reachable from the nav.
 if not is_admin():
@@ -707,12 +718,10 @@ rag_config = load_runtime_config()
 # Sidebar avec filtres utilisateur (VERSION PRODUCTION - épurée)
 # ------------------------------
 with st.sidebar:
-    # User Group Indicator (A/B Testing) - Only visible for admins
+    # Group indicator + logout — shown for any identified user (admins always);
+    # colours/labels come from the DB store with seed fallback.
     user_group = st.session_state.get("user_group", "default")
-
-    # Only show group indicator for admin users (any admin group, not just the
-    # seed slug); colours/labels come from the DB store with seed fallback.
-    if is_admin():
+    if is_admin() or user_group != "default":
         icon, color, label = group_badge_display().get(user_group, (*DEFAULT_BADGE, user_group))
 
         st.markdown(
@@ -722,7 +731,7 @@ with st.sidebar:
             border-left: 3px solid {color};
             padding: 8px 12px;
             border-radius: 4px;
-            margin-bottom: 16px;
+            margin-bottom: 8px;
             font-size: 0.85em;
         ">
             {icon} <strong>Groupe:</strong> {label}
@@ -731,6 +740,24 @@ with st.sidebar:
         """,
             unsafe_allow_html=True,
         )
+
+        if st.button(
+            "✕ Déconnexion",
+            key="logout_btn",
+            use_container_width=True,
+            help="Se déconnecter et revenir à la sélection du groupe",
+        ):
+            # Reset to the "default" (unassigned) sentinel instead of deleting:
+            # EncryptedCookieManager.__delitem__ is a no-op when a cookie prefix
+            # is set, so pop/del would not actually clear the group. "default" is
+            # treated as logged-out everywhere (picker shown, is_admin false).
+            cookies["user_group"] = "default"
+            cookies.save()
+            # Also drop the active chat so it can't leak to the next group/user.
+            for _k in ("user_group", "admin_authenticated", "_is_admin_cache", "turns", "conversation_id"):
+                st.session_state.pop(_k, None)
+            st.session_state["_pending_logout"] = True
+            st.rerun()
 
     st.markdown("### 🗂️ Filtres")
 
