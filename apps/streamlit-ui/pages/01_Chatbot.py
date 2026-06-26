@@ -687,7 +687,7 @@ with st.sidebar:
 
     # Only show group indicator for admin users
     if user_group == ADMIN_GROUP:
-        icon, color, label = badge_display().get(user_group, ("👤", "#6b7280", user_group))
+        icon, color, label = badge_display().get(user_group, (*DEFAULT_BADGE, user_group))
 
         st.markdown(
             f"""
