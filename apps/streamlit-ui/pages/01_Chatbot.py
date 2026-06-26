@@ -747,9 +747,10 @@ with st.sidebar:
             use_container_width=True,
             help="Se déconnecter et revenir à la sélection du groupe",
         ):
-            cookies["user_group"] = ""
+            cookies.pop("user_group", None)
             cookies.save()
-            for _k in ("user_group", "admin_authenticated", "_is_admin_cache"):
+            # Also drop the active chat so it can't leak to the next group/user.
+            for _k in ("user_group", "admin_authenticated", "_is_admin_cache", "turns", "conversation_id"):
                 st.session_state.pop(_k, None)
             st.session_state["_pending_logout"] = True
             st.rerun()
