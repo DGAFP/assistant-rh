@@ -76,7 +76,7 @@ from src.ui.chatbot_sources import (
     should_hide_sources,
 )
 from src.ui.cookies_security import is_production_like_env, resolve_cookies_password
-from src.ui.groups import ADMIN_GROUP, badge_display, group_priority, valid_groups
+from src.ui.groups import ADMIN_GROUP, DEFAULT_BADGE, badge_display, group_priority, valid_groups
 
 # --- Defaults dynamiques selon l'environnement ---
 PG_AVAILABLE = bool(has_dsn() or os.getenv("PGHOST"))
