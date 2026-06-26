@@ -376,23 +376,20 @@ _STAGE_BODY = {
 def render_event(row):
     stage = row["stage"]
     icon, label = STAGE_META.get(stage, ("•", stage))
-    with st.container(border=True):
-        rail, body = st.columns([1, 4])
-        with rail:
-            st.markdown(f"### {icon}")
-            st.markdown(f"**{label}**")
-            if row.get("attempt_name"):
-                st.caption(f"attempt : {row['attempt_name']}")
-            st.caption(f"{STATUS_ICON.get(row['status'], '•')} {row['status']}")
-            st.caption(f"⏱ {_fmt_time(row['duration_ms'])}")
-        with body:
-            renderer = _STAGE_BODY.get(stage)
-            if renderer:
-                renderer(row.get("output_ref") or {}, row.get("metrics") or {}, row.get("input_ref") or {})
-            else:
-                st.json(row.get("output_ref") or {})
-            if row.get("error_message"):
-                st.error(f"{row.get('error_type') or 'error'} : {row['error_message']}")
+    rail, body = st.columns([2, 5])
+    with rail:
+        st.markdown(f"**{icon} {label}**")
+        if row.get("attempt_name"):
+            st.caption(f"attempt : {row['attempt_name']}")
+        st.caption(f"{STATUS_ICON.get(row['status'], '•')} {row['status']}  |  ⏱ {_fmt_time(row['duration_ms'])}")
+    with body:
+        renderer = _STAGE_BODY.get(stage)
+        if renderer:
+            renderer(row.get("output_ref") or {}, row.get("metrics") or {}, row.get("input_ref") or {})
+        else:
+            st.json(row.get("output_ref") or {})
+        if row.get("error_message"):
+            st.error(f"{row.get('error_type') or 'error'} : {row['error_message']}")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -418,14 +415,12 @@ def render_v3_fallback_timeline(d: dict):
         ("✍️", "Génération", "v3_generation_ms", [("TTFT", _fmt_time(d.get("v3_ttft_ms")))]),
     ]
     for icon, label, time_key, facts in steps:
-        with st.container(border=True):
-            rail, body = st.columns([1, 4])
-            with rail:
-                st.markdown(f"### {icon}")
-                st.markdown(f"**{label}**")
-                st.caption(f"⏱ {_fmt_time(d.get(time_key))}")
-            with body:
-                _metrics_row([(lbl, "—" if v is None or (isinstance(v, float) and pd.isna(v)) else v) for lbl, v in facts])
+        rail, body = st.columns([2, 5])
+        with rail:
+            st.markdown(f"**{icon} {label}**")
+            st.caption(f"⏱ {_fmt_time(d.get(time_key))}")
+        with body:
+            _metrics_row([(lbl, "—" if v is None or (isinstance(v, float) and pd.isna(v)) else v) for lbl, v in facts])
 
 
 # ════════════════════════════════════════════════════════════════════════════
