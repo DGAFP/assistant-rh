@@ -24,6 +24,8 @@ on:
       - "Dockerfile.rag_health_exporter"
   pull_request:
     branches:
+      - dev
+      - staging
       - main
     paths:
       - ".github/workflows/data-engineering-*.yml"

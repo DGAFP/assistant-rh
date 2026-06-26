@@ -363,7 +363,7 @@ reste la source canonique :
 
 - Avant tout rerun de `legifrance-medallion --no-embed` sur staging,
   capturer une couverture d'embedding de référence via
-  `--check-only` et la committer dans `docs/LEGIFRANCE_DGAFP_AUTOMATION_PLAN.md`
+  `--check-only` et la committer dans `docs/ingestion/LEGIFRANCE_DGAFP_AUTOMATION_PLAN.md`
   (ou dans un artefact de comparaison daté).
 - Après rerun, re-mesurer la couverture : un delta strictement
   positif (et jamais régressif) valide l'idempotence.

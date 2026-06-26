@@ -9,9 +9,11 @@ This runbook covers deployment and rollback for the Streamlit application on Sca
 
 ## Deployment strategy
 
-- **Staging** deploys automatically on every push/merge to `main`.
-- **Production** deploys automatically on `release.published`.
+- **Staging** deploys automatically on every push/merge to `staging`.
+- **Production** deploys after a published GitHub Release, following the release-please PR.
 - **Rollback** can be performed by redeploying a previous image tag via `workflow_dispatch` on the production workflow.
+
+The canonical branch and release procedure is documented in `docs/git_flow.md`.
 
 ## Release creation (release-please)
 
@@ -24,9 +26,11 @@ This runbook covers deployment and rollback for the Streamlit application on Sca
 
 Flow:
 
-1. release-please opens/updates a release PR from conventional commits on `main`.
-2. Merging that PR creates a tag + GitHub Release (for example `v0.3.1`).
-3. The published release event triggers the production deployment workflow.
+1. Merge `dev` to `staging` with a merge commit and validate staging.
+2. Merge `staging` to `main` with a merge commit.
+3. release-please opens/updates a release PR from conventional commits on `main`.
+4. Merging that PR creates a tag + GitHub Release (for example `v0.3.1`).
+5. The published release event triggers production migrations, then the production deployment workflow.
 
 Versioning rules:
 
@@ -145,7 +149,7 @@ After deployment (or rollback):
 ```text
 Date/Time:
 Environment: staging|production
-Trigger: main push | release published | manual rollback
+Trigger: staging push | release published | manual rollback
 Image tag:
 Observed issue:
 Rollback tag (if any):
