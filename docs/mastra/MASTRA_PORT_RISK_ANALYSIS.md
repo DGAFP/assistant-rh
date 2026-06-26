@@ -1,6 +1,6 @@
 # Mastra Port: Risk & Opportunity Analysis
 
-Critical review of [MASTRA_PORT_ANALYSIS.md](./MASTRA_PORT_ANALYSIS.md) and [MASTRA_IMPLEMENTATION_PLAN.md](./MASTRA_IMPLEMENTATION_PLAN.md), cross-referenced against the Python source code.
+Critical review of [MASTRA_PORT_ANALYSIS.md](MASTRA_PORT_ANALYSIS.md) and [MASTRA_IMPLEMENTATION_PLAN.md](MASTRA_IMPLEMENTATION_PLAN.md), cross-referenced against the Python source code.
 
 ---
 

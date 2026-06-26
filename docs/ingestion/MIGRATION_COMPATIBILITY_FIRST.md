@@ -102,4 +102,4 @@ choose MVP compatibility first during the migration phase.
 After the migration is validated, the project can move to a second phase focused on industrial improvements.
 
 That phase is documented separately here:
-- [SERVICE_PUBLIC_INDUSTRIAL_IMPROVEMENTS_LATER.md](/Users/omar.gueddari/work/assistant-rh/docs/SERVICE_PUBLIC_INDUSTRIAL_IMPROVEMENTS_LATER.md)
+- [SERVICE_PUBLIC_INDUSTRIAL_IMPROVEMENTS_LATER.md](SERVICE_PUBLIC_INDUSTRIAL_IMPROVEMENTS_LATER.md)

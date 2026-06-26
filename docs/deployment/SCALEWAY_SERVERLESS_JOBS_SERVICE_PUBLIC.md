@@ -33,7 +33,7 @@ docker push rg.fr-par.scw.cloud/assistant-rh/service-public-pipeline:latest
 ```
 
 GitHub Actions workflow available:
-- [build-service-public-pipeline-image.yml](/Users/omar.gueddari/work/assistant-rh/.github/workflows/build-service-public-pipeline-image.yml)
+- [build-service-public-pipeline-image.yml](../../.github/workflows/build-service-public-pipeline-image.yml)
 
 
 ## Runtime Command
@@ -55,7 +55,7 @@ This does:
 - avoid DB writes
 
 Default config file:
-- [service_public_fiches.json](/Users/omar.gueddari/work/assistant-rh/config/service_public_fiches.json)
+- [service_public_fiches.json](../../config/service_public_fiches.json)
 
 Migration-only fallback:
 - `--batch-from-db` can still be used to bootstrap the JSON config from the current DB
@@ -64,9 +64,9 @@ Migration-only fallback:
 ## Recommended Job Definition
 
 Reference manifest:
-- [scaleway_serverless_job_service_public.json](/Users/omar.gueddari/work/assistant-rh/config/scaleway_serverless_job_service_public.json)
+- [scaleway_serverless_job_service_public.json](../../config/scaleway_serverless_job_service_public.json)
 - UI checklist:
-  [SCALEWAY_SERVERLESS_JOBS_UI_CHECKLIST.md](/Users/omar.gueddari/work/assistant-rh/docs/SCALEWAY_SERVERLESS_JOBS_UI_CHECKLIST.md)
+  [SCALEWAY_SERVERLESS_JOBS_UI_CHECKLIST.md](SCALEWAY_SERVERLESS_JOBS_UI_CHECKLIST.md)
 
 Operational rule:
 - create the job directly
@@ -94,7 +94,7 @@ Reasoning:
 ## Exact Creation Command
 
 Template script:
-- [create_scaleway_service_public_job.sh](/Users/omar.gueddari/work/assistant-rh/scripts/create_scaleway_service_public_job.sh)
+- [create_scaleway_service_public_job.sh](../../scripts/create_scaleway_service_public_job.sh)
 
 Equivalent command:
 

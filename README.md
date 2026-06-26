@@ -196,7 +196,7 @@ Les déploiements actifs ciblent Scaleway :
 - jobs d'ingestion et migrations → workflows Scaleway dédiés.
 
 Les secrets `SCW_POSTGRES_DSN`, `ALBERT_API_KEY`, `SCALEWAY_API_KEY`, `COOKIES_PASSWORD` et `ADMIN_PASSWORD` sont résolus via les environnements GitHub `scaleway-staging` et `scaleway-production`.
-Voir `docs/SCALEWAY_STREAMLIT_DEPLOY_RUNBOOK.md` et `docs/SCALEWAY_PIPELINE_RUNBOOK.md`.
+Voir `docs/deployment/SCALEWAY_STREAMLIT_DEPLOY_RUNBOOK.md` et `docs/deployment/SCALEWAY_PIPELINE_RUNBOOK.md`.
 
 ---
 
