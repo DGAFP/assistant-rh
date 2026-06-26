@@ -77,8 +77,8 @@ from src.ui.chatbot_sources import (
     should_hide_sources,
 )
 from src.ui.cookies_security import is_production_like_env, resolve_cookies_password
-from src.ui.groups import ADMIN_GROUP, group_priority, valid_groups
-from src.ui.user_groups_store import group_badge_display
+from src.ui.groups import ADMIN_GROUP, valid_groups
+from src.ui.user_groups_store import group_badge_display, group_priorities, known_group_slugs
 
 # --- Defaults dynamiques selon l'environnement ---
 PG_AVAILABLE = bool(has_dsn() or os.getenv("PGHOST"))
@@ -621,7 +621,17 @@ if not cookies.ready():
 
 _cookies_to_save = {}
 
-GROUP_PRIORITY = group_priority()
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _group_resolution_maps() -> tuple[dict[str, int], set[str]]:
+    """(priority-by-slug, known-slugs) from the store — DB-authoritative, seed fallback."""
+    return group_priorities(), known_group_slugs()
+
+
+# Priorities and the known-set come from the DB store so admin-created groups
+# carry their real priority (not 0) and are recognised. URL onboarding stays
+# restricted to seed groups (VALID_GROUPS): new groups are password-only.
+GROUP_PRIORITY, KNOWN_GROUPS = _group_resolution_maps()
 VALID_GROUPS = valid_groups()
 
 
@@ -634,6 +644,10 @@ def _determine_user_group() -> tuple[str, bool]:
     reset_requested = query_params.get("reset_group") == "true"
 
     existing_group = cookies.get("user_group")
+    # Ignore a cookie pointing at a group that no longer exists (deleted), so a
+    # stale cookie can't keep authenticating; treat it as unassigned.
+    if existing_group and existing_group not in KNOWN_GROUPS:
+        existing_group = None
     existing_priority = GROUP_PRIORITY.get(existing_group, 0)
 
     url_group = query_params.get("group", "").lower()

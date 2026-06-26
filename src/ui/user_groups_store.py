@@ -244,6 +244,20 @@ def group_badge_display() -> dict[str, tuple[str, str, str]]:
     return {g["slug"]: (g["icon"], g["color"], g["label"]) for g in list_groups()}
 
 
+def group_priorities() -> dict[str, int]:
+    """Map of slug -> priority, DB-authoritative with seed fallback.
+
+    Unlike the seed ``groups.group_priority()``, this includes admin-created
+    groups, so the chatbot resolver gives them their real priority instead of 0.
+    """
+    return {g["slug"]: g["priority"] for g in list_groups()}
+
+
+def known_group_slugs() -> set[str]:
+    """Set of all known group slugs, DB-authoritative with seed fallback."""
+    return {g["slug"] for g in list_groups()}
+
+
 def is_admin_group(slug: str) -> bool:
     """Return True when ``slug`` is flagged as an admin group in the store.
 
@@ -296,8 +310,10 @@ def verify_password(slug: str, password: str) -> bool:
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
 _EDITABLE_FIELDS = ("label", "icon", "color", "priority", "is_admin", "visible", "chart_color", "chart_label")
 
-# Seeded structural groups that must not be deleted.
-PROTECTED_SLUGS = {"default", ADMIN_GROUP}
+# Seeded structural groups that must not be deleted: init re-seeds any missing
+# seed slug on the next load, so a "delete" would silently reappear. Retire them
+# with the `visible` toggle instead. Admin-created groups remain deletable.
+PROTECTED_SLUGS = {g.slug for g in GROUPS}
 
 
 def create_group(
