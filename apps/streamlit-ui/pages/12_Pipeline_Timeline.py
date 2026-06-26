@@ -68,35 +68,98 @@ STATUS_ICON = {
     "short_circuit": "🟠",
 }
 
+TRACE_EVENT_REQUIRED_COLUMNS = {
+    "event_index",
+    "stage",
+    "attempt_name",
+    "duration_ms",
+    "status",
+    "input_ref",
+    "output_ref",
+    "metrics",
+    "error_type",
+    "error_message",
+}
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # Data loading
 # ════════════════════════════════════════════════════════════════════════════
+@st.cache_data(ttl=60)
+def table_columns(table_name: str) -> set[str]:
+    """Return public table columns, or an empty set when the table is absent."""
+    if not engine:
+        return set()
+    sql = text("""
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = :table_name
+    """)
+    try:
+        df = pd.read_sql_query(sql, engine, params={"table_name": table_name})
+    except Exception:
+        return set()
+    return set(df["column_name"].tolist())
+
+
+def _run_col(columns: set[str], name: str, default_sql: str) -> str:
+    return f"r.{name}" if name in columns else f"{default_sql} AS {name}"
+
+
 @st.cache_data(ttl=10)
 def load_runs() -> pd.DataFrame:
     """Compact chat_runs list with latest feedback stars."""
     if not engine:
         return pd.DataFrame()
-    sql = text("""
+    run_columns = table_columns("chat_runs")
+    if not {"ts", "turn_id", "question", "answer", "rag_version"}.issubset(run_columns):
+        return pd.DataFrame()
+
+    feedback_columns = table_columns("chat_feedbacks")
+    with_clause = ""
+    join_clause = ""
+    stars_expr = "NULL::integer AS stars"
+    if {"turn_id", "stars", "ts"}.issubset(feedback_columns):
+        with_clause = """
         WITH last_fb AS (
           SELECT DISTINCT ON (turn_id) turn_id, stars
           FROM chat_feedbacks
           ORDER BY turn_id, ts DESC
         )
+        """
+        join_clause = "LEFT JOIN last_fb f USING (turn_id)"
+        stars_expr = "f.stars"
+
+    select_exprs = [
+        "r.ts",
+        _run_col(run_columns, "user_group", "NULL::text"),
+        "r.question",
+        "r.answer",
+        _run_col(run_columns, "v3_intent", "NULL::text"),
+        _run_col(run_columns, "v3_detected_theme", "NULL::text"),
+        _run_col(run_columns, "v3_chunks_retrieved_count", "NULL::integer"),
+        _run_col(run_columns, "v3_context_items_count", "NULL::integer"),
+        _run_col(run_columns, "total_time_ms", "NULL::double precision"),
+        "r.rag_version",
+        "r.turn_id",
+        _run_col(run_columns, "trace_id", "NULL::text"),
+        stars_expr,
+    ]
+    sql = text(f"""
+        {with_clause}
         SELECT
-          r.ts, r.user_group, r.question, r.answer,
-          r.v3_intent, r.v3_detected_theme,
-          r.v3_chunks_retrieved_count, r.v3_context_items_count,
-          r.total_time_ms, r.rag_version,
-          r.turn_id, r.trace_id,
-          f.stars
+          {", ".join(select_exprs)}
         FROM chat_runs r
-        LEFT JOIN last_fb f USING (turn_id)
+        {join_clause}
         WHERE r.rag_version = 'v3'
         ORDER BY r.ts DESC
         LIMIT 500
     """)
-    df = pd.read_sql_query(sql, engine)
+    try:
+        df = pd.read_sql_query(sql, engine)
+    except Exception:
+        return pd.DataFrame()
     if "ts" in df.columns:
         df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.tz_convert("Europe/Paris")
     if "stars" in df.columns:
@@ -109,8 +172,13 @@ def load_run_detail(turn_id: str) -> dict:
     """Full chat_runs row (for the v3_* fallback and TTFT) as a plain dict."""
     if not engine or not turn_id:
         return {}
+    if "turn_id" not in table_columns("chat_runs"):
+        return {}
     sql = text("SELECT * FROM chat_runs WHERE turn_id = :tid LIMIT 1")
-    df = pd.read_sql_query(sql, engine, params={"tid": turn_id})
+    try:
+        df = pd.read_sql_query(sql, engine, params={"tid": turn_id})
+    except Exception:
+        return {}
     if df.empty:
         return {}
     return df.iloc[0].to_dict()
@@ -120,6 +188,9 @@ def load_run_detail(turn_id: str) -> dict:
 def load_trace_events(turn_id: str) -> pd.DataFrame:
     if not engine or not turn_id:
         return pd.DataFrame()
+    trace_columns = table_columns("rag_trace_events")
+    if not TRACE_EVENT_REQUIRED_COLUMNS.issubset(trace_columns):
+        return pd.DataFrame()
     sql = text("""
         SELECT event_index, stage, attempt_name, duration_ms, status,
                input_ref, output_ref, metrics, error_type, error_message
@@ -127,7 +198,12 @@ def load_trace_events(turn_id: str) -> pd.DataFrame:
         WHERE turn_id = :tid
         ORDER BY event_index ASC
     """)
-    df = pd.read_sql_query(sql, engine, params={"tid": turn_id})
+    try:
+        df = pd.read_sql_query(sql, engine, params={"tid": turn_id})
+    except Exception:
+        return pd.DataFrame()
+    if "attempt_name" in df.columns:
+        df["attempt_name"] = df["attempt_name"].fillna("")
     for col in ("input_ref", "output_ref", "metrics"):
         if col in df.columns:
             df[col] = df[col].apply(_as_obj)
@@ -142,6 +218,7 @@ st.title("🛰️ Pipeline Timeline")
 with st.sidebar:
     st.markdown("### ⚙️ Options")
     if st.button("🔄 Rafraîchir", width="stretch", type="primary"):
+        table_columns.clear()
         load_runs.clear()
         load_trace_events.clear()
         load_run_detail.clear()
@@ -289,8 +366,17 @@ def _body_retriever(out, mtr, inp):
     if chunks:
         cdf = pd.DataFrame(chunks)
         keep = [c for c in ["table", "score", "retrieval_path", "heading", "section_id", "preview"] if c in cdf.columns]
-        cdf = cdf[keep].sort_values(["table", "score"], ascending=[True, False]) if "table" in cdf.columns else cdf[keep]
-        st.dataframe(cdf, hide_index=True, width="stretch")
+        cdf = cdf[keep]
+        if "table" in cdf.columns:
+            sort_cols = ["table"] + (["score"] if "score" in cdf.columns else [])
+            cdf = cdf.sort_values(sort_cols, ascending=[True] + ([False] if "score" in cdf.columns else []))
+            for table_name, group in cdf.groupby("table", dropna=False):
+                source_label = "source inconnue" if pd.isna(table_name) or not table_name else str(table_name)
+                st.markdown(f"**{source_label}**")
+                display_cols = [c for c in keep if c != "table"]
+                st.dataframe(group[display_cols], hide_index=True, width="stretch")
+        else:
+            st.dataframe(cdf, hide_index=True, width="stretch")
         st.caption("Scores = score final post-fusion RRF, groupés par source. Les rankings pré-fusion par source ne sont pas tracés.")
     else:
         st.caption("Aucun chunk récupéré.")
@@ -429,15 +515,24 @@ def render_v3_fallback_timeline(d: dict):
 trace_df = load_trace_events(turn_id)
 
 if trace_df.empty:
-    st.info(
-        "Aucun événement de trace pour ce run (run antérieur à rag_trace_events "
-        "ou tracing désactivé). Reconstruction approximative depuis chat_runs ci-dessous."
-    )
+    trace_columns = table_columns("rag_trace_events")
+    if not trace_columns:
+        message = "Table rag_trace_events absente. Reconstruction approximative depuis chat_runs ci-dessous."
+    elif not TRACE_EVENT_REQUIRED_COLUMNS.issubset(trace_columns):
+        missing = sorted(TRACE_EVENT_REQUIRED_COLUMNS - trace_columns)
+        message = f"Schéma rag_trace_events incomplet ({', '.join(missing)} manquant). Reconstruction approximative depuis chat_runs ci-dessous."
+    else:
+        message = (
+            "Aucun événement de trace pour ce run (run antérieur à rag_trace_events "
+            "ou tracing désactivé). Reconstruction approximative depuis chat_runs ci-dessous."
+        )
+    st.info(message)
     render_v3_fallback_timeline(detail)
     st.stop()
 
 # Attempt selector (a selector_retry re-runs retrieval→…→builder).
 attempts = [a for a in trace_df["attempt_name"].dropna().unique().tolist() if a]
+final_attempt = attempts[-1] if attempts else None
 chosen_attempt = None
 if len(attempts) > 1:
     chosen_attempt = st.segmented_control(
@@ -448,15 +543,24 @@ if len(attempts) > 1:
     )
 
 events = trace_df.copy()
-# query-processor / generator have no attempt_name → always shown; filter the rest.
+# Query processing is global. Generation is also untagged, but belongs to the
+# final selected context, so only show it on the final attempt view.
 if chosen_attempt:
-    events = events[(events["attempt_name"] == chosen_attempt) | (events["attempt_name"] == "")]
+    untagged = events["attempt_name"].fillna("").eq("")
+    global_stages = ["query-processor"]
+    if chosen_attempt == final_attempt:
+        global_stages.append("generator")
+    global_mask = untagged & events["stage"].isin(global_stages)
+    events = events[(events["attempt_name"] == chosen_attempt) | global_mask]
 # Defensive de-dup of query-processor (keep lowest event_index).
 qp = events[events["stage"] == "query-processor"]
 if len(qp) > 1:
     drop_idx = qp.sort_values("event_index").iloc[1:].index
     events = events.drop(index=drop_idx)
 events = events.sort_values("event_index").reset_index(drop=True)
+
+if chosen_attempt and final_attempt and chosen_attempt != final_attempt:
+    st.info(f"La génération finale est rattachée à `{final_attempt}`. Sélectionne cette tentative pour afficher la réponse générée.")
 
 
 # Flow summary cascade.
