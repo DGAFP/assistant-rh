@@ -682,6 +682,12 @@ if group_needs_save:
     _cookies_to_save["user_group"] = user_group
 st.session_state.user_group = user_group
 
+# Enforce the group picker: a visitor who reaches the chatbot without an
+# identified group ("default") is sent back to the homepage to pick one. Admins
+# (authenticated via the password form, no group cookie) are exempt.
+if user_group == "default" and not is_admin():
+    st.switch_page("Home.py")
+
 # Page navigation visibility: admins keep the full sidebar page list; every
 # other group has it hidden so only the chatbot is reachable from the nav.
 if not is_admin():
