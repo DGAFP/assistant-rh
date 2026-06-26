@@ -6,6 +6,29 @@ Assistant RH uses three long-lived branches before production:
 feature branch -> dev -> staging -> main -> release-please PR -> GitHub Release -> production deploy
 ```
 
+```mermaid
+flowchart TD
+    F["feature branch"] -->|"squash PR · conventional title"| DEV["dev<br/>integration branch"]
+    DEV -->|"promotion PR · merge commit"| STG["staging<br/>deployable test branch"]
+    STG -->|"promotion PR · merge commit"| MAIN["main<br/>release branch"]
+    MAIN -->|"release-please PR (merge)"| REL["GitHub Release<br/>tag vX.Y.Z"]
+
+    STG -.->|push| S1["Streamlit deploy · staging (always)"]
+    STG -.->|"push · if supabase/migrations or seed paths"| S2["DB migrations · staging"]
+    STG -.->|push| S3["Conformance checks"]
+    STG -.->|"push · if data-engineering paths"| S4["Data preview · full or scoped (wipe off)"]
+
+    REL -.->|release published| P1["DB migrations · production"]
+    P1 -.->|on success| P2["Streamlit deploy · production"]
+
+    classDef branch fill:#1f6feb,stroke:#0b3a8c,color:#fff;
+    classDef job fill:#21262d,stroke:#8b949e,color:#fff;
+    class F,DEV,STG,MAIN,REL branch;
+    class S1,S2,S3,S4,P1,P2 job;
+```
+
+Solid arrows are branch promotions (merge policy on the label); dashed arrows are the CI/CD workflows each push triggers.
+
 ## Branch Roles
 
 - `dev` is the integration branch for feature work. Feature PRs target `dev`.
