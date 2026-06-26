@@ -13,7 +13,7 @@ Les fichiers de données locales sont gitignored. Les artefacts d'évaluation re
 HF_TOKEN=... moon run legacy:golden-beta-download
 ```
 
-Voir `docs/PRIVATE_DATASETS.md`.
+Voir `docs/data/PRIVATE_DATASETS.md`.
 
 ## Sources de données (en base)
 

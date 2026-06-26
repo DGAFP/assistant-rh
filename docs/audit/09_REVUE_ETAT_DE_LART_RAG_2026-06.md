@@ -54,15 +54,15 @@ Choix techniques marquants (et conformes aux meilleures pratiques 2026) :
 - **Recherche hybride avec RRF par table et entre tables** ([retriever.py](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/retriever.py)) — `alpha=0.5`, `K=60`. C'est le baseline indiscutable de la littérature (Anthropic Contextual Retrieval, RAGFlow 2025, RAG in 2026 Blueprint).
 - **Reranker cross-encoder** via l'endpoint Albert `/rerank` ([reranker.py](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/reranker.py), [section_aggregator.py](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/section_aggregator.py)). Le rerank est cité comme *« l'un des upgrades à plus haut ROI »* du RAG moderne.
 - **Parent-document / small-to-big** : les chunks servent au retrieval, les sections au contexte ([section_aggregator.py](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/section_aggregator.py)). C'est exactement le patron `ParentDocumentRetriever` de LangChain et `HierarchicalNodeParser` de LlamaIndex, implémenté ici de manière custom et propre.
-- **Triangulation** ([context_builder.py:129](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/context_builder.py:129)) — ≥ 2 sections d'éditeurs non principaux, **hors budget tokens**. Patron rare et bien pensé : adresse directement le risque de monopolisation par un éditeur (typique du RAG juridique).
+- **Triangulation** ([context_builder.py:129](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/context_builder.py#L129)) — ≥ 2 sections d'éditeurs non principaux, **hors budget tokens**. Patron rare et bien pensé : adresse directement le risque de monopolisation par un éditeur (typique du RAG juridique).
 - **Fallback de provider + circuit breaker** ([embedder.py](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/embedder.py), [llm_client.py](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/llm_client.py)) — Albert primaire, Scaleway secours, cooldown 60 s. Production-grade.
-- **Court-circuit no-answer** ([pipeline.py:209](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/pipeline.py:209)) — quand le selector rejette tout, message dédié et retry possible. Bonne intention anti-hallucination, mais **fragile** comme seul rempart (cf. §3.1).
+- **Court-circuit no-answer** ([pipeline.py:209](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/pipeline.py#L209)) — quand le selector rejette tout, message dédié et retry possible. Bonne intention anti-hallucination, mais **fragile** comme seul rempart (cf. §3.1).
 - **Configuration runtime en base** (table `rag_config`, [db_helpers.py](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/db_helpers.py)) — sous-coté ; permet d'ajuster en prod sans redéploiement.
 
 Choix présents dans la `RAGConfig` mais **non implémentés** :
 
 - `QueryProcessorConfig.enable_hyde` : option exposée, aucun code ne la consomme. → recommander de supprimer (§5).
-- `RetrievalConfig.enable_chunk_reranker` ([config.py:122](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/config.py:122)) : retourne l'identité. → implémenter ou supprimer. À distinguer de `SectionAggregationConfig.enable_section_reranker` ([config.py:142](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/config.py:142)), qui lui est bien câblé et utilisé.
+- `RetrievalConfig.enable_chunk_reranker` ([config.py:122](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/config.py#L122)) : retourne l'identité. → implémenter ou supprimer. À distinguer de `SectionAggregationConfig.enable_section_reranker` ([config.py:142](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/config.py#L142)), qui lui est bien câblé et utilisé.
 
 ---
 
@@ -173,8 +173,8 @@ Repères 2026 :
 
 DINUM (Etalab) a annoncé l'abandon des alias `albert-*` au profit des alias `openweight-*`, avec **dual-alias jusqu'au 15 février 2026** (source : github.com/etalab-ia/albert). Le code utilise déjà ces alias :
 
-- LLM : `openweight-large` et `openweight-medium` dans [config.py:194,205,219](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/config.py:194) (génération, fallback, intent).
-- Embeddings : `openweight-embeddings` dans [embedder.py:28,68](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/embedder.py:28) (le model id Albert ; côté `RAGConfig`, l'`EmbeddingModel` enum n'utilise que les valeurs logiques `"albert"` / `"bge_scaleway"`, qui mappent ensuite vers ces alias dans `embedder.py`).
+- LLM : `openweight-large` et `openweight-medium` dans [config.py:194,205,219](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/config.py#L194) (génération, fallback, intent).
+- Embeddings : `openweight-embeddings` dans [embedder.py:28,68](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/embedder.py#L28) (le model id Albert ; côté `RAGConfig`, l'`EmbeddingModel` enum n'utilise que les valeurs logiques `"albert"` / `"bge_scaleway"`, qui mappent ensuite vers ces alias dans `embedder.py`).
 
 **À vérifier** :
 

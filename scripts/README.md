@@ -26,7 +26,7 @@ embedder et ingerer des sources RH dans Postgres/pgvector.
   - Generates extracted text files, `documents/sections/chunks` JSONL,
     embeddings and optional PostgreSQL upsert into `rag_chunks_mso`.
   - Detailed handover doc:
-    [`docs/MSO_NOTEBOOK_HANDOVER.md`](../docs/MSO_NOTEBOOK_HANDOVER.md)
+    [`docs/ingestion/MSO_NOTEBOOK_HANDOVER.md`](../docs/ingestion/MSO_NOTEBOOK_HANDOVER.md)
 - `scripts/analyse.ipynb`
   - Profiling/EDA (pandas, sklearn, ydata_profiling).
   - Genere `scripts/retex_profiling_report.html`.

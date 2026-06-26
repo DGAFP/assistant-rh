@@ -36,10 +36,10 @@ docker push rg.fr-par.scw.cloud/assistant-rh/legifrance-ingestion:latest
 ```
 
 GitHub Actions workflows available:
-- [build-legifrance-pipeline-image.yml](/Users/omar.gueddari/work/assistant-rh/.github/workflows/build-legifrance-pipeline-image.yml)
-- [build-legifrance-ingestion-image.yml](/Users/omar.gueddari/work/assistant-rh/.github/workflows/build-legifrance-ingestion-image.yml)
+- [build-legifrance-pipeline-image.yml](../../.github/workflows/build-legifrance-pipeline-image.yml)
+- [build-legifrance-ingestion-image.yml](../../.github/workflows/build-legifrance-ingestion-image.yml)
 - Orchestrator script:
-  [deploy_legifrance_jobs.sh](/Users/omar.gueddari/work/assistant-rh/scripts/deploy_legifrance_jobs.sh)
+  [deploy_legifrance_jobs.sh](../../scripts/deploy_legifrance_jobs.sh)
 
 Single command once Docker is running:
 
@@ -94,18 +94,18 @@ This does:
 
 ## Reference Config
 
-- [legifrance_articles.json](/Users/omar.gueddari/work/assistant-rh/config/legifrance_articles.json)
-- [legifrance_articles_smoke.json](/Users/omar.gueddari/work/assistant-rh/config/legifrance_articles_smoke.json)
-- [scaleway_serverless_job_legifrance.json](/Users/omar.gueddari/work/assistant-rh/config/scaleway_serverless_job_legifrance.json)
-- [scaleway_serverless_job_legifrance_ingestion.json](/Users/omar.gueddari/work/assistant-rh/config/scaleway_serverless_job_legifrance_ingestion.json)
+- [legifrance_articles.json](../../config/legifrance_articles.json)
+- [legifrance_articles_smoke.json](../../config/legifrance_articles_smoke.json)
+- [scaleway_serverless_job_legifrance.json](../../config/scaleway_serverless_job_legifrance.json)
+- [scaleway_serverless_job_legifrance_ingestion.json](../../config/scaleway_serverless_job_legifrance_ingestion.json)
 - UI checklist:
-  [SCALEWAY_SERVERLESS_JOBS_UI_CHECKLIST.md](/Users/omar.gueddari/work/assistant-rh/docs/SCALEWAY_SERVERLESS_JOBS_UI_CHECKLIST.md)
+  [SCALEWAY_SERVERLESS_JOBS_UI_CHECKLIST.md](SCALEWAY_SERVERLESS_JOBS_UI_CHECKLIST.md)
 
 
 ## Exact Creation Commands
 
 Pipeline job helper:
-- [create_scaleway_legifrance_job.sh](/Users/omar.gueddari/work/assistant-rh/scripts/create_scaleway_legifrance_job.sh)
+- [create_scaleway_legifrance_job.sh](../../scripts/create_scaleway_legifrance_job.sh)
 
 Equivalent command:
 
@@ -138,7 +138,7 @@ scw jobs definition create \
 ```
 
 Ingestion job helper:
-- [create_scaleway_legifrance_ingestion_job.sh](/Users/omar.gueddari/work/assistant-rh/scripts/create_scaleway_legifrance_ingestion_job.sh)
+- [create_scaleway_legifrance_ingestion_job.sh](../../scripts/create_scaleway_legifrance_ingestion_job.sh)
 
 Equivalent command:
 
@@ -250,7 +250,7 @@ Ce mode n'importe pas `sentence_transformers`, ne crée pas de
 `ScalewayBgeClient`, et n'exécute aucun `UPDATE`. Il peut être utilisé
 depuis un workflow CI, un Cockpit check, ou un Scaleway
 `workflow_dispatch` ad hoc (voir aussi
-`docs/SCALEWAY_SERVERLESS_JOBS_SERVICE_PUBLIC.md` pour la version
+`docs/deployment/SCALEWAY_SERVERLESS_JOBS_SERVICE_PUBLIC.md` pour la version
 Service-Public).
 
 ## Idempotence embeddings sur rerun `--no-embed`

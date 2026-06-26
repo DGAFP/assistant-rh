@@ -2,7 +2,7 @@
 
 > Dossier d'audit : voir [README](README.md). Notes liées :
 > - [02 — Audit architectural global](02_ARCHITECTURE_AUDIT_2026-06.md) (couches code / sécurité / observabilité — la surface UI est citée mais la frontière UI ↔ pipeline n'y est pas traitée).
-> - [UI_REPLACEMENT_ANALYSIS.md](../UI_REPLACEMENT_ANALYSIS.md) (note historique d'avril 2025, ère Scalingo : compare des UI candidates, pas l'architecture interne).
+> - [UI_REPLACEMENT_ANALYSIS.md](../architecture/UI_REPLACEMENT_ANALYSIS.md) (note historique d'avril 2025, ère Scalingo : compare des UI candidates, pas l'architecture interne).
 >
 > Date : 2026-06-17. Périmètre : `apps/streamlit-ui/`, `src/ui/`, intégration avec `packages/rag-pipeline/` et `apps/mastra-pipeline/`. Constats vérifiés sur le code de `main` au 2026-06-17 (worktree) ; recommandations croisées avec l'état de l'art open-source RAG (Onyx, Quivr, Verba, RAGFlow, Open WebUI, LibreChat) et les contraintes secteur public (DSFR, AgentConnect/FranceConnect, Albert/DINUM).
 
@@ -125,7 +125,7 @@ Sept projets open-source RAG comparables, tous récents et activement déployés
 
 ## 4. L'angle Mastra — pourquoi la décision UI dépend de la décision pipeline
 
-Le port Mastra (note 02 §A1, [MASTRA_PORT_ANALYSIS.md](../MASTRA_PORT_ANALYSIS.md)) émet **nativement** dans le format AI SDK Data Stream Protocol. Mastra ship par ailleurs [Studio](https://mastra.ai/blog/agent-studio) (playground agents, mémoire, traces) et [`@mastra/ai-sdk`](https://www.npmjs.com/package/@mastra/ai-sdk) pour brancher une UI Next.js. Le pattern observé chez les équipes Mastra : **Studio comme surface interne** + **Next.js + AI SDK / [assistant-ui](https://www.assistant-ui.com/) comme UI utilisateur** — pas Studio comme UI publique.
+Le port Mastra (note 02 §A1, [MASTRA_PORT_ANALYSIS.md](../mastra/MASTRA_PORT_ANALYSIS.md)) émet **nativement** dans le format AI SDK Data Stream Protocol. Mastra ship par ailleurs [Studio](https://mastra.ai/blog/agent-studio) (playground agents, mémoire, traces) et [`@mastra/ai-sdk`](https://www.npmjs.com/package/@mastra/ai-sdk) pour brancher une UI Next.js. Le pattern observé chez les équipes Mastra : **Studio comme surface interne** + **Next.js + AI SDK / [assistant-ui](https://www.assistant-ui.com/) comme UI utilisateur** — pas Studio comme UI publique.
 
 Conséquence pour le projet :
 
@@ -160,7 +160,7 @@ C'est l'unique action qui rend toutes les suivantes non bloquantes.
 
 ### Option C — Adopter [suitenumerique/conversations](https://github.com/suitenumerique/conversations) ou [Open WebUI](https://github.com/open-webui/open-webui) une fois la frontière HTTP en place
 
-- `suitenumerique/conversations` (MIT, Django REST + Next.js + Vercel AI SDK, OIDC ProConnect natif) : alignement stratégique fort avec l'écosystème La Suite numérique. Encore jeune (note historique [UI_REPLACEMENT_ANALYSIS.md](../UI_REPLACEMENT_ANALYSIS.md)) mais activement développée par la DINUM.
+- `suitenumerique/conversations` (MIT, Django REST + Next.js + Vercel AI SDK, OIDC ProConnect natif) : alignement stratégique fort avec l'écosystème La Suite numérique. Encore jeune (note historique [UI_REPLACEMENT_ANALYSIS.md](../architecture/UI_REPLACEMENT_ANALYSIS.md)) mais activement développée par la DINUM.
 - Open WebUI : maturité maximale (auth, persistance, citations, streaming, mobile, « stop generation »), mais contrôle DSFR limité — acceptable si l'usage est interne et le branding gouv peut être relâché.
 - L'intégration suppose **la frontière HTTP de B** ; sans elle, ces options ne sont pas atteignables.
 
@@ -195,8 +195,8 @@ Les actions 1–3 sont la pré-condition de tout le reste : sans frontière HTTP
 
 ## Sources
 
-- Code vérifié au 2026-06-17 : [`apps/streamlit-ui/`](../../apps/streamlit-ui/), [`src/ui/`](../../src/ui/), [`packages/rag-pipeline/`](../../packages/rag-pipeline/), [`apps/mastra-pipeline/`](../../apps/mastra-pipeline/), [`pyproject.toml`](../../pyproject.toml).
-- Notes liées : [02_ARCHITECTURE_AUDIT_2026-06.md](02_ARCHITECTURE_AUDIT_2026-06.md), [UI_REPLACEMENT_ANALYSIS.md](../UI_REPLACEMENT_ANALYSIS.md) (historique avril 2025), [MASTRA_PORT_ANALYSIS.md](../MASTRA_PORT_ANALYSIS.md).
+- Code vérifié au 2026-06-17 : [`apps/streamlit-ui/`](../../apps/streamlit-ui), [`src/ui/`](../../src/ui), [`packages/rag-pipeline/`](../../packages/rag-pipeline), [`apps/mastra-pipeline/`](../../apps/mastra-pipeline), [`pyproject.toml`](../../pyproject.toml).
+- Notes liées : [02_ARCHITECTURE_AUDIT_2026-06.md](02_ARCHITECTURE_AUDIT_2026-06.md), [UI_REPLACEMENT_ANALYSIS.md](../architecture/UI_REPLACEMENT_ANALYSIS.md) (historique avril 2025), [MASTRA_PORT_ANALYSIS.md](../mastra/MASTRA_PORT_ANALYSIS.md).
 - Streamlit (limites structurelles) : issues [#4297](https://github.com/streamlit/streamlit/issues/4297) (session_state lié au websocket), [#8901](https://github.com/streamlit/streamlit/issues/8901) (reconnect), [#14524](https://github.com/streamlit/streamlit/issues/14524) (`st.write_stream` & rerun).
 - État de l'art RAG : [Onyx](https://github.com/onyx-dot-app/onyx), [Quivr](https://github.com/QuivrHQ/quivr), [Verba](https://github.com/weaviate/Verba), [RAGFlow](https://github.com/infiniflow/ragflow), [Open WebUI](https://github.com/open-webui/open-webui), [LibreChat](https://www.librechat.ai/), [suitenumerique/conversations](https://github.com/suitenumerique/conversations).
 - Standards / SDK : [Vercel AI SDK Data Stream Protocol](https://vercel.com/blog/ai-sdk-3-4), [assistant-ui](https://www.assistant-ui.com/), [`@mastra/ai-sdk`](https://www.npmjs.com/package/@mastra/ai-sdk), [Mastra Studio](https://mastra.ai/en/docs/getting-started/studio).

@@ -66,7 +66,7 @@ prod
 ## Config Source
 
 The job reads fiche IDs from:
-- [service_public_fiches.json](/Users/omar.gueddari/work/assistant-rh/config/service_public_fiches.json)
+- [service_public_fiches.json](../../config/service_public_fiches.json)
 
 The job does not need DB access for the monthly production run.
 
