@@ -6,7 +6,7 @@ on:
       - published
   push:
     branches:
-      - main
+      - staging
     paths:
       - "supabase/migrations/**"
       - "tests/conformance/**/*.jsonl"

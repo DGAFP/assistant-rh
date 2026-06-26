@@ -1,24 +1,6 @@
 name: Data Engineering Promote Prod
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/data-engineering-*.yml"
-      - ".github/scripts/data_engineering_plan.py"
-      - ".github/scripts/scaleway_data_jobs.py"
-      - ".github/data-engineering-jobs.json"
-      - "apps/data-ingestion-cli/**"
-      - "packages/data-engineering/**"
-      - "packages/shared-config/**"
-      - "config/**"
-      - "Dockerfile.service_public_pipeline"
-      - "Dockerfile.service_public_ingestion"
-      - "Dockerfile.legifrance_pipeline"
-      - "Dockerfile.legifrance_ingestion"
-      - "Dockerfile.legifrance_bulk_dump"
-      - "Dockerfile.embeddings_job"
   workflow_dispatch:
     inputs:
       source:
@@ -102,6 +84,7 @@ jobs:
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
           INPUT_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
           INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_embeddings || '' }}
+          INPUT_EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_source || '' }}
         run: python3 .github/scripts/data_engineering_plan.py
 
   build-prod-images:

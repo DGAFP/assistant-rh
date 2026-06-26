@@ -1,14 +1,33 @@
 name: Data Engineering Preview Staging
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
+      - staging
     paths:
       - ".github/workflows/data-engineering-*.yml"
       - ".github/scripts/data_engineering_plan.py"
       - ".github/scripts/scaleway_data_jobs.py"
       - ".github/data-engineering-jobs.json"
+      - "apps/data-ingestion-cli/**"
+      - "packages/data-engineering/**"
+      - "packages/shared-config/**"
+      - "config/**"
+      - "Dockerfile.service_public_pipeline"
+      - "Dockerfile.service_public_ingestion"
+      - "Dockerfile.legifrance_pipeline"
+      - "Dockerfile.legifrance_ingestion"
+      - "Dockerfile.legifrance_bulk_dump"
+      - "Dockerfile.embeddings_job"
+  pull_request:
+    branches:
+      - staging
+    paths:
+      - ".github/workflows/data-engineering-*.yml"
+      - ".github/scripts/data_engineering_plan.py"
+      - ".github/scripts/scaleway_data_jobs.py"
+      - ".github/data-engineering-jobs.json"
+      - "apps/data-ingestion-cli/**"
       - "packages/data-engineering/**"
       - "packages/shared-config/**"
       - "config/**"
@@ -96,6 +115,8 @@ jobs:
       service_public: ${{ steps.plan.outputs.service_public }}
       legifrance: ${{ steps.plan.outputs.legifrance }}
       embeddings: ${{ steps.plan.outputs.embeddings }}
+      run_embeddings: ${{ steps.plan.outputs.run_embeddings }}
+      embedding_source: ${{ steps.plan.outputs.embedding_source }}
       has_builds: ${{ steps.plan.outputs.has_builds }}
       has_runs: ${{ steps.plan.outputs.has_runs }}
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -111,6 +132,7 @@ jobs:
           GITHUB_EVENT_BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           INPUT_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
           INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_embeddings || false }}
+          INPUT_EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_source || '' }}
         run: python3 .github/scripts/data_engineering_plan.py
 
   build-staging-images:
@@ -165,16 +187,17 @@ jobs:
     needs:
       - plan
       - build-staging-images
-    if: ${{ needs.plan.result == 'success' && needs.plan.outputs.has_runs == 'true' && needs.build-staging-images.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.run_preview_jobs }}
+    if: ${{ needs.plan.result == 'success' && needs.plan.outputs.has_runs == 'true' && needs.build-staging-images.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_preview_jobs)) }}
     timeout-minutes: 180
     environment: scaleway-staging
     env:
-      # Phase 2: preview job execution is manual-only (workflow_dispatch + run_preview_jobs=true).
+      # Staging branch pushes run a complete preview with destructive chunk wipe disabled.
+      # Manual dispatch keeps operator controls.
       SERVICE_PUBLIC_SELECTED: ${{ needs.plan.outputs.service_public }}
-      RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ingestion || false }}
+      RUN_INGESTION: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_ingestion) || false }}
       WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}
-      RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && (inputs.run_embeddings || inputs.source == 'embeddings' || inputs.source == 'matte') || false }}
-      EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && (inputs.source == 'matte' && 'matte' || inputs.embedding_source) || 'all' }}
+      RUN_EMBEDDINGS: ${{ (github.event_name == 'push' && needs.plan.outputs.run_embeddings == 'true') || (github.event_name == 'workflow_dispatch' && (inputs.run_embeddings || inputs.source == 'embeddings' || inputs.source == 'matte')) || false }}
+      EMBEDDING_SOURCE: ${{ (github.event_name == 'push' && needs.plan.outputs.embedding_source) || (github.event_name == 'workflow_dispatch' && (inputs.source == 'matte' && 'matte' || inputs.embedding_source)) || 'all' }}
       EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
       SERVICE_PUBLIC_FICHE_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.service_public_fiche_config || 'config/service_public_fiches.json' }}
       LEGIFRANCE_ARTICLE_IDS_JSON: ${{ github.event_name == 'workflow_dispatch' && inputs.legifrance_article_ids_json || 'config/legifrance_article_cids.json' }}
