@@ -747,7 +747,11 @@ with st.sidebar:
             use_container_width=True,
             help="Se déconnecter et revenir à la sélection du groupe",
         ):
-            cookies.pop("user_group", None)
+            # Reset to the "default" (unassigned) sentinel instead of deleting:
+            # EncryptedCookieManager.__delitem__ is a no-op when a cookie prefix
+            # is set, so pop/del would not actually clear the group. "default" is
+            # treated as logged-out everywhere (picker shown, is_admin false).
+            cookies["user_group"] = "default"
             cookies.save()
             # Also drop the active chat so it can't leak to the next group/user.
             for _k in ("user_group", "admin_authenticated", "_is_admin_cache", "turns", "conversation_id"):
