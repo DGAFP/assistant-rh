@@ -76,6 +76,7 @@ from src.ui.chatbot_sources import (
     should_hide_sources,
 )
 from src.ui.cookies_security import is_production_like_env, resolve_cookies_password
+from src.ui.groups import ADMIN_GROUP, badge_display, group_priority, valid_groups
 
 # --- Defaults dynamiques selon l'environnement ---
 PG_AVAILABLE = bool(has_dsn() or os.getenv("PGHOST"))
@@ -626,17 +627,8 @@ if not cookies.ready():
 
 _cookies_to_save = {}
 
-GROUP_PRIORITY = {
-    "dgafpallianceadmin": 100,
-    "dgafpsd1": 80,
-    "mattecentrale": 70,
-    "mattedreal": 60,
-    "cisirh": 50,
-    "specloiret": 40,
-    "betatest-jan26": 10,
-    "default": 0,
-}
-VALID_GROUPS = set(GROUP_PRIORITY.keys())
+GROUP_PRIORITY = group_priority()
+VALID_GROUPS = valid_groups()
 
 
 def _determine_user_group() -> tuple[str, bool]:
@@ -653,7 +645,7 @@ def _determine_user_group() -> tuple[str, bool]:
     url_group = query_params.get("group", "").lower()
     if url_group and url_group not in VALID_GROUPS:
         url_group = ""
-    if url_group == "dgafpallianceadmin":
+    if url_group == ADMIN_GROUP:
         url_group = ""
     url_priority = GROUP_PRIORITY.get(url_group, 0)
 
@@ -694,18 +686,8 @@ with st.sidebar:
     user_group = st.session_state.get("user_group", "default")
 
     # Only show group indicator for admin users
-    if user_group == "dgafpallianceadmin":
-        group_colors = {
-            "dgafpallianceadmin": ("🔧", "#6366f1", "Admin"),
-            "dgafpsd1": ("🏛️", "#8b5cf6", "DGAFP SD1"),
-            "mattecentrale": ("🏢", "#f97316", "MATTE Centrale"),
-            "mattedreal": ("🌍", "#f97316", "MATTE DREAL"),
-            "cisirh": ("📊", "#eab308", "CISIRH"),
-            "specloiret": ("📍", "#10b981", "Loiret"),
-            "betatest-jan26": ("🧪", "#3b82f6", "Beta"),
-            "default": ("👤", "#6b7280", "Non assigné"),
-        }
-        icon, color, label = group_colors.get(user_group, ("👤", "#6b7280", user_group))
+    if user_group == ADMIN_GROUP:
+        icon, color, label = badge_display().get(user_group, ("👤", "#6b7280", user_group))
 
         st.markdown(
             f"""
