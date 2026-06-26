@@ -33,12 +33,15 @@ def _as_obj(v):
     """JSONB → python object. Passthrough dict/list, parse JSON strings, else {}."""
     if isinstance(v, (dict, list)):
         return v
-    if isinstance(v, str) and v and v[0] in "[{":
+    if isinstance(v, str) and v != "":
+        stripped = v.strip()
+        if not stripped or stripped[0] not in "[{":
+            return {}
         try:
-            return json.loads(v)
+            return json.loads(stripped)
         except (json.JSONDecodeError, TypeError):
             return {}
-    return {} if v is None else v
+    return {}
 
 
 def _fmt_time(ms) -> str:
@@ -241,7 +244,7 @@ view = runs.copy()
 if q:
     ql = q.lower()
     cols = ["question", "answer", "v3_intent", "v3_detected_theme", "user_group"]
-    mask = view[cols].apply(lambda r: ql in " ".join(str(v) for v in r).lower(), axis=1)
+    mask = view[cols].apply(lambda r: ql in " ".join(str(v) for v in r if pd.notna(v)).lower(), axis=1)
     view = view[mask]
 if period and period != "Tout" and "ts" in view.columns:
     now = pd.Timestamp.now(tz="Europe/Paris")
@@ -301,17 +304,20 @@ if turn_id and turn_id not in set(view["turn_id"]):
 
 with st.expander("…ou sélectionner un run manuellement", expanded=not turn_id):
     opts = view["turn_id"].tolist()
-    labels = {r["turn_id"]: f"{str(r['ts'])[:16]} — {str(r['question'])[:90]}" for _, r in view.iterrows()}
-    picked = st.selectbox(
-        "Run",
-        options=opts,
-        index=opts.index(turn_id) if turn_id in opts else 0,
-        format_func=lambda x: labels.get(x, x),
-        label_visibility="collapsed",
-    )
-    if picked:
-        turn_id = picked
-        st.session_state["timeline_turn_id"] = picked
+    if opts:
+        labels = {r["turn_id"]: f"{str(r['ts'])[:16]} — {str(r['question'])[:90]}" for _, r in view.iterrows()}
+        picked = st.selectbox(
+            "Run",
+            options=opts,
+            index=opts.index(turn_id) if turn_id in opts else 0,
+            format_func=lambda x: labels.get(x, x),
+            label_visibility="collapsed",
+        )
+        if picked:
+            turn_id = picked
+            st.session_state["timeline_turn_id"] = picked
+    else:
+        st.warning("Aucun run ne correspond aux filtres.")
 
 if not turn_id:
     st.info("Sélectionne un run ci-dessus pour afficher sa timeline.")
@@ -352,8 +358,9 @@ def _body_query_processor(out, mtr, inp):
 
 
 def _body_retriever(out, mtr, inp):
+    tables = inp.get("tables_searched") or []
     st.caption(
-        f"Sources : {', '.join(inp.get('tables_searched', [])) or '—'}  ·  mode : {inp.get('search_mode', '—')}  ·  top_k : {inp.get('top_k', '—')}"
+        f"Sources : {', '.join(str(table) for table in tables) or '—'}  ·  mode : {inp.get('search_mode', '—')}  ·  top_k : {inp.get('top_k', '—')}"
     )
     _metrics_row(
         [
