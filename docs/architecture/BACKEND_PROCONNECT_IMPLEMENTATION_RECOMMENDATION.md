@@ -70,7 +70,7 @@ Implication pour ce plan :
 - Production actuelle : Streamlit (`apps/streamlit-ui/`) appelle le package Python `packages/rag-pipeline/` en process.
 - API existante mais non active : `apps/mastra-pipeline/` expose déjà `/v1/chat/completions` et `/v1/models`, sans être la voie de prod ni le bon endroit P0 pour ProConnect.
 - Auth actuelle : cookies chiffrés + password admin (`src/ui/admin_auth.py`, `src/ui/cookies_security.py`), groupes via cookie / `?group=` pour les cohortes non-admin. C'est acceptable pour beta/admin, pas pour une identité gouvernementale.
-- Docs historiques : `docs/UI_REPLACEMENT_ANALYSIS.md` et `docs/MASTRA_PORT_EXECUTIVE_SUMMARY.md` recommandaient déjà `suitenumerique/conversations` avec LibreChat en fallback.
+- Docs historiques : `docs/architecture/UI_REPLACEMENT_ANALYSIS.md` et `docs/mastra/MASTRA_PORT_EXECUTIVE_SUMMARY.md` recommandaient déjà `suitenumerique/conversations` avec LibreChat en fallback.
 
 ---
 
@@ -472,9 +472,9 @@ Mastra redevient intéressant quand :
 - PR [#135 — Audit UI Streamlit & frontière UI ↔ pipeline](https://github.com/DGAFP/assistant-rh/pull/135).
 - PR [#136 — Revue RAG vs état de l'art 2025-2026](https://github.com/DGAFP/assistant-rh/pull/136).
 - PR [#137 — Audit ingestion vs références 2025/2026](https://github.com/DGAFP/assistant-rh/pull/137).
-- [`docs/UI_REPLACEMENT_ANALYSIS.md`](UI_REPLACEMENT_ANALYSIS.md) — comparaison historique `suitenumerique/conversations`, Open WebUI, LibreChat, etc.
-- [`docs/MASTRA_PORT_EXECUTIVE_SUMMARY.md`](MASTRA_PORT_EXECUTIVE_SUMMARY.md) — état du port Mastra et options UI.
-- [`apps/mastra-pipeline/src/mastra/routes/chat-completions.ts`](../apps/mastra-pipeline/src/mastra/routes/chat-completions.ts) — endpoint OpenAI-compatible existant côté Mastra.
+- [`docs/architecture/UI_REPLACEMENT_ANALYSIS.md`](UI_REPLACEMENT_ANALYSIS.md) — comparaison historique `suitenumerique/conversations`, Open WebUI, LibreChat, etc.
+- [`docs/mastra/MASTRA_PORT_EXECUTIVE_SUMMARY.md`](../mastra/MASTRA_PORT_EXECUTIVE_SUMMARY.md) — état du port Mastra et options UI.
+- [`apps/mastra-pipeline/src/mastra/routes/chat-completions.ts`](../../apps/mastra-pipeline/src/mastra/routes/chat-completions.ts) — endpoint OpenAI-compatible existant côté Mastra.
 - Documentation ProConnect FS : [`implementation_technique.md`](https://github.com/numerique-gouv/proconnect-documentation/blob/main/doc_fs/implementation_technique.md) et [`scope-claims.md`](https://github.com/numerique-gouv/proconnect-documentation/blob/main/doc_fs/scope-claims.md).
 
 ---

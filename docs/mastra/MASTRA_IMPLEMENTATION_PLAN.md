@@ -4,7 +4,7 @@
 
 Port the assistant-rh RAG V3 Clean pipeline (6 stages) from Python to Mastra TypeScript. Keep the same PostgreSQL database, same Albert API, same retrieval quality. No UI — just the core pipeline exposed as a Mastra workflow.
 
-See [MASTRA_PORT_ANALYSIS.md](./MASTRA_PORT_ANALYSIS.md) for the complete analysis of the existing Python pipeline.
+See [MASTRA_PORT_ANALYSIS.md](MASTRA_PORT_ANALYSIS.md) for the complete analysis of the existing Python pipeline.
 
 ---
 
@@ -701,7 +701,7 @@ Per the analysis, these are excluded:
 
 ## Implementation Order
 
-For milestone-by-milestone PR sequencing and conformance gates, see [MASTRA_PR_MILESTONES_PLAN.md](./MASTRA_PR_MILESTONES_PLAN.md).
+For milestone-by-milestone PR sequencing and conformance gates, see [MASTRA_PR_MILESTONES_PLAN.md](MASTRA_PR_MILESTONES_PLAN.md).
 
 | Phase | Scope | Deliverable |
 |-------|-------|-------------|

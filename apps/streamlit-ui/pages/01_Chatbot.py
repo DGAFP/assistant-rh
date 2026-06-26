@@ -77,7 +77,7 @@ from src.ui.chatbot_sources import (
     should_hide_sources,
 )
 from src.ui.cookies_security import is_production_like_env, resolve_cookies_password
-from src.ui.groups import ADMIN_GROUP, valid_groups
+from src.ui.groups import ADMIN_GROUP, DEFAULT_BADGE, valid_groups
 from src.ui.user_groups_store import group_badge_display, group_priorities, known_group_slugs
 
 # --- Defaults dynamiques selon l'environnement ---
@@ -713,7 +713,7 @@ with st.sidebar:
     # Only show group indicator for admin users (any admin group, not just the
     # seed slug); colours/labels come from the DB store with seed fallback.
     if is_admin():
-        icon, color, label = group_badge_display().get(user_group, ("👤", "#6b7280", user_group))
+        icon, color, label = group_badge_display().get(user_group, (*DEFAULT_BADGE, user_group))
 
         st.markdown(
             f"""

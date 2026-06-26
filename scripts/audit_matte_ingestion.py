@@ -3,7 +3,7 @@
 
 The script inspects repository state only and emits SQL statements that an
 operator can run separately. It never opens a DB connection and never writes
-data. See ``docs/MATTE_SOURCE_INGESTION_AUDIT.md`` (delivered in the companion
+data. See ``docs/ingestion/MATTE_SOURCE_INGESTION_AUDIT.md`` (delivered in the companion
 docs PR #129) for the full runbook.
 """
 
