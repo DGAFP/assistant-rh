@@ -85,6 +85,20 @@ def _conn():
         return None
 
 
+def db_available() -> bool:
+    """Return True when the user_groups DB is reachable.
+
+    ``verify_password`` returns False both for a wrong password and for an
+    unreachable DB; callers use this to tell those cases apart (e.g. to show
+    a "service unavailable" message instead of "wrong password").
+    """
+    conn = _conn()
+    if not conn:
+        return False
+    conn.close()
+    return True
+
+
 _CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS user_groups (
     slug          VARCHAR(64) PRIMARY KEY,
@@ -116,7 +130,14 @@ def init_user_groups_table() -> bool:
     try:
         with conn.cursor() as cur:
             cur.execute(_CREATE_TABLE_SQL)
+            # Only seed groups not already present: hashing is expensive
+            # (pbkdf2, 200k iters) and ``ON CONFLICT DO NOTHING`` would throw
+            # the work away for every already-seeded group on each new session.
+            cur.execute("SELECT slug FROM user_groups")
+            existing = {row[0] for row in cur.fetchall()}
             for g in GROUPS:
+                if g.slug in existing:
+                    continue
                 is_admin = g.slug == ADMIN_GROUP
                 raw = admin_pwd if is_admin else default_pwd
                 pwd_hash = hash_password(raw) if raw else None

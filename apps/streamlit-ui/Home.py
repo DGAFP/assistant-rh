@@ -10,6 +10,7 @@ import streamlit as st  # noqa: E402
 from src.ui.cookies_security import resolve_cookies_password  # noqa: E402
 from src.ui.groups import ADMIN_GROUP, valid_groups  # noqa: E402
 from src.ui.user_groups_store import (  # noqa: E402
+    db_available,
     init_user_groups_table,
     list_groups,
     verify_password,
@@ -72,7 +73,9 @@ if _existing and _existing in valid_groups() and _existing != "default":
 # Group picker (shown when no group is established yet)
 # ─────────────────────────────────────────────────────────────────────────────
 # "default" (Non assigné) is an internal fallback, not a real identity to pick.
+# Keep priority order but push admin to the end so it isn't pre-selected.
 _selectable = [g for g in list_groups() if g["slug"] != "default"]
+_selectable.sort(key=lambda g: g.get("is_admin", False))
 _by_slug = {g["slug"]: g for g in _selectable}
 
 st.markdown(
@@ -109,5 +112,7 @@ with _center:
             # Rerun rather than switch_page directly: the cookie write needs a
             # frontend round-trip, after which fast-path 2 above redirects.
             st.rerun()
+        elif not db_available():
+            st.error("⚠️ Service momentanément indisponible. Réessayez dans quelques instants.")
         else:
             st.error("❌ Mot de passe incorrect ou groupe non configuré.")
