@@ -128,6 +128,16 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
     return result
 
 
+def infer_embedding_source(selected: dict[str, bool], requested_source: str = "") -> str:
+    if requested_source in {"service_public", "legifrance", "matte"}:
+        return requested_source
+    if selected["service_public"] and not selected["legifrance"]:
+        return "service_public"
+    if selected["legifrance"] and not selected["service_public"]:
+        return "legifrance"
+    return "all"
+
+
 def write_outputs(outputs: dict[str, str]) -> None:
     github_output = os.getenv("GITHUB_OUTPUT")
     if not github_output:
@@ -146,10 +156,15 @@ def main() -> int:
         if run_embeddings:
             selected["embeddings"] = True
         files: list[str] = []
+        requested_embedding_source = os.getenv("INPUT_EMBEDDING_SOURCE") or source
+        embedding_source = infer_embedding_source(selected, requested_embedding_source)
     else:
         files = changed_files()
         selected = classify_from_files(files)
-        run_embeddings = selected["embeddings"]
+        embedding_source = infer_embedding_source(selected)
+        run_embeddings = selected["service_public"] or selected["legifrance"] or selected["embeddings"]
+        if run_embeddings:
+            selected["embeddings"] = True
 
     matrix: list[dict[str, str]] = []
     for domain in ("service_public", "legifrance", "embeddings"):
@@ -161,6 +176,7 @@ def main() -> int:
         "legifrance": str(selected["legifrance"]).lower(),
         "embeddings": str(selected["embeddings"]).lower(),
         "run_embeddings": str(run_embeddings).lower(),
+        "embedding_source": embedding_source,
         "has_builds": str(bool(matrix)).lower(),
         "has_runs": str(selected["service_public"] or selected["legifrance"] or selected["embeddings"]).lower(),
         "matrix": json.dumps({"include": matrix or [{"image": "noop", "dockerfile": "Dockerfile.service_public_pipeline"}]}),

@@ -2,9 +2,9 @@ name: CI Tests
 
 on:
   push:
-    branches: [main, clean/v3-handover]
+    branches: [dev, staging, main]
   pull_request:
-    branches: [main]
+    branches: [dev, staging, main]
   workflow_dispatch:
 
 jobs:
