@@ -24,7 +24,10 @@ st.set_page_config(page_title="Groupes utilisateurs", page_icon="👥", layout="
 require_admin()
 show_admin_badge()
 
-init_user_groups_table()
+# Ensure the table exists/seeded once per session (matches Home.py guard).
+if "user_groups_initialized" not in st.session_state:
+    init_user_groups_table()
+    st.session_state.user_groups_initialized = True
 
 st.title("👥 Gestion des groupes utilisateurs")
 st.caption(
