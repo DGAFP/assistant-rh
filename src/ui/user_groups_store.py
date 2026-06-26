@@ -194,6 +194,32 @@ def list_groups() -> list[dict[str, Any]]:
         conn.close()
 
 
+def is_admin_group(slug: str) -> bool:
+    """Return True when ``slug`` is flagged as an admin group in the store.
+
+    Falls back to comparing against the seed ``ADMIN_GROUP`` slug when the DB is
+    unavailable or the group is not yet persisted, preserving the historical
+    behaviour.
+    """
+    if not slug:
+        return False
+    conn = _conn()
+    if not conn:
+        return slug == ADMIN_GROUP
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT is_admin FROM user_groups WHERE slug = %s", (slug,))
+            row = cur.fetchone()
+        if row is None:
+            return slug == ADMIN_GROUP
+        return bool(row[0])
+    except psycopg.Error as exc:
+        logger.warning("user_groups is_admin check failed: %s", exc)
+        return slug == ADMIN_GROUP
+    finally:
+        conn.close()
+
+
 def verify_password(slug: str, password: str) -> bool:
     """Return True when ``password`` matches the stored hash for ``slug``."""
     if not slug or not password:

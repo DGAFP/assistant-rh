@@ -39,6 +39,7 @@ from streamlit_cookies_manager import EncryptedCookieManager  # noqa: E402
 
 from src.ui.cookies_security import resolve_cookies_password  # noqa: E402
 from src.ui.groups import ADMIN_GROUP, DEFAULT_BADGE, badge_display  # noqa: E402, F401
+from src.ui.user_groups_store import is_admin_group  # noqa: E402
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 
@@ -71,16 +72,27 @@ def _current_group() -> str:
 
 
 def is_admin() -> bool:
-    """Check if the current user is an admin (via cookie group or session flag)."""
+    """Check if the current user is an admin.
+
+    Admin status comes from the group's ``is_admin`` flag in the store (not a
+    hardcoded slug), so groups an admin marks as admin in #200 are honoured.
+    The result is cached per-group in session state to avoid a DB round-trip on
+    every chatbot rerun; the password-fallback path (``require_admin``) sets
+    ``admin_authenticated`` directly and short-circuits here.
+    """
     if st.session_state.get("admin_authenticated"):
         return True
 
-    cookies = _get_cookies()
-    if cookies and cookies.get("user_group") == ADMIN_GROUP:
-        st.session_state.admin_authenticated = True
-        return True
+    group = _current_group()
+    cache = st.session_state.get("_is_admin_cache")
+    if cache and cache.get("group") == group:
+        return cache["value"]
 
-    return False
+    value = bool(group and is_admin_group(group))
+    st.session_state["_is_admin_cache"] = {"group": group, "value": value}
+    if value:
+        st.session_state.admin_authenticated = True
+    return value
 
 
 def require_admin() -> None:
