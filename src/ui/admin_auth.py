@@ -38,20 +38,9 @@ if not hasattr(st, "_original_cache"):
 from streamlit_cookies_manager import EncryptedCookieManager  # noqa: E402
 
 from src.ui.cookies_security import resolve_cookies_password  # noqa: E402
+from src.ui.groups import ADMIN_GROUP, DEFAULT_BADGE, badge_display  # noqa: E402, F401
 
-ADMIN_GROUP = "dgafpallianceadmin"
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-
-_GROUP_DISPLAY = {
-    "dgafpallianceadmin": ("🔧", "#6366f1", "Admin"),
-    "dgafpsd1": ("🏛️", "#8b5cf6", "DGAFP SD1"),
-    "mattecentrale": ("🏢", "#f97316", "MATTE Centrale"),
-    "mattedreal": ("🌍", "#f97316", "MATTE DREAL"),
-    "cisirh": ("📊", "#eab308", "CISIRH"),
-    "specloiret": ("📍", "#10b981", "Loiret"),
-    "betatest-jan26": ("🧪", "#3b82f6", "Beta"),
-    "default": ("👤", "#6b7280", "Non assigné"),
-}
 
 
 def _get_cookies() -> EncryptedCookieManager | None:
@@ -124,7 +113,7 @@ def require_admin() -> None:
 def show_admin_badge() -> None:
     """Render a small group/session badge in the sidebar (admin pages only)."""
     group = _current_group()
-    icon, color, label = _GROUP_DISPLAY.get(group, ("👤", "#6b7280", group))
+    icon, color, label = badge_display().get(group, (*DEFAULT_BADGE, group))
     session_id = st.session_state.get("session_id", "N/A")
 
     # Show how the user is authenticated

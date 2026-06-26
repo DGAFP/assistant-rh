@@ -55,7 +55,7 @@ Option plus agressive coût minimal :
 
 Le schéma SQL cible est ici :
 
-- [scaleway_postgres_core_schema.sql](/Users/omar.gueddari/work/assistant-rh/config/sql/scaleway_postgres_core_schema.sql)
+- [scaleway_postgres_core_schema.sql](../../config/sql/scaleway_postgres_core_schema.sql)
 
 - `rag_chunks_service_public`
 
@@ -85,15 +85,15 @@ python3 scripts/bootstrap_scaleway_postgres.py --dsn 'postgresql://...'
 
 Le job d'ingestion Service-Public est ici :
 
-- [service_public_ingestion_job.py](/Users/omar.gueddari/work/assistant-rh/scripts/service_public_ingestion_job.py)
+- [service_public_ingestion_job.py](../../scripts/service_public_ingestion_job.py)
 
 Image dédiée :
 
-- [Dockerfile.service_public_ingestion](/Users/omar.gueddari/work/assistant-rh/Dockerfile.service_public_ingestion)
+- [Dockerfile.service_public_ingestion](../../Dockerfile.service_public_ingestion)
 
 Manifest de référence :
 
-- [scaleway_serverless_job_service_public_ingestion.json](/Users/omar.gueddari/work/assistant-rh/config/scaleway_serverless_job_service_public_ingestion.json)
+- [scaleway_serverless_job_service_public_ingestion.json](../../config/scaleway_serverless_job_service_public_ingestion.json)
 
 Il reprend l'idée du notebook `ingestion_pdf.ipynb` :
 

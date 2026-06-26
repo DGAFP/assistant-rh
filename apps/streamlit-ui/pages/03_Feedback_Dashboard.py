@@ -16,6 +16,7 @@ import streamlit as st
 
 from src.ui.admin_auth import require_admin, show_admin_badge
 from src.ui.db_utils import get_engine
+from src.ui.groups import chart_colors, chart_labels
 
 try:
     st.set_page_config(page_title="Feedback Dashboard", page_icon="📊", layout="wide")
@@ -197,30 +198,9 @@ def process_questions(df: pd.DataFrame) -> pd.DataFrame:
 # ------------------------------
 # Group display helpers
 # ------------------------------
-# Couleurs fixes par groupe (pour cohérence graphique/emojis)
-GROUP_COLORS = {
-    "dgafpallianceadmin": "#EF553B",  # Rouge
-    "dgafpsd1": "#AB63FA",            # Violet
-    "mattecentrale": "#FFA15A",       # Orange
-    "mattedreal": "#FFA15A",          # Orange
-    "cisirh": "#FECB52",              # Jaune
-    "specloiret": "#00CC96",          # Vert
-    "betatest-jan26": "#636EFA",      # Bleu
-    "default": "#888888",             # Gris
-    "unknown": "#888888",             # Gris
-}
-
-GROUP_LABELS = {
-    "dgafpallianceadmin": "🔴 Admin",
-    "dgafpsd1": "🟣 DGAFP SD1",
-    "mattecentrale": "🟠 MATTE Centrale",
-    "mattedreal": "🟠 MATTE DREAL",
-    "cisirh": "🟡 CISIRH",
-    "specloiret": "🟢 Loiret",
-    "betatest-jan26": "🔵 Beta Testeurs",
-    "default": "⚪ Non assigné",
-    "unknown": "❓ Inconnu"
-}
+# Couleurs/labels fixes par groupe — source unique: src.ui.groups
+GROUP_COLORS = chart_colors()
+GROUP_LABELS = chart_labels()
 
 # Labels pour les catégories d'erreur (identifiées par LLM)
 ERROR_CATEGORY_LABELS = {

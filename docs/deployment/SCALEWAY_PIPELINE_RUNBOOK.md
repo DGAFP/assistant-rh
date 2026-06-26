@@ -8,9 +8,9 @@ Current migration principle:
 - compatibility first
 - industrial improvements later
 - migration reference:
-  [MIGRATION_COMPATIBILITY_FIRST.md](/Users/omar.gueddari/work/assistant-rh/docs/MIGRATION_COMPATIBILITY_FIRST.md)
+  [MIGRATION_COMPATIBILITY_FIRST.md](../ingestion/MIGRATION_COMPATIBILITY_FIRST.md)
 - later improvements reference:
-  [SERVICE_PUBLIC_INDUSTRIAL_IMPROVEMENTS_LATER.md](/Users/omar.gueddari/work/assistant-rh/docs/SERVICE_PUBLIC_INDUSTRIAL_IMPROVEMENTS_LATER.md)
+  [SERVICE_PUBLIC_INDUSTRIAL_IMPROVEMENTS_LATER.md](../ingestion/SERVICE_PUBLIC_INDUSTRIAL_IMPROVEMENTS_LATER.md)
 
 Recommended cadence:
 - `monthly`
@@ -49,7 +49,7 @@ python3 scripts/service_public_medallion_pipeline.py \
 ```
 
 By default, the pipeline reads the fiche list from:
-- [service_public_fiches.json](/Users/omar.gueddari/work/assistant-rh/config/service_public_fiches.json)
+- [service_public_fiches.json](../../config/service_public_fiches.json)
 
 Migration-only mode:
 - `--batch-from-db` remains available only to bootstrap or compare against the current DB content
@@ -110,6 +110,6 @@ Current operational choice:
 - create or update the monthly Serverless Job directly via CLI
 - do not add job-listing logic before creation
 - use the creation script:
-  [create_scaleway_service_public_job.sh](/Users/omar.gueddari/work/assistant-rh/scripts/create_scaleway_service_public_job.sh)
+  [create_scaleway_service_public_job.sh](../../scripts/create_scaleway_service_public_job.sh)
 - keep the UI checklist only as fallback:
-  [SCALEWAY_SERVERLESS_JOBS_UI_CHECKLIST.md](/Users/omar.gueddari/work/assistant-rh/docs/SCALEWAY_SERVERLESS_JOBS_UI_CHECKLIST.md)
+  [SCALEWAY_SERVERLESS_JOBS_UI_CHECKLIST.md](SCALEWAY_SERVERLESS_JOBS_UI_CHECKLIST.md)

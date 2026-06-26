@@ -61,7 +61,7 @@ Then it jumps to `## 2 parents agents publics`.
 
 The Service-Public XML parser currently extracts a single introduction text node:
 
-- [xml_parser.py](../packages/data-engineering/src/assistant_rh_data_engineering/service_public/xml_parser.py)
+- [xml_parser.py](../../packages/data-engineering/src/assistant_rh_data_engineering/service_public/xml_parser.py)
 - relevant code: `root.find('.//Introduction/Texte')`
 
 If the Service-Public XML contains multiple `Introduction/Texte` nodes, only the first one is kept. This explains why a fresh reingestion can still miss the second introductory paragraph.
@@ -108,7 +108,7 @@ Evidence:
 
 The local pipeline code also excludes DGAFP when `needs_legal_search` is false:
 
-- [pipeline.py](../packages/rag-pipeline/src/assistant_rh_rag_pipeline/pipeline.py)
+- [pipeline.py](../../packages/rag-pipeline/src/assistant_rh_rag_pipeline/pipeline.py)
 - observed logic: `active_tables = [t for t in configured_tables if t != "dgafp"]`
 
 So this test set should not be used as proof that the Legifrance/DGAFP source issue is fixed or broken.
