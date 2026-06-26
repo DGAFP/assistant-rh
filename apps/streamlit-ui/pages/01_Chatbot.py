@@ -62,6 +62,7 @@ from assistant_rh_rag_pipeline.config import (
 from assistant_rh_rag_pipeline.db_helpers import create_engine_from_env, has_dsn
 from assistant_rh_rag_pipeline.models import Chunk
 
+from src.ui.admin_auth import is_admin
 from src.ui.chatbot_feedback import (
     is_feedback_pending,
     render_feedback_block,
@@ -217,16 +218,8 @@ st.markdown(
     """
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0" rel="stylesheet">
 <style>
-/* ====== HIDE ONLY THE PAGE NAVIGATION (keep sidebar content) ====== */
-/* Hide the automatic Streamlit page navigation links */
-[data-testid="stSidebarNav"] { display: none !important; }
-nav[data-testid="stSidebarNav"] { display: none !important; }
-/* Target the navigation list specifically */
-[data-testid="stSidebarNavItems"] { display: none !important; }
-ul[data-testid="stSidebarNavItems"] { display: none !important; }
-/* Hide any nav element in sidebar */
-[data-testid="stSidebar"] nav { display: none !important; }
-[data-testid="stSidebar"] [data-testid="stSidebarNavSeparator"] { display: none !important; }
+/* Page navigation visibility is decided below, once the user group is known
+   (admins keep the full nav; everyone else has it hidden). */
 /* Hide deprecation warning banners */
 div[data-testid="stAlert"] .stAlert { display: none !important; }
 div.stAlert:has(> div[role="alert"]) { display: none !important; }
@@ -668,6 +661,23 @@ user_group, group_needs_save = _determine_user_group()
 if group_needs_save:
     _cookies_to_save["user_group"] = user_group
 st.session_state.user_group = user_group
+
+# Page navigation visibility: admins keep the full sidebar page list; every
+# other group has it hidden so only the chatbot is reachable from the nav.
+if not is_admin():
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebarNav"] { display: none !important; }
+        nav[data-testid="stSidebarNav"] { display: none !important; }
+        [data-testid="stSidebarNavItems"] { display: none !important; }
+        ul[data-testid="stSidebarNavItems"] { display: none !important; }
+        [data-testid="stSidebar"] nav { display: none !important; }
+        [data-testid="stSidebar"] [data-testid="stSidebarNavSeparator"] { display: none !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 @st.cache_data(ttl=15, show_spinner=False)

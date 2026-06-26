@@ -29,6 +29,7 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 import secrets
 from typing import Any
 
@@ -215,6 +216,32 @@ def list_groups() -> list[dict[str, Any]]:
         conn.close()
 
 
+def is_admin_group(slug: str) -> bool:
+    """Return True when ``slug`` is flagged as an admin group in the store.
+
+    Falls back to comparing against the seed ``ADMIN_GROUP`` slug when the DB is
+    unavailable or the group is not yet persisted, preserving the historical
+    behaviour.
+    """
+    if not slug:
+        return False
+    conn = _conn()
+    if not conn:
+        return slug == ADMIN_GROUP
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT is_admin FROM user_groups WHERE slug = %s", (slug,))
+            row = cur.fetchone()
+        if row is None:
+            return slug == ADMIN_GROUP
+        return bool(row[0])
+    except psycopg.Error as exc:
+        logger.warning("user_groups is_admin check failed: %s", exc)
+        return slug == ADMIN_GROUP
+    finally:
+        conn.close()
+
+
 def verify_password(slug: str, password: str) -> bool:
     """Return True when ``password`` matches the stored hash for ``slug``."""
     if not slug or not password:
@@ -230,5 +257,142 @@ def verify_password(slug: str, password: str) -> bool:
     except psycopg.Error as exc:
         logger.warning("user_groups verify failed: %s", exc)
         return False
+    finally:
+        conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Writes (admin CRUD)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
+_EDITABLE_FIELDS = ("label", "icon", "color", "priority", "is_admin", "chart_color", "chart_label")
+
+# Seeded structural groups that must not be deleted.
+PROTECTED_SLUGS = {"default", ADMIN_GROUP}
+
+
+def create_group(
+    slug: str,
+    label: str,
+    password: str,
+    *,
+    icon: str = "👥",
+    color: str = "#6b7280",
+    priority: int = 0,
+    is_admin: bool = False,
+    chart_color: str = "#888888",
+    chart_label: str = "",
+) -> tuple[bool, str]:
+    """Create a new group. Every group requires a password. Returns (ok, error)."""
+    slug = (slug or "").strip().lower()
+    label = (label or "").strip()
+    if not _SLUG_RE.match(slug):
+        return False, "Slug invalide : minuscules, chiffres et tirets, 2 à 64 caractères."
+    if not label:
+        return False, "Le libellé est requis."
+    if not password:
+        return False, "Un mot de passe est requis."
+    if priority < 0:
+        return False, "La priorité doit être ≥ 0."
+    chart_label = (chart_label or "").strip() or f"{icon} {label}".strip()
+    conn = _conn()
+    if not conn:
+        return False, "Base de données indisponible."
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM user_groups WHERE slug = %s", (slug,))
+            if cur.fetchone():
+                return False, f"Le groupe « {slug} » existe déjà."
+            cur.execute(
+                """
+                INSERT INTO user_groups
+                    (slug, label, icon, color, priority, password_hash, is_admin, chart_color, chart_label)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (slug, label, icon, color, priority, hash_password(password), is_admin, chart_color, chart_label),
+            )
+        conn.commit()
+        return True, ""
+    except psycopg.Error as exc:
+        logger.warning("create_group failed: %s", exc)
+        return False, f"Erreur base de données : {exc}"
+    finally:
+        conn.close()
+
+
+def update_group(slug: str, **fields: Any) -> tuple[bool, str]:
+    """Update editable metadata for a group (not the password). Returns (ok, error)."""
+    slug = (slug or "").strip().lower()
+    updates = {k: v for k, v in fields.items() if k in _EDITABLE_FIELDS}
+    if not updates:
+        return False, "Aucun champ à mettre à jour."
+    if "label" in updates and not str(updates["label"]).strip():
+        return False, "Le libellé est requis."
+    if "priority" in updates and int(updates["priority"]) < 0:
+        return False, "La priorité doit être ≥ 0."
+    conn = _conn()
+    if not conn:
+        return False, "Base de données indisponible."
+    try:
+        # Column names come only from the _EDITABLE_FIELDS whitelist; values are parameterised.
+        set_clause = ", ".join(f"{k} = %s" for k in updates) + ", updated_at = CURRENT_TIMESTAMP"
+        params = [*updates.values(), slug]
+        with conn.cursor() as cur:
+            cur.execute(f"UPDATE user_groups SET {set_clause} WHERE slug = %s", params)
+            if cur.rowcount == 0:
+                return False, f"Groupe « {slug} » introuvable."
+        conn.commit()
+        return True, ""
+    except psycopg.Error as exc:
+        logger.warning("update_group failed: %s", exc)
+        return False, f"Erreur base de données : {exc}"
+    finally:
+        conn.close()
+
+
+def set_password(slug: str, password: str) -> tuple[bool, str]:
+    """Reset a group's password. Returns (ok, error)."""
+    if not password:
+        return False, "Un mot de passe est requis."
+    slug = (slug or "").strip().lower()
+    conn = _conn()
+    if not conn:
+        return False, "Base de données indisponible."
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE user_groups SET password_hash = %s, updated_at = CURRENT_TIMESTAMP WHERE slug = %s",
+                (hash_password(password), slug),
+            )
+            if cur.rowcount == 0:
+                return False, f"Groupe « {slug} » introuvable."
+        conn.commit()
+        return True, ""
+    except psycopg.Error as exc:
+        logger.warning("set_password failed: %s", exc)
+        return False, f"Erreur base de données : {exc}"
+    finally:
+        conn.close()
+
+
+def delete_group(slug: str) -> tuple[bool, str]:
+    """Delete a group. Structural groups (default, admin) are protected. Returns (ok, error)."""
+    slug = (slug or "").strip().lower()
+    if slug in PROTECTED_SLUGS:
+        return False, f"Le groupe « {slug} » est protégé et ne peut pas être supprimé."
+    conn = _conn()
+    if not conn:
+        return False, "Base de données indisponible."
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM user_groups WHERE slug = %s", (slug,))
+            if cur.rowcount == 0:
+                return False, f"Groupe « {slug} » introuvable."
+        conn.commit()
+        return True, ""
+    except psycopg.Error as exc:
+        logger.warning("delete_group failed: %s", exc)
+        return False, f"Erreur base de données : {exc}"
     finally:
         conn.close()
