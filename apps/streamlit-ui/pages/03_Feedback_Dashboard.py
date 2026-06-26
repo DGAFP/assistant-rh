@@ -16,7 +16,7 @@ import streamlit as st
 
 from src.ui.admin_auth import require_admin, show_admin_badge
 from src.ui.db_utils import get_engine
-from src.ui.groups import chart_colors, chart_labels
+from src.ui.user_groups_store import group_chart_maps
 
 try:
     st.set_page_config(page_title="Feedback Dashboard", page_icon="📊", layout="wide")
@@ -198,9 +198,9 @@ def process_questions(df: pd.DataFrame) -> pd.DataFrame:
 # ------------------------------
 # Group display helpers
 # ------------------------------
-# Couleurs/labels fixes par groupe — source unique: src.ui.groups
-GROUP_COLORS = chart_colors()
-GROUP_LABELS = chart_labels()
+# Couleurs/labels par groupe — DB-authoritative (fallback seed via user_groups_store),
+# pour que les groupes créés par un admin s'affichent avec leurs propres couleurs.
+GROUP_COLORS, GROUP_LABELS = group_chart_maps()
 
 # Labels pour les catégories d'erreur (identifiées par LLM)
 ERROR_CATEGORY_LABELS = {
