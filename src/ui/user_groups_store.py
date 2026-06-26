@@ -220,6 +220,30 @@ def list_groups() -> list[dict[str, Any]]:
         conn.close()
 
 
+def group_chart_maps() -> tuple[dict[str, str], dict[str, str]]:
+    """Return (colors, labels) keyed by slug for the feedback dashboard.
+
+    DB-authoritative (with seed fallback via :func:`list_groups`), so groups an
+    admin created render with their own colour/label instead of the generic
+    grey/"unknown" defaults. The dashboard-only ``unknown`` pseudo-group (rows
+    whose ``user_group`` is NULL) is always included.
+    """
+    rows = list_groups()
+    colors = {g["slug"]: (g.get("chart_color") or "#888888") for g in rows}
+    labels = {g["slug"]: (g.get("chart_label") or g["label"]) for g in rows}
+    colors["unknown"] = "#888888"
+    labels["unknown"] = "❓ Inconnu"
+    return colors, labels
+
+
+def group_badge_display() -> dict[str, tuple[str, str, str]]:
+    """Return slug -> (icon, color, label) for the sidebar badge.
+
+    DB-authoritative (with seed fallback via :func:`list_groups`).
+    """
+    return {g["slug"]: (g["icon"], g["color"], g["label"]) for g in list_groups()}
+
+
 def is_admin_group(slug: str) -> bool:
     """Return True when ``slug`` is flagged as an admin group in the store.
 
