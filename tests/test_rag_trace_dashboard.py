@@ -21,7 +21,7 @@ def test_trace_dashboard_declares_expected_variables() -> None:
     assert "postgres_datasource" not in variables
     assert variables["env"]["includeAll"] is True
     assert variables["env"]["allValue"] == ".*"
-    for name in ("turn_id", "trace_id", "stage", "status"):
+    for name in ("turn_id", "trace_id_filter", "trace_id", "stage", "status"):
         assert name in variables
 
 
@@ -30,8 +30,10 @@ def test_trace_dashboard_defaults_text_filters_to_match_all_regex() -> None:
 
     assert variables["turn_id"]["current"]["value"] == ".*"
     assert variables["turn_id"]["current"]["text"] == ".*"
-    assert variables["trace_id"]["current"]["value"] == ".*"
-    assert variables["trace_id"]["current"]["text"] == ".*"
+    assert variables["trace_id_filter"]["current"]["value"] == ".*"
+    assert variables["trace_id_filter"]["current"]["text"] == ".*"
+    assert variables["trace_id"]["current"]["value"] == "00000000000000000000000000000001"
+    assert variables["trace_id"]["current"]["text"] == "00000000000000000000000000000001"
 
 
 def test_trace_dashboard_uses_portable_datasource_uids() -> None:
@@ -92,6 +94,8 @@ def test_recent_traces_table_hides_nested_tempo_fields_and_links_to_selected_tra
     links = next(property_["value"] for property_ in trace_id_override["properties"] if property_["id"] == "links")
 
     assert links[0]["title"] == "Show trace in this dashboard"
+    assert "orgId=1" not in links[0]["url"]
+    assert "var-trace_id_filter=$trace_id_filter" in links[0]["url"]
     assert "var-trace_id=${__data.fields.traceID}" in links[0]["url"]
 
 
@@ -102,6 +106,17 @@ def test_selected_trace_uses_native_traces_panel() -> None:
     assert panel["datasource"]["type"] == "tempo"
     assert panel["targets"][0]["query"] == "$trace_id"
     assert panel["targets"][0]["queryType"] == "traceql"
+
+
+def test_selected_trace_query_does_not_use_match_all_filter_default() -> None:
+    variables = {variable["name"]: variable for variable in _dashboard()["templating"]["list"]}
+    selected_trace_id = variables["trace_id"]["current"]["value"]
+    recent_traces_panel = next(panel for panel in _dashboard()["panels"] if panel["title"] == "Recent RAG traces")
+
+    assert selected_trace_id != ".*"
+    assert len(selected_trace_id) == 32
+    assert all(character in "0123456789abcdef" for character in selected_trace_id)
+    assert 'span.rag.trace_id =~ "$trace_id_filter"' in recent_traces_panel["targets"][0]["query"]
 
 
 def test_traceql_panels_filter_by_turn_and_trace() -> None:

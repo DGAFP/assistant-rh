@@ -32,7 +32,7 @@
                 "value": [
                   {
                     "title": "Show trace in this dashboard",
-                    "url": "/d/assistant-rh-rag-trace-explorer/assistant-rh-rag-trace-explorer?orgId=1&from=${__from}&to=${__to}&var-trace_datasource=$trace_datasource&var-metrics_datasource=$metrics_datasource&var-env=$env&var-turn_id=$turn_id&var-trace_id=${__data.fields.traceID}&var-stage=$stage&var-status=$status"
+                    "url": "/d/assistant-rh-rag-trace-explorer/assistant-rh-rag-trace-explorer?from=${__from}&to=${__to}&var-trace_datasource=$trace_datasource&var-metrics_datasource=$metrics_datasource&var-env=$env&var-turn_id=$turn_id&var-trace_id_filter=$trace_id_filter&var-trace_id=${__data.fields.traceID}&var-stage=$stage&var-status=$status"
                   }
                 ]
               }
@@ -53,7 +53,7 @@
       "targets": [
         {
           "limit": 20,
-          "query": "{ resource.service.name = \"assistant-rh\" && span.rag.turn_id =~ \"$turn_id\" && span.rag.trace_id =~ \"$trace_id\" && span.rag.stage =~ \"$stage\" && span.rag.status =~ \"$status\" }",
+          "query": "{ resource.service.name = \"assistant-rh\" && span.rag.turn_id =~ \"$turn_id\" && span.rag.trace_id =~ \"$trace_id_filter\" && span.rag.stage =~ \"$stage\" && span.rag.status =~ \"$status\" }",
           "queryType": "traceql",
           "refId": "A"
         }
@@ -381,7 +381,18 @@
           "text": ".*",
           "value": ".*"
         },
-        "label": "Trace ID",
+        "label": "Trace ID filter",
+        "name": "trace_id_filter",
+        "query": "",
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "00000000000000000000000000000001",
+          "value": "00000000000000000000000000000001"
+        },
+        "label": "Selected trace ID",
         "name": "trace_id",
         "query": "",
         "type": "textbox"
