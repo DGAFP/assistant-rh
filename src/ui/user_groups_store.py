@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS user_groups (
     priority      INTEGER      NOT NULL DEFAULT 0,
     password_hash TEXT,
     is_admin      BOOLEAN      NOT NULL DEFAULT FALSE,
+    visible       BOOLEAN      NOT NULL DEFAULT TRUE,
     chart_color   VARCHAR(16)  NOT NULL DEFAULT '',
     chart_label   VARCHAR(64)  NOT NULL DEFAULT '',
     created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
@@ -131,6 +132,8 @@ def init_user_groups_table() -> bool:
     try:
         with conn.cursor() as cur:
             cur.execute(_CREATE_TABLE_SQL)
+            # Forward migration for tables created before the `visible` column.
+            cur.execute("ALTER TABLE user_groups ADD COLUMN IF NOT EXISTS visible BOOLEAN NOT NULL DEFAULT TRUE")
             # Only seed groups not already present: hashing is expensive
             # (pbkdf2, 200k iters) and ``ON CONFLICT DO NOTHING`` would throw
             # the work away for every already-seeded group on each new session.
@@ -180,6 +183,7 @@ def _seed_fallback() -> list[dict[str, Any]]:
                 "color": g.color,
                 "priority": g.priority,
                 "is_admin": is_admin,
+                "visible": True,
                 "chart_color": g.chart_color,
                 "chart_label": g.chart_label,
                 "has_password": admin_pwd if is_admin else default_pwd,
@@ -201,7 +205,7 @@ def list_groups() -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT slug, label, icon, color, priority, is_admin,
+                SELECT slug, label, icon, color, priority, is_admin, visible,
                        chart_color, chart_label, (password_hash IS NOT NULL) AS has_password
                 FROM user_groups
                 ORDER BY priority DESC, slug ASC
@@ -266,7 +270,7 @@ def verify_password(slug: str, password: str) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
-_EDITABLE_FIELDS = ("label", "icon", "color", "priority", "is_admin", "chart_color", "chart_label")
+_EDITABLE_FIELDS = ("label", "icon", "color", "priority", "is_admin", "visible", "chart_color", "chart_label")
 
 # Seeded structural groups that must not be deleted.
 PROTECTED_SLUGS = {"default", ADMIN_GROUP}
@@ -281,6 +285,7 @@ def create_group(
     color: str = "#6b7280",
     priority: int = 0,
     is_admin: bool = False,
+    visible: bool = True,
     chart_color: str = "#888888",
     chart_label: str = "",
 ) -> tuple[bool, str]:
@@ -307,10 +312,10 @@ def create_group(
             cur.execute(
                 """
                 INSERT INTO user_groups
-                    (slug, label, icon, color, priority, password_hash, is_admin, chart_color, chart_label)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (slug, label, icon, color, priority, password_hash, is_admin, visible, chart_color, chart_label)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
-                (slug, label, icon, color, priority, hash_password(password), is_admin, chart_color, chart_label),
+                (slug, label, icon, color, priority, hash_password(password), is_admin, visible, chart_color, chart_label),
             )
         conn.commit()
         return True, ""

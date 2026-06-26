@@ -49,6 +49,7 @@ if groups:
                 "Libellé": g["label"],
                 "Priorité": g["priority"],
                 "Admin": "✅" if g["is_admin"] else "",
+                "Visible": "✅" if g.get("visible", True) else "🚫 masqué",
                 "Mot de passe": "🔒" if g["has_password"] else "⚠️ aucun",
             }
             for g in groups
@@ -76,6 +77,9 @@ with tab_create:
             icon = st.text_input("Icône (emoji)", value="👥")
             priority = st.number_input("Priorité", min_value=0, value=0, step=10)
             is_admin = st.checkbox("Groupe administrateur", value=False)
+            visible = st.checkbox(
+                "Visible dans le sélecteur", value=True, help="Décocher pour masquer le groupe sur la page d'accueil (il reste en base)."
+            )
         c3, c4 = st.columns(2)
         with c3:
             color = st.color_picker("Couleur (badge)", value="#6b7280")
@@ -92,6 +96,7 @@ with tab_create:
             color=color,
             priority=int(priority),
             is_admin=is_admin,
+            visible=visible,
             chart_color=chart_color,
         )
         if ok:
@@ -123,6 +128,7 @@ with tab_edit:
                 e_priority = st.number_input("Priorité", min_value=0, value=int(current["priority"]), step=10)
             with e2:
                 e_is_admin = st.checkbox("Groupe administrateur", value=bool(current["is_admin"]))
+                e_visible = st.checkbox("Visible dans le sélecteur", value=bool(current.get("visible", True)))
                 e_color = st.color_picker("Couleur (badge)", value=current["color"] or "#6b7280")
                 e_chart_color = st.color_picker("Couleur (graphiques)", value=current["chart_color"] or "#888888")
             saved = st.form_submit_button("Enregistrer", type="primary")
@@ -134,6 +140,7 @@ with tab_edit:
                 icon=e_icon,
                 priority=int(e_priority),
                 is_admin=e_is_admin,
+                visible=e_visible,
                 color=e_color,
                 chart_color=e_chart_color,
             )

@@ -57,24 +57,32 @@ def _go_to_chatbot() -> None:
     st.switch_page("pages/01_Chatbot.py")
 
 
-# Fast path 1: existing ?group=<slug> deep link (cohort onboarding) — let the
-# chatbot resolve and persist it, exactly as before. Admin can't be set this way.
+# Known groups come from the store (DB-authoritative, seed fallback), so groups
+# created via the admin page are recognised — not just the 8 seed slugs.
+_all_groups = list_groups()
+_known = {g["slug"] for g in _all_groups}
+
+# Fast path 1: existing ?group=<slug> deep link (cohort onboarding). Restricted
+# to seed groups because the chatbot's own resolver only accepts those via URL;
+# admin can't be set this way.
 _url_group = st.query_params.get("group", "").lower()
 if _url_group and _url_group in valid_groups() and _url_group != ADMIN_GROUP:
     _go_to_chatbot()
 
-# Fast path 2: a returning user with a real group cookie skips the picker.
+# Fast path 2: a returning user with a real group cookie skips the picker. Uses
+# the DB known-set so admin-created groups redirect too (not only seed groups).
 _existing = cookies.get("user_group")
-if _existing and _existing in valid_groups() and _existing != "default":
+if _existing and _existing in _known and _existing != "default":
     _go_to_chatbot()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Group picker (shown when no group is established yet)
 # ─────────────────────────────────────────────────────────────────────────────
-# "default" (Non assigné) is an internal fallback, not a real identity to pick.
+# "default" (Non assigné) is an internal fallback, not a real identity to pick;
+# groups hidden by an admin stay in the DB but drop out of the picker list.
 # Keep priority order but push admin to the end so it isn't pre-selected.
-_selectable = [g for g in list_groups() if g["slug"] != "default"]
+_selectable = [g for g in _all_groups if g["slug"] != "default" and g.get("visible", True)]
 _selectable.sort(key=lambda g: g.get("is_admin", False))
 _by_slug = {g["slug"]: g for g in _selectable}
 
