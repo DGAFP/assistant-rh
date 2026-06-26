@@ -1475,7 +1475,7 @@ if query:
             st.stop()
 
 
-with st._bottom:
+with st.bottom:
     st.caption(
         # body='<p style="text-align: center;"><i>Les réponses fournies peuvent contenir des inexactitudes. Vérifiez systématiquement les sources avant toute décision.</i></p>',
         body='<p style="text-align: center;"><i>Les réponses générées par l’IA doivent être relues, complétées et validées avant toute utilisation et diffusion auprès des agents.</i></p>',
