@@ -48,6 +48,21 @@ def test_classify_from_files_common_ci_change_selects_all_domains() -> None:
     }
 
 
+def test_classify_from_files_common_with_specific_source_scopes_to_source() -> None:
+    selected = data_engineering_plan.classify_from_files(
+        [
+            ".github/scripts/scaleway_data_jobs.py",
+            "packages/data-engineering/src/assistant_rh_data_engineering/service_public/gold.py",
+        ]
+    )
+
+    assert selected == {
+        "service_public": True,
+        "legifrance": False,
+        "embeddings": False,
+    }
+
+
 def test_changed_files_falls_back_to_all_files_when_git_diff_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_git_output(*args: str) -> str:
         if args == ("rev-parse", "HEAD^"):

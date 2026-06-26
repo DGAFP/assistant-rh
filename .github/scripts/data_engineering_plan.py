@@ -61,6 +61,7 @@ def classify_from_source(source: str) -> dict[str, bool]:
 
 def classify_from_files(files: list[str]) -> dict[str, bool]:
     result = {"service_public": False, "legifrance": False, "embeddings": False}
+    has_common = False
 
     for path in files:
         common = (
@@ -82,7 +83,8 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
             )
         )
         if common:
-            return {"service_public": True, "legifrance": True, "embeddings": True}
+            has_common = True
+            continue
 
         if startswith_any(
             path,
@@ -124,6 +126,12 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
             or contains_any(path, ("embedding_tables", "embeddings_job"))
         ):
             result["embeddings"] = True
+
+    # A change to shared/common CI or config files only triggers a full all-sources
+    # preview when nothing source-specific changed. When a specific source also
+    # changed, scope the preview to that source instead of fanning out to everything.
+    if has_common and not (result["service_public"] or result["legifrance"] or result["embeddings"]):
+        return {"service_public": True, "legifrance": True, "embeddings": True}
 
     return result
 
