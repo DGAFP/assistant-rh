@@ -98,12 +98,6 @@ def gold_sources_match(value, short_id: str) -> bool:
     return short_id_key in {source.lower() for source in parse_gold_sources(value)}
 
 
-def gold_sources_overlap(value, short_ids) -> bool:
-    source_keys = {source.lower() for source in parse_gold_sources(value)}
-    short_id_keys = {str(short_id or "").strip().lower() for short_id in short_ids if str(short_id or "").strip()}
-    return bool(source_keys & short_id_keys)
-
-
 def get_connection():
     conn = st.session_state.get("_pipe_eval_conn")
     if conn is not None:
@@ -579,7 +573,12 @@ def load_goldset_questions(
         where_clauses.append(f"tags @> {tag_array}")
 
     where_sql = " AND ".join(where_clauses)
-    limit_sql = f"LIMIT {max_questions}" if max_questions else ""
+    # The publisher filter is applied in Python (gold_sources can be multi-valued),
+    # so the SQL LIMIT must be deferred until after that filter — capping rows
+    # before narrowing to the publisher would return far fewer (or zero) questions
+    # than requested and miss matches beyond the limit.
+    apply_publisher_filter = bool(publisher_filter and publisher_filter != "Tous")
+    limit_sql = f"LIMIT {max_questions}" if (max_questions and not apply_publisher_filter) else ""
 
     cur.execute(f"""
         SELECT id, question, gold_answer, gold_sources, theme, tags, difficulty,
@@ -590,10 +589,12 @@ def load_goldset_questions(
         {limit_sql}
     """)
     rows = cur.fetchall()
-    if publisher_filter and publisher_filter != "Tous":
+    if apply_publisher_filter:
         cur.execute("SELECT DISTINCT short_id FROM rag_documents WHERE publisher = %s", (publisher_filter,))
-        pub_short_ids = [row["short_id"] for row in cur.fetchall()]
-        rows = [row for row in rows if gold_sources_overlap(row.get("gold_sources"), pub_short_ids)]
+        pub_keys = {str(row["short_id"]).strip().lower() for row in cur.fetchall() if str(row["short_id"] or "").strip()}
+        rows = [row for row in rows if pub_keys & {source.lower() for source in parse_gold_sources(row.get("gold_sources"))}]
+        if max_questions:
+            rows = rows[:max_questions]
     return rows
 
 
