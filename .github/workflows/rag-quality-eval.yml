@@ -57,9 +57,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: baseline
-          - name: candidate
+        # Pull requests compare base vs head. Other events (workflow_dispatch)
+        # have a single ref, so run only the candidate leg instead of evaluating
+        # the same commit twice.
+        name: ${{ github.event_name == 'pull_request' && fromJSON('["baseline", "candidate"]') || fromJSON('["candidate"]') }}
     env:
       SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
       ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
@@ -67,7 +68,6 @@ jobs:
       SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
       SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || secrets.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
       SCALEWAY_JUDGE_MODEL: ${{ vars.SCALEWAY_JUDGE_MODEL || 'llama-3.1-70b-instruct' }}
-      NODE_TLS_REJECT_UNAUTHORIZED: "0"
 
     steps:
       - name: Checkout ${{ matrix.name }}

@@ -409,6 +409,7 @@ class GoldsetResolver:
 
     def __init__(self, dsn: str):
         self.dsn = dsn
+        self._conn: psycopg.Connection[Any] | None = None
 
     def resolve_row(self, row: RawGoldsetRow) -> PreparedRow:
         labels = split_source_labels(row.sources)
@@ -675,13 +676,29 @@ class GoldsetResolver:
                 return rows[0]
         return None
 
+    def _connection(self) -> psycopg.Connection[Any]:
+        # Reuse a single autocommit connection for the whole prepare run: a
+        # goldset resolves many queries per row, and a fresh connect per query
+        # would pay a TCP/TLS/auth handshake hundreds of times. Autocommit keeps
+        # each read independent so one failing statement cannot poison the rest.
+        if self._conn is None or self._conn.closed:
+            self._conn = psycopg.connect(self.dsn, autocommit=True, row_factory=dict_row)
+        return self._conn
+
     def fetchall(self, sql: str, params: tuple[Any, ...]) -> list[dict[str, Any]]:
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
-            return [dict(row) for row in conn.execute(sql, params).fetchall()]
+        return [dict(row) for row in self._connection().execute(sql, params).fetchall()]
+
+    def close(self) -> None:
+        if self._conn is not None and not self._conn.closed:
+            self._conn.close()
+        self._conn = None
 
 
 class NullResolver:
     """Resolver used for local smoke tests without DB access."""
+
+    def close(self) -> None:
+        return None
 
     def resolve_row(self, row: RawGoldsetRow) -> PreparedRow:
         labels = split_source_labels(row.sources)
@@ -1001,7 +1018,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     dsn = None if args.skip_db else resolve_target_dsn(args.target_dsn, args.target_dsn_env)
     resolver = GoldsetResolver(dsn) if dsn else NullResolver()
-    prepared = prepare_rows(raw_rows, resolver)
+    try:
+        prepared = prepare_rows(raw_rows, resolver)
+    finally:
+        resolver.close()
     enriched_path, links_path = write_outputs(prepared, output_dir=output_dir, goldset_name=goldset_name)
 
     status_counts: dict[str, int] = {}

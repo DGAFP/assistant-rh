@@ -113,6 +113,80 @@ def test_calibrate_judge_result_applies_contradiction_and_missing_source_caps() 
     assert {"reason": "material_contradiction_with_gold_answer", "max_score": 0.6} in calibrated["calibration_caps"]
 
 
+def _perfect_parsed() -> dict:
+    return {
+        "score": 1.0,
+        "pass": True,
+        "failure_category": "none",
+        "material_contradiction": False,
+        "dimensions": {
+            "legal_correctness": 1.0,
+            "completeness": 1.0,
+            "gold_answer_alignment": 1.0,
+            "source_support": 1.0,
+        },
+    }
+
+
+def test_deterministic_metrics_empty_gold_sources_yields_none_recall() -> None:
+    metrics = deterministic_metrics([], ["doc-a", "doc-b"])
+
+    assert metrics["doc_recall"] is None
+    assert metrics["hit_rate"] == 0.0
+
+
+def test_calibrate_passes_when_no_expected_sources_declared() -> None:
+    # A question with no gold_sources produces doc_recall=None / hit_rate=0.0;
+    # it must not be capped or failed for "retrieving none of the expected".
+    calibrated = calibrate_judge_result(_perfect_parsed(), {"doc_recall": None, "hit_rate": 0.0})
+
+    assert calibrated["calibration_caps"] == []
+    assert calibrated["score"] == 1.0
+    assert calibrated["pass"] is True
+
+
+def test_calibrate_caps_when_declared_source_not_retrieved() -> None:
+    calibrated = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.0, "hit_rate": 0.0})
+
+    assert {"reason": "no_expected_source_retrieved", "max_score": 0.6} in calibrated["calibration_caps"]
+    assert calibrated["score"] == 0.6
+    assert calibrated["pass"] is False
+
+
+def test_calibrate_caps_on_partial_doc_recall() -> None:
+    calibrated = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.5, "hit_rate": 1.0})
+
+    assert {"reason": "missing_expected_source", "max_score": 0.85} in calibrated["calibration_caps"]
+    assert calibrated["score"] == 0.85
+
+
+@pytest.mark.parametrize(
+    ("dimension", "value", "reason", "max_score"),
+    [
+        ("gold_answer_alignment", 0.7, "weak_gold_answer_alignment", 0.75),
+        ("legal_correctness", 0.7, "legal_correctness_below_gate", 0.75),
+        ("completeness", 0.6, "incomplete_answer", 0.8),
+        ("source_support", 0.6, "weak_source_support", 0.75),
+    ],
+)
+def test_calibrate_applies_each_dimension_cap(dimension, value, reason, max_score) -> None:
+    parsed = _perfect_parsed()
+    parsed["dimensions"][dimension] = value
+    calibrated = calibrate_judge_result(parsed, {"doc_recall": 1.0, "hit_rate": 1.0})
+
+    assert {"reason": reason, "max_score": max_score} in calibrated["calibration_caps"]
+    assert calibrated["score"] <= max_score
+    assert calibrated["pass"] is False
+
+
+def test_calibrate_passes_clean_answer_with_perfect_retrieval() -> None:
+    calibrated = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 1.0, "hit_rate": 1.0})
+
+    assert calibrated["calibration_caps"] == []
+    assert calibrated["score"] == 1.0
+    assert calibrated["pass"] is True
+
+
 def test_write_artifacts_outputs_json_and_csv(tmp_path) -> None:
     item = EvalItem(
         question_id=1,

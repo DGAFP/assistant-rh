@@ -576,43 +576,68 @@ def _dimension_score(dimensions: dict[str, Any], key: str) -> float:
     return min(1.0, max(0.0, value))
 
 
+# --- Judge calibration rubric -------------------------------------------------
+# Every magic number used by ``calibrate_judge_result`` lives here so the scoring
+# weights, the score-capping floors, and the (intentionally stricter, independent)
+# pass-gate floors are visible in one place and cannot silently drift apart.
+
+JUDGE_DIMENSION_WEIGHTS: dict[str, float] = {
+    "legal_correctness": 0.35,
+    "completeness": 0.25,
+    "gold_answer_alignment": 0.25,
+    "source_support": 0.15,
+}
+
+# When a dimension is below ``floor`` the final score is capped at ``max_score``.
+# Order is preserved in the emitted ``calibration_caps`` list.
+JUDGE_DIMENSION_SCORE_CAPS: list[tuple[str, str, float, float]] = [
+    ("gold_answer_alignment", "weak_gold_answer_alignment", 0.75, 0.75),
+    ("legal_correctness", "legal_correctness_below_gate", 0.8, 0.75),
+    ("completeness", "incomplete_answer", 0.7, 0.8),
+    ("source_support", "weak_source_support", 0.7, 0.75),
+]
+
+MATERIAL_CONTRADICTION_CAP = 0.6
+NO_EXPECTED_SOURCE_CAP = 0.6
+MISSING_EXPECTED_SOURCE_CAP = 0.85
+
+# Pass gate: minimum final score and per-dimension floors required to pass.
+# These are intentionally stricter than the score-cap floors above.
+JUDGE_PASS_MIN_SCORE = 0.8
+JUDGE_PASS_DIMENSION_FLOORS: dict[str, float] = {
+    "legal_correctness": 0.8,
+    "completeness": 0.75,
+    "gold_answer_alignment": 0.8,
+}
+
+
 def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]) -> dict[str, Any]:
     dimensions_raw = parsed.get("dimensions")
     dimensions = dimensions_raw if isinstance(dimensions_raw, dict) else {}
-    normalized_dimensions = {
-        "legal_correctness": _dimension_score(dimensions, "legal_correctness"),
-        "completeness": _dimension_score(dimensions, "completeness"),
-        "gold_answer_alignment": _dimension_score(dimensions, "gold_answer_alignment"),
-        "source_support": _dimension_score(dimensions, "source_support"),
-    }
-    weighted_score = (
-        normalized_dimensions["legal_correctness"] * 0.35
-        + normalized_dimensions["completeness"] * 0.25
-        + normalized_dimensions["gold_answer_alignment"] * 0.25
-        + normalized_dimensions["source_support"] * 0.15
-    )
+    normalized_dimensions = {dim: _dimension_score(dimensions, dim) for dim in JUDGE_DIMENSION_WEIGHTS}
+    weighted_score = sum(normalized_dimensions[dim] * weight for dim, weight in JUDGE_DIMENSION_WEIGHTS.items())
     raw_model_score = _safe_float(parsed.get("score"))
     candidate_score = min(weighted_score, raw_model_score) if raw_model_score is not None else weighted_score
 
     caps: list[dict[str, Any]] = []
     material_contradiction = _bool_value(parsed.get("material_contradiction"))
     if material_contradiction:
-        caps.append({"reason": "material_contradiction_with_gold_answer", "max_score": 0.6})
-    if normalized_dimensions["gold_answer_alignment"] < 0.75:
-        caps.append({"reason": "weak_gold_answer_alignment", "max_score": 0.75})
-    if normalized_dimensions["legal_correctness"] < 0.8:
-        caps.append({"reason": "legal_correctness_below_gate", "max_score": 0.75})
-    if normalized_dimensions["completeness"] < 0.7:
-        caps.append({"reason": "incomplete_answer", "max_score": 0.8})
-    if normalized_dimensions["source_support"] < 0.7:
-        caps.append({"reason": "weak_source_support", "max_score": 0.75})
+        caps.append({"reason": "material_contradiction_with_gold_answer", "max_score": MATERIAL_CONTRADICTION_CAP})
+    for dim, reason, floor, max_score in JUDGE_DIMENSION_SCORE_CAPS:
+        if normalized_dimensions[dim] < floor:
+            caps.append({"reason": reason, "max_score": max_score})
 
+    # Retrieval caps only apply when the goldset row actually declares expected
+    # sources. ``deterministic_metrics`` returns ``doc_recall=None`` for an empty
+    # gold set, so a question with no expected sources must not be read as
+    # "retrieved none of the expected" and capped/failed for it.
     doc_recall = deterministic.get("doc_recall")
     hit_rate = deterministic.get("hit_rate")
-    if hit_rate == 0.0:
-        caps.append({"reason": "no_expected_source_retrieved", "max_score": 0.6})
-    elif isinstance(doc_recall, int | float) and doc_recall < 1.0:
-        caps.append({"reason": "missing_expected_source", "max_score": 0.85})
+    if isinstance(doc_recall, int | float):
+        if hit_rate == 0.0:
+            caps.append({"reason": "no_expected_source_retrieved", "max_score": NO_EXPECTED_SOURCE_CAP})
+        elif doc_recall < 1.0:
+            caps.append({"reason": "missing_expected_source", "max_score": MISSING_EXPECTED_SOURCE_CAP})
 
     final_score = candidate_score
     if caps:
@@ -621,12 +646,10 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
 
     failure_category = str(parsed.get("failure_category") or "none")
     pass_value = (
-        final_score >= 0.8
+        final_score >= JUDGE_PASS_MIN_SCORE
         and not material_contradiction
         and not caps
-        and normalized_dimensions["legal_correctness"] >= 0.8
-        and normalized_dimensions["completeness"] >= 0.75
-        and normalized_dimensions["gold_answer_alignment"] >= 0.8
+        and all(normalized_dimensions[dim] >= floor for dim, floor in JUDGE_PASS_DIMENSION_FLOORS.items())
     )
 
     parsed["raw_model_score"] = raw_model_score
@@ -969,6 +992,19 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 raise RuntimeError(item.error)
         if any(item.error for item in items):
             status = "completed_with_errors"
+        # A judge/RAGAS sub-task that was requested but errored on every evaluated
+        # item is a configuration failure (bad key, renamed model), not a passing
+        # run. "skipped" results (e.g. missing API key) are intentional and ignored.
+        for label, enabled, attr in (
+            ("judge", not args.skip_judge, "judge_result"),
+            ("ragas", not args.skip_ragas, "ragas_metrics"),
+        ):
+            if not enabled:
+                continue
+            sub_statuses = [getattr(item, attr).get("status") for item in items if not item.error]
+            if sub_statuses and all(sub_status == "failed" for sub_status in sub_statuses):
+                status = "failed"
+                error = error or f"{label} requested but failed on all {len(sub_statuses)} evaluated items"
     except Exception as exc:
         status = "failed"
         error = str(exc)
@@ -987,6 +1023,8 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 "config_adjustments": config_adjustments,
                 "git_sha": git_sha,
                 "dedupe_scope": args.dedupe_scope,
+                "judge_failed": sum(1 for item in items if item.judge_result.get("status") == "failed"),
+                "ragas_failed": sum(1 for item in items if item.ragas_metrics.get("status") == "failed"),
             }
         )
         if run_id is not None:
@@ -1020,7 +1058,9 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
         config_fingerprint=config_hash,
         output_json=str(json_path),
         output_csv=str(csv_path),
-        existing_run_id=int(existing_run["id"]) if existing_run else None,
+        # A fresh run was recorded as ``run_id``; ``existing_run_id`` is only
+        # meaningful on the skipped-existing path, which returns earlier.
+        existing_run_id=None,
     )
 
 
