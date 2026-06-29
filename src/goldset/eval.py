@@ -684,18 +684,23 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
         if hit_rate == 0.0:
             caps.append({"reason": "no_expected_source_retrieved", "max_score": rubric.no_expected_source_cap})
         elif doc_recall < 1.0:
-            caps.append({"reason": "missing_expected_source", "max_score": rubric.missing_expected_source_cap})
+            # Soft cap: partial retrieval recall lowers the score but does NOT block
+            # the pass. Human reviewers pass a correct, source-grounded answer even
+            # when retrieval missed some expected sources; a hard retrieval miss
+            # (hit_rate == 0) is gated above and via the 0.6 score cap.
+            caps.append({"reason": "missing_expected_source", "max_score": rubric.missing_expected_source_cap, "soft": True})
 
     final_score = candidate_score
     if caps:
         final_score = min(final_score, *(float(cap["max_score"]) for cap in caps))
     final_score = min(1.0, max(0.0, final_score))
 
+    gating_caps = [cap for cap in caps if not cap.get("soft")]
     failure_category = str(parsed.get("failure_category") or "none")
     pass_value = (
         final_score >= rubric.pass_min_score
         and not material_contradiction
-        and not caps
+        and not gating_caps
         and all(normalized_dimensions[dim] >= floor for dim, floor in rubric.pass_dimension_floors.items())
     )
 

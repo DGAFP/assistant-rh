@@ -160,8 +160,19 @@ def test_calibrate_caps_when_declared_source_not_retrieved() -> None:
 def test_calibrate_caps_on_partial_doc_recall() -> None:
     calibrated = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.5, "hit_rate": 1.0})
 
-    assert {"reason": "missing_expected_source", "max_score": 0.85} in calibrated["calibration_caps"]
+    assert any(cap["reason"] == "missing_expected_source" and cap["max_score"] == 0.85 for cap in calibrated["calibration_caps"])
     assert calibrated["score"] == 0.85
+
+
+def test_partial_recall_is_soft_and_does_not_block_pass() -> None:
+    # A strong answer with partial retrieval recall (doc_recall<1, some hit) is
+    # scored down but still passes — reviewers pass these. A hard miss does not.
+    soft = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.5, "hit_rate": 1.0})
+    assert soft["score"] == 0.85
+    assert soft["pass"] is True
+
+    hard = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.0, "hit_rate": 0.0})
+    assert hard["pass"] is False
 
 
 @pytest.mark.parametrize(
