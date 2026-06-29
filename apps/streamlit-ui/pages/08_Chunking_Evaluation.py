@@ -385,7 +385,26 @@ GOLDSETS = {
         name="Fiches SP Subset (doc-level)",
         description="Toutes questions sur les 48 docs fiches_sp — comparaison V2/HF/V3 équitable",
         match_mode="document",
-        filter_sql="gold_sources IN (SELECT DISTINCT number FROM rag_chunks_fiches_sp WHERE number IS NOT NULL)",
+        filter_sql="""
+            EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(
+                    CASE
+                        WHEN LEFT(BTRIM(gold_sources), 1) = '[' THEN gold_sources::jsonb
+                        ELSE jsonb_build_array(gold_sources)
+                    END
+                ) AS source_ids(value)
+                WHERE source_ids.value IN (
+                    SELECT DISTINCT short_id FROM rag_chunks_service_public WHERE short_id IS NOT NULL
+                    UNION
+                    SELECT DISTINCT number FROM rag_chunks_dgafp WHERE number IS NOT NULL
+                    UNION
+                    SELECT DISTINCT cid FROM rag_chunks_dgafp WHERE cid IS NOT NULL
+                    UNION
+                    SELECT DISTINCT chunk_id FROM rag_chunks_dgafp WHERE chunk_id IS NOT NULL
+                )
+            )
+        """,
     ),
 }
 
