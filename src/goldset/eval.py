@@ -151,9 +151,15 @@ def load_goldset_questions(
     goldset_name: str,
     tags: list[str] | None = None,
     limit: int | None = None,
+    any_goldset: bool = False,
 ) -> list[GoldsetQuestion]:
-    where = ["goldset_name = %s", "question IS NOT NULL", "btrim(question) <> ''"]
-    params: list[Any] = [goldset_name]
+    # ``any_goldset`` selects a curated cross-goldset set purely by tag (the rows
+    # keep their own goldset_name); ``goldset_name`` is then only the run label.
+    where = ["question IS NOT NULL", "btrim(question) <> ''"]
+    params: list[Any] = []
+    if not any_goldset:
+        where.insert(0, "goldset_name = %s")
+        params.append(goldset_name)
     if tags:
         where.append("tags && %s::text[]")
         params.append(tags)
@@ -931,6 +937,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run RAG quality evaluation on a goldset.")
     parser.add_argument("--goldset-name", required=True, help="goldset_questions_v2.goldset_name to evaluate.")
     parser.add_argument("--tag", action="append", default=[], help="Require at least one tag. Repeatable.")
+    parser.add_argument(
+        "--any-goldset",
+        action="store_true",
+        help="Select across all goldsets by --tag (goldset-name becomes only the run label).",
+    )
     parser.add_argument("--limit", type=int, default=None, help="Maximum number of questions to evaluate.")
     parser.add_argument("--dsn", default=None, help="PostgreSQL DSN, overrides --dsn-env.")
     parser.add_argument("--dsn-env", default="SCW_POSTGRES_DSN", help="Environment variable containing the target DSN.")
@@ -972,7 +983,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
 
     json_path, csv_path = artifact_paths(output_dir, run_label)
 
-    questions = load_goldset_questions(dsn, goldset_name=args.goldset_name, tags=args.tag, limit=args.limit)
+    questions = load_goldset_questions(dsn, goldset_name=args.goldset_name, tags=args.tag, limit=args.limit, any_goldset=args.any_goldset)
     if not questions:
         raise RuntimeError(f"No questions found for goldset={args.goldset_name!r}, tags={args.tag!r}.")
     eval_scope = build_eval_scope(args, questions)
