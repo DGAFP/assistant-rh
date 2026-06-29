@@ -8,7 +8,9 @@ from assistant_rh_rag_pipeline.config import get_default_config
 
 from src.goldset.eval import (
     EvalItem,
+    GoldsetQuestion,
     aggregate_items,
+    build_eval_scope,
     calibrate_judge_result,
     config_fingerprint,
     deterministic_metrics,
@@ -205,6 +207,29 @@ def test_write_artifacts_outputs_json_and_csv(tmp_path) -> None:
     csv_text = csv_path.read_text(encoding="utf-8")
     assert "question_id,question,theme" in csv_text
     assert "Question ?" in csv_text
+
+
+def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
+    questions = [
+        GoldsetQuestion(id=1, question="q1", gold_answer="a1", gold_sources=["doc-a"]),
+        GoldsetQuestion(id=2, question="q2", gold_answer="a2", gold_sources=["doc-b"]),
+    ]
+    smoke = argparse.Namespace(limit=1, skip_ragas=False, skip_judge=False, judge_model="judge-a")
+    full = argparse.Namespace(limit=None, skip_ragas=False, skip_judge=False, judge_model="judge-a")
+    no_judge = argparse.Namespace(limit=1, skip_ragas=False, skip_judge=True, judge_model="judge-a")
+
+    smoke_scope = build_eval_scope(smoke, questions[:1])
+
+    assert smoke_scope == {
+        "limit": 1,
+        "question_count": 1,
+        "question_ids": [1],
+        "ragas_enabled": True,
+        "judge_enabled": True,
+        "judge_model": "judge-a",
+    }
+    assert build_eval_scope(full, questions) != smoke_scope
+    assert build_eval_scope(no_judge, questions[:1]) != smoke_scope
 
 
 def test_cli_argparse_namespace_smoke() -> None:

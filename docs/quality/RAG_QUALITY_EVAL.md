@@ -54,9 +54,9 @@ sources. The raw score is preserved as `raw_model_score` for auditability.
 ## Run De-Duplication
 
 The run table stores a `config_fingerprint` computed from the same nested
-`RAGConfig` used by the Streamlit chat runtime. By default, de-duplication uses
-`goldset_name`, exact tags, config fingerprint, and current git SHA. CI can avoid
-duplicate runs with:
+`RAGConfig` used by the Streamlit chat runtime. De-duplication also stores an
+`eval_scope` in run metadata so a small smoke run cannot suppress a later full
+run. CI can avoid duplicate runs with:
 
 ```bash
 uv run --group dev python scripts/run_rag_quality_eval.py \
@@ -73,6 +73,8 @@ A matching run is defined by:
 - `goldset_name`;
 - exact `tag_filter`;
 - `config_fingerprint`;
+- exact `eval_scope`, including selected question ids, `--limit`, judge/RAGAS
+  enablement, and judge model;
 - current git SHA, unless `--dedupe-scope config` is used;
 - status in `started`, `running`, or `completed`.
 

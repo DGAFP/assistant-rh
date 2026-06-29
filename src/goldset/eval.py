@@ -261,9 +261,10 @@ def find_existing_run(
     tags: list[str],
     git_sha: str,
     dedupe_scope: str,
+    eval_scope: dict[str, Any],
 ) -> dict[str, Any] | None:
     git_sql = "AND git_sha = %s" if dedupe_scope == "config-and-git" else ""
-    params: list[Any] = [goldset_name, config_hash, tags]
+    params: list[Any] = [goldset_name, config_hash, tags, json.dumps(eval_scope, sort_keys=True, ensure_ascii=False, default=str)]
     if dedupe_scope == "config-and-git":
         params.append(git_sha)
     rows = conn.execute(
@@ -273,6 +274,7 @@ def find_existing_run(
         WHERE goldset_name = %s
           AND config_fingerprint = %s
           AND tag_filter = %s::text[]
+          AND metadata -> 'eval_scope' = %s::jsonb
           {git_sql}
           AND status IN ('started', 'running', 'completed')
         ORDER BY created_at DESC
@@ -281,6 +283,19 @@ def find_existing_run(
         params,
     ).fetchall()
     return dict(rows[0]) if rows else None
+
+
+def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion]) -> dict[str, Any]:
+    """Return the question and evaluator options that make a run reusable."""
+    judge_enabled = not args.skip_judge
+    return {
+        "limit": args.limit,
+        "question_count": len(questions),
+        "question_ids": [question.id for question in questions],
+        "ragas_enabled": not args.skip_ragas,
+        "judge_enabled": judge_enabled,
+        "judge_model": args.judge_model if judge_enabled else "",
+    }
 
 
 def create_eval_run(
@@ -908,6 +923,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     questions = load_goldset_questions(dsn, goldset_name=args.goldset_name, tags=args.tag, limit=args.limit)
     if not questions:
         raise RuntimeError(f"No questions found for goldset={args.goldset_name!r}, tags={args.tag!r}.")
+    eval_scope = build_eval_scope(args, questions)
 
     run_id: int | None = None
     existing_run: dict[str, Any] | None = None
@@ -923,6 +939,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 tags=args.tag,
                 git_sha=git_sha,
                 dedupe_scope=args.dedupe_scope,
+                eval_scope=eval_scope,
             )
             if existing_run and args.skip_if_started:
                 summary = {
@@ -930,6 +947,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                     "existing_run_id": existing_run["id"],
                     "existing_status": existing_run["status"],
                     "config_fingerprint": config_hash,
+                    "eval_scope": eval_scope,
                 }
                 json_path, csv_path = write_artifacts(output_dir, run_label, [], summary)
                 return EvalSummary(
@@ -962,6 +980,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                         "started_at": _now_iso(),
                         "config_adjustments": config_adjustments,
                         "dedupe_scope": args.dedupe_scope,
+                        "eval_scope": eval_scope,
                     },
                 )
                 conn.commit()
@@ -1023,6 +1042,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 "config_adjustments": config_adjustments,
                 "git_sha": git_sha,
                 "dedupe_scope": args.dedupe_scope,
+                "eval_scope": eval_scope,
                 "judge_failed": sum(1 for item in items if item.judge_result.get("status") == "failed"),
                 "ragas_failed": sum(1 for item in items if item.ragas_metrics.get("status") == "failed"),
             }
@@ -1042,6 +1062,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
             "goldset_name": args.goldset_name,
             "tag_filter": args.tag,
             "config_fingerprint": config_hash,
+            "eval_scope": eval_scope,
             "aggregate": aggregate,
             "error": error,
         },
