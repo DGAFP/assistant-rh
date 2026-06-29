@@ -39,8 +39,14 @@ SCALEWAY_JUDGE_MODEL=qwen3-235b-a22b-instruct-2507
 (an instruct model, not a reasoning one — reasoning judges are too slow/token-heavy
 for the eval volume). It agreed with human PASS/BLOCKS reviewers on 90% of the
 calibration set with zero false-PASS; `llama-3.1-70b-instruct` scored 81%.
-`RAGAS_MAX_TOKENS` is optional and defaults to `4096` so faithfulness judgments
-have enough budget for structured outputs.
+RAGAS runs on a separate, faster model — `RAGAS_MODEL` (or `--ragas-model`),
+default `llama-3.3-70b-instruct` — because its many statement/NLI sub-calls do not
+need the higher-quality judge model. `RAGAS_MAX_TOKENS` is optional and defaults to
+`16384`: on long French answers a smaller cap truncates the faithfulness
+decomposition, and RAGAS then retries on every truncation and stalls the run.
+RAGAS is still ~45s/question (sequential sub-calls), so a large run with RAGAS
+enabled takes a while; deterministic retrieval metrics and the judge are the
+primary signals.
 
 The LLM-as-judge score is calibrated in code from four dimensions:
 

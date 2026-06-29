@@ -37,7 +37,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
 DEFAULT_JUDGE_MODEL = "qwen3-235b-a22b-instruct-2507"
 DEFAULT_SCALEWAY_BASE_URL = "https://api.scaleway.ai/v1"
-DEFAULT_RAGAS_MAX_TOKENS = 4096
+# RAGAS makes many statement/NLI calls per question; a large reasoning-grade
+# model is overkill and slow there, so it defaults to a fast instruct model
+# (the judge stays the higher-quality model). The token budget must be generous:
+# on long French answers, faithfulness decomposition overflows a small cap and
+# RAGAS then retries on every truncation, stalling the run.
+DEFAULT_RAGAS_MODEL = "llama-3.3-70b-instruct"
+DEFAULT_RAGAS_MAX_TOKENS = 16384
 
 
 @dataclass
@@ -810,6 +816,7 @@ def run_question(
     run_ragas: bool,
     run_judge: bool,
     judge_model: str,
+    ragas_model: str,
     scaleway_base_url: str,
     scaleway_api_key: str,
 ) -> EvalItem:
@@ -840,7 +847,7 @@ def run_question(
                 answer=result.answer,
                 contexts=context_texts,
                 reference=question.gold_answer,
-                model=judge_model,
+                model=ragas_model,
                 base_url=scaleway_base_url,
                 api_key=scaleway_api_key,
             )
@@ -964,6 +971,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-ragas", action="store_true", help="Skip RAGAS metrics.")
     parser.add_argument("--skip-judge", action="store_true", help="Skip Scaleway LLM-as-judge.")
     parser.add_argument("--judge-model", default=os.getenv("SCALEWAY_JUDGE_MODEL", DEFAULT_JUDGE_MODEL), help="Scaleway judge model.")
+    parser.add_argument(
+        "--ragas-model",
+        default=os.getenv("RAGAS_MODEL", DEFAULT_RAGAS_MODEL),
+        help="Scaleway model for RAGAS metrics (fast instruct model; separate from the judge).",
+    )
     parser.add_argument("--scaleway-base-url", default=os.getenv("SCALEWAY_BASE_URL", DEFAULT_SCALEWAY_BASE_URL), help="OpenAI-compatible base URL.")
     parser.add_argument("--fail-fast", action="store_true", help="Stop on the first item failure.")
     return parser
@@ -1069,6 +1081,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 run_ragas=not args.skip_ragas,
                 run_judge=not args.skip_judge,
                 judge_model=args.judge_model,
+                ragas_model=args.ragas_model,
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,
             )
@@ -1109,6 +1122,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 "ragas_enabled": not args.skip_ragas,
                 "judge_enabled": not args.skip_judge,
                 "judge_model": args.judge_model if not args.skip_judge else "",
+                "ragas_model": args.ragas_model if not args.skip_ragas else "",
                 "config_adjustments": config_adjustments,
                 "git_sha": git_sha,
                 "dedupe_scope": args.dedupe_scope,
