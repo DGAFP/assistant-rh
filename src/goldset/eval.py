@@ -626,19 +626,45 @@ JUDGE_PASS_DIMENSION_FLOORS: dict[str, float] = {
 }
 
 
-def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]) -> dict[str, Any]:
+@dataclass(frozen=True)
+class JudgeRubric:
+    """All tunable knobs of the judge calibration in one injectable bundle, so a
+    calibration run can vary thresholds without mutating module state. The default
+    (``DEFAULT_JUDGE_RUBRIC``) reproduces the module constants exactly."""
+
+    dimension_weights: dict[str, float]
+    dimension_score_caps: tuple[tuple[str, str, float, float], ...]
+    material_contradiction_cap: float
+    no_expected_source_cap: float
+    missing_expected_source_cap: float
+    pass_min_score: float
+    pass_dimension_floors: dict[str, float]
+
+
+DEFAULT_JUDGE_RUBRIC = JudgeRubric(
+    dimension_weights=JUDGE_DIMENSION_WEIGHTS,
+    dimension_score_caps=tuple(JUDGE_DIMENSION_SCORE_CAPS),
+    material_contradiction_cap=MATERIAL_CONTRADICTION_CAP,
+    no_expected_source_cap=NO_EXPECTED_SOURCE_CAP,
+    missing_expected_source_cap=MISSING_EXPECTED_SOURCE_CAP,
+    pass_min_score=JUDGE_PASS_MIN_SCORE,
+    pass_dimension_floors=JUDGE_PASS_DIMENSION_FLOORS,
+)
+
+
+def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any], rubric: JudgeRubric = DEFAULT_JUDGE_RUBRIC) -> dict[str, Any]:
     dimensions_raw = parsed.get("dimensions")
     dimensions = dimensions_raw if isinstance(dimensions_raw, dict) else {}
-    normalized_dimensions = {dim: _dimension_score(dimensions, dim) for dim in JUDGE_DIMENSION_WEIGHTS}
-    weighted_score = sum(normalized_dimensions[dim] * weight for dim, weight in JUDGE_DIMENSION_WEIGHTS.items())
+    normalized_dimensions = {dim: _dimension_score(dimensions, dim) for dim in rubric.dimension_weights}
+    weighted_score = sum(normalized_dimensions[dim] * weight for dim, weight in rubric.dimension_weights.items())
     raw_model_score = _safe_float(parsed.get("score"))
     candidate_score = min(weighted_score, raw_model_score) if raw_model_score is not None else weighted_score
 
     caps: list[dict[str, Any]] = []
     material_contradiction = _bool_value(parsed.get("material_contradiction"))
     if material_contradiction:
-        caps.append({"reason": "material_contradiction_with_gold_answer", "max_score": MATERIAL_CONTRADICTION_CAP})
-    for dim, reason, floor, max_score in JUDGE_DIMENSION_SCORE_CAPS:
+        caps.append({"reason": "material_contradiction_with_gold_answer", "max_score": rubric.material_contradiction_cap})
+    for dim, reason, floor, max_score in rubric.dimension_score_caps:
         if normalized_dimensions[dim] < floor:
             caps.append({"reason": reason, "max_score": max_score})
 
@@ -650,9 +676,9 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
     hit_rate = deterministic.get("hit_rate")
     if isinstance(doc_recall, int | float):
         if hit_rate == 0.0:
-            caps.append({"reason": "no_expected_source_retrieved", "max_score": NO_EXPECTED_SOURCE_CAP})
+            caps.append({"reason": "no_expected_source_retrieved", "max_score": rubric.no_expected_source_cap})
         elif doc_recall < 1.0:
-            caps.append({"reason": "missing_expected_source", "max_score": MISSING_EXPECTED_SOURCE_CAP})
+            caps.append({"reason": "missing_expected_source", "max_score": rubric.missing_expected_source_cap})
 
     final_score = candidate_score
     if caps:
@@ -661,10 +687,10 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
 
     failure_category = str(parsed.get("failure_category") or "none")
     pass_value = (
-        final_score >= JUDGE_PASS_MIN_SCORE
+        final_score >= rubric.pass_min_score
         and not material_contradiction
         and not caps
-        and all(normalized_dimensions[dim] >= floor for dim, floor in JUDGE_PASS_DIMENSION_FLOORS.items())
+        and all(normalized_dimensions[dim] >= floor for dim, floor in rubric.pass_dimension_floors.items())
     )
 
     parsed["raw_model_score"] = raw_model_score
@@ -708,23 +734,42 @@ def judge_answer(
         },
         "rubric": {
             "dimensions": {
-                "legal_correctness": "0.0 to 1.0. Penalize wrong legal rule, wrong obligation, wrong exception, or misleading nuance.",
-                "completeness": (
-                    "0.0 to 1.0. Penalize missing required conditions, deadlines, exceptions, or practical consequence present in the gold answer."
+                "legal_correctness": (
+                    "0.0 to 1.0. Penalize a wrong legal rule, wrong obligation, wrong exception, or misleading nuance. "
+                    "A correct answer scores high even if briefly stated."
                 ),
-                "gold_answer_alignment": "0.0 to 1.0. Penalize any contradiction or weaker/stronger legal conclusion than the gold answer.",
-                "source_support": "0.0 to 1.0. Penalize unsupported claims and missing support from retrieved contexts.",
+                "completeness": (
+                    "0.0 to 1.0. Judge ONLY whether the elements REQUIRED to act on the question are present. "
+                    "Score 1.0 when every legally required condition/deadline/exception in the gold answer is covered, "
+                    "even if the candidate is shorter and omits optional extras, examples, or extra context the gold answer did not require. "
+                    "Do NOT demand exhaustiveness and do NOT penalize concision. "
+                    "Only lower the score when a REQUIRED element from the gold answer is missing."
+                ),
+                "gold_answer_alignment": (
+                    "0.0 to 1.0. Penalize a contradiction or a weaker/stronger legal conclusion than the gold answer. "
+                    "Extra correct information, or covering a broader public than asked, is NOT a misalignment."
+                ),
+                "source_support": (
+                    "0.0 to 1.0. Penalize claims that are unsupported by the gold answer or contexts. "
+                    "If the answer's substantive claims match the gold answer, score high."
+                ),
             },
             "score": "your uncalibrated overall score from 0.0 to 1.0 before code-side caps",
-            "pass": "true only when the answer is legally correct, complete, aligned with the gold answer, and source-supported",
+            "pass": "true only when the answer is legally correct, covers the required points, aligns with the gold answer, and is source-supported",
             "failure_category": "one of: none, wrong_law, incomplete, unsupported, hallucination, refusal, irrelevant",
-            "material_contradiction": "true if the candidate answer contradicts the gold answer on a legally material point",
+            "material_contradiction": (
+                "true ONLY when the candidate directly asserts the OPPOSITE of a legally material point in the gold answer "
+                "(e.g. eligible vs not eligible, owed vs not owed, allowed vs forbidden). "
+                "Differences of emphasis, extra correct detail, addressing a broader audience, or merely omitting a point are NOT contradictions."
+            ),
         },
     }
     system = (
-        "You are a strict French public-sector HR RAG evaluator. "
+        "You are a French public-sector HR RAG evaluator. Judge correctness and faithfulness to the gold answer, NOT style, "
+        "tone, audience (whether it addresses the agent or the HR manager), length, or formatting — those are never quality failures here. "
         "Compare the candidate answer against the gold answer first, then against retrieved contexts. "
-        "Do not reward a fluent answer that contradicts the gold answer. "
+        "Reward a correct, source-grounded answer even when it is concise; do not require exhaustiveness. "
+        "Do not reward a fluent answer that contradicts the gold answer on a material legal point. "
         "Return only valid JSON with keys: score, pass, failure_category, material_contradiction, "
         "dimensions, missing_required_points, contradictions, rationale, source_support."
     )

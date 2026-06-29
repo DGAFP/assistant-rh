@@ -183,6 +183,36 @@ def test_calibrate_applies_each_dimension_cap(dimension, value, reason, max_scor
     assert calibrated["pass"] is False
 
 
+def test_calibrate_blocks_material_contradiction_regardless_of_score() -> None:
+    # The judge must fail an answer that contradicts the gold answer on a material
+    # point, even with otherwise strong dimensions (the dangerous false-PASS case).
+    parsed = _perfect_parsed()
+    parsed["material_contradiction"] = True
+    calibrated = calibrate_judge_result(parsed, {})
+
+    assert calibrated["pass"] is False
+    assert calibrated["material_contradiction"] is True
+
+
+def test_calibrate_rubric_is_injectable() -> None:
+    from src.goldset.eval import DEFAULT_JUDGE_RUBRIC
+
+    # An answer that fails the default completeness gate (0.75) ...
+    parsed = _perfect_parsed()
+    parsed["dimensions"]["completeness"] = 0.72
+    assert calibrate_judge_result(dict(parsed), {})["pass"] is False
+
+    # ... passes under a rubric with a lower completeness floor.
+    from dataclasses import replace
+
+    relaxed = replace(
+        DEFAULT_JUDGE_RUBRIC,
+        dimension_score_caps=tuple((d, r, (0.6 if d == "completeness" else f), m) for d, r, f, m in DEFAULT_JUDGE_RUBRIC.dimension_score_caps),
+        pass_dimension_floors={**DEFAULT_JUDGE_RUBRIC.pass_dimension_floors, "completeness": 0.7},
+    )
+    assert calibrate_judge_result(dict(parsed), {}, relaxed)["pass"] is True
+
+
 def test_calibrate_passes_clean_answer_with_perfect_retrieval() -> None:
     calibrated = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 1.0, "hit_rate": 1.0})
 
