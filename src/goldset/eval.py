@@ -35,7 +35,7 @@ from psycopg.rows import dict_row
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
-DEFAULT_JUDGE_MODEL = "llama-3.1-70b-instruct"
+DEFAULT_JUDGE_MODEL = "qwen3-235b-a22b-instruct-2507"
 DEFAULT_SCALEWAY_BASE_URL = "https://api.scaleway.ai/v1"
 DEFAULT_RAGAS_MAX_TOKENS = 4096
 

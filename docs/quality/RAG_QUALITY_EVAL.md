@@ -32,10 +32,13 @@ Required variables:
 ```bash
 SCALEWAY_API_KEY=...
 SCALEWAY_BASE_URL=https://api.scaleway.ai/v1
-SCALEWAY_JUDGE_MODEL=llama-3.1-70b-instruct
+SCALEWAY_JUDGE_MODEL=qwen3-235b-a22b-instruct-2507
 ```
 
-`SCALEWAY_JUDGE_MODEL` is optional and defaults to `llama-3.1-70b-instruct`.
+`SCALEWAY_JUDGE_MODEL` is optional and defaults to `qwen3-235b-a22b-instruct-2507`
+(an instruct model, not a reasoning one — reasoning judges are too slow/token-heavy
+for the eval volume). It agreed with human PASS/BLOCKS reviewers on 90% of the
+calibration set with zero false-PASS; `llama-3.1-70b-instruct` scored 81%.
 `RAGAS_MAX_TOKENS` is optional and defaults to `4096` so faithfulness judgments
 have enough budget for structured outputs.
 

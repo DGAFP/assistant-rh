@@ -67,7 +67,7 @@ jobs:
       ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || secrets.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
       SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
       SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || secrets.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
-      SCALEWAY_JUDGE_MODEL: ${{ vars.SCALEWAY_JUDGE_MODEL || 'llama-3.1-70b-instruct' }}
+      SCALEWAY_JUDGE_MODEL: ${{ vars.SCALEWAY_JUDGE_MODEL || 'qwen3-235b-a22b-instruct-2507' }}
 
     steps:
       - name: Checkout ${{ matrix.name }}
