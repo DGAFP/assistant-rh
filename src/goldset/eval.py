@@ -55,6 +55,13 @@ class GoldsetQuestion:
     theme: str = ""
     tags: list[str] = field(default_factory=list)
     goldset_name: str = ""
+    # Pre-resolved corpus doc_ids for ``gold_sources`` (deterministic retrieval
+    # matching uses these when present; falls back to gold_sources otherwise).
+    gold_doc_ids: list[str] = field(default_factory=list)
+
+    @property
+    def retrieval_gold(self) -> list[str]:
+        return self.gold_doc_ids or self.gold_sources
 
 
 @dataclass
@@ -151,6 +158,18 @@ def config_fingerprint(config: RAGConfig) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _column_exists(dsn: str, table_name: str, column_name: str) -> bool:
+    try:
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=%s AND column_name=%s",
+                (table_name, column_name),
+            ).fetchone()
+        return row is not None
+    except psycopg.Error:
+        return False
+
+
 def load_goldset_questions(
     dsn: str,
     *,
@@ -174,8 +193,12 @@ def load_goldset_questions(
         limit_sql = " LIMIT %s"
         params.append(limit)
 
+    # ``gold_doc_ids`` is an optional pre-resolution column; tolerate its absence.
+    gold_doc_ids_col = (
+        "gold_doc_ids" if _column_exists(dsn, "goldset_questions_v2", "gold_doc_ids") else "NULL::text[] AS gold_doc_ids"
+    )
     sql = f"""
-        SELECT id, question, gold_answer, gold_sources, theme, tags, goldset_name
+        SELECT id, question, gold_answer, gold_sources, theme, tags, goldset_name, {gold_doc_ids_col}
         FROM public.goldset_questions_v2
         WHERE {" AND ".join(where)}
         ORDER BY id
@@ -193,6 +216,7 @@ def load_goldset_questions(
             theme=str(row.get("theme") or ""),
             tags=parse_text_list(row.get("tags")),
             goldset_name=str(row.get("goldset_name") or ""),
+            gold_doc_ids=parse_text_list(row.get("gold_doc_ids")),
         )
         for row in rows
     ]
@@ -423,6 +447,78 @@ def context_payload(result: PipelineResult) -> list[dict[str, Any]]:
     return payload
 
 
+_CODE_RE = re.compile(r"[FLRD]\.?\s?\d+(?:-\d+)?", re.IGNORECASE)
+_RANGE_RE = re.compile(r"([LRD])\.?\s?(\d+)-(\d+)\s*à\s*[LRD]?\.?\s?\d+-(\d+)", re.IGNORECASE)
+
+
+def _match_key(value: str) -> str:
+    # Canonical key so heterogeneous identifiers compare correctly: uppercased,
+    # whitespace and dots stripped, so an article code like "L. 332-22" matches
+    # "L332-22". Harmless for UUIDs / F-fiche ids / LEGIARTI ids (no spaces/dots).
+    return "".join(str(value or "").upper().split()).replace(".", "")
+
+
+def load_gold_id_maps(dsn: str) -> dict[str, dict[str, Any]]:
+    """Build the lookups that resolve human-facing ``gold_sources`` to the corpus
+    ``doc_id``s the retriever actually returns: ``rag_documents.short_id`` (MATTE
+    doc names) -> doc_id, ``rag_chunks_matte.short_id`` (annex codes) ->
+    source_document_id, ``rag_chunks_dgafp.number`` (article codes) -> cid.
+    Returns empty maps if the corpus tables are absent."""
+    maps: dict[str, dict[str, Any]] = {"doc_short": {}, "matte_short": {}, "article": {}}
+    queries = {
+        "doc_short": "SELECT short_id, doc_id FROM public.rag_documents WHERE short_id IS NOT NULL",
+        "matte_short": (
+            "SELECT DISTINCT short_id, source_document_id AS v FROM public.rag_chunks_matte "
+            "WHERE short_id IS NOT NULL AND source_document_id IS NOT NULL"
+        ),
+        "article": (
+            "SELECT DISTINCT number AS short_id, cid AS v FROM public.rag_chunks_dgafp "
+            "WHERE number IS NOT NULL AND cid IS NOT NULL"
+        ),
+    }
+    try:
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            for name, sql in queries.items():
+                for row in conn.execute(sql).fetchall():
+                    key = _match_key(row["short_id"])
+                    value = str(row.get("doc_id") or row.get("v") or "").strip()
+                    if not key or not value:
+                        continue
+                    if name == "doc_short":
+                        maps[name][key] = value
+                    else:
+                        maps[name].setdefault(key, set()).add(value)
+    except psycopg.Error:
+        return {"doc_short": {}, "matte_short": {}, "article": {}}
+    return maps
+
+
+def resolve_gold_doc_ids(gold_sources: list[str], maps: dict[str, dict[str, Any]]) -> list[str]:
+    """Resolve free-text ``gold_sources`` (F-fiche codes, MATTE doc names, annex
+    codes, article codes and ranges) to corpus ``doc_id``s, keeping the raw token
+    too (F-fiche codes already equal the retrieved doc_id)."""
+    resolved: list[str] = []
+    for raw in gold_sources:
+        raw = str(raw).strip()
+        if not raw:
+            continue
+        resolved.append(raw)
+        tokens = {raw, *_CODE_RE.findall(raw)}
+        range_match = _RANGE_RE.search(raw)
+        if range_match:
+            prefix, base, start, end = range_match.group(1), range_match.group(2), int(range_match.group(3)), int(range_match.group(4))
+            tokens.update(f"{prefix}{base}-{i}" for i in range(start, end + 1))
+        for token in tokens:
+            key = _match_key(token)
+            if key in maps["article"]:
+                resolved.extend(maps["article"][key])
+            if key in maps["matte_short"]:
+                resolved.extend(maps["matte_short"][key])
+            if key in maps["doc_short"]:
+                resolved.append(maps["doc_short"][key])
+    return _stable_unique(resolved)
+
+
 def retrieved_doc_ids(result: PipelineResult, contexts: list[dict[str, Any]]) -> list[str]:
     ids = [str(ctx.get("doc_id") or "").strip() for ctx in contexts]
     for key in ("context_items_ref", "chunks_after_rerank", "chunks_raw", "retrieved_chunks"):
@@ -439,11 +535,12 @@ def retrieved_doc_ids(result: PipelineResult, contexts: list[dict[str, Any]]) ->
 def deterministic_metrics(gold_sources: list[str], retrieved_ids: list[str]) -> dict[str, Any]:
     gold = _stable_unique(gold_sources)
     retrieved = _stable_unique(retrieved_ids)
-    gold_set = set(gold)
-    retrieved_set = set(retrieved)
-    hits = [doc_id for doc_id in retrieved if doc_id in gold_set]
+    gold_set = {_match_key(g) for g in gold}
+    retrieved_keys = [_match_key(r) for r in retrieved]
+    retrieved_set = set(retrieved_keys)
+    hits = [key for key in retrieved_keys if key in gold_set]
     reciprocal_rank = 0.0
-    for idx, doc_id in enumerate(retrieved, start=1):
+    for idx, doc_id in enumerate(retrieved_keys, start=1):
         if doc_id in gold_set:
             reciprocal_rank = 1.0 / idx
             break
@@ -455,7 +552,7 @@ def deterministic_metrics(gold_sources: list[str], retrieved_ids: list[str]) -> 
         "doc_precision": len(gold_set & retrieved_set) / len(retrieved_set) if retrieved_set else None,
         "hit_rate": 1.0 if gold_set & retrieved_set else 0.0,
         "mrr": reciprocal_rank,
-        "missing_gold_sources": [doc_id for doc_id in gold if doc_id not in retrieved_set],
+        "missing_gold_sources": [source for source in gold if _match_key(source) not in retrieved_set],
         "retrieved_doc_ids": retrieved,
     }
 
@@ -680,33 +777,31 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
         if normalized_dimensions[dim] < floor:
             caps.append({"reason": reason, "max_score": max_score})
 
-    # Retrieval caps only apply when the goldset row actually declares expected
-    # sources. ``deterministic_metrics`` returns ``doc_recall=None`` for an empty
-    # gold set, so a question with no expected sources must not be read as
-    # "retrieved none of the expected" and capped/failed for it.
+    # Retrieval shortfalls are recorded as DIAGNOSTIC flags only — they never
+    # reduce the answer-quality score or block the pass. The judge was calibrated
+    # against human verdicts with no retrieval data, retrieval quality is reported
+    # separately (deterministic doc metrics + RAGAS), and ``gold_sources`` are
+    # free-text legal references too unreliable to gate answer quality on.
+    # ``doc_recall=None`` (empty gold set) yields no flag at all.
     doc_recall = deterministic.get("doc_recall")
     hit_rate = deterministic.get("hit_rate")
+    retrieval_flags: list[dict[str, Any]] = []
     if isinstance(doc_recall, int | float):
         if hit_rate == 0.0:
-            caps.append({"reason": "no_expected_source_retrieved", "max_score": rubric.no_expected_source_cap})
+            retrieval_flags.append({"reason": "no_expected_source_retrieved", "max_score": rubric.no_expected_source_cap, "soft": True})
         elif doc_recall < 1.0:
-            # Soft cap: partial retrieval recall lowers the score but does NOT block
-            # the pass. Human reviewers pass a correct, source-grounded answer even
-            # when retrieval missed some expected sources; a hard retrieval miss
-            # (hit_rate == 0) is gated above and via the 0.6 score cap.
-            caps.append({"reason": "missing_expected_source", "max_score": rubric.missing_expected_source_cap, "soft": True})
+            retrieval_flags.append({"reason": "missing_expected_source", "max_score": rubric.missing_expected_source_cap, "soft": True})
 
     final_score = candidate_score
     if caps:
         final_score = min(final_score, *(float(cap["max_score"]) for cap in caps))
     final_score = min(1.0, max(0.0, final_score))
 
-    gating_caps = [cap for cap in caps if not cap.get("soft")]
     failure_category = str(parsed.get("failure_category") or "none")
     pass_value = (
         final_score >= rubric.pass_min_score
         and not material_contradiction
-        and not gating_caps
+        and not caps
         and all(normalized_dimensions[dim] >= floor for dim, floor in rubric.pass_dimension_floors.items())
     )
 
@@ -715,7 +810,7 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
     parsed["pass"] = pass_value
     parsed["failure_category"] = "none" if pass_value else failure_category if failure_category != "none" else "quality_gate_failed"
     parsed["dimensions"] = normalized_dimensions
-    parsed["calibration_caps"] = caps
+    parsed["calibration_caps"] = caps + retrieval_flags
     parsed["material_contradiction"] = material_contradiction
     return parsed
 
@@ -838,7 +933,7 @@ def run_question(
         item.sources = result.sources
         item.timing = {**result.timing, "eval_total_ms": elapsed_ms}
         item.metadata = result.metadata
-        item.deterministic_metrics = deterministic_metrics(question.gold_sources, doc_ids)
+        item.deterministic_metrics = deterministic_metrics(question.retrieval_gold, doc_ids)
 
         context_texts = [str(context.get("content") or "") for context in contexts if str(context.get("content") or "").strip()]
         if run_ragas:

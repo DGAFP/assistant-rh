@@ -132,6 +132,32 @@ def _perfect_parsed() -> dict:
     }
 
 
+def test_deterministic_metrics_matching_is_normalized() -> None:
+    # Matching is dot/space/case insensitive, so a gold article code "L. 332-22"
+    # hits a resolved/retrieved "L332-22".
+    metrics = deterministic_metrics(["L. 332-22", "F8"], ["LEGIARTI000044426654", "L332-22", "f8"])
+
+    assert metrics["hit_count"] == 2
+    assert metrics["doc_recall"] == 1.0
+    assert metrics["missing_gold_sources"] == []
+
+
+def test_resolve_gold_doc_ids_maps_codes_names_and_ranges() -> None:
+    from src.goldset.eval import resolve_gold_doc_ids
+
+    maps = {
+        "doc_short": {"MSO_TEMPS_DE_TRAVAIL_ABC": "uuid-mso"},
+        "matte_short": {"A1": {"uuid-a1"}},
+        "article": {"L631-3": {"LEGIA-3"}, "L631-4": {"LEGIA-4"}},
+    }
+    resolved = resolve_gold_doc_ids(["F8", "A1", "MSO_temps_de_travail_abc", "CGFP, L. 631-3 à L. 631-4"], maps)
+
+    assert "F8" in resolved  # raw token kept (matches retrieved doc_id directly)
+    assert "uuid-a1" in resolved
+    assert "uuid-mso" in resolved
+    assert {"LEGIA-3", "LEGIA-4"} <= set(resolved)  # range expanded and resolved
+
+
 def test_deterministic_metrics_empty_gold_sources_yields_none_recall() -> None:
     metrics = deterministic_metrics([], ["doc-a", "doc-b"])
 
@@ -149,30 +175,19 @@ def test_calibrate_passes_when_no_expected_sources_declared() -> None:
     assert calibrated["pass"] is True
 
 
-def test_calibrate_caps_when_declared_source_not_retrieved() -> None:
-    calibrated = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.0, "hit_rate": 0.0})
+def test_retrieval_shortfall_is_diagnostic_only() -> None:
+    # Retrieval shortfalls are recorded as soft flags for visibility but never
+    # reduce the answer-quality score or block the pass (the judge is calibrated
+    # without retrieval data; retrieval is reported separately).
+    none_hit = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.0, "hit_rate": 0.0})
+    assert any(c["reason"] == "no_expected_source_retrieved" and c.get("soft") for c in none_hit["calibration_caps"])
+    assert none_hit["score"] == 1.0
+    assert none_hit["pass"] is True
 
-    assert {"reason": "no_expected_source_retrieved", "max_score": 0.6} in calibrated["calibration_caps"]
-    assert calibrated["score"] == 0.6
-    assert calibrated["pass"] is False
-
-
-def test_calibrate_caps_on_partial_doc_recall() -> None:
-    calibrated = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.5, "hit_rate": 1.0})
-
-    assert any(cap["reason"] == "missing_expected_source" and cap["max_score"] == 0.85 for cap in calibrated["calibration_caps"])
-    assert calibrated["score"] == 0.85
-
-
-def test_partial_recall_is_soft_and_does_not_block_pass() -> None:
-    # A strong answer with partial retrieval recall (doc_recall<1, some hit) is
-    # scored down but still passes — reviewers pass these. A hard miss does not.
-    soft = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.5, "hit_rate": 1.0})
-    assert soft["score"] == 0.85
-    assert soft["pass"] is True
-
-    hard = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.0, "hit_rate": 0.0})
-    assert hard["pass"] is False
+    partial = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.5, "hit_rate": 1.0})
+    assert any(c["reason"] == "missing_expected_source" and c.get("soft") for c in partial["calibration_caps"])
+    assert partial["score"] == 1.0
+    assert partial["pass"] is True
 
 
 @pytest.mark.parametrize(
