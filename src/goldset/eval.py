@@ -809,10 +809,15 @@ def run_question(
     return item
 
 
+def artifact_paths(output_dir: Path, run_label: str) -> tuple[Path, Path]:
+    """Deterministic JSON/CSV artifact paths for a run, shared by the writer and
+    the DB metadata so a recorded run can be traced back to its local files."""
+    return output_dir / f"{run_label}.json", output_dir / f"{run_label}.csv"
+
+
 def write_artifacts(output_dir: Path, run_label: str, items: list[EvalItem], summary: dict[str, Any]) -> tuple[Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    json_path = output_dir / f"{run_label}.json"
-    csv_path = output_dir / f"{run_label}.csv"
+    json_path, csv_path = artifact_paths(output_dir, run_label)
     json_path.write_text(
         json.dumps({"summary": summary, "items": [asdict(item) for item in items]}, ensure_ascii=False, indent=2, default=str),
         encoding="utf-8",
@@ -920,6 +925,8 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     run_label = args.run_label or f"{datetime.now(tz=UTC).strftime('%Y%m%dT%H%M%SZ')}_{args.goldset_name}"
     output_dir = args.output_dir or (DEFAULT_OUTPUT_ROOT / args.goldset_name / run_label)
 
+    json_path, csv_path = artifact_paths(output_dir, run_label)
+
     questions = load_goldset_questions(dsn, goldset_name=args.goldset_name, tags=args.tag, limit=args.limit)
     if not questions:
         raise RuntimeError(f"No questions found for goldset={args.goldset_name!r}, tags={args.tag!r}.")
@@ -981,6 +988,8 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                         "config_adjustments": config_adjustments,
                         "dedupe_scope": args.dedupe_scope,
                         "eval_scope": eval_scope,
+                        "output_json": str(json_path),
+                        "output_csv": str(csv_path),
                     },
                 )
                 conn.commit()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 import pytest
 from assistant_rh_rag_pipeline.config import get_default_config
@@ -10,6 +11,7 @@ from src.goldset.eval import (
     EvalItem,
     GoldsetQuestion,
     aggregate_items,
+    artifact_paths,
     build_eval_scope,
     calibrate_judge_result,
     config_fingerprint,
@@ -187,6 +189,16 @@ def test_calibrate_passes_clean_answer_with_perfect_retrieval() -> None:
     assert calibrated["calibration_caps"] == []
     assert calibrated["score"] == 1.0
     assert calibrated["pass"] is True
+
+
+def test_artifact_paths_match_written_files(tmp_path) -> None:
+    # The DB-recorded paths must equal what write_artifacts actually writes.
+    expected_json, expected_csv = artifact_paths(tmp_path, "run")
+    json_path, csv_path = write_artifacts(tmp_path, "run", [], {"status": "completed"})
+
+    assert (json_path, csv_path) == (expected_json, expected_csv)
+    assert json_path == Path(tmp_path) / "run.json"
+    assert json_path.exists() and csv_path.exists()
 
 
 def test_write_artifacts_outputs_json_and_csv(tmp_path) -> None:
