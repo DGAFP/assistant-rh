@@ -1,0 +1,145 @@
+name: RAG Quality Eval
+
+on:
+  pull_request:
+    branches: [dev, staging]
+    paths:
+      - "packages/rag-pipeline/**"
+      - "apps/streamlit-ui/pages/01_Chatbot.py"
+      - "src/goldset/**"
+      - "scripts/run_rag_quality_eval.py"
+      - "scripts/prepare_goldset.py"
+      - "supabase/migrations/**rag_quality_eval**.sql"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/rag-quality-eval.yml"
+  workflow_dispatch:
+    inputs:
+      goldset_name:
+        description: "Goldset name"
+        required: true
+        type: string
+        default: iteration2_V1
+      tag:
+        description: "Goldset tag filter"
+        required: true
+        type: string
+        default: iteration2
+      limit:
+        description: "Max questions, 0 = all"
+        required: true
+        type: string
+        default: "3"
+      skip_ragas:
+        description: "Skip RAGAS metrics"
+        required: true
+        type: boolean
+        default: false
+      skip_judge:
+        description: "Skip Scaleway LLM judge"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: rag-quality-eval-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rag-quality-eval:
+    name: rag quality / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    environment: scaleway-staging
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: baseline
+          - name: candidate
+    env:
+      SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
+      ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
+      ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || secrets.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
+      SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
+      SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || secrets.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
+      SCALEWAY_JUDGE_MODEL: ${{ vars.SCALEWAY_JUDGE_MODEL || 'llama-3.1-70b-instruct' }}
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
+
+    steps:
+      - name: Checkout ${{ matrix.name }}
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && matrix.name == 'baseline' && github.event.pull_request.base.sha || github.event_name == 'pull_request' && matrix.name == 'candidate' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Resolve eval parameters
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "GOLDSET_NAME=${{ inputs.goldset_name }}" >> "$GITHUB_ENV"
+            echo "GOLDSET_TAG=${{ inputs.tag }}" >> "$GITHUB_ENV"
+            echo "LIMIT=${{ inputs.limit }}" >> "$GITHUB_ENV"
+            echo "SKIP_RAGAS=${{ inputs.skip_ragas }}" >> "$GITHUB_ENV"
+            echo "SKIP_JUDGE=${{ inputs.skip_judge }}" >> "$GITHUB_ENV"
+          else
+            echo "GOLDSET_NAME=iteration2_V1" >> "$GITHUB_ENV"
+            echo "GOLDSET_TAG=iteration2" >> "$GITHUB_ENV"
+            echo "LIMIT=3" >> "$GITHUB_ENV"
+            echo "SKIP_RAGAS=false" >> "$GITHUB_ENV"
+            echo "SKIP_JUDGE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run RAG quality eval
+        env:
+          RUN_LABEL: ${{ matrix.name }}-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          limit_args=()
+          if [[ "$LIMIT" != "0" && -n "$LIMIT" ]]; then
+            limit_args+=(--limit "$LIMIT")
+          fi
+          ragas_args=()
+          judge_args=()
+          if [[ "$SKIP_RAGAS" == "true" ]]; then
+            ragas_args+=(--skip-ragas)
+          fi
+          if [[ "$SKIP_JUDGE" == "true" ]]; then
+            judge_args+=(--skip-judge)
+          fi
+
+          uv run --no-sync python scripts/run_rag_quality_eval.py \
+            --goldset-name "$GOLDSET_NAME" \
+            --tag "$GOLDSET_TAG" \
+            "${limit_args[@]}" \
+            "${ragas_args[@]}" \
+            "${judge_args[@]}" \
+            --record-db \
+            --init-schema \
+            --skip-if-started \
+            --dedupe-scope config-and-git \
+            --run-label "$RUN_LABEL" \
+            --output-dir ".cache/assistant-rh/evals/$RUN_LABEL" \
+            | tee "$RUNNER_TEMP/rag-quality-${{ matrix.name }}.json"
+
+      - name: Summarize
+        run: |
+          set -euo pipefail
+          {
+            echo "## RAG quality eval - ${{ matrix.name }}"
+            echo ""
+            echo "\`\`\`json"
+            cat "$RUNNER_TEMP/rag-quality-${{ matrix.name }}.json"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
