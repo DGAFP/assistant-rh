@@ -279,6 +279,7 @@ class TestPipelineE2E:
         MockRetriever.return_value.retrieve.return_value = [_make_chunk(0)]
         MockRetriever.return_value.config = MagicMock()
         MockRetriever.return_value.config.tables = ["matte"]
+        MockRetriever.return_value.config.enable_chunks_test = False
 
         MockAggregator.return_value.aggregate_with_diagnostics.return_value = _aggregation_result(
             [_make_section(0)],
@@ -369,6 +370,7 @@ class TestPipelineE2E:
         MockRetriever.return_value.retrieve.return_value = [_make_chunk(0)]
         MockRetriever.return_value.config = MagicMock()
         MockRetriever.return_value.config.tables = ["matte"]
+        MockRetriever.return_value.config.enable_chunks_test = False
 
         MockAggregator.return_value.aggregate_with_diagnostics.return_value = _aggregation_result(
             [_make_section(0)],
@@ -669,6 +671,7 @@ class TestPipelineE2E:
         MockRetriever.return_value.retrieve.return_value = [_make_chunk(0), _make_chunk(1)]
         MockRetriever.return_value.config = MagicMock()
         MockRetriever.return_value.config.tables = ["matte", "service_public"]
+        MockRetriever.return_value.config.enable_chunks_test = False
 
         MockAggregator.return_value.aggregate_with_diagnostics.return_value = _aggregation_result(
             [_make_section(0)],
