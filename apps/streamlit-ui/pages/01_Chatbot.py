@@ -56,6 +56,7 @@ from assistant_rh_rag_pipeline.config import (
     today_fr,
 )
 from assistant_rh_rag_pipeline.db_helpers import create_engine_from_env, has_dsn
+from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG
 from assistant_rh_rag_pipeline.models import Chunk
 
 from src.ui.admin_auth import is_admin
@@ -74,7 +75,13 @@ from src.ui.chatbot_sources import (
 )
 from src.ui.cookies_security import is_production_like_env, resolve_cookies_password
 from src.ui.groups import ADMIN_GROUP, DEFAULT_BADGE, valid_groups
-from src.ui.user_groups_store import group_badge_display, group_priorities, known_group_slugs
+from src.ui.user_groups_store import (
+    get_group_policy,
+    group_badge_display,
+    group_priorities,
+    known_group_slugs,
+    resolve_group_retrieval_scope,
+)
 
 # --- Defaults dynamiques selon l'environnement ---
 PG_AVAILABLE = bool(has_dsn() or os.getenv("PGHOST"))
@@ -710,6 +717,11 @@ def load_runtime_config():
 rag_config = load_runtime_config()
 
 
+def _ministry_label(ministry_id: str) -> str:
+    ministry = MINISTRY_CATALOG.get(ministry_id)
+    return ministry.label if ministry else ministry_id
+
+
 # ------------------------------
 # Sidebar avec filtres utilisateur (VERSION PRODUCTION - épurée)
 # ------------------------------
@@ -757,15 +769,35 @@ with st.sidebar:
 
     st.markdown("### 🗂️ Filtres")
 
-    # Filtre Ministère (disabled - single option for now)
-    ministere_options = ["Aménagement du territoire Transition écologique"]
-    selected_ministere = st.selectbox(
-        "Ministère",
-        ministere_options,
-        index=0,
-        disabled=True,
-        help="D'autres ministères seront disponibles prochainement",
-    )
+    retrieval_scope = None
+    retrieval_scope_error = ""
+    selected_ministere = ""
+    group_policy = get_group_policy(user_group)
+    if not group_policy["valid"]:
+        retrieval_scope_error = f"Configuration ministérielle invalide pour ce groupe : {group_policy['error']}"
+        st.error(retrieval_scope_error)
+    else:
+        ministere_options = list(group_policy["allowed_ministries"])
+        default_ministry = group_policy["default_ministry"]
+        previous_ministry = st.session_state.get("selected_ministry")
+        initial_ministry = previous_ministry if previous_ministry in ministere_options else default_ministry
+        selected_ministere = st.selectbox(
+            "Ministère",
+            ministere_options,
+            index=ministere_options.index(initial_ministry),
+            format_func=_ministry_label,
+            help="Le ministère sélectionné détermine les sources ministérielles interrogées pour cette requête.",
+            key="selected_ministry_picker",
+        )
+        if previous_ministry and previous_ministry != selected_ministere:
+            st.session_state.turns = []
+            st.session_state.conversation_id = str(uuid.uuid4())[:8]
+            st.session_state.selected_ministry = selected_ministere
+            st.rerun()
+        st.session_state.selected_ministry = selected_ministere
+        retrieval_scope, retrieval_scope_error = resolve_group_retrieval_scope(user_group, selected_ministere)
+        if retrieval_scope_error:
+            st.error(retrieval_scope_error)
 
     # Filtre Agent (disabled - single option for now)
     agent_options = ["Contractuel"]
@@ -1013,10 +1045,11 @@ with col2:
 
     # Bloquer les suggestions si un feedback est en attente
     feedback_pending = is_feedback_pending()
+    rag_scope_blocked = bool(retrieval_scope_error or retrieval_scope is None)
 
     # Afficher les 3 suggestions aléatoires (tirées au sort à chaque nouveau chat)
     for i, suggestion in enumerate(st.session_state.suggestions):
-        if st.button(suggestion, key=f"sug_{i}", width="stretch", type="secondary", disabled=feedback_pending):
+        if st.button(suggestion, key=f"sug_{i}", width="stretch", type="secondary", disabled=feedback_pending or rag_scope_blocked):
             st.session_state.suggested_query = suggestion
             st.rerun()
 
@@ -1031,6 +1064,7 @@ def _detect_source_type(chunk: Chunk) -> str:
         # Mapper les noms de tables vers les noms lisibles
         table_to_name = {
             "rag_chunks_matte": "MATTE",
+            "rag_chunks_mso": "MSO",
             "rag_chunks_fiches_sp": "Service Public",
             "rag_chunks_dgafp": "DGAFP",
             "rag_chunks_3": "RAG3",  # Nouvelle source
@@ -1039,6 +1073,9 @@ def _detect_source_type(chunk: Chunk) -> str:
         return table_to_name.get(table_source, table_source)
 
     # Sinon, déduire depuis les métadonnées
+    publisher = str(meta.get("source") or meta.get("publisher") or "").lower()
+    if publisher == "mso":
+        return "MSO"
     if meta.get("cid") or meta.get("nature"):
         return "DGAFP"
     elif meta.get("sid") or meta.get("audience") or meta.get("theme"):
@@ -1054,6 +1091,7 @@ def _source_badge_html(source: str) -> str:
     """Retourne un badge HTML coloré selon la source (couleurs DSFR officielles)."""
     colors = {
         "MATTE": "#696AF4",  # Violet France (DSFR)
+        "MSO": "#7c3aed",
         "Service Public": "#3b82f6",  # Bleu France (DSFR)
         "DGAFP": "#18753C",  # Vert émeraude (DSFR)
         "RGRH": "#F95C5E",  # Rouge Marianne (DSFR) - nouvelles fiches
@@ -1240,7 +1278,8 @@ for idx, t in enumerate(st.session_state.turns):
 # if feedback_pending:
 #     st.warning("⚠️ Veuillez compléter votre feedback (cochez au moins une raison et cliquez sur 'Envoyer') avant de poser une nouvelle question.")
 
-query = st.chat_input("Posez votre question à notre assistant...", disabled=feedback_pending)
+rag_scope_blocked = bool(retrieval_scope_error or retrieval_scope is None)
+query = st.chat_input("Posez votre question à notre assistant...", disabled=feedback_pending or rag_scope_blocked)
 
 # Vérifier si une suggestion a été cliquée
 if hasattr(st.session_state, "suggested_query") and st.session_state.suggested_query:
@@ -1248,6 +1287,10 @@ if hasattr(st.session_state, "suggested_query") and st.session_state.suggested_q
     st.session_state.suggested_query = None  # Réinitialiser
 
 if query:
+    if retrieval_scope is None:
+        st.error(retrieval_scope_error or "Configuration ministérielle indisponible.")
+        st.stop()
+
     turn_id = str(uuid.uuid4())[:8]
     trace_id = uuid.uuid4().hex
 
@@ -1332,6 +1375,7 @@ if query:
                     on_status=_update_status,
                     turn_id=turn_id,
                     trace_id=trace_id,
+                    retrieval_scope=retrieval_scope,
                 )
 
                 def _stream_clear_on_first(gen, loader):
