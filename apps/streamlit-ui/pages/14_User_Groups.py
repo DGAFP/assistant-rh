@@ -52,30 +52,28 @@ def _policy_display(group: dict) -> tuple[str, str, str]:
     return allowed, default, status
 
 
+def _group_table_row(group: dict) -> dict:
+    allowed, default, status = _policy_display(group)
+    return {
+        "Icône": group["icon"],
+        "Slug": group["slug"],
+        "Libellé": group["label"],
+        "Priorité": group["priority"],
+        "Admin": "✅" if group["is_admin"] else "",
+        "Visible": "✅" if group.get("visible", True) else "🚫 masqué",
+        "Ministères": allowed,
+        "Défaut": default,
+        "Politique": status,
+        "Mot de passe": "🔒" if group["has_password"] else "⚠️ aucun",
+    }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Liste des groupes
 # ─────────────────────────────────────────────────────────────────────────────
 st.subheader("Groupes existants")
 if groups:
-    df = pd.DataFrame(
-        [
-            (
-                lambda allowed, default, status: {
-                    "Icône": g["icon"],
-                    "Slug": g["slug"],
-                    "Libellé": g["label"],
-                    "Priorité": g["priority"],
-                    "Admin": "✅" if g["is_admin"] else "",
-                    "Visible": "✅" if g.get("visible", True) else "🚫 masqué",
-                    "Ministères": allowed,
-                    "Défaut": default,
-                    "Politique": status,
-                    "Mot de passe": "🔒" if g["has_password"] else "⚠️ aucun",
-                }
-            )(*_policy_display(g))
-            for g in groups
-        ]
-    )
+    df = pd.DataFrame([_group_table_row(g) for g in groups])
     st.dataframe(df, hide_index=True, use_container_width=True)
 else:
     st.info("Aucun groupe. Créez-en un ci-dessous.")
