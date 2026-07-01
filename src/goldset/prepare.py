@@ -259,6 +259,11 @@ def split_source_labels(raw_sources: str) -> list[str]:
 def classify_source_label(label: str, ministere: str = "") -> str:
     normalized = normalize_text(label)
     ministry = normalize_text(ministere)
+    # TODO(pr212-review): LEGAL_SOURCE_RE is checked before the publisher branches,
+    # so a fiche label that mentions a legal term (e.g. "Fiche Service-Public sur
+    # l'article 5", "Fiche MATTE - Le CGFP") classifies as "legal" and resolves
+    # against rag_chunks_dgafp instead of its real publisher. Confirm this ordering
+    # is intended; if not, gate the legal branch on the absence of a publisher marker.
     if LEGAL_SOURCE_RE.search(label):
         return "legal"
     if "service public" in normalized or re.search(r"\bsp\b", normalized):

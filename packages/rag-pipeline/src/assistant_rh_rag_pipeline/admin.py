@@ -131,6 +131,9 @@ DEFAULT_CONFIG = RuntimeRAGConfig()
 VALIDATION_RULES: Dict[str, Dict[str, Any]] = {
     "rag_version": {"choices": ["v1", "v2", "v3"], "type": str},
     "chunk_selection_mode": {"choices": ["llm_selector"], "type": str},
+    # TODO(pr212-review): "narrow" is stale — ContextMode has no NARROW, so a value
+    # of "narrow" passes validation then silently coerces to STANDARD in
+    # runtime_config_to_rag_config's mode_map. Drop "narrow" here (or add the enum).
     "v3_context_mode": {"choices": ["narrow", "standard", "wide"], "type": str},
     "v3_search_mode": {"choices": ["semantic", "hybrid", "lexical"], "type": str},
     "v3_token_budget": {"min": 2000, "max": 20000, "type": int},

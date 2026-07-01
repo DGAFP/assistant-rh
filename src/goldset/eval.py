@@ -287,6 +287,9 @@ def ensure_eval_schema(conn: psycopg.Connection[Any]) -> None:
         "ON public.rag_quality_eval_runs (goldset_name, config_fingerprint, status, created_at DESC)"
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_rag_quality_eval_items_run_id ON public.rag_quality_eval_items (run_id)")
+    # Mirror the Supabase migration so the --init-schema bootstrap and the migration
+    # converge. No current query filters on question_id alone, so this is for parity.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rag_quality_eval_items_question_id ON public.rag_quality_eval_items (question_id)")
 
 
 def find_existing_run(
@@ -642,7 +645,13 @@ def context_payload(result: PipelineResult) -> list[dict[str, Any]]:
     return payload
 
 
-_CODE_RE = re.compile(r"[FLRD]\.?\s?\d+(?:-\d+)?", re.IGNORECASE)
+# _CODE_RE keeps every hyphenated segment ("-\d+" repeated) so a multi-segment code
+# like "L. 332-22-1" is captured whole instead of collapsing to the parent "L332-22".
+# TODO(pr212-review): _RANGE_RE still reuses only the first base ("L. 331-1 à L. 335-9"
+# expands to L331-* only), dropping cross-base ranges — understates the diagnostic-only
+# retrieval metrics (doc_recall/hit_rate no longer gate judge pass, so impact is bounded).
+# Same-base ranges (the common form) are fine.
+_CODE_RE = re.compile(r"[FLRD]\.?\s?\d+(?:-\d+)*", re.IGNORECASE)
 _RANGE_RE = re.compile(r"([LRD])\.?\s?(\d+)-(\d+)\s*à\s*[LRD]?\.?\s?\d+-(\d+)", re.IGNORECASE)
 
 
@@ -1209,6 +1218,10 @@ def write_artifacts(output_dir: Path, run_label: str, items: list[EvalItem], sum
                 {
                     "question_id": item.question_id,
                     "question": item.question,
+                    # TODO(pr212-review): always blank — item.metadata is the pipeline
+                    # result metadata, which has no "theme"; the goldset theme
+                    # (GoldsetQuestion.theme) is never copied onto EvalItem. Either
+                    # thread the goldset theme through or drop this column.
                     "theme": item.metadata.get("theme", ""),
                     "gold_sources": json.dumps(item.gold_sources, ensure_ascii=False),
                     "doc_recall": item.deterministic_metrics.get("doc_recall"),
@@ -1274,6 +1287,35 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-judge-pass-rate-drop", type=float, default=0.05, help="Maximum allowed judge_pass_rate drop versus baseline.")
     parser.add_argument("--max-doc-recall-drop", type=float, default=0.05, help="Maximum allowed doc_recall_avg drop versus baseline.")
     return parser
+
+
+def derive_completion_status(items: list[EvalItem], *, judge_enabled: bool, ragas_enabled: bool) -> tuple[str, str]:
+    """Derive the run status from executed items (before any baseline gating).
+
+    Returns ``(status, error)``. Rules, strictest last:
+    - some items errored -> ``completed_with_errors``;
+    - *every* item errored (pipeline/DB/model misconfiguration) -> ``failed``,
+      otherwise the eval would report success and CI stay green while nothing ran;
+    - a judge/RAGAS sub-task requested but ``failed`` on every *executed* item is a
+      configuration failure -> ``failed`` (``skipped`` sub-results are intentional).
+    """
+    status = "completed"
+    error = ""
+    if any(item.error for item in items):
+        status = "completed_with_errors"
+    if items and all(item.error for item in items):
+        return "failed", f"all {len(items)} questions failed to execute"
+    for label, enabled, attr in (
+        ("judge", judge_enabled, "judge_result"),
+        ("ragas", ragas_enabled, "ragas_metrics"),
+    ):
+        if not enabled:
+            continue
+        sub_statuses = [getattr(item, attr).get("status") for item in items if not item.error]
+        if sub_statuses and all(sub_status == "failed" for sub_status in sub_statuses):
+            status = "failed"
+            error = error or f"{label} requested but failed on all {len(sub_statuses)} evaluated items"
+    return status, error
 
 
 def run_eval(args: argparse.Namespace) -> EvalSummary:
@@ -1404,21 +1446,8 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 item_conn.commit()
             if item.error and args.fail_fast:
                 raise RuntimeError(item.error)
-        if any(item.error for item in items):
-            status = "completed_with_errors"
-        # A judge/RAGAS sub-task that was requested but errored on every evaluated
-        # item is a configuration failure (bad key, renamed model), not a passing
-        # run. "skipped" results (e.g. missing API key) are intentional and ignored.
-        for label, enabled, attr in (
-            ("judge", not args.skip_judge, "judge_result"),
-            ("ragas", not args.skip_ragas, "ragas_metrics"),
-        ):
-            if not enabled:
-                continue
-            sub_statuses = [getattr(item, attr).get("status") for item in items if not item.error]
-            if sub_statuses and all(sub_status == "failed" for sub_status in sub_statuses):
-                status = "failed"
-                error = error or f"{label} requested but failed on all {len(sub_statuses)} evaluated items"
+        status, status_error = derive_completion_status(items, judge_enabled=not args.skip_judge, ragas_enabled=not args.skip_ragas)
+        error = error or status_error
     except Exception as exc:
         status = "failed"
         error = str(exc)
