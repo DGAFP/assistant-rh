@@ -660,28 +660,6 @@ class GoldsetResolver:
             if rows:
                 return rows[0]
 
-        if section_id or doc_id or short_id:
-            conditions = []
-            params = []
-            if section_id:
-                conditions.append("section_id = %s")
-                params.append(section_id)
-            if doc_id:
-                conditions.append("doc_id = %s")
-                params.append(doc_id)
-            sql = f"""
-                SELECT 'rag_chunks_test' AS chunk_table, chunk_id, section_id
-                FROM public.rag_chunks_test
-                WHERE {" OR ".join(conditions)}
-                ORDER BY chunk_id
-                LIMIT 1
-            """
-            try:
-                rows = self.fetchall(sql, tuple(params))
-            except Exception:
-                rows = []
-            if rows:
-                return rows[0]
         return None
 
     def _connection(self) -> psycopg.Connection[Any]:

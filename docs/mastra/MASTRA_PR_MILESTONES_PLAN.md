@@ -121,7 +121,6 @@ Implement the Mastra pipeline port in a **new worktree** as a sequence of focuse
   - `rag_chunks_scaleway` (3584d)
 - Add tsvector generated column from `metadata->>'text'`.
 - Implement hybrid retrieval + RRF and legal-search table/filter behavior.
-- Include `rag_chunks_test` behavior behind config flag.
 
 **Exit criteria**
 - Correct index chosen based on embedding provider used.
@@ -249,9 +248,8 @@ Implement the Mastra pipeline port in a **new worktree** as a sequence of focuse
 
 ## Notes on unresolved choices to lock early
 
-1. Whether to include `rag_chunks_test` by default in non-prod only, or mirror current prod flag exactly from day one.
-2. Exact observability sink (OTel-only vs minimal DB audit table) for parity with current debugging workflows.
-3. Candidate query set size for CI runtime budget (fast smoke subset + full nightly run).
+1. Exact observability sink (OTel-only vs minimal DB audit table) for parity with current debugging workflows.
+2. Candidate query set size for CI runtime budget (fast smoke subset + full nightly run).
 
 ## PR-C follow-up plan (incremental)
 

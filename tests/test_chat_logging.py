@@ -368,7 +368,7 @@ class TestBuildLogRow:
     def test_legacy_observability_columns_populated(self):
         row = self._build_row(
             metadata_overrides={
-                "tables_searched": ["dgafp", "service_public", "rag_chunks_test"],
+                "tables_searched": ["dgafp", "service_public"],
                 "context_before_selector": [
                     {
                         "chunk_id": "LEGIARTI000045662634_0",
@@ -385,10 +385,10 @@ class TestBuildLogRow:
         assert row["provider"] == "albert"
         assert row["model"] == "openweight-large"
         assert row["temperature"] == 0.15
-        assert row["table"] == "dgafp,sp,test"
-        assert row["cascade_source"] == "dgafp,sp,test"
+        assert row["table"] == "dgafp,sp"
+        assert row["cascade_source"] == "dgafp,sp"
         assert len(row["table"]) <= 30
-        assert row["embed_col"] == "embedding_m3,embedding_raw"
+        assert row["embed_col"] == "embedding_m3"
         assert row["retrieval_mode"] == "semantic"
         assert row["chunk_selection_mode"] == "V3_STANDARD"
         assert row["chunks_before_pick"] == 2

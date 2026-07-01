@@ -25,7 +25,6 @@ Les données de production vivent dans PostgreSQL (Scalingo) :
 | `rag_chunks_service_public` | Fiches Service Public |
 | `rag_chunks_dgafp` | Textes réglementaires Legifrance + CGFP |
 | `rag_chunks_rgrh` | Base RGRH |
-| `rag_chunks_test` | Chunks Matte + Service-Public combinés |
 | `rag_sections` | Sections markdown (contexte) |
 | `rag_documents` | Métadonnées documents (titre, URL, publisher) |
 

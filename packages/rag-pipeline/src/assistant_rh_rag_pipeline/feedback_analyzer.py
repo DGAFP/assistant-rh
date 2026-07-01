@@ -192,7 +192,6 @@ _TABLE_ID_COL = {
     "rag_chunks_service_public": "hash_id",
     "rag_chunks_dgafp": "chunk_id",
     "rag_chunks_rgrh": "hash_id",
-    "rag_chunks_test": "chunk_id",
 }
 
 _ALLOWED_TABLES = set(_TABLE_ID_COL.keys())

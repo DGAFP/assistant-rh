@@ -134,7 +134,7 @@ class TableConfig:
     embed_col: str
     text_col: str
     id_col: str
-    short_id_mode: str  # "column" = short_id is a column, "join_documents" = via rag_documents
+    short_id_mode: str  # "column" = short_id is a column, "none" = unavailable
     extra_cols: str = ""  # additional SELECT columns
     short_id_col: str = "short_id"  # column name used as short_id (e.g. "number" for V2 tables)
 
@@ -197,54 +197,6 @@ STRATEGY_DE_CTX = ChunkingStrategy(
             id_col="hash_id",
             short_id_mode="column",
             extra_cols=", source_name, source, role, short_id",
-        ),
-    ],
-)
-
-STRATEGY_V3 = ChunkingStrategy(
-    key="v3",
-    name="Chunking V3",
-    description="Contextualized embeddings, extraction markdown, dynamic chunking (chunks → sections → documents)",
-    color="#4ECDC4",
-    tables=[
-        TableConfig(
-            table="rag_chunks_test",
-            embed_col="embedding",
-            text_col="chunk_markdown",
-            id_col="chunk_id",
-            short_id_mode="join_documents",
-        ),
-    ],
-)
-
-STRATEGY_V3_RAW = ChunkingStrategy(
-    key="v3_raw",
-    name="Chunking V3 Raw Embed",
-    description="Mêmes chunks V3, mais embeddings bruts (chunk_markdown sans contexte)",
-    color="#81C784",
-    tables=[
-        TableConfig(
-            table="rag_chunks_test",
-            embed_col="embedding_raw",
-            text_col="chunk_markdown",
-            id_col="chunk_id",
-            short_id_mode="join_documents",
-        ),
-    ],
-)
-
-STRATEGY_V3_RAW_TEXT = ChunkingStrategy(
-    key="v3_raw_text",
-    name="Chunking V3 Raw Text",
-    description="Chunks V3, embeddings sur texte pur (markdown strippé, sans contexte)",
-    color="#4DB6AC",
-    tables=[
-        TableConfig(
-            table="rag_chunks_test",
-            embed_col="embedding_raw_text",
-            text_col="chunk_markdown",
-            id_col="chunk_id",
-            short_id_mode="join_documents",
         ),
     ],
 )
@@ -318,15 +270,7 @@ STRATEGY_DE_MAPPED = ChunkingStrategy(
     ],
 )
 
-STRATEGY_HYBRID = ChunkingStrategy(
-    key="hybrid",
-    name="Hybrid (V3 + DE)",
-    description="V3 raw embed + DE mappés combinés, embeddings mixtes, fusion par score",
-    color="#7E57C2",
-    tables=[],  # Special: handled by run_strategy_retrieval via mixed mode
-)
-
-ALL_STRATEGIES = [STRATEGY_DE, STRATEGY_DE_CTX, STRATEGY_V3, STRATEGY_V3_RAW, STRATEGY_V3_RAW_TEXT, STRATEGY_V2_ORIGINAL, STRATEGY_HF_SP, STRATEGY_DE_MAPPED, STRATEGY_HYBRID]
+ALL_STRATEGIES = [STRATEGY_DE, STRATEGY_DE_CTX, STRATEGY_V2_ORIGINAL, STRATEGY_HF_SP, STRATEGY_DE_MAPPED]
 STRATEGY_MAP = {s.key: s for s in ALL_STRATEGIES}
 
 # Color map for charts
@@ -554,73 +498,6 @@ def search_de_table(
     return [dict(r) for r in results]
 
 
-def search_v3_table(
-    cur,
-    query_embedding: List[float],
-    top_k: int = 50,
-    filter_short_ids: Optional[List[str]] = None,
-    embed_col: str = "embedding",
-    strategy_key: str = "v3",
-    publisher_filter: Optional[str] = None,
-) -> List[Dict]:
-    """
-    Semantic search on V3 tables (rag_chunks_test + rag_chunk_embeddings + rag_documents).
-    Optionally filters to common_corpus documents via rag_documents.short_id.
-    Optionally filters by publisher (e.g. 'MATTE' or 'Service-Public').
-    embed_col: column in rag_chunk_embeddings to use (e.g. 'embedding' for ctx, 'embedding_raw' for raw).
-    """
-    embed_ref = f"e.{embed_col}"
-    where_clauses = []
-    params: list = [query_embedding]  # first %s for score calculation
-
-    if filter_short_ids:
-        where_clauses.append("d.short_id = ANY(%s)")
-        params.append(filter_short_ids)
-    if publisher_filter:
-        where_clauses.append("d.publisher = %s")
-        params.append(publisher_filter)
-
-    params.append(query_embedding)  # for ORDER BY
-    params.append(top_k)  # for LIMIT
-
-    where_extra = ""
-    if where_clauses:
-        where_extra = "AND " + " AND ".join(where_clauses)
-
-    sql = f"""
-        SELECT
-            c.chunk_id::text as chunk_id,
-            c.chunk_markdown as text,
-            c.token_count,
-            1 - ({embed_ref} <=> %s::vector) as score,
-            c.section_id::text as section_id,
-            s.heading as section_heading,
-            s.section_markdown,
-            s.heading_path,
-            s.level as section_level,
-            s.token_count as section_token_count,
-            d.title as source_name,
-            d.publisher as source,
-            d.short_id
-        FROM rag_chunks_test c
-        JOIN rag_chunk_embeddings e ON c.chunk_id = e.chunk_id AND e.embedding_model = 'albert'
-        JOIN rag_sections s ON c.section_id = s.section_id
-        JOIN rag_documents d ON c.doc_id = d.doc_id
-        WHERE {embed_ref} IS NOT NULL {where_extra}
-        ORDER BY {embed_ref} <=> %s::vector
-        LIMIT %s
-    """
-
-    cur.execute(sql, params)
-    results = cur.fetchall()
-
-    for r in results:
-        r["table_source"] = "rag_chunks_test"
-        r["strategy"] = strategy_key
-
-    return [dict(r) for r in results]
-
-
 def search_de_table_mapped(
     cur,
     table_cfg: TableConfig,
@@ -687,33 +564,9 @@ def run_strategy_retrieval(
     """
     Run retrieval for a given strategy. Merges results from all tables and sorts by score.
     publisher_filter: 'MATTE', 'Service-Public', or None for all.
-    For DE strategies, filters tables by publisher. For V3, adds WHERE on d.publisher.
+    Filters DE tables by publisher.
     """
     all_chunks = []
-
-    # ── HYBRID strategy: combine V3 raw + DE mapped ──
-    if strategy.key == "hybrid":
-        per_source_k = top_k
-        # V3 part: use raw embed
-        v3_chunks = search_v3_table(
-            cur, query_embedding, top_k=per_source_k,
-            filter_short_ids=filter_short_ids,
-            embed_col="embedding_raw",
-            strategy_key="hybrid",
-            publisher_filter=publisher_filter,
-        )
-        all_chunks.extend(v3_chunks)
-        # DE mapped part
-        for table_cfg in STRATEGY_DE_MAPPED.tables:
-            if publisher_filter:
-                table_pub = DE_TABLE_PUBLISHER.get(table_cfg.table)
-                if table_pub and table_pub != publisher_filter:
-                    continue
-            chunks = search_de_table_mapped(cur, table_cfg, query_embedding, top_k=per_source_k, filter_short_ids=filter_short_ids)
-            all_chunks.extend(chunks)
-        all_chunks.sort(key=lambda x: x.get("score", 0), reverse=True)
-        all_chunks = all_chunks[:top_k]
-        return all_chunks
 
     # ── DE MAPPED strategy: only mapped chunks with section JOIN ──
     if strategy.key == "de_mapped":
@@ -728,33 +581,16 @@ def run_strategy_retrieval(
         all_chunks = all_chunks[:top_k]
         return all_chunks
 
-    # Check if this is a V3-type strategy (uses rag_chunks_test with join_documents)
-    is_v3 = any(t.short_id_mode == "join_documents" for t in strategy.tables)
+    for table_cfg in strategy.tables:
+        if publisher_filter:
+            table_pub = DE_TABLE_PUBLISHER.get(table_cfg.table)
+            if table_pub and table_pub != publisher_filter:
+                continue
+        chunks = search_de_table(cur, table_cfg, query_embedding, top_k=top_k, filter_short_ids=filter_short_ids)
+        all_chunks.extend(chunks)
 
-    if is_v3:
-        # V3 strategy: use search_v3_table with the configured embed_col + publisher filter
-        embed_col = strategy.tables[0].embed_col if strategy.tables else "embedding"
-        all_chunks = search_v3_table(
-            cur, query_embedding, top_k=top_k,
-            filter_short_ids=filter_short_ids,
-            embed_col=embed_col,
-            strategy_key=strategy.key,
-            publisher_filter=publisher_filter,
-        )
-    else:
-        # DE strategy: search each table, skip tables not matching publisher filter
-        for table_cfg in strategy.tables:
-            # Publisher filter: skip tables that don't match
-            if publisher_filter:
-                table_pub = DE_TABLE_PUBLISHER.get(table_cfg.table)
-                if table_pub and table_pub != publisher_filter:
-                    continue  # skip this table
-            chunks = search_de_table(cur, table_cfg, query_embedding, top_k=top_k, filter_short_ids=filter_short_ids)
-            all_chunks.extend(chunks)
-
-        # Sort merged results by score desc and keep top_k
-        all_chunks.sort(key=lambda x: x.get("score", 0), reverse=True)
-        all_chunks = all_chunks[:top_k]
+    all_chunks.sort(key=lambda x: x.get("score", 0), reverse=True)
+    all_chunks = all_chunks[:top_k]
 
     return all_chunks
 
@@ -797,8 +633,8 @@ def expand_chunks_to_sections(
     """
     Expand chunk results to section-level by grouping chunks that share a section_id.
 
-    For chunks from search_de_table_mapped or search_v3_table, section metadata is
-    already present. For chunks without section_id (basic DE search), they pass through
+    For chunks from search_de_table_mapped, section metadata is already present.
+    For chunks without section_id (basic DE search), they pass through
     unchanged.
 
     Returns section-level results sorted by aggregated score (max chunk score per section).
@@ -812,19 +648,6 @@ def expand_chunks_to_sections(
 
     for chunk in chunks:
         sid = chunk.get("section_id")
-        if not sid:
-            # No section mapping: if the chunk came from V3, try to fetch section_id
-            chunk_id = chunk.get("chunk_id")
-            if chunk.get("table_source") == "rag_chunks_test" and chunk_id:
-                cur.execute(
-                    "SELECT section_id::text FROM rag_chunks_test WHERE chunk_id = %s",
-                    [chunk_id]
-                )
-                row = cur.fetchone()
-                if row and row.get("section_id"):
-                    sid = row["section_id"]
-                    chunk["section_id"] = sid
-
         if sid:
             if sid not in section_map or chunk.get("score", 0) > section_map[sid].get("score", 0):
                 section_map[sid] = chunk.copy()
@@ -1147,43 +970,21 @@ def run_evaluation(
             }
 
             for strategy in strategies:
-                # Pick the right gold_chunk_id for this strategy
-                # V3-type strategies use gold_chunk_id_v3, DE-type use gold_chunk_id
-                is_v3_strategy = any(t.short_id_mode == "join_documents" for t in strategy.tables)
-                if match_mode == "chunk" and is_v3_strategy:
-                    strat_gold_chunk_id = gold_chunk_id_v3
-                    # Skip V3 metrics if this question has no V3 mapping
-                    if not strat_gold_chunk_id:
-                        q_result[strategy.key] = {
-                            "raw_metrics": {f"recall@{k}": None for k in K_VALUES},
-                            "rerank_metrics": None,
-                            "retrieval_time_ms": 0,
-                            "rerank_time_ms": 0,
-                            "n_chunks": 0,
-                            "top_chunks": [],
-                            "top_reranked": [],
-                            "v3_unmapped": True,
-                        }
-                        q_result[strategy.key]["raw_metrics"]["mrr"] = None
-                        q_result[strategy.key]["raw_metrics"]["first_hit_rank"] = None
-                        continue
-                else:
-                    strat_gold_chunk_id = gold_chunk_id_de
-                    # Skip DE metrics if this question has no DE chunk mapping
-                    if match_mode == "chunk" and not strat_gold_chunk_id:
-                        q_result[strategy.key] = {
-                            "raw_metrics": {f"recall@{k}": None for k in K_VALUES},
-                            "rerank_metrics": None,
-                            "retrieval_time_ms": 0,
-                            "rerank_time_ms": 0,
-                            "n_chunks": 0,
-                            "top_chunks": [],
-                            "top_reranked": [],
-                            "de_unmapped": True,
-                        }
-                        q_result[strategy.key]["raw_metrics"]["mrr"] = None
-                        q_result[strategy.key]["raw_metrics"]["first_hit_rank"] = None
-                        continue
+                strat_gold_chunk_id = gold_chunk_id_de
+                if match_mode == "chunk" and not strat_gold_chunk_id:
+                    q_result[strategy.key] = {
+                        "raw_metrics": {f"recall@{k}": None for k in K_VALUES},
+                        "rerank_metrics": None,
+                        "retrieval_time_ms": 0,
+                        "rerank_time_ms": 0,
+                        "n_chunks": 0,
+                        "top_chunks": [],
+                        "top_reranked": [],
+                        "de_unmapped": True,
+                    }
+                    q_result[strategy.key]["raw_metrics"]["mrr"] = None
+                    q_result[strategy.key]["raw_metrics"]["first_hit_rank"] = None
+                    continue
 
                 # ── Retrieval ──
                 t0 = time.time()
@@ -2119,35 +1920,20 @@ def run_union_retrieval(
     all_chunks = []
 
     for strategy in strategies:
-        is_v3 = any(t.short_id_mode == "join_documents" for t in strategy.tables)
-
-        if is_v3:
-            embed_col = strategy.tables[0].embed_col if strategy.tables else "embedding"
-            chunks = search_v3_table(
-                cur, query_embedding, top_k=top_k,
+        for table_cfg in strategy.tables:
+            # Skip DE tables not matching publisher filter
+            if publisher_filter:
+                table_pub = DE_TABLE_PUBLISHER.get(table_cfg.table)
+                if table_pub and table_pub != publisher_filter:
+                    continue
+            chunks = search_de_table(
+                cur, table_cfg, query_embedding,
+                top_k=top_k,
                 filter_short_ids=filter_short_ids,
-                embed_col=embed_col,
-                strategy_key=strategy.key,
-                publisher_filter=publisher_filter,
             )
             for c in chunks:
                 c["strategy"] = strategy.key
             all_chunks.extend(chunks)
-        else:
-            for table_cfg in strategy.tables:
-                # Skip DE tables not matching publisher filter
-                if publisher_filter:
-                    table_pub = DE_TABLE_PUBLISHER.get(table_cfg.table)
-                    if table_pub and table_pub != publisher_filter:
-                        continue
-                chunks = search_de_table(
-                    cur, table_cfg, query_embedding,
-                    top_k=top_k,
-                    filter_short_ids=filter_short_ids,
-                )
-                for c in chunks:
-                    c["strategy"] = strategy.key
-                all_chunks.extend(chunks)
 
     # Sort all chunks by score desc
     all_chunks.sort(key=lambda x: x.get("score", 0), reverse=True)

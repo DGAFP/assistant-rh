@@ -14,7 +14,6 @@ def test_mso_scope_resolves_to_ministry_plus_shared_tables() -> None:
 
     assert scope.selected_ministry == "mso"
     assert scope.table_keys == ("mso", "service_public", "dgafp")
-    assert scope.include_chunks_test is False
 
 
 def test_unknown_ministry_fails_closed() -> None:
@@ -57,7 +56,7 @@ def test_group_scope_resolver_rejects_unallowed_selected_ministry(monkeypatch: p
     assert "pas autorisé" in error
 
 
-def test_pipeline_scoped_retrieval_uses_scope_tables_and_disables_chunks_test(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_pipeline_scoped_retrieval_uses_scope_tables(monkeypatch: pytest.MonkeyPatch) -> None:
     pipe = Pipeline.__new__(Pipeline)
     pipe.config = SimpleNamespace(
         retrieval=SimpleNamespace(
@@ -68,7 +67,7 @@ def test_pipeline_scoped_retrieval_uses_scope_tables_and_disables_chunks_test(mo
             selector_retry_top_k=5,
         )
     )
-    pipe._retriever = SimpleNamespace(config=SimpleNamespace(tables=["matte", "service_public", "dgafp", "rgrh"], enable_chunks_test=True))
+    pipe._retriever = SimpleNamespace(config=SimpleNamespace(tables=["matte", "service_public", "dgafp", "rgrh"]))
     calls: list[dict] = []
 
     def fake_attempt(**kwargs):
@@ -99,7 +98,6 @@ def test_pipeline_scoped_retrieval_uses_scope_tables_and_disables_chunks_test(mo
     assert result == ["context"]
     assert calls[0]["active_tables"] == ["mso", "service_public", "dgafp"]
     assert calls[0]["force_hybrid_tables"] == {"dgafp"}
-    assert calls[0]["include_chunks_test"] is False
     assert calls[0]["strict_table_errors"] is True
 
 
@@ -107,7 +105,6 @@ def test_retriever_strict_unknown_table_key_fails() -> None:
     retriever = Retriever.__new__(Retriever)
     retriever.config = SimpleNamespace(
         tables=["unknown"],
-        enable_chunks_test=False,
         search_mode=SearchMode.SEMANTIC,
         initial_top_k=1,
     )

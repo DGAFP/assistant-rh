@@ -84,8 +84,6 @@ def test_collector_emits_counts_coverage_and_integrity_for_available_tables(monk
             "embedding_bge_scw",
             "updated_at",
         },
-        "rag_chunks_test": {"chunk_id", "doc_id", "section_id"},
-        "rag_chunk_embeddings": {"chunk_id", "embedding_raw", "embedding_bge"},
     }
 
     monkeypatch.setattr(collector, "_set_statement_timeout", lambda conn: None)
@@ -95,29 +93,20 @@ def test_collector_emits_counts_coverage_and_integrity_for_available_tables(monk
         "_count_by_column",
         lambda conn, table, column, default: {"service_public": 2 if table == "rag_documents" else 3},
     )
-    monkeypatch.setattr(collector, "_count_rows", lambda conn, table: {"rag_sections": 2, "rag_chunks_test": 1}.get(table, 0))
+    monkeypatch.setattr(collector, "_count_rows", lambda conn, table: {"rag_sections": 2}.get(table, 0))
     monkeypatch.setattr(collector, "_count_sections_by_document_source", lambda conn: {"service_public": 2})
-    monkeypatch.setattr(collector, "_count_chunks_test_by_document_source", lambda conn: {"test": 1})
     direct_embedding_calls: list[tuple[str, tuple[str, ...]]] = []
-    chunks_test_embedding_calls: list[tuple[str, ...]] = []
 
     def fake_count_embeddings(conn, table: str, embedding_columns: tuple[str, ...]) -> dict[str, tuple[int, int]]:
         direct_embedding_calls.append((table, embedding_columns))
         return {column: (3, 2) if column == "embedding_m3" else (3, 3) for column in embedding_columns}
 
-    def fake_count_chunks_test_embeddings(conn, embedding_columns: tuple[str, ...]) -> dict[str, tuple[int, int]]:
-        chunks_test_embedding_calls.append(embedding_columns)
-        return {column: (1, 1) if column == "embedding_raw" else (1, 0) for column in embedding_columns}
-
     monkeypatch.setattr(collector, "_count_embeddings", fake_count_embeddings)
-    monkeypatch.setattr(collector, "_count_chunks_test_embeddings", fake_count_chunks_test_embeddings)
     monkeypatch.setattr(
         collector,
         "_count_missing_reference",
         lambda conn, source_table, source_column, target_table, target_column: 1 if source_column == "source_document_id" else 0,
     )
-    monkeypatch.setattr(collector, "_count_chunks_without_embedding_row", lambda conn: 0)
-    monkeypatch.setattr(collector, "_count_embeddings_without_chunk", lambda conn: 1)
     monkeypatch.setattr(
         collector,
         "_max_epoch",
@@ -137,37 +126,7 @@ def test_collector_emits_counts_coverage_and_integrity_for_available_tables(monk
         column="embedding_m3",
         model="albert",
     ).value == pytest.approx(2 / 3)
-    assert (
-        _sample(
-            samples,
-            "assistant_rh_rag_embeddings_missing_total",
-            table="rag_chunks_test",
-            column="embedding_bge",
-            model="bge_scaleway",
-        ).value
-        == 1
-    )
-    assert (
-        _sample(
-            samples,
-            "assistant_rh_rag_embedding_column_present",
-            table="rag_chunks_test",
-            column="embedding",
-            model="albert_context",
-        ).value
-        == 0
-    )
-    assert (
-        _sample(
-            samples,
-            "assistant_rh_rag_integrity_issues_total",
-            table="rag_chunk_embeddings",
-            reason="embedding_without_chunk",
-        ).value
-        == 1
-    )
     assert direct_embedding_calls == [("rag_chunks_service_public", ("embedding_m3", "embedding_bge_scw"))]
-    assert chunks_test_embedding_calls == [("embedding_raw", "embedding_bge")]
 
 
 def test_collector_emits_trace_metrics_when_trace_table_is_available(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -263,13 +222,6 @@ def test_trace_queries_filter_by_collector_env() -> None:
             exporter.DIRECT_CHUNK_TABLES[1],
             {"rag_chunks_service_public": {"source"}},
         ),
-        (
-            exporter.CHUNKS_TEST_TABLE,
-            {
-                "rag_documents": {"doc_id", "source"},
-                "rag_chunks_test": {"doc_id"},
-            },
-        ),
     ],
 )
 def test_chunk_metrics_emit_zero_for_empty_grouped_counts(
@@ -279,7 +231,6 @@ def test_chunk_metrics_emit_zero_for_empty_grouped_counts(
 ) -> None:
     collector = exporter.RagHealthCollector(env_label="staging")
     monkeypatch.setattr(collector, "_count_by_column", lambda conn, table, column, default: {})
-    monkeypatch.setattr(collector, "_count_chunks_test_by_document_source", lambda conn: {})
 
     samples = collector._chunk_metrics(object(), columns, table_spec)
 
