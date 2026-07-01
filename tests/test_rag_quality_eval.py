@@ -148,6 +148,18 @@ def test_any_goldset_requires_at_least_one_tag() -> None:
         load_goldset_questions("postgresql://unused", goldset_name="baseline_v1", tags=[], any_goldset=True)
 
 
+def test_any_goldset_runner_guard_runs_before_db_resolution(monkeypatch) -> None:
+    import src.goldset.eval as eval_module
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("resolve_dsn should not be called before validating --any-goldset")
+
+    monkeypatch.setattr(eval_module, "resolve_dsn", fail_if_called)
+
+    with pytest.raises(ValueError, match="--tag"):
+        eval_module.run_eval(argparse.Namespace(any_goldset=True, tag=[]))
+
+
 def test_resolve_gold_doc_ids_maps_codes_names_and_ranges() -> None:
     from src.goldset.eval import resolve_gold_doc_ids
 

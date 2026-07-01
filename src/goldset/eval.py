@@ -1077,6 +1077,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_eval(args: argparse.Namespace) -> EvalSummary:
+    if args.any_goldset and not args.tag:
+        raise ValueError("At least one --tag is required with --any-goldset.")
+
     dsn = resolve_dsn(args.dsn, args.dsn_env)
     # The pipeline and prompt/config helpers read the canonical runtime DSN.
     # Bind the explicitly selected eval target for this process so staging
