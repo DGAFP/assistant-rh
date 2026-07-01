@@ -321,6 +321,197 @@ def find_existing_run(
     return dict(rows[0]) if rows else None
 
 
+def _json_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _same_text_list(left: Any, right: Any) -> bool:
+    return parse_text_list(left) == parse_text_list(right)
+
+
+def _load_eval_run(
+    conn: psycopg.Connection[Any],
+    *,
+    run_id: int | None = None,
+    run_label: str = "",
+    goldset_name: str = "",
+    tags: list[str] | None = None,
+    eval_scope: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if run_id is not None:
+        rows = conn.execute(
+            """
+            SELECT id, status, created_at, completed_at, goldset_name, tag_filter,
+                   git_sha, run_label, config_fingerprint, aggregate, metadata, error
+            FROM public.rag_quality_eval_runs
+            WHERE id = %s
+            """,
+            (run_id,),
+        ).fetchall()
+    elif run_label:
+        rows = conn.execute(
+            """
+            SELECT id, status, created_at, completed_at, goldset_name, tag_filter,
+                   git_sha, run_label, config_fingerprint, aggregate, metadata, error
+            FROM public.rag_quality_eval_runs
+            WHERE run_label = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (run_label,),
+        ).fetchall()
+    else:
+        if not goldset_name or tags is None or eval_scope is None:
+            return None
+        rows = conn.execute(
+            """
+            SELECT id, status, created_at, completed_at, goldset_name, tag_filter,
+                   git_sha, run_label, config_fingerprint, aggregate, metadata, error
+            FROM public.rag_quality_eval_runs
+            WHERE goldset_name = %s
+              AND tag_filter = %s::text[]
+              AND metadata -> 'eval_scope' = %s::jsonb
+              AND status = 'completed'
+            ORDER BY completed_at DESC NULLS LAST, created_at DESC
+            LIMIT 1
+            """,
+            (goldset_name, tags, json.dumps(eval_scope, sort_keys=True, ensure_ascii=False, default=str)),
+        ).fetchall()
+    return dict(rows[0]) if rows else None
+
+
+def _baseline_is_comparable(
+    baseline_run: dict[str, Any],
+    *,
+    goldset_name: str,
+    tags: list[str],
+    eval_scope: dict[str, Any],
+) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    metadata = _json_dict(baseline_run.get("metadata"))
+    baseline_scope = _json_dict(metadata.get("eval_scope"))
+    if baseline_run.get("status") != "completed":
+        reasons.append(f"baseline status is {baseline_run.get('status')!r}, expected 'completed'")
+    if str(baseline_run.get("goldset_name") or "") != goldset_name:
+        reasons.append("baseline goldset_name does not match candidate")
+    if not _same_text_list(baseline_run.get("tag_filter"), tags):
+        reasons.append("baseline tag_filter does not match candidate")
+    if baseline_scope != eval_scope:
+        reasons.append("baseline eval_scope does not match candidate")
+    return not reasons, reasons
+
+
+def compare_with_baseline(
+    *,
+    candidate_aggregate: dict[str, Any],
+    baseline_run: dict[str, Any] | None,
+    goldset_name: str,
+    tags: list[str],
+    eval_scope: dict[str, Any],
+    max_judge_pass_rate_drop: float,
+    max_doc_recall_drop: float,
+) -> dict[str, Any]:
+    if baseline_run is None:
+        return {"status": "missing_baseline", "passed": False, "failures": ["No comparable baseline run found."]}
+
+    comparable, reasons = _baseline_is_comparable(baseline_run, goldset_name=goldset_name, tags=tags, eval_scope=eval_scope)
+    baseline_aggregate = _json_dict(baseline_run.get("aggregate"))
+    comparison: dict[str, Any] = {
+        "status": "passed",
+        "passed": True,
+        "baseline_run_id": baseline_run.get("id"),
+        "baseline_run_label": baseline_run.get("run_label"),
+        "baseline_git_sha": baseline_run.get("git_sha"),
+        "baseline_config_fingerprint": baseline_run.get("config_fingerprint"),
+        "comparable": comparable,
+        "comparability_failures": reasons,
+        "metrics": {},
+        "failures": [],
+    }
+    if not comparable:
+        comparison["status"] = "not_comparable"
+        comparison["passed"] = False
+        comparison["failures"].extend(reasons)
+        return comparison
+
+    thresholds = {
+        "judge_pass_rate": max_judge_pass_rate_drop,
+        "doc_recall_avg": max_doc_recall_drop,
+    }
+    for metric, max_drop in thresholds.items():
+        baseline_value = _safe_float(baseline_aggregate.get(metric))
+        candidate_value = _safe_float(candidate_aggregate.get(metric))
+        delta = candidate_value - baseline_value if baseline_value is not None and candidate_value is not None else None
+        metric_result = {
+            "baseline": baseline_value,
+            "candidate": candidate_value,
+            "delta": delta,
+            "max_drop": max_drop,
+            "passed": delta is not None and delta >= -max_drop,
+        }
+        if delta is None:
+            metric_result["reason"] = "missing_metric"
+        comparison["metrics"][metric] = metric_result
+        if not metric_result["passed"]:
+            if delta is None:
+                comparison["failures"].append(f"{metric} missing")
+            else:
+                comparison["failures"].append(f"{metric} dropped by {abs(delta):.4f}; max allowed is {max_drop:.4f}")
+
+    if comparison["failures"]:
+        comparison["status"] = "failed"
+        comparison["passed"] = False
+    return comparison
+
+
+def baseline_comparison_requested(args: argparse.Namespace) -> bool:
+    return bool(args.baseline_run_id or args.baseline_run_label or args.require_baseline or args.gate_against_baseline)
+
+
+def build_baseline_comparison(
+    conn: psycopg.Connection[Any],
+    *,
+    args: argparse.Namespace,
+    candidate_aggregate: dict[str, Any],
+    goldset_name: str,
+    tags: list[str],
+    eval_scope: dict[str, Any],
+) -> dict[str, Any]:
+    baseline_run = _load_eval_run(
+        conn,
+        run_id=args.baseline_run_id,
+        run_label=args.baseline_run_label,
+        goldset_name=goldset_name,
+        tags=tags,
+        eval_scope=eval_scope,
+    )
+    return compare_with_baseline(
+        candidate_aggregate=candidate_aggregate,
+        baseline_run=baseline_run,
+        goldset_name=goldset_name,
+        tags=tags,
+        eval_scope=eval_scope,
+        max_judge_pass_rate_drop=args.max_judge_pass_rate_drop,
+        max_doc_recall_drop=args.max_doc_recall_drop,
+    )
+
+
+def baseline_gate_failed(args: argparse.Namespace, comparison: dict[str, Any]) -> bool:
+    if args.gate_against_baseline:
+        return not bool(comparison.get("passed"))
+    if args.require_baseline:
+        return comparison.get("status") in {"missing_baseline", "not_comparable"}
+    return False
+
+
 def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion]) -> dict[str, Any]:
     """Return the question and evaluator options that make a run reusable."""
     judge_enabled = not args.skip_judge
@@ -427,15 +618,17 @@ def complete_eval_run(
 
 def context_payload(result: PipelineResult) -> list[dict[str, Any]]:
     payload: list[dict[str, Any]] = []
-    refs = result.metadata.get("context_items_ref")
+    metadata = result.metadata if isinstance(result.metadata, dict) else {}
+    refs = metadata.get("context_items_ref")
     if not isinstance(refs, list):
         refs = []
     for index, item in enumerate(result.context_items):
+        item_metadata = item.metadata if isinstance(item.metadata, dict) else {}
         ref = refs[index] if index < len(refs) and isinstance(refs[index], dict) else {}
         payload.append(
             {
-                "section_id": str(item.section_id or ""),
-                "doc_id": str(ref.get("doc_id") or item.metadata.get("doc_id") or ""),
+                "section_id": str(item.section_id if item.section_id is not None else ""),
+                "doc_id": str(ref.get("doc_id") or item_metadata.get("doc_id") or ""),
                 "heading": item.heading,
                 "publisher": item.publisher,
                 "document_title": item.document_title,
@@ -443,7 +636,7 @@ def context_payload(result: PipelineResult) -> list[dict[str, Any]]:
                 "score": item.score,
                 "token_estimate": item.token_estimate,
                 "content": item.content,
-                "metadata": item.metadata,
+                "metadata": item_metadata,
             }
         )
     return payload
@@ -522,8 +715,9 @@ def resolve_gold_doc_ids(gold_sources: list[str], maps: dict[str, dict[str, Any]
 
 def retrieved_doc_ids(result: PipelineResult, contexts: list[dict[str, Any]]) -> list[str]:
     ids = [str(ctx.get("doc_id") or "").strip() for ctx in contexts]
+    metadata = result.metadata if isinstance(result.metadata, dict) else {}
     for key in ("context_items_ref", "chunks_after_rerank", "chunks_raw", "retrieved_chunks"):
-        values = result.metadata.get(key)
+        values = metadata.get(key)
         if not isinstance(values, list):
             continue
         for value in values:
@@ -1073,6 +1267,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--scaleway-base-url", default=os.getenv("SCALEWAY_BASE_URL", DEFAULT_SCALEWAY_BASE_URL), help="OpenAI-compatible base URL.")
     parser.add_argument("--fail-fast", action="store_true", help="Stop on the first item failure.")
+    parser.add_argument("--baseline-run-id", type=int, default=None, help="Recorded rag_quality_eval_runs.id to compare against.")
+    parser.add_argument("--baseline-run-label", default="", help="Recorded rag_quality_eval_runs.run_label to compare against.")
+    parser.add_argument("--require-baseline", action="store_true", help="Fail when the baseline run is missing or not comparable.")
+    parser.add_argument("--gate-against-baseline", action="store_true", help="Fail when baseline comparison metrics regress beyond thresholds.")
+    parser.add_argument("--max-judge-pass-rate-drop", type=float, default=0.05, help="Maximum allowed judge_pass_rate drop versus baseline.")
+    parser.add_argument("--max-doc-recall-drop", type=float, default=0.05, help="Maximum allowed doc_recall_avg drop versus baseline.")
     return parser
 
 
@@ -1127,10 +1327,22 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                     "config_fingerprint": config_hash,
                     "eval_scope": eval_scope,
                 }
+                if baseline_comparison_requested(args):
+                    comparison = build_baseline_comparison(
+                        conn,
+                        args=args,
+                        candidate_aggregate=_json_dict(existing_run.get("aggregate")),
+                        goldset_name=args.goldset_name,
+                        tags=args.tag,
+                        eval_scope=eval_scope,
+                    )
+                    summary["baseline_comparison"] = comparison
+                    if baseline_gate_failed(args, comparison):
+                        summary["status"] = "failed_quality_gate"
                 json_path, csv_path = write_artifacts(output_dir, run_label, [], summary)
                 return EvalSummary(
                     run_id=None,
-                    status="skipped_existing",
+                    status=summary["status"],
                     goldset_name=args.goldset_name,
                     tag_filter=args.tag,
                     total=len(questions),
@@ -1171,7 +1383,10 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     status = "completed"
     error = ""
 
+    item_conn: psycopg.Connection[Any] | None = None
     try:
+        if run_id is not None:
+            item_conn = psycopg.connect(dsn, row_factory=dict_row)
         for question in questions:
             item = run_question(
                 pipe=pipe,
@@ -1184,10 +1399,9 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 scaleway_api_key=api_key,
             )
             items.append(item)
-            if run_id is not None:
-                with psycopg.connect(dsn, row_factory=dict_row) as conn:
-                    insert_eval_item(conn, run_id, item)
-                    conn.commit()
+            if item_conn is not None and run_id is not None:
+                insert_eval_item(item_conn, run_id, item)
+                item_conn.commit()
             if item.error and args.fail_fast:
                 raise RuntimeError(item.error)
         if any(item.error for item in items):
@@ -1211,6 +1425,8 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
         if run_id is None:
             raise
     finally:
+        if item_conn is not None:
+            item_conn.close()
         aggregate = aggregate_items(items)
         aggregate.update(
             {
@@ -1229,6 +1445,20 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 "ragas_failed": sum(1 for item in items if item.ragas_metrics.get("status") == "failed"),
             }
         )
+        if baseline_comparison_requested(args):
+            with psycopg.connect(dsn, row_factory=dict_row) as conn:
+                comparison = build_baseline_comparison(
+                    conn,
+                    args=args,
+                    candidate_aggregate=aggregate,
+                    goldset_name=args.goldset_name,
+                    tags=args.tag,
+                    eval_scope=eval_scope,
+                )
+            aggregate["baseline_comparison"] = comparison
+            if baseline_gate_failed(args, comparison):
+                status = "failed_quality_gate"
+                error = error or "; ".join(comparison.get("failures") or ["baseline quality gate failed"])
         if run_id is not None:
             with psycopg.connect(dsn, row_factory=dict_row) as conn:
                 complete_eval_run(conn, run_id=run_id, status=status, aggregate=aggregate, error=error)
@@ -1272,7 +1502,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     summary = run_eval(args)
     print(json.dumps(asdict(summary), ensure_ascii=False, indent=2, default=str))
-    return 0 if summary.status not in {"failed"} else 1
+    return 0 if summary.status not in {"failed", "failed_quality_gate"} else 1
 
 
 if __name__ == "__main__":

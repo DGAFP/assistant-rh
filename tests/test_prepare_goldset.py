@@ -54,6 +54,17 @@ def test_parse_raw_french_columns_and_normalizes_keywords() -> None:
     assert rows[0].goldset_name == "priority_contractuels_v1"
 
 
+def test_parse_raw_rows_validates_explicit_column_aliases() -> None:
+    rows = read_csv_rows(FIXTURE)
+
+    try:
+        parse_raw_rows(rows, goldset_name="priority_contractuels_v1", column_overrides={"question": "missing_column"})
+    except ValueError as exc:
+        assert "Overridden column 'missing_column'" in str(exc)
+    else:
+        raise AssertionError("expected invalid column alias to fail")
+
+
 def test_split_source_labels_handles_matte_sp_legal_and_mso() -> None:
     labels = split_source_labels(
         "Fiche MATTE : Fiche 6 La fin de contrat - Juillet 2024 "

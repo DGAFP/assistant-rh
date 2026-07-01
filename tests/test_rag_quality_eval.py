@@ -14,6 +14,7 @@ from src.goldset.eval import (
     artifact_paths,
     build_eval_scope,
     calibrate_judge_result,
+    compare_with_baseline,
     config_fingerprint,
     deterministic_metrics,
     load_goldset_questions,
@@ -329,6 +330,100 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
     assert build_eval_scope(full, questions) != smoke_scope
     assert build_eval_scope(no_judge, questions[:1]) != smoke_scope
     assert build_eval_scope(no_ragas, questions[:1]) != smoke_scope
+
+
+def test_baseline_comparison_passes_within_allowed_drop() -> None:
+    eval_scope = {"question_ids": [1, 2], "judge_enabled": True, "ragas_enabled": False}
+    baseline = {
+        "id": 10,
+        "status": "completed",
+        "goldset_name": "iteration2_V1",
+        "tag_filter": ["iteration2"],
+        "run_label": "baseline",
+        "git_sha": "abc",
+        "config_fingerprint": "base",
+        "aggregate": {"judge_pass_rate": 0.8, "doc_recall_avg": 0.7},
+        "metadata": {"eval_scope": eval_scope},
+    }
+
+    comparison = compare_with_baseline(
+        candidate_aggregate={"judge_pass_rate": 0.76, "doc_recall_avg": 0.66},
+        baseline_run=baseline,
+        goldset_name="iteration2_V1",
+        tags=["iteration2"],
+        eval_scope=eval_scope,
+        max_judge_pass_rate_drop=0.05,
+        max_doc_recall_drop=0.05,
+    )
+
+    assert comparison["passed"] is True
+    assert comparison["metrics"]["judge_pass_rate"]["delta"] == pytest.approx(-0.04)
+
+
+def test_baseline_comparison_fails_on_metric_regression() -> None:
+    eval_scope = {"question_ids": [1], "judge_enabled": True, "ragas_enabled": False}
+    baseline = {
+        "id": 10,
+        "status": "completed",
+        "goldset_name": "iteration2_V1",
+        "tag_filter": ["iteration2"],
+        "aggregate": {"judge_pass_rate": 0.9, "doc_recall_avg": 0.8},
+        "metadata": {"eval_scope": eval_scope},
+    }
+
+    comparison = compare_with_baseline(
+        candidate_aggregate={"judge_pass_rate": 0.7, "doc_recall_avg": 0.79},
+        baseline_run=baseline,
+        goldset_name="iteration2_V1",
+        tags=["iteration2"],
+        eval_scope=eval_scope,
+        max_judge_pass_rate_drop=0.05,
+        max_doc_recall_drop=0.05,
+    )
+
+    assert comparison["passed"] is False
+    assert comparison["status"] == "failed"
+    assert "judge_pass_rate" in comparison["failures"][0]
+
+
+def test_baseline_comparison_requires_comparable_scope() -> None:
+    baseline = {
+        "id": 10,
+        "status": "completed",
+        "goldset_name": "iteration2_V1",
+        "tag_filter": ["iteration2"],
+        "aggregate": {"judge_pass_rate": 0.9, "doc_recall_avg": 0.8},
+        "metadata": {"eval_scope": {"question_ids": [1], "judge_enabled": True}},
+    }
+
+    comparison = compare_with_baseline(
+        candidate_aggregate={"judge_pass_rate": 0.9, "doc_recall_avg": 0.8},
+        baseline_run=baseline,
+        goldset_name="iteration2_V1",
+        tags=["iteration2"],
+        eval_scope={"question_ids": [2], "judge_enabled": True},
+        max_judge_pass_rate_drop=0.05,
+        max_doc_recall_drop=0.05,
+    )
+
+    assert comparison["passed"] is False
+    assert comparison["status"] == "not_comparable"
+    assert comparison["comparability_failures"] == ["baseline eval_scope does not match candidate"]
+
+
+def test_baseline_comparison_reports_missing_baseline() -> None:
+    comparison = compare_with_baseline(
+        candidate_aggregate={"judge_pass_rate": 0.9, "doc_recall_avg": 0.8},
+        baseline_run=None,
+        goldset_name="iteration2_V1",
+        tags=["iteration2"],
+        eval_scope={"question_ids": [1]},
+        max_judge_pass_rate_drop=0.05,
+        max_doc_recall_drop=0.05,
+    )
+
+    assert comparison["passed"] is False
+    assert comparison["status"] == "missing_baseline"
 
 
 def test_backfill_ragas_status_summary() -> None:

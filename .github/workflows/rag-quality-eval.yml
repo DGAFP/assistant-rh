@@ -3,6 +3,7 @@ name: RAG Quality Eval
 on:
   pull_request:
     branches: [dev, staging]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - "packages/rag-pipeline/**"
       - "apps/streamlit-ui/pages/01_Chatbot.py"
@@ -15,6 +16,22 @@ on:
       - ".github/workflows/rag-quality-eval.yml"
   workflow_dispatch:
     inputs:
+      eval_mode:
+        description: "Eval mode"
+        required: true
+        type: choice
+        options:
+          - smoke
+          - full
+        default: smoke
+      target_environment:
+        description: "GitHub environment / DB target"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
       goldset_name:
         description: "Goldset name"
         required: true
@@ -26,20 +43,30 @@ on:
         type: string
         default: iteration2
       limit:
-        description: "Max questions, 0 = all"
+        description: "Max questions, 0 = all. Full production eval forces 0."
         required: true
         type: string
-        default: "3"
+        default: "5"
       skip_ragas:
         description: "Skip RAGAS metrics"
         required: true
         type: boolean
-        default: false
+        default: true
       skip_judge:
         description: "Skip Scaleway LLM judge"
         required: true
         type: boolean
         default: false
+      baseline_run_id:
+        description: "Optional baseline rag_quality_eval_runs.id"
+        required: false
+        type: string
+        default: ""
+      baseline_run_label:
+        description: "Optional baseline rag_quality_eval_runs.run_label"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -51,16 +78,9 @@ concurrency:
 
 jobs:
   rag-quality-eval:
-    name: rag quality / ${{ matrix.name }}
+    name: rag quality
     runs-on: ubuntu-latest
-    environment: scaleway-staging
-    strategy:
-      fail-fast: false
-      matrix:
-        # Pull requests compare base vs head. Other events (workflow_dispatch)
-        # have a single ref, so run only the candidate leg instead of evaluating
-        # the same commit twice.
-        name: ${{ github.event_name == 'pull_request' && fromJSON('["baseline", "candidate"]') || fromJSON('["candidate"]') }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target_environment == 'production' && 'scaleway-production' || 'scaleway-staging' }}
     env:
       SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
       ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
@@ -68,12 +88,15 @@ jobs:
       SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
       SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || secrets.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
       SCALEWAY_JUDGE_MODEL: ${{ vars.SCALEWAY_JUDGE_MODEL || 'qwen3-235b-a22b-instruct-2507' }}
+      DEFAULT_BASELINE_RUN_ID: ${{ vars.RAG_QUALITY_BASELINE_RUN_ID || '' }}
+      DEFAULT_BASELINE_RUN_LABEL: ${{ vars.RAG_QUALITY_BASELINE_RUN_LABEL || '' }}
+      PR_FULL_REQUESTED: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'rag-quality-full') }}
 
     steps:
-      - name: Checkout ${{ matrix.name }}
+      - name: Checkout candidate
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'pull_request' && matrix.name == 'baseline' && github.event.pull_request.base.sha || github.event_name == 'pull_request' && matrix.name == 'candidate' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -90,20 +113,42 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "GOLDSET_NAME=${{ inputs.goldset_name }}" >> "$GITHUB_ENV"
             echo "GOLDSET_TAG=${{ inputs.tag }}" >> "$GITHUB_ENV"
-            echo "LIMIT=${{ inputs.limit }}" >> "$GITHUB_ENV"
+            if [[ "${{ inputs.eval_mode }}" == "full" || "${{ inputs.target_environment }}" == "production" ]]; then
+              eval_mode=full
+              echo "EVAL_MODE=$eval_mode" >> "$GITHUB_ENV"
+              echo "COMPARE_BASELINE=true" >> "$GITHUB_ENV"
+              echo "LIMIT=0" >> "$GITHUB_ENV"
+            else
+              eval_mode=smoke
+              echo "EVAL_MODE=$eval_mode" >> "$GITHUB_ENV"
+              echo "COMPARE_BASELINE=false" >> "$GITHUB_ENV"
+              echo "LIMIT=${{ inputs.limit }}" >> "$GITHUB_ENV"
+            fi
             echo "SKIP_RAGAS=${{ inputs.skip_ragas }}" >> "$GITHUB_ENV"
             echo "SKIP_JUDGE=${{ inputs.skip_judge }}" >> "$GITHUB_ENV"
+            echo "BASELINE_RUN_ID=${{ inputs.baseline_run_id || vars.RAG_QUALITY_BASELINE_RUN_ID || '' }}" >> "$GITHUB_ENV"
+            echo "BASELINE_RUN_LABEL=${{ inputs.baseline_run_label || vars.RAG_QUALITY_BASELINE_RUN_LABEL || '' }}" >> "$GITHUB_ENV"
+            echo "RUN_LABEL=${{ inputs.target_environment }}-$eval_mode-${{ github.sha }}" >> "$GITHUB_ENV"
           else
             echo "GOLDSET_NAME=iteration2_V1" >> "$GITHUB_ENV"
             echo "GOLDSET_TAG=iteration2" >> "$GITHUB_ENV"
-            echo "LIMIT=3" >> "$GITHUB_ENV"
-            echo "SKIP_RAGAS=false" >> "$GITHUB_ENV"
+            if [[ "$PR_FULL_REQUESTED" == "true" ]]; then
+              echo "EVAL_MODE=full" >> "$GITHUB_ENV"
+              echo "COMPARE_BASELINE=true" >> "$GITHUB_ENV"
+              echo "LIMIT=0" >> "$GITHUB_ENV"
+            else
+              echo "EVAL_MODE=smoke" >> "$GITHUB_ENV"
+              echo "COMPARE_BASELINE=false" >> "$GITHUB_ENV"
+              echo "LIMIT=5" >> "$GITHUB_ENV"
+            fi
+            echo "SKIP_RAGAS=true" >> "$GITHUB_ENV"
             echo "SKIP_JUDGE=false" >> "$GITHUB_ENV"
+            echo "BASELINE_RUN_ID=$DEFAULT_BASELINE_RUN_ID" >> "$GITHUB_ENV"
+            echo "BASELINE_RUN_LABEL=$DEFAULT_BASELINE_RUN_LABEL" >> "$GITHUB_ENV"
+            echo "RUN_LABEL=pr-${{ github.event.pull_request.number }}-${{ github.sha }}" >> "$GITHUB_ENV"
           fi
 
       - name: Run RAG quality eval
-        env:
-          RUN_LABEL: ${{ matrix.name }}-${{ github.sha }}
         run: |
           set -euo pipefail
           limit_args=()
@@ -118,6 +163,20 @@ jobs:
           if [[ "$SKIP_JUDGE" == "true" ]]; then
             judge_args+=(--skip-judge)
           fi
+          baseline_args=()
+          if [[ "$COMPARE_BASELINE" == "true" ]]; then
+            baseline_args+=(--require-baseline --gate-against-baseline)
+            if [[ -n "${BASELINE_RUN_ID:-}" ]]; then
+              baseline_args+=(--baseline-run-id "$BASELINE_RUN_ID")
+            fi
+            if [[ -n "${BASELINE_RUN_LABEL:-}" ]]; then
+              baseline_args+=(--baseline-run-label "$BASELINE_RUN_LABEL")
+            fi
+          fi
+          dedupe_args=()
+          if [[ "$EVAL_MODE" == "smoke" ]]; then
+            dedupe_args+=(--skip-if-started)
+          fi
 
           uv run --no-sync python scripts/run_rag_quality_eval.py \
             --goldset-name "$GOLDSET_NAME" \
@@ -125,21 +184,26 @@ jobs:
             "${limit_args[@]}" \
             "${ragas_args[@]}" \
             "${judge_args[@]}" \
+            "${baseline_args[@]}" \
             --record-db \
             --init-schema \
-            --skip-if-started \
+            "${dedupe_args[@]}" \
             --dedupe-scope config-and-git \
             --run-label "$RUN_LABEL" \
             --output-dir ".cache/assistant-rh/evals/$RUN_LABEL" \
-            | tee "$RUNNER_TEMP/rag-quality-${{ matrix.name }}.json"
+            | tee "$RUNNER_TEMP/rag-quality.json"
 
       - name: Summarize
         run: |
           set -euo pipefail
           {
-            echo "## RAG quality eval - ${{ matrix.name }}"
+            echo "## RAG quality eval"
+            echo ""
+            echo "- mode: $EVAL_MODE"
+            echo "- compare baseline: $COMPARE_BASELINE"
+            echo "- limit: $LIMIT"
             echo ""
             echo "\`\`\`json"
-            cat "$RUNNER_TEMP/rag-quality-${{ matrix.name }}.json"
+            cat "$RUNNER_TEMP/rag-quality.json"
             echo "\`\`\`"
           } >> "$GITHUB_STEP_SUMMARY"

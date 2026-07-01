@@ -89,9 +89,31 @@ A matching run is defined by:
 - current git SHA, unless `--dedupe-scope config` is used;
 - status in `started`, `running`, or `completed`.
 
-The GitHub workflow `.github/workflows/rag-quality-eval.yml` runs the same CLI
-for both the PR base SHA and head SHA when RAG quality files change. This keeps
-the baseline and candidate comparable even when the runtime config is unchanged.
+The GitHub workflow `.github/workflows/rag-quality-eval.yml` is tiered:
+
+- PRs run a head-only smoke eval on staging (`limit=5`, judge enabled, RAGAS
+  skipped). This catches runner/runtime failures and severe quality failures
+  without paying the cost of a full comparison on every PR.
+- PRs labelled `rag-quality-full` and manual `workflow_dispatch` runs in
+  `full` mode run the full goldset and compare the candidate to a stored DB
+  baseline from `rag_quality_eval_runs`.
+- Manual production dispatches force full mode and require a comparable DB
+  baseline.
+
+Full baseline comparison requires a comparable baseline run: same DB target,
+`goldset_name`, exact `tag_filter`, exact `eval_scope` (question ids, limit,
+judge/RAGAS enablement and models), and `status='completed'`. The baseline can
+be selected with `--baseline-run-id`, `--baseline-run-label`, or by the latest
+completed comparable run. The candidate and baseline `config_fingerprint` values
+are reported but not required to match, because some PRs intentionally change
+runtime behavior.
+
+The default full gate fails when:
+
+- no comparable baseline is found;
+- `judge_pass_rate` drops by more than `0.05`;
+- `doc_recall_avg` drops by more than `0.05`;
+- the candidate run itself fails.
 
 ## Outputs
 

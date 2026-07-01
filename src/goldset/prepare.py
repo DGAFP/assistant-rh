@@ -290,7 +290,10 @@ def resolve_column_map(fieldnames: Sequence[str], overrides: Mapping[str, str] |
     mapping: dict[str, str] = {}
     for canonical, aliases in RAW_COLUMN_ALIASES.items():
         if overrides and overrides.get(canonical):
-            mapping[canonical] = overrides[canonical]
+            override = overrides[canonical]
+            if override not in fieldnames:
+                raise ValueError(f"Overridden column '{override}' for '{canonical}' not found in CSV fields: {list(fieldnames)}")
+            mapping[canonical] = override
             continue
         for alias in aliases:
             key = normalize_text(alias)
@@ -834,8 +837,7 @@ def upsert_prepared_rows(
                 or 0
             )
         with conn.cursor() as cur:
-            for payload in payload_rows:
-                cur.execute(insert_sql, payload)
+            cur.executemany(insert_sql, payload_rows)
         conn.commit()
 
     return {

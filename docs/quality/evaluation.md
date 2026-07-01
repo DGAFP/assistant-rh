@@ -135,15 +135,22 @@ The full run answers: is the change safe across the full current goldset?
 
 ## Baseline Versus Candidate
 
-For PRs, compare the base commit and candidate commit whenever possible.
+For ordinary PRs, run the head-only staging smoke eval. It is intentionally
+small and should answer only: did this change obviously break the RAG runner or
+quality path?
 
-Both runs must use:
+Run a full baseline-versus-candidate comparison only when:
+
+- the PR is labelled `rag-quality-full`;
+- the workflow is manually dispatched in `full` mode;
+- a production/release gate is being evaluated.
+
+The stored baseline and candidate must use:
 
 - same DSN;
 - same `goldset_name`;
 - same tag filters;
 - same question ids;
-- same runtime config source;
 - same judge model and RAGAS settings;
 - same source snapshot.
 
@@ -159,9 +166,8 @@ The run metadata must include:
 - judge model;
 - output artifact paths.
 
-If the baseline cannot run because the workflow or runner is introduced by the
-current PR, document that explicitly. Future PRs must then use the normal
-baseline-versus-candidate comparison.
+The candidate and baseline `config_fingerprint` values should be reported. They
+do not need to match when the PR intentionally changes runtime behavior.
 
 ## Metrics To Review
 
