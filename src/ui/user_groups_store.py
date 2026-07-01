@@ -43,6 +43,13 @@ logger = logging.getLogger(__name__)
 _PBKDF2_ALGO = "sha256"
 _PBKDF2_ITERATIONS = 200_000
 
+# Valid-format hash used to run a constant-time verification when a group is
+# missing or has no password, so verify_password always spends the same PBKDF2
+# work and cannot leak group existence via response timing.
+_DUMMY_HASH = (
+    f"pbkdf2_{_PBKDF2_ALGO}${_PBKDF2_ITERATIONS}${base64.b64encode(b'dummy-salt-000000').decode()}${base64.b64encode(b'dummy-hash-000000').decode()}"
+)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Password hashing (stdlib pbkdf2)
@@ -295,7 +302,12 @@ def verify_password(slug: str, password: str) -> bool:
         with conn.cursor() as cur:
             cur.execute("SELECT password_hash FROM user_groups WHERE slug = %s", (slug,))
             row = cur.fetchone()
-        return _verify_hash(password, row[0]) if row else False
+        # Always run the full PBKDF2 (against a dummy hash when the group is
+        # missing or passwordless) so timing doesn't reveal which groups exist.
+        has_password = row is not None and row[0] is not None
+        stored = row[0] if has_password else _DUMMY_HASH
+        matches = _verify_hash(password, stored)
+        return bool(has_password and matches)
     except psycopg.Error as exc:
         logger.warning("user_groups verify failed: %s", exc)
         return False

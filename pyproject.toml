@@ -103,6 +103,7 @@ select = ["E", "F", "I"]
 "apps/streamlit-ui/pages/09_Pipeline_Evaluation.py" = ["E501", "F841"]
 "apps/streamlit-ui/pages/10_Intent_Gater_Evaluation.py" = ["E501"]
 "apps/streamlit-ui/pages/11_Golden_Beta_Analysis.py" = ["E501"]
+"apps/streamlit-ui/pages/12_Pipeline_Timeline.py" = ["E501"]
 "apps/streamlit-ui/pages/_PDF_Viewer.py" = ["E402", "E501"]
 # src/ui modules
 "src/ui/chatbot_logging.py" = ["E402", "E501"]
