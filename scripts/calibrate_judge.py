@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import sys
@@ -61,18 +62,38 @@ def load_labels(path: Path) -> list[dict]:
     return usable
 
 
+def _cache_fingerprint(labels: list[dict], model: str) -> str:
+    """Fingerprint the calibration inputs so a stale cache is not reused.
+
+    Keyed on the judge model and the label fields that drive the judge
+    (question/answer/gold_answer/verdict). Editing labels.csv or switching
+    SCALEWAY_JUDGE_MODEL changes the fingerprint, forcing a re-run instead of
+    silently reporting a confusion matrix computed against different inputs.
+    """
+    payload = {
+        "model": model,
+        "labels": [{key: (row.get(key) or "") for key in ("question", "answer", "gold_answer", "verdict")} for row in labels],
+    }
+    blob = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
 def capture_judge(labels: list[dict], cache_path: Path) -> list[dict]:
     """Run the judge once per labelled answer and cache the raw dimensions."""
+    model = os.getenv("SCALEWAY_JUDGE_MODEL", DEFAULT_JUDGE_MODEL).strip()
+    fingerprint = _cache_fingerprint(labels, model)
     if cache_path.exists():
         cached = json.loads(cache_path.read_text(encoding="utf-8"))
-        print(f"using cached judge outputs: {cache_path} ({len(cached)} rows)", file=sys.stderr)
-        return cached
+        if isinstance(cached, dict) and cached.get("fingerprint") == fingerprint:
+            rows = cached.get("rows", [])
+            print(f"using cached judge outputs: {cache_path} ({len(rows)} rows)", file=sys.stderr)
+            return rows
+        print(f"cache {cache_path} is stale (labels or model changed) — re-running judge", file=sys.stderr)
 
     api_key = os.getenv("SCALEWAY_API_KEY", "").strip()
     if not api_key:
         raise SystemExit("SCALEWAY_API_KEY is required to run the judge (set it in .env).")
     base_url = os.getenv("SCALEWAY_BASE_URL", DEFAULT_SCALEWAY_BASE_URL).strip()
-    model = os.getenv("SCALEWAY_JUDGE_MODEL", DEFAULT_JUDGE_MODEL).strip()
     print(f"judge: {model} @ {base_url} — {len(labels)} examples", file=sys.stderr)
 
     captured = []
@@ -104,7 +125,10 @@ def capture_judge(labels: list[dict], cache_path: Path) -> list[dict]:
         print(f"  [{i}/{len(labels)}] {row['verdict']:6s} {row['question'][:60]}", file=sys.stderr)
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(json.dumps(captured, ensure_ascii=False, indent=2), encoding="utf-8")
+    cache_path.write_text(
+        json.dumps({"fingerprint": fingerprint, "rows": captured}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     print(f"wrote cache {cache_path}", file=sys.stderr)
     return captured
 

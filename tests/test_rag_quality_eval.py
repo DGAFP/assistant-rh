@@ -16,6 +16,7 @@ from src.goldset.eval import (
     calibrate_judge_result,
     compare_with_baseline,
     config_fingerprint,
+    derive_completion_status,
     deterministic_metrics,
     load_goldset_questions,
     parse_text_list,
@@ -490,3 +491,66 @@ def test_resolve_goldset_doc_ids_dry_run_does_not_mutate(monkeypatch) -> None:
 def test_cli_argparse_namespace_smoke() -> None:
     args = argparse.Namespace(goldset_name="iteration2_V1", tag=["iteration2"], skip_ragas=True, skip_judge=True)
     assert args.goldset_name == "iteration2_V1"
+
+
+def _item(error: str = "", *, judge_status: str = "completed", ragas_status: str = "completed") -> EvalItem:
+    return EvalItem(
+        question_id=1,
+        question="q",
+        gold_answer="a",
+        gold_sources=["doc-a"],
+        judge_result={"status": judge_status},
+        ragas_metrics={"status": ragas_status},
+        error=error,
+    )
+
+
+def test_derive_status_all_items_errored_is_failure() -> None:
+    # Regression: a run where every question failed to execute must be `failed`,
+    # not a passing `completed_with_errors` — otherwise the eval exits 0 and CI
+    # stays green while nothing actually ran.
+    status, error = derive_completion_status(
+        [_item(error="pipeline boom"), _item(error="pipeline boom")],
+        judge_enabled=True,
+        ragas_enabled=True,
+    )
+    assert status == "failed"
+    assert "all 2 questions failed to execute" in error
+
+
+def test_derive_status_partial_errors_is_completed_with_errors() -> None:
+    status, error = derive_completion_status(
+        [_item(), _item(error="one failed")],
+        judge_enabled=True,
+        ragas_enabled=True,
+    )
+    assert status == "completed_with_errors"
+    assert error == ""
+
+
+def test_derive_status_all_clean_is_completed() -> None:
+    status, error = derive_completion_status([_item(), _item()], judge_enabled=True, ragas_enabled=True)
+    assert status == "completed"
+    assert error == ""
+
+
+def test_derive_status_judge_failed_on_every_executed_item_is_failure() -> None:
+    # Judge requested but errored on all executed items => config failure.
+    status, error = derive_completion_status(
+        [_item(judge_status="failed"), _item(judge_status="failed")],
+        judge_enabled=True,
+        ragas_enabled=False,
+    )
+    assert status == "failed"
+    assert "judge requested but failed" in error
+
+
+def test_derive_status_ignores_disabled_subtask() -> None:
+    # Judge disabled: a "failed" judge status must not be escalated.
+    status, error = derive_completion_status(
+        [_item(judge_status="failed"), _item(judge_status="failed")],
+        judge_enabled=False,
+        ragas_enabled=True,
+    )
+    assert status == "completed"
+    assert error == ""
