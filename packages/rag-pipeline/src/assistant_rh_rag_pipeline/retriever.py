@@ -182,6 +182,8 @@ class Retriever:
         tables: list[str] | None = None,
         search_mode: SearchMode | None = None,
         top_k: int | None = None,
+        include_chunks_test: bool | None = None,
+        strict_table_errors: bool = False,
     ) -> List[RetrievedChunk]:
         """Embed *query*, search all configured tables in parallel, return merged results.
 
@@ -191,9 +193,18 @@ class Retriever:
         ``self.config.tables``.
         *search_mode* and *top_k*: optional request-scoped overrides used by
         fallback/retry paths without mutating ``self.config``.
+        *include_chunks_test*: request-scoped override for the optional test
+        table. Scoped production retrieval passes ``False`` so test chunks never
+        leak into ministry-scoped answers.
+        *strict_table_errors*: raise if a requested table key/table query fails.
+        Legacy unscoped retrieval keeps the previous partial-result behavior.
         """
         t0 = time.time()
         _force_names = {CHUNK_TABLES[k].name for k in (force_hybrid_tables or set()) if k in CHUNK_TABLES}
+        table_keys = self.config.tables if tables is None else tables
+        unknown_table_keys = [k for k in table_keys if k not in CHUNK_TABLES]
+        if unknown_table_keys and strict_table_errors:
+            raise ValueError(f"Unknown retrieval table key(s): {', '.join(unknown_table_keys)}")
 
         embedding = self.embedder.embed_query(query)
         if embedding is None:
@@ -206,13 +217,14 @@ class Retriever:
         is_hybrid = effective_search_mode == SearchMode.HYBRID
         is_lexical = effective_search_mode == SearchMode.LEXICAL
 
-        table_keys = self.config.tables if tables is None else tables
         chunk_tables = [CHUNK_TABLES[k] for k in table_keys if k in CHUNK_TABLES]
-        if not chunk_tables and not self.config.enable_chunks_test:
+        effective_enable_chunks_test = self.config.enable_chunks_test if include_chunks_test is None else include_chunks_test
+        if not chunk_tables and not effective_enable_chunks_test:
             return []
 
-        n_workers = (len(chunk_tables) * 2) + (1 if self.config.enable_chunks_test else 0)
+        n_workers = (len(chunk_tables) * 2) + (1 if effective_enable_chunks_test else 0)
         per_source_results: Dict[str, List[RetrievedChunk]] = {}
+        table_errors: list[str] = []
         with ThreadPoolExecutor(max_workers=max(n_workers, 1)) as pool:
             futures = {
                 pool.submit(
@@ -224,17 +236,24 @@ class Retriever:
                     force_hybrid=(tbl.name in _force_names),
                     search_mode=effective_search_mode,
                     top_k=effective_top_k,
+                    strict_errors=strict_table_errors,
                 ): tbl.name
                 for tbl in chunk_tables
             }
             futures.update(
                 {
-                    pool.submit(self._search_table_headings, tbl, query, top_k=effective_top_k): f"{_HEADING_SOURCE_PREFIX}{tbl.name}"
+                    pool.submit(
+                        self._search_table_headings,
+                        tbl,
+                        query,
+                        top_k=effective_top_k,
+                        strict_errors=strict_table_errors,
+                    ): f"{_HEADING_SOURCE_PREFIX}{tbl.name}"
                     for tbl in chunk_tables
                     if tbl.has_sections
                 }
             )
-            if self.config.enable_chunks_test:
+            if effective_enable_chunks_test:
                 if is_hybrid:
                     futures[
                         pool.submit(
@@ -276,6 +295,11 @@ class Retriever:
                     per_source_results[name] = result
                 except Exception as exc:
                     logger.error("Search on %s failed (%s): %s", name, type(exc).__name__, exc)
+                    if strict_table_errors:
+                        table_errors.append(f"{name}: {type(exc).__name__}: {exc}")
+
+        if table_errors:
+            raise RuntimeError("Scoped retrieval failed on requested table(s): " + "; ".join(table_errors))
 
         all_chunks = self._merge_cross_source_ranks(per_source_results)
         all_chunks = self._normalize_merged_scores(
@@ -387,6 +411,7 @@ class Retriever:
 
     _TABLE_META_COLS: Dict[str, List[str]] = {
         "rag_chunks_matte": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
+        "rag_chunks_mso": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
         "rag_chunks_service_public": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
         CHUNK_TABLES["service_public_scw"].name: ["source_name", "section_path", "role", "thematique", "short_id", "source"],
         "rag_chunks_dgafp": ["title", "full_title", "number", "category", "url", "cid"],
@@ -463,6 +488,7 @@ class Retriever:
         query: str,
         *,
         top_k: int | None = None,
+        strict_errors: bool = False,
     ) -> List[RetrievedChunk]:
         """Search document titles, section headings and heading paths for section-backed tables."""
         if not table.has_sections:
@@ -549,6 +575,8 @@ class Retriever:
                 )
         except Exception as exc:
             logger.error("Heading query on %s failed (%s): %s", table.name, type(exc).__name__, exc)
+            if strict_errors:
+                raise
 
         self._sort_chunks_deterministically(chunks)
         return chunks[:effective_top_k]
@@ -595,6 +623,7 @@ class Retriever:
         force_hybrid: bool = False,
         search_mode: SearchMode | None = None,
         top_k: int | None = None,
+        strict_errors: bool = False,
     ) -> List[RetrievedChunk]:
         """Search a DE table. Uses hybrid RRF when tsvector is available, else semantic."""
         effective_search_mode = search_mode or self.config.search_mode
@@ -613,6 +642,7 @@ class Retriever:
                 query,
                 search_mode=effective_search_mode,
                 top_k=effective_top_k,
+                strict_errors=strict_errors,
             )
         else:
             chunks = self._search_table_semantic(
@@ -620,6 +650,7 @@ class Retriever:
                 embedding,
                 model_used,
                 top_k=effective_top_k,
+                strict_errors=strict_errors,
             )
 
         for chunk in chunks:
@@ -634,6 +665,7 @@ class Retriever:
         model_used: str,
         *,
         top_k: int | None = None,
+        strict_errors: bool = False,
     ) -> List[RetrievedChunk]:
         """Pure semantic (cosine) search on a DE table."""
         embed_col = table.embed_col_albert if model_used == "albert" else table.embed_col_bge
@@ -658,7 +690,7 @@ class Retriever:
             LIMIT %s
         """
         params: Tuple = (embedding, embedding, effective_top_k)
-        return self._exec_de_table(table, sql, params, model_used)
+        return self._exec_de_table(table, sql, params, model_used, strict_errors=strict_errors)
 
     def _search_table_hybrid(
         self,
@@ -669,6 +701,7 @@ class Retriever:
         *,
         search_mode: SearchMode | None = None,
         top_k: int | None = None,
+        strict_errors: bool = False,
     ) -> List[RetrievedChunk]:
         """Hybrid RRF search on a DE table that has a tsvector column."""
         embed_col = table.embed_col_albert if model_used == "albert" else table.embed_col_bge
@@ -704,7 +737,7 @@ class Retriever:
                 LIMIT %s
             """
             params: Tuple = (query, query, query, top_k)
-            return self._exec_de_table(table, sql, params, "lexical")
+            return self._exec_de_table(table, sql, params, "lexical", strict_errors=strict_errors)
 
         # Full hybrid: RRF of semantic + lexical
         sql = f"""
@@ -763,7 +796,7 @@ class Retriever:
             top_k,  # rrf lexical part
             top_k,  # final limit
         )
-        return self._exec_de_table(table, sql, params, model_used)
+        return self._exec_de_table(table, sql, params, model_used, strict_errors=strict_errors)
 
     def _exec_de_table(
         self,
@@ -771,6 +804,8 @@ class Retriever:
         sql: str,
         params: Tuple,
         model_used: str,
+        *,
+        strict_errors: bool = False,
     ) -> List[RetrievedChunk]:
         """Execute a search query on a DE table and return parsed chunks."""
         extra_cols = self._select_existing_meta_cols(table)
@@ -798,6 +833,8 @@ class Retriever:
                 )
         except Exception as exc:
             logger.error("Query on %s failed (%s): %s", table.name, type(exc).__name__, exc)
+            if strict_errors:
+                raise
 
         return chunks
 

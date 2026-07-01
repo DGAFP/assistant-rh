@@ -167,6 +167,7 @@ def _source_distribution(items: list, key: str = "publisher") -> dict:
 
 _TABLE_BY_RUNTIME_KEY = {
     "matte": "rag_chunks_matte",
+    "mso": "rag_chunks_mso",
     "service_public": "rag_chunks_service_public",
     "service_public_scw": "rag_chunks_service_public_scw",
     "dgafp": "rag_chunks_dgafp",
@@ -177,6 +178,7 @@ _TABLE_BY_RUNTIME_KEY = {
 
 _TABLE_BY_PUBLISHER = {
     "matte": "rag_chunks_matte",
+    "mso": "rag_chunks_mso",
     "service-public": "rag_chunks_service_public",
     "service public": "rag_chunks_service_public",
     "service-public (scaleway)": "rag_chunks_service_public_scw",
@@ -188,6 +190,7 @@ _TABLE_BY_PUBLISHER = {
 
 _ALBERT_EMBED_COL_BY_TABLE = {
     "rag_chunks_matte": "embedding_m3",
+    "rag_chunks_mso": "embedding_m3",
     "rag_chunks_service_public": "embedding_m3",
     "rag_chunks_service_public_scw": "embedding_m3",
     "rag_chunks_dgafp": "embedding_m3",
@@ -198,6 +201,7 @@ _ALBERT_EMBED_COL_BY_TABLE = {
 
 _BGE_EMBED_COL_BY_TABLE = {
     "rag_chunks_matte": "embedding_bge_scw",
+    "rag_chunks_mso": "embedding_bge_scw",
     "rag_chunks_service_public": "embedding_bge_scw",
     "rag_chunks_service_public_scw": "embedding_bge_scw",
     "rag_chunks_dgafp": "embedding_bge_scw",
@@ -208,6 +212,7 @@ _BGE_EMBED_COL_BY_TABLE = {
 
 _TABLE_LABEL_BY_TABLE = {
     "rag_chunks_matte": "matte",
+    "rag_chunks_mso": "mso",
     "rag_chunks_service_public": "sp",
     "rag_chunks_service_public_scw": "sp_scw",
     "rag_chunks_dgafp": "dgafp",

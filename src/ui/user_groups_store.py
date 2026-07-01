@@ -27,6 +27,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
 import logging
 import os
 import re
@@ -35,6 +36,13 @@ from typing import Any
 
 import psycopg
 from assistant_rh_rag_pipeline.db_helpers import get_dsn
+from assistant_rh_rag_pipeline.ministry_scope import (
+    MinistryScopeError,
+    RetrievalScope,
+    build_retrieval_scope,
+    known_ministry_ids,
+)
+from psycopg.types.json import Jsonb
 
 from src.ui.groups import ADMIN_GROUP, GROUPS
 
@@ -110,6 +118,8 @@ CREATE TABLE IF NOT EXISTS user_groups (
     password_hash TEXT,
     is_admin      BOOLEAN      NOT NULL DEFAULT FALSE,
     visible       BOOLEAN      NOT NULL DEFAULT TRUE,
+    allowed_ministries JSONB    NOT NULL DEFAULT '["matte"]'::jsonb,
+    default_ministry   TEXT     NOT NULL DEFAULT 'matte',
     chart_color   VARCHAR(16)  NOT NULL DEFAULT '',
     chart_label   VARCHAR(64)  NOT NULL DEFAULT '',
     created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
@@ -134,6 +144,8 @@ def init_user_groups_table() -> bool:
             cur.execute(_CREATE_TABLE_SQL)
             # Forward migration for tables created before the `visible` column.
             cur.execute("ALTER TABLE user_groups ADD COLUMN IF NOT EXISTS visible BOOLEAN NOT NULL DEFAULT TRUE")
+            cur.execute("ALTER TABLE user_groups ADD COLUMN IF NOT EXISTS allowed_ministries JSONB NOT NULL DEFAULT '[\"matte\"]'::jsonb")
+            cur.execute("ALTER TABLE user_groups ADD COLUMN IF NOT EXISTS default_ministry TEXT NOT NULL DEFAULT 'matte'")
             # Only seed groups not already present: hashing is expensive
             # (pbkdf2, 200k iters) and ``ON CONFLICT DO NOTHING`` would throw
             # the work away for every already-seeded group on each new session.
@@ -148,11 +160,11 @@ def init_user_groups_table() -> bool:
                 cur.execute(
                     """
                     INSERT INTO user_groups
-                        (slug, label, icon, color, priority, password_hash, is_admin, chart_color, chart_label)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        (slug, label, icon, color, priority, password_hash, is_admin, allowed_ministries, default_ministry, chart_color, chart_label)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (slug) DO NOTHING
                     """,
-                    (g.slug, g.label, g.icon, g.color, g.priority, pwd_hash, is_admin, g.chart_color, g.chart_label),
+                    (g.slug, g.label, g.icon, g.color, g.priority, pwd_hash, is_admin, Jsonb(["matte"]), "matte", g.chart_color, g.chart_label),
                 )
         conn.commit()
         return True
@@ -184,6 +196,8 @@ def _seed_fallback() -> list[dict[str, Any]]:
                 "priority": g.priority,
                 "is_admin": is_admin,
                 "visible": True,
+                "allowed_ministries": ["matte"],
+                "default_ministry": "matte",
                 "chart_color": g.chart_color,
                 "chart_label": g.chart_label,
                 "has_password": admin_pwd if is_admin else default_pwd,
@@ -206,7 +220,8 @@ def list_groups() -> list[dict[str, Any]]:
             cur.execute(
                 """
                 SELECT slug, label, icon, color, priority, is_admin, visible,
-                       chart_color, chart_label, (password_hash IS NOT NULL) AS has_password
+                       allowed_ministries, default_ministry, chart_color, chart_label,
+                       (password_hash IS NOT NULL) AS has_password
                 FROM user_groups
                 ORDER BY priority DESC, slug ASC
                 """
@@ -218,6 +233,92 @@ def list_groups() -> list[dict[str, Any]]:
         return _seed_fallback()
     finally:
         conn.close()
+
+
+def _parse_ministries(value: Any) -> list[str]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(value, list):
+        return []
+
+    out: list[str] = []
+    for item in value:
+        ministry_id = str(item or "").strip().lower()
+        if ministry_id and ministry_id not in out:
+            out.append(ministry_id)
+    return out
+
+
+def validate_ministry_policy(allowed_ministries: Any, default_ministry: Any) -> tuple[bool, str, list[str], str]:
+    """Validate a group ministry policy against the code-owned ministry catalog."""
+    allowed = _parse_ministries(allowed_ministries)
+    default = str(default_ministry or "").strip().lower()
+    known = known_ministry_ids()
+
+    if not allowed:
+        return False, "Au moins un ministère autorisé est requis.", [], default
+
+    unknown = [ministry_id for ministry_id in allowed if ministry_id not in known]
+    if unknown:
+        return False, f"Ministère inconnu dans la politique: {', '.join(unknown)}.", allowed, default
+
+    if not default:
+        return False, "Le ministère par défaut est requis.", allowed, default
+    if default not in known:
+        return False, f"Ministère par défaut inconnu: {default}.", allowed, default
+    if default not in allowed:
+        return False, "Le ministère par défaut doit faire partie des ministères autorisés.", allowed, default
+
+    return True, "", allowed, default
+
+
+def group_policy_status(group: dict[str, Any]) -> dict[str, Any]:
+    """Return normalized ministry policy status for a group row."""
+    ok, error, allowed, default = validate_ministry_policy(
+        group.get("allowed_ministries"),
+        group.get("default_ministry"),
+    )
+    return {
+        "valid": ok,
+        "error": error,
+        "allowed_ministries": allowed,
+        "default_ministry": default,
+    }
+
+
+def get_group_policy(slug: str) -> dict[str, Any]:
+    """Return one group's ministry policy, fail-closed when missing or invalid."""
+    slug = (slug or "").strip().lower()
+    for group in list_groups():
+        if group["slug"] == slug:
+            policy = group_policy_status(group)
+            return {"slug": slug, **policy}
+    return {
+        "slug": slug,
+        "valid": False,
+        "error": f"Groupe « {slug} » introuvable.",
+        "allowed_ministries": [],
+        "default_ministry": "",
+    }
+
+
+def resolve_group_retrieval_scope(group_slug: str, selected_ministry: str) -> tuple[RetrievalScope | None, str]:
+    """Resolve a group + selected ministry to a strict RAG retrieval scope."""
+    policy = get_group_policy(group_slug)
+    if not policy["valid"]:
+        return None, str(policy["error"])
+
+    selected = (selected_ministry or policy["default_ministry"] or "").strip().lower()
+    if selected not in policy["allowed_ministries"]:
+        return None, "Le ministère sélectionné n'est pas autorisé pour ce groupe."
+
+    try:
+        return build_retrieval_scope(selected), ""
+    except MinistryScopeError as exc:
+        return None, str(exc)
 
 
 def group_chart_maps() -> tuple[dict[str, str], dict[str, str]]:
@@ -308,7 +409,18 @@ def verify_password(slug: str, password: str) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
-_EDITABLE_FIELDS = ("label", "icon", "color", "priority", "is_admin", "visible", "chart_color", "chart_label")
+_EDITABLE_FIELDS = (
+    "label",
+    "icon",
+    "color",
+    "priority",
+    "is_admin",
+    "visible",
+    "allowed_ministries",
+    "default_ministry",
+    "chart_color",
+    "chart_label",
+)
 
 # Seeded structural groups that must not be deleted: init re-seeds any missing
 # seed slug on the next load, so a "delete" would silently reappear. Retire them
@@ -326,6 +438,8 @@ def create_group(
     priority: int = 0,
     is_admin: bool = False,
     visible: bool = True,
+    allowed_ministries: list[str] | None = None,
+    default_ministry: str = "matte",
     chart_color: str = "#888888",
     chart_label: str = "",
 ) -> tuple[bool, str]:
@@ -340,6 +454,10 @@ def create_group(
         return False, "Un mot de passe est requis."
     if priority < 0:
         return False, "La priorité doit être ≥ 0."
+    candidate_allowed = ["matte"] if allowed_ministries is None else allowed_ministries
+    ok, policy_error, normalized_allowed, normalized_default = validate_ministry_policy(candidate_allowed, default_ministry)
+    if not ok:
+        return False, policy_error
     chart_label = (chart_label or "").strip() or f"{icon} {label}".strip()
     conn = _conn()
     if not conn:
@@ -352,10 +470,24 @@ def create_group(
             cur.execute(
                 """
                 INSERT INTO user_groups
-                    (slug, label, icon, color, priority, password_hash, is_admin, visible, chart_color, chart_label)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (slug, label, icon, color, priority, password_hash, is_admin, visible,
+                     allowed_ministries, default_ministry, chart_color, chart_label)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
-                (slug, label, icon, color, priority, hash_password(password), is_admin, visible, chart_color, chart_label),
+                (
+                    slug,
+                    label,
+                    icon,
+                    color,
+                    priority,
+                    hash_password(password),
+                    is_admin,
+                    visible,
+                    Jsonb(normalized_allowed),
+                    normalized_default,
+                    chart_color,
+                    chart_label,
+                ),
             )
         conn.commit()
         return True, ""
@@ -376,10 +508,29 @@ def update_group(slug: str, **fields: Any) -> tuple[bool, str]:
         return False, "Le libellé est requis."
     if "priority" in updates and int(updates["priority"]) < 0:
         return False, "La priorité doit être ≥ 0."
+    if "allowed_ministries" in updates:
+        updates["allowed_ministries"] = _parse_ministries(updates["allowed_ministries"])
+    if "default_ministry" in updates:
+        updates["default_ministry"] = str(updates["default_ministry"] or "").strip().lower()
+
     conn = _conn()
     if not conn:
         return False, "Base de données indisponible."
     try:
+        if "allowed_ministries" in updates or "default_ministry" in updates:
+            with conn.cursor() as cur:
+                cur.execute("SELECT allowed_ministries, default_ministry FROM user_groups WHERE slug = %s", (slug,))
+                row = cur.fetchone()
+            if row is None:
+                return False, f"Groupe « {slug} » introuvable."
+            candidate_allowed = updates.get("allowed_ministries", row[0])
+            candidate_default = updates.get("default_ministry", row[1])
+            ok, policy_error, normalized_allowed, normalized_default = validate_ministry_policy(candidate_allowed, candidate_default)
+            if not ok:
+                return False, policy_error
+            updates["allowed_ministries"] = Jsonb(normalized_allowed)
+            updates["default_ministry"] = normalized_default
+
         # Column names come only from the _EDITABLE_FIELDS whitelist; values are parameterised.
         set_clause = ", ".join(f"{k} = %s" for k in updates) + ", updated_at = CURRENT_TIMESTAMP"
         params = [*updates.values(), slug]

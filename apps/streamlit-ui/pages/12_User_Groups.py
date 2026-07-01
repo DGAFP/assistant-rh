@@ -7,12 +7,14 @@ créé ici est immédiatement disponible dans le sélecteur de la page d'accueil
 
 import pandas as pd
 import streamlit as st
+from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG
 
 from src.ui.admin_auth import require_admin, show_admin_badge
 from src.ui.user_groups_store import (
     PROTECTED_SLUGS,
     create_group,
     delete_group,
+    group_policy_status,
     init_user_groups_table,
     list_groups,
     set_password,
@@ -34,6 +36,20 @@ st.caption(
 
 groups = list_groups()
 _by_slug = {g["slug"]: g for g in groups}
+MINISTRY_OPTIONS = list(MINISTRY_CATALOG)
+
+
+def _ministry_label(ministry_id: str) -> str:
+    ministry = MINISTRY_CATALOG.get(ministry_id)
+    return ministry.label if ministry else ministry_id
+
+
+def _policy_display(group: dict) -> tuple[str, str, str]:
+    policy = group_policy_status(group)
+    allowed = ", ".join(_ministry_label(m) for m in policy["allowed_ministries"]) or "—"
+    default = _ministry_label(policy["default_ministry"]) if policy["default_ministry"] else "—"
+    status = "✅" if policy["valid"] else f"⚠️ {policy['error']}"
+    return allowed, default, status
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -43,15 +59,20 @@ st.subheader("Groupes existants")
 if groups:
     df = pd.DataFrame(
         [
-            {
-                "Icône": g["icon"],
-                "Slug": g["slug"],
-                "Libellé": g["label"],
-                "Priorité": g["priority"],
-                "Admin": "✅" if g["is_admin"] else "",
-                "Visible": "✅" if g.get("visible", True) else "🚫 masqué",
-                "Mot de passe": "🔒" if g["has_password"] else "⚠️ aucun",
-            }
+            (
+                lambda allowed, default, status: {
+                    "Icône": g["icon"],
+                    "Slug": g["slug"],
+                    "Libellé": g["label"],
+                    "Priorité": g["priority"],
+                    "Admin": "✅" if g["is_admin"] else "",
+                    "Visible": "✅" if g.get("visible", True) else "🚫 masqué",
+                    "Ministères": allowed,
+                    "Défaut": default,
+                    "Politique": status,
+                    "Mot de passe": "🔒" if g["has_password"] else "⚠️ aucun",
+                }
+            )(*_policy_display(g))
             for g in groups
         ]
     )
@@ -80,6 +101,20 @@ with tab_create:
             visible = st.checkbox(
                 "Visible dans le sélecteur", value=True, help="Décocher pour masquer le groupe sur la page d'accueil (il reste en base)."
             )
+        allowed_ministries = st.multiselect(
+            "Ministères autorisés *",
+            options=MINISTRY_OPTIONS,
+            default=["matte"],
+            format_func=_ministry_label,
+            help="Le groupe pourra sélectionner un seul de ces ministères pour chaque requête RAG.",
+        )
+        default_options = allowed_ministries or ["matte"]
+        default_ministry = st.selectbox(
+            "Ministère par défaut *",
+            options=default_options,
+            index=0,
+            format_func=_ministry_label,
+        )
         c3, c4 = st.columns(2)
         with c3:
             color = st.color_picker("Couleur (badge)", value="#6b7280")
@@ -97,6 +132,8 @@ with tab_create:
             priority=int(priority),
             is_admin=is_admin,
             visible=visible,
+            allowed_ministries=allowed_ministries,
+            default_ministry=default_ministry,
             chart_color=chart_color,
         )
         if ok:
@@ -120,6 +157,11 @@ with tab_edit:
             key="edit_select",
         )
         current = _by_slug[edit_slug]
+        current_policy = group_policy_status(current)
+        if not current_policy["valid"]:
+            st.warning(f"Politique ministérielle invalide : {current_policy['error']}")
+        current_allowed = [m for m in current_policy["allowed_ministries"] if m in MINISTRY_CATALOG] or ["matte"]
+        current_default = current_policy["default_ministry"] if current_policy["default_ministry"] in current_allowed else current_allowed[0]
         with st.form("edit_group"):
             e1, e2 = st.columns(2)
             with e1:
@@ -131,6 +173,20 @@ with tab_edit:
                 e_visible = st.checkbox("Visible dans le sélecteur", value=bool(current.get("visible", True)))
                 e_color = st.color_picker("Couleur (badge)", value=current["color"] or "#6b7280")
                 e_chart_color = st.color_picker("Couleur (graphiques)", value=current["chart_color"] or "#888888")
+            e_allowed_ministries = st.multiselect(
+                "Ministères autorisés *",
+                options=MINISTRY_OPTIONS,
+                default=current_allowed,
+                format_func=_ministry_label,
+            )
+            e_default_options = e_allowed_ministries or current_allowed
+            e_default_index = e_default_options.index(current_default) if current_default in e_default_options else 0
+            e_default_ministry = st.selectbox(
+                "Ministère par défaut *",
+                options=e_default_options,
+                index=e_default_index,
+                format_func=_ministry_label,
+            )
             saved = st.form_submit_button("Enregistrer", type="primary")
 
         if saved:
@@ -143,6 +199,8 @@ with tab_edit:
                 visible=e_visible,
                 color=e_color,
                 chart_color=e_chart_color,
+                allowed_ministries=e_allowed_ministries,
+                default_ministry=e_default_ministry,
             )
             if ok:
                 st.success(f"Groupe « {edit_slug} » mis à jour.")

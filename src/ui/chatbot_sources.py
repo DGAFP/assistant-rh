@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 # RESPONSE CLASSIFICATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def is_negative_response(answer: str) -> bool:
     """Return True when the LLM response doesn't warrant sources/feedback."""
     if not answer:
@@ -64,6 +65,7 @@ def should_hide_sources(answer: str) -> bool:
 # DATE FORMATTING
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def format_source_date(date_str: str) -> str:
     """Format a date as MM/YY for discrete pill display. Returns '' on failure."""
     if not date_str:
@@ -71,17 +73,25 @@ def format_source_date(date_str: str) -> str:
     try:
         date_str = str(date_str).strip()
         formats_to_try = [
-            "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S",
-            "%d/%m/%Y", "%d-%m-%Y", "%Y%m%d",
+            "%Y-%m-%d",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+            "%d/%m/%Y",
+            "%d-%m-%Y",
+            "%Y%m%d",
         ]
         parsed_date = None
         for fmt in formats_to_try:
             try:
-                test_str = date_str[:len("2024-03-15T00:00:00")]
+                test_str = date_str[: len("2024-03-15T00:00:00")]
                 expected_len = len(
-                    fmt.replace("%", "").replace("Y", "YYYY")
-                    .replace("m", "MM").replace("d", "DD")
-                    .replace("H", "HH").replace("M", "MM").replace("S", "SS")
+                    fmt.replace("%", "")
+                    .replace("Y", "YYYY")
+                    .replace("m", "MM")
+                    .replace("d", "DD")
+                    .replace("H", "HH")
+                    .replace("M", "MM")
+                    .replace("S", "SS")
                 )
                 parsed_date = datetime.strptime(test_str[:expected_len], fmt)
                 break
@@ -89,10 +99,10 @@ def format_source_date(date_str: str) -> str:
                 continue
 
         if not parsed_date:
-            m = re.search(r'(\d{4})-(\d{2})', date_str)
+            m = re.search(r"(\d{4})-(\d{2})", date_str)
             if m:
                 return f"{m.group(2)}/{m.group(1)[2:]}"
-            m = re.search(r'(\d{2})/(\d{4})', date_str)
+            m = re.search(r"(\d{2})/(\d{4})", date_str)
             if m:
                 return f"{m.group(1)}/{m.group(2)[2:]}"
 
@@ -105,6 +115,7 @@ def format_source_date(date_str: str) -> str:
 # V3 CONTEXT → V1 CHUNKS (for render_sources compatibility)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def context_items_to_v1_chunks(
     context_items: List["ContextItem"],
     Chunk: type,
@@ -113,6 +124,7 @@ def context_items_to_v1_chunks(
     from assistant_rh_rag_pipeline.models import (
         Chunk as _Chunk,  # noqa: F401  # avoid circular at module level
     )
+
     v1_chunks: List[_Chunk] = []
     for item in context_items:
         publisher_lower = (item.publisher or "").lower()
@@ -136,18 +148,21 @@ def context_items_to_v1_chunks(
         if is_sp:
             v1_meta["sid"] = meta.get("doc_short_id") or item.section_id or "sp"
 
-        v1_chunks.append(Chunk(
-            id=item.section_id or item.heading or "",
-            text=item.content[:500] if item.content else "",
-            score=item.score,
-            metadata=v1_meta,
-        ))
+        v1_chunks.append(
+            Chunk(
+                id=item.section_id or item.heading or "",
+                text=item.content[:500] if item.content else "",
+                score=item.score,
+                metadata=v1_meta,
+            )
+        )
     return v1_chunks
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CITATION EXTRACTION HELPER
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def extract_legal_refs_for_display(
     response: str,
@@ -175,8 +190,12 @@ def extract_legal_refs_for_display(
     matched = match_refs_with_response_v3(response, all_refs)
     return [
         {
-            "cid": r.cid, "number": r.number, "title": r.title,
-            "url": r.url, "is_decree": r.is_decree, "display_title": r.display_title,
+            "cid": r.cid,
+            "number": r.number,
+            "title": r.title,
+            "url": r.url,
+            "is_decree": r.is_decree,
+            "display_title": r.display_title,
         }
         for r in matched
     ], matched
@@ -257,12 +276,7 @@ def render_sources(
         if source_document_id and source_document_id in seen_matte_doc_ids:
             continue
 
-        is_service_public = (
-            sid
-            or "service-public" in url
-            or "service-public" in source_name
-            or (number and not cid and "service" in source_name)
-        )
+        is_service_public = sid or "service-public" in url or "service-public" in source_name or (number and not cid and "service" in source_name)
         is_internal_pdf = False
 
         if source_document_id and not url:
@@ -294,7 +308,7 @@ def render_sources(
                 title = chunk.preview(30) if hasattr(chunk, "preview") else "Source"
             if not title or title == "…":
                 if url:
-                    url_match = re.search(r'/([A-Z]\d+)$', url)
+                    url_match = re.search(r"/([A-Z]\d+)$", url)
                     if url_match:
                         title = f"Fiche {url_match.group(1)}"
                     elif "legifrance" in url:
@@ -353,11 +367,15 @@ def render_sources(
 
             if cid and cid not in seen_legal_cids:
                 seen_legal_cids.add(cid)
-                sources.append({
-                    "title": display_title, "url": url,
-                    "is_internal_pdf": False, "is_legal_ref": True,
-                    "is_decree": is_decree,
-                })
+                sources.append(
+                    {
+                        "title": display_title,
+                        "url": url,
+                        "is_internal_pdf": False,
+                        "is_legal_ref": True,
+                        "is_decree": is_decree,
+                    }
+                )
 
     if not sources:
         return
@@ -381,7 +399,7 @@ def render_sources(
             f'<a href="{source["url"]}" target="_blank" rel="noopener noreferrer" '
             f'class="source-pill" title="Cliquer pour ouvrir la source">'
             f'<span class="source-icon material-symbols-outlined">{icon}</span>'
-            f'<span>{source["title"]}</span>{date_html}</a>'
+            f"<span>{source['title']}</span>{date_html}</a>"
         )
     pills_html += "</div>"
     st.markdown(pills_html, unsafe_allow_html=True)
@@ -391,9 +409,15 @@ def render_sources(
 # UTILITY
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def detect_source_type(chunk: "Chunk") -> str:
     """Detect the origin type of a chunk for badges."""
     meta = chunk.metadata or {}
+    publisher = str(meta.get("source") or meta.get("publisher") or "").lower()
+    if publisher == "mso":
+        return "MSO"
+    if publisher == "matte":
+        return "MATTE"
     if meta.get("cid"):
         return "DGAFP"
     if meta.get("sid") or "service-public" in str(meta.get("url", "")).lower():
