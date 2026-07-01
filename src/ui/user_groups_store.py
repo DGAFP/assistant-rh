@@ -289,13 +289,52 @@ def group_policy_status(group: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _fetch_group(slug: str) -> tuple[bool, dict[str, Any] | None]:
+    """Look up one group by slug via an indexed query.
+
+    Returns ``(query_ok, row)``. ``query_ok`` is False when the database is
+    unavailable or the query fails, so callers fall back to the in-memory seed
+    exactly like ``list_groups()``. ``row`` is None when the group is simply
+    absent from an otherwise-successful query.
+    """
+    conn = _conn()
+    if not conn:
+        return False, None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT slug, label, icon, color, priority, is_admin, visible,
+                       allowed_ministries, default_ministry, chart_color, chart_label,
+                       (password_hash IS NOT NULL) AS has_password
+                FROM user_groups
+                WHERE slug = %s
+                """,
+                (slug,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return True, None
+            cols = [d[0] for d in cur.description]
+            return True, dict(zip(cols, row))
+    except psycopg.Error as exc:
+        logger.warning("user_groups fetch failed: %s", exc)
+        return False, None
+    finally:
+        conn.close()
+
+
 def get_group_policy(slug: str) -> dict[str, Any]:
     """Return one group's ministry policy, fail-closed when missing or invalid."""
     slug = (slug or "").strip().lower()
-    for group in list_groups():
-        if group["slug"] == slug:
-            policy = group_policy_status(group)
-            return {"slug": slug, **policy}
+    query_ok, group = _fetch_group(slug)
+    if not query_ok:
+        # DB unavailable or query failed: resolve against the in-memory seed,
+        # matching list_groups()'s offline fallback.
+        group = next((g for g in _seed_fallback() if g["slug"] == slug), None)
+    if group is not None:
+        policy = group_policy_status(group)
+        return {"slug": slug, **policy}
     return {
         "slug": slug,
         "valid": False,
