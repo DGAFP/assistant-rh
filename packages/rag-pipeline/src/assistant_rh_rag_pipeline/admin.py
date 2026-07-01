@@ -8,6 +8,7 @@ Provides database-backed management of:
 
 Used primarily by pages/04_Admin_Config.py.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 import psycopg
 
+from .config import ContextMode, RAGConfig, SearchMode, get_default_config
 from .db_helpers import (
     _db_conn,
     get_prompt_content,
@@ -34,6 +36,7 @@ logger = logging.getLogger(__name__)
 # Runtime RAG config (rag_config, single-row JSONB)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class RuntimeRAGConfig:
     """
@@ -42,6 +45,7 @@ class RuntimeRAGConfig:
     This is the *admin-facing* config (all V1/V2/V3 params).  The pipeline
     only reads the V3-relevant subset via ``get_runtime_config()``.
     """
+
     rag_version: str = "v3"
     chunk_selection_mode: str = "llm_selector"
     llm_selector_model: str = "openweight-medium"
@@ -127,6 +131,9 @@ DEFAULT_CONFIG = RuntimeRAGConfig()
 VALIDATION_RULES: Dict[str, Dict[str, Any]] = {
     "rag_version": {"choices": ["v1", "v2", "v3"], "type": str},
     "chunk_selection_mode": {"choices": ["llm_selector"], "type": str},
+    # TODO(pr212-review): "narrow" is stale — ContextMode has no NARROW, so a value
+    # of "narrow" passes validation then silently coerces to STANDARD in
+    # runtime_config_to_rag_config's mode_map. Drop "narrow" here (or add the enum).
     "v3_context_mode": {"choices": ["narrow", "standard", "wide"], "type": str},
     "v3_search_mode": {"choices": ["semantic", "hybrid", "lexical"], "type": str},
     "v3_token_budget": {"min": 2000, "max": 20000, "type": int},
@@ -204,6 +211,48 @@ def get_rag_config() -> RuntimeRAGConfig:
     return DEFAULT_CONFIG
 
 
+def runtime_config_to_rag_config(runtime_config: RuntimeRAGConfig | None = None) -> RAGConfig:
+    """Map the admin-facing runtime config to the pipeline's nested ``RAGConfig``.
+
+    Streamlit and offline evaluation must interpret the database-backed
+    ``rag_config`` row the same way; keeping the mapping here prevents the two
+    paths from silently drifting.
+    """
+    runtime_config = runtime_config or get_rag_config()
+    config = get_default_config()
+
+    mode_map = {"standard": ContextMode.STANDARD, "wide": ContextMode.WIDE}
+    config.context.context_mode = mode_map.get(runtime_config.v3_context_mode, ContextMode.STANDARD)
+    config.context.token_budget = runtime_config.v3_token_budget
+    config.context.doc_entire_threshold = runtime_config.v3_doc_entire_threshold
+    config.context.triangulation_sections = runtime_config.v3_triangulation_sections
+
+    config.selector.enabled = runtime_config.v3_enable_selector
+    config.selector.model = runtime_config.v3_selector_model
+    config.selector.prompt_name = runtime_config.v3_selector_prompt_name
+
+    config.query_processor.enable_intent_gating = runtime_config.enable_intent_gating
+    config.query_processor.enable_acronym_expansion = runtime_config.enable_query_expansion
+    config.query_processor.intent_prompt_name = runtime_config.v3_intent_prompt_name
+    config.query_processor.enable_hyde = runtime_config.enable_hyde
+
+    config.retrieval.tables = list(runtime_config.v3_tables or ["matte", "service_public", "dgafp", "rgrh"])
+    config.retrieval.enable_chunks_test = runtime_config.v3_enable_chunks_test
+    config.retrieval.initial_top_k = runtime_config.v3_initial_top_k
+    config.retrieval.alpha = runtime_config.v3_alpha
+    search_mode_map = {"semantic": SearchMode.SEMANTIC, "hybrid": SearchMode.HYBRID, "lexical": SearchMode.LEXICAL}
+    config.retrieval.search_mode = search_mode_map.get(runtime_config.v3_search_mode, SearchMode.SEMANTIC)
+
+    config.aggregation.enable_section_reranker = runtime_config.v3_enable_reranker
+    config.aggregation.section_rerank_top_k = runtime_config.v3_rerank_top_k
+
+    config.generation.model = runtime_config.v3_generator_model
+    config.generation.temperature = runtime_config.v3_temperature
+    config.generation.system_prompt_name = runtime_config.v3_system_prompt_name
+    config.verbose = runtime_config.verbose_mode
+    return config
+
+
 def update_rag_config(updated_by: str = "admin", **kwargs) -> tuple[bool, Dict[str, str]]:
     errors = validate_config(kwargs)
     if errors:
@@ -255,6 +304,7 @@ def reset_to_defaults(updated_by: str = "admin") -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 # System prompts extended CRUD
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class SystemPrompt:
@@ -325,11 +375,14 @@ def get_all_prompts(prompt_type: Optional[str] = None) -> List[SystemPrompt]:
     try:
         with conn.cursor() as cur:
             if prompt_type:
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT name, content, description, prompt_type, is_active,
                            created_at::text, updated_at::text, updated_by
                     FROM system_prompts WHERE prompt_type = %s ORDER BY name
-                """, (prompt_type,))
+                """,
+                    (prompt_type,),
+                )
             else:
                 cur.execute("""
                     SELECT name, content, description, prompt_type, is_active,
@@ -338,9 +391,13 @@ def get_all_prompts(prompt_type: Optional[str] = None) -> List[SystemPrompt]:
                 """)
             return [
                 SystemPrompt(
-                    name=r[0], content=r[1], description=r[2] or "",
-                    prompt_type=r[3] or "generator", is_active=r[4],
-                    created_at=r[5] or "", updated_at=r[6] or "",
+                    name=r[0],
+                    content=r[1],
+                    description=r[2] or "",
+                    prompt_type=r[3] or "generator",
+                    is_active=r[4],
+                    created_at=r[5] or "",
+                    updated_at=r[6] or "",
                     updated_by=r[7] or "system",
                 )
                 for r in cur.fetchall()
@@ -393,6 +450,7 @@ def duplicate_prompt(source_name: str, new_name: str, updated_by: str = "admin")
 # Acronyms CRUD
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class Acronym:
     acronym: str
@@ -421,9 +479,11 @@ def init_acronyms_table() -> bool:
         return False
     try:
         from sqlalchemy import create_engine, text
+
         engine = create_engine(url)
         with engine.connect() as conn:
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 CREATE TABLE IF NOT EXISTS acronyms (
                     id SERIAL PRIMARY KEY,
                     acronym TEXT UNIQUE NOT NULL,
@@ -433,7 +493,8 @@ def init_acronyms_table() -> bool:
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
-            """))
+            """)
+            )
             conn.commit()
         return True
     except psycopg.Error as exc:
@@ -447,17 +508,22 @@ def get_all_acronyms() -> List[Acronym]:
         return []
     try:
         from sqlalchemy import create_engine, text
+
         engine = create_engine(url)
         with engine.connect() as conn:
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT acronym, expansion, category, description,
                        COALESCE(priority, 1) as priority, created_at, updated_at
                 FROM acronyms ORDER BY acronym, priority
-            """))
+            """)
+            )
             return [
                 Acronym(
-                    acronym=r[0], expansion=r[1],
-                    category=r[2] or "general", description=r[3] or "",
+                    acronym=r[0],
+                    expansion=r[1],
+                    category=r[2] or "general",
+                    description=r[3] or "",
                     priority=r[4] or 1,
                     created_at=str(r[5]) if r[5] else "",
                     updated_at=str(r[6]) if r[6] else "",
@@ -475,9 +541,11 @@ def add_acronym(acronym: str, expansion: str, category: str = "general", descrip
         return False
     try:
         from sqlalchemy import create_engine, text
+
         engine = create_engine(url)
         with engine.connect() as conn:
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 INSERT INTO acronyms (acronym, expansion, category, description)
                 VALUES (:acronym, :expansion, :category, :description)
                 ON CONFLICT (acronym) DO UPDATE SET
@@ -485,12 +553,14 @@ def add_acronym(acronym: str, expansion: str, category: str = "general", descrip
                     category = EXCLUDED.category,
                     description = EXCLUDED.description,
                     updated_at = NOW()
-            """), {
-                "acronym": acronym.upper().strip(),
-                "expansion": expansion.strip(),
-                "category": (category or "general").strip(),
-                "description": (description or "").strip(),
-            })
+            """),
+                {
+                    "acronym": acronym.upper().strip(),
+                    "expansion": expansion.strip(),
+                    "category": (category or "general").strip(),
+                    "description": (description or "").strip(),
+                },
+            )
             conn.commit()
         return True
     except psycopg.Error as exc:
@@ -504,6 +574,7 @@ def update_acronym(acronym: str, expansion: str, category: str = None, descripti
         return False
     try:
         from sqlalchemy import create_engine, text
+
         engine = create_engine(url)
         with engine.connect() as conn:
             updates = ["expansion = :expansion", "updated_at = NOW()"]
@@ -528,6 +599,7 @@ def delete_acronym(acronym: str) -> bool:
         return False
     try:
         from sqlalchemy import create_engine, text
+
         engine = create_engine(url)
         with engine.connect() as conn:
             conn.execute(text("DELETE FROM acronyms WHERE acronym = :acronym"), {"acronym": acronym.upper().strip()})
@@ -544,13 +616,16 @@ def get_categories() -> List[str]:
         return ["general"]
     try:
         from sqlalchemy import create_engine, text
+
         engine = create_engine(url)
         with engine.connect() as conn:
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT DISTINCT category FROM acronyms
                 WHERE category IS NOT NULL AND category != ''
                 ORDER BY category
-            """))
+            """)
+            )
             return [r[0] for r in result]
     except psycopg.Error as exc:
         logger.warning("get_categories failed: %s", exc)
@@ -563,19 +638,24 @@ def get_missing_acronyms(limit: int = 50, min_occurrences: int = 1) -> List[Dict
         return []
     try:
         from sqlalchemy import create_engine, text
+
         engine = create_engine(url)
         with engine.connect() as conn:
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT acronym, query, first_seen_at, last_seen_at,
                        occurrence_count, added_to_acronyms, notes
                 FROM acronyms_missing
                 WHERE occurrence_count >= :min_occ AND added_to_acronyms = FALSE
                 ORDER BY occurrence_count DESC, last_seen_at DESC
                 LIMIT :lim
-            """), {"min_occ": min_occurrences, "lim": limit})
+            """),
+                {"min_occ": min_occurrences, "lim": limit},
+            )
             return [
                 {
-                    "acronym": r[0], "sample_query": r[1],
+                    "acronym": r[0],
+                    "sample_query": r[1],
                     "first_seen_at": str(r[2]) if r[2] else "",
                     "last_seen_at": str(r[3]) if r[3] else "",
                     "occurrence_count": r[4],
@@ -595,6 +675,7 @@ def mark_acronym_as_added(acronym: str) -> bool:
         return False
     try:
         from sqlalchemy import create_engine, text
+
         engine = create_engine(url)
         with engine.connect() as conn:
             conn.execute(
