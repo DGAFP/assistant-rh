@@ -39,6 +39,30 @@ def _context_texts(contexts: list[dict]) -> list[str]:
     return [str(c.get("content") or "") for c in (contexts or []) if str(c.get("content") or "").strip()]
 
 
+def summarize_ragas_status(rows: list[dict]) -> tuple[str, dict[str, int]]:
+    counts = {"completed": 0, "failed": 0, "skipped": 0, "pending": 0}
+    for row in rows:
+        if not str(row.get("answer") or "").strip():
+            continue
+        metrics = row.get("ragas_metrics") or {}
+        status = metrics.get("status") if isinstance(metrics, dict) else None
+        if status in counts:
+            counts[status] += 1
+        else:
+            counts["pending"] += 1
+
+    total = sum(counts.values())
+    if total == 0:
+        return "skipped", counts
+    if counts["completed"] == total:
+        return "completed", counts
+    if counts["failed"] == total:
+        return "failed", counts
+    if counts["completed"] == 0 and counts["skipped"] == total:
+        return "skipped", counts
+    return "partial", counts
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv(REPO_ROOT / ".env")
     parser = argparse.ArgumentParser(description=__doc__)
@@ -98,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
 
         # Refresh the run aggregate's RAGAS averages from all items.
         rows = conn.execute(
-            "SELECT deterministic_metrics, ragas_metrics, judge_result, error FROM public.rag_quality_eval_items WHERE run_id = %s",
+            "SELECT answer, deterministic_metrics, ragas_metrics, judge_result, error FROM public.rag_quality_eval_items WHERE run_id = %s",
             (run_id,),
         ).fetchall()
         from src.goldset.eval import EvalItem  # noqa: E402
@@ -118,12 +142,14 @@ def main(argv: list[str] | None = None) -> int:
         ]
         agg = aggregate_items(items)
         ragas_keys = {k: agg[k] for k in ("ragas_faithfulness_avg", "ragas_context_precision_avg", "ragas_context_recall_avg")}
+        ragas_status, status_counts = summarize_ragas_status(rows)
+        ragas_keys["ragas_status_counts"] = status_counts
         conn.execute(
-            "UPDATE public.rag_quality_eval_runs SET aggregate = aggregate || %s::jsonb, ragas_status = 'completed' WHERE id = %s",
-            (json.dumps(ragas_keys), run_id),
+            "UPDATE public.rag_quality_eval_runs SET aggregate = aggregate || %s::jsonb, ragas_status = %s WHERE id = %s",
+            (json.dumps(ragas_keys), ragas_status, run_id),
         )
-        print(f"completed RAGAS on {done}/{len(todo)} new items; aggregate updated: {ragas_keys}", file=sys.stderr)
-    return 0
+        print(f"completed RAGAS on {done}/{len(todo)} new items; status={ragas_status} counts={status_counts}", file=sys.stderr)
+    return 1 if ragas_status == "failed" else 0
 
 
 if __name__ == "__main__":

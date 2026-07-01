@@ -16,6 +16,7 @@ from src.goldset.eval import (
     calibrate_judge_result,
     config_fingerprint,
     deterministic_metrics,
+    load_goldset_questions,
     parse_text_list,
     write_artifacts,
 )
@@ -142,6 +143,11 @@ def test_deterministic_metrics_matching_is_normalized() -> None:
     assert metrics["missing_gold_sources"] == []
 
 
+def test_any_goldset_requires_at_least_one_tag() -> None:
+    with pytest.raises(ValueError, match="--tag"):
+        load_goldset_questions("postgresql://unused", goldset_name="baseline_v1", tags=[], any_goldset=True)
+
+
 def test_resolve_gold_doc_ids_maps_codes_names_and_ranges() -> None:
     from src.goldset.eval import resolve_gold_doc_ids
 
@@ -152,10 +158,23 @@ def test_resolve_gold_doc_ids_maps_codes_names_and_ranges() -> None:
     }
     resolved = resolve_gold_doc_ids(["F8", "A1", "MSO_temps_de_travail_abc", "CGFP, L. 631-3 à L. 631-4"], maps)
 
-    assert "F8" in resolved  # raw token kept (matches retrieved doc_id directly)
+    assert "F8" in resolved  # unresolved raw token kept (matches Service-Public doc_id directly)
+    assert "A1" not in resolved  # resolved labels are alternatives, not extra required sources
     assert "uuid-a1" in resolved
     assert "uuid-mso" in resolved
     assert {"LEGIA-3", "LEGIA-4"} <= set(resolved)  # range expanded and resolved
+    assert "CGFP, L. 631-3 à L. 631-4" not in resolved
+
+
+def test_resolved_gold_doc_ids_do_not_penalize_raw_label_misses() -> None:
+    from src.goldset.eval import resolve_gold_doc_ids
+
+    maps = {"doc_short": {}, "matte_short": {}, "article": {"L631-3": {"LEGIA-3"}, "L631-4": {"LEGIA-4"}}}
+    resolved = resolve_gold_doc_ids(["CGFP, L. 631-3 à L. 631-4"], maps)
+    metrics = deterministic_metrics(resolved, ["LEGIA-3", "LEGIA-4"])
+
+    assert metrics["doc_recall"] == 1.0
+    assert metrics["missing_gold_sources"] == []
 
 
 def test_deterministic_metrics_empty_gold_sources_yields_none_recall() -> None:
@@ -175,18 +194,15 @@ def test_calibrate_passes_when_no_expected_sources_declared() -> None:
     assert calibrated["pass"] is True
 
 
-def test_retrieval_shortfall_is_diagnostic_only() -> None:
-    # Retrieval shortfalls are recorded as soft flags for visibility but never
-    # reduce the answer-quality score or block the pass (the judge is calibrated
-    # without retrieval data; retrieval is reported separately).
+def test_retrieval_shortfall_caps_score_but_partial_can_pass() -> None:
     none_hit = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.0, "hit_rate": 0.0})
-    assert any(c["reason"] == "no_expected_source_retrieved" and c.get("soft") for c in none_hit["calibration_caps"])
-    assert none_hit["score"] == 1.0
-    assert none_hit["pass"] is True
+    assert {"reason": "no_expected_source_retrieved", "max_score": 0.6} in none_hit["calibration_caps"]
+    assert none_hit["score"] == 0.6
+    assert none_hit["pass"] is False
 
     partial = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.5, "hit_rate": 1.0})
     assert any(c["reason"] == "missing_expected_source" and c.get("soft") for c in partial["calibration_caps"])
-    assert partial["score"] == 1.0
+    assert partial["score"] == 0.85
     assert partial["pass"] is True
 
 
@@ -282,9 +298,10 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         GoldsetQuestion(id=1, question="q1", gold_answer="a1", gold_sources=["doc-a"]),
         GoldsetQuestion(id=2, question="q2", gold_answer="a2", gold_sources=["doc-b"]),
     ]
-    smoke = argparse.Namespace(limit=1, skip_ragas=False, skip_judge=False, judge_model="judge-a")
-    full = argparse.Namespace(limit=None, skip_ragas=False, skip_judge=False, judge_model="judge-a")
-    no_judge = argparse.Namespace(limit=1, skip_ragas=False, skip_judge=True, judge_model="judge-a")
+    smoke = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a")
+    full = argparse.Namespace(limit=None, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a")
+    no_judge = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=True, judge_model="judge-a")
+    no_ragas = argparse.Namespace(limit=1, skip_ragas=True, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a")
 
     smoke_scope = build_eval_scope(smoke, questions[:1])
 
@@ -293,11 +310,74 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         "question_count": 1,
         "question_ids": [1],
         "ragas_enabled": True,
+        "ragas_model": "ragas-a",
         "judge_enabled": True,
         "judge_model": "judge-a",
     }
     assert build_eval_scope(full, questions) != smoke_scope
     assert build_eval_scope(no_judge, questions[:1]) != smoke_scope
+    assert build_eval_scope(no_ragas, questions[:1]) != smoke_scope
+
+
+def test_backfill_ragas_status_summary() -> None:
+    from scripts.backfill_ragas import summarize_ragas_status
+
+    assert summarize_ragas_status([{"answer": "a", "ragas_metrics": {"status": "completed"}}]) == (
+        "completed",
+        {"completed": 1, "failed": 0, "skipped": 0, "pending": 0},
+    )
+    assert summarize_ragas_status([{"answer": "a", "ragas_metrics": {"status": "failed"}}])[0] == "failed"
+    assert (
+        summarize_ragas_status(
+            [
+                {"answer": "a", "ragas_metrics": {"status": "completed"}},
+                {"answer": "b", "ragas_metrics": {"status": "failed"}},
+            ]
+        )[0]
+        == "partial"
+    )
+    assert summarize_ragas_status([{"answer": "", "ragas_metrics": {}}])[0] == "skipped"
+
+
+def test_calibrate_load_labels_requires_question(tmp_path) -> None:
+    from scripts.calibrate_judge import load_labels
+
+    labels = tmp_path / "labels.csv"
+    labels.write_text(
+        "question,answer,gold_answer,verdict\n,answer,gold,PASS\nquestion,answer,gold,BLOCKS\n",
+        encoding="utf-8",
+    )
+
+    usable = load_labels(labels)
+
+    assert len(usable) == 1
+    assert usable[0]["question"] == "question"
+
+
+def test_resolve_goldset_doc_ids_dry_run_does_not_mutate(monkeypatch) -> None:
+    import scripts.resolve_goldset_doc_ids as resolver
+
+    executed: list[str] = []
+
+    class FakeConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def execute(self, sql, params=None):
+            executed.append(sql)
+            return self
+
+        def fetchall(self):
+            return [{"id": 1, "gold_sources": "F8"}]
+
+    monkeypatch.setattr(resolver.psycopg, "connect", lambda *args, **kwargs: FakeConn())
+    monkeypatch.setattr(resolver, "load_gold_id_maps", lambda dsn: {"doc_short": {}, "matte_short": {}, "article": {}})
+
+    assert resolver.main(["--dsn", "postgresql://unused", "--dry-run"]) == 0
+    assert not any("ALTER TABLE" in sql or "UPDATE public.goldset_questions_v2" in sql for sql in executed)
 
 
 def test_cli_argparse_namespace_smoke() -> None:

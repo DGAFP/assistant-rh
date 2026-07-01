@@ -49,10 +49,9 @@ def main(argv: list[str] | None = None) -> int:
         params.append([args.tag])
 
     with psycopg.connect(dsn, row_factory=dict_row, autocommit=True) as conn:
-        conn.execute("ALTER TABLE public.goldset_questions_v2 ADD COLUMN IF NOT EXISTS gold_doc_ids TEXT[]")
-        rows = conn.execute(
-            f"SELECT id, gold_sources FROM public.goldset_questions_v2 WHERE {' AND '.join(where)} ORDER BY id", params
-        ).fetchall()
+        if not args.dry_run:
+            conn.execute("ALTER TABLE public.goldset_questions_v2 ADD COLUMN IF NOT EXISTS gold_doc_ids TEXT[]")
+        rows = conn.execute(f"SELECT id, gold_sources FROM public.goldset_questions_v2 WHERE {' AND '.join(where)} ORDER BY id", params).fetchall()
         print(f"rows to resolve: {len(rows)}")
 
         updated = resolved_beyond_raw = 0

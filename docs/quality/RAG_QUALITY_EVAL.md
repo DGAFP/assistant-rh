@@ -57,8 +57,10 @@ The LLM-as-judge score is calibrated in code from four dimensions:
 
 The model still returns a raw overall score, but the stored `score` is capped
 when the answer contradicts the gold answer, aligns poorly with it, is legally
-weak, is incomplete, is weakly supported, or retrieval missed expected gold
-sources. The raw score is preserved as `raw_model_score` for auditability.
+weak, is incomplete, is weakly supported, or retrieval misses expected gold
+sources. A total expected-source miss remains a hard cap; a partial expected-source
+miss lowers the stored score but can still pass when answer quality stays above
+threshold. The raw score is preserved as `raw_model_score` for auditability.
 
 ## Run De-Duplication
 
@@ -83,7 +85,7 @@ A matching run is defined by:
 - exact `tag_filter`;
 - `config_fingerprint`;
 - exact `eval_scope`, including selected question ids, `--limit`, judge/RAGAS
-  enablement, and judge model;
+  enablement, judge model, and RAGAS model;
 - current git SHA, unless `--dedupe-scope config` is used;
 - status in `started`, `running`, or `completed`.
 

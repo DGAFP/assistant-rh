@@ -55,7 +55,7 @@ def load_labels(path: Path) -> list[dict]:
         verdict = (row.get("verdict") or "").strip().upper()
         if verdict not in {"PASS", "BLOCKS"}:
             continue
-        if not (row.get("answer") or "").strip() or not (row.get("gold_answer") or "").strip():
+        if not (row.get("question") or "").strip() or not (row.get("answer") or "").strip() or not (row.get("gold_answer") or "").strip():
             continue
         usable.append(row)
     return usable
@@ -155,6 +155,9 @@ def print_report(captured: list[dict], rubric: JudgeRubric) -> None:
 
 def sweep(captured: list[dict]) -> None:
     """Grid-search pass thresholds; rank by (fewest false_pass, most agreement)."""
+    if not captured:
+        print("No captured examples to sweep.", file=sys.stderr)
+        return
     best = None
     for pmin in (0.6, 0.65, 0.7, 0.75, 0.8):
         for legal in (0.6, 0.7, 0.75, 0.8):
@@ -190,8 +193,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sweep", action="store_true", help="Grid-search pass thresholds against the cache.")
     args = parser.parse_args(argv)
 
+    if not args.labels.exists():
+        print(f"Error: labels file not found at {args.labels}", file=sys.stderr)
+        return 1
     labels = load_labels(args.labels)
     print(f"usable labelled examples (PASS/BLOCKS + answer + gold_answer): {len(labels)}", file=sys.stderr)
+    if not labels:
+        print("Error: no usable labelled examples found.", file=sys.stderr)
+        return 1
     captured = capture_judge(labels, args.cache)
 
     print("\n=== current rubric ===")

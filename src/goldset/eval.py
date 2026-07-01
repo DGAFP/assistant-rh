@@ -180,6 +180,8 @@ def load_goldset_questions(
 ) -> list[GoldsetQuestion]:
     # ``any_goldset`` selects a curated cross-goldset set purely by tag (the rows
     # keep their own goldset_name); ``goldset_name`` is then only the run label.
+    if any_goldset and not tags:
+        raise ValueError("At least one --tag is required with --any-goldset.")
     where = ["question IS NOT NULL", "btrim(question) <> ''"]
     params: list[Any] = []
     if not any_goldset:
@@ -194,9 +196,7 @@ def load_goldset_questions(
         params.append(limit)
 
     # ``gold_doc_ids`` is an optional pre-resolution column; tolerate its absence.
-    gold_doc_ids_col = (
-        "gold_doc_ids" if _column_exists(dsn, "goldset_questions_v2", "gold_doc_ids") else "NULL::text[] AS gold_doc_ids"
-    )
+    gold_doc_ids_col = "gold_doc_ids" if _column_exists(dsn, "goldset_questions_v2", "gold_doc_ids") else "NULL::text[] AS gold_doc_ids"
     sql = f"""
         SELECT id, question, gold_answer, gold_sources, theme, tags, goldset_name, {gold_doc_ids_col}
         FROM public.goldset_questions_v2
@@ -324,11 +324,13 @@ def find_existing_run(
 def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion]) -> dict[str, Any]:
     """Return the question and evaluator options that make a run reusable."""
     judge_enabled = not args.skip_judge
+    ragas_enabled = not args.skip_ragas
     return {
         "limit": args.limit,
         "question_count": len(questions),
         "question_ids": [question.id for question in questions],
-        "ragas_enabled": not args.skip_ragas,
+        "ragas_enabled": ragas_enabled,
+        "ragas_model": args.ragas_model if ragas_enabled else "",
         "judge_enabled": judge_enabled,
         "judge_model": args.judge_model if judge_enabled else "",
     }
@@ -471,10 +473,7 @@ def load_gold_id_maps(dsn: str) -> dict[str, dict[str, Any]]:
             "SELECT DISTINCT short_id, source_document_id AS v FROM public.rag_chunks_matte "
             "WHERE short_id IS NOT NULL AND source_document_id IS NOT NULL"
         ),
-        "article": (
-            "SELECT DISTINCT number AS short_id, cid AS v FROM public.rag_chunks_dgafp "
-            "WHERE number IS NOT NULL AND cid IS NOT NULL"
-        ),
+        "article": ("SELECT DISTINCT number AS short_id, cid AS v FROM public.rag_chunks_dgafp WHERE number IS NOT NULL AND cid IS NOT NULL"),
     }
     try:
         with psycopg.connect(dsn, row_factory=dict_row) as conn:
@@ -495,14 +494,15 @@ def load_gold_id_maps(dsn: str) -> dict[str, dict[str, Any]]:
 
 def resolve_gold_doc_ids(gold_sources: list[str], maps: dict[str, dict[str, Any]]) -> list[str]:
     """Resolve free-text ``gold_sources`` (F-fiche codes, MATTE doc names, annex
-    codes, article codes and ranges) to corpus ``doc_id``s, keeping the raw token
-    too (F-fiche codes already equal the retrieved doc_id)."""
+    codes, article codes and ranges) to corpus ``doc_id``s. Keep the raw token only
+    when it could not be resolved, because resolved ids and raw labels are
+    alternatives for the same expected source, not additional required sources."""
     resolved: list[str] = []
     for raw in gold_sources:
         raw = str(raw).strip()
         if not raw:
             continue
-        resolved.append(raw)
+        resolved_for_raw: list[str] = []
         tokens = {raw, *_CODE_RE.findall(raw)}
         range_match = _RANGE_RE.search(raw)
         if range_match:
@@ -511,11 +511,12 @@ def resolve_gold_doc_ids(gold_sources: list[str], maps: dict[str, dict[str, Any]
         for token in tokens:
             key = _match_key(token)
             if key in maps["article"]:
-                resolved.extend(maps["article"][key])
+                resolved_for_raw.extend(maps["article"][key])
             if key in maps["matte_short"]:
-                resolved.extend(maps["matte_short"][key])
+                resolved_for_raw.extend(maps["matte_short"][key])
             if key in maps["doc_short"]:
-                resolved.append(maps["doc_short"][key])
+                resolved_for_raw.append(maps["doc_short"][key])
+        resolved.extend(resolved_for_raw or [raw])
     return _stable_unique(resolved)
 
 
@@ -777,24 +778,23 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
         if normalized_dimensions[dim] < floor:
             caps.append({"reason": reason, "max_score": max_score})
 
-    # Retrieval shortfalls are recorded as DIAGNOSTIC flags only — they never
-    # reduce the answer-quality score or block the pass. The judge was calibrated
-    # against human verdicts with no retrieval data, retrieval quality is reported
-    # separately (deterministic doc metrics + RAGAS), and ``gold_sources`` are
-    # free-text legal references too unreliable to gate answer quality on.
-    # ``doc_recall=None`` (empty gold set) yields no flag at all.
+    # A total miss of declared expected sources is still a hard cap. Partial
+    # recall is a soft cap: it lowers the stored score for visibility, but does
+    # not independently block a pass when answer quality remains above threshold.
+    # ``doc_recall=None`` (empty gold set) yields no retrieval cap at all.
     doc_recall = deterministic.get("doc_recall")
     hit_rate = deterministic.get("hit_rate")
-    retrieval_flags: list[dict[str, Any]] = []
+    soft_caps: list[dict[str, Any]] = []
     if isinstance(doc_recall, int | float):
         if hit_rate == 0.0:
-            retrieval_flags.append({"reason": "no_expected_source_retrieved", "max_score": rubric.no_expected_source_cap, "soft": True})
+            caps.append({"reason": "no_expected_source_retrieved", "max_score": rubric.no_expected_source_cap})
         elif doc_recall < 1.0:
-            retrieval_flags.append({"reason": "missing_expected_source", "max_score": rubric.missing_expected_source_cap, "soft": True})
+            soft_caps.append({"reason": "missing_expected_source", "max_score": rubric.missing_expected_source_cap, "soft": True})
 
     final_score = candidate_score
-    if caps:
-        final_score = min(final_score, *(float(cap["max_score"]) for cap in caps))
+    score_caps = caps + soft_caps
+    if score_caps:
+        final_score = min(final_score, *(float(cap["max_score"]) for cap in score_caps))
     final_score = min(1.0, max(0.0, final_score))
 
     failure_category = str(parsed.get("failure_category") or "none")
@@ -810,7 +810,7 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
     parsed["pass"] = pass_value
     parsed["failure_category"] = "none" if pass_value else failure_category if failure_category != "none" else "quality_gate_failed"
     parsed["dimensions"] = normalized_dimensions
-    parsed["calibration_caps"] = caps + retrieval_flags
+    parsed["calibration_caps"] = caps + soft_caps
     parsed["material_contradiction"] = material_contradiction
     return parsed
 
