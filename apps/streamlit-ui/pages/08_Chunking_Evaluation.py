@@ -62,6 +62,40 @@ def get_dsn() -> str:
 DSN = get_dsn()
 
 
+def parse_gold_sources(value) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    except json.JSONDecodeError:
+        pass
+    return [part.strip() for part in text.replace(";", ",").split(",") if part.strip()]
+
+
+def format_gold_sources(value) -> str:
+    return ", ".join(parse_gold_sources(value))
+
+
+def gold_sources_match(value, short_id: str) -> bool:
+    short_id_key = str(short_id or "").strip().lower()
+    if not short_id_key:
+        return False
+    return short_id_key in {source.lower() for source in parse_gold_sources(value)}
+
+
+def gold_sources_overlap(value, short_ids) -> bool:
+    source_keys = {source.lower() for source in parse_gold_sources(value)}
+    short_id_keys = {str(short_id or "").strip().lower() for short_id in short_ids if str(short_id or "").strip()}
+    return bool(source_keys & short_id_keys)
+
+
 def get_connection():
     """Get a shared DB connection, reusing if possible."""
     conn = st.session_state.get("_chunk_eval_conn")
@@ -351,7 +385,26 @@ GOLDSETS = {
         name="Fiches SP Subset (doc-level)",
         description="Toutes questions sur les 48 docs fiches_sp — comparaison V2/HF/V3 équitable",
         match_mode="document",
-        filter_sql="gold_sources IN (SELECT DISTINCT number FROM rag_chunks_fiches_sp WHERE number IS NOT NULL)",
+        filter_sql="""
+            EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(
+                    CASE
+                        WHEN LEFT(BTRIM(gold_sources), 1) = '[' THEN gold_sources::jsonb
+                        ELSE jsonb_build_array(gold_sources)
+                    END
+                ) AS source_ids(value)
+                WHERE source_ids.value IN (
+                    SELECT DISTINCT short_id FROM rag_chunks_service_public WHERE short_id IS NOT NULL
+                    UNION
+                    SELECT DISTINCT number FROM rag_chunks_dgafp WHERE number IS NOT NULL
+                    UNION
+                    SELECT DISTINCT cid FROM rag_chunks_dgafp WHERE cid IS NOT NULL
+                    UNION
+                    SELECT DISTINCT chunk_id FROM rag_chunks_dgafp WHERE chunk_id IS NOT NULL
+                )
+            )
+        """,
     ),
 }
 
@@ -427,7 +480,15 @@ def load_goldset_short_ids(goldset_key: str) -> List[str]:
     with conn.cursor() as cur:
         cur.execute(sql)
         rows = cur.fetchall()
-    return [r["gold_sources"] for r in rows]
+    short_ids: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        for short_id in parse_gold_sources(row["gold_sources"]):
+            if short_id in seen:
+                continue
+            seen.add(short_id)
+            short_ids.append(short_id)
+    return short_ids
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -841,9 +902,7 @@ def _is_hit(chunk: Dict, gold_sources: str, match_mode: str = "document", gold_c
         return chunk_id.strip().lower() == gold_chunk_id.strip().lower()
     else:
         chunk_short_id = chunk.get("short_id")
-        if not chunk_short_id or not gold_sources:
-            return False
-        return chunk_short_id.strip().lower() == gold_sources.strip().lower()
+        return gold_sources_match(gold_sources, chunk_short_id)
 
 
 def compute_recall_at_k(chunks: List[Dict], gold_sources: str, k: int, match_mode: str = "document", gold_chunk_id: Optional[str] = None) -> int:
@@ -977,7 +1036,7 @@ def run_evaluation(
                     pub_short_ids = set(r["short_id"] for r in cur.fetchall())
                 if "_chunk_table" in questions_df.columns:
                     questions_df = questions_df.drop(columns=["_chunk_table"])
-                questions_df = questions_df[questions_df["gold_sources"].isin(pub_short_ids)]
+                questions_df = questions_df[questions_df["gold_sources"].apply(lambda value: gold_sources_overlap(value, pub_short_ids))]
         else:
             # For doc-level goldsets: handled below via publisher-filtered short_ids
             pass
@@ -1016,7 +1075,7 @@ def run_evaluation(
             pub_short_ids = set(r["short_id"] for r in cur.fetchall())
         filter_short_ids = [sid for sid in filter_short_ids if sid in pub_short_ids]
         # Also filter questions to matching gold_sources
-        questions_df = questions_df[questions_df["gold_sources"].isin(pub_short_ids)]
+        questions_df = questions_df[questions_df["gold_sources"].apply(lambda value: gold_sources_overlap(value, pub_short_ids))]
 
     # V3 mapping coverage info
     v3_info = ""
@@ -1081,7 +1140,7 @@ def run_evaluation(
             q_result = {
                 "question_id": row["id"],
                 "question": question_text,
-                "gold_sources": gold_sources,
+                "gold_sources": format_gold_sources(gold_sources),
                 "gold_chunk_id": gold_chunk_id_de,
                 "gold_chunk_id_v3": gold_chunk_id_v3,
                 "theme": row.get("theme"),
@@ -2157,7 +2216,7 @@ def tab_union_retrieval():
                 )
                 pub_short_ids = set(r["short_id"] for r in cur.fetchall())
             # Filter questions
-            questions_df = questions_df[questions_df["gold_sources"].isin(pub_short_ids)]
+            questions_df = questions_df[questions_df["gold_sources"].apply(lambda value: gold_sources_overlap(value, pub_short_ids))]
             # Filter short_ids
             if filter_short_ids:
                 filter_short_ids = [sid for sid in filter_short_ids if sid in pub_short_ids]
@@ -2201,7 +2260,7 @@ def tab_union_retrieval():
                     s_key = chunk.get("strategy", "?")
                     chunk_short_id = chunk.get("short_id", "")
 
-                    is_gold = chunk_short_id.strip().lower() == gold_sources.strip().lower() if chunk_short_id and gold_sources else False
+                    is_gold = gold_sources_match(gold_sources, chunk_short_id)
 
                     if is_gold and s_key not in strategy_best:
                         strategy_best[s_key] = {
@@ -2218,7 +2277,7 @@ def tab_union_retrieval():
                 per_question.append({
                     "question_id": row["id"],
                     "question": row["question"],
-                    "gold_sources": gold_sources,
+                    "gold_sources": format_gold_sources(gold_sources),
                     "winner": winner,
                     "strategy_best": strategy_best,
                     "top_10": [
@@ -2228,7 +2287,7 @@ def tab_union_retrieval():
                             "chunk_id": c.get("chunk_id", "")[:12],
                             "short_id": c.get("short_id", ""),
                             "score": round(c.get("score", 0), 5),
-                            "is_gold": (c.get("short_id", "").strip().lower() == gold_sources.strip().lower()) if c.get("short_id") and gold_sources else False,
+                            "is_gold": gold_sources_match(gold_sources, c.get("short_id", "")),
                             "source_name": c.get("source_name", "")[:50],
                         }
                         for r, c in enumerate(all_chunks[:10])

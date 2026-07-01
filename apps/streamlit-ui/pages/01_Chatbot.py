@@ -46,8 +46,7 @@ load_dotenv()
 
 # RAG V3 Clean pipeline (self-contained, zero external deps)
 from assistant_rh_rag_pipeline import create_pipeline as create_pipeline_v3_clean
-from assistant_rh_rag_pipeline import get_default_config
-from assistant_rh_rag_pipeline.admin import get_rag_config, init_config_table
+from assistant_rh_rag_pipeline.admin import get_rag_config, init_config_table, runtime_config_to_rag_config
 from assistant_rh_rag_pipeline.chat_logger import build_log_row, build_non_rag_row
 from assistant_rh_rag_pipeline.chat_logger import log_run as _log_run_v3
 from assistant_rh_rag_pipeline.chat_logger import log_trace_events as _log_trace_events_v3
@@ -55,9 +54,6 @@ from assistant_rh_rag_pipeline.config import (
     DEFAULT_SYSTEM_PROMPT,
     get_prompt_content,
     today_fr,
-)
-from assistant_rh_rag_pipeline.config import (
-    SearchMode as SearchModeV3,
 )
 from assistant_rh_rag_pipeline.db_helpers import create_engine_from_env, has_dsn
 from assistant_rh_rag_pipeline.models import Chunk
@@ -1264,32 +1260,7 @@ if query:
     if True:
         try:
             # Créer la config V3 Clean
-            from assistant_rh_rag_pipeline.config import ContextMode
-
-            config_v3 = get_default_config()
-            _mode_map = {"standard": ContextMode.STANDARD, "wide": ContextMode.WIDE}
-            config_v3.context.context_mode = _mode_map.get(v3_context_mode, ContextMode.STANDARD)
-            config_v3.context.token_budget = v3_token_budget
-            config_v3.context.doc_entire_threshold = getattr(rag_config, "v3_doc_entire_threshold", 3500)
-            config_v3.selector.enabled = v3_enable_selector
-            config_v3.selector.model = v3_selector_model
-            config_v3.selector.prompt_name = getattr(rag_config, "v3_selector_prompt_name", "v3_selector_business.md")
-            config_v3.query_processor.enable_intent_gating = getattr(rag_config, "enable_intent_gating", False)
-            config_v3.query_processor.enable_acronym_expansion = getattr(rag_config, "enable_query_expansion", True)
-            config_v3.query_processor.intent_prompt_name = getattr(rag_config, "v3_intent_prompt_name", "intent_unified.md")
-            configured_tables = list(getattr(rag_config, "v3_tables", None) or ["matte", "service_public", "dgafp", "rgrh"])
-            config_v3.retrieval.tables = configured_tables
-            config_v3.retrieval.enable_chunks_test = getattr(rag_config, "v3_enable_chunks_test", True)
-            config_v3.retrieval.initial_top_k = v3_initial_top_k
-            config_v3.retrieval.alpha = v3_alpha
-            config_v3.aggregation.enable_section_reranker = v3_enable_reranker
-            config_v3.aggregation.section_rerank_top_k = v3_rerank_top_k
-            search_mode_map = {"semantic": SearchModeV3.SEMANTIC, "hybrid": SearchModeV3.HYBRID, "lexical": SearchModeV3.LEXICAL}
-            config_v3.retrieval.search_mode = search_mode_map.get(v3_search_mode, SearchModeV3.SEMANTIC)
-            config_v3.generation.model = v3_generator_model
-            config_v3.generation.temperature = v3_temperature
-            config_v3.generation.system_prompt_name = v3_system_prompt_name
-            config_v3.verbose = rag_config.verbose_mode
+            config_v3 = runtime_config_to_rag_config(rag_config)
 
             pipeline_v3 = create_pipeline_v3_clean(config_v3)
 

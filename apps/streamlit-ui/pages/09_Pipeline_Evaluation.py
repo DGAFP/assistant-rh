@@ -70,6 +70,34 @@ def get_dsn() -> str:
 DSN = get_dsn()
 
 
+def parse_gold_sources(value) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    except json.JSONDecodeError:
+        pass
+    return [part.strip() for part in text.replace(";", ",").split(",") if part.strip()]
+
+
+def format_gold_sources(value) -> str:
+    return ", ".join(parse_gold_sources(value))
+
+
+def gold_sources_match(value, short_id: str) -> bool:
+    short_id_key = str(short_id or "").strip().lower()
+    if not short_id_key:
+        return False
+    return short_id_key in {source.lower() for source in parse_gold_sources(value)}
+
+
 def get_connection():
     conn = st.session_state.get("_pipe_eval_conn")
     if conn is not None:
@@ -544,13 +572,13 @@ def load_goldset_questions(
         tag_array = "ARRAY[" + ",".join(f"'{t}'" for t in tag_filter) + "]"
         where_clauses.append(f"tags @> {tag_array}")
 
-    if publisher_filter and publisher_filter != "Tous":
-        where_clauses.append(f"""gold_sources IN (
-            SELECT DISTINCT d.short_id FROM rag_documents d WHERE d.publisher = '{publisher_filter}'
-        )""")
-
     where_sql = " AND ".join(where_clauses)
-    limit_sql = f"LIMIT {max_questions}" if max_questions else ""
+    # The publisher filter is applied in Python (gold_sources can be multi-valued),
+    # so the SQL LIMIT must be deferred until after that filter — capping rows
+    # before narrowing to the publisher would return far fewer (or zero) questions
+    # than requested and miss matches beyond the limit.
+    apply_publisher_filter = bool(publisher_filter and publisher_filter != "Tous")
+    limit_sql = f"LIMIT {max_questions}" if (max_questions and not apply_publisher_filter) else ""
 
     cur.execute(f"""
         SELECT id, question, gold_answer, gold_sources, theme, tags, difficulty,
@@ -560,7 +588,14 @@ def load_goldset_questions(
         ORDER BY id
         {limit_sql}
     """)
-    return cur.fetchall()
+    rows = cur.fetchall()
+    if apply_publisher_filter:
+        cur.execute("SELECT DISTINCT short_id FROM rag_documents WHERE publisher = %s", (publisher_filter,))
+        pub_keys = {str(row["short_id"]).strip().lower() for row in cur.fetchall() if str(row["short_id"] or "").strip()}
+        rows = [row for row in rows if pub_keys & {source.lower() for source in parse_gold_sources(row.get("gold_sources"))}]
+        if max_questions:
+            rows = rows[:max_questions]
+    return rows
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -730,9 +765,7 @@ def run_lightweight_pipeline(
 
 def _is_hit(item: Dict, gold_sources: str) -> bool:
     short_id = item.get("doc_short_id", "")
-    if not short_id or not gold_sources:
-        return False
-    return short_id.strip().lower() == gold_sources.strip().lower()
+    return gold_sources_match(gold_sources, short_id)
 
 
 def compute_recall_at_k(items: List[Dict], gold: str, k: int) -> int:
@@ -803,13 +836,13 @@ def run_evaluation(
                 f"Q {q_idx+1}/{total} — {q['question'][:50]}..."
             )
 
-        gold = (q.get("gold_sources") or "").strip()
+        gold = q.get("gold_sources") or ""
         tags = q.get("tags") or []
 
         q_result = {
             "question_id": q["id"],
             "question": q["question"],
-            "gold_sources": gold,
+            "gold_sources": format_gold_sources(gold),
             "theme": q.get("theme", ""),
             "tags": tags,
             "goldset_name": q.get("goldset_name", ""),
