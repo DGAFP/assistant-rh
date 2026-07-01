@@ -10,8 +10,8 @@
     "security:scan:js": "cve-lite . --fail-on high"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.16",
-    "cve-lite-cli": "1.19.2"
+    "@biomejs/biome": "^2.5.1",
+    "cve-lite-cli": "1.25.0"
   },
   "pnpm": {
     "overrides": {

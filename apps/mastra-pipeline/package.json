@@ -28,16 +28,16 @@
     "retriever:heading-search:test": "tsx scripts/retriever-heading-search-test.ts"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "2.0.48",
-    "@mastra/core": "1.38.0",
+    "@ai-sdk/openai-compatible": "2.0.51",
+    "@mastra/core": "1.46.0",
     "dotenv": "17.4.2",
-    "pg": "8.21.0",
+    "pg": "8.22.0",
     "zod": "3.25.76"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
     "@types/pg": "8.20.0",
-    "mastra": "1.13.0",
+    "mastra": "1.15.1",
     "tsx": "4.22.4",
     "typescript": "^6.0.3"
   }
