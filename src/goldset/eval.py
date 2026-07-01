@@ -35,9 +35,15 @@ from psycopg.rows import dict_row
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
-DEFAULT_JUDGE_MODEL = "llama-3.1-70b-instruct"
+DEFAULT_JUDGE_MODEL = "qwen3-235b-a22b-instruct-2507"
 DEFAULT_SCALEWAY_BASE_URL = "https://api.scaleway.ai/v1"
-DEFAULT_RAGAS_MAX_TOKENS = 4096
+# RAGAS makes many statement/NLI calls per question; a large reasoning-grade
+# model is overkill and slow there, so it defaults to a fast instruct model
+# (the judge stays the higher-quality model). The token budget must be generous:
+# on long French answers, faithfulness decomposition overflows a small cap and
+# RAGAS then retries on every truncation, stalling the run.
+DEFAULT_RAGAS_MODEL = "llama-3.3-70b-instruct"
+DEFAULT_RAGAS_MAX_TOKENS = 16384
 
 
 @dataclass
@@ -49,6 +55,13 @@ class GoldsetQuestion:
     theme: str = ""
     tags: list[str] = field(default_factory=list)
     goldset_name: str = ""
+    # Pre-resolved corpus doc_ids for ``gold_sources`` (deterministic retrieval
+    # matching uses these when present; falls back to gold_sources otherwise).
+    gold_doc_ids: list[str] = field(default_factory=list)
+
+    @property
+    def retrieval_gold(self) -> list[str]:
+        return self.gold_doc_ids or self.gold_sources
 
 
 @dataclass
@@ -145,15 +158,35 @@ def config_fingerprint(config: RAGConfig) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _column_exists(dsn: str, table_name: str, column_name: str) -> bool:
+    try:
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=%s AND column_name=%s",
+                (table_name, column_name),
+            ).fetchone()
+        return row is not None
+    except psycopg.Error:
+        return False
+
+
 def load_goldset_questions(
     dsn: str,
     *,
     goldset_name: str,
     tags: list[str] | None = None,
     limit: int | None = None,
+    any_goldset: bool = False,
 ) -> list[GoldsetQuestion]:
-    where = ["goldset_name = %s", "question IS NOT NULL", "btrim(question) <> ''"]
-    params: list[Any] = [goldset_name]
+    # ``any_goldset`` selects a curated cross-goldset set purely by tag (the rows
+    # keep their own goldset_name); ``goldset_name`` is then only the run label.
+    if any_goldset and not tags:
+        raise ValueError("At least one --tag is required with --any-goldset.")
+    where = ["question IS NOT NULL", "btrim(question) <> ''"]
+    params: list[Any] = []
+    if not any_goldset:
+        where.insert(0, "goldset_name = %s")
+        params.append(goldset_name)
     if tags:
         where.append("tags && %s::text[]")
         params.append(tags)
@@ -162,8 +195,10 @@ def load_goldset_questions(
         limit_sql = " LIMIT %s"
         params.append(limit)
 
+    # ``gold_doc_ids`` is an optional pre-resolution column; tolerate its absence.
+    gold_doc_ids_col = "gold_doc_ids" if _column_exists(dsn, "goldset_questions_v2", "gold_doc_ids") else "NULL::text[] AS gold_doc_ids"
     sql = f"""
-        SELECT id, question, gold_answer, gold_sources, theme, tags, goldset_name
+        SELECT id, question, gold_answer, gold_sources, theme, tags, goldset_name, {gold_doc_ids_col}
         FROM public.goldset_questions_v2
         WHERE {" AND ".join(where)}
         ORDER BY id
@@ -181,6 +216,7 @@ def load_goldset_questions(
             theme=str(row.get("theme") or ""),
             tags=parse_text_list(row.get("tags")),
             goldset_name=str(row.get("goldset_name") or ""),
+            gold_doc_ids=parse_text_list(row.get("gold_doc_ids")),
         )
         for row in rows
     ]
@@ -288,11 +324,13 @@ def find_existing_run(
 def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion]) -> dict[str, Any]:
     """Return the question and evaluator options that make a run reusable."""
     judge_enabled = not args.skip_judge
+    ragas_enabled = not args.skip_ragas
     return {
         "limit": args.limit,
         "question_count": len(questions),
         "question_ids": [question.id for question in questions],
-        "ragas_enabled": not args.skip_ragas,
+        "ragas_enabled": ragas_enabled,
+        "ragas_model": args.ragas_model if ragas_enabled else "",
         "judge_enabled": judge_enabled,
         "judge_model": args.judge_model if judge_enabled else "",
     }
@@ -411,6 +449,77 @@ def context_payload(result: PipelineResult) -> list[dict[str, Any]]:
     return payload
 
 
+_CODE_RE = re.compile(r"[FLRD]\.?\s?\d+(?:-\d+)?", re.IGNORECASE)
+_RANGE_RE = re.compile(r"([LRD])\.?\s?(\d+)-(\d+)\s*à\s*[LRD]?\.?\s?\d+-(\d+)", re.IGNORECASE)
+
+
+def _match_key(value: str) -> str:
+    # Canonical key so heterogeneous identifiers compare correctly: uppercased,
+    # whitespace and dots stripped, so an article code like "L. 332-22" matches
+    # "L332-22". Harmless for UUIDs / F-fiche ids / LEGIARTI ids (no spaces/dots).
+    return "".join(str(value or "").upper().split()).replace(".", "")
+
+
+def load_gold_id_maps(dsn: str) -> dict[str, dict[str, Any]]:
+    """Build the lookups that resolve human-facing ``gold_sources`` to the corpus
+    ``doc_id``s the retriever actually returns: ``rag_documents.short_id`` (MATTE
+    doc names) -> doc_id, ``rag_chunks_matte.short_id`` (annex codes) ->
+    source_document_id, ``rag_chunks_dgafp.number`` (article codes) -> cid.
+    Returns empty maps if the corpus tables are absent."""
+    maps: dict[str, dict[str, Any]] = {"doc_short": {}, "matte_short": {}, "article": {}}
+    queries = {
+        "doc_short": "SELECT short_id, doc_id FROM public.rag_documents WHERE short_id IS NOT NULL",
+        "matte_short": (
+            "SELECT DISTINCT short_id, source_document_id AS v FROM public.rag_chunks_matte "
+            "WHERE short_id IS NOT NULL AND source_document_id IS NOT NULL"
+        ),
+        "article": ("SELECT DISTINCT number AS short_id, cid AS v FROM public.rag_chunks_dgafp WHERE number IS NOT NULL AND cid IS NOT NULL"),
+    }
+    try:
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            for name, sql in queries.items():
+                for row in conn.execute(sql).fetchall():
+                    key = _match_key(row["short_id"])
+                    value = str(row.get("doc_id") or row.get("v") or "").strip()
+                    if not key or not value:
+                        continue
+                    if name == "doc_short":
+                        maps[name][key] = value
+                    else:
+                        maps[name].setdefault(key, set()).add(value)
+    except psycopg.Error:
+        return {"doc_short": {}, "matte_short": {}, "article": {}}
+    return maps
+
+
+def resolve_gold_doc_ids(gold_sources: list[str], maps: dict[str, dict[str, Any]]) -> list[str]:
+    """Resolve free-text ``gold_sources`` (F-fiche codes, MATTE doc names, annex
+    codes, article codes and ranges) to corpus ``doc_id``s. Keep the raw token only
+    when it could not be resolved, because resolved ids and raw labels are
+    alternatives for the same expected source, not additional required sources."""
+    resolved: list[str] = []
+    for raw in gold_sources:
+        raw = str(raw).strip()
+        if not raw:
+            continue
+        resolved_for_raw: list[str] = []
+        tokens = {raw, *_CODE_RE.findall(raw)}
+        range_match = _RANGE_RE.search(raw)
+        if range_match:
+            prefix, base, start, end = range_match.group(1), range_match.group(2), int(range_match.group(3)), int(range_match.group(4))
+            tokens.update(f"{prefix}{base}-{i}" for i in range(start, end + 1))
+        for token in tokens:
+            key = _match_key(token)
+            if key in maps["article"]:
+                resolved_for_raw.extend(maps["article"][key])
+            if key in maps["matte_short"]:
+                resolved_for_raw.extend(maps["matte_short"][key])
+            if key in maps["doc_short"]:
+                resolved_for_raw.append(maps["doc_short"][key])
+        resolved.extend(resolved_for_raw or [raw])
+    return _stable_unique(resolved)
+
+
 def retrieved_doc_ids(result: PipelineResult, contexts: list[dict[str, Any]]) -> list[str]:
     ids = [str(ctx.get("doc_id") or "").strip() for ctx in contexts]
     for key in ("context_items_ref", "chunks_after_rerank", "chunks_raw", "retrieved_chunks"):
@@ -427,11 +536,12 @@ def retrieved_doc_ids(result: PipelineResult, contexts: list[dict[str, Any]]) ->
 def deterministic_metrics(gold_sources: list[str], retrieved_ids: list[str]) -> dict[str, Any]:
     gold = _stable_unique(gold_sources)
     retrieved = _stable_unique(retrieved_ids)
-    gold_set = set(gold)
-    retrieved_set = set(retrieved)
-    hits = [doc_id for doc_id in retrieved if doc_id in gold_set]
+    gold_set = {_match_key(g) for g in gold}
+    retrieved_keys = [_match_key(r) for r in retrieved]
+    retrieved_set = set(retrieved_keys)
+    hits = [key for key in retrieved_keys if key in gold_set]
     reciprocal_rank = 0.0
-    for idx, doc_id in enumerate(retrieved, start=1):
+    for idx, doc_id in enumerate(retrieved_keys, start=1):
         if doc_id in gold_set:
             reciprocal_rank = 1.0 / idx
             break
@@ -443,7 +553,7 @@ def deterministic_metrics(gold_sources: list[str], retrieved_ids: list[str]) -> 
         "doc_precision": len(gold_set & retrieved_set) / len(retrieved_set) if retrieved_set else None,
         "hit_rate": 1.0 if gold_set & retrieved_set else 0.0,
         "mrr": reciprocal_rank,
-        "missing_gold_sources": [doc_id for doc_id in gold if doc_id not in retrieved_set],
+        "missing_gold_sources": [source for source in gold if _match_key(source) not in retrieved_set],
         "retrieved_doc_ids": retrieved,
     }
 
@@ -626,45 +736,73 @@ JUDGE_PASS_DIMENSION_FLOORS: dict[str, float] = {
 }
 
 
-def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]) -> dict[str, Any]:
+@dataclass(frozen=True)
+class JudgeRubric:
+    """All tunable knobs of the judge calibration in one injectable bundle, so a
+    calibration run can vary thresholds without mutating module state. The default
+    (``DEFAULT_JUDGE_RUBRIC``) reproduces the module constants exactly."""
+
+    dimension_weights: dict[str, float]
+    dimension_score_caps: tuple[tuple[str, str, float, float], ...]
+    material_contradiction_cap: float
+    no_expected_source_cap: float
+    missing_expected_source_cap: float
+    pass_min_score: float
+    pass_dimension_floors: dict[str, float]
+
+
+DEFAULT_JUDGE_RUBRIC = JudgeRubric(
+    dimension_weights=JUDGE_DIMENSION_WEIGHTS,
+    dimension_score_caps=tuple(JUDGE_DIMENSION_SCORE_CAPS),
+    material_contradiction_cap=MATERIAL_CONTRADICTION_CAP,
+    no_expected_source_cap=NO_EXPECTED_SOURCE_CAP,
+    missing_expected_source_cap=MISSING_EXPECTED_SOURCE_CAP,
+    pass_min_score=JUDGE_PASS_MIN_SCORE,
+    pass_dimension_floors=JUDGE_PASS_DIMENSION_FLOORS,
+)
+
+
+def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any], rubric: JudgeRubric = DEFAULT_JUDGE_RUBRIC) -> dict[str, Any]:
     dimensions_raw = parsed.get("dimensions")
     dimensions = dimensions_raw if isinstance(dimensions_raw, dict) else {}
-    normalized_dimensions = {dim: _dimension_score(dimensions, dim) for dim in JUDGE_DIMENSION_WEIGHTS}
-    weighted_score = sum(normalized_dimensions[dim] * weight for dim, weight in JUDGE_DIMENSION_WEIGHTS.items())
+    normalized_dimensions = {dim: _dimension_score(dimensions, dim) for dim in rubric.dimension_weights}
+    weighted_score = sum(normalized_dimensions[dim] * weight for dim, weight in rubric.dimension_weights.items())
     raw_model_score = _safe_float(parsed.get("score"))
     candidate_score = min(weighted_score, raw_model_score) if raw_model_score is not None else weighted_score
 
     caps: list[dict[str, Any]] = []
     material_contradiction = _bool_value(parsed.get("material_contradiction"))
     if material_contradiction:
-        caps.append({"reason": "material_contradiction_with_gold_answer", "max_score": MATERIAL_CONTRADICTION_CAP})
-    for dim, reason, floor, max_score in JUDGE_DIMENSION_SCORE_CAPS:
+        caps.append({"reason": "material_contradiction_with_gold_answer", "max_score": rubric.material_contradiction_cap})
+    for dim, reason, floor, max_score in rubric.dimension_score_caps:
         if normalized_dimensions[dim] < floor:
             caps.append({"reason": reason, "max_score": max_score})
 
-    # Retrieval caps only apply when the goldset row actually declares expected
-    # sources. ``deterministic_metrics`` returns ``doc_recall=None`` for an empty
-    # gold set, so a question with no expected sources must not be read as
-    # "retrieved none of the expected" and capped/failed for it.
+    # A total miss of declared expected sources is still a hard cap. Partial
+    # recall is a soft cap: it lowers the stored score for visibility, but does
+    # not independently block a pass when answer quality remains above threshold.
+    # ``doc_recall=None`` (empty gold set) yields no retrieval cap at all.
     doc_recall = deterministic.get("doc_recall")
     hit_rate = deterministic.get("hit_rate")
+    soft_caps: list[dict[str, Any]] = []
     if isinstance(doc_recall, int | float):
         if hit_rate == 0.0:
-            caps.append({"reason": "no_expected_source_retrieved", "max_score": NO_EXPECTED_SOURCE_CAP})
+            caps.append({"reason": "no_expected_source_retrieved", "max_score": rubric.no_expected_source_cap})
         elif doc_recall < 1.0:
-            caps.append({"reason": "missing_expected_source", "max_score": MISSING_EXPECTED_SOURCE_CAP})
+            soft_caps.append({"reason": "missing_expected_source", "max_score": rubric.missing_expected_source_cap, "soft": True})
 
     final_score = candidate_score
-    if caps:
-        final_score = min(final_score, *(float(cap["max_score"]) for cap in caps))
+    score_caps = caps + soft_caps
+    if score_caps:
+        final_score = min(final_score, *(float(cap["max_score"]) for cap in score_caps))
     final_score = min(1.0, max(0.0, final_score))
 
     failure_category = str(parsed.get("failure_category") or "none")
     pass_value = (
-        final_score >= JUDGE_PASS_MIN_SCORE
+        final_score >= rubric.pass_min_score
         and not material_contradiction
         and not caps
-        and all(normalized_dimensions[dim] >= floor for dim, floor in JUDGE_PASS_DIMENSION_FLOORS.items())
+        and all(normalized_dimensions[dim] >= floor for dim, floor in rubric.pass_dimension_floors.items())
     )
 
     parsed["raw_model_score"] = raw_model_score
@@ -672,7 +810,7 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
     parsed["pass"] = pass_value
     parsed["failure_category"] = "none" if pass_value else failure_category if failure_category != "none" else "quality_gate_failed"
     parsed["dimensions"] = normalized_dimensions
-    parsed["calibration_caps"] = caps
+    parsed["calibration_caps"] = caps + soft_caps
     parsed["material_contradiction"] = material_contradiction
     return parsed
 
@@ -708,23 +846,42 @@ def judge_answer(
         },
         "rubric": {
             "dimensions": {
-                "legal_correctness": "0.0 to 1.0. Penalize wrong legal rule, wrong obligation, wrong exception, or misleading nuance.",
-                "completeness": (
-                    "0.0 to 1.0. Penalize missing required conditions, deadlines, exceptions, or practical consequence present in the gold answer."
+                "legal_correctness": (
+                    "0.0 to 1.0. Penalize a wrong legal rule, wrong obligation, wrong exception, or misleading nuance. "
+                    "A correct answer scores high even if briefly stated."
                 ),
-                "gold_answer_alignment": "0.0 to 1.0. Penalize any contradiction or weaker/stronger legal conclusion than the gold answer.",
-                "source_support": "0.0 to 1.0. Penalize unsupported claims and missing support from retrieved contexts.",
+                "completeness": (
+                    "0.0 to 1.0. Judge ONLY whether the elements REQUIRED to act on the question are present. "
+                    "Score 1.0 when every legally required condition/deadline/exception in the gold answer is covered, "
+                    "even if the candidate is shorter and omits optional extras, examples, or extra context the gold answer did not require. "
+                    "Do NOT demand exhaustiveness and do NOT penalize concision. "
+                    "Only lower the score when a REQUIRED element from the gold answer is missing."
+                ),
+                "gold_answer_alignment": (
+                    "0.0 to 1.0. Penalize a contradiction or a weaker/stronger legal conclusion than the gold answer. "
+                    "Extra correct information, or covering a broader public than asked, is NOT a misalignment."
+                ),
+                "source_support": (
+                    "0.0 to 1.0. Penalize claims that are unsupported by the gold answer or contexts. "
+                    "If the answer's substantive claims match the gold answer, score high."
+                ),
             },
             "score": "your uncalibrated overall score from 0.0 to 1.0 before code-side caps",
-            "pass": "true only when the answer is legally correct, complete, aligned with the gold answer, and source-supported",
+            "pass": "true only when the answer is legally correct, covers the required points, aligns with the gold answer, and is source-supported",
             "failure_category": "one of: none, wrong_law, incomplete, unsupported, hallucination, refusal, irrelevant",
-            "material_contradiction": "true if the candidate answer contradicts the gold answer on a legally material point",
+            "material_contradiction": (
+                "true ONLY when the candidate directly asserts the OPPOSITE of a legally material point in the gold answer "
+                "(e.g. eligible vs not eligible, owed vs not owed, allowed vs forbidden). "
+                "Differences of emphasis, extra correct detail, addressing a broader audience, or merely omitting a point are NOT contradictions."
+            ),
         },
     }
     system = (
-        "You are a strict French public-sector HR RAG evaluator. "
+        "You are a French public-sector HR RAG evaluator. Judge correctness and faithfulness to the gold answer, NOT style, "
+        "tone, audience (whether it addresses the agent or the HR manager), length, or formatting — those are never quality failures here. "
         "Compare the candidate answer against the gold answer first, then against retrieved contexts. "
-        "Do not reward a fluent answer that contradicts the gold answer. "
+        "Reward a correct, source-grounded answer even when it is concise; do not require exhaustiveness. "
+        "Do not reward a fluent answer that contradicts the gold answer on a material legal point. "
         "Return only valid JSON with keys: score, pass, failure_category, material_contradiction, "
         "dimensions, missing_required_points, contradictions, rationale, source_support."
     )
@@ -754,6 +911,7 @@ def run_question(
     run_ragas: bool,
     run_judge: bool,
     judge_model: str,
+    ragas_model: str,
     scaleway_base_url: str,
     scaleway_api_key: str,
 ) -> EvalItem:
@@ -775,7 +933,7 @@ def run_question(
         item.sources = result.sources
         item.timing = {**result.timing, "eval_total_ms": elapsed_ms}
         item.metadata = result.metadata
-        item.deterministic_metrics = deterministic_metrics(question.gold_sources, doc_ids)
+        item.deterministic_metrics = deterministic_metrics(question.retrieval_gold, doc_ids)
 
         context_texts = [str(context.get("content") or "") for context in contexts if str(context.get("content") or "").strip()]
         if run_ragas:
@@ -784,7 +942,7 @@ def run_question(
                 answer=result.answer,
                 contexts=context_texts,
                 reference=question.gold_answer,
-                model=judge_model,
+                model=ragas_model,
                 base_url=scaleway_base_url,
                 api_key=scaleway_api_key,
             )
@@ -886,6 +1044,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run RAG quality evaluation on a goldset.")
     parser.add_argument("--goldset-name", required=True, help="goldset_questions_v2.goldset_name to evaluate.")
     parser.add_argument("--tag", action="append", default=[], help="Require at least one tag. Repeatable.")
+    parser.add_argument(
+        "--any-goldset",
+        action="store_true",
+        help="Select across all goldsets by --tag (goldset-name becomes only the run label).",
+    )
     parser.add_argument("--limit", type=int, default=None, help="Maximum number of questions to evaluate.")
     parser.add_argument("--dsn", default=None, help="PostgreSQL DSN, overrides --dsn-env.")
     parser.add_argument("--dsn-env", default="SCW_POSTGRES_DSN", help="Environment variable containing the target DSN.")
@@ -903,12 +1066,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-ragas", action="store_true", help="Skip RAGAS metrics.")
     parser.add_argument("--skip-judge", action="store_true", help="Skip Scaleway LLM-as-judge.")
     parser.add_argument("--judge-model", default=os.getenv("SCALEWAY_JUDGE_MODEL", DEFAULT_JUDGE_MODEL), help="Scaleway judge model.")
+    parser.add_argument(
+        "--ragas-model",
+        default=os.getenv("RAGAS_MODEL", DEFAULT_RAGAS_MODEL),
+        help="Scaleway model for RAGAS metrics (fast instruct model; separate from the judge).",
+    )
     parser.add_argument("--scaleway-base-url", default=os.getenv("SCALEWAY_BASE_URL", DEFAULT_SCALEWAY_BASE_URL), help="OpenAI-compatible base URL.")
     parser.add_argument("--fail-fast", action="store_true", help="Stop on the first item failure.")
     return parser
 
 
 def run_eval(args: argparse.Namespace) -> EvalSummary:
+    if args.any_goldset and not args.tag:
+        raise ValueError("At least one --tag is required with --any-goldset.")
+
     dsn = resolve_dsn(args.dsn, args.dsn_env)
     # The pipeline and prompt/config helpers read the canonical runtime DSN.
     # Bind the explicitly selected eval target for this process so staging
@@ -927,7 +1098,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
 
     json_path, csv_path = artifact_paths(output_dir, run_label)
 
-    questions = load_goldset_questions(dsn, goldset_name=args.goldset_name, tags=args.tag, limit=args.limit)
+    questions = load_goldset_questions(dsn, goldset_name=args.goldset_name, tags=args.tag, limit=args.limit, any_goldset=args.any_goldset)
     if not questions:
         raise RuntimeError(f"No questions found for goldset={args.goldset_name!r}, tags={args.tag!r}.")
     eval_scope = build_eval_scope(args, questions)
@@ -1008,6 +1179,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 run_ragas=not args.skip_ragas,
                 run_judge=not args.skip_judge,
                 judge_model=args.judge_model,
+                ragas_model=args.ragas_model,
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,
             )
@@ -1048,6 +1220,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 "ragas_enabled": not args.skip_ragas,
                 "judge_enabled": not args.skip_judge,
                 "judge_model": args.judge_model if not args.skip_judge else "",
+                "ragas_model": args.ragas_model if not args.skip_ragas else "",
                 "config_adjustments": config_adjustments,
                 "git_sha": git_sha,
                 "dedupe_scope": args.dedupe_scope,

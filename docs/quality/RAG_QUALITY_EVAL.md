@@ -32,12 +32,21 @@ Required variables:
 ```bash
 SCALEWAY_API_KEY=...
 SCALEWAY_BASE_URL=https://api.scaleway.ai/v1
-SCALEWAY_JUDGE_MODEL=llama-3.1-70b-instruct
+SCALEWAY_JUDGE_MODEL=qwen3-235b-a22b-instruct-2507
 ```
 
-`SCALEWAY_JUDGE_MODEL` is optional and defaults to `llama-3.1-70b-instruct`.
-`RAGAS_MAX_TOKENS` is optional and defaults to `4096` so faithfulness judgments
-have enough budget for structured outputs.
+`SCALEWAY_JUDGE_MODEL` is optional and defaults to `qwen3-235b-a22b-instruct-2507`
+(an instruct model, not a reasoning one — reasoning judges are too slow/token-heavy
+for the eval volume). It agreed with human PASS/BLOCKS reviewers on 90% of the
+calibration set with zero false-PASS; `llama-3.1-70b-instruct` scored 81%.
+RAGAS runs on a separate, faster model — `RAGAS_MODEL` (or `--ragas-model`),
+default `llama-3.3-70b-instruct` — because its many statement/NLI sub-calls do not
+need the higher-quality judge model. `RAGAS_MAX_TOKENS` is optional and defaults to
+`16384`: on long French answers a smaller cap truncates the faithfulness
+decomposition, and RAGAS then retries on every truncation and stalls the run.
+RAGAS is still ~45s/question (sequential sub-calls), so a large run with RAGAS
+enabled takes a while; deterministic retrieval metrics and the judge are the
+primary signals.
 
 The LLM-as-judge score is calibrated in code from four dimensions:
 
@@ -48,8 +57,10 @@ The LLM-as-judge score is calibrated in code from four dimensions:
 
 The model still returns a raw overall score, but the stored `score` is capped
 when the answer contradicts the gold answer, aligns poorly with it, is legally
-weak, is incomplete, is weakly supported, or retrieval missed expected gold
-sources. The raw score is preserved as `raw_model_score` for auditability.
+weak, is incomplete, is weakly supported, or retrieval misses expected gold
+sources. A total expected-source miss remains a hard cap; a partial expected-source
+miss lowers the stored score but can still pass when answer quality stays above
+threshold. The raw score is preserved as `raw_model_score` for auditability.
 
 ## Run De-Duplication
 
@@ -74,7 +85,7 @@ A matching run is defined by:
 - exact `tag_filter`;
 - `config_fingerprint`;
 - exact `eval_scope`, including selected question ids, `--limit`, judge/RAGAS
-  enablement, and judge model;
+  enablement, judge model, and RAGAS model;
 - current git SHA, unless `--dedupe-scope config` is used;
 - status in `started`, `running`, or `completed`.
 
