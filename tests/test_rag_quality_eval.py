@@ -554,3 +554,19 @@ def test_derive_status_ignores_disabled_subtask() -> None:
     )
     assert status == "completed"
     assert error == ""
+
+
+def test_resolve_gold_doc_ids_keeps_multi_segment_codes() -> None:
+    # Regression: a 3-segment code "L. 332-22-1" must resolve to its own article,
+    # not collapse to the parent "L332-22" (which is a different source).
+    from src.goldset.eval import resolve_gold_doc_ids
+
+    maps = {
+        "doc_short": {},
+        "matte_short": {},
+        "article": {"L332-22": {"PARENT"}, "L332-22-1": {"CHILD"}},
+    }
+    resolved = resolve_gold_doc_ids(["Article L. 332-22-1"], maps)
+
+    assert "CHILD" in resolved
+    assert "PARENT" not in resolved

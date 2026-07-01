@@ -287,10 +287,9 @@ def ensure_eval_schema(conn: psycopg.Connection[Any]) -> None:
         "ON public.rag_quality_eval_runs (goldset_name, config_fingerprint, status, created_at DESC)"
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_rag_quality_eval_items_run_id ON public.rag_quality_eval_items (run_id)")
-    # TODO(pr212-review): the Supabase migration also creates
-    # idx_rag_quality_eval_items_question_id — mirror it here (or drop it there) so
-    # the --init-schema bootstrap and the migration converge. No current query needs
-    # it (all reads filter by run_id), so this is consistency-only.
+    # Mirror the Supabase migration so the --init-schema bootstrap and the migration
+    # converge. No current query filters on question_id alone, so this is for parity.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rag_quality_eval_items_question_id ON public.rag_quality_eval_items (question_id)")
 
 
 def find_existing_run(
@@ -646,14 +645,13 @@ def context_payload(result: PipelineResult) -> list[dict[str, Any]]:
     return payload
 
 
-# TODO(pr212-review): these two patterns misresolve some citation shapes, which
-# understates the *diagnostic-only* retrieval metrics (doc_recall/hit_rate no longer
-# gate judge pass, so impact is bounded):
-#   - _CODE_RE captures only one "-N" segment, so a 3-segment code like "L. 332-22-1"
-#     collapses to the parent "L332-22" (wrong/extra doc_id).
-#   - _RANGE_RE reuses only the first base ("L. 331-1 à L. 335-9" expands to L331-*
-#     only), dropping cross-base ranges. Same-base ranges (the common form) are fine.
-_CODE_RE = re.compile(r"[FLRD]\.?\s?\d+(?:-\d+)?", re.IGNORECASE)
+# _CODE_RE keeps every hyphenated segment ("-\d+" repeated) so a multi-segment code
+# like "L. 332-22-1" is captured whole instead of collapsing to the parent "L332-22".
+# TODO(pr212-review): _RANGE_RE still reuses only the first base ("L. 331-1 à L. 335-9"
+# expands to L331-* only), dropping cross-base ranges — understates the diagnostic-only
+# retrieval metrics (doc_recall/hit_rate no longer gate judge pass, so impact is bounded).
+# Same-base ranges (the common form) are fine.
+_CODE_RE = re.compile(r"[FLRD]\.?\s?\d+(?:-\d+)*", re.IGNORECASE)
 _RANGE_RE = re.compile(r"([LRD])\.?\s?(\d+)-(\d+)\s*à\s*[LRD]?\.?\s?\d+-(\d+)", re.IGNORECASE)
 
 
