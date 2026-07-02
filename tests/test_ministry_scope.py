@@ -6,7 +6,7 @@ from assistant_rh_rag_pipeline.ministry_scope import MinistryScopeError, build_r
 from assistant_rh_rag_pipeline.pipeline import Pipeline, _RetrievalAttempt, _RunState
 from assistant_rh_rag_pipeline.retriever import Retriever
 
-from src.ui.user_groups_store import resolve_group_retrieval_scope, validate_ministry_policy
+from src.ui.user_groups_store import get_group_policy, resolve_group_retrieval_scope, validate_ministry_policy
 
 
 def test_mso_scope_resolves_to_ministry_plus_shared_tables() -> None:
@@ -37,6 +37,36 @@ def test_group_ministry_policy_validation(allowed: list[str], default: str, is_v
     if is_valid:
         assert normalized_allowed == allowed
         assert normalized_default == default
+
+
+def test_get_group_policy_fails_closed_on_configured_db_query_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A configured DB that fails a query must not fall back to the matte-only
+    seed policy: that would grant a seeded group's revoked ministries during a
+    transient outage (fail-open). It must report a distinct, user-facing
+    "temporarily unavailable" error instead of "introuvable"."""
+    monkeypatch.setattr("src.ui.user_groups_store._fetch_group", lambda _slug: (False, None))
+    monkeypatch.setattr("src.ui.user_groups_store.has_dsn", lambda: True)
+
+    policy = get_group_policy("dgafpsd1")
+
+    assert policy["valid"] is False
+    assert policy["allowed_ministries"] == []
+    assert "introuvable" not in policy["error"]
+    assert "matte" not in policy["allowed_ministries"]
+    assert "indisponible" in policy["error"].lower()
+
+
+def test_get_group_policy_uses_seed_fallback_when_no_dsn_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With no DSN at all (offline/local dev without Postgres), the seed
+    fallback must still work for seeded groups, matching list_groups()."""
+    monkeypatch.setattr("src.ui.user_groups_store._fetch_group", lambda _slug: (False, None))
+    monkeypatch.setattr("src.ui.user_groups_store.has_dsn", lambda: False)
+
+    policy = get_group_policy("dgafpsd1")
+
+    assert policy["valid"] is True
+    assert policy["allowed_ministries"] == ["matte"]
+    assert policy["default_ministry"] == "matte"
 
 
 def test_group_scope_resolver_rejects_unallowed_selected_ministry(monkeypatch: pytest.MonkeyPatch) -> None:
