@@ -18,10 +18,12 @@ For streaming (Streamlit)::
         for token in pipe.run_stream(qr):
             print(token, end="")
 """
+
 from .config import RAGConfig, get_default_config
 from .context_selector import ContextSelector
 from .db_helpers import get_dsn
 from .llm_client import ChatLLM, FallbackLLMClient, LLMClient
+from .ministry_scope import MINISTRY_CATALOG, RetrievalScope, build_retrieval_scope
 from .models import Chunk, ContextItem, PipelineResult
 from .pipeline import Pipeline
 from .query_processor import QueryProcessResult
@@ -35,6 +37,9 @@ __all__ = [
     "ContextItem",
     "Chunk",
     "QueryProcessResult",
+    "RetrievalScope",
+    "MINISTRY_CATALOG",
+    "build_retrieval_scope",
     "get_default_config",
     "ChatLLM",
     "LLMClient",

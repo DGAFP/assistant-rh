@@ -83,12 +83,6 @@ The plan mentions `.map()` and `getStepResult()` in passing but doesn't design t
 
 > **Status: RESOLVED.** The implementation plan now includes a `stateSchema` with `query`, `conversationHistory`, and `config`.
 
-### 4. `rag_chunks_test` table missing from migration plan
-
-The analysis documents it (with `enable_chunks_test = true` in prod), but the implementation plan's unified index and metadata schema don't mention test chunks. If prod uses this table, the migration must include it. Its schema differs (embeddings in a separate `rag_chunk_embeddings` table, `chunk_tsv` for tsvector).
-
----
-
 ## P2 — Infrastructure Risks
 
 ### 5. Two database clients need coordinated pooling
@@ -179,7 +173,6 @@ Running `npm run dev` gives a local UI at `:4111` where you can paste a query, r
 | **P0** | Embedding fallback breaks with unified index | ✅ Resolved — dual indexes (`rag_chunks_albert` + `rag_chunks_scaleway`) |
 | **P0** | No `content` column — tsvector must reference `metadata->>'text'` | ✅ Resolved — SQL migration updated in implementation plan |
 | **P1** | Cross-step data flow not designed | ✅ Resolved — `stateSchema` with `query`, `config`, `history` |
-| **P1** | `rag_chunks_test` missing from plan | Open — include in data migration scope |
 | **P2** | Two database clients need coordinated pooling | Open — share pool or use Mastra's PostgresStore |
 | **P2** | No observability replacement for `chat_runs` | Open — define minimum logging for debugging |
 | **P3** | Mastra version pinning | ✅ Resolved — pinned to `@mastra/*@1.13.0` |

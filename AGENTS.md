@@ -151,7 +151,6 @@ Common RAG tables:
 - `rag_chunks_service_public`: Service-Public chunks.
 - `rag_chunks_dgafp`: legal/regulatory chunks.
 - `rag_chunks_rgrh`: RGRH chunks.
-- `rag_chunks_test`: additional/test chunks when enabled.
 - `rag_config`: runtime pipeline configuration.
 - `system_prompts`: editable prompt templates.
 - `acronyms`: acronym expansion dictionary.

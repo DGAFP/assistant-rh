@@ -29,6 +29,7 @@ from .context_builder import ContextBuilder
 from .context_selector import ContextSelector
 from .db_helpers import get_dsn
 from .generator import StreamingGenerator
+from .ministry_scope import RetrievalScope
 from .models import ContextItem, PipelineResult, estimate_tokens, serialize_raw_chunks, serialize_section_chunks
 from .query_processor import QueryProcessor, QueryProcessResult
 from .retriever import Retriever
@@ -119,6 +120,15 @@ def _intent_value(qr: QueryProcessResult) -> str:
     return str(getattr(intent, "value", intent) or "unknown")
 
 
+def _record_scope(state: _RunState, retrieval_scope: RetrievalScope | None) -> None:
+    if retrieval_scope is None:
+        return
+    scope_dict = retrieval_scope.to_dict()
+    state.stage_refs["retrieval_scope"] = scope_dict
+    state.stage_refs["selected_ministry"] = retrieval_scope.selected_ministry
+    state.stage_refs["scoped_table_keys"] = list(retrieval_scope.table_keys)
+
+
 class Pipeline:
     """
     End-to-end RAG pipeline.
@@ -196,8 +206,10 @@ class Pipeline:
         include_stage_trace: bool = False,
         turn_id: str | None = None,
         trace_id: str | None = None,
+        retrieval_scope: RetrievalScope | None = None,
     ) -> PipelineResult:
         state = _RunState(turn_id=turn_id or "", trace_id=normalize_trace_id(trace_id))
+        _record_scope(state, retrieval_scope)
         qr = self._process_query(query, conversation_history, state)
 
         if not qr.should_proceed:
@@ -207,6 +219,9 @@ class Pipeline:
                 "turn_id": state.turn_id,
                 "trace_id": state.trace_id,
                 "rag_trace_events": list(state.trace_events),
+                "retrieval_scope": state.stage_refs.get("retrieval_scope"),
+                "selected_ministry": state.stage_refs.get("selected_ministry"),
+                "scoped_table_keys": state.stage_refs.get("scoped_table_keys", []),
             }
             if include_stage_trace:
                 metadata["stage_trace"] = self._build_stage_trace(
@@ -229,7 +244,7 @@ class Pipeline:
             self._timing = dict(result.timing)
             return result
 
-        context_items = self._retrieve_and_build(qr, state)
+        context_items = self._retrieve_and_build(qr, state, retrieval_scope=retrieval_scope)
 
         if not context_items and state.stage_refs.get("selector_all_rejected"):
             no_answer = (
@@ -279,6 +294,7 @@ class Pipeline:
         conversation_history: list[Dict[str, str]] | None = None,
         turn_id: str | None = None,
         trace_id: str | None = None,
+        retrieval_scope: RetrievalScope | None = None,
     ) -> PipelineResult:
         """Run pipeline and include stage-level input/output trace in metadata."""
         return self.run(
@@ -287,6 +303,7 @@ class Pipeline:
             include_stage_trace=True,
             turn_id=turn_id,
             trace_id=trace_id,
+            retrieval_scope=retrieval_scope,
         )
 
     # ------------------------------------------------------------------
@@ -300,6 +317,7 @@ class Pipeline:
         on_status: Callable[[str], None] | None = None,
         turn_id: str | None = None,
         trace_id: str | None = None,
+        retrieval_scope: RetrievalScope | None = None,
     ) -> Generator[str, None, None]:
         """
         Yield tokens for the streaming answer.
@@ -312,6 +330,7 @@ class Pipeline:
         (useful for updating a Streamlit loader).
         """
         state = _RunState(turn_id=turn_id or "", trace_id=normalize_trace_id(trace_id))
+        _record_scope(state, retrieval_scope)
         self._record_query_processor_event(
             query=qr.original_query,
             conversation_history=conversation_history,
@@ -322,7 +341,7 @@ class Pipeline:
         _notify = on_status or (lambda _: None)
 
         _notify("📚 Recherche dans les sources...")
-        context_items = self._retrieve_and_build(qr, state)
+        context_items = self._retrieve_and_build(qr, state, retrieval_scope=retrieval_scope)
 
         if not context_items and state.stage_refs.get("selector_all_rejected"):
             _notify("🚫 Aucune source pertinente trouvée")
@@ -381,10 +400,17 @@ class Pipeline:
         self.last_query_result = qr
         return qr
 
-    def _retrieve_and_build(self, qr: QueryProcessResult, state: _RunState) -> List[ContextItem]:
+    def _retrieve_and_build(
+        self,
+        qr: QueryProcessResult,
+        state: _RunState,
+        *,
+        retrieval_scope: RetrievalScope | None = None,
+    ) -> List[ContextItem]:
         retrieval_query = qr.query_for_retrieval
 
-        active_tables = list(self._retriever.config.tables)
+        active_tables = list(retrieval_scope.table_keys) if retrieval_scope is not None else list(self._retriever.config.tables)
+        strict_table_errors = retrieval_scope is not None
         force_hybrid_tables: set[str] = set()
         if "dgafp" in active_tables:
             force_hybrid_tables.add("dgafp")
@@ -397,6 +423,7 @@ class Pipeline:
             state=state,
             search_mode=self.config.retrieval.search_mode,
             top_k=self.config.retrieval.initial_top_k,
+            strict_table_errors=strict_table_errors,
         )
         attempts = [initial_attempt]
         items = initial_attempt.context_items_ref
@@ -424,6 +451,7 @@ class Pipeline:
             state=state,
             search_mode=self.config.retrieval.selector_retry_search_mode,
             top_k=self.config.retrieval.selector_retry_top_k,
+            strict_table_errors=strict_table_errors,
         )
         attempts.append(retry_attempt)
         retry_has_context = bool(retry_attempt.context_items_ref)
@@ -448,10 +476,9 @@ class Pipeline:
         state: _RunState,
         search_mode: SearchMode,
         top_k: int,
+        strict_table_errors: bool,
     ) -> _RetrievalAttempt:
         tables_searched = list(active_tables)
-        if getattr(self._retriever.config, "enable_chunks_test", False) is True:
-            tables_searched.append("rag_chunks_test")
 
         attempt = _RetrievalAttempt(
             name=name,
@@ -467,6 +494,7 @@ class Pipeline:
             tables=active_tables,
             search_mode=search_mode,
             top_k=top_k,
+            strict_table_errors=strict_table_errors,
         )
         retrieval_ms = (time.time() - t0) * 1000
         state.timing[f"retrieval_{name}_ms"] = retrieval_ms
@@ -496,6 +524,7 @@ class Pipeline:
                     "tables_searched": tables_searched,
                     "search_mode": search_mode.value,
                     "top_k": top_k,
+                    "retrieval_scope": state.stage_refs.get("retrieval_scope"),
                 },
                 output_ref={"retrieved_chunks": [chunk_ref(chunk) for chunk in chunks]},
                 metrics={
@@ -722,6 +751,9 @@ class Pipeline:
             "needs_legal_search": qr.needs_legal_search,
             "needs_legal_search_llm": qr.needs_legal_search_llm,
             "tables_searched": state.stage_refs.get("tables_searched", []),
+            "retrieval_scope": state.stage_refs.get("retrieval_scope"),
+            "selected_ministry": state.stage_refs.get("selected_ministry"),
+            "scoped_table_keys": state.stage_refs.get("scoped_table_keys", []),
             "selector_enabled": self.config.selector.enabled,
             "generator_model": self.config.generation.model,
             "generator_provider": self.config.generation.provider.value,

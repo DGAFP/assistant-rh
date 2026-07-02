@@ -135,14 +135,6 @@ EMBEDDING_OPTIONS = {
     "BGE Scaleway (embedding_bge)": "bge_scaleway",
 }
 
-# Maps our UI keys → actual DB column names in rag_chunk_embeddings
-EMBEDDING_COLUMN_MAP = {
-    "albert_raw": "e.embedding_raw",
-    "albert_ctx": "e.embedding",        # default contextualized
-    "albert_raw_text": "e.embedding_raw_text",  # stripped markdown
-    "bge_scaleway": None,                # handled by ChunkRetriever default (e.embedding_bge)
-}
-
 SEARCH_MODE_OPTIONS = ["semantic", "lexical", "hybrid"]
 
 SELECTOR_PROMPTS = {
@@ -1355,82 +1347,6 @@ with tab1:
 
         # ── Debug diagnostic ──
         with st.expander("🔍 Debug diagnostic", expanded=False):
-            # DB connectivity check for lexical search
-            st.markdown("##### 🗄️ DB Lexical Check")
-            try:
-                conn_diag = get_connection()
-                cur_diag = conn_diag.cursor()
-
-                # Check if chunk_tsv column exists
-                cur_diag.execute("""
-                    SELECT column_name FROM information_schema.columns
-                    WHERE table_name = 'rag_chunks_test' AND column_name = 'chunk_tsv'
-                """)
-                col_exists = cur_diag.fetchone()
-                if col_exists:
-                    st.success("✅ Colonne `chunk_tsv` existe")
-                else:
-                    st.error("❌ Colonne `chunk_tsv` N'EXISTE PAS dans rag_chunks_test !")
-
-                # Count non-null chunk_tsv
-                cur_diag.execute("SELECT COUNT(*) as total, COUNT(chunk_tsv) as with_tsv FROM rag_chunks_test")
-                counts = cur_diag.fetchone()
-                st.markdown(f"Chunks total: **{counts['total']}**, avec chunk_tsv: **{counts['with_tsv']}**")
-
-                # Test a real lexical query
-                test_q = results.get("per_question", [{}])[0].get("question", "congé maladie") if results.get("per_question") else "congé maladie"
-
-                # Test AND mode (plainto_tsquery)
-                cur_diag.execute("""
-                    SELECT COUNT(*) as n FROM rag_chunks_test c
-                    WHERE c.chunk_tsv @@ plainto_tsquery('french', %s)
-                """, [test_q])
-                and_count = cur_diag.fetchone()["n"]
-
-                # Test OR mode (the fix)
-                cur_diag.execute("""
-                    SELECT COUNT(*) as n FROM rag_chunks_test c
-                    WHERE c.chunk_tsv @@ (
-                        CASE WHEN plainto_tsquery('french', %s)::text = ''
-                             THEN plainto_tsquery('french', %s)
-                             ELSE to_tsquery('french', replace(plainto_tsquery('french', %s)::text, ' & ', ' | '))
-                        END
-                    )
-                """, [test_q, test_q, test_q])
-                or_count = cur_diag.fetchone()["n"]
-
-                st.markdown(f"Test `{test_q[:60]}...`")
-                st.markdown(f"  - AND (ancien): **{and_count}** chunks — OR (nouveau): **{or_count}** chunks")
-
-                if or_count > 0:
-                    cur_diag.execute("""
-                        SELECT d.publisher, COUNT(*) as n FROM rag_chunks_test c
-                        JOIN rag_documents d ON c.doc_id = d.doc_id
-                        WHERE c.chunk_tsv @@ (
-                            CASE WHEN plainto_tsquery('french', %s)::text = ''
-                                 THEN plainto_tsquery('french', %s)
-                                 ELSE to_tsquery('french', replace(plainto_tsquery('french', %s)::text, ' & ', ' | '))
-                            END
-                        )
-                        GROUP BY d.publisher
-                    """, [test_q, test_q, test_q])
-                    for row in cur_diag.fetchall():
-                        st.markdown(f"  - Publisher `{row['publisher']}`: {row['n']} chunks")
-
-                # Check GIN index
-                cur_diag.execute("""
-                    SELECT indexname FROM pg_indexes
-                    WHERE tablename = 'rag_chunks_test' AND indexdef LIKE '%%gin%%'
-                """)
-                idx = cur_diag.fetchone()
-                if idx:
-                    st.success(f"✅ GIN index: `{idx['indexname']}`")
-                else:
-                    st.warning("⚠️ Pas d'index GIN trouvé")
-
-            except Exception as e:
-                st.error(f"Erreur diagnostic DB: {e}")
-
             st.markdown("##### 📊 Per-config diagnostic")
             for cfg in configs:
                 agg = results.get("aggregate", {}).get(cfg.name, {})

@@ -47,7 +47,6 @@ These are domain-specific RAG pipeline parameters. Mastra Studio has no concept 
 | `v3_selector_model` | model ID | Read from `rag_config`. Determines which model the selector step uses. |
 | `v3_triangulation_sections` | int: 0–5 | Read from `rag_config`. Controls publisher diversity enforcement. |
 | `v3_tables` | list of publisher keys | Read from `rag_config`. Translates to metadata filters in unified index queries. |
-| `v3_enable_chunks_test` | bool | Read from `rag_config`. Controls whether test chunks are included in retrieval. |
 | `v3_initial_top_k` | int: 5–30 | Read from `rag_config`. Controls chunks per query in the retriever. |
 | `v3_alpha` | float: 0.0–1.0 | Read from `rag_config`. RRF weight for hybrid search (only visible when search_mode=hybrid). |
 | `v3_enable_reranker` | bool | Read from `rag_config`. Toggles section-level reranking. |

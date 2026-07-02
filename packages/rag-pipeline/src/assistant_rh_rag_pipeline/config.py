@@ -4,6 +4,7 @@ Configuration dataclasses for the RAG V3 Clean pipeline.
 Pure configuration – no DB access, no I/O.  All database helpers live in
 ``db_helpers.py`` and are re-exported here for backward compatibility.
 """
+
 from __future__ import annotations
 
 import os
@@ -14,6 +15,7 @@ from typing import Dict, List
 # ─────────────────────────────────────────────────────────────────────────────
 # Enums
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class SearchMode(str, Enum):
     SEMANTIC = "semantic"
@@ -41,9 +43,11 @@ class ContextMode(str, Enum):
 # Table definitions for the 4 DE chunk tables
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class ChunkTable:
     """Schema descriptor for one of the Data Engineer's chunk tables."""
+
     name: str
     id_col: str = "hash_id"
     text_col: str = "chunk_text"
@@ -60,6 +64,13 @@ CHUNK_TABLES: Dict[str, ChunkTable] = {
         embed_col_albert="embedding_m3",
         tsv_col="text_tsv",
         publisher="MATTE",
+        has_sections=True,
+    ),
+    "mso": ChunkTable(
+        "rag_chunks_mso",
+        embed_col_albert="embedding_m3",
+        tsv_col="text_tsv",
+        publisher="MSO",
         has_sections=True,
     ),
     "service_public": ChunkTable(
@@ -95,21 +106,10 @@ CHUNK_TABLES: Dict[str, ChunkTable] = {
     "rgrh": ChunkTable("rag_chunks_rgrh", embed_col_albert="embedding_m3", tsv_col="text_tsv", publisher="RGRH", has_sections=False),
 }
 
-CHUNKS_TEST_TABLE = ChunkTable(
-    "rag_chunks_test",
-    id_col="chunk_id",
-    text_col="chunk_text",
-    embed_col_albert="embedding_raw",
-    embed_col_bge="embedding_bge",
-    tsv_col="chunk_tsv",
-    publisher="ChunksTest",
-    has_sections=True,
-)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Pipeline config dataclasses
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class RetrievalConfig:
@@ -118,7 +118,6 @@ class RetrievalConfig:
     initial_top_k: int = 15
     alpha: float = 0.5
     tables: List[str] = field(default_factory=lambda: ["matte", "service_public", "dgafp", "rgrh"])
-    enable_chunks_test: bool = False
     enable_chunk_reranker: bool = False
     chunk_rerank_top_k: int = 30
     enable_selector_retry: bool = True
@@ -189,6 +188,7 @@ class ContextBuildConfig:
 @dataclass
 class SelectorConfig:
     """Optional LLM-based source filter (toggle)."""
+
     enabled: bool = False
     provider: LLMProvider = LLMProvider.ALBERT
     model: str = "openweight-large"
