@@ -762,7 +762,15 @@ with st.sidebar:
             cookies["user_group"] = "default"
             cookies.save()
             # Also drop the active chat so it can't leak to the next group/user.
-            for _k in ("user_group", "admin_authenticated", "_is_admin_cache", "turns", "conversation_id"):
+            for _k in (
+                "user_group",
+                "admin_authenticated",
+                "_is_admin_cache",
+                "turns",
+                "conversation_id",
+                "selected_ministry",
+                "selected_ministry_picker",
+            ):
                 st.session_state.pop(_k, None)
             st.session_state["_pending_logout"] = True
             st.rerun()
