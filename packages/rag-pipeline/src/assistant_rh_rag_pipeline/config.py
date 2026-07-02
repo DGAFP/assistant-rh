@@ -106,18 +106,6 @@ CHUNK_TABLES: Dict[str, ChunkTable] = {
     "rgrh": ChunkTable("rag_chunks_rgrh", embed_col_albert="embedding_m3", tsv_col="text_tsv", publisher="RGRH", has_sections=False),
 }
 
-CHUNKS_TEST_TABLE = ChunkTable(
-    "rag_chunks_test",
-    id_col="chunk_id",
-    text_col="chunk_text",
-    embed_col_albert="embedding_raw",
-    embed_col_bge="embedding_bge",
-    tsv_col="chunk_tsv",
-    publisher="ChunksTest",
-    has_sections=True,
-)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Pipeline config dataclasses
 # ─────────────────────────────────────────────────────────────────────────────
@@ -130,7 +118,6 @@ class RetrievalConfig:
     initial_top_k: int = 15
     alpha: float = 0.5
     tables: List[str] = field(default_factory=lambda: ["matte", "service_public", "dgafp", "rgrh"])
-    enable_chunks_test: bool = False
     enable_chunk_reranker: bool = False
     chunk_rerank_top_k: int = 30
     enable_selector_retry: bool = True

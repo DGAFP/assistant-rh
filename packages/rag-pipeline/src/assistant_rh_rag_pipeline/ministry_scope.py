@@ -31,13 +31,11 @@ class RetrievalScope:
 
     selected_ministry: str
     table_keys: tuple[str, ...]
-    include_chunks_test: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return {
             "selected_ministry": self.selected_ministry,
             "table_keys": list(self.table_keys),
-            "include_chunks_test": self.include_chunks_test,
         }
 
 
@@ -84,5 +82,4 @@ def build_retrieval_scope(selected_ministry: str) -> RetrievalScope:
     return RetrievalScope(
         selected_ministry=ministry.id,
         table_keys=(ministry.table_key, *SHARED_TABLE_KEYS),
-        include_chunks_test=False,
     )

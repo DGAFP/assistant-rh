@@ -173,7 +173,6 @@ _TABLE_BY_RUNTIME_KEY = {
     "dgafp": "rag_chunks_dgafp",
     "dgafp_scw": "rag_chunks_dgafp_scw",
     "rgrh": "rag_chunks_rgrh",
-    "rag_chunks_test": "rag_chunks_test",
 }
 
 _TABLE_BY_PUBLISHER = {
@@ -185,7 +184,6 @@ _TABLE_BY_PUBLISHER = {
     "dgafp": "rag_chunks_dgafp",
     "dgafp (scaleway)": "rag_chunks_dgafp_scw",
     "rgrh": "rag_chunks_rgrh",
-    "chunkstest": "rag_chunks_test",
 }
 
 _ALBERT_EMBED_COL_BY_TABLE = {
@@ -196,7 +194,6 @@ _ALBERT_EMBED_COL_BY_TABLE = {
     "rag_chunks_dgafp": "embedding_m3",
     "rag_chunks_dgafp_scw": "embedding_m3",
     "rag_chunks_rgrh": "embedding_m3",
-    "rag_chunks_test": "embedding_raw",
 }
 
 _BGE_EMBED_COL_BY_TABLE = {
@@ -207,7 +204,6 @@ _BGE_EMBED_COL_BY_TABLE = {
     "rag_chunks_dgafp": "embedding_bge_scw",
     "rag_chunks_dgafp_scw": "embedding_bge_scw",
     "rag_chunks_rgrh": "embedding_bge_scw",
-    "rag_chunks_test": "embedding_bge",
 }
 
 _TABLE_LABEL_BY_TABLE = {
@@ -218,7 +214,6 @@ _TABLE_LABEL_BY_TABLE = {
     "rag_chunks_dgafp": "dgafp",
     "rag_chunks_dgafp_scw": "dgafp_scw",
     "rag_chunks_rgrh": "rgrh",
-    "rag_chunks_test": "test",
 }
 
 _LEGACY_VARCHAR_30_LIMIT = 30
@@ -477,8 +472,6 @@ def build_log_row(
     generation_config = getattr(config, "generation", None)
 
     configured_tables = list(getattr(retrieval_config, "tables", []) or [])
-    if getattr(retrieval_config, "enable_chunks_test", False) or getattr(runtime_config, "v3_enable_chunks_test", False):
-        configured_tables.append("rag_chunks_test")
     table_names = _table_names(v3_metadata.get("tables_searched") or configured_tables)
     table_label = _legacy_table_label(table_names)
     embedding_model_logged = str(

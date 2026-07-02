@@ -35,7 +35,7 @@ import secrets
 from typing import Any
 
 import psycopg
-from assistant_rh_rag_pipeline.db_helpers import get_dsn
+from assistant_rh_rag_pipeline.db_helpers import get_dsn, has_dsn
 from assistant_rh_rag_pipeline.ministry_scope import (
     MinistryScopeError,
     RetrievalScope,
@@ -332,12 +332,33 @@ def _fetch_group(slug: str) -> tuple[bool, dict[str, Any] | None]:
 
 
 def get_group_policy(slug: str) -> dict[str, Any]:
-    """Return one group's ministry policy, fail-closed when missing or invalid."""
+    """Return one group's ministry policy, fail-closed when missing or invalid.
+
+    Ministry scope is a security boundary (it gates which document tables a
+    group's queries can reach), so unlike ``list_groups()`` this must NOT fall
+    back to the matte-only seed policy when a *configured* database hiccups:
+    a seeded group's real policy may be more restrictive than the seed, and
+    granting the seed policy during a transient outage would fail open. The
+    seed fallback is only correct when there is no DSN at all (offline/local
+    dev without Postgres), which is the same situation ``list_groups()``
+    degrades gracefully for.
+    """
     slug = (slug or "").strip().lower()
     query_ok, group = _fetch_group(slug)
     if not query_ok:
-        # DB unavailable or query failed: resolve against the in-memory seed,
-        # matching list_groups()'s offline fallback.
+        if has_dsn():
+            # DB is supposed to be there but the query failed (timeout, pool
+            # exhaustion, etc.): fail closed instead of granting the seed
+            # policy, and say so distinctly from "group not found".
+            return {
+                "slug": slug,
+                "valid": False,
+                "error": "Politique ministérielle temporairement indisponible. Réessayez dans quelques instants.",
+                "allowed_ministries": [],
+                "default_ministry": "",
+            }
+        # No DSN configured at all: offline/dev mode, resolve against the
+        # in-memory seed, matching list_groups()'s offline fallback.
         group = next((g for g in _seed_fallback() if g["slug"] == slug), None)
     if group is not None:
         policy = group_policy_status(group)

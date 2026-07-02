@@ -5,7 +5,7 @@
 
 ## Vue d'ensemble
 
-Le pipeline RAG V3 Clean est un système de **Retrieval-Augmented Generation** pour un chatbot RH destiné aux agents publics du Ministère de la Transition Écologique. Il répond à des questions sur les contractuels de la fonction publique d'État en s'appuyant sur 5 bases documentaires (dont `rag_chunks_test` activé par défaut, et `dgafp` conditionnel via l'intent gater).
+Le pipeline RAG V3 Clean est un système de **Retrieval-Augmented Generation** pour un chatbot RH destiné aux agents publics du Ministère de la Transition Écologique. Il répond à des questions sur les contractuels de la fonction publique d'État en s'appuyant sur les tables documentaires configurées, avec `dgafp` conditionnel via l'intent gater.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -33,7 +33,7 @@ Query (str)
 QueryProcessResult          ← intent, thème, acronymes, needs_legal_search
   │
   ▼
-List[RetrievedChunk]        ← ~80-100 chunks (20/table × 4-5 tables en parallèle)
+List[RetrievedChunk]        ← chunks récupérés en parallèle depuis les tables configurées
   │
   ▼
 List[AggregatedSection]     ← chunks groupés par rag_sections, scorés, rerankés (top 10)
@@ -96,9 +96,6 @@ PipelineResult              ← réponse streamée, sources, timing, métadonné
 | `rag_chunks_service_public` | Service-Public | ✅ | `section_id`, `source_document_id` | `text_tsv` |
 | `rag_chunks_dgafp` | DGAFP | ❌ | `cid`, `number`, `url`, `full_title` | `chunk_text_tsv` |
 | `rag_chunks_rgrh` | RGRH | ❌ | `source_document_id` | `text_tsv` |
-| `rag_chunks_test` | ChunksTest | ✅ | `chunk_id`, sections larges | `chunk_tsv` |
-
-**`rag_chunks_test`** est une table unifiée avec un chunking par sections (granularité plus large que matte/sp). Activée par défaut via `enable_chunks_test=True`. La combinaison multi-granularité (chunks_test + matte/sp) améliore significativement les métriques (multi-granularity retrieval).
 
 **Comportement conditionnel DGAFP** :
 - Si `needs_legal_search = False` → la table `dgafp` est **exclue** du retrieval (réduction du bruit)
@@ -340,7 +337,6 @@ RAGConfig(
         embedding_model=EmbeddingModel.ALBERT,
         initial_top_k=20,            # chunks par table
         tables=["matte", "service_public", "dgafp", "rgrh"],
-        enable_chunks_test=True,     # rag_chunks_test (recommandé ON)
     ),
     aggregation=SectionAggregationConfig(
         enable_section_reranker=True,
@@ -380,7 +376,7 @@ rag_chunks_matte          ─┐
 rag_chunks_service_public  │
 rag_chunks_dgafp           ├── Retriever (pgvector cosine, parallèle)
 rag_chunks_rgrh            │
-rag_chunks_test            ─┘
+                            ─┘
                              │
                              ▼
 rag_sections ◄──── section_id ────► SectionAggregator (JOIN pour markdown + métadonnées)

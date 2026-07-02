@@ -410,7 +410,6 @@ class Pipeline:
         retrieval_query = qr.query_for_retrieval
 
         active_tables = list(retrieval_scope.table_keys) if retrieval_scope is not None else list(self._retriever.config.tables)
-        include_chunks_test = retrieval_scope.include_chunks_test if retrieval_scope is not None else bool(self._retriever.config.enable_chunks_test)
         strict_table_errors = retrieval_scope is not None
         force_hybrid_tables: set[str] = set()
         if "dgafp" in active_tables:
@@ -424,7 +423,6 @@ class Pipeline:
             state=state,
             search_mode=self.config.retrieval.search_mode,
             top_k=self.config.retrieval.initial_top_k,
-            include_chunks_test=include_chunks_test,
             strict_table_errors=strict_table_errors,
         )
         attempts = [initial_attempt]
@@ -453,7 +451,6 @@ class Pipeline:
             state=state,
             search_mode=self.config.retrieval.selector_retry_search_mode,
             top_k=self.config.retrieval.selector_retry_top_k,
-            include_chunks_test=include_chunks_test,
             strict_table_errors=strict_table_errors,
         )
         attempts.append(retry_attempt)
@@ -479,12 +476,9 @@ class Pipeline:
         state: _RunState,
         search_mode: SearchMode,
         top_k: int,
-        include_chunks_test: bool,
         strict_table_errors: bool,
     ) -> _RetrievalAttempt:
         tables_searched = list(active_tables)
-        if include_chunks_test:
-            tables_searched.append("rag_chunks_test")
 
         attempt = _RetrievalAttempt(
             name=name,
@@ -500,7 +494,6 @@ class Pipeline:
             tables=active_tables,
             search_mode=search_mode,
             top_k=top_k,
-            include_chunks_test=include_chunks_test,
             strict_table_errors=strict_table_errors,
         )
         retrieval_ms = (time.time() - t0) * 1000

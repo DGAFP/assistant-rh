@@ -29,7 +29,6 @@ from psycopg.rows import dict_row
 
 from .config import (
     CHUNK_TABLES,
-    CHUNKS_TEST_TABLE,
     ChunkTable,
     EmbeddingModel,
     RetrievalConfig,
@@ -182,7 +181,6 @@ class Retriever:
         tables: list[str] | None = None,
         search_mode: SearchMode | None = None,
         top_k: int | None = None,
-        include_chunks_test: bool | None = None,
         strict_table_errors: bool = False,
     ) -> List[RetrievedChunk]:
         """Embed *query*, search all configured tables in parallel, return merged results.
@@ -193,9 +191,6 @@ class Retriever:
         ``self.config.tables``.
         *search_mode* and *top_k*: optional request-scoped overrides used by
         fallback/retry paths without mutating ``self.config``.
-        *include_chunks_test*: request-scoped override for the optional test
-        table. Scoped production retrieval passes ``False`` so test chunks never
-        leak into ministry-scoped answers.
         *strict_table_errors*: raise if a requested table key/table query fails.
         Legacy unscoped retrieval keeps the previous partial-result behavior.
         """
@@ -218,11 +213,10 @@ class Retriever:
         is_lexical = effective_search_mode == SearchMode.LEXICAL
 
         chunk_tables = [CHUNK_TABLES[k] for k in table_keys if k in CHUNK_TABLES]
-        effective_enable_chunks_test = self.config.enable_chunks_test if include_chunks_test is None else include_chunks_test
-        if not chunk_tables and not effective_enable_chunks_test:
+        if not chunk_tables:
             return []
 
-        n_workers = (len(chunk_tables) * 2) + (1 if effective_enable_chunks_test else 0)
+        n_workers = len(chunk_tables) * 2
         per_source_results: Dict[str, List[RetrievedChunk]] = {}
         table_errors: list[str] = []
         with ThreadPoolExecutor(max_workers=max(n_workers, 1)) as pool:
@@ -253,34 +247,6 @@ class Retriever:
                     if tbl.has_sections
                 }
             )
-            if effective_enable_chunks_test:
-                if is_hybrid:
-                    futures[
-                        pool.submit(
-                            self._search_chunks_test_hybrid,
-                            embedding,
-                            embed_model_used,
-                            query,
-                            top_k=effective_top_k,
-                        )
-                    ] = "rag_chunks_test"
-                elif is_lexical:
-                    futures[
-                        pool.submit(
-                            self._search_chunks_test_lexical,
-                            query,
-                            top_k=effective_top_k,
-                        )
-                    ] = "rag_chunks_test"
-                else:
-                    futures[
-                        pool.submit(
-                            self._search_chunks_test,
-                            embedding,
-                            embed_model_used,
-                            top_k=effective_top_k,
-                        )
-                    ] = "rag_chunks_test"
 
             for future in as_completed(futures):
                 name = futures[future]
@@ -835,181 +801,5 @@ class Retriever:
             logger.error("Query on %s failed (%s): %s", table.name, type(exc).__name__, exc)
             if strict_errors:
                 raise
-
-        return chunks
-
-    # ------------------------------------------------------------------
-    # rag_chunks_test: semantic (default)
-    # ------------------------------------------------------------------
-
-    def _search_chunks_test(
-        self,
-        embedding: List[float],
-        model_used: str,
-        *,
-        top_k: int | None = None,
-    ) -> List[RetrievedChunk]:
-        """Pure semantic search on rag_chunks_test via rag_chunk_embeddings."""
-        tbl = CHUNKS_TEST_TABLE
-        embed_col = tbl.embed_col_albert if model_used == "albert" else tbl.embed_col_bge
-        top_k = top_k or self.config.initial_top_k
-
-        sql = f"""
-            SELECT
-                t.chunk_id, t.chunk_text, t.section_id, t.doc_id, t.metadata,
-                1 - (e.{embed_col} <=> %s::vector) AS score
-            FROM rag_chunks_test t
-            JOIN rag_chunk_embeddings e ON e.chunk_id = t.chunk_id
-            WHERE e.{embed_col} IS NOT NULL
-            ORDER BY e.{embed_col} <=> %s::vector, t.chunk_id
-            LIMIT %s
-        """
-        return self._exec_chunks_test(sql, (embedding, embedding, top_k), model_used)
-
-    # ------------------------------------------------------------------
-    # rag_chunks_test: hybrid (RRF = semantic + lexical)
-    # ------------------------------------------------------------------
-
-    def _search_chunks_test_hybrid(
-        self,
-        embedding: List[float],
-        model_used: str,
-        query: str,
-        *,
-        top_k: int | None = None,
-    ) -> List[RetrievedChunk]:
-        """Hybrid search on rag_chunks_test using Reciprocal Rank Fusion."""
-        tbl = CHUNKS_TEST_TABLE
-        embed_col = tbl.embed_col_albert if model_used == "albert" else tbl.embed_col_bge
-        alpha = self.config.alpha
-        rrf_k = 60
-        top_k = top_k or self.config.initial_top_k
-        tsq = _TSQUERY_OR.format(p="%s")
-
-        sql = f"""
-            WITH parsed_query AS (
-                SELECT ({tsq}) AS q
-            ),
-            semantic_ranked AS (
-                SELECT t.chunk_id,
-                       ROW_NUMBER() OVER (ORDER BY e.{embed_col} <=> %s::vector, t.chunk_id) AS sem_rank
-                FROM rag_chunks_test t
-                JOIN rag_chunk_embeddings e ON e.chunk_id = t.chunk_id
-                WHERE e.{embed_col} IS NOT NULL
-                ORDER BY e.{embed_col} <=> %s::vector, t.chunk_id
-                LIMIT %s
-            ),
-            lexical_ranked AS (
-                SELECT t.chunk_id,
-                       ROW_NUMBER() OVER (ORDER BY ts_rank_cd(t.chunk_tsv, pq.q) DESC, t.chunk_id) AS lex_rank
-                FROM rag_chunks_test t
-                CROSS JOIN parsed_query pq
-                WHERE t.chunk_tsv @@ pq.q
-                ORDER BY ts_rank_cd(t.chunk_tsv, pq.q) DESC, t.chunk_id
-                LIMIT %s
-            ),
-            rrf AS (
-                SELECT COALESCE(s.chunk_id, l.chunk_id) AS chunk_id,
-                       %s * (1.0 / (%s + COALESCE(s.sem_rank, %s)))
-                       + (1 - %s) * (1.0 / (%s + COALESCE(l.lex_rank, %s))) AS rrf_score
-                FROM semantic_ranked s
-                FULL OUTER JOIN lexical_ranked l ON s.chunk_id = l.chunk_id
-            )
-            SELECT t.chunk_id, t.chunk_text, t.section_id, t.doc_id, t.metadata,
-                   r.rrf_score AS score
-            FROM rrf r
-            JOIN rag_chunks_test t ON t.chunk_id = r.chunk_id
-            ORDER BY r.rrf_score DESC, t.chunk_id
-            LIMIT %s
-        """
-        params: Tuple = (
-            query,
-            query,
-            query,  # parsed_query (3 refs)
-            embedding,
-            embedding,
-            top_k,  # semantic_ranked
-            top_k,  # lexical_ranked
-            alpha,
-            rrf_k,
-            top_k,  # rrf semantic part
-            alpha,
-            rrf_k,
-            top_k,  # rrf lexical part
-            top_k,  # final limit
-        )
-        return self._exec_chunks_test(sql, params, model_used)
-
-    # ------------------------------------------------------------------
-    # rag_chunks_test: lexical only
-    # ------------------------------------------------------------------
-
-    def _search_chunks_test_lexical(
-        self,
-        query: str,
-        *,
-        top_k: int | None = None,
-    ) -> List[RetrievedChunk]:
-        """Pure lexical search on rag_chunks_test using chunk_tsv."""
-        tsq = _TSQUERY_OR.format(p="%s")
-        top_k = top_k or self.config.initial_top_k
-
-        sql = f"""
-            WITH parsed_query AS (
-                SELECT ({tsq}) AS q
-            )
-            SELECT t.chunk_id, t.chunk_text, t.section_id, t.doc_id, t.metadata,
-                   ts_rank_cd(t.chunk_tsv, pq.q) AS score
-            FROM rag_chunks_test t
-            CROSS JOIN parsed_query pq
-            WHERE t.chunk_tsv @@ pq.q
-            ORDER BY ts_rank_cd(t.chunk_tsv, pq.q) DESC, t.chunk_id
-            LIMIT %s
-        """
-        params: Tuple = (query, query, query, top_k)
-        return self._exec_chunks_test(sql, params, "lexical")
-
-    # ------------------------------------------------------------------
-    # Shared helper for rag_chunks_test result parsing
-    # ------------------------------------------------------------------
-
-    def _exec_chunks_test(
-        self,
-        sql: str,
-        params: Tuple,
-        model_used: str,
-    ) -> List[RetrievedChunk]:
-        """Execute a query on rag_chunks_test and return parsed chunks."""
-        tbl = CHUNKS_TEST_TABLE
-        chunks: List[RetrievedChunk] = []
-        try:
-            with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
-                rows = conn.execute(sql, params).fetchall()
-
-            for row in rows:
-                meta = row.get("metadata") or {}
-                if isinstance(meta, str):
-                    import json
-
-                    meta = json.loads(meta)
-                if not isinstance(meta, dict):
-                    meta = {}
-                meta = dict(meta)
-                if row.get("doc_id") is not None:
-                    meta.setdefault("doc_id", row.get("doc_id"))
-
-                chunks.append(
-                    RetrievedChunk(
-                        chunk_id=str(row["chunk_id"]),
-                        text=row["chunk_text"] or "",
-                        score=float(row["score"]),
-                        table_source=tbl.publisher,
-                        metadata=meta,
-                        section_id=row.get("section_id"),
-                        embedding_model_used=model_used,
-                    )
-                )
-        except psycopg.Error as exc:
-            logger.warning("Query on rag_chunks_test failed: %s", exc)
 
         return chunks

@@ -222,22 +222,6 @@ def load_goldset_questions(
     ]
 
 
-def table_exists(dsn: str, table_name: str) -> bool:
-    with psycopg.connect(dsn, row_factory=dict_row) as conn:
-        row = conn.execute(
-            """
-            SELECT EXISTS (
-                SELECT 1
-                FROM information_schema.tables
-                WHERE table_schema = 'public'
-                  AND table_name = %s
-            ) AS value
-            """,
-            (table_name,),
-        ).fetchone()
-    return bool(row["value"]) if row else False
-
-
 def ensure_eval_schema(conn: psycopg.Connection[Any]) -> None:
     conn.execute(
         """
@@ -1330,9 +1314,6 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     runtime_config = get_rag_config()
     pipeline_config = runtime_config_to_rag_config(runtime_config)
     config_adjustments: list[str] = []
-    if pipeline_config.retrieval.enable_chunks_test and not table_exists(dsn, "rag_chunks_test"):
-        pipeline_config.retrieval.enable_chunks_test = False
-        config_adjustments.append("disabled missing optional table rag_chunks_test")
     config_hash = config_fingerprint(pipeline_config)
     git_sha = _git_sha()
     run_label = args.run_label or f"{datetime.now(tz=UTC).strftime('%Y%m%dT%H%M%SZ')}_{args.goldset_name}"

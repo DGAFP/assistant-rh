@@ -6,7 +6,7 @@ from assistant_rh_rag_pipeline.ministry_scope import MinistryScopeError, build_r
 from assistant_rh_rag_pipeline.pipeline import Pipeline, _RetrievalAttempt, _RunState
 from assistant_rh_rag_pipeline.retriever import Retriever
 
-from src.ui.user_groups_store import resolve_group_retrieval_scope, validate_ministry_policy
+from src.ui.user_groups_store import get_group_policy, resolve_group_retrieval_scope, validate_ministry_policy
 
 
 def test_mso_scope_resolves_to_ministry_plus_shared_tables() -> None:
@@ -14,7 +14,6 @@ def test_mso_scope_resolves_to_ministry_plus_shared_tables() -> None:
 
     assert scope.selected_ministry == "mso"
     assert scope.table_keys == ("mso", "service_public", "dgafp")
-    assert scope.include_chunks_test is False
 
 
 def test_unknown_ministry_fails_closed() -> None:
@@ -40,6 +39,36 @@ def test_group_ministry_policy_validation(allowed: list[str], default: str, is_v
         assert normalized_default == default
 
 
+def test_get_group_policy_fails_closed_on_configured_db_query_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A configured DB that fails a query must not fall back to the matte-only
+    seed policy: that would grant a seeded group's revoked ministries during a
+    transient outage (fail-open). It must report a distinct, user-facing
+    "temporarily unavailable" error instead of "introuvable"."""
+    monkeypatch.setattr("src.ui.user_groups_store._fetch_group", lambda _slug: (False, None))
+    monkeypatch.setattr("src.ui.user_groups_store.has_dsn", lambda: True)
+
+    policy = get_group_policy("dgafpsd1")
+
+    assert policy["valid"] is False
+    assert policy["allowed_ministries"] == []
+    assert "introuvable" not in policy["error"]
+    assert "matte" not in policy["allowed_ministries"]
+    assert "indisponible" in policy["error"].lower()
+
+
+def test_get_group_policy_uses_seed_fallback_when_no_dsn_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With no DSN at all (offline/local dev without Postgres), the seed
+    fallback must still work for seeded groups, matching list_groups()."""
+    monkeypatch.setattr("src.ui.user_groups_store._fetch_group", lambda _slug: (False, None))
+    monkeypatch.setattr("src.ui.user_groups_store.has_dsn", lambda: False)
+
+    policy = get_group_policy("dgafpsd1")
+
+    assert policy["valid"] is True
+    assert policy["allowed_ministries"] == ["matte"]
+    assert policy["default_ministry"] == "matte"
+
+
 def test_group_scope_resolver_rejects_unallowed_selected_ministry(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "src.ui.user_groups_store.get_group_policy",
@@ -57,7 +86,7 @@ def test_group_scope_resolver_rejects_unallowed_selected_ministry(monkeypatch: p
     assert "pas autorisé" in error
 
 
-def test_pipeline_scoped_retrieval_uses_scope_tables_and_disables_chunks_test(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_pipeline_scoped_retrieval_uses_scope_tables(monkeypatch: pytest.MonkeyPatch) -> None:
     pipe = Pipeline.__new__(Pipeline)
     pipe.config = SimpleNamespace(
         retrieval=SimpleNamespace(
@@ -68,7 +97,7 @@ def test_pipeline_scoped_retrieval_uses_scope_tables_and_disables_chunks_test(mo
             selector_retry_top_k=5,
         )
     )
-    pipe._retriever = SimpleNamespace(config=SimpleNamespace(tables=["matte", "service_public", "dgafp", "rgrh"], enable_chunks_test=True))
+    pipe._retriever = SimpleNamespace(config=SimpleNamespace(tables=["matte", "service_public", "dgafp", "rgrh"]))
     calls: list[dict] = []
 
     def fake_attempt(**kwargs):
@@ -99,7 +128,6 @@ def test_pipeline_scoped_retrieval_uses_scope_tables_and_disables_chunks_test(mo
     assert result == ["context"]
     assert calls[0]["active_tables"] == ["mso", "service_public", "dgafp"]
     assert calls[0]["force_hybrid_tables"] == {"dgafp"}
-    assert calls[0]["include_chunks_test"] is False
     assert calls[0]["strict_table_errors"] is True
 
 
@@ -107,7 +135,6 @@ def test_retriever_strict_unknown_table_key_fails() -> None:
     retriever = Retriever.__new__(Retriever)
     retriever.config = SimpleNamespace(
         tables=["unknown"],
-        enable_chunks_test=False,
         search_mode=SearchMode.SEMANTIC,
         initial_top_k=1,
     )

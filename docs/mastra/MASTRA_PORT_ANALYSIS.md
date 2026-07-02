@@ -53,7 +53,7 @@ Query → QueryProcessor → Retriever → SectionAggregator → ContextSelector
 
 ## Stage 2: Retriever (`retriever.py`)
 
-**Purpose**: Parallel semantic/hybrid search across 4-5 PostgreSQL tables via pgvector.
+**Purpose**: Parallel semantic/hybrid search across PostgreSQL chunk tables via pgvector.
 
 ### Parameters
 | Parameter | Default | Description |
@@ -63,7 +63,6 @@ Query → QueryProcessor → Retriever → SectionAggregator → ContextSelector
 | `initial_top_k` | `15` | Chunks per table (overridable via `rag_config`) |
 | `alpha` | `0.5` | RRF weight for hybrid (semantic vs lexical) |
 | `tables` | `["matte", "service_public", "dgafp", "rgrh"]` | Active chunk tables |
-| `enable_chunks_test` | `false` (config), `true` (prod) | Enable `rag_chunks_test` table |
 | `enable_chunk_reranker` | `false` | Chunk-level reranking (unused) |
 | `chunk_rerank_top_k` | `30` | Top-K for chunk reranking |
 
@@ -74,7 +73,6 @@ Query → QueryProcessor → Retriever → SectionAggregator → ContextSelector
 | `rag_chunks_service_public` | Service-Public | `hash_id` | `chunk_text` | `embedding_m3` | yes | `text_tsv` |
 | `rag_chunks_dgafp` | DGAFP | `chunk_id` | `chunk_text` | `embedding_m3` | no | `chunk_text_tsv` |
 | `rag_chunks_rgrh` | RGRH | `hash_id` | `chunk_text` | `embedding_m3` | no | `text_tsv` |
-| `rag_chunks_test` | ChunksTest | `chunk_id` | `chunk_text` | via `rag_chunk_embeddings` | yes | `chunk_tsv` |
 
 ### Embedding Providers
 | Provider | Model | Dimensions | Base URL |
@@ -267,7 +265,6 @@ Bronze → Silver → Gold → DB
 | `rag_chunks_service_public` | Service-Public chunks (same schema as matte) |
 | `rag_chunks_dgafp` | DGAFP regulatory chunks (`chunk_id` PK, no sections, has `number/cid/url`) |
 | `rag_chunks_rgrh` | RGRH chunks (same schema as matte) |
-| `rag_chunks_test` | Unified test table + `rag_chunk_embeddings` (1:1) |
 
 ### pgvector Columns
 | Column | Dimensions | Model |

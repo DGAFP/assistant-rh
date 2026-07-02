@@ -89,7 +89,6 @@ class RuntimeRAGConfig:
     reformulation_add_temporal: bool = True
     reformulation_include_acronyms: bool = True
     v3_tables: List[str] = field(default_factory=lambda: ["matte", "service_public", "dgafp", "rgrh"])
-    v3_enable_chunks_test: bool = True
     v3_context_mode: str = "standard"
     v3_token_budget: int = 8000
     v3_doc_entire_threshold: int = 3500
@@ -237,7 +236,6 @@ def runtime_config_to_rag_config(runtime_config: RuntimeRAGConfig | None = None)
     config.query_processor.enable_hyde = runtime_config.enable_hyde
 
     config.retrieval.tables = list(runtime_config.v3_tables or ["matte", "service_public", "dgafp", "rgrh"])
-    config.retrieval.enable_chunks_test = runtime_config.v3_enable_chunks_test
     config.retrieval.initial_top_k = runtime_config.v3_initial_top_k
     config.retrieval.alpha = runtime_config.v3_alpha
     search_mode_map = {"semantic": SearchMode.SEMANTIC, "hybrid": SearchMode.HYBRID, "lexical": SearchMode.LEXICAL}

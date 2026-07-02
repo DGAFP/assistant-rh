@@ -21,10 +21,7 @@ rag_documents (1)
     │       │
     │       ├── rag_chunks_matte (N)            # chunks avec section_id FK
     │       ├── rag_chunks_service_public (N)
-    │       ├── rag_chunks_rgrh (N)
-    │       └── rag_chunks_test (N)
-    │               │
-    │               └── rag_chunk_embeddings (1:1)  # embeddings séparés
+    │       └── rag_chunks_rgrh (N)
     │
     └── documents (legacy)       # table historique avec PDF en bytea
             liée via rag_documents.legacy_doc_id
@@ -38,7 +35,7 @@ rag_chunks_dgafp                 # standalone — pas de section_id
 
 ### 1.1 Tables de chunks (DE)
 
-Les chunks sont les unités de texte indexées pour la recherche sémantique. Quatre tables de production + une table de test partagent un schéma similaire mais avec des variations de noms de colonnes.
+Les chunks sont les unités de texte indexées pour la recherche sémantique. Les tables de production partagent un schéma similaire mais avec des variations de noms de colonnes.
 
 #### `rag_chunks_matte`
 
@@ -88,32 +85,6 @@ Chunks issus de la DGAFP (textes réglementaires Legifrance). Schéma distinct �
 
 > Utilisée par le `ContextBuilder` pour résoudre les références juridiques citées dans les sections MATTE/SP (lookup par `number` → `cid`, `url`).
 
-#### `rag_chunks_test`
-
-Table de test pour l'ingestion de nouveaux documents. Les embeddings sont stockés dans une table séparée `rag_chunk_embeddings`.
-
-| Colonne | Type | Description |
-|---------|------|-------------|
-| `chunk_id` | `VARCHAR(64)` PK | Identifiant unique |
-| `chunk_text` | `TEXT` | Contenu textuel |
-| `chunk_markdown` | `TEXT` | Contenu markdown |
-| `section_id` | `UUID` | FK vers `rag_sections.section_id` |
-| `doc_id` | `UUID` | FK vers `rag_documents.doc_id` |
-| `metadata` | `JSONB` | Métadonnées libres |
-| `chunk_tsv` | `tsvector` | Vecteur de recherche lexicale pondéré (titre A, heading B, contenu D) |
-
-#### `rag_chunk_embeddings`
-
-Embeddings associés aux chunks de `rag_chunks_test` (relation 1:1 avec FK CASCADE).
-
-| Colonne | Type | Description |
-|---------|------|-------------|
-| `chunk_id` | `VARCHAR(64)` PK/FK | FK vers `rag_chunks_test.chunk_id` (ON DELETE CASCADE) |
-| `embedding_raw` | `vector(1024)` | Embedding Albert |
-| `embedding_bge` | `vector(3584)` | Embedding BGE Multilingual Gemma2 (Scaleway) |
-
-**Index** : `idx_chunk_embeddings_bge_ivfflat` — IVFFlat sur `embedding_bge` (cosine, lists=100)
-
 #### Mapping des colonnes par table
 
 | Table | ID | Texte | Embed Albert | Embed BGE | has_sections |
@@ -122,9 +93,8 @@ Embeddings associés aux chunks de `rag_chunks_test` (relation 1:1 avec FK CASCA
 | `rag_chunks_service_public` | `hash_id` | `chunk_text` | `embedding_m3` | `embedding_bge_scw` | oui |
 | `rag_chunks_dgafp` | `chunk_id` | `chunk_text` | `embedding_m3` | `embedding_bge_scw` | non |
 | `rag_chunks_rgrh` | `hash_id` | `chunk_text` | `embedding_m3` | `embedding_bge_scw` | oui |
-| `rag_chunks_test` | `chunk_id` | `chunk_text` | via `rag_chunk_embeddings.embedding_raw` | via `rag_chunk_embeddings.embedding_bge` | oui |
 
-> Ce mapping est centralisé dans `src/rag_v3_clean/config.py` (`CHUNK_TABLES` et `CHUNKS_TEST_TABLE`).
+> Ce mapping est centralisé dans `packages/rag-pipeline/src/assistant_rh_rag_pipeline/config.py` (`CHUNK_TABLES`).
 
 ---
 
@@ -620,8 +590,6 @@ Récapitulatif des colonnes utilisant l'extension `pgvector` :
 | `rag_chunks_dgafp` | `embedding_bge_scw` | 3584 | BGE Scaleway |
 | `rag_chunks_rgrh` | `embedding_m3` | 1024 | Albert |
 | `rag_chunks_rgrh` | `embedding_bge_scw` | 3584 | BGE Scaleway |
-| `rag_chunk_embeddings` | `embedding_raw` | 1024 | Albert |
-| `rag_chunk_embeddings` | `embedding_bge` | 3584 | BGE Scaleway |
 | `goldset_questions_v2` | `embedding_albert` | 1024 | Albert |
 
 L'opérateur de distance cosinus `<=>` est utilisé pour la recherche sémantique. Le score de similarité est calculé comme `1 - (a <=> b)`.
