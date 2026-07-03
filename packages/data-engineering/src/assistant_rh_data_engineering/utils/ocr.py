@@ -75,11 +75,12 @@ class AlbertOcrProvider(OcrProvider):
         self.api_key = api_key or os.getenv("ALBERT_API_KEY", "")
         if not self.api_key:
             raise OcrError("ALBERT_API_KEY manquant pour l'OCR Albert.")
-        # Modèle optionnel: l'API applique son défaut si absent. La version de
-        # cache reste déterministe car dérivée de la configuration, pas de la
-        # réponse.
-        self.model = model or os.getenv("ALBERT_OCR_MODEL") or None
-        self.version = _sanitize_version(self.model or "default")
+        # L'endpoint /ocr n'a pas de modèle par défaut côté serveur (404
+        # "Model not found" sans modèle; smoke test 2026-07-03). Seuls les
+        # modèles de type image-to-text sont acceptés (LightOnOCR est
+        # image-text-to-text => 422, à intégrer via un provider dédié).
+        self.model = model or os.getenv("ALBERT_OCR_MODEL") or "mistral-ocr-2512"
+        self.version = _sanitize_version(self.model)
         self.timeout = timeout
 
     def ocr_pdf(self, pdf_bytes: bytes, document_name: str = "document.pdf") -> OcrResult:
@@ -94,8 +95,7 @@ class AlbertOcrProvider(OcrProvider):
                 "document_name": document_name,
             }
         }
-        if self.model:
-            body["model"] = self.model
+        body["model"] = self.model
 
         url = f"{self.base_url}/ocr"
         response = requests.post(

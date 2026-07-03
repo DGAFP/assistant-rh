@@ -74,7 +74,9 @@ def test_ocr_pdf_posts_base64_document_and_joins_pages(monkeypatch: pytest.Monke
     assert result.raw["model"] == "ocr-model-1"
 
 
-def test_ocr_pdf_omits_model_when_not_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ocr_pdf_defaults_to_mistral_ocr_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    # /ocr n'a pas de défaut serveur (404 sans modèle): le provider doit
+    # toujours envoyer un modèle, mistral-ocr-2512 par défaut.
     monkeypatch.delenv("ALBERT_OCR_MODEL", raising=False)
     seen: dict[str, Any] = {}
 
@@ -86,8 +88,8 @@ def test_ocr_pdf_omits_model_when_not_configured(monkeypatch: pytest.MonkeyPatch
 
     result = make_provider().ocr_pdf(b"%PDF-fake")
 
-    assert "model" not in seen["body"]
-    assert result.version == "default"
+    assert seen["body"]["model"] == "mistral-ocr-2512"
+    assert result.version == "mistral-ocr-2512"
 
 
 def test_ocr_pdf_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:

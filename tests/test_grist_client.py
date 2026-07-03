@@ -18,7 +18,6 @@ from assistant_rh_data_engineering.utils.grist import (
     GristError,
     ManifestRow,
     fetch_validated_manifest,
-    manifest_id_pattern,
     validate_manifest_columns,
     validate_manifest_records,
 )
@@ -143,13 +142,14 @@ def test_add_records_returns_created_ids(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_validate_manifest_columns_hard_fails_on_missing() -> None:
-    with pytest.raises(GristContractError, match="cle_bucket, statut"):
-        validate_manifest_columns(["ministere", "id_document", "titre", "date_publication"])
+    # Colonnes du référentiel réel, sans cle_bucket (la colonne à ajouter).
+    with pytest.raises(GristContractError, match="cle_bucket"):
+        validate_manifest_columns(["source_corpus", "uid", "titre_document", "abroge"])
 
 
 def test_fetch_validated_manifest_checks_columns_before_records(monkeypatch: pytest.MonkeyPatch) -> None:
     client = make_client()
-    monkeypatch.setattr(client, "list_columns", lambda table_id=None: ["ministere"])
+    monkeypatch.setattr(client, "list_columns", lambda table_id=None: ["source_corpus"])
 
     def fail_list_records(*args: object, **kwargs: object) -> None:
         raise AssertionError("les records ne doivent pas être lus si le contrat de colonnes échoue")
@@ -164,35 +164,49 @@ def test_fetch_validated_manifest_checks_columns_before_records(monkeypatch: pyt
 
 
 def manifest_fields(**overrides: Any) -> dict[str, Any]:
+    # Schéma du référentiel réel (table multi-corpus, colonnes existantes
+    # titre_document/source_corpus/uid/abroge + cle_bucket ajoutée).
     fields = {
-        "ministere": "mi",
-        "id_document": "MI-0001",
-        "titre": "Circulaire temps de travail",
-        "cle_bucket": "mi/MI-0001.pdf",
-        "statut": "en_vigueur",
+        "source_corpus": "MI",
+        "uid": "7361bf3024",
+        "titre_document": "Circulaire temps de travail",
+        "cle_bucket": "mi/circulaire-temps-travail.pdf",
+        "abroge": "",
         "date_publication": "2024-01-15",
+        "cle_matching": "colonne héritée ignorée",
     }
     fields.update(overrides)
     return fields
 
 
 def test_validate_manifest_records_accepts_valid_row_case_insensitive() -> None:
-    records = [{"id": 1, "fields": manifest_fields(ministere="MI", id_document="mi-0001")}]
+    records = [{"id": 1, "fields": manifest_fields()}]
 
-    result = validate_manifest_records(records, "Mi")
+    result = validate_manifest_records(records, "mi")
 
     assert result.ok
     row = result.valid[0]
     assert isinstance(row, ManifestRow)
-    assert row.short_id == "MI-0001"
+    assert row.short_id == "7361BF3024"
+    assert row.corpus == "MI"
     assert row.statut == "en_vigueur"
+    assert row.date_publication == "2024-01-15"
     assert row.record_id == 1
 
 
-def test_validate_manifest_records_ignores_other_ministries_without_rejecting() -> None:
+def test_validate_manifest_records_maps_abroge_oui_to_abroge() -> None:
+    records = [{"id": 1, "fields": manifest_fields(abroge="Oui")}]
+
+    result = validate_manifest_records(records, "mi")
+
+    assert result.valid[0].statut == "abroge"
+
+
+def test_validate_manifest_records_ignores_other_corpora_without_rejecting() -> None:
     records = [
         {"id": 1, "fields": manifest_fields()},
-        {"id": 2, "fields": manifest_fields(ministere="masa", id_document="MASA-0001")},
+        {"id": 2, "fields": manifest_fields(source_corpus="MASA", uid="aaaa000001")},
+        {"id": 3, "fields": manifest_fields(source_corpus="Interministériel/Légifrance", uid="bbbb000002")},
     ]
 
     result = validate_manifest_records(records, "mi")
@@ -201,15 +215,22 @@ def test_validate_manifest_records_ignores_other_ministries_without_rejecting() 
     assert result.rejected == []
 
 
+def test_validate_manifest_records_tolerates_missing_date_publication() -> None:
+    records = [{"id": 1, "fields": manifest_fields(date_publication="")}]
+
+    result = validate_manifest_records(records, "mi")
+
+    assert result.ok
+    assert result.valid[0].date_publication is None
+
+
 @pytest.mark.parametrize(
     ("overrides", "expected_error"),
     [
-        ({"id_document": "MI-12"}, "id_document invalide"),
-        ({"id_document": "MASA-0001"}, "id_document invalide"),
-        ({"titre": "  "}, "titre vide"),
+        ({"uid": " "}, "uid vide"),
+        ({"titre_document": "  "}, "titre_document vide"),
         ({"cle_bucket": ""}, "cle_bucket vide"),
-        ({"statut": "brouillon"}, "statut invalide"),
-        ({"date_publication": None}, "date_publication vide"),
+        ({"abroge": "peut-être"}, "abroge invalide"),
     ],
 )
 def test_validate_manifest_records_rejects_invalid_rows(overrides: dict[str, Any], expected_error: str) -> None:
@@ -222,10 +243,10 @@ def test_validate_manifest_records_rejects_invalid_rows(overrides: dict[str, Any
     assert any(expected_error in error for error in result.rejected[0].errors)
 
 
-def test_validate_manifest_records_rejects_duplicate_id_but_keeps_first() -> None:
+def test_validate_manifest_records_rejects_duplicate_uid_but_keeps_first() -> None:
     records = [
         {"id": 1, "fields": manifest_fields()},
-        {"id": 2, "fields": manifest_fields(titre="Autre titre")},
+        {"id": 2, "fields": manifest_fields(uid="7361BF3024", titre_document="Autre titre")},
     ]
 
     result = validate_manifest_records(records, "mi")
@@ -233,10 +254,3 @@ def test_validate_manifest_records_rejects_duplicate_id_but_keeps_first() -> Non
     assert [row.record_id for row in result.valid] == [1]
     assert result.rejected[0].record_id == 2
     assert any("doublon" in error for error in result.rejected[0].errors)
-
-
-def test_manifest_id_pattern_is_ministry_scoped() -> None:
-    assert manifest_id_pattern("mi").match("MI-0042")
-    assert not manifest_id_pattern("mi").match("MI-42")
-    assert manifest_id_pattern("masa").match("MASA-0042")
-    assert not manifest_id_pattern("masa").match("MI-0042")
