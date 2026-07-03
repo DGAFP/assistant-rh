@@ -58,17 +58,11 @@ class ScalewayObjectStorageSync:
     def __init__(self, config: ObjectStorageConfig):
         self.config = config
         if not shutil.which("aws"):
-            raise RuntimeError(
-                "aws CLI is required to sync pipeline artifacts "
-                "to Scaleway Object Storage."
-            )
+            raise RuntimeError("aws CLI is required to sync pipeline artifacts to Scaleway Object Storage.")
 
     def _base_env(self) -> dict[str, str]:
         if not self.config.access_key or not self.config.secret_key:
-            raise RuntimeError(
-                "SCW_ACCESS_KEY and SCW_SECRET_KEY are required "
-                "for Object Storage sync."
-            )
+            raise RuntimeError("SCW_ACCESS_KEY and SCW_SECRET_KEY are required for Object Storage sync.")
         env = os.environ.copy()
         env["AWS_ACCESS_KEY_ID"] = self.config.access_key
         env["AWS_SECRET_ACCESS_KEY"] = self.config.secret_key
@@ -210,6 +204,22 @@ class ScalewayObjectStorageSync:
                 "-",
             ]
         )
+
+    def upload_object(self, source: Path, bucket: str, key: str) -> ObjectStorageObject:
+        subprocess.run(
+            [
+                "aws",
+                "--endpoint-url",
+                self.config.endpoint_url,
+                "s3",
+                "cp",
+                str(source),
+                f"s3://{bucket}/{key}",
+            ],
+            check=True,
+            env=self._base_env(),
+        )
+        return ObjectStorageObject(bucket=bucket, key=key)
 
     def download_object(self, obj: ObjectStorageObject, destination: Path) -> Path:
         destination.parent.mkdir(parents=True, exist_ok=True)
