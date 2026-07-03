@@ -49,12 +49,13 @@ Each: `config.py` (SOURCE/PUBLISHER, chunk table, lake paths, uuid5 namespace, r
 - `jobs/pdf_sources_medallion.py` — one orchestrator, `--ministere {mi,masa,matte,mso}` + SP-style flags + `--doc-id`, `--dry-run`, `--skip-grist-writeback`, `--ocr-provider`, `--force-reocr`. Medallion **and** `--ingest` in one job (small volumes).
 - CLI: `("mi"|"masa"|"matte"|"mso", "medallion")` → `jobs.pdf_sources_medallion` with `default_args=("--ministere", …)`; embedding backfill manifests `config/{mi,masa,mso}_embedding_tables.json` (matte exists).
 - `Dockerfile.pdf_sources_pipeline` (no sentence-transformers → light image), build workflow, 4 entries in `.github/data-engineering-jobs.json`, `pdf_sources` domain in `data_engineering_plan.py`, `config/scaleway_serverless_job_pdf_sources_*.json`, cron workflow `.github/workflows/data-engineering-pdf-sources-cron.yml` (weekly `0 4 * * 1` + dispatch ministere/env/dry_run).
-- Legi/SP whitelist: existing `jobs/{legifrance,service_public}_medallion.py` gain an optional Grist-whitelist read that widens their document filter (ids `LEGIARTI…`/`FXXXX`).
+- Legi/SP additions: existing `jobs/{legifrance,service_public}_medallion.py` gain an optional read of the Grist referential (rows with `source_corpus` legi/SP) that widens their document filter (ids `LEGIARTI…`/`FXXXX`).
 
-### Grist contract
-Read: `ministere` (mi/masa/matte/mso) · `id_document` (unique, regex `^(MI|MASA|MATTE|MSO)-\d{4}$` → `short_id`) · `titre` · `cle_bucket` · `statut` (`en_vigueur`/`abroge`) · `date_publication`; optional `date_abrogation`, `url_source`, `thematique`, `sous_thematique`, `type_document`.
+### Grist contract — révisé 2026-07-03 (Phase A, vérifié sur le doc réel)
+**Table unique : le référentiel existant EST le manifest.** Il couvre déjà tous les corpus via `source_corpus` (MI, MASA, MATTE, MSO, RGRH, Service-public, Interministériel/Légifrance) avec un `uid` stable par ligne — pas de table manifest ni de table whitelist séparées. Implémenté dans `utils/grist.py`.
+Read (REQUIRED_MANIFEST_COLUMNS) : `source_corpus` (discriminant, filtrage par corpus insensible à la casse) · `uid` (unique → `short_id`) · `titre_document` · `cle_bucket` (colonne ajoutée — lien vers la dropzone ; ligne sans `cle_bucket` ⇒ rejetée ⇒ c'est la liste des PDF à déposer) · `abroge` (`oui` → abrogé ; vide/`non` → en vigueur). `date_publication` ajoutée mais **optionnelle** (jamais bloquante). Les colonnes du suivi manuel (`cle_matching`, `statut_cible`, `statut_ingestion_reelle`, …) sont ignorées par le pipeline.
 Writeback: `statut_ingestion` (`ok`/`erreur`/`ignore_inchange`/`supprime`) · `derniere_ingestion` · `nb_chunks` · `hash_contenu` · `erreur_ingestion`.
-Separate whitelist table for legi/SP additions: `corpus` (legifrance/service_public), `id_texte`, `thematique`, `demandeur`, `date_demande`, writeback `statut_ingestion`.
+Ajouts unitaires legi/SP (Phase E) : lignes du même référentiel (`source_corpus` Légifrance/Service-public, ids dans `id_extraction`/`legitext`/`jorftext`) — pas de table à part.
 
 ### Buckets / bronze layout
 - New dropzone bucket `assistant-rh-sources-pdf` (private, versioned): `mi/…`, `masa/…`, `matte/…`, `mso/…` — written only by the admin page.
@@ -63,7 +64,7 @@ Separate whitelist table for legi/SP additions: `corpus` (legifrance/service_pub
 
 ### Reconcile algorithm (per ministry run)
 1. Fetch manifest → contract check → valid/rejected split (rejected ⇒ writeback `erreur`).
-2. `expected = {id_document: row | statut=en_vigueur}`; `current = list_short_ids_with_checksum(source)`.
+2. `expected = {uid: row | statut=en_vigueur}`; `current = list_short_ids_with_checksum(source)`.
 3. Per expected: download → sha256; unchanged (hash match ∧ chunks>0) ⇒ `ignore_inchange`; else OCR (cache-hit) → silver → gold → upsert docs/sections + `replace_chunks_by_short_ids` atomically ⇒ writeback `ok`. Per-doc exceptions caught ⇒ `erreur`, run continues, non-zero exit at end.
 4. `orphans = current − expected` ⇒ `delete_documents_cascade`, writeback `supprime` on abrogé rows, all logged. `--dry-run` prints the full plan without writing.
 5. Insert `rag_ingestion_runs` summary row.
@@ -81,8 +82,8 @@ Separate whitelist table for legi/SP additions: `corpus` (legifrance/service_pub
 - `jobs/rag_health_exporter.py`: add tables + `rag_ingestion_runs` + drift metrics `assistant_rh_rag_ingestion_{expected,ingested,skipped,failed,deleted}_total{ministere=…}` + last-run timestamp.
 
 ### Admin import page — `apps/streamlit-ui/pages/NN_Admin_Import.py` (admin-gated like existing admin pages)
-- **PDF path**: upload + ministère/thème/sous-thème → sha256 → dropzone PUT (`{ministere}/{id_document}.pdf`) → Grist row (auto `id_document`, `statut=en_vigueur`, `cle_bucket`) → "ingéré au prochain run planifié". Bucket+Grist atomic at entry.
-- **Legi/SP path**: input `LEGIARTI…`/`FXXXX` (+ thème) → format validation → whitelist row in Grist. Existing pipelines pick it up at next run.
+- **PDF path**: upload + ministère/thème/sous-thème → sha256 → dropzone PUT (`{ministere}/{nom-fichier}.pdf`) → Grist row (auto `uid`, `source_corpus`, `cle_bucket`, `abroge` vide) → "ingéré au prochain run planifié". Bucket+Grist atomic at entry.
+- **Legi/SP path**: input `LEGIARTI…`/`FXXXX` (+ thème) → format validation → row in the same referential (`source_corpus` legi/SP + colonnes id existantes). Existing pipelines pick it up at next run.
 - Reuses `GristClient` + `PdfSourceStore`; S3 + Grist credentials on the UI host.
 
 ## Phases (reviewable PRs)

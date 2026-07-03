@@ -112,12 +112,19 @@ class PdfSourceStore:
         except json.JSONDecodeError as exc:
             raise PdfStoreError(f"Cache OCR corrompu: {obj.uri}") from exc
 
+        # Mêmes garde-fous de forme que le chemin live (utils/ocr.py): un JSON
+        # valide mais mal formé doit échouer explicitement, pas se propager.
+        pages = payload.get("pages") or []
+        raw = payload.get("raw") or {}
+        if not isinstance(payload, dict) or not isinstance(pages, list) or not isinstance(raw, dict):
+            raise PdfStoreError(f"Cache OCR corrompu (forme inattendue): {obj.uri}")
+
         return OcrResult(
             provider=str(payload.get("provider") or provider),
             version=str(payload.get("version") or version),
             markdown=str(payload.get("markdown") or ""),
-            pages=list(payload.get("pages") or []),
-            raw=dict(payload.get("raw") or {}),
+            pages=pages,
+            raw=raw,
         )
 
     def put_ocr(

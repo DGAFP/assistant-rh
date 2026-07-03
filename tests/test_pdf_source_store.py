@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -157,6 +158,19 @@ def test_corrupted_ocr_cache_raises(store: tuple[PdfSourceStore, FakeSync]) -> N
     sync.objects[f"s3://{keys.bucket}/{keys.json_key}"] = b"pas du json"
 
     with pytest.raises(PdfStoreError, match="Cache OCR corrompu"):
+        pdf_store.get_cached_ocr("staging", "mi", "albert", "ocr-model-1", sha)
+
+
+def test_wrong_shaped_ocr_cache_raises_instead_of_mangling(store: tuple[PdfSourceStore, FakeSync]) -> None:
+    # JSON valide mais pages=str: sans garde-fou, list("none") char-splitterait.
+    pdf_store, sync = store
+    sha = sha256_bytes(b"%PDF-fake")
+    keys = pdf_store.ocr_cache_keys("staging", "mi", "albert", "ocr-model-1", sha)
+    sync.objects[f"s3://{keys.bucket}/{keys.json_key}"] = json.dumps(
+        {"provider": "albert", "version": "ocr-model-1", "markdown": "x", "pages": "none", "raw": {}}
+    ).encode("utf-8")
+
+    with pytest.raises(PdfStoreError, match="forme inattendue"):
         pdf_store.get_cached_ocr("staging", "mi", "albert", "ocr-model-1", sha)
 
 

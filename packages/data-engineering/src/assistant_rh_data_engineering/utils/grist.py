@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -23,12 +22,6 @@ REQUIRED_MANIFEST_COLUMNS: tuple[str, ...] = (
     "abroge",  # 'oui' => abrogé; vide/'non' => en vigueur
 )
 
-# Colonnes optionnelles: validées si présentes, jamais bloquantes.
-OPTIONAL_MANIFEST_COLUMNS: tuple[str, ...] = (
-    "date_publication",
-    "sous_thematique",
-)
-
 # Colonnes écrites par le pipeline (writeback de statut d'ingestion,
 # distinctes du suivi manuel statut_ingestion_reelle existant).
 WRITEBACK_MANIFEST_COLUMNS: tuple[str, ...] = (
@@ -42,14 +35,9 @@ WRITEBACK_MANIFEST_COLUMNS: tuple[str, ...] = (
 MANIFEST_STATUTS: tuple[str, ...] = ("en_vigueur", "abroge")
 
 # Valeurs admises pour la colonne abroge du référentiel.
+# (La validation des ajouts unitaires Légifrance/SP arrive en Phase E,
+# issue #249, avec le code qui la consomme.)
 _ABROGE_VALUES: dict[str, str] = {"": "en_vigueur", "non": "en_vigueur", "oui": "abroge"}
-
-# Whitelist d'ajouts unitaires Légifrance / Service-Public.
-REQUIRED_WHITELIST_COLUMNS: tuple[str, ...] = ("corpus", "id_texte")
-WHITELIST_ID_PATTERNS: dict[str, re.Pattern[str]] = {
-    "legifrance": re.compile(r"^(LEGIARTI|LEGITEXT|JORFTEXT)\d{12}$"),
-    "service_public": re.compile(r"^F\d{1,6}$"),
-}
 
 
 class GristError(RuntimeError):

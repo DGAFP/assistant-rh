@@ -402,14 +402,18 @@ class RagDbWriter:
         short_ids: list[str],
         table: str | None = None,
         *,
-        source: str | None = None,
+        source: str,
     ) -> dict[str, int]:
         """Supprime chunks + sections + documents pour des short_ids, en une transaction.
 
         Utilisé par la réconciliation (document retiré du manifest ou abrogé).
-        Le filtre source évite de toucher un document homonyme d'une autre
-        source si les short_ids ne sont pas globalement uniques.
+        source est obligatoire: les short_ids ne sont pas garantis uniques
+        entre corpus (lignes legacy MATTE/MSO comprises) et un appel non
+        filtré supprimerait silencieusement les documents homonymes d'une
+        autre source.
         """
+        if not source or not source.strip():
+            raise ValueError("source obligatoire pour delete_documents_cascade (garde anti-suppression inter-corpus).")
         resolved_table = self._require_chunk_table(table)
         normalized_short_ids = self._normalize_short_ids(short_ids)
         if not normalized_short_ids:
@@ -417,11 +421,8 @@ class RagDbWriter:
 
         with self._connect() as conn:
             with conn.cursor() as cur:
-                doc_filter = sql.SQL("UPPER(TRIM(short_id)) = ANY(%s) AND short_id IS NOT NULL")
-                params: list[Any] = [normalized_short_ids]
-                if source:
-                    doc_filter += sql.SQL(" AND LOWER(TRIM(source)) = %s")
-                    params.append(source.strip().lower())
+                doc_filter = sql.SQL("UPPER(TRIM(short_id)) = ANY(%s) AND short_id IS NOT NULL AND LOWER(TRIM(source)) = %s")
+                params: list[Any] = [normalized_short_ids, source.strip().lower()]
 
                 cur.execute(
                     sql.SQL("SELECT doc_id FROM {}.{} WHERE {}").format(

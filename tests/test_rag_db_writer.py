@@ -182,10 +182,20 @@ def test_delete_documents_cascade_deletes_in_order_and_commits_once(monkeypatch:
     assert "rag_documents" in calls[2]["query"]
 
 
+def test_delete_documents_cascade_requires_source() -> None:
+    writer, calls, _ = make_writer([])
+
+    with pytest.raises(TypeError):
+        writer.delete_documents_cascade(["MI-0001"])  # type: ignore[call-arg]
+    with pytest.raises(ValueError, match="source obligatoire"):
+        writer.delete_documents_cascade(["MI-0001"], source="  ")
+    assert calls == []
+
+
 def test_delete_documents_cascade_noop_on_empty_short_ids() -> None:
     writer, calls, events = make_writer([])
 
-    counts = writer.delete_documents_cascade(["  ", ""])
+    counts = writer.delete_documents_cascade(["  ", ""], source="mi")
 
     assert counts == {"chunks": 0, "sections": 0, "documents": 0}
     assert calls == []
@@ -196,7 +206,7 @@ def test_delete_documents_cascade_skips_section_and_doc_deletes_without_matches(
     writer, calls, events = make_writer([{"rows": []}])
     monkeypatch.setattr(writer, "_delete_chunks_by_short_ids", lambda conn, short_ids, table=None: 0)
 
-    counts = writer.delete_documents_cascade(["MI-0009"])
+    counts = writer.delete_documents_cascade(["MI-0009"], source="mi")
 
     assert counts == {"chunks": 0, "sections": 0, "documents": 0}
     assert len(calls) == 1  # seul le SELECT doc_id a tourné
