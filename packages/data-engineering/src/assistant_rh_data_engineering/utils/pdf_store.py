@@ -114,9 +114,11 @@ class PdfSourceStore:
 
         # Mêmes garde-fous de forme que le chemin live (utils/ocr.py): un JSON
         # valide mais mal formé doit échouer explicitement, pas se propager.
+        if not isinstance(payload, dict):
+            raise PdfStoreError(f"Cache OCR corrompu (forme inattendue): {obj.uri}")
         pages = payload.get("pages") or []
         raw = payload.get("raw") or {}
-        if not isinstance(payload, dict) or not isinstance(pages, list) or not isinstance(raw, dict):
+        if not isinstance(pages, list) or not isinstance(raw, dict):
             raise PdfStoreError(f"Cache OCR corrompu (forme inattendue): {obj.uri}")
 
         return OcrResult(

@@ -173,6 +173,11 @@ def test_wrong_shaped_ocr_cache_raises_instead_of_mangling(store: tuple[PdfSourc
     with pytest.raises(PdfStoreError, match="forme inattendue"):
         pdf_store.get_cached_ocr("staging", "mi", "albert", "ocr-model-1", sha)
 
+    # JSON valide mais pas un objet (scalaire/liste): PdfStoreError, pas AttributeError.
+    sync.objects[f"s3://{keys.bucket}/{keys.json_key}"] = b'["pas", "un", "objet"]'
+    with pytest.raises(PdfStoreError, match="forme inattendue"):
+        pdf_store.get_cached_ocr("staging", "mi", "albert", "ocr-model-1", sha)
+
 
 def test_put_pdf_archives_under_content_hash(tmp_path: Path, store: tuple[PdfSourceStore, FakeSync]) -> None:
     pdf_store, sync = store
