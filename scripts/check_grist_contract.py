@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Contrôle en lecture seule du contrat de manifest Grist (issue #245).
+"""Contrôle en lecture seule du contrat d'ingestion Grist (issue #245).
 
-Vérifie que la table manifest expose les colonnes requises (+ writeback) et
+Vérifie que la table manifest expose les colonnes requises et de writeback, puis
 valide les lignes par ministère. N'écrit rien, ni dans Grist ni en base.
 
 Usage:
@@ -53,7 +53,8 @@ def main() -> int:
 
     missing_writeback = [column for column in WRITEBACK_MANIFEST_COLUMNS if column not in columns]
     if missing_writeback:
-        print(f"⚠ Colonnes de writeback absentes (à créer): {', '.join(missing_writeback)}")
+        print(f"✗ Colonnes de writeback absentes: {', '.join(missing_writeback)}")
+        exit_code = 1
     else:
         print("✓ Colonnes de writeback présentes")
 

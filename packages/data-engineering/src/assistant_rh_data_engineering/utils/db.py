@@ -72,7 +72,10 @@ class RagDbWriter:
                 """,
                 (self.schema, table),
             )
-            return {row[0]: (row[1], row[2]) for row in cur.fetchall()}
+            columns = {row[0]: (row[1], row[2]) for row in cur.fetchall()}
+            if not columns:
+                raise RuntimeError(f"La table {self.schema}.{table} n'existe pas ou n'a aucune colonne.")
+            return columns
 
     def _index_predicate(self, conn: psycopg.Connection, index_name: str) -> str | None:
         with conn.cursor() as cur:
@@ -254,10 +257,31 @@ class RagDbWriter:
             query = sql.SQL(
                 """
                 DELETE FROM {}.{}
-                WHERE short_id = ANY(%s)
+                WHERE UPPER(TRIM(short_id)) = ANY(%s)
+                  AND short_id IS NOT NULL
                 """
             ).format(sql.Identifier(self.schema), sql.Identifier(resolved_table))
             cur.execute(query, (normalized_short_ids,))
+            return int(cur.rowcount or 0)
+
+    def _delete_chunks_by_doc_ids(
+        self,
+        conn: psycopg.Connection,
+        doc_ids: list[str],
+        table: str | None = None,
+    ) -> int:
+        resolved_table = self._require_chunk_table(table)
+        if not doc_ids:
+            return 0
+
+        with conn.cursor() as cur:
+            query = sql.SQL(
+                """
+                DELETE FROM {}.{}
+                WHERE source_document_id = ANY(%s::uuid[])
+                """
+            ).format(sql.Identifier(self.schema), sql.Identifier(resolved_table))
+            cur.execute(query, (doc_ids,))
             return int(cur.rowcount or 0)
 
     def delete_chunks_by_short_ids(
@@ -392,8 +416,6 @@ class RagDbWriter:
             return {"chunks": 0, "sections": 0, "documents": 0}
 
         with self._connect() as conn:
-            deleted_chunks = self._delete_chunks_by_short_ids(conn, normalized_short_ids, table=resolved_table)
-
             with conn.cursor() as cur:
                 doc_filter = sql.SQL("UPPER(TRIM(short_id)) = ANY(%s) AND short_id IS NOT NULL")
                 params: list[Any] = [normalized_short_ids]
@@ -411,9 +433,12 @@ class RagDbWriter:
                 )
                 doc_ids = [str(row[0]) for row in cur.fetchall()]
 
+                deleted_chunks = 0
                 deleted_sections = 0
                 deleted_documents = 0
                 if doc_ids:
+                    deleted_chunks = self._delete_chunks_by_doc_ids(conn, doc_ids, table=resolved_table)
+
                     cur.execute(
                         sql.SQL("DELETE FROM {}.{} WHERE doc_id = ANY(%s::uuid[])").format(
                             sql.Identifier(self.schema),

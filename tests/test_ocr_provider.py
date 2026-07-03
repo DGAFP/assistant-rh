@@ -103,6 +103,38 @@ def test_ocr_pdf_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
         make_provider().ocr_pdf(b"%PDF-fake", document_name="MI-0001.pdf")
 
 
+def test_ocr_pdf_wraps_transport_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_post(url: str, headers: dict, json: dict, timeout: int) -> None:
+        raise ocr_module.requests.RequestException("timeout")
+
+    monkeypatch.setattr(ocr_module.requests, "post", fail_post)
+
+    with pytest.raises(OcrError, match="impossible"):
+        make_provider().ocr_pdf(b"%PDF-fake", document_name="MI-0001.pdf")
+
+
+def test_ocr_pdf_wraps_invalid_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    class InvalidJsonResponse(FakeResponse):
+        def json(self) -> dict[str, Any]:
+            raise ValueError("not json")
+
+    monkeypatch.setattr(ocr_module.requests, "post", lambda url, headers, json, timeout: InvalidJsonResponse({}))
+
+    with pytest.raises(OcrError, match="JSON invalide"):
+        make_provider().ocr_pdf(b"%PDF-fake", document_name="MI-0001.pdf")
+
+
+def test_ocr_pdf_wraps_malformed_page_indexes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        ocr_module.requests,
+        "post",
+        lambda url, headers, json, timeout: FakeResponse({"pages": [{"index": "not-an-int", "markdown": "texte"}]}),
+    )
+
+    with pytest.raises(OcrError, match="index de page invalide"):
+        make_provider().ocr_pdf(b"%PDF-fake", document_name="MI-0001.pdf")
+
+
 def test_ocr_pdf_raises_when_no_text_extracted(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         ocr_module.requests,

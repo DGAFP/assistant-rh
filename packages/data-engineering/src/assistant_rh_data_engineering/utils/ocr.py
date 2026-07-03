@@ -98,20 +98,36 @@ class AlbertOcrProvider(OcrProvider):
         body["model"] = self.model
 
         url = f"{self.base_url}/ocr"
-        response = requests.post(
-            url,
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
-            json=body,
-            timeout=self.timeout,
-        )
+        try:
+            response = requests.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+                timeout=self.timeout,
+            )
+        except requests.RequestException as exc:
+            raise OcrError(f"POST {url} ({document_name}, modèle {self.model}) impossible: {exc}") from exc
         if response.status_code >= 400:
             raise OcrError(f"POST {url} ({document_name}) -> HTTP {response.status_code}: {response.text[:500]}")
 
-        payload = response.json()
-        pages = sorted(payload.get("pages") or [], key=lambda page: int(page.get("index") or 0))
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise OcrError(f"Réponse OCR JSON invalide pour {document_name} (modèle {self.model})") from exc
+        if not isinstance(payload, dict):
+            raise OcrError(f"Réponse OCR inattendue pour {document_name} (modèle {self.model}): objet JSON attendu")
+
+        raw_pages = payload.get("pages") or []
+        if not isinstance(raw_pages, list):
+            raise OcrError(f"Réponse OCR inattendue pour {document_name} (modèle {self.model}): pages doit être une liste")
+
+        try:
+            pages = sorted(raw_pages, key=lambda page: int(page.get("index") or 0))
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise OcrError(f"Réponse OCR invalide pour {document_name} (modèle {self.model}): index de page invalide") from exc
         markdown = "\n\n".join(str(page.get("markdown") or "").strip() for page in pages if (page.get("markdown") or "").strip())
         if not markdown:
             raise OcrError(f"OCR sans texte exploitable pour {document_name} ({len(pages)} pages)")

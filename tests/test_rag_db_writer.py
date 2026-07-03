@@ -83,6 +83,26 @@ def test_service_public_writer_keeps_its_chunk_table() -> None:
     assert writer.chunk_table == "rag_chunks_service_public"
 
 
+def test_column_types_raises_explicitly_when_table_is_missing() -> None:
+    writer, _, _ = make_writer([{"rows": []}])
+    connection = writer._connect()
+
+    with pytest.raises(RuntimeError, match="staging.rag_chunks_absent"):
+        writer._column_types(connection, "rag_chunks_absent")
+
+
+def test_delete_chunks_by_short_ids_normalizes_database_values_too() -> None:
+    writer, calls, _ = make_writer([{"rowcount": 3}])
+    connection = writer._connect()
+
+    deleted = writer._delete_chunks_by_short_ids(connection, [" mi-0001 ", "MI-0002"])
+
+    assert deleted == 3
+    assert calls[0]["params"] == (["MI-0001", "MI-0002"],)
+    assert "UPPER(TRIM(short_id))" in calls[0]["query"]
+    assert "short_id IS NOT NULL" in calls[0]["query"]
+
+
 def test_list_short_ids_with_checksum_reads_checksum_when_column_exists(monkeypatch: pytest.MonkeyPatch) -> None:
     writer, calls, _ = make_writer(
         [
@@ -117,6 +137,27 @@ def test_list_short_ids_with_checksum_tolerates_missing_checksum_column(monkeypa
     assert "SQL('NULL')" in calls[0]["query"]
 
 
+def test_delete_documents_cascade_deletes_chunks_only_for_matched_documents() -> None:
+    script = [
+        {"rows": [("doc-uuid-1",), ("doc-uuid-2",)]},  # SELECT doc_id with source filter
+        {"rowcount": 7},  # DELETE chunks by source_document_id
+        {"rowcount": 5},  # DELETE rag_sections
+        {"rowcount": 2},  # DELETE rag_documents
+    ]
+    writer, calls, events = make_writer(script)
+
+    counts = writer.delete_documents_cascade(["mi-0001", " MI-0002 "], source="MI")
+
+    assert counts == {"chunks": 7, "sections": 5, "documents": 2}
+    assert events == ["commit"]
+    assert "rag_documents" in calls[0]["query"]
+    assert calls[0]["params"] == [["MI-0001", "MI-0002"], "mi"]
+    assert "source_document_id" in calls[1]["query"]
+    assert calls[1]["params"] == (["doc-uuid-1", "doc-uuid-2"],)
+    assert "rag_sections" in calls[2]["query"]
+    assert "rag_documents" in calls[3]["query"]
+
+
 def test_delete_documents_cascade_deletes_in_order_and_commits_once(monkeypatch: pytest.MonkeyPatch) -> None:
     script = [
         {"rows": [("doc-uuid-1",), ("doc-uuid-2",)]},  # SELECT doc_id
@@ -126,8 +167,8 @@ def test_delete_documents_cascade_deletes_in_order_and_commits_once(monkeypatch:
     writer, calls, events = make_writer(script)
     monkeypatch.setattr(
         writer,
-        "_delete_chunks_by_short_ids",
-        lambda conn, short_ids, table=None: 7,
+        "_delete_chunks_by_doc_ids",
+        lambda conn, doc_ids, table=None: 7,
     )
 
     counts = writer.delete_documents_cascade(["mi-0001", " MI-0002 "], source="MI")
