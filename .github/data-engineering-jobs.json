@@ -120,6 +120,7 @@
       "local_storage_capacity": 4096,
       "job_timeout": "7200s",
       "auto_start_on_push": false,
+      "requires_ingestion": true,
       "env_groups": ["object_storage", "postgres", "grist", "albert", "embeddings_api"],
       "args": [
         "mi",
@@ -195,6 +196,7 @@
       "local_storage_capacity": 8192,
       "job_timeout": "14400s",
       "requires_embeddings": true,
+      "requires_explicit_embedding_source": true,
       "auto_start_on_push": false,
       "env_groups": ["postgres", "embeddings_api"],
       "args": [

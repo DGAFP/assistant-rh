@@ -274,15 +274,13 @@ def should_run(spec: dict[str, Any], args: argparse.Namespace) -> bool:
     if os.getenv("GITHUB_EVENT_NAME") == "push" and spec.get("auto_start_on_push") is False:
         return False
     if domain == "embeddings":
-        embedding_source = getattr(args, "embedding_source", "all")
+        embedding_source = getattr(args, "embedding_source", "all") or "all"
         key = str(spec.get("key") or "")
-        if embedding_source == "service_public" and key != "embeddings-service-public":
+        if embedding_source != "all" and key != f"embeddings-{embedding_source.replace('_', '-')}":
             return False
-        if embedding_source == "legifrance" and key != "embeddings-legifrance":
-            return False
-        if embedding_source == "matte" and key != "embeddings-matte":
-            return False
-        if embedding_source == "mi" and key != "embeddings-mi":
+        # Backfills à sélection explicite (ex: embeddings-mi, dont la table
+        # n'existe pas encore partout): jamais démarrés par embedding_source=all.
+        if embedding_source == "all" and spec.get("requires_explicit_embedding_source"):
             return False
     if spec.get("requires_ingestion") and not args.run_ingestion:
         return False
@@ -393,6 +391,8 @@ def upsert_and_start_jobs(args: argparse.Namespace) -> int:
         env_optional("SCW_SECRET_KEY"),
         env_optional("SCW_POSTGRES_DSN"),
         env_optional("SCALEWAY_API_KEY"),
+        env_optional("GRIST_API_KEY"),
+        env_optional("ALBERT_API_KEY"),
     ]
     context = {
         "target_env": args.target_env,

@@ -1353,3 +1353,70 @@ def test_scaleway_job_environment_object_storage_includes_dropzone_bucket(monkey
     environment = scaleway_data_jobs.job_environment({"env_groups": ["object_storage"]}, "staging", "fr-par")
 
     assert environment["SCW_BUCKET_SOURCES_PDF"] == "assistant-rh-sources-pdf"
+
+
+def test_workflow_dispatch_all_does_not_select_pdf_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Phase B (#246): le corpus MI est à sélection explicite — un dispatch
+    # source=all ne doit ni exiger les secrets Grist/Albert ni écrire MI.
+    output_path = tmp_path / "github-output.txt"
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("INPUT_SOURCE", "all")
+    monkeypatch.delenv("INPUT_RUN_EMBEDDINGS", raising=False)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+
+    assert data_engineering_plan.main() == 0
+
+    outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
+    matrix = json.loads(outputs["matrix"])
+    assert outputs["pdf_sources"] == "false"
+    assert "pdf-sources-pipeline" not in [item["image"] for item in matrix["include"]]
+
+
+def test_embeddings_mi_requires_explicit_embedding_source() -> None:
+    spec = {
+        "key": "embeddings-mi",
+        "domain": "embeddings",
+        "requires_embeddings": True,
+        "requires_explicit_embedding_source": True,
+    }
+    base = ["--target-env", "staging", "--image-tag", "staging-x", "--embeddings", "true", "--run-embeddings", "true"]
+
+    args_all = scaleway_data_jobs.build_parser().parse_args([*base, "--embedding-source", "all"])
+    assert scaleway_data_jobs.should_run(spec, args_all) is False
+
+    args_mi = scaleway_data_jobs.build_parser().parse_args([*base, "--embedding-source", "mi"])
+    assert scaleway_data_jobs.should_run(spec, args_mi) is True
+
+
+def test_embedding_source_gate_is_generic_across_sources() -> None:
+    base = ["--target-env", "staging", "--image-tag", "staging-x", "--embeddings", "true", "--run-embeddings", "true"]
+    args = scaleway_data_jobs.build_parser().parse_args([*base, "--embedding-source", "service_public"])
+
+    sp_spec = {"key": "embeddings-service-public", "domain": "embeddings", "requires_embeddings": True}
+    lf_spec = {"key": "embeddings-legifrance", "domain": "embeddings", "requires_embeddings": True}
+    assert scaleway_data_jobs.should_run(sp_spec, args) is True
+    assert scaleway_data_jobs.should_run(lf_spec, args) is False
+
+
+def test_mi_embedding_tables_config_is_pdf_sources_not_embeddings() -> None:
+    # Le merge de la PR #246 ne doit pas déclencher les backfills SP/Légifrance
+    # via la règle substring "embedding_tables".
+    selected = data_engineering_plan.classify_from_files(["config/mi_embedding_tables.json"])
+
+    assert selected["pdf_sources"] is True
+    assert selected["embeddings"] is False
+    assert selected["service_public"] is False
+
+
+def test_pdf_sources_dispatch_with_embeddings_targets_mi_backfill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_path = tmp_path / "github-output.txt"
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("INPUT_SOURCE", "pdf_sources")
+    monkeypatch.setenv("INPUT_RUN_EMBEDDINGS", "true")
+    monkeypatch.delenv("INPUT_EMBEDDING_SOURCE", raising=False)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+
+    assert data_engineering_plan.main() == 0
+
+    outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
+    assert outputs["embedding_source"] == "mi"

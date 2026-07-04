@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ..service_public.qna_chunking import split_on_paragraphs
+from ..service_public.section_splitter import PAGE_MARKER_RE
 from ..utils.gold import GoldBundle, GoldRepository, build_embedders
 from ..utils.helpers import utc_now_iso
 from .config import CHUNK_SOURCE, EmbeddingConfig, GoldConfig
@@ -16,7 +17,6 @@ __all__ = ["MiGoldBuilder", "GoldBundle", "GoldRepository"]
 
 _PARAGRAPH_SPLIT_RE = re.compile(r"\n{2,}")
 _TABLE_SEPARATOR_CHARS = set("-:| ")
-_PAGE_MARKER_LINE_RE = re.compile(r"^<!--\s*PAGE:\s*\d+\s*-->$")
 
 
 def _is_table_block(block: str) -> bool:
@@ -27,6 +27,17 @@ def _is_table_block(block: str) -> bool:
 def _is_separator_row(line: str) -> bool:
     stripped = line.strip()
     return stripped.startswith("|") and "-" in stripped and set(stripped) <= _TABLE_SEPARATOR_CHARS
+
+
+_NUMERIC_CELL_RE = re.compile(r"^\d+([.,]\d+)?\s*(h|H|€|%|j|J)?$")
+
+
+def _looks_like_data_row(row: str) -> bool:
+    """Une ligne dont une cellule est purement numérique (durée, montant) est
+    une ligne de données: la choisir comme en-tête supprimerait toutes ses
+    occurrences du corps du tableau."""
+    cells = [cell.strip() for cell in row.strip().strip("|").split("|")]
+    return any(_NUMERIC_CELL_RE.match(cell) for cell in cells if cell)
 
 
 def _table_header_and_body(block: str) -> tuple[list[str], list[str]]:
@@ -46,7 +57,7 @@ def _table_header_and_body(block: str) -> tuple[list[str], list[str]]:
     for row in rows:
         counts[row.strip()] = counts.get(row.strip(), 0) + 1
     for row in rows[:5]:
-        if counts[row.strip()] >= 2:
+        if counts[row.strip()] >= 2 and not _looks_like_data_row(row):
             header_row = row
             break
     if header_row is None:
@@ -99,14 +110,20 @@ def split_section_markdown(text: str, max_chars: int, overlap: int) -> list[str]
     tableau consécutifs — un grand tableau coupé à chaque page par l'OCR —
     sont recousus avant découpe.
     """
-    text = "\n".join(line for line in text.splitlines() if not _PAGE_MARKER_LINE_RE.match(line.strip()))
+    text = "\n".join(line for line in text.splitlines() if not PAGE_MARKER_RE.match(line.strip()))
+
+    def _column_count(block: str) -> int:
+        first = next((line for line in block.splitlines() if line.strip()), "")
+        return first.count("|")
 
     blocks: list[tuple[bool, str]] = []
     for paragraph in _PARAGRAPH_SPLIT_RE.split(text):
         if not paragraph.strip():
             continue
         is_table = _is_table_block(paragraph)
-        if is_table and blocks and blocks[-1][0]:
+        # Couture des tableaux coupés par page: même nombre de colonnes
+        # uniquement — deux tableaux distincts adjacents restent séparés.
+        if is_table and blocks and blocks[-1][0] and _column_count(paragraph) == _column_count(blocks[-1][1]):
             blocks[-1] = (True, f"{blocks[-1][1]}\n{paragraph}")
         else:
             blocks.append((is_table, paragraph))
@@ -148,6 +165,13 @@ class MiGoldBuilder:
     def __init__(self, embedding_config: EmbeddingConfig, gold_config: GoldConfig):
         self.embedding_config = embedding_config
         self.gold_config = gold_config
+        self._embedders: list[Any] | None = None
+
+    @property
+    def embedders(self) -> list[Any]:
+        if self._embedders is None:
+            self._embedders = build_embedders(self.embedding_config)
+        return self._embedders
 
     def build_chunks(
         self,
@@ -194,7 +218,7 @@ class MiGoldBuilder:
                     )
                 )
 
-        embedders = build_embedders(self.embedding_config)
+        embedders = self.embedders
         if embedders and chunk_rows:
             texts = [row["text"] for row in chunk_rows]
             for embedder in embedders:

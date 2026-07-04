@@ -420,6 +420,24 @@ class FakeDbWriter:
             }
         return (0, len(chunks))
 
+    def ingest_document_bundle(
+        self,
+        document: dict[str, Any],
+        sections: list[dict[str, Any]],
+        chunks: list[dict[str, Any]],
+        **kwargs: Any,
+    ) -> dict[str, int]:
+        self.upserted_documents.append(document)
+        self.upserted_sections.extend(sections)
+        short_id = document["short_id"]
+        self.replaced_chunks.append(([short_id], len(chunks)))
+        self.state[short_id] = {
+            "doc_id": document["doc_id"],
+            "checksum": document["checksum"],
+            "nb_chunks": len(chunks),
+        }
+        return {"documents": 1, "sections": len(sections), "chunks_deleted": 0, "chunks": len(chunks)}
+
     def delete_documents_cascade(self, short_ids: list[str], table: str | None = None, *, source: str) -> dict[str, int]:
         self.cascade_deletes.append(sorted(short_ids))
         chunks = sum(int(self.state.get(short_id, {}).get("nb_chunks") or 0) for short_id in short_ids)
@@ -705,3 +723,75 @@ def test_ensure_pdf_passthrough_and_unknown_extension(tmp_path: Path) -> None:
     other.write_text("x")
     with pytest.raises(PdfConversionError):
         ensure_pdf(other, tmp_path / "out")
+
+
+# --- Régressions revue de code (2026-07-04) --------------------------------------
+
+
+def test_transient_download_failure_never_deletes_existing_document(tmp_path: Path) -> None:
+    # P1: un incident S3 transitoire sur un doc déjà ingéré ne doit JAMAIS le
+    # classer orphelin (suppression cascade d'un document sain).
+    state = {"MI-0001": {"doc_id": "d1", "checksum": "a" * 64, "nb_chunks": 4}}
+    records = [grist_record("MI-0001", record_id=11)]
+    pipeline, grist, store, ocr, writer = build_pipeline(tmp_path, records=records, documents={}, state=state)
+
+    summary = pipeline.run(ingest=True)
+
+    assert summary["failed_count"] == 1
+    assert summary["deleted_count"] == 0
+    assert writer.cascade_deletes == []
+    assert "MI-0001" in writer.state
+    assert summary["details"]["MI-0001"]["statut"] == "erreur"
+
+
+def test_doc_id_filter_still_deletes_targeted_abrogated_document(tmp_path: Path) -> None:
+    state = {
+        "MI-0001": {"doc_id": "d1", "checksum": "a" * 64, "nb_chunks": 4},
+        "MI-0002": {"doc_id": "d2", "checksum": "b" * 64, "nb_chunks": 4},
+    }
+    records = [grist_record("MI-0001", record_id=11, abroge="oui"), grist_record("MI-0002", record_id=12)]
+    pipeline, grist, store, ocr, writer = build_pipeline(tmp_path, records=records, documents={}, state=state)
+
+    summary = pipeline.run(ingest=True, doc_ids=["MI-0001"])
+
+    assert writer.cascade_deletes == [["MI-0001"]]
+    assert "MI-0002" in writer.state  # hors filtre: intouché
+    assert grist.status_for(11) == ["supprime"]
+    assert summary["deleted_count"] == 1
+
+
+def test_dry_run_reports_failed_count(tmp_path: Path) -> None:
+    records = [grist_record("MI-0001", record_id=11)]
+    pipeline, grist, store, ocr, writer = build_pipeline(tmp_path, records=records, documents={})
+
+    summary = pipeline.run(ingest=True, dry_run=True)
+
+    assert summary["failed_count"] == 1  # dropzone vide => échec de téléchargement visible
+
+
+def test_gold_distinct_adjacent_tables_are_not_stitched() -> None:
+    from assistant_rh_data_engineering.mi.gold import split_section_markdown
+
+    table_a = "| Col A | Col B |\n| --- | --- |\n" + "\n".join(
+        f"| valeur {i} assez longue pour peser dans la découpe du bloc | détail {i} |" for i in range(30)
+    )
+    table_b = "| X | Y | Z |\n| --- | --- | --- |\n" + "\n".join(
+        f"| a{i} | b{i} avec du contenu supplémentaire pour la taille | c{i} |" for i in range(30)
+    )
+
+    chunks = split_section_markdown(f"{table_a}\n\n{table_b}", 1200, 200)
+
+    # Aucune tranche du second tableau ne doit porter l'en-tête du premier.
+    for chunk in chunks:
+        if "| a1 |" in chunk or "| c5 |" in chunk:
+            assert not chunk.startswith("| Col A | Col B |")
+
+
+def test_gold_repeated_data_row_is_not_chosen_as_header() -> None:
+    from assistant_rh_data_engineering.mi.gold import _table_header_and_body
+
+    rows = ["| N/A | 12 H |", "| Périmètre | Durée |", "| N/A | 12 H |"] + [f"| stage {i} | {i} H |" for i in range(40)]
+    header, body = _table_header_and_body("\n".join(rows))
+
+    # « | N/A | 12 H | » est répétée mais numérique: pas un en-tête.
+    assert header == [] or "N/A" not in header[0]

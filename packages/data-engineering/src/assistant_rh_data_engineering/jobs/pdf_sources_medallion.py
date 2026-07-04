@@ -109,8 +109,6 @@ def main() -> int:
 
         pipeline = MiPipeline(config, schema=args.schema)
         object_storage_source_name = OBJECT_STORAGE_SOURCE_NAME
-    else:  # pragma: no cover — garde-fou, argparse borne déjà les choix
-        raise SystemExit(f"Ministère non enregistré: {args.ministere}")
 
     summary = pipeline.run(
         doc_ids=args.doc_ids,

@@ -5,7 +5,15 @@ import uuid
 from typing import Any, Optional
 
 from ..utils.db import RagDbWriter
-from ..utils.grist import GristClient, ManifestRow, fetch_validated_manifest
+from ..utils.grist import (
+    STATUT_ERREUR,
+    STATUT_IGNORE,
+    STATUT_OK,
+    STATUT_SUPPRIME,
+    GristClient,
+    ManifestRow,
+    fetch_validated_manifest,
+)
 from ..utils.helpers import utc_now_iso
 from ..utils.object_storage import ObjectStorageConfig, ScalewayObjectStorageSync
 from ..utils.ocr import build_ocr_provider
@@ -15,12 +23,6 @@ from .config import CHUNK_TABLE, CORPUS, DOC_SOURCE, MINISTERE, MiPipelineConfig
 from .gold import GoldRepository, MiGoldBuilder
 from .silver import MiSilverBuilder, SilverRepository
 
-# Statuts de writeback Grist (contrat WRITEBACK_MANIFEST_COLUMNS).
-STATUT_OK = "ok"
-STATUT_ERREUR = "erreur"
-STATUT_IGNORE = "ignore_inchange"
-STATUT_SUPPRIME = "supprime"
-
 
 def plan_reconciliation(
     expected: dict[str, ManifestRow],
@@ -28,12 +30,15 @@ def plan_reconciliation(
     checksums: dict[str, str],
     *,
     force_reocr: bool = False,
+    protected: frozenset[str] | set[str] = frozenset(),
 ) -> dict[str, list[str]]:
     """Delta pur (testable sans I/O): classe chaque uid attendu en ingest ou
     ignore_inchange, et les uids en base absents du manifest en delete.
 
     Un document est inchangé si son sha256 correspond ET qu'il a déjà des
     chunks en base (un doc à zéro chunk est retraité — leçon de l'audit MATTE).
+    `protected` (uids dont le téléchargement a échoué) n'est JAMAIS classé en
+    delete: un incident S3 transitoire ne doit pas supprimer un document sain.
     """
     to_ingest: list[str] = []
     unchanged: list[str] = []
@@ -51,7 +56,7 @@ def plan_reconciliation(
         else:
             to_ingest.append(short_id)
 
-    orphans = sorted(set(current) - set(expected))
+    orphans = sorted(set(current) - set(expected) - set(protected))
     return {"ingest": to_ingest, "ignore_inchange": unchanged, "delete": orphans}
 
 
@@ -162,11 +167,15 @@ class MiPipeline:
             current,
             checksums,
             force_reocr=force_reocr,
+            protected=set(failures),
         )
-        # Un filtre --doc-id restreint le manifest vu par le run: supprimer
-        # les "orphelins" reviendrait à vider le reste du corpus.
-        reconcile_deletes = not requested
-        orphans = plan["delete"] if reconcile_deletes else []
+        # Un filtre --doc-id restreint le manifest vu par le run: seuls les
+        # uids explicitement demandés restent supprimables (doc abrogé ou
+        # retiré du manifest), jamais le reste du corpus.
+        if requested:
+            orphans = [uid for uid in plan["delete"] if uid in requested]
+        else:
+            orphans = plan["delete"]
 
         if dry_run:
             return {
@@ -175,7 +184,8 @@ class MiPipeline:
                 "target_env": self.config.target_env,
                 "dry_run": True,
                 "expected": len(expected),
-                "rejected": len(manifest.rejected),
+                "failed_count": len(failures),
+                "rejected_count": len(manifest.rejected),
                 "plan": {
                     "ingest": plan["ingest"],
                     "ignore_inchange": plan["ignore_inchange"],
@@ -188,7 +198,6 @@ class MiPipeline:
 
         ingested: list[str] = []
         skipped: list[str] = []
-        nb_chunks_by_uid: dict[str, int] = {}
 
         for short_id in plan["ignore_inchange"]:
             row = expected[short_id]
@@ -211,11 +220,15 @@ class MiPipeline:
                 gold_bundle = self.gold_builder.persist_bundle(self.gold_repo, silver_bundle)
                 nb_chunks = len(gold_bundle.chunks)
                 if ingest:
-                    self.db_writer.upsert_documents([silver_bundle.document])
-                    self.db_writer.upsert_sections(silver_bundle.sections)
-                    self.db_writer.replace_chunks_by_short_ids([short_id], gold_bundle.chunks)
+                    # Une seule transaction: un échec en cours de route ne doit
+                    # pas laisser un checksum à jour avec des chunks périmés
+                    # (le run suivant classerait le doc ignore_inchange).
+                    self.db_writer.ingest_document_bundle(
+                        silver_bundle.document,
+                        silver_bundle.sections,
+                        gold_bundle.chunks,
+                    )
                 ingested.append(short_id)
-                nb_chunks_by_uid[short_id] = nb_chunks
                 details[short_id] = {
                     "statut": STATUT_OK,
                     "nb_chunks": nb_chunks,

@@ -67,6 +67,7 @@ jobs:
     outputs:
       service_public: ${{ steps.plan.outputs.service_public }}
       legifrance: ${{ steps.plan.outputs.legifrance }}
+      pdf_sources: ${{ steps.plan.outputs.pdf_sources }}
       embeddings: ${{ steps.plan.outputs.embeddings }}
       run_embeddings: ${{ steps.plan.outputs.run_embeddings }}
       has_builds: ${{ steps.plan.outputs.has_builds }}
@@ -184,6 +185,7 @@ jobs:
             --image-tag "${PROD_IMAGE_TAG}" \
             --service-public "${{ needs.plan.outputs.service_public }}" \
             --legifrance "${{ needs.plan.outputs.legifrance }}" \
+            --pdf-sources "${{ needs.plan.outputs.pdf_sources }}" \
             --embeddings "${{ needs.plan.outputs.embeddings }}" \
             --run-ingestion "${RUN_INGESTION}" \
             --wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}" \

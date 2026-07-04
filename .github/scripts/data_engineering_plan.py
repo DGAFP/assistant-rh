@@ -58,7 +58,10 @@ def classify_from_source(source: str) -> dict[str, bool]:
     return {
         "service_public": source in {"all", "service_public"},
         "legifrance": source in {"all", "legifrance"},
-        "pdf_sources": source in {"all", "pdf_sources"},
+        # Sélection explicite uniquement (tracer bullet #246): un dispatch
+        # source=all ne doit ni exiger les secrets Grist/Albert ni écrire le
+        # corpus MI. Le cron/prod arrive en Phase F (#250).
+        "pdf_sources": source == "pdf_sources",
         "embeddings": source in {"all", "embeddings", "matte", "mi"},
     }
 
@@ -133,13 +136,16 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
         ) or path in {
             "Dockerfile.pdf_sources_pipeline",
             "config/scaleway_serverless_job_pdf_sources_mi.json",
+            "config/mi_embedding_tables.json",
         }:
             result["pdf_sources"] = True
 
         if (
             path == "Dockerfile.embeddings_job"
             or path == "packages/data-engineering/src/assistant_rh_data_engineering/jobs/embeddings_backfill.py"
-            or contains_any(path, ("embedding_tables", "embeddings_job"))
+            # mi_embedding_tables.json appartient au domaine pdf_sources: son
+            # ajout ne doit pas déclencher les backfills SP/Légifrance.
+            or (contains_any(path, ("embedding_tables", "embeddings_job")) and path != "config/mi_embedding_tables.json")
         ):
             result["embeddings"] = True
 
@@ -155,6 +161,10 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
 def infer_embedding_source(selected: dict[str, bool], requested_source: str = "") -> str:
     if requested_source in {"service_public", "legifrance", "matte", "mi"}:
         return requested_source
+    if requested_source == "pdf_sources":
+        # Le backfill associé au domaine pdf_sources est celui de MI (Phase B);
+        # sans ce mapping, le fallback "all" relancerait TOUS les backfills.
+        return "mi"
     if selected["service_public"] and not selected["legifrance"]:
         return "service_public"
     if selected["legifrance"] and not selected["service_public"]:

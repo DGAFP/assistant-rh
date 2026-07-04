@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -51,7 +52,10 @@ class EmbeddingConfig:
     # sentence-transformers dans l'image du job (image légère, décision #246).
     enable_m3: bool = True
     m3_backend: str = "albert_api"
-    m3_model_name: str = "BAAI/bge-m3"
+    # Impérativement le MEME modèle que l'embedding des requêtes au retrieval
+    # (rag-pipeline/embedder.py, env ALBERT_EMBED_MODEL): deux modèles
+    # différents = deux espaces vectoriels incomparables dans embedding_m3.
+    m3_model_name: str = field(default_factory=lambda: os.getenv("ALBERT_EMBED_MODEL", "openweight-embeddings"))
     # Colonne de secours embedding_bge_scw via l'API Scaleway existante.
     enable_bge_scaleway: bool = True
     scaleway_model_name: str = "bge-multilingual-gemma2"

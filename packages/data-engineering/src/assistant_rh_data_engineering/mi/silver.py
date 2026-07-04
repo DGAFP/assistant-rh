@@ -95,7 +95,17 @@ def normalize_ocr_markdown(ocr: OcrResult, titre: str) -> str:
 
     cleaned_pages: list[str] = []
     for number, page in enumerate(pages, start=1):
-        kept = [line for line in page.splitlines() if line.strip() not in boilerplate and not _PAGE_NUMBER_LINE_RE.match(line.strip())]
+        lines = page.splitlines()
+        # Les lignes de folio ne sont retirées qu'en bord de page: une ligne
+        # numérique en pleine page (année, montant, réponse d'un formulaire)
+        # est du contenu, pas un numéro de page.
+        content_indexes = [index for index, line in enumerate(lines) if line.strip()]
+        edge_indexes = set(content_indexes[:3] + content_indexes[-3:])
+        kept = [
+            line
+            for index, line in enumerate(lines)
+            if line.strip() not in boilerplate and not (index in edge_indexes and _PAGE_NUMBER_LINE_RE.match(line.strip()))
+        ]
         text = "\n".join(kept).strip()
         cleaned_pages.append(f"<!-- PAGE: {number} -->\n{text}" if len(pages) > 1 else text)
 

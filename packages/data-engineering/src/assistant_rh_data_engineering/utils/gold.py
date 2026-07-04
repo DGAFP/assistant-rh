@@ -130,6 +130,11 @@ def build_embedders(embedding_config: Any) -> list[BaseBatchEmbedder]:
                     batch_size=embedding_config.batch_size,
                 )
             )
+        elif m3_backend != "sentence_transformers":
+            # Échec franc à la construction: le fallback silencieux vers
+            # sentence-transformers planterait en fin de run dans les images
+            # de job qui ne l'embarquent pas, avec un message trompeur.
+            raise RuntimeError(f"m3_backend inconnu: {m3_backend!r} (attendus: albert_api, sentence_transformers)")
         else:
             embedders.append(
                 SentenceTransformerEmbedder(

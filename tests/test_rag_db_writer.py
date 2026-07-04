@@ -227,3 +227,32 @@ def test_insert_ingestion_run_upserts_on_run_id(monkeypatch: pytest.MonkeyPatch)
     assert writer.insert_ingestion_run(run) == 1
     assert upserts == [("rag_ingestion_runs", [run], ["run_id"])]
     assert events == ["commit"]
+
+
+def test_ingest_document_bundle_single_transaction_and_section_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Revue #246: doc + sections + chunks doivent partir dans UNE transaction
+    # (sinon un échec après l'upsert du document fige un checksum à jour avec
+    # des chunks périmés => ignore_inchange au run suivant), et les sections
+    # de l'ancienne version sont purgées (delete-puis-insert par doc_id).
+    writer, calls, events = make_writer([{"rowcount": 5}, {"rowcount": 7}])
+    order: list[str] = []
+    monkeypatch.setattr(writer, "_upsert_documents", lambda conn, docs: order.append("documents") or 1)
+    monkeypatch.setattr(writer, "_upsert_sections", lambda conn, sections: order.append("sections") or len(sections))
+    monkeypatch.setattr(
+        writer,
+        "_upsert",
+        lambda conn, table, rows, conflict, **kwargs: order.append(f"chunks:{table}") or len(rows),
+    )
+
+    result = writer.ingest_document_bundle(
+        {"doc_id": "11111111-2222-3333-4444-555555555555", "short_id": "mi-0001", "checksum": "sha"},
+        [{"section_id": "s1"}, {"section_id": "s2"}],
+        [{"hash_id": "c1"}, {"hash_id": "c2"}, {"hash_id": "c3"}],
+    )
+
+    assert events == ["commit"]  # une seule transaction
+    assert order == ["documents", "sections", "chunks:rag_chunks_mi"]
+    assert "DELETE FROM" in calls[0]["query"] and "rag_sections" in calls[0]["query"]
+    assert calls[0]["params"] == ("11111111-2222-3333-4444-555555555555",)
+    assert "UPPER(TRIM(short_id))" in calls[1]["query"]  # purge des chunks par short_id
+    assert result == {"documents": 1, "sections": 2, "chunks_deleted": 7, "chunks": 3}
