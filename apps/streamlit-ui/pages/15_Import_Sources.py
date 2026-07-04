@@ -59,9 +59,20 @@ def _row_label(record: dict) -> str:
     return f"{titre[:80]} — uid {uid}"
 
 
-tab_pdf, tab_texte = st.tabs(["📄 PDF ministériel", "⚖️ Texte Légifrance / Service-public"])
+tab_pdf, tab_texte = st.tabs(["📄 Document ministériel", "⚖️ Texte Légifrance / Service-public"])
 
 with tab_pdf:
+    # Clé dynamique: st.file_uploader ne se vide pas programmatiquement; on
+    # change sa clé après un import réussi (+ rerun) pour repartir à vide.
+    if "pdf_uploader_generation" not in st.session_state:
+        st.session_state.pdf_uploader_generation = 0
+
+    # Message de succès du run précédent (posé avant le st.rerun()).
+    flash = st.session_state.pop("pdf_import_flash", None)
+    if flash:
+        st.success(flash)
+        st.info("Le document sera ingéré au prochain run planifié du pipeline.")
+
     corpus = st.selectbox("Corpus", PDF_CORPORA, key="pdf_corpus")
 
     try:
@@ -73,7 +84,15 @@ with tab_pdf:
     pending_rows = rows_missing_cle_bucket(records, corpus)
     mode_attach = f"Compléter une ligne existante sans PDF ({len(pending_rows)} en attente)"
     mode_new = "Nouveau document"
-    mode = st.radio("Mode", [mode_attach, mode_new], key="pdf_mode", horizontal=True)
+    mode = st.radio(
+        "Mode",
+        [mode_attach, mode_new],
+        # Sans ligne en attente, le mode « Compléter » est inutile: on
+        # démarre directement sur « Nouveau document ».
+        index=1 if not pending_rows else 0,
+        key="pdf_mode",
+        horizontal=True,
+    )
 
     selected_row = None
     titre = ""
@@ -82,7 +101,7 @@ with tab_pdf:
 
     if mode == mode_attach:
         if not pending_rows:
-            st.info(f"Aucune ligne {corpus} en attente de PDF — utiliser « Nouveau document ».")
+            st.info(f"Aucune ligne {corpus} en attente de fichier — utiliser « Nouveau document ».")
         else:
             selected_row = st.selectbox(
                 "Document du référentiel (sans cle_bucket)",
@@ -96,9 +115,13 @@ with tab_pdf:
         date_value = st.date_input("Date de publication (optionnel)", value=None, key="pdf_date")
         date_publication = date_value.isoformat() if date_value else None
 
-    uploaded = st.file_uploader("Fichier PDF", type=["pdf"], key="pdf_file")
+    uploaded = st.file_uploader(
+        "Fichier source (PDF, Word, Excel — les non-PDF sont convertis avant OCR par le pipeline)",
+        type=["pdf", "doc", "docx", "xls", "xlsx"],
+        key=f"pdf_file_{st.session_state.pdf_uploader_generation}",
+    )
 
-    if st.button("Importer le PDF", type="primary", disabled=uploaded is None, key="pdf_submit"):
+    if st.button("Importer le document", type="primary", disabled=uploaded is None, key="pdf_submit"):
         try:
             pdf_bytes = uploaded.getvalue()
 
@@ -131,22 +154,27 @@ with tab_pdf:
                 )
 
             uploader = DropzoneUploader.from_env()
-            uri = uploader.upload_pdf(plan.cle_bucket, pdf_bytes)
+            uri = uploader.upload_file(plan.cle_bucket, pdf_bytes)
             client = _grist_client()
             try:
                 if mode == mode_attach:
                     client.writeback_status(int(plan.record_id), plan.fields)
-                    st.success(f"PDF déposé ({uri}) et ligne complétée: {_row_label(fresh_row)}")
+                    flash_message = f"Fichier déposé ({uri}) et ligne complétée: {_row_label(fresh_row)}"
                 else:
                     created = client.add_records([{"fields": plan.fields}])
-                    st.success(f"PDF déposé ({uri}) — ligne Grist créée (record {created[0]}).")
+                    flash_message = f"Fichier déposé ({uri}) — ligne Grist créée (record {created[0]})."
             except GristError as exc:
                 try:
-                    uploader.delete_pdf(plan.cle_bucket)
+                    uploader.delete_file(plan.cle_bucket)
                 except SourceImportError as cleanup_exc:
-                    raise SourceImportError(f"{exc} PDF déjà déposé et suppression impossible: {cleanup_exc}") from exc
+                    raise SourceImportError(f"{exc} Fichier déjà déposé et suppression impossible: {cleanup_exc}") from exc
                 raise
-            st.info("Le document sera ingéré au prochain run planifié du pipeline.")
+
+            # Reset de l'uploader (nouvelle clé) + rerun: le fichier ne reste
+            # pas sélectionné et la liste des lignes en attente se rafraîchit.
+            st.session_state.pdf_import_flash = flash_message
+            st.session_state.pdf_uploader_generation += 1
+            st.rerun()
         except (SourceImportError, GristError) as exc:
             st.error(str(exc))
 

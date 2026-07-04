@@ -41,9 +41,54 @@ _UID_LENGTH = 10
 # Cap du nom de fichier dans la clé S3 (clé totale ~ corpus + uid + nom).
 _MAX_FILENAME_LENGTH = 80
 
+# Signatures de fichiers OLE2 (doc/xls historiques) et ZIP (docx/xlsx).
+_OLE2_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+_ZIP_SIGNATURE = b"PK\x03\x04"
+
+# Formats acceptés dans la dropzone. Les non-PDF sont convertis en PDF par le
+# bronze du pipeline (LibreOffice headless) avant OCR — décision 2026-07-04,
+# flux .doc/.xlsx récurrent dans les sources ministérielles.
+SUPPORTED_SOURCE_FORMATS: dict[str, dict[str, Any]] = {
+    ".pdf": {"signatures": (b"%PDF-",), "content_type": "application/pdf"},
+    ".doc": {"signatures": (_OLE2_SIGNATURE,), "content_type": "application/msword"},
+    ".xls": {"signatures": (_OLE2_SIGNATURE,), "content_type": "application/vnd.ms-excel"},
+    ".docx": {
+        "signatures": (_ZIP_SIGNATURE,),
+        "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    },
+    ".xlsx": {
+        "signatures": (_ZIP_SIGNATURE,),
+        "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    },
+}
+
 
 class SourceImportError(ValueError):
     """Entrée invalide dans le formulaire d'import."""
+
+
+def source_extension(filename: str) -> str:
+    """Extension supportée du fichier source, en minuscules."""
+    extension = os.path.splitext(os.path.basename(filename or ""))[1].lower()
+    if extension not in SUPPORTED_SOURCE_FORMATS:
+        supported = ", ".join(sorted(SUPPORTED_SOURCE_FORMATS))
+        raise SourceImportError(f"Format non supporté: {filename!r} (attendus: {supported})")
+    return extension
+
+
+def validate_source_bytes(filename: str, data: bytes) -> None:
+    """Contrôle serveur du contenu: le filtre type= de st.file_uploader est
+    purement côté client. Vérifie la signature attendue pour l'extension."""
+    if not data:
+        raise SourceImportError("Fichier vide.")
+    extension = source_extension(filename)
+    signatures = SUPPORTED_SOURCE_FORMATS[extension]["signatures"]
+    if not any(data.startswith(signature) for signature in signatures):
+        raise SourceImportError(f"Le contenu ne correspond pas au format {extension} (signature invalide).")
+
+
+def content_type_for(filename: str) -> str:
+    return str(SUPPORTED_SOURCE_FORMATS[source_extension(filename)]["content_type"])
 
 
 @dataclass(frozen=True)
@@ -85,17 +130,26 @@ def classify_text_id(text_id: str) -> str:
 
 
 def sanitize_filename(filename: str) -> str:
-    """Nom de fichier sûr pour une clé S3: ascii, sans espaces ni chemins."""
-    base = os.path.basename(filename or "").strip() or "document.pdf"
-    base = unicodedata.normalize("NFKD", base).encode("ascii", "ignore").decode("ascii")
-    base = re.sub(r"[^A-Za-z0-9._-]+", "-", base)
-    base = re.sub(r"-+(?=\.)", "", base).strip("-.")
-    if not base.lower().endswith(".pdf"):
-        base = f"{base}.pdf" if base else "document.pdf"
-    if len(base) > _MAX_FILENAME_LENGTH:
+    """Nom de fichier sûr pour une clé S3: ascii, sans espaces ni chemins.
+
+    L'extension d'origine (format supporté) est préservée; défaut .pdf pour
+    une entrée vide/inconnue.
+    """
+    raw_base = os.path.basename(filename or "").strip()
+    extension = os.path.splitext(raw_base)[1].lower()
+    if extension not in SUPPORTED_SOURCE_FORMATS:
+        extension = ".pdf"
+
+    stem = os.path.splitext(raw_base)[0] or "document"
+    stem = unicodedata.normalize("NFKD", stem).encode("ascii", "ignore").decode("ascii")
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip("-.")
+    if not stem:
+        stem = "document"
+    max_stem = _MAX_FILENAME_LENGTH - len(extension)
+    if len(stem) > max_stem:
         # Clé S3 bornée: on tronque le nom, pas l'extension.
-        base = base[: _MAX_FILENAME_LENGTH - 4].rstrip("-._") + ".pdf"
-    return base
+        stem = stem[:max_stem].rstrip("-._")
+    return f"{stem}{extension}"
 
 
 def build_cle_bucket(corpus: str, uid: str, filename: str) -> str:
@@ -203,14 +257,6 @@ def find_row_by_record_id(records: list[dict[str, Any]], record_id: int) -> dict
     return None
 
 
-def _require_pdf_bytes(pdf_bytes: bytes) -> None:
-    # Contrôle serveur: le filtre type= de st.file_uploader est côté client.
-    if not pdf_bytes:
-        raise SourceImportError("Fichier vide.")
-    if not pdf_bytes.startswith(b"%PDF-"):
-        raise SourceImportError("Le fichier n'est pas un PDF (signature %PDF- absente).")
-
-
 def _find_content_duplicate(
     records: list[dict[str, Any]],
     content_uid: str,
@@ -233,7 +279,7 @@ def plan_attach_pdf_import(
     la détection de doublon fiable pour les prochains uploads. À appeler avec
     des records FRAIS (relus au submit): l'état affiché peut être périmé.
     """
-    _require_pdf_bytes(pdf_bytes)
+    validate_source_bytes(filename, pdf_bytes)
     if selected_row is None:
         raise SourceImportError("Sélectionner une ligne du référentiel.")
     selected_fields = selected_row.get("fields") or {}
@@ -265,7 +311,7 @@ def plan_new_pdf_import(
     date_publication: str | None = None,
 ) -> PdfImportPlan:
     """Prépare la création Grist avant upload pour éviter un objet orphelin."""
-    _require_pdf_bytes(pdf_bytes)
+    validate_source_bytes(filename, pdf_bytes)
     content_uid, content_hash = content_identity(pdf_bytes)
     duplicate = _find_content_duplicate(records, content_uid, content_hash)
     if duplicate:
@@ -332,20 +378,28 @@ class DropzoneUploader:
             aws_secret_access_key=self.secret_key,
         )
 
-    def upload_pdf(self, key: str, pdf_bytes: bytes) -> str:
+    def upload_file(self, key: str, data: bytes) -> str:
+        """Upload d'un fichier source; ContentType dérivé de l'extension de la clé."""
         try:
             self._client().put_object(
                 Bucket=self.bucket,
                 Key=key,
-                Body=pdf_bytes,
-                ContentType="application/pdf",
+                Body=data,
+                ContentType=content_type_for(key),
             )
+        except SourceImportError:
+            raise
         except Exception as exc:
             raise SourceImportError(f"Upload dropzone impossible pour {key}: {exc}") from exc
         return f"s3://{self.bucket}/{key}"
 
-    def delete_pdf(self, key: str) -> None:
+    # Compat: nom historique quand la page ne gérait que le PDF.
+    upload_pdf = upload_file
+
+    def delete_file(self, key: str) -> None:
         try:
             self._client().delete_object(Bucket=self.bucket, Key=key)
         except Exception as exc:
             raise SourceImportError(f"Suppression dropzone impossible pour {key}: {exc}") from exc
+
+    delete_pdf = delete_file

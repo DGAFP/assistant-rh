@@ -59,6 +59,7 @@ Ajouts unitaires legi/SP (Phase E) : lignes du même référentiel (`source_corp
 
 ### Buckets / bronze layout
 - New dropzone bucket `assistant-rh-sources-pdf` (private, versioned): `mi/…`, `masa/…`, `matte/…`, `mso/…` — written only by the admin page.
+- **Formats acceptés (révisé 2026-07-04)** : PDF + .doc/.docx/.xls/.xlsx (flux récurrent de bureautique dans les sources ministérielles). La page d'import vérifie la signature par format ; `cle_bucket` garde l'extension d'origine. **Le bronze du pipeline (#246) convertit les non-PDF en PDF (LibreOffice headless dans l'image du job) avant OCR** ; le cache OCR reste indexé par sha256 du fichier d'origine.
 - Bronze cache in existing `assistant-rh-bronze`:
   `{env}/bronze/pdf_sources/{ministere}/pdfs/{sha256}.pdf` · `…/ocr/{provider}/{version}/{sha256}.{json,md}` · `…/manifests/manifest_{run_id}.json` (Grist snapshot). Silver/gold via `sync_medallion_root(source_name=f"pdf_sources/{ministere}")`.
 
@@ -82,7 +83,7 @@ Ajouts unitaires legi/SP (Phase E) : lignes du même référentiel (`source_corp
 - `jobs/rag_health_exporter.py`: add tables + `rag_ingestion_runs` + drift metrics `assistant_rh_rag_ingestion_{expected,ingested,skipped,failed,deleted}_total{ministere=…}` + last-run timestamp.
 
 ### Admin import page — `apps/streamlit-ui/pages/NN_Admin_Import.py` (admin-gated like existing admin pages)
-- **PDF path**: upload + ministère/thème/sous-thème → sha256 → dropzone PUT (`{ministere}/{nom-fichier}.pdf`) → Grist row (auto `uid`, `source_corpus`, `cle_bucket`, `abroge` vide) → "ingéré au prochain run planifié". Bucket+Grist atomic at entry.
+- **Source document path**: upload PDF/.doc/.docx/.xls/.xlsx + ministère/thème/sous-thème → sha256 du fichier d'origine → dropzone PUT (`{ministere}/{uid}_{nom-fichier}.{ext}` avec extension préservée) → Grist row (auto `uid`, `source_corpus`, `cle_bucket`, `abroge` vide) → "ingéré au prochain run planifié". Bucket+Grist atomic at entry; les non-PDF sont convertis en PDF par le bronze avant OCR.
 - **Legi/SP path**: input `LEGIARTI…`/`FXXXX` (+ thème) → format validation → row in the same referential (`source_corpus` legi/SP + colonnes id existantes). Existing pipelines pick it up at next run.
 - Reuses `GristClient` + `PdfSourceStore`; S3 + Grist credentials on the UI host.
 
