@@ -219,7 +219,7 @@ def test_trace_queries_filter_by_collector_env() -> None:
     ("table_spec", "columns"),
     [
         (
-            exporter.DIRECT_CHUNK_TABLES[1],
+            next(spec for spec in exporter.DIRECT_CHUNK_TABLES if spec.table == "rag_chunks_service_public"),
             {"rag_chunks_service_public": {"source"}},
         ),
     ],

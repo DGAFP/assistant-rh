@@ -32,13 +32,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--image-tag", required=True)
     parser.add_argument("--service-public", type=parse_bool, default=False)
     parser.add_argument("--legifrance", type=parse_bool, default=False)
+    parser.add_argument("--pdf-sources", type=parse_bool, default=False)
     parser.add_argument("--embeddings", type=parse_bool, default=False)
     parser.add_argument("--run-ingestion", type=parse_bool, default=False)
     parser.add_argument("--run-embeddings", type=parse_bool, default=False)
     parser.add_argument("--service-public-fiche-config", default="config/service_public_fiches.json")
     parser.add_argument("--wipe-existing-chunks", type=parse_bool, default=False)
     parser.add_argument("--legifrance-article-ids-json", default="config/legifrance_article_cids.json")
-    parser.add_argument("--embedding-source", choices=("all", "service_public", "legifrance", "matte"), default="all")
+    parser.add_argument("--embedding-source", choices=("all", "service_public", "legifrance", "matte", "mi"), default="all")
     parser.add_argument("--embedding-only-column", default="")
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -241,11 +242,22 @@ def job_environment(spec: dict[str, Any], target_env: str, region: str) -> dict[
     if "object_storage" in groups:
         env["SCW_ACCESS_KEY"] = env_required("SCW_ACCESS_KEY")
         env["SCW_SECRET_KEY"] = env_required("SCW_SECRET_KEY")
+        env["SCW_BUCKET_SOURCES_PDF"] = env_optional("SCW_BUCKET_SOURCES_PDF", "assistant-rh-sources-pdf")
     if "postgres" in groups:
         env["SCW_POSTGRES_DSN"] = env_required("SCW_POSTGRES_DSN")
     if "embeddings_api" in groups:
         env["SCALEWAY_API_KEY"] = env_required("SCALEWAY_API_KEY")
         env["SCALEWAY_BASE_URL"] = env_optional("SCALEWAY_BASE_URL", "https://api.scaleway.ai/v1")
+    if "grist" in groups:
+        env["GRIST_API_BASE_URL"] = env_required("GRIST_API_BASE_URL")
+        env["GRIST_API_KEY"] = env_required("GRIST_API_KEY")
+        env["GRIST_DOC_ID"] = env_required("GRIST_DOC_ID")
+        grist_table = env_optional("GRIST_TABLE_ID")
+        if grist_table:
+            env["GRIST_TABLE_ID"] = grist_table
+    if "albert" in groups:
+        env["ALBERT_API_KEY"] = env_required("ALBERT_API_KEY")
+        env["ALBERT_BASE_URL"] = env_optional("ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1")
     return env
 
 
@@ -254,6 +266,8 @@ def should_run(spec: dict[str, Any], args: argparse.Namespace) -> bool:
     if domain == "service_public" and not args.service_public:
         return False
     if domain == "legifrance" and not args.legifrance:
+        return False
+    if domain == "pdf_sources" and not getattr(args, "pdf_sources", False):
         return False
     if domain == "embeddings" and not args.embeddings:
         return False
@@ -267,6 +281,8 @@ def should_run(spec: dict[str, Any], args: argparse.Namespace) -> bool:
         if embedding_source == "legifrance" and key != "embeddings-legifrance":
             return False
         if embedding_source == "matte" and key != "embeddings-matte":
+            return False
+        if embedding_source == "mi" and key != "embeddings-mi":
             return False
     if spec.get("requires_ingestion") and not args.run_ingestion:
         return False
@@ -283,10 +299,7 @@ def validate_wipe_existing_chunks_selection(selected_specs: list[dict[str, Any]]
     if "service-public-ingestion" not in keys:
         return
     if str(getattr(args, "embedding_only_column", "") or "").strip():
-        raise RuntimeError(
-            "--wipe-existing-chunks requires a full Service-Public embeddings backfill: "
-            "do not set --embedding-only-column."
-        )
+        raise RuntimeError("--wipe-existing-chunks requires a full Service-Public embeddings backfill: do not set --embedding-only-column.")
     if "embeddings-service-public" in keys:
         return
 
