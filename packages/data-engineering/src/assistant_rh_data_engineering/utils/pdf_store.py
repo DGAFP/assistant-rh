@@ -120,6 +120,13 @@ class PdfSourceStore:
         raw = payload.get("raw") or {}
         if not isinstance(pages, list) or not isinstance(raw, dict):
             raise PdfStoreError(f"Cache OCR corrompu (forme inattendue): {obj.uri}")
+        if not pages and isinstance(raw.get("pages"), list):
+            # Objets écrits par put_ocr après dédoublonnage: les pages vivent
+            # uniquement dans raw, re-triées comme au chemin live.
+            try:
+                pages = sorted(raw["pages"], key=lambda page: int(page.get("index") or 0))
+            except (AttributeError, TypeError, ValueError) as exc:
+                raise PdfStoreError(f"Cache OCR corrompu (pages de raw invalides): {obj.uri}") from exc
 
         return OcrResult(
             provider=str(payload.get("provider") or provider),
@@ -138,12 +145,23 @@ class PdfSourceStore:
     ) -> OcrCacheKeys:
         """Archive le résultat OCR (JSON complet + markdown seul) dans bronze."""
         keys = self.ocr_cache_keys(target_env, ministere, result.provider, result.version, sha256)
+        # result.pages référence les mêmes dicts que result.raw["pages"]
+        # (le provider trie sans copier): les sérialiser deux fois doublerait
+        # l'objet cache — significatif depuis include_image_base64 (les crops
+        # pèsent des dizaines de Mo). On ne persiste que raw; la lecture
+        # reconstruit pages (get_cached_ocr).
+        raw_pages = result.raw.get("pages") if isinstance(result.raw, dict) else None
+        pages_in_raw = (
+            isinstance(raw_pages, list)
+            and len(raw_pages) == len(result.pages)
+            and all(any(page is raw_page for raw_page in raw_pages) for page in result.pages)
+        )
         payload: dict[str, Any] = {
             "provider": result.provider,
             "version": result.version,
             "sha256": sha256,
             "markdown": result.markdown,
-            "pages": result.pages,
+            "pages": [] if pages_in_raw else result.pages,
             "raw": result.raw,
         }
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -166,4 +184,78 @@ class PdfSourceStore:
         """Archive le PDF source dans bronze (restauration/rejeu sans dropzone)."""
         obj = self.pdf_cache_key(target_env, ministere, sha256)
         self.sync.upload_object(pdf_path, obj.bucket, obj.key)
+        return obj
+
+    # --- Cache des annotations d'images (enrichissement VLM) -----------------
+
+    def image_annotations_cache_key(
+        self,
+        target_env: str,
+        ministere: str,
+        annotator_name: str,
+        annotator_version: str,
+        sha256: str,
+    ) -> ObjectStorageObject:
+        bucket, prefix = self._bronze_prefix(
+            target_env,
+            ministere,
+            f"image_annotations/{annotator_name}/{annotator_version}",
+        )
+        return ObjectStorageObject(bucket=bucket, key=f"{prefix}/{sha256}.json")
+
+    def get_cached_image_annotations(
+        self,
+        target_env: str,
+        ministere: str,
+        annotator_name: str,
+        annotator_version: str,
+        sha256: str,
+    ) -> dict[str, dict[str, str]] | None:
+        """Annotations d'images en cache pour un document, ou None (miss)."""
+        obj = self.image_annotations_cache_key(target_env, ministere, annotator_name, annotator_version, sha256)
+        try:
+            payload = json.loads(self.sync.read_text_object(obj))
+        except subprocess.CalledProcessError:
+            return None
+        except json.JSONDecodeError:
+            # Auto-guérison: un cache d'annotations illisible est traité comme
+            # un miss (ré-annotation puis ré-écriture), pas comme une erreur
+            # collante qui mettrait le document en échec à chaque run.
+            print(f"[warn] cache d'annotations corrompu, ré-annotation: {obj.uri}")
+            return None
+        if not isinstance(payload, dict) or not isinstance(payload.get("annotations"), dict):
+            print(f"[warn] cache d'annotations corrompu (forme inattendue), ré-annotation: {obj.uri}")
+            return None
+        annotations = payload["annotations"]
+        for image_id, annotation in annotations.items():
+            if (
+                not isinstance(annotation, dict)
+                or annotation.get("type_image") not in {"decorative", "informative"}
+                or not isinstance(annotation.get("description"), str)
+            ):
+                print(f"[warn] cache d'annotations corrompu (entrée {image_id!r} invalide), ré-annotation: {obj.uri}")
+                return None
+        return annotations
+
+    def put_image_annotations(
+        self,
+        target_env: str,
+        ministere: str,
+        annotator_name: str,
+        annotator_version: str,
+        sha256: str,
+        annotations: dict[str, dict[str, str]],
+    ) -> ObjectStorageObject:
+        """Archive les annotations d'images d'un document (idempotence VLM)."""
+        obj = self.image_annotations_cache_key(target_env, ministere, annotator_name, annotator_version, sha256)
+        payload = {
+            "annotator": annotator_name,
+            "version": annotator_version,
+            "sha256": sha256,
+            "annotations": annotations,
+        }
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            json_path = Path(tmp_dir) / "annotations.json"
+            json_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            self.sync.upload_object(json_path, obj.bucket, obj.key)
         return obj
