@@ -153,6 +153,86 @@ def test_silver_headingless_ocr_still_yields_a_section(tmp_path: Path) -> None:
     assert "Texte OCR brut" in sections[0]["section_markdown"]
 
 
+def test_silver_h1_headings_are_detected_as_sections(tmp_path: Path) -> None:
+    # mistral-ocr émet les titres de section en # (H1); sans rétrogradation le
+    # splitter les ignore (constat d'audit du 2026-07-04 sur le corpus MI réel).
+    config = make_config(tmp_path)
+    markdown = (
+        "# 1. Dispositions communes\n\nContenu de la première partie, suffisamment long pour être indexable.\n\n"
+        "# 2. Dispositions particulières\n\nContenu de la seconde partie, suffisamment long pour être indexable.\n"
+    )
+
+    _, sections = MiSilverBuilder(config.silver).build_bundle(make_asset(make_row(), markdown=markdown))
+
+    headings = [section["heading"] for section in sections]
+    assert "1. Dispositions communes" in headings
+    assert "2. Dispositions particulières" in headings
+
+
+def test_silver_strips_page_boilerplate_and_adds_page_markers(tmp_path: Path) -> None:
+    from assistant_rh_data_engineering.mi.silver import normalize_ocr_markdown
+
+    header = "Direction des ressources humaines ministérielle"
+    pages = [{"index": i, "markdown": f"{header}\n\n## Partie {i}\n\nContenu de la page numéro {i}.\n\n- Page {i} -"} for i in range(1, 5)]
+    ocr = OcrResult(provider="albert", version="v", markdown="", pages=pages)
+
+    normalized = normalize_ocr_markdown(ocr, "Guide test")
+
+    assert normalized.startswith("## Guide test")
+    assert header not in normalized
+    assert "- Page 2 -" not in normalized
+    assert "<!-- PAGE: 3 -->" in normalized
+    assert "Contenu de la page numéro 3." in normalized
+    # Rétrogradation: les ## OCR deviennent ### sous le titre.
+    assert "### Partie 2" in normalized
+
+
+def test_silver_keeps_legitimate_repeated_content(tmp_path: Path) -> None:
+    from assistant_rh_data_engineering.mi.silver import normalize_ocr_markdown
+
+    # Contenu répétitif au milieu de page (cellules de formulaire): conservé.
+    repeated = "Ce motif de dispense n'est valable que :"
+    pages = [
+        {
+            "index": i,
+            "markdown": (
+                f"Première ligne de la page {i}.\nDeuxième ligne de la page {i}.\nTroisième ligne de la page {i}.\n\n"
+                f"{repeated}\n\n{repeated}\n\n"
+                f"Antépénultième ligne {i}.\nAvant-dernière ligne {i}.\nDernière ligne de la page {i}."
+            ),
+        }
+        for i in range(1, 4)
+    ]
+    ocr = OcrResult(provider="albert", version="v", markdown="", pages=pages)
+
+    normalized = normalize_ocr_markdown(ocr, "Formulaire")
+
+    assert repeated in normalized
+
+
+def test_silver_sections_partition_the_document(tmp_path: Path) -> None:
+    # Le contenu d'une section parente ne doit pas inclure celui de ses
+    # enfants: sinon chaque texte est chunké 2-3x (constat d'audit 2026-07-04).
+    config = make_config(tmp_path)
+    markdown = (
+        "# Partie unique\n\nIntroduction de la partie, assez longue pour être indexable sans problème.\n\n"
+        "## Sous-partie A\n\nContenu détaillé de la sous-partie A, également assez long pour être indexable.\n"
+    )
+
+    document, sections = MiSilverBuilder(config.silver).build_bundle(make_asset(make_row(), markdown=markdown))
+
+    parent = next(s for s in sections if s["heading"] == "Partie unique")
+    child = next(s for s in sections if s["heading"] == "Sous-partie A")
+    assert "Introduction de la partie" in parent["section_markdown"]
+    assert "Contenu détaillé" not in parent["section_markdown"]
+    assert "Contenu détaillé" in child["section_markdown"]
+
+    # Et au global: le texte des chunks ne dépasse pas ~1x le document.
+    chunks = MiGoldBuilder(config.embeddings, config.gold).build_chunks(document, sections)
+    total_chunk_chars = sum(len(c["text"]) for c in chunks)
+    assert total_chunk_chars <= len(document["doc_markdown"]) * 1.2
+
+
 # --- Gold ---------------------------------------------------------------------
 
 
