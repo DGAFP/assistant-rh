@@ -28,11 +28,10 @@ from src.ui.source_import import (
     PDF_CORPORA,
     DropzoneUploader,
     SourceImportError,
-    build_cle_bucket,
-    build_new_pdf_row,
     build_text_id_row,
-    build_uid_from_bytes,
     find_row_by_uid,
+    plan_attach_pdf_import,
+    plan_new_pdf_import,
     rows_missing_cle_bucket,
 )
 
@@ -101,41 +100,41 @@ with tab_pdf:
     if st.button("Importer le PDF", type="primary", disabled=uploaded is None, key="pdf_submit"):
         try:
             pdf_bytes = uploaded.getvalue()
-            if not pdf_bytes:
-                raise SourceImportError("Fichier vide.")
-            content_uid = build_uid_from_bytes(pdf_bytes)
-
-            duplicate = find_row_by_uid(records, content_uid)
-            if duplicate and (mode == mode_new):
-                raise SourceImportError(f"Ce PDF existe déjà dans le référentiel: {_row_label(duplicate)}")
-
             if mode == mode_attach:
-                if selected_row is None:
-                    raise SourceImportError("Sélectionner une ligne du référentiel.")
-                row_fields = selected_row.get("fields") or {}
-                row_uid = str(row_fields.get("uid") or "").strip() or content_uid
-                cle_bucket = build_cle_bucket(corpus, row_uid, uploaded.name)
-            else:
-                cle_bucket = build_cle_bucket(corpus, content_uid, uploaded.name)
-
-            uploader = DropzoneUploader.from_env()
-            uri = uploader.upload_pdf(cle_bucket, pdf_bytes)
-
-            client = _grist_client()
-            if mode == mode_attach:
-                client.writeback_status(int(selected_row["id"]), {"cle_bucket": cle_bucket})
-                st.success(f"PDF déposé ({uri}) et ligne complétée: {_row_label(selected_row)}")
-            else:
-                fields = build_new_pdf_row(
+                plan = plan_attach_pdf_import(
+                    records=records,
+                    selected_row=selected_row,
                     corpus=corpus,
-                    uid=content_uid,
+                    filename=uploaded.name,
+                    pdf_bytes=pdf_bytes,
+                )
+            else:
+                plan = plan_new_pdf_import(
+                    records=records,
+                    corpus=corpus,
+                    filename=uploaded.name,
+                    pdf_bytes=pdf_bytes,
                     titre=titre,
-                    cle_bucket=cle_bucket,
                     sous_thematique=sous_thematique,
                     date_publication=date_publication,
                 )
-                created = client.add_records([{"fields": fields}])
-                st.success(f"PDF déposé ({uri}) — ligne Grist créée (record {created[0]}).")
+
+            uploader = DropzoneUploader.from_env()
+            uri = uploader.upload_pdf(plan.cle_bucket, pdf_bytes)
+            client = _grist_client()
+            try:
+                if mode == mode_attach:
+                    client.writeback_status(int(plan.record_id), plan.fields)
+                    st.success(f"PDF déposé ({uri}) et ligne complétée: {_row_label(selected_row)}")
+                else:
+                    created = client.add_records([{"fields": plan.fields}])
+                    st.success(f"PDF déposé ({uri}) — ligne Grist créée (record {created[0]}).")
+            except GristError as exc:
+                try:
+                    uploader.delete_pdf(plan.cle_bucket)
+                except SourceImportError as cleanup_exc:
+                    raise SourceImportError(f"{exc} PDF déjà déposé et suppression impossible: {cleanup_exc}") from exc
+                raise
             st.info("Le document sera ingéré au prochain run planifié du pipeline.")
         except (SourceImportError, GristError) as exc:
             st.error(str(exc))

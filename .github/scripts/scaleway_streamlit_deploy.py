@@ -183,6 +183,11 @@ def streamlit_runtime_environment(default_app_env: str) -> dict[str, str]:
         "APP_ENV": env_optional("APP_ENV", default_app_env),
         "APP_DB_TARGET": env_optional("APP_DB_TARGET", "scaleway"),
         "APP_SCALEWAY_ENV": env_optional("APP_SCALEWAY_ENV", default_app_env),
+        "SCW_DEFAULT_REGION": env_optional("SCW_DEFAULT_REGION", "fr-par"),
+        "SCW_BUCKET_SOURCES_PDF": env_optional("SCW_BUCKET_SOURCES_PDF", "assistant-rh-sources-pdf"),
+        "GRIST_API_BASE_URL": env_optional("GRIST_API_BASE_URL"),
+        "GRIST_DOC_ID": env_optional("GRIST_DOC_ID"),
+        "GRIST_TABLE_ID": env_optional("GRIST_TABLE_ID"),
         "ALBERT_BASE_URL": env_optional("ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1"),
         "SCALEWAY_BASE_URL": env_optional("SCALEWAY_BASE_URL", "https://api.scaleway.ai/v1"),
         "STREAMLIT_BROWSER_GATHER_USAGE_STATS": env_optional("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false"),
@@ -209,6 +214,9 @@ def streamlit_secret_environment() -> dict[str, str]:
         "SCALEWAY_API_KEY": env_required("SCALEWAY_API_KEY"),
         "COOKIES_PASSWORD": env_required("COOKIES_PASSWORD"),
         "ADMIN_PASSWORD": env_required("ADMIN_PASSWORD"),
+        "GRIST_API_KEY": env_required("GRIST_API_KEY"),
+        "SCW_ACCESS_KEY": env_required("SCW_ACCESS_KEY"),
+        "SCW_SECRET_KEY": env_required("SCW_SECRET_KEY"),
     }
     optional_secret_env = {
         "OTEL_EXPORTER_OTLP_HEADERS": env_optional("OTEL_EXPORTER_OTLP_HEADERS"),
@@ -322,6 +330,12 @@ def main() -> int:
         "SCALEWAY_API_KEY",
         "COOKIES_PASSWORD",
         "ADMIN_PASSWORD",
+        "GRIST_API_BASE_URL",
+        "GRIST_API_KEY",
+        "GRIST_DOC_ID",
+        "GRIST_TABLE_ID",
+        "SCW_ACCESS_KEY",
+        "SCW_SECRET_KEY",
     ]
     missing_runtime = [name for name in required_runtime if not env_optional(name)]
     if missing_runtime:

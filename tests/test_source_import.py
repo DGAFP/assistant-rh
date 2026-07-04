@@ -20,6 +20,8 @@ from src.ui.source_import import (
     build_uid_from_text_id,
     classify_text_id,
     find_row_by_uid,
+    plan_attach_pdf_import,
+    plan_new_pdf_import,
     rows_missing_cle_bucket,
     sanitize_filename,
 )
@@ -142,6 +144,48 @@ def test_rows_missing_cle_bucket_filters_corpus_and_emptiness() -> None:
     assert [record["id"] for record in pending] == [1, 4]
 
 
+# --- plans d'import PDF -------------------------------------------------------
+
+
+def test_plan_new_pdf_import_validates_row_before_upload_step() -> None:
+    with pytest.raises(SourceImportError, match="Titre obligatoire"):
+        plan_new_pdf_import(
+            records=[],
+            corpus="MI",
+            filename="doc.pdf",
+            pdf_bytes=b"%PDF-fake",
+            titre=" ",
+        )
+
+
+def test_plan_new_pdf_import_rejects_duplicate_content_uid() -> None:
+    pdf_bytes = b"%PDF-fake"
+    duplicate = make_record(7, uid=build_uid_from_bytes(pdf_bytes), titre_document="Deja la")
+
+    with pytest.raises(SourceImportError, match="existe déjà"):
+        plan_new_pdf_import(
+            records=[duplicate],
+            corpus="MI",
+            filename="doc.pdf",
+            pdf_bytes=pdf_bytes,
+            titre="Document",
+        )
+
+
+def test_plan_attach_pdf_import_uses_content_uid_and_rejects_other_row_duplicate() -> None:
+    pdf_bytes = b"%PDF-fake"
+    content_uid = build_uid_from_bytes(pdf_bytes)
+    selected = make_record(1, uid="ancienuid", titre_document="A completer")
+    duplicate = make_record(2, uid=content_uid, titre_document="Deja la")
+
+    with pytest.raises(SourceImportError, match="record 2"):
+        plan_attach_pdf_import(records=[selected, duplicate], selected_row=selected, corpus="MI", filename="doc.pdf", pdf_bytes=pdf_bytes)
+
+    plan = plan_attach_pdf_import(records=[selected], selected_row=selected, corpus="MI", filename="doc.pdf", pdf_bytes=pdf_bytes)
+    assert plan.record_id == 1
+    assert plan.fields == {"uid": content_uid, "cle_bucket": f"mi/{content_uid}_doc.pdf"}
+
+
 # --- uploader ----------------------------------------------------------------
 
 
@@ -171,3 +215,15 @@ def test_dropzone_uploader_puts_pdf_with_content_type(monkeypatch: pytest.Monkey
         "Body": b"%PDF-fake",
         "ContentType": "application/pdf",
     }
+
+
+def test_dropzone_uploader_wraps_upload_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FailingS3:
+        def put_object(self, **_kwargs: Any) -> None:
+            raise RuntimeError("denied")
+
+    uploader = DropzoneUploader(bucket="assistant-rh-sources-pdf", region="fr-par", access_key="ak", secret_key="sk")
+    monkeypatch.setattr(uploader, "_client", lambda: FailingS3())
+
+    with pytest.raises(SourceImportError, match="Upload dropzone impossible"):
+        uploader.upload_pdf("mi/abc_doc.pdf", b"%PDF-fake")

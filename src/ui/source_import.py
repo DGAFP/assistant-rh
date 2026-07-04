@@ -43,6 +43,15 @@ class SourceImportError(ValueError):
     """Entrée invalide dans le formulaire d'import."""
 
 
+@dataclass(frozen=True)
+class PdfImportPlan:
+    """Action Grist à appliquer après un upload PDF réussi."""
+
+    cle_bucket: str
+    fields: dict[str, Any]
+    record_id: int | None = None
+
+
 def build_uid_from_bytes(pdf_bytes: bytes) -> str:
     """uid déterministe depuis le contenu: même PDF => même uid (idempotent)."""
     return sha256_bytes(pdf_bytes)[:_UID_LENGTH]
@@ -146,6 +155,78 @@ def find_row_by_uid(records: list[dict[str, Any]], uid: str) -> dict[str, Any] |
     return None
 
 
+def _record_id(record: dict[str, Any]) -> int:
+    return int(record.get("id") or 0)
+
+
+def _duplicate_message(record: dict[str, Any]) -> str:
+    fields = record.get("fields") or {}
+    titre = str(fields.get("titre_document") or "(sans titre)")
+    uid = str(fields.get("uid") or "?")
+    return f"record {_record_id(record)} ({titre}, uid {uid})"
+
+
+def _require_pdf_bytes(pdf_bytes: bytes) -> None:
+    if not pdf_bytes:
+        raise SourceImportError("Fichier vide.")
+
+
+def plan_attach_pdf_import(
+    *,
+    records: list[dict[str, Any]],
+    selected_row: dict[str, Any] | None,
+    corpus: str,
+    filename: str,
+    pdf_bytes: bytes,
+) -> PdfImportPlan:
+    """Prépare le PATCH Grist avant upload pour une ligne existante.
+
+    Le uid de la ligne complétée devient le uid dérivé du contenu; cela rend
+    la détection de doublon fiable pour les prochains uploads.
+    """
+    _require_pdf_bytes(pdf_bytes)
+    if selected_row is None:
+        raise SourceImportError("Sélectionner une ligne du référentiel.")
+
+    content_uid = build_uid_from_bytes(pdf_bytes)
+    duplicate = find_row_by_uid(records, content_uid)
+    selected_id = _record_id(selected_row)
+    if duplicate and _record_id(duplicate) != selected_id:
+        raise SourceImportError(f"Ce PDF existe déjà dans le référentiel: {_duplicate_message(duplicate)}")
+
+    cle_bucket = build_cle_bucket(corpus, content_uid, filename)
+    return PdfImportPlan(record_id=selected_id, cle_bucket=cle_bucket, fields={"uid": content_uid, "cle_bucket": cle_bucket})
+
+
+def plan_new_pdf_import(
+    *,
+    records: list[dict[str, Any]],
+    corpus: str,
+    filename: str,
+    pdf_bytes: bytes,
+    titre: str,
+    sous_thematique: str = "",
+    date_publication: str | None = None,
+) -> PdfImportPlan:
+    """Prépare la création Grist avant upload pour éviter un objet orphelin."""
+    _require_pdf_bytes(pdf_bytes)
+    content_uid = build_uid_from_bytes(pdf_bytes)
+    duplicate = find_row_by_uid(records, content_uid)
+    if duplicate:
+        raise SourceImportError(f"Ce PDF existe déjà dans le référentiel: {_duplicate_message(duplicate)}")
+
+    cle_bucket = build_cle_bucket(corpus, content_uid, filename)
+    fields = build_new_pdf_row(
+        corpus=corpus,
+        uid=content_uid,
+        titre=titre,
+        cle_bucket=cle_bucket,
+        sous_thematique=sous_thematique,
+        date_publication=date_publication,
+    )
+    return PdfImportPlan(cle_bucket=cle_bucket, fields=fields)
+
+
 def rows_missing_cle_bucket(records: list[dict[str, Any]], corpus: str) -> list[dict[str, Any]]:
     """Lignes du corpus sans cle_bucket: la liste de travail des PDF à déposer."""
     expected = corpus.strip().lower()
@@ -195,10 +276,19 @@ class DropzoneUploader:
         )
 
     def upload_pdf(self, key: str, pdf_bytes: bytes) -> str:
-        self._client().put_object(
-            Bucket=self.bucket,
-            Key=key,
-            Body=pdf_bytes,
-            ContentType="application/pdf",
-        )
+        try:
+            self._client().put_object(
+                Bucket=self.bucket,
+                Key=key,
+                Body=pdf_bytes,
+                ContentType="application/pdf",
+            )
+        except Exception as exc:
+            raise SourceImportError(f"Upload dropzone impossible pour {key}: {exc}") from exc
         return f"s3://{self.bucket}/{key}"
+
+    def delete_pdf(self, key: str) -> None:
+        try:
+            self._client().delete_object(Bucket=self.bucket, Key=key)
+        except Exception as exc:
+            raise SourceImportError(f"Suppression dropzone impossible pour {key}: {exc}") from exc
