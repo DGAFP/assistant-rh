@@ -63,7 +63,7 @@ OBJECT_STORAGE_SOURCE_NAME = IDENTITY.object_storage_source_name
 MIN_CHUNK_PAYLOAD_CHARS = 25
 
 
-@dataclass
+@dataclass(kw_only=True)
 class MasaPipelineConfig(MinistryPipelineConfig):
     # Divergences MASA par rapport à la config de référence (MI):
     # - gold: filtre des chunks à payload utile < MIN_CHUNK_PAYLOAD_CHARS

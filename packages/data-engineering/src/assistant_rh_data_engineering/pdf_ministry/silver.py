@@ -14,9 +14,9 @@ from math import ceil
 from typing import Any
 
 from ..service_public.section_splitter import count_tokens, split_document_into_sections
-from ..service_public.silver import SilverBundle, SilverRepository
 from ..utils.helpers import sha256_text, stable_uuid_from_parts, utc_now_iso
 from ..utils.ocr import OcrResult
+from ..utils.silver import SilverBundle, SilverRepository
 from .bronze import BronzeAsset
 from .config import SilverConfig
 from .identity import MinistryIdentity

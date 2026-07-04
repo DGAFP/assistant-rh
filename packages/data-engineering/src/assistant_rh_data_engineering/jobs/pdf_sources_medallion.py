@@ -97,16 +97,28 @@ def main() -> int:
     # Registre implicite par convention de package: chaque ministère expose
     # Pipeline/PipelineConfig/LakePaths/OBJECT_STORAGE_SOURCE_NAME sous des
     # noms uniformes (mi/__init__.py, masa/__init__.py, ...). Ajouter un
-    # ministère = l\'ajouter à MINISTERES + créer son package — pas de if/elif.
+    # ministère = l'ajouter à MINISTERES + créer son package — pas de if/elif.
     import importlib
 
+    package_name = f"assistant_rh_data_engineering.{args.ministere}"
     try:
-        module = importlib.import_module(f"assistant_rh_data_engineering.{args.ministere}")
+        module = importlib.import_module(package_name)
+    except ModuleNotFoundError as exc:
+        # Ministère non câblé = SON package est introuvable. Une dépendance
+        # transitive manquante (ex: le package existe mais importe un module
+        # absent de l'image) doit remonter avec sa traceback, pas être
+        # requalifiée en « non câblé » — sinon l'opérateur cherche un bug de
+        # dispatch au lieu d'une dépendance.
+        if exc.name == package_name:
+            raise SystemExit(f"Ministère non câblé dans le dispatch du job: {args.ministere!r} (package {package_name} introuvable)") from exc
+        raise
+    try:
         pipeline_class = module.Pipeline
         config_class = module.PipelineConfig
         lake_paths_class = module.LakePaths
         object_storage_source_name = module.OBJECT_STORAGE_SOURCE_NAME
-    except (ImportError, AttributeError) as exc:
+    except AttributeError as exc:
+        # Package présent mais n'expose pas les alias uniformes du contrat.
         raise SystemExit(f"Ministère non câblé dans le dispatch du job: {args.ministere!r} ({exc})") from exc
 
     config = config_class(target_env=args.target_env, ocr_provider_name=args.ocr_provider)

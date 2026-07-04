@@ -5,13 +5,12 @@ from ..pdf_ministry.gold import (
     GoldBundle,
     GoldRepository,
     SectionAtomicGoldBuilder,
-    _chunk_payload,  # noqa: F401 — API de test (filtre payload, divergence MASA)
     _table_header_and_body,  # noqa: F401 — API de test (audit chunking table-aware)
     split_section_markdown,
 )
-from .config import IDENTITY, MIN_CHUNK_PAYLOAD_CHARS, EmbeddingConfig, GoldConfig
+from .config import IDENTITY, EmbeddingConfig, GoldConfig
 
-__all__ = ["GoldBundle", "GoldRepository", "MIN_CHUNK_PAYLOAD_CHARS", "MasaGoldBuilder", "SECTION_CHUNK_ROLE", "split_section_markdown"]
+__all__ = ["GoldBundle", "GoldRepository", "MasaGoldBuilder", "SECTION_CHUNK_ROLE", "split_section_markdown"]
 
 
 class MasaGoldBuilder(SectionAtomicGoldBuilder):

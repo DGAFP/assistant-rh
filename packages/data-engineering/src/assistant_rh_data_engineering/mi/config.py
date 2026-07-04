@@ -60,7 +60,7 @@ IDENTITY = MinistryIdentity(
 OBJECT_STORAGE_SOURCE_NAME = IDENTITY.object_storage_source_name
 
 
-@dataclass
+@dataclass(kw_only=True)
 class MiPipelineConfig(MinistryPipelineConfig):
     # MI = configuration de référence du socle: aucun réglage divergent (pas
     # de filtre payload, pas d\'enrichissement d\'images — son portage

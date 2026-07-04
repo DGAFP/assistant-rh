@@ -34,12 +34,12 @@ class LakePaths:
         return self.root_dir / "gold"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SilverConfig:
     min_section_chars: int = 50
 
 
-@dataclass
+@dataclass(kw_only=True)
 class EmbeddingConfig:
     # BGE-M3 via l'API Albert: mêmes vecteurs que le retrieval, sans
     # sentence-transformers dans l'image du job (image légère, décision #246).
@@ -56,7 +56,7 @@ class EmbeddingConfig:
     normalize: bool = True
 
 
-@dataclass
+@dataclass(kw_only=True)
 class GoldConfig:
     table_name: str
     export_parquet: bool = True
@@ -68,7 +68,7 @@ class GoldConfig:
     min_chunk_payload_chars: int = 0
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ImageEnrichmentConfig:
     # Annotation VLM des crops d'images OCR. L'annotation native du contrat
     # Mistral OCR (bbox_annotation_format) est cassée côté Albert (validations
@@ -80,7 +80,7 @@ class ImageEnrichmentConfig:
     max_images_per_doc: int = 150
 
 
-@dataclass
+@dataclass(kw_only=True)
 class MinistryPipelineConfig:
     paths: LakePaths
     gold: GoldConfig
