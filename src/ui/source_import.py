@@ -38,14 +38,33 @@ TEXT_ID_CORPUS: dict[str, str] = {
 # Longueur des uid du référentiel existant (hex, ex: 7361bf3024).
 _UID_LENGTH = 10
 
+# Cap du nom de fichier dans la clé S3 (clé totale ~ corpus + uid + nom).
+_MAX_FILENAME_LENGTH = 80
+
 
 class SourceImportError(ValueError):
     """Entrée invalide dans le formulaire d'import."""
 
 
+def validate_pdf_bytes(pdf_bytes: bytes) -> None:
+    """Contrôle serveur du contenu: le filtre type= de st.file_uploader est
+    purement côté client."""
+    if not pdf_bytes:
+        raise SourceImportError("Fichier vide.")
+    if not pdf_bytes.startswith(b"%PDF-"):
+        raise SourceImportError("Le fichier n'est pas un PDF (signature %PDF- absente).")
+
+
 def build_uid_from_bytes(pdf_bytes: bytes) -> str:
     """uid déterministe depuis le contenu: même PDF => même uid (idempotent)."""
     return sha256_bytes(pdf_bytes)[:_UID_LENGTH]
+
+
+def content_identity(pdf_bytes: bytes) -> tuple[str, str]:
+    """(uid, hash_contenu) du PDF: uid court style référentiel + sha256 complet
+    pour la détection de doublon par contenu et le writeback."""
+    full_hash = sha256_bytes(pdf_bytes)
+    return full_hash[:_UID_LENGTH], full_hash
 
 
 def build_uid_from_text_id(text_id: str) -> str:
@@ -73,6 +92,9 @@ def sanitize_filename(filename: str) -> str:
     base = re.sub(r"-+(?=\.)", "", base).strip("-.")
     if not base.lower().endswith(".pdf"):
         base = f"{base}.pdf" if base else "document.pdf"
+    if len(base) > _MAX_FILENAME_LENGTH:
+        # Clé S3 bornée: on tronque le nom, pas l'extension.
+        base = base[: _MAX_FILENAME_LENGTH - 4].rstrip("-._") + ".pdf"
     return base
 
 
@@ -91,6 +113,7 @@ def build_new_pdf_row(
     cle_bucket: str,
     sous_thematique: str = "",
     date_publication: str | None = None,
+    hash_contenu: str = "",
 ) -> dict[str, Any]:
     """Ligne Grist pour un nouveau document PDF (contrat REQUIRED_MANIFEST_COLUMNS)."""
     titre = titre.strip()
@@ -108,6 +131,8 @@ def build_new_pdf_row(
         fields["sous_thematique"] = sous_thematique.strip()
     if date_publication:
         fields["date_publication"] = date_publication
+    if hash_contenu:
+        fields["hash_contenu"] = hash_contenu
     return fields
 
 
@@ -142,6 +167,27 @@ def find_row_by_uid(records: list[dict[str, Any]], uid: str) -> dict[str, Any] |
     for record in records:
         fields = record.get("fields") or {}
         if str(fields.get("uid") or "").strip().lower() == uid.strip().lower():
+            return record
+    return None
+
+
+def find_row_by_hash(records: list[dict[str, Any]], hash_contenu: str) -> dict[str, Any] | None:
+    """Détection de doublon par contenu: même hash_contenu (sha256 complet),
+    écrit par la page à l'upload puis confirmé par le pipeline."""
+    normalized = hash_contenu.strip().lower()
+    if not normalized:
+        return None
+    for record in records:
+        fields = record.get("fields") or {}
+        if str(fields.get("hash_contenu") or "").strip().lower() == normalized:
+            return record
+    return None
+
+
+def find_row_by_record_id(records: list[dict[str, Any]], record_id: int) -> dict[str, Any] | None:
+    """Relocalise une ligne par id de record (revalidation au moment du submit)."""
+    for record in records:
+        if int(record.get("id") or 0) == record_id:
             return record
     return None
 
@@ -195,10 +241,13 @@ class DropzoneUploader:
         )
 
     def upload_pdf(self, key: str, pdf_bytes: bytes) -> str:
-        self._client().put_object(
-            Bucket=self.bucket,
-            Key=key,
-            Body=pdf_bytes,
-            ContentType="application/pdf",
-        )
+        try:
+            self._client().put_object(
+                Bucket=self.bucket,
+                Key=key,
+                Body=pdf_bytes,
+                ContentType="application/pdf",
+            )
+        except Exception as exc:  # botocore ClientError & co: pas de traceback brut dans l'UI
+            raise SourceImportError(f"Échec de l'upload dropzone ({key}): {type(exc).__name__}: {str(exc)[:200]}") from exc
         return f"s3://{self.bucket}/{key}"

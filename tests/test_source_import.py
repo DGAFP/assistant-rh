@@ -19,9 +19,13 @@ from src.ui.source_import import (
     build_uid_from_bytes,
     build_uid_from_text_id,
     classify_text_id,
+    content_identity,
+    find_row_by_hash,
+    find_row_by_record_id,
     find_row_by_uid,
     rows_missing_cle_bucket,
     sanitize_filename,
+    validate_pdf_bytes,
 )
 
 # --- uid -----------------------------------------------------------------
@@ -37,6 +41,21 @@ def test_uid_from_bytes_is_deterministic_and_referential_shaped() -> None:
 
 def test_uid_from_text_id_normalizes_case_and_spaces() -> None:
     assert build_uid_from_text_id(" legiarti000006900846 ") == build_uid_from_text_id("LEGIARTI000006900846")
+
+
+def test_content_identity_returns_uid_prefix_of_full_hash() -> None:
+    uid, full_hash = content_identity(b"%PDF-fake")
+    assert uid == full_hash[:10]
+    assert len(full_hash) == 64
+    assert uid == build_uid_from_bytes(b"%PDF-fake")
+
+
+def test_validate_pdf_bytes_enforces_magic_bytes() -> None:
+    validate_pdf_bytes(b"%PDF-1.4 contenu")
+    with pytest.raises(SourceImportError, match="Fichier vide"):
+        validate_pdf_bytes(b"")
+    with pytest.raises(SourceImportError, match="signature"):
+        validate_pdf_bytes(b"<html>pas un pdf</html>")
 
 
 # --- classification des ids ------------------------------------------------
@@ -69,6 +88,13 @@ def test_sanitize_filename_makes_s3_safe_ascii() -> None:
     assert sanitize_filename("Règlement intérieur (2024).pdf") == "Reglement-interieur-2024.pdf"
     assert sanitize_filename("../../etc/passwd") == "passwd.pdf"
     assert sanitize_filename("") == "document.pdf"
+
+
+def test_sanitize_filename_caps_length_keeping_extension() -> None:
+    long_name = "x" * 300 + ".pdf"
+    result = sanitize_filename(long_name)
+    assert len(result) <= 80
+    assert result.endswith(".pdf")
 
 
 def test_build_cle_bucket_prefixes_corpus_and_uid() -> None:
@@ -131,6 +157,20 @@ def test_find_row_by_uid_is_case_insensitive() -> None:
     assert find_row_by_uid(records, "inconnu") is None
 
 
+def test_find_row_by_hash_matches_hash_contenu_and_ignores_empty() -> None:
+    records = [make_record(1, hash_contenu="A" * 64), make_record(2, hash_contenu="")]
+    assert find_row_by_hash(records, "a" * 64)["id"] == 1
+    assert find_row_by_hash(records, "b" * 64) is None
+    # Un hash vide ne doit jamais matcher les lignes sans hash_contenu.
+    assert find_row_by_hash(records, "") is None
+
+
+def test_find_row_by_record_id() -> None:
+    records = [make_record(7, uid="x"), make_record(9, uid="y")]
+    assert find_row_by_record_id(records, 9)["fields"]["uid"] == "y"
+    assert find_row_by_record_id(records, 1) is None
+
+
 def test_rows_missing_cle_bucket_filters_corpus_and_emptiness() -> None:
     records = [
         make_record(1, source_corpus="MI", cle_bucket=""),
@@ -171,3 +211,16 @@ def test_dropzone_uploader_puts_pdf_with_content_type(monkeypatch: pytest.Monkey
         "Body": b"%PDF-fake",
         "ContentType": "application/pdf",
     }
+
+
+def test_dropzone_uploader_wraps_s3_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FailingS3:
+        def put_object(self, **kwargs: Any) -> None:
+            raise RuntimeError("An error occurred (403) when calling the PutObject operation")
+
+    uploader = DropzoneUploader(bucket="b", region="fr-par", access_key="ak", secret_key="sk")
+    monkeypatch.setattr(uploader, "_client", lambda: FailingS3())
+
+    # Pas de traceback boto3 brut dans l'UI: erreur métier explicite.
+    with pytest.raises(SourceImportError, match="Échec de l'upload dropzone"):
+        uploader.upload_pdf("mi/x.pdf", b"%PDF-fake")
