@@ -117,7 +117,7 @@ with tab_pdf:
 
     uploaded = st.file_uploader(
         "Fichier source (PDF, Word, Excel — les non-PDF sont convertis avant OCR par le pipeline)",
-        type=["pdf", "doc", "docx", "xls", "xlsx"],
+        type=["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx"],
         key=f"pdf_file_{st.session_state.pdf_uploader_generation}",
     )
 

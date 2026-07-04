@@ -12,7 +12,7 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl ca-certificates unzip \
-        libreoffice-writer libreoffice-calc fonts-dejavu-core \
+        libreoffice-writer libreoffice-calc libreoffice-impress fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip" \

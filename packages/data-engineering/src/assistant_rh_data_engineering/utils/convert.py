@@ -8,7 +8,7 @@ from pathlib import Path
 # .doc/.xlsx récurrent dans les sources ministérielles). L'import UI vérifie
 # la signature binaire; le bronze convertit en PDF avant OCR. Le cache OCR
 # reste indexé par le sha256 du fichier d'origine, pas du PDF converti.
-CONVERTIBLE_EXTENSIONS: tuple[str, ...] = (".doc", ".docx", ".xls", ".xlsx")
+CONVERTIBLE_EXTENSIONS: tuple[str, ...] = (".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx")
 
 
 class PdfConversionError(RuntimeError):
