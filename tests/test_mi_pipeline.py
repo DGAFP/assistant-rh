@@ -856,3 +856,43 @@ def test_cleared_statut_reactivates_the_row(tmp_path: Path) -> None:
 
     assert summary["ingested_count"] == 1
     assert grist.status_for(11) == ["ok"]
+
+
+def test_acknowledgment_requires_ingest_mode(tmp_path: Path) -> None:
+    # Sans --ingest (pas d'accès base), aucun acquittement « supprime »:
+    # l'état réel du corpus n'a pas été consulté.
+    records = [grist_record("MI-0001", record_id=11, statut_ingestion="a_supprimer")]
+    pipeline, grist, store, ocr, writer = build_pipeline(tmp_path, records=records, documents={})
+
+    pipeline.run(ingest=False, skip_grist_writeback=False)
+
+    assert grist.writebacks == []
+
+
+def test_rejected_row_never_deletes_its_ingested_document(tmp_path: Path) -> None:
+    # Une faute de saisie (titre vidé) rejette la ligne — le document déjà
+    # ingéré ne doit PAS devenir orphelin et être supprimé en cascade.
+    state = {"MI-0001": {"doc_id": "d1", "checksum": "a" * 64, "nb_chunks": 4}}
+    record = grist_record("MI-0001", record_id=11)
+    record["fields"]["titre_document"] = ""
+    pipeline, grist, store, ocr, writer = build_pipeline(tmp_path, records=[record], documents={}, state=state)
+
+    summary = pipeline.run(ingest=True)
+
+    assert summary["rejected_count"] == 1
+    assert summary["deleted_count"] == 0
+    assert writer.cascade_deletes == []
+    assert "MI-0001" in writer.state
+    assert grist.status_for(11) == ["erreur"]
+
+
+def test_rejected_row_keeps_operator_inactive_status(tmp_path: Path) -> None:
+    # Colonne partagée: le rejet n'écrase jamais a_supprimer/supprime.
+    record = grist_record("MI-0001", record_id=11, statut_ingestion="a_supprimer")
+    record["fields"]["titre_document"] = ""
+    pipeline, grist, store, ocr, writer = build_pipeline(tmp_path, records=[record], documents={})
+
+    summary = pipeline.run(ingest=True)
+
+    assert summary["rejected_count"] == 1
+    assert grist.writebacks == []  # statut opérateur préservé

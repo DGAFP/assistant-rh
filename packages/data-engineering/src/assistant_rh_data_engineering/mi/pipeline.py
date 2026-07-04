@@ -10,6 +10,7 @@ from ..utils.grist import (
     STATUT_IGNORE,
     STATUT_OK,
     STATUT_SUPPRIME,
+    STATUTS_INACTIFS,
     GristClient,
     ManifestRow,
     fetch_validated_manifest,
@@ -113,13 +114,22 @@ class MiPipeline:
         manifest = fetch_validated_manifest(self.grist, CORPUS)
         writeback_enabled = not (dry_run or skip_grist_writeback)
 
+        rejected_fields_by_id = {record["id"]: record.get("fields") or {} for record in self.grist.list_records()} if manifest.rejected else {}
         details: dict[str, dict[str, Any]] = {}
+        rejected_uids: set[str] = set()
         for rejected in manifest.rejected:
+            if rejected.uid:
+                rejected_uids.add(rejected.uid.strip().upper())
             details[rejected.uid or f"record:{rejected.record_id}"] = {
                 "statut": STATUT_ERREUR,
                 "erreur": "; ".join(rejected.errors),
             }
-            if writeback_enabled:
+            # Colonne de statut partagée: une ligne rejetée qui porte déjà
+            # a_supprimer/supprime garde son statut (l'intention de
+            # l'opérateur ou l'état terminal ne sont jamais écrasés par une
+            # erreur de saisie ailleurs sur la ligne).
+            already = str(rejected_fields_by_id.get(rejected.record_id, {}).get("statut_ingestion") or "").strip().lower()
+            if writeback_enabled and already not in STATUTS_INACTIFS:
                 self._writeback(
                     rejected.record_id,
                     statut=STATUT_ERREUR,
@@ -167,7 +177,7 @@ class MiPipeline:
             current,
             checksums,
             force_reocr=force_reocr,
-            protected=set(failures),
+            protected=set(failures) | rejected_uids,
         )
         # Un filtre --doc-id restreint le manifest vu par le run: seuls les
         # uids explicitement demandés restent supprimables (doc abrogé ou
@@ -190,6 +200,7 @@ class MiPipeline:
                     "ingest": plan["ingest"],
                     "ignore_inchange": plan["ignore_inchange"],
                     "delete": orphans,
+                    "acquittement_supprime": sorted(uid for uid in abrogated if uid not in current and uid not in orphans) if ingest else [],
                     "erreur": failures,
                 },
             }
@@ -267,13 +278,16 @@ class MiPipeline:
         # Acquittement des lignes inactives sans document en base (a_supprimer
         # jamais ingéré, abrogé déjà purgé): statut => supprime, une seule fois
         # — une ligne déjà à « supprime » n'est pas re-PATCHée à chaque run.
-        for short_id, row in abrogated.items():
-            if short_id in current or short_id in details:
-                continue
-            details[short_id] = {"statut": STATUT_SUPPRIME, "nb_chunks": 0}
-            already = str(row.fields.get("statut_ingestion") or "").strip().lower()
-            if writeback_enabled and already != STATUT_SUPPRIME:
-                self._writeback(row.record_id, statut=STATUT_SUPPRIME, nb_chunks=0)
+        # Uniquement en mode ingest: sans accès base, « pas dans current » ne
+        # prouve rien et l'acquittement mentirait sur l'état réel.
+        if ingest:
+            for short_id, row in abrogated.items():
+                if short_id in current or short_id in details:
+                    continue
+                details[short_id] = {"statut": STATUT_SUPPRIME, "nb_chunks": 0}
+                already = str(row.fields.get("statut_ingestion") or "").strip().lower()
+                if writeback_enabled and already != STATUT_SUPPRIME:
+                    self._writeback(row.record_id, statut=STATUT_SUPPRIME, nb_chunks=0)
 
         finished_at = utc_now_iso()
         summary = {
