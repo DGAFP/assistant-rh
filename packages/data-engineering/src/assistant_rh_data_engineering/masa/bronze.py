@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from ..utils.convert import ensure_pdf
 from ..utils.grist import ManifestRow
 from ..utils.helpers import ensure_dir, sha256_file, utc_now_iso, write_json
+from ..utils.image_annotation import AlbertImageAnnotator, annotate_ocr_images, apply_image_annotations
 from ..utils.ocr import OcrProvider, OcrResult
 from ..utils.pdf_store import PdfSourceStore
 from .config import MINISTERE
@@ -14,13 +15,19 @@ from .config import MINISTERE
 
 @dataclass
 class MasaBronzeAsset:
-    """Un document MASA prêt pour le silver: fichier source + OCR (cache ou live)."""
+    """Un document MASA prêt pour le silver: fichier source + OCR (cache ou live).
+
+    ocr porte le markdown enrichi (descriptions d'images à la place des refs);
+    le cache bronze archive toujours la réponse OCR brute, non enrichie.
+    """
 
     row: ManifestRow
     sha256: str
     source_path: Path
     ocr: OcrResult
     ocr_from_cache: bool
+    image_annotations: dict[str, dict[str, str]] = field(default_factory=dict)
+    annotations_from_cache: bool = False
 
 
 class MasaBronzeRepository:
@@ -47,6 +54,9 @@ class MasaBronzeFetcher:
     Les non-PDF (.doc/.docx/.xls/.xlsx) sont convertis via LibreOffice avant
     OCR; le cache OCR (bucket bronze) reste indexé par le sha256 du fichier
     d'origine, donc un re-run ne repaye jamais l'OCR ni la conversion.
+    Divergence MASA: les crops d'images de la réponse OCR sont annotés par un
+    VLM (cache bronze par sha256, jamais de re-paiement) et les descriptions
+    remplacent les références `![img-N]` du markdown transmis au silver.
     """
 
     def __init__(
@@ -57,12 +67,16 @@ class MasaBronzeFetcher:
         *,
         target_env: str,
         force_reocr: bool = False,
+        image_annotator: Optional[AlbertImageAnnotator] = None,
+        max_images_per_doc: int = 150,
     ):
         self.store = store
         self.ocr_provider = ocr_provider
         self.repository = repository
         self.target_env = target_env
         self.force_reocr = force_reocr
+        self.image_annotator = image_annotator
+        self.max_images_per_doc = max_images_per_doc
 
     def download_and_hash(self, row: ManifestRow) -> tuple[Path, str]:
         """Télécharge le fichier dropzone et retourne (chemin local, sha256)."""
@@ -72,7 +86,7 @@ class MasaBronzeFetcher:
         return local_path, sha256_file(local_path)
 
     def fetch_asset(self, row: ManifestRow, source_path: Path, sha256: str) -> MasaBronzeAsset:
-        """OCR (cache-hit bronze sinon appel provider) du document téléchargé."""
+        """OCR (cache-hit bronze sinon appel provider) + annotations d'images."""
         cached = None
         if not self.force_reocr:
             cached = self.store.get_cached_ocr(
@@ -93,6 +107,16 @@ class MasaBronzeFetcher:
             self.store.put_ocr(self.target_env, MINISTERE, sha256, ocr_result)
             from_cache = False
 
+        annotations, annotations_from_cache = self._annotate_images(ocr_result, sha256)
+        if annotations:
+            ocr_result = OcrResult(
+                provider=ocr_result.provider,
+                version=ocr_result.version,
+                markdown=apply_image_annotations(ocr_result.markdown, annotations),
+                pages=[{**page, "markdown": apply_image_annotations(str(page.get("markdown") or ""), annotations)} for page in ocr_result.pages],
+                raw=ocr_result.raw,
+            )
+
         self.repository.save_ocr_markdown(row.short_id, ocr_result.markdown)
         return MasaBronzeAsset(
             row=row,
@@ -100,7 +124,39 @@ class MasaBronzeFetcher:
             source_path=source_path,
             ocr=ocr_result,
             ocr_from_cache=from_cache,
+            image_annotations=annotations,
+            annotations_from_cache=annotations_from_cache,
         )
+
+    def _annotate_images(self, ocr_result: OcrResult, sha256: str) -> tuple[dict[str, dict[str, str]], bool]:
+        """Annotations VLM du document: cache bronze d'abord, appels sinon."""
+        if self.image_annotator is None:
+            return {}, False
+
+        cached = self.store.get_cached_image_annotations(
+            self.target_env,
+            MINISTERE,
+            self.image_annotator.name,
+            self.image_annotator.version,
+            sha256,
+        )
+        if cached is not None:
+            return cached, True
+
+        annotations = annotate_ocr_images(
+            ocr_result.pages,
+            self.image_annotator,
+            max_images=self.max_images_per_doc,
+        )
+        self.store.put_image_annotations(
+            self.target_env,
+            MINISTERE,
+            self.image_annotator.name,
+            self.image_annotator.version,
+            sha256,
+            annotations,
+        )
+        return annotations, False
 
     def snapshot_manifest(self, run_id: str, rows: list[ManifestRow]) -> Path:
         return self.repository.save_manifest_snapshot(

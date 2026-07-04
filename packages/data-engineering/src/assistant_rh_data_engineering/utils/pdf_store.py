@@ -167,3 +167,63 @@ class PdfSourceStore:
         obj = self.pdf_cache_key(target_env, ministere, sha256)
         self.sync.upload_object(pdf_path, obj.bucket, obj.key)
         return obj
+
+    # --- Cache des annotations d'images (enrichissement VLM) -----------------
+
+    def image_annotations_cache_key(
+        self,
+        target_env: str,
+        ministere: str,
+        annotator_name: str,
+        annotator_version: str,
+        sha256: str,
+    ) -> ObjectStorageObject:
+        bucket, prefix = self._bronze_prefix(
+            target_env,
+            ministere,
+            f"image_annotations/{annotator_name}/{annotator_version}",
+        )
+        return ObjectStorageObject(bucket=bucket, key=f"{prefix}/{sha256}.json")
+
+    def get_cached_image_annotations(
+        self,
+        target_env: str,
+        ministere: str,
+        annotator_name: str,
+        annotator_version: str,
+        sha256: str,
+    ) -> dict[str, dict[str, str]] | None:
+        """Annotations d'images en cache pour un document, ou None (miss)."""
+        obj = self.image_annotations_cache_key(target_env, ministere, annotator_name, annotator_version, sha256)
+        try:
+            payload = json.loads(self.sync.read_text_object(obj))
+        except subprocess.CalledProcessError:
+            return None
+        except json.JSONDecodeError as exc:
+            raise PdfStoreError(f"Cache d'annotations corrompu: {obj.uri}") from exc
+        if not isinstance(payload, dict) or not isinstance(payload.get("annotations"), dict):
+            raise PdfStoreError(f"Cache d'annotations corrompu (forme inattendue): {obj.uri}")
+        return payload["annotations"]
+
+    def put_image_annotations(
+        self,
+        target_env: str,
+        ministere: str,
+        annotator_name: str,
+        annotator_version: str,
+        sha256: str,
+        annotations: dict[str, dict[str, str]],
+    ) -> ObjectStorageObject:
+        """Archive les annotations d'images d'un document (idempotence VLM)."""
+        obj = self.image_annotations_cache_key(target_env, ministere, annotator_name, annotator_version, sha256)
+        payload = {
+            "annotator": annotator_name,
+            "version": annotator_version,
+            "sha256": sha256,
+            "annotations": annotations,
+        }
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            json_path = Path(tmp_dir) / "annotations.json"
+            json_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            self.sync.upload_object(json_path, obj.bucket, obj.key)
+        return obj

@@ -14,6 +14,11 @@ from typing import Optional
 # - gold: filtre des chunks à payload utile < MIN_CHUNK_PAYLOAD_CHARS (le
 #   corpus MASA est riche en supports type slides — images seules, titres de
 #   slide sans corps, pages de garde d'annexes; voir masa/gold.py).
+# - bronze: enrichissement des images OCR (206 images sur le lot initial, dont
+#   les copies d'écran RenoiRH des supports de formation): OCR avec
+#   include_image_base64 (namespace de cache dédié -img) + annotation VLM
+#   Albert cachée en bronze; les descriptions remplacent les références
+#   d'images avant sectionnement (voir utils/image_annotation.py).
 # Chaque ministère porte sa propre identité: ne PAS réutiliser ces constantes
 # depuis un autre module (le hardcode SERVICE PUBLIC qui a fui dans MATTE est
 # exactement le bug que cette structure évite).
@@ -80,10 +85,23 @@ class GoldConfig:
 
 
 @dataclass
+class ImageEnrichmentConfig:
+    # Annotation VLM des crops d'images OCR (divergence MASA). L'annotation
+    # native du contrat Mistral OCR (bbox_annotation_format) est cassée côté
+    # Albert (validations de schéma incompatibles en cascade, smoke test
+    # 2026-07-04): on passe par include_image_base64 + /chat/completions.
+    enabled: bool = True
+    vlm_model: str = field(default_factory=lambda: os.getenv("ALBERT_VISION_MODEL", "openweight-medium"))
+    # Garde-fou coût: au-delà, les références d'images restent telles quelles.
+    max_images_per_doc: int = 150
+
+
+@dataclass
 class MasaPipelineConfig:
     paths: LakePaths = field(default_factory=LakePaths)
     silver: SilverConfig = field(default_factory=SilverConfig)
     embeddings: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     gold: GoldConfig = field(default_factory=GoldConfig)
+    images: ImageEnrichmentConfig = field(default_factory=ImageEnrichmentConfig)
     target_env: str = "staging"
     ocr_provider_name: Optional[str] = None  # None => OCR_PROVIDER env ou albert

@@ -68,6 +68,9 @@ def make_config(tmp_path: Path) -> MasaPipelineConfig:
     config = MasaPipelineConfig(paths=LakePaths(root_dir=tmp_path / "lake"), target_env="staging")
     config.embeddings.enable_m3 = False
     config.embeddings.enable_bge_scaleway = False
+    # L'enrichissement d'images est testé explicitement avec un fake annotator;
+    # désactivé par défaut pour ne pas exiger ALBERT_API_KEY.
+    config.images.enabled = False
     return config
 
 
@@ -860,3 +863,157 @@ def test_rejected_row_keeps_operator_inactive_status(tmp_path: Path) -> None:
 
     assert summary["rejected_count"] == 1
     assert grist.writebacks == []  # statut opérateur préservé
+
+
+# --- Enrichissement des images OCR (divergence MASA, 2026-07-04) ------------------
+
+
+class FakeAnnotator:
+    """Annotateur vision en mémoire: informative pour img-1, decorative sinon."""
+
+    name = "albert"
+    version = "fake-vlm"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def annotate(self, image_data_url: str) -> dict[str, str]:
+        self.calls += 1
+        if "AAAA" in image_data_url:  # marqueur du crop informatif
+            return {"type_image": "informative", "description": "Écran RenoiRH, menu Contrat, champ Nature."}
+        return {"type_image": "decorative", "description": ""}
+
+
+class FakeAnnotationStore(FakeStore):
+    def __init__(self, documents: dict[str, bytes]):
+        super().__init__(documents)
+        self.annotation_cache: dict[str, dict[str, dict[str, str]]] = {}
+
+    def get_cached_image_annotations(self, target_env, ministere, name, version, sha256):
+        return self.annotation_cache.get(sha256)
+
+    def put_image_annotations(self, target_env, ministere, name, version, sha256, annotations):
+        self.annotation_cache[sha256] = annotations
+
+
+def make_ocr_with_images() -> OcrResult:
+    markdown = (
+        "## Formation SGCD\n\n![img-1.jpeg](img-1.jpeg)\n\nCorps du support de formation.\n\n![img-2.jpeg](img-2.jpeg)\n\n![img-9.jpeg](img-9.jpeg)"
+    )
+    pages = [
+        {
+            "index": 0,
+            "markdown": markdown,
+            "images": [
+                {"id": "img-1.jpeg", "image_base64": "AAAA"},
+                {"id": "img-2.jpeg", "image_base64": "BBBB"},
+                # img-9: référencée dans le markdown mais sans base64 (non annotable).
+                {"id": "img-9.jpeg", "image_base64": None},
+            ],
+        }
+    ]
+    return OcrResult(provider="albert", version="mistral-ocr-2512-img", markdown=markdown, pages=pages)
+
+
+def test_ocr_provider_include_images_uses_dedicated_cache_version(monkeypatch) -> None:
+    from assistant_rh_data_engineering.utils.ocr import AlbertOcrProvider
+
+    monkeypatch.setenv("ALBERT_API_KEY", "test-key")
+    plain = AlbertOcrProvider()
+    with_images = AlbertOcrProvider(include_images=True)
+
+    # Namespace de cache distinct: un cache rempli sans crops n'empêche
+    # jamais l'enrichissement des documents déjà OCRisés.
+    assert plain.version == "mistral-ocr-2512"
+    assert with_images.version == "mistral-ocr-2512-img"
+
+
+def test_parse_annotation_tolerates_json_fences() -> None:
+    from assistant_rh_data_engineering.utils.image_annotation import _parse_annotation
+
+    parsed = _parse_annotation('```json\n{"type_image": "informative", "description": "Écran RenoiRH."}\n```')
+
+    assert parsed == {"type_image": "informative", "description": "Écran RenoiRH."}
+
+
+def test_apply_image_annotations_replaces_informative_and_strips_decorative() -> None:
+    from assistant_rh_data_engineering.utils.image_annotation import apply_image_annotations
+
+    markdown = "Avant.\n\n![fig](img-1.jpeg)\n\n![deco](img-2.jpeg)\n\n![inconnue](img-9.jpeg)\n\nAprès."
+    annotations = {
+        "img-1.jpeg": {"type_image": "informative", "description": "Écran RenoiRH, menu Contrat."},
+        "img-2.jpeg": {"type_image": "decorative", "description": ""},
+    }
+
+    result = apply_image_annotations(markdown, annotations)
+
+    assert "[Illustration — Écran RenoiRH, menu Contrat.]" in result
+    assert "img-2.jpeg" not in result
+    # Non annotée (échec VLM ou hors budget): la référence est conservée.
+    assert "![inconnue](img-9.jpeg)" in result
+
+
+def test_bronze_annotates_images_and_caches_results(tmp_path: Path) -> None:
+    from assistant_rh_data_engineering.masa.bronze import MasaBronzeFetcher, MasaBronzeRepository
+
+    row = make_row()
+    store = FakeAnnotationStore({row.cle_bucket: b"%PDF-doc1"})
+    sha = hashlib.sha256(b"%PDF-doc1").hexdigest()
+    store.ocr_cache[sha] = make_ocr_with_images()
+    annotator = FakeAnnotator()
+    fetcher = MasaBronzeFetcher(
+        store,
+        FakeOcrProvider(),
+        MasaBronzeRepository(tmp_path / "bronze"),
+        target_env="staging",
+        image_annotator=annotator,
+    )
+
+    asset = fetcher.fetch_asset(row, tmp_path / "src.pdf", sha)
+
+    # img-9 n'a pas de base64: seuls img-1 et img-2 sont annotés.
+    assert annotator.calls == 2
+    assert asset.image_annotations["img-1.jpeg"]["type_image"] == "informative"
+    assert asset.annotations_from_cache is False
+    assert "[Illustration — Écran RenoiRH, menu Contrat, champ Nature.]" in asset.ocr.markdown
+    assert "img-2.jpeg" not in asset.ocr.markdown
+    assert "![img-9.jpeg](img-9.jpeg)" in asset.ocr.markdown
+    # Les pages sont enrichies aussi (le silver sectionne par page).
+    assert "[Illustration — " in asset.ocr.pages[0]["markdown"]
+
+    # Re-run: annotations servies par le cache bronze, zéro appel VLM.
+    asset2 = fetcher.fetch_asset(row, tmp_path / "src.pdf", sha)
+    assert annotator.calls == 2
+    assert asset2.annotations_from_cache is True
+    assert asset2.image_annotations == asset.image_annotations
+
+
+def test_bronze_annotation_failure_keeps_reference_and_run_continues(tmp_path: Path) -> None:
+    from assistant_rh_data_engineering.masa.bronze import MasaBronzeFetcher, MasaBronzeRepository
+
+    class FailingAnnotator:
+        name = "albert"
+        version = "fake-vlm"
+
+        def annotate(self, image_data_url: str) -> dict[str, str]:
+            from assistant_rh_data_engineering.utils.image_annotation import ImageAnnotationError
+
+            raise ImageAnnotationError("boom")
+
+    row = make_row()
+    store = FakeAnnotationStore({row.cle_bucket: b"%PDF-doc1"})
+    sha = hashlib.sha256(b"%PDF-doc1").hexdigest()
+    store.ocr_cache[sha] = make_ocr_with_images()
+    fetcher = MasaBronzeFetcher(
+        store,
+        FakeOcrProvider(),
+        MasaBronzeRepository(tmp_path / "bronze"),
+        target_env="staging",
+        image_annotator=FailingAnnotator(),
+    )
+
+    asset = fetcher.fetch_asset(row, tmp_path / "src.pdf", sha)
+
+    # Aucune annotation: le markdown garde ses références telles quelles.
+    assert asset.image_annotations == {}
+    assert "![img-1.jpeg](img-1.jpeg)" in asset.ocr.markdown

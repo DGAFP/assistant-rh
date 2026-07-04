@@ -16,6 +16,7 @@ from ..utils.grist import (
     fetch_validated_manifest,
 )
 from ..utils.helpers import utc_now_iso
+from ..utils.image_annotation import AlbertImageAnnotator
 from ..utils.object_storage import ObjectStorageConfig, ScalewayObjectStorageSync
 from ..utils.ocr import build_ocr_provider
 from ..utils.pdf_store import PdfSourceStore
@@ -78,12 +79,20 @@ class MasaPipeline:
         store: Optional[PdfSourceStore] = None,
         ocr_provider: Any = None,
         db_writer: Optional[RagDbWriter] = None,
+        image_annotator: Any = None,
         schema: str = "public",
     ):
         self.config = config or MasaPipelineConfig()
         self.grist = grist_client or GristClient()
         self.store = store or PdfSourceStore(ScalewayObjectStorageSync(ObjectStorageConfig.from_env()))
-        self.ocr_provider = ocr_provider or build_ocr_provider(self.config.ocr_provider_name)
+        # include_images suit l'enrichissement: le namespace de cache OCR
+        # (version suffixée -img) doit contenir les crops que l'annotateur
+        # consomme — un cache sans images bloquerait l'enrichissement.
+        self.ocr_provider = ocr_provider or build_ocr_provider(
+            self.config.ocr_provider_name,
+            include_images=self.config.images.enabled,
+        )
+        self._image_annotator = image_annotator
         self._db_writer = db_writer
         self.schema = schema
 
@@ -98,6 +107,14 @@ class MasaPipeline:
         if self._db_writer is None:
             self._db_writer = RagDbWriter(schema=self.schema, chunk_table=CHUNK_TABLE)
         return self._db_writer
+
+    @property
+    def image_annotator(self) -> Any:
+        # Lazy comme db_writer: le dry-run et les configs enrichissement-off
+        # ne doivent pas exiger ALBERT_API_KEY.
+        if self._image_annotator is None and self.config.images.enabled:
+            self._image_annotator = AlbertImageAnnotator(model=self.config.images.vlm_model)
+        return self._image_annotator
 
     def run(
         self,
@@ -157,6 +174,8 @@ class MasaPipeline:
             self.bronze_repo,
             target_env=self.config.target_env,
             force_reocr=force_reocr,
+            image_annotator=self.image_annotator if not dry_run else None,
+            max_images_per_doc=self.config.images.max_images_per_doc,
         )
 
         # Download + hash d'abord (lecture seule): le delta sha256 décide
@@ -247,6 +266,8 @@ class MasaPipeline:
                     "statut": STATUT_OK,
                     "nb_chunks": nb_chunks,
                     "ocr_from_cache": asset.ocr_from_cache,
+                    "images_annotees": len(asset.image_annotations),
+                    "annotations_from_cache": asset.annotations_from_cache,
                 }
                 if writeback_enabled:
                     self._writeback(
