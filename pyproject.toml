@@ -32,6 +32,8 @@ dependencies = [
     "plotly>=6.6.0",
     "streamlit-cookies-manager>=0.2.0",
     "beautifulsoup4>=4.14.3",
+    # Upload dropzone (page d'import) — S3-compatible Scaleway, sans aws CLI
+    "boto3>=1.34.0",
     # Internal packages (monorepo workspace members)
     "assistant-rh-rag-pipeline",
     "assistant-rh-data-engineering",
@@ -104,6 +106,7 @@ select = ["E", "F", "I"]
 "apps/streamlit-ui/pages/10_Intent_Gater_Evaluation.py" = ["E501"]
 "apps/streamlit-ui/pages/11_Golden_Beta_Analysis.py" = ["E501"]
 "apps/streamlit-ui/pages/12_Pipeline_Timeline.py" = ["E501"]
+"apps/streamlit-ui/pages/15_Import_Sources.py" = ["E402"]
 "apps/streamlit-ui/pages/_PDF_Viewer.py" = ["E402", "E501"]
 # src/ui modules
 "src/ui/chatbot_logging.py" = ["E402", "E501"]
