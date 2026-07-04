@@ -29,15 +29,20 @@ jobs:
       SCW_DEFAULT_ORGANIZATION_ID: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
       SCW_CONTAINER_REGISTRY_NAMESPACE: ${{ vars.SCW_CONTAINER_REGISTRY_NAMESPACE }}
       SCW_DEFAULT_REGION: ${{ vars.SCW_DEFAULT_REGION || 'fr-par' }}
+      SCW_BUCKET_SOURCES_PDF: ${{ vars.SCW_BUCKET_SOURCES_PDF || 'assistant-rh-sources-pdf' }}
 
       SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
       ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
       SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
       COOKIES_PASSWORD: ${{ secrets.COOKIES_PASSWORD }}
       ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      GRIST_API_KEY: ${{ secrets.GRIST_API_KEY }}
 
       ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
       SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || secrets.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
+      GRIST_API_BASE_URL: ${{ vars.GRIST_API_BASE_URL }}
+      GRIST_DOC_ID: ${{ vars.GRIST_DOC_ID }}
+      GRIST_TABLE_ID: ${{ vars.GRIST_TABLE_ID }}
       STREAMLIT_STAGING_BASE_URL: ${{ vars.STREAMLIT_STAGING_BASE_URL }}
 
       APP_ENV: staging
@@ -69,6 +74,10 @@ jobs:
             SCALEWAY_API_KEY
             COOKIES_PASSWORD
             ADMIN_PASSWORD
+            GRIST_API_BASE_URL
+            GRIST_API_KEY
+            GRIST_DOC_ID
+            GRIST_TABLE_ID
           )
           for name in "${required[@]}"; do
             if [[ -z "${!name:-}" ]]; then
