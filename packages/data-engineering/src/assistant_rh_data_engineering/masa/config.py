@@ -10,7 +10,10 @@ from typing import Optional
 # PDF ministères, Phase C (#247). Module copié du template MI (mi@44fb22e):
 # la logique de parsing/sectionnement est volontairement par-ministère et peut
 # diverger; l'infra Grist/OCR/DB reste partagée (utils/).
-# Divergences de parsing par rapport au template MI: aucune à ce stade.
+# Divergences de parsing par rapport au template MI:
+# - gold: filtre des chunks à payload utile < MIN_CHUNK_PAYLOAD_CHARS (le
+#   corpus MASA est riche en supports type slides — images seules, titres de
+#   slide sans corps, pages de garde d'annexes; voir masa/gold.py).
 # Chaque ministère porte sa propre identité: ne PAS réutiliser ces constantes
 # depuis un autre module (le hardcode SERVICE PUBLIC qui a fui dans MATTE est
 # exactement le bug que cette structure évite).

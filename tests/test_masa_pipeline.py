@@ -267,6 +267,33 @@ def test_gold_skips_non_indexable_sections(tmp_path: Path) -> None:
     assert chunks == []
 
 
+def test_gold_filters_low_payload_chunks(tmp_path: Path) -> None:
+    # Divergence MASA (audit du lot réel 2026-07-04): les supports type slides
+    # produisent des chunks sans contenu — images seules, titres de slide sans
+    # corps, pages de garde d'annexes. Filtrés en gold par payload utile.
+    config = make_config(tmp_path)
+    markdown = (
+        "## Support formation webinaire déconcentration\n\n"
+        "![img-0.jpeg](img-0.jpeg)\n\n![img-1.jpeg](img-1.jpeg)\n\n"
+        "## Liste des questions pour un entretien de recrutement structuré\n\n"
+        "ANNEXE N° 7\n\n"
+        "## Les différents types de contrats\n\n"
+        "Le contrat à durée déterminée est conclu pour une durée maximale de trois ans, "
+        "renouvelable dans la limite de six ans au total sur le même emploi."
+    )
+    document, sections = MasaSilverBuilder(config.silver).build_bundle(make_asset(make_row(), markdown=markdown))
+
+    chunks = MasaGoldBuilder(config.embeddings, config.gold).build_chunks(document, sections)
+
+    texts = [chunk["text"] for chunk in chunks]
+    assert any("durée déterminée" in text for text in texts)
+    for text in texts:
+        assert "![img-" not in text or "durée déterminée" in text
+        assert text.strip() != "ANNEXE N° 7"
+    # Les chunks image-seule et heading-seul ont disparu.
+    assert not any(text.strip().endswith("![img-1.jpeg](img-1.jpeg)") for text in texts)
+
+
 def test_gold_large_tables_split_on_rows_with_header_repeated() -> None:
     from assistant_rh_data_engineering.masa.gold import split_section_markdown
 

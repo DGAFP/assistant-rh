@@ -18,6 +18,27 @@ __all__ = ["MasaGoldBuilder", "GoldBundle", "GoldRepository"]
 _PARAGRAPH_SPLIT_RE = re.compile(r"\n{2,}")
 _TABLE_SEPARATOR_CHARS = set("-:| ")
 
+# Divergence MASA (audit du lot réel, 2026-07-04): le corpus est riche en
+# supports type slides (formations, webinaires, modes opératoires) dont l'OCR
+# produit des chunks sans contenu utile — références d'images seules
+# (![img-N.jpeg]), titres de slide sans corps, pages de garde d'annexes
+# (54 chunks sur 1031 au premier passage). Un chunk n'est gardé que si son
+# payload utile (texte hors images, headings et ponctuation) atteint ce seuil.
+# Quand les images OCR seront enrichies en descriptions (issue dédiée), ces
+# chunks porteront du texte réel et passeront le seuil d'eux-mêmes.
+MIN_CHUNK_PAYLOAD_CHARS = 25
+
+_IMAGE_REF_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_HEADING_LINE_RE = re.compile(r"^#{1,6}\s.*$", re.MULTILINE)
+
+
+def _chunk_payload(text: str) -> str:
+    """Texte utile d'un chunk: sans références d'images, sans lignes de
+    heading, sans ponctuation ni espaces."""
+    stripped = _IMAGE_REF_RE.sub("", text)
+    stripped = _HEADING_LINE_RE.sub("", stripped)
+    return re.sub(r"[\W_]+", "", stripped, flags=re.UNICODE)
+
 
 def _is_table_block(block: str) -> bool:
     lines = [line for line in block.splitlines() if line.strip()]
@@ -160,6 +181,8 @@ class MasaGoldBuilder:
     n'ont que le sectionnement heading-based: chaque section indexable est
     découpée en chunks SECTION_ATOMIC. Le champ source vaut CHUNK_SOURCE (MASA)
     — jamais une constante partagée (le hardcode qui a fui dans MATTE).
+    Divergence MASA: les chunks sans payload utile sont filtrés
+    (MIN_CHUNK_PAYLOAD_CHARS, corpus riche en slides).
     """
 
     def __init__(self, embedding_config: EmbeddingConfig, gold_config: GoldConfig):
@@ -197,6 +220,7 @@ class MasaGoldBuilder:
                 self.gold_config.chunk_max_chars,
                 self.gold_config.chunk_overlap,
             ) or [section_markdown]
+            texts = [text for text in texts if len(_chunk_payload(text)) >= MIN_CHUNK_PAYLOAD_CHARS]
 
             for index, text in enumerate(texts):
                 chunk_rows.append(
