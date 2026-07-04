@@ -17,15 +17,26 @@ markdown AVANT sectionnement; les décoratifs sont retirés.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import requests
 
-_IMAGE_REF_RE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+from .ocr import _sanitize_version
+
+# Référence d'image markdown `![...](cible)`. Partagée avec le filtre de
+# payload de masa/gold.py: les deux passes doivent voir les mêmes images.
+IMAGE_REF_RE = re.compile(r"!\[[^\]]*\]\(([^)]*)\)")
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+
+# Un 429/panne Albert toléré par image serait gelé au cache si le lot partiel
+# était persisté (voir masa/bronze.py): la parallélisation reste volontairement
+# modeste pour ne pas provoquer de rate-limit sur l'API partagée.
+MAX_ANNOTATION_WORKERS = 4
 
 ANNOTATION_PROMPT = (
     "Tu enrichis un corpus documentaire RH pour un moteur de recherche. Analyse cette image extraite"
@@ -42,17 +53,14 @@ class ImageAnnotationError(RuntimeError):
     """Erreur d'appel au modèle vision."""
 
 
-def _sanitize_version(value: str) -> str:
-    # Même contrainte que utils/ocr.py: la version est un segment de chemin S3.
-    return re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip()) or "default"
-
-
 class AlbertImageAnnotator:
     """Annotation d'un crop d'image via /chat/completions (modèle vision Albert).
 
     name/version entrent dans la clé du cache bronze des annotations
-    (image_annotations/{name}/{version}/{sha256}.json): changer de modèle
-    invalide le cache, comme pour l'OCR.
+    (image_annotations/{name}/{version}/{sha256}.json): changer de modèle OU
+    de prompt invalide le cache (le hash du prompt entre dans la version —
+    même piège que include_images pour le cache OCR: deux prompts différents
+    produisent des annotations incomparables sous la même clé).
     """
 
     name = "albert"
@@ -70,8 +78,12 @@ class AlbertImageAnnotator:
         if not self.api_key:
             raise ImageAnnotationError("ALBERT_API_KEY manquant pour l'annotation d'images.")
         self.model = model or os.getenv("ALBERT_VISION_MODEL") or "openweight-medium"
-        self.version = _sanitize_version(self.model)
+        prompt_hash = hashlib.sha1(ANNOTATION_PROMPT.encode("utf-8")).hexdigest()[:8]
+        self.version = f"{_sanitize_version(self.model)}-p{prompt_hash}"
         self.timeout = timeout
+        # Session partagée: réutilise les connexions TLS entre crops (le pool
+        # urllib3 sous-jacent est thread-safe pour des POST simples).
+        self._session = requests.Session()
 
     def annotate(self, image_data_url: str) -> dict[str, str]:
         """Retourne {"type_image": "decorative"|"informative", "description": str}."""
@@ -91,7 +103,7 @@ class AlbertImageAnnotator:
         }
         url = f"{self.base_url}/chat/completions"
         try:
-            response = requests.post(
+            response = self._session.post(
                 url,
                 headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
                 json=body,
@@ -148,20 +160,38 @@ def annotate_ocr_images(
     annotator: AlbertImageAnnotator,
     *,
     max_images: int = 150,
-) -> dict[str, dict[str, str]]:
-    """Annote chaque crop d'une réponse OCR: {image_id: annotation}.
+    max_workers: int = MAX_ANNOTATION_WORKERS,
+) -> tuple[dict[str, dict[str, str]], list[str]]:
+    """Annote les crops d'une réponse OCR: ({image_id: annotation}, [échecs]).
 
     Erreur par image tolérée (l'image reste non annotée, sa référence markdown
     est conservée telle quelle): une image illisible ne doit pas faire échouer
-    l'ingestion du document. `max_images` borne le coût VLM par document.
+    l'ingestion du document. Les ids en échec sont retournés pour que
+    l'appelant décide de la mise en cache — un lot partiel ne doit pas être
+    gelé comme s'il était complet. `max_images` borne le coût VLM par
+    document; les appels sont indépendants et parallélisés modérément.
     """
+    items = iter_ocr_images(pages)[:max_images]
     annotations: dict[str, dict[str, str]] = {}
-    for image_id, data_url in iter_ocr_images(pages)[:max_images]:
+    failed: list[str] = []
+    if not items:
+        return annotations, failed
+
+    def _one(item: tuple[str, str]) -> tuple[str, dict[str, str] | None]:
+        image_id, data_url = item
         try:
-            annotations[image_id] = annotator.annotate(data_url)
-        except ImageAnnotationError as exc:  # noqa: PERF203 — tolérance par image
+            return image_id, annotator.annotate(data_url)
+        except ImageAnnotationError as exc:
             print(f"[warn] annotation image {image_id} échouée: {exc}")
-    return annotations
+            return image_id, None
+
+    with ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(items)))) as pool:
+        for image_id, annotation in pool.map(_one, items):
+            if annotation is None:
+                failed.append(image_id)
+            else:
+                annotations[image_id] = annotation
+    return annotations, failed
 
 
 def apply_image_annotations(markdown: str, annotations: dict[str, dict[str, str]]) -> str:
@@ -170,7 +200,10 @@ def apply_image_annotations(markdown: str, annotations: dict[str, dict[str, str]
     - informative avec description => paragraphe `[Illustration — ...]`,
       retrievable et sectionnable comme du texte.
     - decorative => référence retirée (bruit).
-    - non annotée (échec VLM, hors budget max_images) => référence conservée.
+    - non annotée (échec VLM, hors budget max_images) ou informative SANS
+      description (réponse VLM incomplète) => référence conservée telle
+      quelle: on ne supprime jamais une image potentiellement porteuse
+      d'information sans description de remplacement.
     """
 
     def _replace(match: re.Match[str]) -> str:
@@ -178,8 +211,10 @@ def apply_image_annotations(markdown: str, annotations: dict[str, dict[str, str]
         annotation = annotations.get(image_id)
         if annotation is None:
             return match.group(0)
-        if annotation["type_image"] == "informative" and annotation["description"]:
+        if annotation["type_image"] == "decorative":
+            return ""
+        if annotation["description"]:
             return f"[Illustration — {annotation['description']}]"
-        return ""
+        return match.group(0)
 
-    return _IMAGE_REF_RE.sub(_replace, markdown)
+    return IMAGE_REF_RE.sub(_replace, markdown)

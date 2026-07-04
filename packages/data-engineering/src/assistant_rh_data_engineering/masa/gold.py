@@ -9,6 +9,7 @@ from ..service_public.qna_chunking import split_on_paragraphs
 from ..service_public.section_splitter import PAGE_MARKER_RE
 from ..utils.gold import GoldBundle, GoldRepository, build_embedders
 from ..utils.helpers import utc_now_iso
+from ..utils.image_annotation import IMAGE_REF_RE
 from .config import CHUNK_SOURCE, EmbeddingConfig, GoldConfig
 
 SECTION_CHUNK_ROLE = "SECTION_ATOMIC"
@@ -24,18 +25,18 @@ _TABLE_SEPARATOR_CHARS = set("-:| ")
 # (![img-N.jpeg]), titres de slide sans corps, pages de garde d'annexes
 # (54 chunks sur 1031 au premier passage). Un chunk n'est gardé que si son
 # payload utile (texte hors images, headings et ponctuation) atteint ce seuil.
-# Quand les images OCR seront enrichies en descriptions (issue dédiée), ces
-# chunks porteront du texte réel et passeront le seuil d'eux-mêmes.
+# Complémentaire de l'enrichissement VLM (bronze): une image informative
+# décrite porte du texte réel et passe le seuil; ne restent filtrées que les
+# refs non annotées (échec VLM) et les scories de slides.
 MIN_CHUNK_PAYLOAD_CHARS = 25
 
-_IMAGE_REF_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _HEADING_LINE_RE = re.compile(r"^#{1,6}\s.*$", re.MULTILINE)
 
 
 def _chunk_payload(text: str) -> str:
     """Texte utile d'un chunk: sans références d'images, sans lignes de
     heading, sans ponctuation ni espaces."""
-    stripped = _IMAGE_REF_RE.sub("", text)
+    stripped = IMAGE_REF_RE.sub("", text)
     stripped = _HEADING_LINE_RE.sub("", stripped)
     return re.sub(r"[\W_]+", "", stripped, flags=re.UNICODE)
 

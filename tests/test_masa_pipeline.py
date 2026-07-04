@@ -93,14 +93,18 @@ def test_plan_classifies_new_changed_unchanged_and_orphans() -> None:
     assert plan["delete"] == ["MASA-0999"]
 
 
-def test_plan_retries_zero_chunk_documents() -> None:
-    # Leçon de l'audit MATTE: hash identique mais zéro chunk => retraiter.
+def test_plan_zero_chunk_document_with_matching_checksum_converges() -> None:
+    # Divergence vs MI: le filtre payload gold rend légitime un doc à zéro
+    # chunk (image-only décoratif); ingest_document_bundle étant
+    # transactionnel, un checksum en base prouve un lot complet =>
+    # ignore_inchange, pas de retraitement perpétuel.
     expected = {"MASA-0001": make_row("MASA-0001")}
     current = {"MASA-0001": {"doc_id": "d1", "checksum": "a" * 64, "nb_chunks": 0}}
 
     plan = plan_reconciliation(expected, current, {"MASA-0001": "a" * 64})
 
-    assert plan["ingest"] == ["MASA-0001"]
+    assert plan["ignore_inchange"] == ["MASA-0001"]
+    assert plan["ingest"] == []
 
 
 def test_plan_force_reocr_reingests_everything() -> None:
@@ -953,6 +957,32 @@ def test_apply_image_annotations_replaces_informative_and_strips_decorative() ->
     assert "![inconnue](img-9.jpeg)" in result
 
 
+def test_apply_image_annotations_keeps_informative_without_description() -> None:
+    # Réponse VLM incomplète (description omise sur une image informative):
+    # on ne supprime jamais une image porteuse d'information sans description
+    # de remplacement — la référence reste, comme pour une non-annotée.
+    from assistant_rh_data_engineering.utils.image_annotation import apply_image_annotations
+
+    markdown = "![capture](img-7.jpeg)"
+    annotations = {"img-7.jpeg": {"type_image": "informative", "description": ""}}
+
+    assert apply_image_annotations(markdown, annotations) == "![capture](img-7.jpeg)"
+
+
+def test_annotator_version_depends_on_prompt(monkeypatch) -> None:
+    # Le prompt entre dans la clé du cache bronze: le changer invalide les
+    # annotations existantes (même piège que include_images pour l'OCR).
+    from assistant_rh_data_engineering.utils import image_annotation as ia
+
+    monkeypatch.setenv("ALBERT_API_KEY", "test-key")
+    version_before = ia.AlbertImageAnnotator(model="openweight-medium").version
+    monkeypatch.setattr(ia, "ANNOTATION_PROMPT", ia.ANNOTATION_PROMPT + " Autre consigne.")
+    version_after = ia.AlbertImageAnnotator(model="openweight-medium").version
+
+    assert version_before.startswith("openweight-medium-p")
+    assert version_before != version_after
+
+
 def test_bronze_annotates_images_and_caches_results(tmp_path: Path) -> None:
     from assistant_rh_data_engineering.masa.bronze import MasaBronzeFetcher, MasaBronzeRepository
 
@@ -1014,6 +1044,67 @@ def test_bronze_annotation_failure_keeps_reference_and_run_continues(tmp_path: P
 
     asset = fetcher.fetch_asset(row, tmp_path / "src.pdf", sha)
 
-    # Aucune annotation: le markdown garde ses références telles quelles.
+    # Aucune annotation: le markdown garde ses références telles quelles,
+    # et le lot en échec n'est PAS mis en cache (retentative au prochain run
+    # — une panne transitoire du VLM ne doit jamais être gelée).
     assert asset.image_annotations == {}
     assert "![img-1.jpeg](img-1.jpeg)" in asset.ocr.markdown
+    assert store.annotation_cache == {}
+
+
+def test_bronze_force_reocr_bypasses_annotation_cache(tmp_path: Path) -> None:
+    from assistant_rh_data_engineering.masa.bronze import MasaBronzeFetcher, MasaBronzeRepository
+
+    class ImageOcrProvider(FakeOcrProvider):
+        def ocr_pdf(self, pdf_bytes: bytes, document_name: str = "document.pdf") -> OcrResult:
+            self.calls += 1
+            return make_ocr_with_images()
+
+    row = make_row()
+    store = FakeAnnotationStore({row.cle_bucket: b"%PDF-doc1"})
+    sha = hashlib.sha256(b"%PDF-doc1").hexdigest()
+    # Cache pré-rempli avec des annotations périmées: force_reocr doit les ignorer.
+    store.annotation_cache[sha] = {"img-1.jpeg": {"type_image": "decorative", "description": ""}}
+    annotator = FakeAnnotator()
+    fetcher = MasaBronzeFetcher(
+        store,
+        ImageOcrProvider(),
+        MasaBronzeRepository(tmp_path / "bronze"),
+        target_env="staging",
+        force_reocr=True,
+        image_annotator=annotator,
+    )
+    source = tmp_path / "src.pdf"
+    source.write_bytes(b"%PDF-doc1")
+
+    asset = fetcher.fetch_asset(row, source, sha)
+
+    assert annotator.calls == 2  # ré-annotation malgré le cache
+    assert asset.annotations_from_cache is False
+    assert asset.image_annotations["img-1.jpeg"]["type_image"] == "informative"
+
+
+def test_bronze_keeps_raw_markdown_for_silver(tmp_path: Path) -> None:
+    # doc_markdown_raw (silver) et bronze/ocr/{short_id}.md portent la sortie
+    # OCR brute — les substitutions VLM ne vivent que dans doc_markdown.
+    from assistant_rh_data_engineering.masa.bronze import MasaBronzeFetcher, MasaBronzeRepository
+
+    row = make_row()
+    store = FakeAnnotationStore({row.cle_bucket: b"%PDF-doc1"})
+    sha = hashlib.sha256(b"%PDF-doc1").hexdigest()
+    store.ocr_cache[sha] = make_ocr_with_images()
+    repository = MasaBronzeRepository(tmp_path / "bronze")
+    fetcher = MasaBronzeFetcher(
+        store,
+        FakeOcrProvider(),
+        repository,
+        target_env="staging",
+        image_annotator=FakeAnnotator(),
+    )
+
+    asset = fetcher.fetch_asset(row, tmp_path / "src.pdf", sha)
+
+    assert "![img-1.jpeg](img-1.jpeg)" in asset.ocr_markdown_raw
+    assert "[Illustration — " not in asset.ocr_markdown_raw
+    saved = (repository.ocr_dir / f"{row.short_id}.md").read_text(encoding="utf-8")
+    assert saved == asset.ocr_markdown_raw

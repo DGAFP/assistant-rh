@@ -168,7 +168,10 @@ class MasaSilverBuilder:
                 "ocr_from_cache": asset.ocr_from_cache,
             },
             "doc_markdown": doc_markdown,
-            "doc_markdown_raw": asset.ocr.markdown,
+            # Contrat de la colonne (aligné MI): la sortie OCR AVANT les
+            # transformations VLM — une hallucination d'annotation doit rester
+            # distinguable du texte d'origine.
+            "doc_markdown_raw": asset.ocr_markdown_raw or asset.ocr.markdown,
             "doc_text_hash": doc_text_hash,
             "token_count": count_tokens(doc_markdown),
             "char_count": len(doc_markdown),

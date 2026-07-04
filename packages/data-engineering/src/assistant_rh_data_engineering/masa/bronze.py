@@ -18,7 +18,9 @@ class MasaBronzeAsset:
     """Un document MASA prêt pour le silver: fichier source + OCR (cache ou live).
 
     ocr porte le markdown enrichi (descriptions d'images à la place des refs);
-    le cache bronze archive toujours la réponse OCR brute, non enrichie.
+    ocr_markdown_raw conserve la sortie OCR brute (contrat de la colonne
+    rag_documents.doc_markdown_raw: toujours le texte AVANT transformations
+    VLM, comme pour MI). Le cache bronze archive la réponse OCR brute.
     """
 
     row: ManifestRow
@@ -26,6 +28,7 @@ class MasaBronzeAsset:
     source_path: Path
     ocr: OcrResult
     ocr_from_cache: bool
+    ocr_markdown_raw: str = ""
     image_annotations: dict[str, dict[str, str]] = field(default_factory=dict)
     annotations_from_cache: bool = False
 
@@ -107,6 +110,7 @@ class MasaBronzeFetcher:
             self.store.put_ocr(self.target_env, MINISTERE, sha256, ocr_result)
             from_cache = False
 
+        raw_markdown = ocr_result.markdown
         annotations, annotations_from_cache = self._annotate_images(ocr_result, sha256)
         if annotations:
             ocr_result = OcrResult(
@@ -117,45 +121,58 @@ class MasaBronzeFetcher:
                 raw=ocr_result.raw,
             )
 
-        self.repository.save_ocr_markdown(row.short_id, ocr_result.markdown)
+        # L'artefact bronze reste la sortie du provider (comme MI): l'enrichi
+        # vit en silver (doc_markdown), le brut reste diffable/déboguable.
+        self.repository.save_ocr_markdown(row.short_id, raw_markdown)
         return MasaBronzeAsset(
             row=row,
             sha256=sha256,
             source_path=source_path,
             ocr=ocr_result,
             ocr_from_cache=from_cache,
+            ocr_markdown_raw=raw_markdown,
             image_annotations=annotations,
             annotations_from_cache=annotations_from_cache,
         )
 
     def _annotate_images(self, ocr_result: OcrResult, sha256: str) -> tuple[dict[str, dict[str, str]], bool]:
-        """Annotations VLM du document: cache bronze d'abord, appels sinon."""
+        """Annotations VLM du document: cache bronze d'abord, appels sinon.
+
+        force_reocr contourne aussi ce cache (« tout est retraité »). Un lot
+        avec échecs n'est JAMAIS mis en cache: le geler transformerait une
+        panne transitoire du VLM en perte d'enrichissement permanente — le
+        run suivant retentera les images manquantes.
+        """
         if self.image_annotator is None:
             return {}, False
 
-        cached = self.store.get_cached_image_annotations(
-            self.target_env,
-            MINISTERE,
-            self.image_annotator.name,
-            self.image_annotator.version,
-            sha256,
-        )
-        if cached is not None:
-            return cached, True
+        if not self.force_reocr:
+            cached = self.store.get_cached_image_annotations(
+                self.target_env,
+                MINISTERE,
+                self.image_annotator.name,
+                self.image_annotator.version,
+                sha256,
+            )
+            if cached is not None:
+                return cached, True
 
-        annotations = annotate_ocr_images(
+        annotations, failed = annotate_ocr_images(
             ocr_result.pages,
             self.image_annotator,
             max_images=self.max_images_per_doc,
         )
-        self.store.put_image_annotations(
-            self.target_env,
-            MINISTERE,
-            self.image_annotator.name,
-            self.image_annotator.version,
-            sha256,
-            annotations,
-        )
+        if failed:
+            print(f"[warn] annotations incomplètes ({len(failed)} échec(s)) — lot non mis en cache, retentative au prochain run")
+        else:
+            self.store.put_image_annotations(
+                self.target_env,
+                MINISTERE,
+                self.image_annotator.name,
+                self.image_annotator.version,
+                sha256,
+                annotations,
+            )
         return annotations, False
 
     def snapshot_manifest(self, run_id: str, rows: list[ManifestRow]) -> Path:

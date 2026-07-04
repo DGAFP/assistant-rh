@@ -19,6 +19,9 @@ from typing import Optional
 #   include_image_base64 (namespace de cache dédié -img) + annotation VLM
 #   Albert cachée en bronze; les descriptions remplacent les références
 #   d'images avant sectionnement (voir utils/image_annotation.py).
+# - réconciliation: pas d'exigence nb_chunks > 0 pour ignore_inchange — un
+#   document légitimement à zéro chunk (image-only après filtre payload)
+#   converge au lieu d'être retraité à chaque run (voir plan_reconciliation).
 # Chaque ministère porte sa propre identité: ne PAS réutiliser ces constantes
 # depuis un autre module (le hardcode SERVICE PUBLIC qui a fui dans MATTE est
 # exactement le bug que cette structure évite).

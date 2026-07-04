@@ -102,6 +102,11 @@ def main() -> int:
         from assistant_rh_data_engineering.masa import MasaPipeline as PipelineClass
         from assistant_rh_data_engineering.masa import MasaPipelineConfig as PipelineConfigClass
         from assistant_rh_data_engineering.masa.config import OBJECT_STORAGE_SOURCE_NAME, LakePaths
+    else:
+        # Ceinture-bretelles vs argparse choices: un ministère ajouté à
+        # MINISTERES sans sa branche (Phase D) doit échouer explicitement,
+        # pas en UnboundLocalError opaque sur PipelineConfigClass.
+        raise SystemExit(f"Ministère non câblé dans le dispatch du job: {args.ministere!r}")
 
     config = PipelineConfigClass(target_env=args.target_env, ocr_provider_name=args.ocr_provider)
     if args.lake_root:

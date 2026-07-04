@@ -37,8 +37,14 @@ def plan_reconciliation(
     """Delta pur (testable sans I/O): classe chaque uid attendu en ingest ou
     ignore_inchange, et les uids en base absents du manifest en delete.
 
-    Un document est inchangé si son sha256 correspond ET qu'il a déjà des
-    chunks en base (un doc à zéro chunk est retraité — leçon de l'audit MATTE).
+    Un document est inchangé si son sha256 correspond. Divergence vs le
+    template MI: pas d'exigence nb_chunks > 0 — le filtre de payload gold
+    (MIN_CHUNK_PAYLOAD_CHARS) rend légitime un document à zéro chunk (doc
+    image-only dont les images sont décoratives), et ingest_document_bundle
+    étant transactionnel, un checksum en base prouve que le lot complet a été
+    écrit (la leçon MATTE « zéro chunk ⇒ retraiter » visait des ingestions
+    legacy non atomiques); sans cela, ces documents seraient retraités à
+    chaque run sans jamais converger.
     `protected` (uids dont le téléchargement a échoué) n'est JAMAIS classé en
     delete: un incident S3 transitoire ne doit pas supprimer un document sain.
     """
@@ -47,13 +53,7 @@ def plan_reconciliation(
     for short_id in sorted(expected):
         state = current.get(short_id)
         checksum = checksums.get(short_id)
-        if (
-            not force_reocr
-            and state is not None
-            and checksum is not None
-            and state.get("checksum") == checksum
-            and int(state.get("nb_chunks") or 0) > 0
-        ):
+        if not force_reocr and state is not None and checksum is not None and state.get("checksum") == checksum:
             unchanged.append(short_id)
         else:
             to_ingest.append(short_id)
