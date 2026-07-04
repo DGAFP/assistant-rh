@@ -32,12 +32,26 @@ WRITEBACK_MANIFEST_COLUMNS: tuple[str, ...] = (
     "erreur_ingestion",
 )
 
-# Vocabulaire de statut_ingestion, partagé par tous les corpus PDF (les
-# dashboards et requêtes de drift filtrent sur ces valeurs exactes).
+# Vocabulaire de statut_ingestion — colonne de statut UNIQUE, partagée entre
+# opérateurs et jobs (décision 2026-07-04). Machine à états:
+#   (vide)       nouvelle ligne => à ingérer au prochain run
+#   ok           écrit par le job: présent et à jour (inchangé compris — la
+#                fraîcheur est portée par derniere_ingestion; le détail
+#                ingéré/inchangé vit dans rag_ingestion_runs)
+#   erreur       écrit par le job: sera retentée au prochain run
+#   a_supprimer  posé par un OPÉRATEUR: suppression cascade au prochain run
+#   supprime     écrit par le job après la cascade: ligne inactive — la
+#                ré-activation se fait en vidant la cellule
+# Les dashboards et requêtes de drift filtrent sur ces valeurs exactes.
 STATUT_OK = "ok"
 STATUT_ERREUR = "erreur"
-STATUT_IGNORE = "ignore_inchange"
+STATUT_IGNORE = "ignore_inchange"  # détail par document dans les runs, jamais en writeback
+STATUT_A_SUPPRIMER = "a_supprimer"
 STATUT_SUPPRIME = "supprime"
+
+# Valeurs de statut_ingestion qui rendent la ligne inactive: le pipeline la
+# traite comme un document à supprimer/absent, jamais à (ré)ingérer.
+STATUTS_INACTIFS: tuple[str, ...] = (STATUT_A_SUPPRIMER, STATUT_SUPPRIME)
 
 MANIFEST_STATUTS: tuple[str, ...] = ("en_vigueur", "abroge")
 
@@ -261,6 +275,14 @@ def validate_manifest_records(
         statut = _ABROGE_VALUES.get(abroge_raw)
         if statut is None:
             errors.append(f"abroge invalide: {abroge_raw!r} (attendu: vide, 'non' ou 'oui')")
+
+        # Colonne de statut unique: a_supprimer (opérateur) et supprime (job
+        # après cascade) rendent la ligne inactive au même titre que le
+        # drapeau juridique abroge — sans quoi une ligne déjà supprimée
+        # serait ré-ingérée au run suivant.
+        statut_ingestion = str(fields.get("statut_ingestion") or "").strip().lower()
+        if statut == "en_vigueur" and statut_ingestion in STATUTS_INACTIFS:
+            statut = "abroge"
 
         if errors:
             rejected.append(
