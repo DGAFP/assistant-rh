@@ -130,6 +130,7 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
         if startswith_any(
             path,
             (
+                "packages/data-engineering/src/assistant_rh_data_engineering/pdf_ministry/",
                 "packages/data-engineering/src/assistant_rh_data_engineering/mi/",
                 "packages/data-engineering/src/assistant_rh_data_engineering/masa/",
                 "packages/data-engineering/src/assistant_rh_data_engineering/jobs/pdf_sources_",
