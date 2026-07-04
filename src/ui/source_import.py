@@ -396,6 +396,15 @@ class DropzoneUploader:
     # Compat: nom historique quand la page ne gérait que le PDF.
     upload_pdf = upload_file
 
+    def fetch_file(self, key: str) -> bytes:
+        """Lecture d'un fichier source (viewer de sources: storage_path des
+        documents des corpus PDF = clé dropzone)."""
+        try:
+            response = self._client().get_object(Bucket=self.bucket, Key=key)
+            return response["Body"].read()
+        except Exception as exc:
+            raise SourceImportError(f"Lecture dropzone impossible pour {key}: {exc}") from exc
+
     def delete_file(self, key: str) -> None:
         try:
             self._client().delete_object(Bucket=self.bucket, Key=key)
