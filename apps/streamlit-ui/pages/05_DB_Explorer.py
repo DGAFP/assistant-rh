@@ -24,8 +24,9 @@ def normalize_text(text: str) -> str:
     if not text:
         return ""
     # Décompose les caractères accentués, retire les accents, recompose
-    normalized = unicodedata.normalize('NFD', text)
-    return ''.join(c for c in normalized if unicodedata.category(c) != 'Mn').lower()
+    normalized = unicodedata.normalize("NFD", text)
+    return "".join(c for c in normalized if unicodedata.category(c) != "Mn").lower()
+
 
 load_dotenv()
 
@@ -33,11 +34,7 @@ load_dotenv()
 # PAGE CONFIG
 # ============================================================================
 
-st.set_page_config(
-    page_title="DB Explorer",
-    page_icon="🗄️",
-    layout="wide"
-)
+st.set_page_config(page_title="DB Explorer", page_icon="🗄️", layout="wide")
 
 require_admin()
 show_admin_badge()
@@ -46,7 +43,8 @@ show_admin_badge()
 # ORIGINAL CONFIG (marker) - Already set above with admin auth
 # ============================================================================
 
-st.markdown("""
+st.markdown(
+    """
 <style>
 :root {
     --blue-france: #003091;
@@ -139,7 +137,9 @@ st.markdown("""
     margin-top: 4px;
 }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # ============================================================================
 # TABLE CONFIGURATION
@@ -148,6 +148,15 @@ st.markdown("""
 TABLE_CONFIG = {
     "rag_chunks_matte": {
         "display_name": "📋 MATTE",
+        "title_column": "source_name",
+        "order_column": "chunk_index",
+        "text_column": "text",
+        "id_column": "hash_id",
+        "extra_columns": ["section_path", "thematique", "short_id"],
+        "default": True,
+    },
+    "rag_chunks_mi": {
+        "display_name": "🛡️ Intérieur",
         "title_column": "source_name",
         "order_column": "chunk_index",
         "text_column": "text",
@@ -201,6 +210,7 @@ get_db_engine = get_engine
 # ============================================================================
 # DATA LOADING FUNCTIONS
 # ============================================================================
+
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_table_stats(table_name: str) -> dict:
@@ -278,10 +288,11 @@ def get_multi_table_documents(table_names: list) -> pd.DataFrame:
 def natural_sort_key(val):
     """Convert value to a sortable key for natural ordering."""
     import re
+
     if pd.isna(val):
         return (0, "")
     val_str = str(val)
-    match = re.match(r'^(\d+)', val_str)
+    match = re.match(r"^(\d+)", val_str)
     if match:
         return (int(match.group(1)), val_str)
     return (0, val_str)
@@ -332,6 +343,7 @@ def get_chunks_for_document(table_name: str, title: str) -> pd.DataFrame:
 # SECTION EXPLORER FUNCTIONS
 # ============================================================================
 
+
 @st.cache_data(ttl=300, show_spinner=False)
 def get_section_documents() -> pd.DataFrame:
     """Get documents from rag_documents with section counts."""
@@ -340,7 +352,8 @@ def get_section_documents() -> pd.DataFrame:
         return pd.DataFrame()
     try:
         with engine.connect() as conn:
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT d.doc_id, d.short_id, d.title, d.publisher, d.doc_type,
                        d.token_count, d.source_url,
                        COUNT(s.section_id) as section_count
@@ -349,7 +362,8 @@ def get_section_documents() -> pd.DataFrame:
                 GROUP BY d.doc_id, d.short_id, d.title, d.publisher, d.doc_type,
                          d.token_count, d.source_url
                 ORDER BY d.publisher, d.title
-            """))
+            """)
+            )
             return pd.DataFrame(result.fetchall(), columns=result.keys())
     except Exception as e:
         st.error(f"Erreur chargement documents: {e}")
@@ -364,14 +378,17 @@ def get_sections_for_document(doc_id: str) -> pd.DataFrame:
         return pd.DataFrame()
     try:
         with engine.connect() as conn:
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT section_id, heading, heading_path, level, section_index,
                        token_count, char_count, is_indexable,
                        LEFT(section_markdown, 5000) as content
                 FROM rag_sections
                 WHERE doc_id = :doc_id
                 ORDER BY section_index NULLS LAST, level, heading
-            """), {"doc_id": doc_id})
+            """),
+                {"doc_id": doc_id},
+            )
             return pd.DataFrame(result.fetchall(), columns=result.keys())
     except Exception as e:
         st.error(f"Erreur chargement sections: {e}")
@@ -421,19 +438,25 @@ with tab_chunks:
         stats = get_multi_table_stats(selected_tables)
         col_s1, col_s2 = st.columns(2)
         with col_s1:
-            st.markdown(f"""
+            st.markdown(
+                f"""
             <div class="stat-box">
-                <div class="stat-value">{stats['unique_titles']:,}</div>
+                <div class="stat-value">{stats["unique_titles"]:,}</div>
                 <div class="stat-label">Documents uniques</div>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
         with col_s2:
-            st.markdown(f"""
+            st.markdown(
+                f"""
             <div class="stat-box">
-                <div class="stat-value">{stats['total_chunks']:,}</div>
+                <div class="stat-value">{stats["total_chunks"]:,}</div>
                 <div class="stat-label">Chunks total</div>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
 
         st.divider()
 
@@ -471,10 +494,7 @@ with tab_chunks:
                     label_title = f"{title[:45]}{'...' if len(str(title)) > 45 else ''}"
                     button_label = f"{badge}{label_title} — {chunk_count} chunks"
 
-                    is_selected = (
-                        st.session_state.sel_chunk_doc == title
-                        and st.session_state.sel_chunk_table == doc_table
-                    )
+                    is_selected = st.session_state.sel_chunk_doc == title and st.session_state.sel_chunk_table == doc_table
 
                     if st.button(
                         button_label,
@@ -520,16 +540,19 @@ with tab_chunks:
                                     meta_parts.append(f"{html.escape(col)}: {html.escape(str(row[col])[:50])}")
                             meta_str = " | ".join(meta_parts) if meta_parts else ""
 
-                            st.markdown(f"""
+                            st.markdown(
+                                f"""
                             <div class="chunk-card">
                                 <div class="chunk-header">
                                     <span class="chunk-index">#{order_value}</span>
                                     <span class="chunk-meta">ID: {chunk_id}</span>
                                 </div>
-                                {f'<div class="chunk-meta" style="margin-bottom: 8px;">{meta_str}</div>' if meta_str else ''}
+                                {f'<div class="chunk-meta" style="margin-bottom: 8px;">{meta_str}</div>' if meta_str else ""}
                                 <div class="chunk-text">{chunk_text_escaped}</div>
                             </div>
-                            """, unsafe_allow_html=True)
+                            """,
+                                unsafe_allow_html=True,
+                            )
                 else:
                     st.info("Sélectionnez un document dans la liste pour voir ses chunks.")
 
@@ -550,26 +573,35 @@ with tab_sections:
 
         col_ds1, col_ds2, col_ds3 = st.columns(3)
         with col_ds1:
-            st.markdown(f"""
+            st.markdown(
+                f"""
             <div class="stat-box">
                 <div class="stat-value">{total_docs}</div>
                 <div class="stat-label">Documents</div>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
         with col_ds2:
-            st.markdown(f"""
+            st.markdown(
+                f"""
             <div class="stat-box">
                 <div class="stat-value">{total_sections:,}</div>
                 <div class="stat-label">Sections</div>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
         with col_ds3:
-            st.markdown(f"""
+            st.markdown(
+                f"""
             <div class="stat-box">
                 <div class="stat-value">{publishers}</div>
                 <div class="stat-label">Publishers</div>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
 
         st.divider()
 
@@ -653,7 +685,8 @@ with tab_sections:
                         idx_badge = f'<span class="badge badge-count">{tokens} tokens</span>'
                         indexable_badge = "" if indexable else ' <span class="badge" style="background:#fee2e2;color:#991b1b;">non indexable</span>'
 
-                        st.markdown(f"""
+                        st.markdown(
+                            f"""
                         <div class="chunk-card">
                             <div class="chunk-header">
                                 <span class="chunk-index">{indent}H{level} {heading_escaped}</span>
@@ -661,7 +694,9 @@ with tab_sections:
                             </div>
                             <div class="chunk-text" style="max-height: 300px; overflow-y: auto;">{content_escaped}</div>
                         </div>
-                        """, unsafe_allow_html=True)
+                        """,
+                            unsafe_allow_html=True,
+                        )
             else:
                 st.info("Sélectionnez un document dans la liste pour voir ses sections.")
 
