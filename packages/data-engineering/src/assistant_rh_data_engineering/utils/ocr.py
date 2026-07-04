@@ -70,6 +70,7 @@ class AlbertOcrProvider(OcrProvider):
         api_key: str | None = None,
         model: str | None = None,
         timeout: int = 300,
+        include_images: bool = False,
     ):
         self.base_url = (base_url or os.getenv("ALBERT_BASE_URL") or "https://albert.api.etalab.gouv.fr/v1").rstrip("/")
         self.api_key = api_key or os.getenv("ALBERT_API_KEY", "")
@@ -80,7 +81,12 @@ class AlbertOcrProvider(OcrProvider):
         # modèles de type image-to-text sont acceptés (LightOnOCR est
         # image-text-to-text => 422, à intégrer via un provider dédié).
         self.model = model or os.getenv("ALBERT_OCR_MODEL") or "mistral-ocr-2512"
-        self.version = _sanitize_version(self.model)
+        # include_images change le contenu de la réponse (crops base64 dans
+        # pages[].images): la version — donc la clé du cache bronze — doit en
+        # dépendre, sinon un cache rempli sans images empêcherait à jamais
+        # l'enrichissement des documents déjà OCRisés.
+        self.include_images = include_images
+        self.version = _sanitize_version(f"{self.model}-img" if include_images else self.model)
         self.timeout = timeout
 
     def ocr_pdf(self, pdf_bytes: bytes, document_name: str = "document.pdf") -> OcrResult:
@@ -96,6 +102,8 @@ class AlbertOcrProvider(OcrProvider):
             }
         }
         body["model"] = self.model
+        if self.include_images:
+            body["include_image_base64"] = True
 
         url = f"{self.base_url}/ocr"
         try:
@@ -141,7 +149,7 @@ class AlbertOcrProvider(OcrProvider):
         )
 
 
-def build_ocr_provider(provider_name: str | None = None) -> OcrProvider:
+def build_ocr_provider(provider_name: str | None = None, *, include_images: bool = False) -> OcrProvider:
     """Fabrique le fournisseur OCR (env OCR_PROVIDER, défaut: albert).
 
     LightOn/Mistral s'ajouteront ici comme nouvelles classes sans toucher aux
@@ -149,5 +157,5 @@ def build_ocr_provider(provider_name: str | None = None) -> OcrProvider:
     """
     resolved = (provider_name or os.getenv("OCR_PROVIDER") or "albert").strip().lower()
     if resolved == "albert":
-        return AlbertOcrProvider()
+        return AlbertOcrProvider(include_images=include_images)
     raise OcrError(f"Fournisseur OCR inconnu: {resolved!r} (disponibles: albert)")

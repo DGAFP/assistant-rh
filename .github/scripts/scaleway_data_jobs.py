@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--service-public-fiche-config", default="config/service_public_fiches.json")
     parser.add_argument("--wipe-existing-chunks", type=parse_bool, default=False)
     parser.add_argument("--legifrance-article-ids-json", default="config/legifrance_article_cids.json")
-    parser.add_argument("--embedding-source", choices=("all", "service_public", "legifrance", "matte", "mi"), default="all")
+    parser.add_argument("--embedding-source", choices=("all", "service_public", "legifrance", "matte", "mi", "masa"), default="all")
     parser.add_argument("--embedding-only-column", default="")
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--dry-run", action="store_true")

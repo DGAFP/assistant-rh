@@ -39,6 +39,38 @@ def test_classify_from_files_selects_only_changed_data_domains() -> None:
     }
 
 
+def test_classify_from_files_masa_module_selects_pdf_sources_only() -> None:
+    selected = data_engineering_plan.classify_from_files(
+        [
+            "packages/data-engineering/src/assistant_rh_data_engineering/masa/silver.py",
+            "config/masa_embedding_tables.json",
+            "config/scaleway_serverless_job_pdf_sources_masa.json",
+        ]
+    )
+
+    assert selected == {
+        "service_public": False,
+        "legifrance": False,
+        "pdf_sources": True,
+        "embeddings": False,
+    }
+
+
+def test_workflow_dispatch_masa_selects_pdf_sources_and_masa_backfill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_path = tmp_path / "github-output.txt"
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("INPUT_SOURCE", "masa")
+    monkeypatch.delenv("INPUT_RUN_EMBEDDINGS", raising=False)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+
+    assert data_engineering_plan.main() == 0
+
+    outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
+    assert outputs["embeddings"] == "true"
+    assert outputs["run_embeddings"] == "true"
+    assert outputs["embedding_source"] == "masa"
+
+
 def test_classify_from_files_common_ci_change_selects_all_domains() -> None:
     selected = data_engineering_plan.classify_from_files([".github/scripts/scaleway_data_jobs.py"])
 
@@ -225,8 +257,12 @@ def test_preview_staging_exposes_matte_embedding_dispatch() -> None:
 
     assert "- matte" in source_block
     assert "- matte" in embedding_source_block
+    assert "- masa" in source_block
+    assert "- masa" in embedding_source_block
     assert "inputs.source == 'embeddings' || inputs.source == 'matte'" in workflow
-    assert "inputs.source == 'matte' && 'matte' || inputs.source == 'mi' && 'mi' || inputs.embedding_source" in workflow
+    assert (
+        "inputs.source == 'matte' && 'matte' || inputs.source == 'mi' && 'mi' || inputs.source == 'masa' && 'masa' || inputs.embedding_source"
+    ) in workflow
 
 
 def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:

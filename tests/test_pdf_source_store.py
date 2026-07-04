@@ -197,3 +197,63 @@ def test_sha_helpers_agree(tmp_path: Path) -> None:
     path = tmp_path / "f.bin"
     path.write_bytes(data)
     assert sha256_bytes(data) == sha256_file(path)
+
+
+def test_put_ocr_does_not_duplicate_pages_shared_with_raw(store: tuple[PdfSourceStore, FakeSync]) -> None:
+    # Le provider trie raw["pages"] sans copier: sérialiser pages ET raw
+    # doublerait l'objet cache (significatif avec les crops base64).
+    pdf_store, sync = store
+    sha = sha256_bytes(b"%PDF-fake")
+    shared_pages = [
+        {"index": 1, "markdown": "page 2", "images": [{"id": "img-0.jpeg", "image_base64": "AAAA" * 1000}]},
+        {"index": 0, "markdown": "page 1", "images": []},
+    ]
+    result = OcrResult(
+        provider="albert",
+        version="ocr-model-img",
+        markdown="page 1\n\npage 2",
+        pages=sorted(shared_pages, key=lambda page: int(page.get("index") or 0)),
+        raw={"model": "ocr-model-img", "pages": shared_pages},
+    )
+
+    keys = pdf_store.put_ocr("staging", "masa", sha, result)
+
+    payload = json.loads(sync.objects[f"s3://{keys.bucket}/{keys.json_key}"])
+    assert payload["pages"] == []  # pas de double sérialisation
+    assert payload["raw"]["pages"][0]["images"][0]["image_base64"].startswith("AAAA")
+
+    cached = pdf_store.get_cached_ocr("staging", "masa", "albert", "ocr-model-img", sha)
+    assert cached is not None
+    assert [page["index"] for page in cached.pages] == [0, 1]  # reconstruit et trié
+    assert cached.pages[1]["images"][0]["id"] == "img-0.jpeg"
+
+
+def test_image_annotations_cache_roundtrip(store: tuple[PdfSourceStore, FakeSync]) -> None:
+    pdf_store, _ = store
+    sha = sha256_bytes(b"%PDF-fake")
+    annotations = {"img-1.jpeg": {"type_image": "informative", "description": "Écran RenoiRH."}}
+
+    assert pdf_store.get_cached_image_annotations("staging", "masa", "albert", "vlm-p1234", sha) is None
+    pdf_store.put_image_annotations("staging", "masa", "albert", "vlm-p1234", sha, annotations)
+
+    assert pdf_store.get_cached_image_annotations("staging", "masa", "albert", "vlm-p1234", sha) == annotations
+    # Autre version d'annotateur (modèle ou prompt changé): miss.
+    assert pdf_store.get_cached_image_annotations("staging", "masa", "albert", "vlm-p9999", sha) is None
+
+
+def test_corrupted_image_annotations_cache_self_heals_as_miss(store: tuple[PdfSourceStore, FakeSync]) -> None:
+    # Contrairement au cache OCR (raise), un cache d'annotations corrompu est
+    # traité comme un miss: la ré-annotation ré-écrit un objet sain au lieu de
+    # mettre le document en erreur à chaque run.
+    pdf_store, sync = store
+    sha = sha256_bytes(b"%PDF-fake")
+    obj = pdf_store.image_annotations_cache_key("staging", "masa", "albert", "vlm-p1234", sha)
+
+    sync.objects[obj.uri] = b"pas du json"
+    assert pdf_store.get_cached_image_annotations("staging", "masa", "albert", "vlm-p1234", sha) is None
+
+    sync.objects[obj.uri] = json.dumps({"annotations": {"img-1.jpeg": {}}}).encode("utf-8")
+    assert pdf_store.get_cached_image_annotations("staging", "masa", "albert", "vlm-p1234", sha) is None
+
+    sync.objects[obj.uri] = json.dumps({"annotations": {"img-1.jpeg": "decorative"}}).encode("utf-8")
+    assert pdf_store.get_cached_image_annotations("staging", "masa", "albert", "vlm-p1234", sha) is None
