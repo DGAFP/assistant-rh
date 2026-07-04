@@ -254,3 +254,36 @@ def test_validate_manifest_records_rejects_duplicate_uid_but_keeps_first() -> No
     assert [row.record_id for row in result.valid] == [1]
     assert result.rejected[0].record_id == 2
     assert any("doublon" in error for error in result.rejected[0].errors)
+
+
+def test_statut_ingestion_inactif_rend_la_ligne_abrogee() -> None:
+    # Colonne de statut unique: a_supprimer (opérateur) et supprime (job)
+    # rendent la ligne inactive comme le drapeau juridique abroge.
+    from assistant_rh_data_engineering.utils.grist import validate_manifest_records
+
+    def record(record_id: int, statut_ingestion: str) -> dict:
+        return {
+            "id": record_id,
+            "fields": {
+                "source_corpus": "MI",
+                "uid": f"uid-{record_id}",
+                "titre_document": "Titre",
+                "cle_bucket": f"mi/uid-{record_id}_doc.pdf",
+                "abroge": "",
+                "statut_ingestion": statut_ingestion,
+            },
+        }
+
+    validation = validate_manifest_records(
+        [record(1, "a_supprimer"), record(2, "supprime"), record(3, "ok"), record(4, "")],
+        "MI",
+    )
+
+    statuts = {row.uid: row.statut for row in validation.valid}
+    assert statuts == {
+        "uid-1": "abroge",
+        "uid-2": "abroge",
+        "uid-3": "en_vigueur",
+        "uid-4": "en_vigueur",
+    }
+    assert validation.rejected == []

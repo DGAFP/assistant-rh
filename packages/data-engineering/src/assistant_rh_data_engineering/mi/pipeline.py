@@ -203,11 +203,14 @@ class MiPipeline:
             row = expected[short_id]
             nb_chunks = int(current.get(short_id, {}).get("nb_chunks") or 0)
             skipped.append(short_id)
+            # La trace de run garde le détail ignore_inchange; la ligne Grist
+            # reste sur le statut consolidé « ok » (colonne de statut unique),
+            # la fraîcheur étant portée par derniere_ingestion.
             details[short_id] = {"statut": STATUT_IGNORE, "nb_chunks": nb_chunks}
             if writeback_enabled:
                 self._writeback(
                     row.record_id,
-                    statut=STATUT_IGNORE,
+                    statut=STATUT_OK,
                     nb_chunks=nb_chunks,
                     hash_contenu=checksums.get(short_id, ""),
                 )
@@ -260,6 +263,17 @@ class MiPipeline:
                 abrogated_row = abrogated.get(short_id)
                 if abrogated_row is not None and writeback_enabled:
                     self._writeback(abrogated_row.record_id, statut=STATUT_SUPPRIME, nb_chunks=0)
+
+        # Acquittement des lignes inactives sans document en base (a_supprimer
+        # jamais ingéré, abrogé déjà purgé): statut => supprime, une seule fois
+        # — une ligne déjà à « supprime » n'est pas re-PATCHée à chaque run.
+        for short_id, row in abrogated.items():
+            if short_id in current or short_id in details:
+                continue
+            details[short_id] = {"statut": STATUT_SUPPRIME, "nb_chunks": 0}
+            already = str(row.fields.get("statut_ingestion") or "").strip().lower()
+            if writeback_enabled and already != STATUT_SUPPRIME:
+                self._writeback(row.record_id, statut=STATUT_SUPPRIME, nb_chunks=0)
 
         finished_at = utc_now_iso()
         summary = {
