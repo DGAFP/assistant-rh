@@ -84,7 +84,15 @@ with tab_pdf:
     pending_rows = rows_missing_cle_bucket(records, corpus)
     mode_attach = f"Compléter une ligne existante sans PDF ({len(pending_rows)} en attente)"
     mode_new = "Nouveau document"
-    mode = st.radio("Mode", [mode_attach, mode_new], key="pdf_mode", horizontal=True)
+    mode = st.radio(
+        "Mode",
+        [mode_attach, mode_new],
+        # Sans ligne en attente, le mode « Compléter » est inutile: on
+        # démarre directement sur « Nouveau document ».
+        index=1 if not pending_rows else 0,
+        key="pdf_mode",
+        horizontal=True,
+    )
 
     selected_row = None
     titre = ""
