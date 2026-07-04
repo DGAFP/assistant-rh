@@ -59,6 +59,7 @@ Ajouts unitaires legi/SP (Phase E) : lignes du même référentiel (`source_corp
 
 ### Buckets / bronze layout
 - New dropzone bucket `assistant-rh-sources-pdf` (private, versioned): `mi/…`, `masa/…`, `matte/…`, `mso/…` — written only by the admin page.
+- **Formats acceptés (révisé 2026-07-04)** : PDF + .doc/.docx/.xls/.xlsx (flux récurrent de bureautique dans les sources ministérielles). La page d'import vérifie la signature par format ; `cle_bucket` garde l'extension d'origine. **Le bronze du pipeline (#246) convertit les non-PDF en PDF (LibreOffice headless dans l'image du job) avant OCR** ; le cache OCR reste indexé par sha256 du fichier d'origine.
 - Bronze cache in existing `assistant-rh-bronze`:
   `{env}/bronze/pdf_sources/{ministere}/pdfs/{sha256}.pdf` · `…/ocr/{provider}/{version}/{sha256}.{json,md}` · `…/manifests/manifest_{run_id}.json` (Grist snapshot). Silver/gold via `sync_medallion_root(source_name=f"pdf_sources/{ministere}")`.
 

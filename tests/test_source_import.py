@@ -20,6 +20,7 @@ from src.ui.source_import import (
     build_uid_from_text_id,
     classify_text_id,
     content_identity,
+    content_type_for,
     find_row_by_hash,
     find_row_by_record_id,
     find_row_by_uid,
@@ -27,6 +28,7 @@ from src.ui.source_import import (
     plan_new_pdf_import,
     rows_missing_cle_bucket,
     sanitize_filename,
+    validate_source_bytes,
 )
 
 # --- uid -----------------------------------------------------------------
@@ -82,6 +84,74 @@ def test_build_cle_bucket_prefixes_corpus_and_uid() -> None:
 
     with pytest.raises(SourceImportError, match="Corpus PDF inconnu"):
         build_cle_bucket("RGRH", "abc123def0", "doc.pdf")
+
+
+# --- formats multi-sources (pdf, doc, docx, xls, xlsx) -----------------------
+
+
+def test_sanitize_filename_preserves_supported_extensions() -> None:
+    assert sanitize_filename("Barème indemnités (2024).xlsx") == "Bareme-indemnites-2024.xlsx"
+    assert sanitize_filename("note de service.doc") == "note-de-service.doc"
+    assert build_cle_bucket("MI", "abc123def0", "tableau.xlsx") == "mi/abc123def0_tableau.xlsx"
+
+
+@pytest.mark.parametrize(
+    ("filename", "data"),
+    [
+        ("doc.pdf", b"%PDF-1.7 x"),
+        ("doc.docx", b"PK\x03\x04reste-du-zip"),
+        ("doc.xlsx", b"PK\x03\x04reste-du-zip"),
+        ("doc.doc", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1ole2"),
+        ("doc.xls", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1ole2"),
+    ],
+)
+def test_validate_source_bytes_accepts_matching_signatures(filename: str, data: bytes) -> None:
+    validate_source_bytes(filename, data)
+
+
+@pytest.mark.parametrize(
+    ("filename", "data", "expected_error"),
+    [
+        ("doc.pdf", b"PK\x03\x04zip-pas-pdf", "signature"),
+        ("doc.xlsx", b"%PDF-1.7", "signature"),
+        ("doc.txt", b"peu importe", "Format non supporté"),
+        ("doc.pdf", b"", "Fichier vide"),
+    ],
+)
+def test_validate_source_bytes_rejects_mismatches(filename: str, data: bytes, expected_error: str) -> None:
+    with pytest.raises(SourceImportError, match=expected_error):
+        validate_source_bytes(filename, data)
+
+
+def test_content_type_for_follows_extension() -> None:
+    assert content_type_for("mi/abc_doc.pdf") == "application/pdf"
+    assert content_type_for("mi/abc_tableau.xlsx").endswith("spreadsheetml.sheet")
+    assert content_type_for("mi/abc_note.doc") == "application/msword"
+
+
+def test_plan_accepts_xlsx_source() -> None:
+    plan = plan_new_pdf_import(
+        records=[],
+        corpus="MI",
+        filename="Barème.xlsx",
+        pdf_bytes=b"PK\x03\x04contenu",
+        titre="Barème indemnités",
+    )
+    assert plan.cle_bucket.endswith(".xlsx")
+
+
+def test_dropzone_uploader_sets_content_type_from_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: dict[str, Any] = {}
+
+    class FakeS3:
+        def put_object(self, **kwargs: Any) -> None:
+            calls.update(kwargs)
+
+    uploader = DropzoneUploader(bucket="b", region="fr-par", access_key="ak", secret_key="sk")
+    monkeypatch.setattr(uploader, "_client", lambda: FakeS3())
+
+    uploader.upload_file("mi/abc_tableau.xlsx", b"PK\x03\x04contenu")
+    assert calls["ContentType"].endswith("spreadsheetml.sheet")
 
 
 # --- construction des lignes Grist ------------------------------------------
