@@ -47,11 +47,13 @@ _ZIP_SIGNATURE = b"PK\x03\x04"
 
 # Formats acceptés dans la dropzone. Les non-PDF sont convertis en PDF par le
 # bronze du pipeline (LibreOffice headless) avant OCR — décision 2026-07-04,
-# flux .doc/.xlsx récurrent dans les sources ministérielles.
+# flux .doc/.xlsx récurrent dans les sources ministérielles; .ppt/.pptx
+# ajoutés le 2026-07-04 (supports de présentation dans les sources MSO).
 SUPPORTED_SOURCE_FORMATS: dict[str, dict[str, Any]] = {
     ".pdf": {"signatures": (b"%PDF-",), "content_type": "application/pdf"},
     ".doc": {"signatures": (_OLE2_SIGNATURE,), "content_type": "application/msword"},
     ".xls": {"signatures": (_OLE2_SIGNATURE,), "content_type": "application/vnd.ms-excel"},
+    ".ppt": {"signatures": (_OLE2_SIGNATURE,), "content_type": "application/vnd.ms-powerpoint"},
     ".docx": {
         "signatures": (_ZIP_SIGNATURE,),
         "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -59,6 +61,10 @@ SUPPORTED_SOURCE_FORMATS: dict[str, dict[str, Any]] = {
     ".xlsx": {
         "signatures": (_ZIP_SIGNATURE,),
         "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    },
+    ".pptx": {
+        "signatures": (_ZIP_SIGNATURE,),
+        "content_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     },
 }
 

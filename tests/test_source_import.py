@@ -402,3 +402,31 @@ def test_is_dropzone_key_accepts_corpus_keys_only():
     assert is_dropzone_key("mi") is False
     assert is_dropzone_key("") is False
     assert is_dropzone_key(None) is False
+
+
+def test_pptx_and_ppt_are_supported_source_formats():
+    from src.ui.source_import import (
+        _OLE2_SIGNATURE,
+        _ZIP_SIGNATURE,
+        content_type_for,
+        validate_source_bytes,
+    )
+
+    validate_source_bytes("support_reunion.pptx", _ZIP_SIGNATURE + b"reste-du-zip")
+    validate_source_bytes("ancien_support.ppt", _OLE2_SIGNATURE + b"reste-ole2")
+    assert content_type_for("x.pptx") == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    assert content_type_for("x.ppt") == "application/vnd.ms-powerpoint"
+
+    import pytest
+
+    from src.ui.source_import import SourceImportError
+
+    with pytest.raises(SourceImportError, match="signature"):
+        validate_source_bytes("faux.pptx", b"%PDF-pas-un-zip")
+
+
+def test_pptx_is_convertible_to_pdf():
+    from assistant_rh_data_engineering.utils.convert import CONVERTIBLE_EXTENSIONS
+
+    assert ".pptx" in CONVERTIBLE_EXTENSIONS
+    assert ".ppt" in CONVERTIBLE_EXTENSIONS
