@@ -94,31 +94,31 @@ def main() -> int:
 
     args = build_parser().parse_args()
 
-    if args.ministere == "mi":
-        from assistant_rh_data_engineering.mi import MiPipeline as PipelineClass
-        from assistant_rh_data_engineering.mi import MiPipelineConfig as PipelineConfigClass
-        from assistant_rh_data_engineering.mi.config import OBJECT_STORAGE_SOURCE_NAME, LakePaths
-    elif args.ministere == "masa":
-        from assistant_rh_data_engineering.masa import MasaPipeline as PipelineClass
-        from assistant_rh_data_engineering.masa import MasaPipelineConfig as PipelineConfigClass
-        from assistant_rh_data_engineering.masa.config import OBJECT_STORAGE_SOURCE_NAME, LakePaths
-    else:
-        # Ceinture-bretelles vs argparse choices: un ministère ajouté à
-        # MINISTERES sans sa branche (Phase D) doit échouer explicitement,
-        # pas en UnboundLocalError opaque sur PipelineConfigClass.
-        raise SystemExit(f"Ministère non câblé dans le dispatch du job: {args.ministere!r}")
+    # Registre implicite par convention de package: chaque ministère expose
+    # Pipeline/PipelineConfig/LakePaths/OBJECT_STORAGE_SOURCE_NAME sous des
+    # noms uniformes (mi/__init__.py, masa/__init__.py, ...). Ajouter un
+    # ministère = l\'ajouter à MINISTERES + créer son package — pas de if/elif.
+    import importlib
 
-    config = PipelineConfigClass(target_env=args.target_env, ocr_provider_name=args.ocr_provider)
+    try:
+        module = importlib.import_module(f"assistant_rh_data_engineering.{args.ministere}")
+        pipeline_class = module.Pipeline
+        config_class = module.PipelineConfig
+        lake_paths_class = module.LakePaths
+        object_storage_source_name = module.OBJECT_STORAGE_SOURCE_NAME
+    except (ImportError, AttributeError) as exc:
+        raise SystemExit(f"Ministère non câblé dans le dispatch du job: {args.ministere!r} ({exc})") from exc
+
+    config = config_class(target_env=args.target_env, ocr_provider_name=args.ocr_provider)
     if args.lake_root:
-        config.paths = LakePaths(root_dir=Path(args.lake_root))
+        config.paths = lake_paths_class(root_dir=Path(args.lake_root))
     if args.no_embed:
         config.embeddings.enable_m3 = False
         config.embeddings.enable_bge_scaleway = False
     elif args.no_scaleway_bge:
         config.embeddings.enable_bge_scaleway = False
 
-    pipeline = PipelineClass(config, schema=args.schema)
-    object_storage_source_name = OBJECT_STORAGE_SOURCE_NAME
+    pipeline = pipeline_class(config, schema=args.schema)
 
     summary = pipeline.run(
         doc_ids=args.doc_ids,

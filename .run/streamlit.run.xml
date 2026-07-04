@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="streamlit" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
-    <module name="assistant-rh" />
+    <module name="assistant-rh@1" />
     <option name="ENV_FILES" value="$PROJECT_DIR$/.env" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
