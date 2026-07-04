@@ -10,7 +10,7 @@ Chaîne de résolution pour rag_doc_id :
 3. source_url    → redirige vers l'URL externe (service-public.fr, legifrance.gouv.fr)
 
 URLs supportées :
-- /PDF_Viewer?rag_doc_id=<uuid> → Résolution via rag_documents (legacy DB > URL)
+- /PDF_Viewer?rag_doc_id=<uuid> → Résolution via rag_documents (legacy DB > dropzone S3 > URL)
 - /PDF_Viewer?doc_id=<uuid>     → Legacy direct: lit depuis table documents (bytes en DB)
 """
 
@@ -37,6 +37,8 @@ iframe{border:none!important;width:100vw!important;height:100vh!important;positi
 
 # Imports (après le CSS pour un rendu initial plus rapide)
 import base64
+import html
+import logging
 from typing import Optional
 
 import streamlit.components.v1 as components
@@ -57,7 +59,7 @@ def get_rag_doc_info(rag_doc_id: str) -> dict | None:
     Récupère les infos d'un rag_document (legacy_doc_id, title, source_url).
 
     Returns:
-        dict with keys {legacy_doc_id, title, source_url} or None
+        dict with keys {legacy_doc_id, title, source_url, storage_path} or None
     """
     from sqlalchemy import text
 
@@ -322,32 +324,63 @@ def display_pdf_from_bytes(pdf_bytes: bytes, filename: str = "document.pdf"):
     components.html(pdf_viewer_html, height=900, scrolling=False)
 
 
+# Au-delà, le rendu inline PDF.js (base64 dans le HTML, ~2,3x la taille en
+# mémoire + payload navigateur) est remplacé par un bouton de téléchargement.
+MAX_INLINE_PDF_BYTES = 40 * 1024 * 1024
+
+
+@st.cache_data(ttl=300, max_entries=16, show_spinner=False)
+def _fetch_dropzone_bytes(storage_path: str) -> bytes:
+    # Cache: un clic sur st.download_button relance le script Streamlit —
+    # sans cache, chaque interaction re-télécharge le fichier depuis S3.
+    from src.ui.source_import import DropzoneUploader
+
+    return DropzoneUploader.from_env().fetch_file(storage_path)
+
+
 def display_dropzone_document(storage_path: str, title: str) -> bool:
     """Affiche un document des corpus PDF ministériels depuis la dropzone S3.
 
-    storage_path = cle_bucket du manifest Grist (ex: mi/{uid}_{nom}.pdf).
+    storage_path = cle_bucket du manifest Grist (ex: mi/{uid}_{nom}.pdf) —
+    les storage_path d'autres formes (chemins bruts Légifrance) sont ignorés.
     Les PDF sont rendus dans le viewer; les originaux bureautiques
-    (.doc/.docx/.xls/.xlsx, convertis en PDF seulement dans le pipeline)
-    sont proposés au téléchargement. Retourne False si la lecture échoue.
+    (.doc/.docx/.xls/.xlsx, convertis en PDF seulement dans le pipeline) et
+    les PDF trop volumineux pour l'inline sont proposés au téléchargement.
+    Retourne False si la clé n'est pas une clé dropzone ou si la lecture
+    échoue (tracé en log: une erreur d'accès S3 ne doit pas être confondue
+    avec un document sans source).
     """
-    from src.ui.source_import import DropzoneUploader, SourceImportError, content_type_for
+    from src.ui.source_import import SourceImportError, content_type_for, is_dropzone_key
 
-    try:
-        dropzone = DropzoneUploader.from_env()
-        data = dropzone.fetch_file(storage_path)
-    except SourceImportError:
+    if not is_dropzone_key(storage_path):
         return False
 
-    filename = storage_path.rsplit("/", 1)[-1] or "document.pdf"
-    if filename.lower().endswith(".pdf"):
+    try:
+        data = _fetch_dropzone_bytes(storage_path)
+    except SourceImportError as exc:
+        logging.getLogger(__name__).warning("Lecture dropzone échouée pour %r: %s", storage_path, exc)
+        return False
+
+    filename = storage_path.rsplit("/", 1)[-1]
+    if filename.lower().endswith(".pdf") and len(data) <= MAX_INLINE_PDF_BYTES:
         display_pdf_from_bytes(data, filename)
         return True
+
+    if filename.lower().endswith(".pdf"):
+        help_text = "Document volumineux — téléchargez-le pour l'ouvrir."
+    else:
+        extension = filename.rsplit(".", 1)[-1] if "." in filename else "inconnu"
+        help_text = f"Document source au format bureautique ({html.escape(extension)}) — téléchargez-le pour l'ouvrir."
+    try:
+        mime = content_type_for(filename)
+    except SourceImportError:
+        mime = "application/octet-stream"
 
     st.markdown(
         f"""
     <div style="display: flex; justify-content: center; align-items: center; height: 60vh; flex-direction: column;">
-        <h2>📄 {title}</h2>
-        <p style="font-size: 16px; margin: 12px 0;">Document source au format bureautique ({filename.rsplit(".", 1)[-1]}) — téléchargez-le pour l'ouvrir.</p>
+        <h2>📄 {html.escape(title)}</h2>
+        <p style="font-size: 16px; margin: 12px 0;">{help_text}</p>
     </div>
     """,
         unsafe_allow_html=True,
@@ -358,7 +391,7 @@ def display_dropzone_document(storage_path: str, title: str) -> bool:
             f"⬇️ Télécharger {filename}",
             data=data,
             file_name=filename,
-            mime=content_type_for(filename),
+            mime=mime,
             use_container_width=True,
         )
     return True
@@ -423,12 +456,13 @@ elif rag_doc_id:
                 pdf_loaded = display_dropzone_document(info["storage_path"], title)
 
             if not pdf_loaded and info["source_url"] and info["source_url"].startswith("http"):
+                safe_url = html.escape(info["source_url"], quote=True)
                 st.markdown(
                     f"""
-                <script>window.open("{info["source_url"]}", "_blank");</script>
+                <script>window.open("{safe_url}", "_blank");</script>
                 <div style="text-align: center; padding: 50px;">
-                    <h2>📄 {title}</h2>
-                    <p><a href="{info["source_url"]}" target="_blank">Cliquez ici pour ouvrir le document</a></p>
+                    <h2>📄 {html.escape(title)}</h2>
+                    <p><a href="{safe_url}" target="_blank">Cliquez ici pour ouvrir le document</a></p>
                 </div>
                 """,
                     unsafe_allow_html=True,
@@ -436,7 +470,7 @@ elif rag_doc_id:
                 pdf_loaded = True
 
             if not pdf_loaded:
-                display_error("Aucune source disponible", f"Ni PDF en base, ni URL pour « {title} ».")
+                display_error("Aucune source disponible", f"Ni PDF en base, ni fichier dropzone, ni URL pour « {html.escape(title)} ».")
 
     except Exception as e:
         display_error("Erreur de chargement", str(e))

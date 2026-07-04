@@ -386,3 +386,19 @@ def test_fetch_file_wraps_errors(monkeypatch):
     monkeypatch.setattr(DropzoneUploader, "_client", lambda self: FakeClient())
     with pytest.raises(SourceImportError, match="mi/introuvable.pdf"):
         uploader.fetch_file("mi/introuvable.pdf")
+
+
+def test_is_dropzone_key_accepts_corpus_keys_only():
+    from src.ui.source_import import is_dropzone_key
+
+    assert is_dropzone_key("mi/3a6a62f289_notice.pdf") is True
+    assert is_dropzone_key("MASA/abc_note.docx") is True
+    # Chemins bruts d'autres sources (Légifrance): jamais de GET dropzone.
+    assert is_dropzone_key("/data/raw/legifrance/texte.txt") is False
+    assert is_dropzone_key("s3://autre-bucket/cle.json") is False
+    assert is_dropzone_key("data/lake/legifrance/bronze/x.json") is False
+    # Clés malformées.
+    assert is_dropzone_key("mi/") is False
+    assert is_dropzone_key("mi") is False
+    assert is_dropzone_key("") is False
+    assert is_dropzone_key(None) is False
