@@ -25,6 +25,19 @@ def _clear_trace_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
+def _streamlit_required_secret_env() -> dict[str, str]:
+    return {
+        "SCW_POSTGRES_DSN": "postgresql://db",
+        "ALBERT_API_KEY": "albert",
+        "SCALEWAY_API_KEY": "scaleway",
+        "COOKIES_PASSWORD": "cookies",
+        "ADMIN_PASSWORD": "admin",
+        "GRIST_API_KEY": "grist",
+        "SCW_ACCESS_KEY": "access",
+        "SCW_SECRET_KEY": "secret",
+    }
+
+
 def test_streamlit_deploy_passes_otlp_runtime_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_trace_env(monkeypatch)
     monkeypatch.setenv("RAG_TRACING_ENABLED", "true")
@@ -39,6 +52,22 @@ def test_streamlit_deploy_passes_otlp_runtime_environment(monkeypatch: pytest.Mo
     assert "OTEL_EXPORTER_OTLP_ENDPOINT" not in env
 
 
+def test_streamlit_deploy_passes_source_import_runtime_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SCW_DEFAULT_REGION", "fr-par")
+    monkeypatch.setenv("SCW_BUCKET_SOURCES_PDF", "assistant-rh-sources-pdf-staging")
+    monkeypatch.setenv("GRIST_API_BASE_URL", "https://grist.example")
+    monkeypatch.setenv("GRIST_DOC_ID", "doc123")
+    monkeypatch.setenv("GRIST_TABLE_ID", "Sources")
+
+    env = scaleway_streamlit_deploy.streamlit_runtime_environment("staging")
+
+    assert env["SCW_DEFAULT_REGION"] == "fr-par"
+    assert env["SCW_BUCKET_SOURCES_PDF"] == "assistant-rh-sources-pdf-staging"
+    assert env["GRIST_API_BASE_URL"] == "https://grist.example"
+    assert env["GRIST_DOC_ID"] == "doc123"
+    assert env["GRIST_TABLE_ID"] == "Sources"
+
+
 def test_streamlit_deploy_rejects_enabled_tracing_without_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_trace_env(monkeypatch)
     monkeypatch.setenv("RAG_TRACING_ENABLED", "true")
@@ -48,20 +77,29 @@ def test_streamlit_deploy_rejects_enabled_tracing_without_endpoint(monkeypatch: 
 
 
 def test_streamlit_deploy_passes_otlp_headers_as_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    required = {
-        "SCW_POSTGRES_DSN": "postgresql://db",
-        "ALBERT_API_KEY": "albert",
-        "SCALEWAY_API_KEY": "scaleway",
-        "COOKIES_PASSWORD": "cookies",
-        "ADMIN_PASSWORD": "admin",
-        "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Bearer token",
-    }
+    required = _streamlit_required_secret_env()
+    required["OTEL_EXPORTER_OTLP_HEADERS"] = "Authorization=Bearer token"
     for key, value in required.items():
         monkeypatch.setenv(key, value)
 
     env = scaleway_streamlit_deploy.streamlit_secret_environment()
 
     assert env["OTEL_EXPORTER_OTLP_HEADERS"] == "Authorization=Bearer token"
+    assert env["GRIST_API_KEY"] == "grist"
+    assert env["SCW_ACCESS_KEY"] == "access"
+    assert env["SCW_SECRET_KEY"] == "secret"
+
+
+def test_streamlit_deploy_requires_source_import_secret_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    required = _streamlit_required_secret_env()
+    required.pop("GRIST_API_KEY")
+    for key in _streamlit_required_secret_env():
+        monkeypatch.delenv(key, raising=False)
+    for key, value in required.items():
+        monkeypatch.setenv(key, value)
+
+    with pytest.raises(RuntimeError, match="GRIST_API_KEY"):
+        scaleway_streamlit_deploy.streamlit_secret_environment()
 
 
 def test_streamlit_workflows_expose_trace_export_configuration() -> None:
@@ -74,6 +112,18 @@ def test_streamlit_workflows_expose_trace_export_configuration() -> None:
         assert "OTEL_EXPORTER_OTLP_ENDPOINT" in workflow
         assert "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT" in workflow
         assert "OTEL_EXPORTER_OTLP_HEADERS" in workflow
+
+
+def test_streamlit_workflows_expose_source_import_configuration() -> None:
+    staging = (REPO_ROOT / ".github/workflows/streamlit-deploy-staging.yml").read_text(encoding="utf-8")
+    production = (REPO_ROOT / ".github/workflows/streamlit-deploy-production.yml").read_text(encoding="utf-8")
+
+    for workflow in (staging, production):
+        assert "GRIST_API_BASE_URL" in workflow
+        assert "GRIST_API_KEY" in workflow
+        assert "GRIST_DOC_ID" in workflow
+        assert "GRIST_TABLE_ID" in workflow
+        assert "SCW_BUCKET_SOURCES_PDF" in workflow
 
 
 def test_grafana_import_payload_requires_stable_dashboard_uid() -> None:

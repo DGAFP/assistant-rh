@@ -46,13 +46,13 @@ class SourceImportError(ValueError):
     """Entrée invalide dans le formulaire d'import."""
 
 
-def validate_pdf_bytes(pdf_bytes: bytes) -> None:
-    """Contrôle serveur du contenu: le filtre type= de st.file_uploader est
-    purement côté client."""
-    if not pdf_bytes:
-        raise SourceImportError("Fichier vide.")
-    if not pdf_bytes.startswith(b"%PDF-"):
-        raise SourceImportError("Le fichier n'est pas un PDF (signature %PDF- absente).")
+@dataclass(frozen=True)
+class PdfImportPlan:
+    """Action Grist à appliquer après un upload PDF réussi."""
+
+    cle_bucket: str
+    fields: dict[str, Any]
+    record_id: int | None = None
 
 
 def build_uid_from_bytes(pdf_bytes: bytes) -> str:
@@ -171,6 +171,17 @@ def find_row_by_uid(records: list[dict[str, Any]], uid: str) -> dict[str, Any] |
     return None
 
 
+def _record_id(record: dict[str, Any]) -> int:
+    return int(record.get("id") or 0)
+
+
+def _duplicate_message(record: dict[str, Any]) -> str:
+    fields = record.get("fields") or {}
+    titre = str(fields.get("titre_document") or "(sans titre)")
+    uid = str(fields.get("uid") or "?")
+    return f"record {_record_id(record)} ({titre}, uid {uid})"
+
+
 def find_row_by_hash(records: list[dict[str, Any]], hash_contenu: str) -> dict[str, Any] | None:
     """Détection de doublon par contenu: même hash_contenu (sha256 complet),
     écrit par la page à l'upload puis confirmé par le pipeline."""
@@ -187,9 +198,90 @@ def find_row_by_hash(records: list[dict[str, Any]], hash_contenu: str) -> dict[s
 def find_row_by_record_id(records: list[dict[str, Any]], record_id: int) -> dict[str, Any] | None:
     """Relocalise une ligne par id de record (revalidation au moment du submit)."""
     for record in records:
-        if int(record.get("id") or 0) == record_id:
+        if _record_id(record) == record_id:
             return record
     return None
+
+
+def _require_pdf_bytes(pdf_bytes: bytes) -> None:
+    # Contrôle serveur: le filtre type= de st.file_uploader est côté client.
+    if not pdf_bytes:
+        raise SourceImportError("Fichier vide.")
+    if not pdf_bytes.startswith(b"%PDF-"):
+        raise SourceImportError("Le fichier n'est pas un PDF (signature %PDF- absente).")
+
+
+def _find_content_duplicate(
+    records: list[dict[str, Any]],
+    content_uid: str,
+    content_hash: str,
+) -> dict[str, Any] | None:
+    return find_row_by_uid(records, content_uid) or find_row_by_hash(records, content_hash)
+
+
+def plan_attach_pdf_import(
+    *,
+    records: list[dict[str, Any]],
+    selected_row: dict[str, Any] | None,
+    corpus: str,
+    filename: str,
+    pdf_bytes: bytes,
+) -> PdfImportPlan:
+    """Prépare le PATCH Grist avant upload pour une ligne existante.
+
+    Le uid de la ligne complétée devient le uid dérivé du contenu; cela rend
+    la détection de doublon fiable pour les prochains uploads. À appeler avec
+    des records FRAIS (relus au submit): l'état affiché peut être périmé.
+    """
+    _require_pdf_bytes(pdf_bytes)
+    if selected_row is None:
+        raise SourceImportError("Sélectionner une ligne du référentiel.")
+    selected_fields = selected_row.get("fields") or {}
+    if str(selected_fields.get("cle_bucket") or "").strip():
+        raise SourceImportError(f"La ligne a déjà un PDF ({selected_fields.get('cle_bucket')}) — recharger la page.")
+
+    content_uid, content_hash = content_identity(pdf_bytes)
+    duplicate = _find_content_duplicate(records, content_uid, content_hash)
+    selected_id = _record_id(selected_row)
+    if duplicate and _record_id(duplicate) != selected_id:
+        raise SourceImportError(f"Ce PDF existe déjà dans le référentiel: {_duplicate_message(duplicate)}")
+
+    cle_bucket = build_cle_bucket(corpus, content_uid, filename)
+    return PdfImportPlan(
+        record_id=selected_id,
+        cle_bucket=cle_bucket,
+        fields={"uid": content_uid, "cle_bucket": cle_bucket, "hash_contenu": content_hash},
+    )
+
+
+def plan_new_pdf_import(
+    *,
+    records: list[dict[str, Any]],
+    corpus: str,
+    filename: str,
+    pdf_bytes: bytes,
+    titre: str,
+    sous_thematique: str = "",
+    date_publication: str | None = None,
+) -> PdfImportPlan:
+    """Prépare la création Grist avant upload pour éviter un objet orphelin."""
+    _require_pdf_bytes(pdf_bytes)
+    content_uid, content_hash = content_identity(pdf_bytes)
+    duplicate = _find_content_duplicate(records, content_uid, content_hash)
+    if duplicate:
+        raise SourceImportError(f"Ce PDF existe déjà dans le référentiel: {_duplicate_message(duplicate)}")
+
+    cle_bucket = build_cle_bucket(corpus, content_uid, filename)
+    fields = build_new_pdf_row(
+        corpus=corpus,
+        uid=content_uid,
+        titre=titre,
+        cle_bucket=cle_bucket,
+        sous_thematique=sous_thematique,
+        date_publication=date_publication,
+        hash_contenu=content_hash,
+    )
+    return PdfImportPlan(cle_bucket=cle_bucket, fields=fields)
 
 
 def rows_missing_cle_bucket(records: list[dict[str, Any]], corpus: str) -> list[dict[str, Any]]:
@@ -248,6 +340,12 @@ class DropzoneUploader:
                 Body=pdf_bytes,
                 ContentType="application/pdf",
             )
-        except Exception as exc:  # botocore ClientError & co: pas de traceback brut dans l'UI
-            raise SourceImportError(f"Échec de l'upload dropzone ({key}): {type(exc).__name__}: {str(exc)[:200]}") from exc
+        except Exception as exc:
+            raise SourceImportError(f"Upload dropzone impossible pour {key}: {exc}") from exc
         return f"s3://{self.bucket}/{key}"
+
+    def delete_pdf(self, key: str) -> None:
+        try:
+            self._client().delete_object(Bucket=self.bucket, Key=key)
+        except Exception as exc:
+            raise SourceImportError(f"Suppression dropzone impossible pour {key}: {exc}") from exc
