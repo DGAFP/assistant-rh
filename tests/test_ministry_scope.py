@@ -16,6 +16,13 @@ def test_mso_scope_resolves_to_ministry_plus_shared_tables() -> None:
     assert scope.table_keys == ("mso", "service_public", "dgafp")
 
 
+def test_mi_scope_resolves_to_ministry_plus_shared_tables() -> None:
+    scope = build_retrieval_scope("mi")
+
+    assert scope.selected_ministry == "mi"
+    assert scope.table_keys == ("mi", "service_public", "dgafp")
+
+
 def test_unknown_ministry_fails_closed() -> None:
     with pytest.raises(MinistryScopeError):
         build_retrieval_scope("old-ministry")
@@ -25,6 +32,8 @@ def test_unknown_ministry_fails_closed() -> None:
     ("allowed", "default", "is_valid"),
     [
         (["matte", "mso"], "mso", True),
+        (["mi"], "mi", True),
+        (["matte", "mi"], "mi", True),
         (["matte", "old-ministry"], "matte", False),
         (["matte"], "mso", False),
         ([], "matte", False),

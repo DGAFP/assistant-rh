@@ -194,46 +194,93 @@ class RagDbWriter:
             cur.executemany(query, rows)
         return len(rows)
 
+    def _upsert_documents(self, conn: psycopg.Connection, documents: list[dict[str, Any]]) -> int:
+        short_id_predicate = self._index_predicate(conn, "uq_rag_documents_short_id")
+        if short_id_predicate is not None:
+            # L'arbitre partiel sur short_id suppose que chaque ligne a un
+            # short_id non NULL: une ligne sans short_id ne matcherait pas
+            # l'index et lèverait une violation de PK sur doc_id en cas de
+            # re-run au lieu d'être mise à jour.
+            return self._upsert(
+                conn,
+                "rag_documents",
+                documents,
+                ["short_id"],
+                conflict_where=short_id_predicate or None,
+                update_exclude_cols=["doc_id"],
+            )
+        return self._upsert(conn, "rag_documents", documents, ["doc_id"])
+
     def upsert_documents(self, documents: list[dict[str, Any]]) -> int:
         with self._connect() as conn:
-            short_id_predicate = self._index_predicate(conn, "uq_rag_documents_short_id")
-            if short_id_predicate is not None:
-                # L'arbitre partiel sur short_id suppose que chaque ligne a un
-                # short_id non NULL: une ligne sans short_id ne matcherait pas
-                # l'index et lèverait une violation de PK sur doc_id en cas de
-                # re-run au lieu d'être mise à jour.
-                count = self._upsert(
-                    conn,
-                    "rag_documents",
-                    documents,
-                    ["short_id"],
-                    conflict_where=short_id_predicate or None,
-                    update_exclude_cols=["doc_id"],
-                )
-            else:
-                count = self._upsert(conn, "rag_documents", documents, ["doc_id"])
+            count = self._upsert_documents(conn, documents)
             conn.commit()
             return count
 
+    def _upsert_sections(self, conn: psycopg.Connection, sections: list[dict[str, Any]]) -> int:
+        doc_index_predicate = self._index_predicate(conn, "uq_rag_sections_doc_index")
+        if doc_index_predicate is not None:
+            # Même contrainte que pour les documents: une section avec
+            # section_index NULL ne matcherait pas l'arbitre (doc_id,
+            # section_index) et lèverait une violation de PK en re-run.
+            return self._upsert(
+                conn,
+                "rag_sections",
+                sections,
+                ["doc_id", "section_index"],
+                conflict_where=doc_index_predicate or None,
+                update_exclude_cols=["section_id"],
+            )
+        return self._upsert(conn, "rag_sections", sections, ["section_id"])
+
     def upsert_sections(self, sections: list[dict[str, Any]]) -> int:
         with self._connect() as conn:
-            doc_index_predicate = self._index_predicate(conn, "uq_rag_sections_doc_index")
-            if doc_index_predicate is not None:
-                # Même contrainte que pour les documents: une section avec
-                # section_index NULL ne matcherait pas l'arbitre (doc_id,
-                # section_index) et lèverait une violation de PK en re-run.
-                count = self._upsert(
-                    conn,
-                    "rag_sections",
-                    sections,
-                    ["doc_id", "section_index"],
-                    conflict_where=doc_index_predicate or None,
-                    update_exclude_cols=["section_id"],
-                )
-            else:
-                count = self._upsert(conn, "rag_sections", sections, ["section_id"])
+            count = self._upsert_sections(conn, sections)
             conn.commit()
             return count
+
+    def ingest_document_bundle(
+        self,
+        document: dict[str, Any],
+        sections: list[dict[str, Any]],
+        chunks: list[dict[str, Any]],
+        *,
+        batch_size: int = 1000,
+        table: str | None = None,
+    ) -> dict[str, int]:
+        """Document + sections + remplacement des chunks en UNE transaction.
+
+        Sans cette atomicité, un échec après l'upsert du document laisse en
+        base un checksum à jour avec des chunks périmés: le run suivant
+        classerait le document ignore_inchange sans jamais le réparer
+        (réconciliation par delta sha256 des pipelines PDF).
+        """
+        resolved_table = self._require_chunk_table(table)
+        short_id = str(document.get("short_id") or "").strip().upper()
+        doc_id = str(document.get("doc_id") or "")
+        with self._connect() as conn:
+            documents_count = self._upsert_documents(conn, [document])
+            # Delete-puis-insert des sections: un document raccourci laisserait
+            # sinon ses sections de queue (section_index au-delà du nouveau
+            # compte) avec le contenu de la version précédente.
+            if doc_id:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        sql.SQL("DELETE FROM {}.{} WHERE doc_id = %s::uuid").format(sql.Identifier(self.schema), sql.Identifier("rag_sections")),
+                        (doc_id,),
+                    )
+            sections_count = self._upsert_sections(conn, sections) if sections else 0
+            deleted = self._delete_chunks_by_short_ids(conn, [short_id], table=resolved_table) if short_id else 0
+            inserted = 0
+            for batch in self._batched_rows(chunks, batch_size):
+                inserted += self._upsert(conn, resolved_table, batch, ["hash_id"])
+            conn.commit()
+            return {
+                "documents": documents_count,
+                "sections": sections_count,
+                "chunks_deleted": deleted,
+                "chunks": inserted,
+            }
 
     def upsert_chunks(self, chunks: list[dict[str, Any]], table: str | None = None) -> int:
         resolved_table = self._require_chunk_table(table)

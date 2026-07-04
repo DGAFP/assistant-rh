@@ -378,6 +378,7 @@ class Retriever:
     _TABLE_META_COLS: Dict[str, List[str]] = {
         "rag_chunks_matte": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
         "rag_chunks_mso": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
+        "rag_chunks_mi": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
         "rag_chunks_service_public": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
         CHUNK_TABLES["service_public_scw"].name: ["source_name", "section_path", "role", "thematique", "short_id", "source"],
         "rag_chunks_dgafp": ["title", "full_title", "number", "category", "url", "cid"],

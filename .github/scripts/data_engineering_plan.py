@@ -15,6 +15,9 @@ IMAGE_MATRIX = {
         {"image": "legifrance-pipeline", "dockerfile": "Dockerfile.legifrance_pipeline"},
         {"image": "legifrance-ingestion", "dockerfile": "Dockerfile.legifrance_ingestion"},
     ],
+    "pdf_sources": [
+        {"image": "pdf-sources-pipeline", "dockerfile": "Dockerfile.pdf_sources_pipeline"},
+    ],
     "embeddings": [
         {"image": "embeddings-job", "dockerfile": "Dockerfile.embeddings_job"},
     ],
@@ -55,12 +58,16 @@ def classify_from_source(source: str) -> dict[str, bool]:
     return {
         "service_public": source in {"all", "service_public"},
         "legifrance": source in {"all", "legifrance"},
-        "embeddings": source in {"all", "embeddings", "matte"},
+        # Sélection explicite uniquement (tracer bullet #246): un dispatch
+        # source=all ne doit ni exiger les secrets Grist/Albert ni écrire le
+        # corpus MI. Le cron/prod arrive en Phase F (#250).
+        "pdf_sources": source == "pdf_sources",
+        "embeddings": source in {"all", "embeddings", "matte", "mi"},
     }
 
 
 def classify_from_files(files: list[str]) -> dict[str, bool]:
-    result = {"service_public": False, "legifrance": False, "embeddings": False}
+    result = {"service_public": False, "legifrance": False, "pdf_sources": False, "embeddings": False}
     has_common = False
 
     for path in files:
@@ -120,25 +127,44 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
         }:
             result["legifrance"] = True
 
+        if startswith_any(
+            path,
+            (
+                "packages/data-engineering/src/assistant_rh_data_engineering/mi/",
+                "packages/data-engineering/src/assistant_rh_data_engineering/jobs/pdf_sources_",
+            ),
+        ) or path in {
+            "Dockerfile.pdf_sources_pipeline",
+            "config/scaleway_serverless_job_pdf_sources_mi.json",
+            "config/mi_embedding_tables.json",
+        }:
+            result["pdf_sources"] = True
+
         if (
             path == "Dockerfile.embeddings_job"
             or path == "packages/data-engineering/src/assistant_rh_data_engineering/jobs/embeddings_backfill.py"
-            or contains_any(path, ("embedding_tables", "embeddings_job"))
+            # mi_embedding_tables.json appartient au domaine pdf_sources: son
+            # ajout ne doit pas déclencher les backfills SP/Légifrance.
+            or (contains_any(path, ("embedding_tables", "embeddings_job")) and path != "config/mi_embedding_tables.json")
         ):
             result["embeddings"] = True
 
     # A change to shared/common CI or config files only triggers a full all-sources
     # preview when nothing source-specific changed. When a specific source also
     # changed, scope the preview to that source instead of fanning out to everything.
-    if has_common and not (result["service_public"] or result["legifrance"] or result["embeddings"]):
-        return {"service_public": True, "legifrance": True, "embeddings": True}
+    if has_common and not (result["service_public"] or result["legifrance"] or result["pdf_sources"] or result["embeddings"]):
+        return {"service_public": True, "legifrance": True, "pdf_sources": True, "embeddings": True}
 
     return result
 
 
 def infer_embedding_source(selected: dict[str, bool], requested_source: str = "") -> str:
-    if requested_source in {"service_public", "legifrance", "matte"}:
+    if requested_source in {"service_public", "legifrance", "matte", "mi"}:
         return requested_source
+    if requested_source == "pdf_sources":
+        # Le backfill associé au domaine pdf_sources est celui de MI (Phase B);
+        # sans ce mapping, le fallback "all" relancerait TOUS les backfills.
+        return "mi"
     if selected["service_public"] and not selected["legifrance"]:
         return "service_public"
     if selected["legifrance"] and not selected["service_public"]:
@@ -160,7 +186,7 @@ def main() -> int:
     if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
         source = os.getenv("INPUT_SOURCE") or "all"
         selected = classify_from_source(source)
-        run_embeddings = source in {"embeddings", "matte"} or os.getenv("INPUT_RUN_EMBEDDINGS", "").strip().lower() == "true"
+        run_embeddings = source in {"embeddings", "matte", "mi"} or os.getenv("INPUT_RUN_EMBEDDINGS", "").strip().lower() == "true"
         if run_embeddings:
             selected["embeddings"] = True
         files: list[str] = []
@@ -175,18 +201,19 @@ def main() -> int:
             selected["embeddings"] = True
 
     matrix: list[dict[str, str]] = []
-    for domain in ("service_public", "legifrance", "embeddings"):
+    for domain in ("service_public", "legifrance", "pdf_sources", "embeddings"):
         if selected[domain]:
             matrix.extend(IMAGE_MATRIX[domain])
 
     outputs = {
         "service_public": str(selected["service_public"]).lower(),
         "legifrance": str(selected["legifrance"]).lower(),
+        "pdf_sources": str(selected["pdf_sources"]).lower(),
         "embeddings": str(selected["embeddings"]).lower(),
         "run_embeddings": str(run_embeddings).lower(),
         "embedding_source": embedding_source,
         "has_builds": str(bool(matrix)).lower(),
-        "has_runs": str(selected["service_public"] or selected["legifrance"] or selected["embeddings"]).lower(),
+        "has_runs": str(selected["service_public"] or selected["legifrance"] or selected["pdf_sources"] or selected["embeddings"]).lower(),
         "matrix": json.dumps({"include": matrix or [{"image": "noop", "dockerfile": "Dockerfile.service_public_pipeline"}]}),
         "changed_files": json.dumps(files),
     }

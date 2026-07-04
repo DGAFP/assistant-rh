@@ -73,6 +73,13 @@ CHUNK_TABLES: Dict[str, ChunkTable] = {
         publisher="MSO",
         has_sections=True,
     ),
+    "mi": ChunkTable(
+        "rag_chunks_mi",
+        embed_col_albert="embedding_m3",
+        tsv_col="text_tsv",
+        publisher="MI",
+        has_sections=True,
+    ),
     "service_public": ChunkTable(
         "rag_chunks_service_public",
         embed_col_albert="embedding_m3",

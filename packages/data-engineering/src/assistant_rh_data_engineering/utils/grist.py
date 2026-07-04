@@ -32,6 +32,13 @@ WRITEBACK_MANIFEST_COLUMNS: tuple[str, ...] = (
     "erreur_ingestion",
 )
 
+# Vocabulaire de statut_ingestion, partagé par tous les corpus PDF (les
+# dashboards et requêtes de drift filtrent sur ces valeurs exactes).
+STATUT_OK = "ok"
+STATUT_ERREUR = "erreur"
+STATUT_IGNORE = "ignore_inchange"
+STATUT_SUPPRIME = "supprime"
+
 MANIFEST_STATUTS: tuple[str, ...] = ("en_vigueur", "abroge")
 
 # Valeurs admises pour la colonne abroge du référentiel.

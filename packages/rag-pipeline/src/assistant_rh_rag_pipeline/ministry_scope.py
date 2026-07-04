@@ -54,6 +54,13 @@ MINISTRY_CATALOG: dict[str, MinistrySource] = {
         chunk_table="rag_chunks_mso",
         publisher="MSO",
     ),
+    "mi": MinistrySource(
+        id="mi",
+        label="Intérieur",
+        table_key="mi",
+        chunk_table="rag_chunks_mi",
+        publisher="MI",
+    ),
 }
 
 SHARED_TABLE_KEYS: tuple[str, ...] = ("service_public", "dgafp")
