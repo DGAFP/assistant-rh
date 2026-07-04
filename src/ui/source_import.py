@@ -343,13 +343,28 @@ def rows_missing_cle_bucket(records: list[dict[str, Any]], corpus: str) -> list[
     return result
 
 
+def is_dropzone_key(storage_path: str) -> bool:
+    """Vrai si storage_path est une clé de la dropzone ({corpus}/{fichier}).
+
+    Les documents des autres sources portent des chemins bruts dans
+    storage_path (Légifrance: chemin local ou URI s3 du bronze) qui ne
+    doivent jamais déclencher de lecture dropzone dans le viewer.
+    """
+    key = (storage_path or "").strip()
+    if "/" not in key or key.endswith("/"):
+        return False
+    return key.split("/", 1)[0].upper() in PDF_CORPORA
+
+
 @dataclass
 class DropzoneUploader:
-    """Upload d'un PDF vers la dropzone via boto3 (S3-compatible Scaleway).
+    """Accès unitaire à la dropzone via boto3 (S3-compatible Scaleway):
+    upload et suppression pour la page d'import, lecture pour le viewer de
+    sources.
 
     Les jobs data-engineering utilisent l'aws CLI (sync massif d'arbres);
-    l'UI ne fait qu'un put_object unitaire: boto3 suffit et évite d'embarquer
-    la CLI dans l'image Streamlit.
+    l'UI ne fait que des opérations unitaires: boto3 suffit et évite
+    d'embarquer la CLI dans l'image Streamlit.
     """
 
     bucket: str
@@ -395,6 +410,15 @@ class DropzoneUploader:
 
     # Compat: nom historique quand la page ne gérait que le PDF.
     upload_pdf = upload_file
+
+    def fetch_file(self, key: str) -> bytes:
+        """Lecture d'un fichier source (viewer de sources: storage_path des
+        documents des corpus PDF = clé dropzone)."""
+        try:
+            response = self._client().get_object(Bucket=self.bucket, Key=key)
+            return response["Body"].read()
+        except Exception as exc:
+            raise SourceImportError(f"Lecture dropzone impossible pour {key}: {exc}") from exc
 
     def delete_file(self, key: str) -> None:
         try:

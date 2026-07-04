@@ -351,3 +351,54 @@ def test_dropzone_uploader_wraps_upload_errors(monkeypatch: pytest.MonkeyPatch) 
 
     with pytest.raises(SourceImportError, match="Upload dropzone impossible"):
         uploader.upload_pdf("mi/abc_doc.pdf", b"%PDF-fake")
+
+
+def test_fetch_file_reads_dropzone_object(monkeypatch):
+    from src.ui.source_import import DropzoneUploader
+
+    uploader = DropzoneUploader(bucket="b", region="fr-par", access_key="ak", secret_key="sk")
+
+    class FakeBody:
+        def read(self) -> bytes:
+            return b"%PDF-contenu"
+
+    class FakeClient:
+        def get_object(self, Bucket: str, Key: str):
+            assert Bucket == "b"
+            assert Key == "mi/abc_notice.pdf"
+            return {"Body": FakeBody()}
+
+    monkeypatch.setattr(DropzoneUploader, "_client", lambda self: FakeClient())
+    assert uploader.fetch_file("mi/abc_notice.pdf") == b"%PDF-contenu"
+
+
+def test_fetch_file_wraps_errors(monkeypatch):
+    import pytest
+
+    from src.ui.source_import import DropzoneUploader, SourceImportError
+
+    uploader = DropzoneUploader(bucket="b", region="fr-par", access_key="ak", secret_key="sk")
+
+    class FakeClient:
+        def get_object(self, Bucket: str, Key: str):
+            raise RuntimeError("NoSuchKey")
+
+    monkeypatch.setattr(DropzoneUploader, "_client", lambda self: FakeClient())
+    with pytest.raises(SourceImportError, match="mi/introuvable.pdf"):
+        uploader.fetch_file("mi/introuvable.pdf")
+
+
+def test_is_dropzone_key_accepts_corpus_keys_only():
+    from src.ui.source_import import is_dropzone_key
+
+    assert is_dropzone_key("mi/3a6a62f289_notice.pdf") is True
+    assert is_dropzone_key("MASA/abc_note.docx") is True
+    # Chemins bruts d'autres sources (Légifrance): jamais de GET dropzone.
+    assert is_dropzone_key("/data/raw/legifrance/texte.txt") is False
+    assert is_dropzone_key("s3://autre-bucket/cle.json") is False
+    assert is_dropzone_key("data/lake/legifrance/bronze/x.json") is False
+    # Clés malformées.
+    assert is_dropzone_key("mi/") is False
+    assert is_dropzone_key("mi") is False
+    assert is_dropzone_key("") is False
+    assert is_dropzone_key(None) is False
