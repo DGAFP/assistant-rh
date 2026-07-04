@@ -1,0 +1,31 @@
+{
+  "name": "pdf-sources-masa-medallion-staging",
+  "description": "Pipeline medaillon MASA (Agriculture et Souverainete alimentaire): manifest Grist, dropzone, OCR Albert, reconciliation, ingestion staging.",
+  "region": "fr-par",
+  "image_uri": "rg.fr-par.scw.cloud/assistant-rh/pdf-sources-pipeline:staging-latest",
+  "cpu_limit_mvcpu": 2000,
+  "memory_limit_mib": 4096,
+  "local_storage_capacity_mib": 4096,
+  "job_timeout_seconds": 7200,
+  "startup_command": [
+    "data-ingestion"
+  ],
+  "args": [
+    "masa",
+    "medallion",
+    "--target-env",
+    "staging",
+    "--ingest",
+    "--sync-object-storage"
+  ],
+  "environment_variables": {
+    "SCW_DEFAULT_REGION": "fr-par",
+    "SCW_BUCKET_BRONZE": "assistant-rh-bronze",
+    "SCW_BUCKET_SILVER": "assistant-rh-silver",
+    "SCW_BUCKET_GOLD": "assistant-rh-gold",
+    "SCW_BUCKET_SOURCES_PDF": "assistant-rh-sources-pdf",
+    "SCW_PREFIX_PROD": "prod",
+    "SCW_PREFIX_STAGING": "staging",
+    "ALBERT_BASE_URL": "https://albert.api.etalab.gouv.fr/v1"
+  }
+}

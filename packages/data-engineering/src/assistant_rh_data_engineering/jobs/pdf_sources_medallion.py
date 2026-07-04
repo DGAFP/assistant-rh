@@ -11,9 +11,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 # Orchestrateur unique des corpus PDF (manifest Grist + dropzone + OCR).
-# Un seul job paramétré par ministère; MASA/MATTE/MSO s'enregistrent ici
-# au fil des phases C et D (issues #247/#248).
-MINISTERES = ("mi",)
+# Un seul job paramétré par ministère; MATTE/MSO s'enregistrent ici
+# en phase D (issue #248).
+MINISTERES = ("mi", "masa")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -95,20 +95,25 @@ def main() -> int:
     args = build_parser().parse_args()
 
     if args.ministere == "mi":
-        from assistant_rh_data_engineering.mi import MiPipeline, MiPipelineConfig
+        from assistant_rh_data_engineering.mi import MiPipeline as PipelineClass
+        from assistant_rh_data_engineering.mi import MiPipelineConfig as PipelineConfigClass
         from assistant_rh_data_engineering.mi.config import OBJECT_STORAGE_SOURCE_NAME, LakePaths
+    elif args.ministere == "masa":
+        from assistant_rh_data_engineering.masa import MasaPipeline as PipelineClass
+        from assistant_rh_data_engineering.masa import MasaPipelineConfig as PipelineConfigClass
+        from assistant_rh_data_engineering.masa.config import OBJECT_STORAGE_SOURCE_NAME, LakePaths
 
-        config = MiPipelineConfig(target_env=args.target_env, ocr_provider_name=args.ocr_provider)
-        if args.lake_root:
-            config.paths = LakePaths(root_dir=Path(args.lake_root))
-        if args.no_embed:
-            config.embeddings.enable_m3 = False
-            config.embeddings.enable_bge_scaleway = False
-        elif args.no_scaleway_bge:
-            config.embeddings.enable_bge_scaleway = False
+    config = PipelineConfigClass(target_env=args.target_env, ocr_provider_name=args.ocr_provider)
+    if args.lake_root:
+        config.paths = LakePaths(root_dir=Path(args.lake_root))
+    if args.no_embed:
+        config.embeddings.enable_m3 = False
+        config.embeddings.enable_bge_scaleway = False
+    elif args.no_scaleway_bge:
+        config.embeddings.enable_bge_scaleway = False
 
-        pipeline = MiPipeline(config, schema=args.schema)
-        object_storage_source_name = OBJECT_STORAGE_SOURCE_NAME
+    pipeline = PipelineClass(config, schema=args.schema)
+    object_storage_source_name = OBJECT_STORAGE_SOURCE_NAME
 
     summary = pipeline.run(
         doc_ids=args.doc_ids,

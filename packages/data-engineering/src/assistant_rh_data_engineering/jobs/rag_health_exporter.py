@@ -51,6 +51,7 @@ class ChunkTable:
 DIRECT_CHUNK_TABLES: tuple[ChunkTable, ...] = (
     ChunkTable("rag_chunks_matte", "matte", source_column="source", section_column="section_id", document_column="source_document_id"),
     ChunkTable("rag_chunks_mi", "mi", source_column="source", section_column="section_id", document_column="source_document_id"),
+    ChunkTable("rag_chunks_masa", "masa", source_column="source", section_column="section_id", document_column="source_document_id"),
     ChunkTable(
         "rag_chunks_service_public",
         "service_public",
