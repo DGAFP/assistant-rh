@@ -34,6 +34,7 @@ def test_classify_from_files_selects_only_changed_data_domains() -> None:
     assert selected == {
         "service_public": True,
         "legifrance": True,
+        "pdf_sources": False,
         "embeddings": False,
     }
 
@@ -44,6 +45,7 @@ def test_classify_from_files_common_ci_change_selects_all_domains() -> None:
     assert selected == {
         "service_public": True,
         "legifrance": True,
+        "pdf_sources": True,
         "embeddings": True,
     }
 
@@ -59,6 +61,7 @@ def test_classify_from_files_common_with_specific_source_scopes_to_source() -> N
     assert selected == {
         "service_public": True,
         "legifrance": False,
+        "pdf_sources": False,
         "embeddings": False,
     }
 
@@ -223,7 +226,7 @@ def test_preview_staging_exposes_matte_embedding_dispatch() -> None:
     assert "- matte" in source_block
     assert "- matte" in embedding_source_block
     assert "inputs.source == 'embeddings' || inputs.source == 'matte'" in workflow
-    assert "inputs.source == 'matte' && 'matte' || inputs.embedding_source" in workflow
+    assert "inputs.source == 'matte' && 'matte' || inputs.source == 'mi' && 'mi' || inputs.embedding_source" in workflow
 
 
 def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:
@@ -1246,3 +1249,174 @@ def test_upsert_and_start_jobs_skips_matte_auto_start_on_push(
         ["embeddings", "service-public", "--dsn-env", "SCW_POSTGRES_DSN"],
         ["embeddings", "legifrance", "--dsn-env", "SCW_POSTGRES_DSN"],
     ]
+
+
+def test_classify_from_files_selects_pdf_sources_on_mi_changes() -> None:
+    selected = data_engineering_plan.classify_from_files(["packages/data-engineering/src/assistant_rh_data_engineering/mi/pipeline.py"])
+
+    assert selected == {
+        "service_public": False,
+        "legifrance": False,
+        "pdf_sources": True,
+        "embeddings": False,
+    }
+
+
+def test_classify_from_files_selects_pdf_sources_on_job_and_dockerfile_changes() -> None:
+    for path in (
+        "packages/data-engineering/src/assistant_rh_data_engineering/jobs/pdf_sources_medallion.py",
+        "Dockerfile.pdf_sources_pipeline",
+        "config/scaleway_serverless_job_pdf_sources_mi.json",
+    ):
+        selected = data_engineering_plan.classify_from_files([path])
+        assert selected["pdf_sources"] is True, path
+        assert selected["service_public"] is False, path
+
+
+def test_workflow_dispatch_pdf_sources_selects_pipeline_image(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_path = tmp_path / "github-output.txt"
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("INPUT_SOURCE", "pdf_sources")
+    monkeypatch.delenv("INPUT_RUN_EMBEDDINGS", raising=False)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+
+    assert data_engineering_plan.main() == 0
+
+    outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
+    matrix = json.loads(outputs["matrix"])
+    assert outputs["pdf_sources"] == "true"
+    assert outputs["service_public"] == "false"
+    assert outputs["legifrance"] == "false"
+    assert outputs["embeddings"] == "false"
+    assert outputs["run_embeddings"] == "false"
+    assert outputs["has_runs"] == "true"
+    assert [item["image"] for item in matrix["include"]] == ["pdf-sources-pipeline"]
+
+
+def test_workflow_dispatch_mi_selects_embeddings_backfill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_path = tmp_path / "github-output.txt"
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("INPUT_SOURCE", "mi")
+    monkeypatch.delenv("INPUT_RUN_EMBEDDINGS", raising=False)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+
+    assert data_engineering_plan.main() == 0
+
+    outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
+    matrix = json.loads(outputs["matrix"])
+    assert outputs["embeddings"] == "true"
+    assert outputs["run_embeddings"] == "true"
+    assert outputs["embedding_source"] == "mi"
+    assert matrix["include"] == [{"image": "embeddings-job", "dockerfile": "Dockerfile.embeddings_job"}]
+
+
+def test_should_run_gates_pdf_sources_domain() -> None:
+    spec = {"key": "pdf-sources-mi-medallion", "domain": "pdf_sources"}
+    args = scaleway_data_jobs.build_parser().parse_args(["--target-env", "staging", "--image-tag", "staging-x", "--pdf-sources", "true"])
+    assert scaleway_data_jobs.should_run(spec, args) is True
+
+    args_off = scaleway_data_jobs.build_parser().parse_args(["--target-env", "staging", "--image-tag", "staging-x"])
+    assert scaleway_data_jobs.should_run(spec, args_off) is False
+
+
+def test_pdf_sources_job_skipped_on_push(monkeypatch: pytest.MonkeyPatch) -> None:
+    # auto_start_on_push=false: le job MI ne part que par workflow_dispatch.
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    spec = {"key": "pdf-sources-mi-medallion", "domain": "pdf_sources", "auto_start_on_push": False}
+    args = scaleway_data_jobs.build_parser().parse_args(["--target-env", "staging", "--image-tag", "staging-x", "--pdf-sources", "true"])
+    assert scaleway_data_jobs.should_run(spec, args) is False
+
+
+def test_scaleway_job_environment_resolves_grist_and_albert_groups(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GRIST_API_BASE_URL", "https://grist.example.test")
+    monkeypatch.setenv("GRIST_API_KEY", "grist-key")
+    monkeypatch.setenv("GRIST_DOC_ID", "doc-id")
+    monkeypatch.setenv("GRIST_TABLE_ID", "Sources")
+    monkeypatch.setenv("ALBERT_API_KEY", "albert-key")
+    monkeypatch.delenv("ALBERT_BASE_URL", raising=False)
+
+    environment = scaleway_data_jobs.job_environment({"env_groups": ["grist", "albert"]}, "staging", "fr-par")
+
+    assert environment["GRIST_API_BASE_URL"] == "https://grist.example.test"
+    assert environment["GRIST_API_KEY"] == "grist-key"
+    assert environment["GRIST_DOC_ID"] == "doc-id"
+    assert environment["GRIST_TABLE_ID"] == "Sources"
+    assert environment["ALBERT_API_KEY"] == "albert-key"
+    assert environment["ALBERT_BASE_URL"] == "https://albert.api.etalab.gouv.fr/v1"
+
+
+def test_scaleway_job_environment_object_storage_includes_dropzone_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SCW_ACCESS_KEY", "access-key")
+    monkeypatch.setenv("SCW_SECRET_KEY", "secret-key")
+    monkeypatch.delenv("SCW_BUCKET_SOURCES_PDF", raising=False)
+
+    environment = scaleway_data_jobs.job_environment({"env_groups": ["object_storage"]}, "staging", "fr-par")
+
+    assert environment["SCW_BUCKET_SOURCES_PDF"] == "assistant-rh-sources-pdf"
+
+
+def test_workflow_dispatch_all_does_not_select_pdf_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Phase B (#246): le corpus MI est à sélection explicite — un dispatch
+    # source=all ne doit ni exiger les secrets Grist/Albert ni écrire MI.
+    output_path = tmp_path / "github-output.txt"
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("INPUT_SOURCE", "all")
+    monkeypatch.delenv("INPUT_RUN_EMBEDDINGS", raising=False)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+
+    assert data_engineering_plan.main() == 0
+
+    outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
+    matrix = json.loads(outputs["matrix"])
+    assert outputs["pdf_sources"] == "false"
+    assert "pdf-sources-pipeline" not in [item["image"] for item in matrix["include"]]
+
+
+def test_embeddings_mi_requires_explicit_embedding_source() -> None:
+    spec = {
+        "key": "embeddings-mi",
+        "domain": "embeddings",
+        "requires_embeddings": True,
+        "requires_explicit_embedding_source": True,
+    }
+    base = ["--target-env", "staging", "--image-tag", "staging-x", "--embeddings", "true", "--run-embeddings", "true"]
+
+    args_all = scaleway_data_jobs.build_parser().parse_args([*base, "--embedding-source", "all"])
+    assert scaleway_data_jobs.should_run(spec, args_all) is False
+
+    args_mi = scaleway_data_jobs.build_parser().parse_args([*base, "--embedding-source", "mi"])
+    assert scaleway_data_jobs.should_run(spec, args_mi) is True
+
+
+def test_embedding_source_gate_is_generic_across_sources() -> None:
+    base = ["--target-env", "staging", "--image-tag", "staging-x", "--embeddings", "true", "--run-embeddings", "true"]
+    args = scaleway_data_jobs.build_parser().parse_args([*base, "--embedding-source", "service_public"])
+
+    sp_spec = {"key": "embeddings-service-public", "domain": "embeddings", "requires_embeddings": True}
+    lf_spec = {"key": "embeddings-legifrance", "domain": "embeddings", "requires_embeddings": True}
+    assert scaleway_data_jobs.should_run(sp_spec, args) is True
+    assert scaleway_data_jobs.should_run(lf_spec, args) is False
+
+
+def test_mi_embedding_tables_config_is_pdf_sources_not_embeddings() -> None:
+    # Le merge de la PR #246 ne doit pas déclencher les backfills SP/Légifrance
+    # via la règle substring "embedding_tables".
+    selected = data_engineering_plan.classify_from_files(["config/mi_embedding_tables.json"])
+
+    assert selected["pdf_sources"] is True
+    assert selected["embeddings"] is False
+    assert selected["service_public"] is False
+
+
+def test_pdf_sources_dispatch_with_embeddings_targets_mi_backfill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_path = tmp_path / "github-output.txt"
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("INPUT_SOURCE", "pdf_sources")
+    monkeypatch.setenv("INPUT_RUN_EMBEDDINGS", "true")
+    monkeypatch.delenv("INPUT_EMBEDDING_SOURCE", raising=False)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+
+    assert data_engineering_plan.main() == 0
+
+    outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
+    assert outputs["embedding_source"] == "mi"
