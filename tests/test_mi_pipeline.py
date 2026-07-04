@@ -265,6 +265,70 @@ def test_gold_skips_non_indexable_sections(tmp_path: Path) -> None:
     assert chunks == []
 
 
+def test_gold_large_tables_split_on_rows_with_header_repeated() -> None:
+    from assistant_rh_data_engineering.mi.gold import split_section_markdown
+
+    header = "| Axe | Objectif | Public | Durée |\n| --- | --- | --- | --- |"
+    rows = "\n".join(f"| Axe {i} | Objectif de formation numéro {i}, décrit assez longuement | Tout public | {i} H |" for i in range(1, 60))
+    table = f"{header}\n{rows}"
+
+    chunks = split_section_markdown(f"### Priorités de formation\n\n{table}", 1200, 200)
+
+    assert len(chunks) > 1
+    # Chaque tranche de tableau (hors la première, qui porte le heading fusionné)
+    # commence par l'en-tête de colonnes.
+    for chunk in chunks[1:]:
+        assert chunk.splitlines()[0] == "| Axe | Objectif | Public | Durée |"
+        assert "| --- |" in chunk.splitlines()[1]
+    # Aucune tranche ne coupe une ligne de tableau en deux.
+    for chunk in chunks:
+        for line in chunk.splitlines():
+            if line.startswith("|"):
+                assert line.rstrip().endswith("|"), line
+
+
+def test_gold_orphan_heading_merged_into_next_chunk() -> None:
+    from assistant_rh_data_engineering.mi.gold import split_section_markdown
+
+    header = "| Col A | Col B |\n| --- | --- |"
+    rows = "\n".join(f"| valeur {i} très détaillée pour occuper de la place | autre valeur {i} |" for i in range(1, 40))
+    chunks = split_section_markdown(f"## Priorités de formation 2026\n\n{header}\n{rows}", 1200, 200)
+
+    assert chunks[0].startswith("## Priorités de formation 2026\n\n| Col A | Col B |")
+    assert all(len(chunk) >= 120 for chunk in chunks)
+
+
+def test_gold_page_split_table_is_stitched_and_header_detected_by_repetition() -> None:
+    # mistral-ocr coupe un grand tableau à chaque page: blocs séparés par des
+    # marqueurs de page, en-tête ré-émis, séparatrice au mauvais endroit.
+    from assistant_rh_data_engineering.mi.gold import split_section_markdown
+
+    header = "| Périmètre | Intitulé du stage | Public cible | Durée |"
+    rows1 = "\n".join(f"| SG | Stage numéro {i} avec un intitulé assez long pour peser | Tout public | {i} H |" for i in range(1, 20))
+    rows2 = "\n".join(f"| PN | Formation numéro {i} avec un intitulé assez long pour peser | OPJ | {i} H |" for i in range(1, 20))
+    page1 = f"{header}\n{rows1}"
+    page2 = f"{header}\n| --- | --- | --- | --- |\n{rows2}"
+
+    chunks = split_section_markdown(f"{page1}\n\n<!-- PAGE: 2 -->\n\n{page2}", 1200, 200)
+
+    assert len(chunks) > 1
+    for chunk in chunks:
+        assert "<!-- PAGE:" not in chunk
+        assert chunk.splitlines()[0] == header
+    # L'en-tête n'est pas dupliqué dans le corps des tranches.
+    assert all(chunk.splitlines()[2:].count(header) == 0 for chunk in chunks)
+
+
+def test_gold_prose_chunking_unchanged() -> None:
+    from assistant_rh_data_engineering.mi.gold import split_section_markdown
+
+    prose = "\n\n".join(f"Paragraphe {i} avec un contenu suffisant pour peser dans le découpage." for i in range(30))
+    chunks = split_section_markdown(prose, 400, 100)
+
+    assert len(chunks) > 1
+    assert all(len(chunk) <= 400 for chunk in chunks)
+
+
 # --- Fakes pour le pipeline complet --------------------------------------------
 
 
