@@ -1165,6 +1165,11 @@ def resolve_question_scope(question: GoldsetQuestion, ministry_scope_mode: str) 
         from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG, build_retrieval_scope
 
         ministry_id = (question.source or "").strip().lower()
+        # Les questions « manual » ont été collectées auprès d'agents MATTE:
+        # elles s'évaluent dans le parcours MATTE (décision Paul 06/07/2026),
+        # pas en scope complet.
+        if ministry_id == "manual":
+            ministry_id = "matte"
         if ministry_id in MINISTRY_CATALOG:
             return build_retrieval_scope(ministry_id)
     return build_full_ministry_scope()
