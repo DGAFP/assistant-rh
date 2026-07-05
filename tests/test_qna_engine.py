@@ -369,3 +369,30 @@ def test_mso_module_contract() -> None:
     assert MSO_ENGINE.chunk_format == "titre_section"
     assert MATTE_ENGINE.chunk_format == "qr"
     assert MATTE_ENGINE.emit_table_chunks is True
+
+
+def test_coverage_guard_discards_low_coverage_mode() -> None:
+    # Garde-fou (audit rebuild MSO 05/07): un logigramme « process » dont le
+    # parseur ne capture presque rien ne doit pas jeter le contenu — le mode
+    # suivant (guide) ou le bloc fallback doit couvrir le document.
+    # Comme les vrais logigrammes: l'essentiel du contenu arrive AVANT tout
+    # titre d'étape — le parseur process legacy le jette (pas de current_step).
+    content = "\n\n".join(
+        f"paragraphe métier numéro {i} décrivant en détail une règle de gestion des agents contractuels, "
+        f"avec des montants, des délais et des conditions précises applicables au cas {i}."
+        for i in range(1, 15)
+    )
+    text = f"Le logigramme de la procédure de recrutement\n\n{content}\n\nvalidation du dossier"
+
+    config = QnaEngineConfig(modes=("process", "guide"), min_parse_coverage=0.35)
+    mode, blocks = parse_document(text, "Processus - Je recrute.pdf", "", config)
+
+    captured = sum(len(b.answer) for b in blocks)
+    assert captured >= 0.35 * len(content)  # le contenu n'est plus jeté
+    assert mode in {"guide", "fallback"}  # le mode process famélique a été écarté
+
+    # Sans le garde-fou, le mode process est retenu et jette tout.
+    permissive = QnaEngineConfig(modes=("process", "guide"), min_parse_coverage=0.0)
+    mode_legacy, blocks_legacy = parse_document(text, "Processus - Je recrute.pdf", "", permissive)
+    assert mode_legacy == "process"
+    assert sum(len(b.answer) for b in blocks_legacy) < 0.1 * len(content)

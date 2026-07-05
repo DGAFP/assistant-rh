@@ -73,6 +73,10 @@ class QnaEngineConfig:
     chunk_overlap: int = 200
     emit_table_chunks: bool = False
     extra_heading_patterns: tuple[tuple[int, str], ...] = ()
+    # Garde-fou de couverture (divergence Phase D): un mode dont les blocs
+    # capturent moins de cette fraction du contenu est écarté (mode suivant,
+    # puis bloc fallback à 100 %). Voir parse_document.
+    min_parse_coverage: float = 0.35
 
 
 # ---------------------------------------------------------------------------
@@ -1079,6 +1083,19 @@ def dedupe_section_blocks(blocks: list[SectionBlock]) -> list[SectionBlock]:
     return deduped
 
 
+def _content_length(text: str) -> int:
+    """Longueur du contenu hors marqueurs de page/slide (dénominateur du
+    garde-fou de couverture)."""
+    return sum(len(line) for line in text.split("\n") if line.strip() and not line.strip().startswith(("[PAGE ", "[SLIDE ")))
+
+
+def _blocks_coverage(blocks: list[SectionBlock], content_length: int) -> float:
+    if content_length <= 0:
+        return 1.0
+    captured = sum(len(block.answer) + len(block.section_title) for block in blocks)
+    return min(1.0, captured / content_length)
+
+
 def parse_document(
     text: str,
     source_name: str,
@@ -1088,35 +1105,60 @@ def parse_document(
     """Route un document vers son parseur selon config.modes et retourne
     (mode retenu, blocs dédupliqués). Chaîne de fallback fidèle aux notebooks:
     un mode qui ne produit rien passe au suivant; en dernier recours un bloc
-    unique couvre tout le document (aucun texte ne se perd)."""
+    unique couvre tout le document (aucun texte ne se perd).
+
+    Garde-fou de couverture (divergence Phase D, audit rebuild MSO du 05/07):
+    les parseurs legacy peuvent JETER l'essentiel du contenu quand la
+    linéarisation OCR ne colle pas à leurs attentes (logigrammes « process »:
+    85 % du texte présent, 0 % dans les chunks). Un mode dont les blocs
+    capturent moins de min_parse_coverage du contenu est écarté au profit du
+    mode suivant; si aucun mode n'atteint le plancher, le bloc fallback couvre
+    100 % du document. Le comportement legacy est intact quand il fonctionne.
+    """
     text = normalize_text(text)
+    content_length = _content_length(text)
     blocks: list[SectionBlock] = []
     mode_used = "fallback"
+    best_blocks: list[SectionBlock] = []
+    best_mode = "fallback"
+    best_coverage = 0.0
 
     for mode in config.modes:
         if mode == "qna_markers":
             if not looks_like_qna_markers_text(text):
                 continue
-            blocks = parse_qna_markers_blocks(text, source_name, thematique)
+            candidate = parse_qna_markers_blocks(text, source_name, thematique)
         elif mode == "table_matrix":
             if not looks_like_table_matrix_text(strip_table_of_contents(text)):
                 continue
-            blocks = parse_table_matrix_blocks(text, source_name, thematique)
+            candidate = parse_table_matrix_blocks(text, source_name, thematique)
         elif mode == "faq":
             if not looks_like_faq_text(strip_table_of_contents(text), source_name):
                 continue
-            blocks = parse_faq_blocks(text, source_name, thematique)
+            candidate = parse_faq_blocks(text, source_name, thematique)
         elif mode == "process":
             if detect_document_mode(text, source_name) != "process":
                 continue
-            blocks = parse_process_blocks(text, source_name, thematique)
+            candidate = parse_process_blocks(text, source_name, thematique)
         elif mode == "guide":
-            blocks = parse_guide_blocks(text, source_name, thematique, extra_heading_patterns=config.extra_heading_patterns)
+            candidate = parse_guide_blocks(text, source_name, thematique, extra_heading_patterns=config.extra_heading_patterns)
         else:
             raise ValueError(f"Mode de parsing QNA inconnu: {mode!r}")
-        if blocks:
+        if not candidate:
+            continue
+        coverage = _blocks_coverage(candidate, content_length)
+        if coverage >= config.min_parse_coverage:
+            blocks = candidate
             mode_used = mode
             break
+        if coverage > best_coverage:
+            best_blocks, best_mode, best_coverage = candidate, mode, coverage
+
+    # Aucun mode n'atteint le plancher: on ne garde PAS le meilleur partiel
+    # (il perdrait l'essentiel du contenu) — le bloc fallback ci-dessous
+    # couvre 100 % du document. best_blocks/best_mode restent tracés pour
+    # d'éventuels diagnostics futurs.
+    del best_blocks, best_mode
 
     if not blocks and text:
         first_line = next((line.strip() for line in text.split("\n") if line.strip()), "")
