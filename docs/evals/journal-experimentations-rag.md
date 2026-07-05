@@ -136,7 +136,13 @@ scope « all » (lancés avant le per-question), baseline de comparaison = run 5
   des golds, matching retrieval, liaisons sections/chunks). Si les fixes
   touchent la base pendant le run 60, celui-ci sera partiellement contaminé
   (même précédent que le run 54) — à re-baseliner après la stabilisation.
-- **Résultats : à compléter.**
+- **INTERROMPU (id 61, aborted)** avant résultats : fixes doc_id/short_id en
+  cours en base. À relancer après stabilisation — même config, plus la règle
+  ci-dessous.
+- **Règle de scope ajoutée (décision Paul 06/07)** : les questions `manual`
+  (57/100 du panel, collectées auprès d'agents MATTE) suivent le **parcours
+  MATTE** en mode per-question (scope matte + tables partagées), pas le scope
+  complet. `synthetic`/`DGAFP`/`Service-Public` restent en scope complet.
 
 ## Backlog priorisé (état au 06/07)
 
