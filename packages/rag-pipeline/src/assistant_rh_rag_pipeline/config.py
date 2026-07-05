@@ -208,6 +208,14 @@ class SelectorConfig:
     model: str = "openweight-large"
     temperature: float = 0.0
     prompt_name: str = "v3_selector_business.md"
+    # Plancher de sections servies au générateur quand le sélecteur a gardé
+    # quelque chose: le LLM sélecteur élague à 1-2 sections en moyenne, ce qui
+    # suffisait avec les gros chunks legacy mais affame le générateur depuis le
+    # chunking par sections fines (eval du 05/07/2026: pass 0.13 à <=1 section
+    # servie vs 0.27 au-delà; réponse présente dans le corpus mais hors du
+    # contexte servi). Le complément est pris au rang d'agrégation; le budget
+    # tokens du ContextBuilder reste la limite haute. 0 = désactivé.
+    min_kept_sections: int = 4
 
     def to_dict(self) -> dict:
         return {**asdict(self), "provider": self.provider.value}

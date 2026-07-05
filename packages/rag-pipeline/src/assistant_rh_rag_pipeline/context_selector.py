@@ -12,6 +12,7 @@ Dependencies (internal only):
   - llm_client (LLMClient)
   - models (AggregatedSection, ContextItem)
 """
+
 from __future__ import annotations
 
 import json
@@ -34,6 +35,7 @@ SelectorItem = Union[AggregatedSection, ContextItem]
 @dataclass
 class _ParseResult:
     """Distinguish between successful parse (even if empty) and parse failure."""
+
     ids: List[int] = field(default_factory=list)
     is_explicit_empty: bool = False
 
@@ -117,7 +119,9 @@ class ContextSelector:
             )
 
             prompt_template = load_prompt(
-                self._config.prompt_name, "selector.md", default=_DEFAULT_PROMPT,
+                self._config.prompt_name,
+                "selector.md",
+                default=_DEFAULT_PROMPT,
             )
 
             numbered = []
@@ -133,12 +137,7 @@ class ContextSelector:
             try:
                 prompt = prompt_template.format_map(defaultdict(str, format_vars))
             except Exception:
-                prompt = (
-                    prompt_template
-                    .replace("{query}", query)
-                    .replace("{context}", "\n\n---\n\n".join(numbered))
-                    .replace("{theme}", "")
-                )
+                prompt = prompt_template.replace("{query}", query).replace("{context}", "\n\n---\n\n".join(numbered)).replace("{theme}", "")
 
             raw = llm.chat(prompt, system_prompt="")
             self._last_raw_response = raw
@@ -149,13 +148,13 @@ class ContextSelector:
             if parsed.is_explicit_empty:
                 logger.info(
                     "Selector explicitly rejected all %d sections – reason: %s",
-                    len(sections), reason[:120],
+                    len(sections),
+                    reason[:120],
                 )
                 self._last_decisions = {
                     "kept": [],
                     "removed": [
-                        {"idx": i, "heading": (sections[i].heading or "")[:80],
-                         "publisher": sections[i].publisher or ""}
+                        {"idx": i, "heading": (sections[i].heading or "")[:80], "publisher": sections[i].publisher or ""}
                         for i in range(len(sections))
                     ],
                     "reason": reason,
@@ -172,25 +171,58 @@ class ContextSelector:
             removed_ids = [i for i in range(len(sections)) if i not in kept_set]
             self._last_decisions = {
                 "kept": [
-                    {"idx": i, "heading": (sections[i].heading or "")[:80],
-                     "publisher": sections[i].publisher or ""}
-                    for i in parsed.ids if 0 <= i < len(sections)
+                    {"idx": i, "heading": (sections[i].heading or "")[:80], "publisher": sections[i].publisher or ""}
+                    for i in parsed.ids
+                    if 0 <= i < len(sections)
                 ],
                 "removed": [
-                    {"idx": i, "heading": (sections[i].heading or "")[:80],
-                     "publisher": sections[i].publisher or ""}
-                    for i in removed_ids if 0 <= i < len(sections)
+                    {"idx": i, "heading": (sections[i].heading or "")[:80], "publisher": sections[i].publisher or ""}
+                    for i in removed_ids
+                    if 0 <= i < len(sections)
                 ],
                 "reason": reason,
             }
 
             filtered = [sections[i] for i in parsed.ids if 0 <= i < len(sections)]
+            filtered = self._top_up_to_floor(filtered, sections)
             logger.info("Selector kept %d / %d sections", len(filtered), len(sections))
             return filtered if filtered else sections
 
         except Exception as exc:
             logger.warning("Context selector failed (%s), keeping all sections", exc)
             return sections
+
+    def _top_up_to_floor(
+        self,
+        kept: List[AggregatedSection],
+        sections: List[AggregatedSection],
+    ) -> List[AggregatedSection]:
+        """Complète la sélection jusqu'au plancher ``min_kept_sections``.
+
+        Le sélecteur LLM élague le bruit mais ne doit pas affamer le
+        générateur: quand il garde quelque chose, on remonte au plancher avec
+        les sections suivantes au rang d'agrégation (la liste arrive triée par
+        score). Le rejet explicite total (all_rejected) n'est pas concerné —
+        il pilote la logique de retry du pipeline et doit rester vide.
+        """
+        floor = getattr(self._config, "min_kept_sections", 0) or 0
+        if not kept or len(kept) >= floor:
+            return kept
+        kept_ids = {id(section) for section in kept}
+        topped = list(kept)
+        for section in sections:
+            if len(topped) >= floor:
+                break
+            if id(section) not in kept_ids:
+                topped.append(section)
+                kept_ids.add(id(section))
+        if len(topped) > len(kept):
+            self._last_decisions["topped_up_to_min"] = {
+                "floor": floor,
+                "selected_by_llm": len(kept),
+                "served": len(topped),
+            }
+        return topped
 
     def select_context(
         self,
@@ -200,9 +232,14 @@ class ContextSelector:
         """Convenience wrapper: select over ``ContextItem`` lists."""
         light_sections = [
             AggregatedSection(
-                section_id=it.section_id, heading=it.heading, markdown=it.content,
-                chunks=[], score=it.score, publisher=it.publisher,
-                references_juridiques=it.references_juridiques, metadata=it.metadata,
+                section_id=it.section_id,
+                heading=it.heading,
+                markdown=it.content,
+                chunks=[],
+                score=it.score,
+                publisher=it.publisher,
+                references_juridiques=it.references_juridiques,
+                metadata=it.metadata,
             )
             for it in items
         ]
@@ -218,11 +255,7 @@ def _parse_response(raw: str, n_items: int) -> _ParseResult:
     """Extract selected indices from the LLM JSON response."""
     try:
         data = _extract_json(raw)
-        raw_ids = (
-            data.get("selected_ids")
-            or data.get("selected_indices")
-            or data.get("selected_ordered")
-        )
+        raw_ids = data.get("selected_ids") or data.get("selected_indices") or data.get("selected_ordered")
         if raw_ids is None or (isinstance(raw_ids, list) and len(raw_ids) == 0):
             return _ParseResult(is_explicit_empty=True)
         out = []
