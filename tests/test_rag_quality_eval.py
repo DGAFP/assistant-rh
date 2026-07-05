@@ -602,8 +602,17 @@ def test_resolve_question_scope_per_question_routes_ministries() -> None:
     # Pas de contamination inter-ministères: matte absent du scope MSO.
     assert "matte" not in mso_scope.table_keys
 
+    # Les questions manual ont été collectées auprès d'agents MATTE:
+    # elles suivent le parcours MATTE (décision Paul 06/07/2026).
     manual_scope = resolve_question_scope(manual_question, "per-question")
-    assert manual_scope.selected_ministry == "eval_all_ministries"
+    assert manual_scope.selected_ministry == "matte"
+    assert "mso" not in manual_scope.table_keys
+
+    synthetic_scope = resolve_question_scope(
+        GoldsetQuestion(id=3, question="q", gold_answer="a", gold_sources=[], source="synthetic"),
+        "per-question",
+    )
+    assert synthetic_scope.selected_ministry == "eval_all_ministries"
 
     assert resolve_question_scope(mso_question, "none") is None
     assert resolve_question_scope(mso_question, "all").selected_ministry == "eval_all_ministries"
