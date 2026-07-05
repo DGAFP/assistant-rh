@@ -208,16 +208,30 @@ def test_calibrate_passes_when_no_expected_sources_declared() -> None:
     assert calibrated["pass"] is True
 
 
-def test_retrieval_shortfall_caps_score_but_partial_can_pass() -> None:
+def test_retrieval_shortfall_caps_score_but_never_blocks_pass() -> None:
+    # Arbitrage du 06/07/2026 (audit run 52): les métriques retrieval sont un
+    # diagnostic — hit_rate=0 plafonne le score stocké (visibilité) mais ne
+    # bloque plus le pass d'une réponse par ailleurs parfaite (le cap dur
+    # rendait le pass impossible pour 29/100 questions, artefacts d'ids
+    # compris, avec des rationales 100 % positifs à score 0.6).
     none_hit = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.0, "hit_rate": 0.0})
-    assert {"reason": "no_expected_source_retrieved", "max_score": 0.6} in none_hit["calibration_caps"]
-    assert none_hit["score"] == 0.6
-    assert none_hit["pass"] is False
+    assert any(c["reason"] == "no_expected_source_retrieved" and c.get("soft") for c in none_hit["calibration_caps"])
+    assert none_hit["score"] == 0.6  # score stocké plafonné pour la visibilité
+    assert none_hit["pass"] is True  # le pass s'évalue AVANT caps soft
 
     partial = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.5, "hit_rate": 1.0})
     assert any(c["reason"] == "missing_expected_source" and c.get("soft") for c in partial["calibration_caps"])
     assert partial["score"] == 0.85
     assert partial["pass"] is True
+
+
+def test_retrieval_soft_cap_does_not_rescue_a_bad_answer() -> None:
+    # Le découplage ne crée pas de faux pass: une réponse faible échoue
+    # toujours sur ses dimensions, avec ou sans trou de retrieval.
+    parsed = _perfect_parsed()
+    parsed["dimensions"]["legal_correctness"] = 0.5
+    calibrated = calibrate_judge_result(parsed, {"doc_recall": 0.0, "hit_rate": 0.0})
+    assert calibrated["pass"] is False
 
 
 @pytest.mark.parametrize(
@@ -312,10 +326,11 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         GoldsetQuestion(id=1, question="q1", gold_answer="a1", gold_sources=["doc-a"]),
         GoldsetQuestion(id=2, question="q2", gold_answer="a2", gold_sources=["doc-b"]),
     ]
-    smoke = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a")
-    full = argparse.Namespace(limit=None, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a")
-    no_judge = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=True, judge_model="judge-a")
-    no_ragas = argparse.Namespace(limit=1, skip_ragas=True, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a")
+    smoke = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="all")
+    full = argparse.Namespace(limit=None, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="all")
+    no_judge = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=True, judge_model="judge-a", ministry_scope="all")
+    no_ragas = argparse.Namespace(limit=1, skip_ragas=True, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="all")
+    unscoped = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="none")
 
     smoke_scope = build_eval_scope(smoke, questions[:1])
 
@@ -327,10 +342,13 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         "ragas_model": "ragas-a",
         "judge_enabled": True,
         "judge_model": "judge-a",
+        "ministry_scope": "all",
     }
     assert build_eval_scope(full, questions) != smoke_scope
     assert build_eval_scope(no_judge, questions[:1]) != smoke_scope
     assert build_eval_scope(no_ragas, questions[:1]) != smoke_scope
+    # Un run scopé « all ministries » n'est pas comparable à un run historique.
+    assert build_eval_scope(unscoped, questions[:1]) != smoke_scope
 
 
 def test_baseline_comparison_passes_within_allowed_drop() -> None:

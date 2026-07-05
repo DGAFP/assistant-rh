@@ -511,6 +511,9 @@ def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion])
         "ragas_model": args.ragas_model if ragas_enabled else "",
         "judge_enabled": judge_enabled,
         "judge_model": args.judge_model if judge_enabled else "",
+        # Partie de la clé de comparabilité: un run scopé « all ministries »
+        # n'est pas comparable à un run historique sans scope.
+        "ministry_scope": getattr(args, "ministry_scope", "none"),
     }
 
 
@@ -633,7 +636,8 @@ def context_payload(result: PipelineResult) -> list[dict[str, Any]]:
 # like "L. 332-22-1" is captured whole instead of collapsing to the parent "L332-22".
 # TODO(pr212-review): _RANGE_RE still reuses only the first base ("L. 331-1 à L. 335-9"
 # expands to L331-* only), dropping cross-base ranges — understates the diagnostic-only
-# retrieval metrics (doc_recall/hit_rate no longer gate judge pass, so impact is bounded).
+# retrieval metrics (doc_recall/hit_rate ne gatent plus le judge pass depuis le
+# 06/07/2026 — caps retrieval passés en soft, cf. calibrate_judge_result).
 # Same-base ranges (the common form) are fine.
 _CODE_RE = re.compile(r"[FLRD]\.?\s?\d+(?:-\d+)*", re.IGNORECASE)
 _RANGE_RE = re.compile(r"([LRD])\.?\s?(\d+)-(\d+)\s*à\s*[LRD]?\.?\s?\d+-(\d+)", re.IGNORECASE)
@@ -784,6 +788,15 @@ def aggregate_items(items: list[EvalItem]) -> dict[str, Any]:
         "judge_score_avg": _metric_average(items, "score", "judge_result"),
         "judge_raw_score_avg": _metric_average(items, "raw_model_score", "judge_result"),
         "judge_pass_rate": sum(1 for item in judged if item.judge_result.get("pass") is True) / len(judged) if judged else None,
+        # Part des questions dont AUCUN gold doc n'est retrouvé (hit_rate=0):
+        # diagnostic retrieval découplé du judge_pass depuis le 06/07/2026
+        # (le cap n'est plus bloquant) — à surveiller côté pipeline/goldset.
+        "retrieval_gap_rate": (
+            sum(1 for item in items if item.deterministic_metrics.get("hit_rate") == 0.0)
+            / len([item for item in items if item.deterministic_metrics.get("hit_rate") is not None])
+            if any(item.deterministic_metrics.get("hit_rate") is not None for item in items)
+            else None
+        ),
         "judge_legal_correctness_avg": _judge_dimension_average(items, "legal_correctness"),
         "judge_completeness_avg": _judge_dimension_average(items, "completeness"),
         "judge_gold_answer_alignment_avg": _judge_dimension_average(items, "gold_answer_alignment"),
@@ -965,28 +978,38 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
         if normalized_dimensions[dim] < floor:
             caps.append({"reason": reason, "max_score": max_score})
 
-    # A total miss of declared expected sources is still a hard cap. Partial
-    # recall is a soft cap: it lowers the stored score for visibility, but does
-    # not independently block a pass when answer quality remains above threshold.
-    # ``doc_recall=None`` (empty gold set) yields no retrieval cap at all.
+    # Les métriques de retrieval sont un DIAGNOSTIC, pas un verdict qualité:
+    # arbitrage du 06/07/2026 (audit run 52) — le cap dur sur hit_rate=0
+    # rendait le pass structurellement impossible pour 29/100 questions alors
+    # que la réponse pouvait être parfaite (rationale positif, score 0.6), et
+    # confondait artefacts d'ids gold avec échecs réels. Les deux caps
+    # retrieval sont désormais soft: ils plafonnent le score stocké pour la
+    # visibilité mais ne bloquent plus le pass; la part de hit_rate=0 est
+    # agrégée séparément (retrieval_gap_rate).
+    # ``doc_recall=None`` (gold set vide) => aucun cap retrieval.
     doc_recall = deterministic.get("doc_recall")
     hit_rate = deterministic.get("hit_rate")
     soft_caps: list[dict[str, Any]] = []
     if isinstance(doc_recall, int | float):
         if hit_rate == 0.0:
-            caps.append({"reason": "no_expected_source_retrieved", "max_score": rubric.no_expected_source_cap})
+            soft_caps.append({"reason": "no_expected_source_retrieved", "max_score": rubric.no_expected_source_cap, "soft": True})
         elif doc_recall < 1.0:
             soft_caps.append({"reason": "missing_expected_source", "max_score": rubric.missing_expected_source_cap, "soft": True})
 
+    # Le pass s'évalue sur le score AVANT caps soft: un cap soft (diagnostic
+    # retrieval) plafonne le score stocké mais ne doit pas pouvoir faire
+    # passer le score sous pass_min_score et bloquer le pass par ricochet.
     final_score = candidate_score
-    score_caps = caps + soft_caps
-    if score_caps:
-        final_score = min(final_score, *(float(cap["max_score"]) for cap in score_caps))
+    if caps:
+        final_score = min(final_score, *(float(cap["max_score"]) for cap in caps))
+    pass_basis_score = min(1.0, max(0.0, final_score))
+    if soft_caps:
+        final_score = min(final_score, *(float(cap["max_score"]) for cap in soft_caps))
     final_score = min(1.0, max(0.0, final_score))
 
     failure_category = str(parsed.get("failure_category") or "none")
     pass_value = (
-        final_score >= rubric.pass_min_score
+        pass_basis_score >= rubric.pass_min_score
         and not material_contradiction
         and not caps
         and all(normalized_dimensions[dim] >= floor for dim, floor in rubric.pass_dimension_floors.items())
@@ -1055,7 +1078,7 @@ def judge_answer(
             },
             "score": "your uncalibrated overall score from 0.0 to 1.0 before code-side caps",
             "pass": "true only when the answer is legally correct, covers the required points, aligns with the gold answer, and is source-supported",
-            "failure_category": "one of: none, wrong_law, incomplete, unsupported, hallucination, refusal, irrelevant",
+            "failure_category": "one of: none, wrong_law, incomplete, unsupported, hallucination, refusal, irrelevant, retrieval_gap",
             "material_contradiction": (
                 "true ONLY when the candidate directly asserts the OPPOSITE of a legally material point in the gold answer "
                 "(e.g. eligible vs not eligible, owed vs not owed, allowed vs forbidden). "
@@ -1069,6 +1092,21 @@ def judge_answer(
         "Compare the candidate answer against the gold answer first, then against retrieved contexts. "
         "Reward a correct, source-grounded answer even when it is concise; do not require exhaustiveness. "
         "Do not reward a fluent answer that contradicts the gold answer on a material legal point. "
+        # Doctrine corpus réglementaire (audit du 06/07/2026): le juge évalue la
+        # génération PAR RAPPORT AUX CONTEXTS SERVIS, jamais depuis son propre
+        # savoir, et ne blâme pas la génération pour un trou de retrieval.
+        "STRICT RULES — this is a regulatory corpus. "
+        "(1) Judge ONLY from the gold answer and the retrieved_contexts provided; "
+        "NEVER use your own legal knowledge to fill gaps or to fault the answer. "
+        "(2) If the substance required by the gold answer is ABSENT from the retrieved_contexts, "
+        "then a refusal or an explicit statement that the sources do not cover the point is the "
+        "CORRECT candidate behavior: set failure_category='retrieval_gap', do not blame the answer, "
+        "and never demand that the candidate infer or extrapolate beyond the contexts. "
+        "(3) An answer that covers the gold answer's required points and whose additional statements "
+        "are each anchored in the retrieved_contexts is NOT contradictory and NOT misaligned — "
+        "anchored completeness is never a failure. "
+        "(4) material_contradiction requires quoting the candidate sentence and the gold sentence "
+        "that directly conflict; if you cannot quote both, it is not material. "
         "Return only valid JSON with keys: score, pass, failure_category, material_contradiction, "
         "dimensions, missing_required_points, contradictions, rationale, source_support."
     )
@@ -1091,6 +1129,21 @@ def judge_answer(
         return {"status": "failed", "reason": str(exc)}
 
 
+def build_full_ministry_scope() -> Any:
+    """Scope « utilisateur pleinement granté »: tous les ministères du catalog
+    + les tables partagées.
+
+    L'app route les corpus ministériels par RetrievalScope construit à chaque
+    requête selon les droits du groupe (jamais via v3_tables — question de
+    droits, pas de config globale). Sans scope, l'eval retombait sur v3_tables
+    et les corpus mso/mi/masa étaient invisibles: les questions MSO
+    plafonnaient à 0.25 uniquement pour ça (constat du 06/07/2026)."""
+    from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG, SHARED_TABLE_KEYS, RetrievalScope
+
+    ministry_keys = tuple(ministry.table_key for ministry in MINISTRY_CATALOG.values())
+    return RetrievalScope(selected_ministry="eval_all_ministries", table_keys=(*ministry_keys, *SHARED_TABLE_KEYS))
+
+
 def run_question(
     *,
     pipe: Any,
@@ -1101,6 +1154,7 @@ def run_question(
     ragas_model: str,
     scaleway_base_url: str,
     scaleway_api_key: str,
+    retrieval_scope: Any = None,
 ) -> EvalItem:
     started = time.perf_counter()
     item = EvalItem(
@@ -1110,7 +1164,7 @@ def run_question(
         gold_sources=question.gold_sources,
     )
     try:
-        result = pipe.run_with_trace(question.question)
+        result = pipe.run_with_trace(question.question, retrieval_scope=retrieval_scope)
         elapsed_ms = (time.perf_counter() - started) * 1000
         contexts = context_payload(result)
         doc_ids = retrieved_doc_ids(result, contexts)
@@ -1256,6 +1310,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--skip-ragas", action="store_true", help="Skip RAGAS metrics.")
     parser.add_argument("--skip-judge", action="store_true", help="Skip Scaleway LLM-as-judge.")
+    parser.add_argument(
+        "--ministry-scope",
+        choices=["all", "none"],
+        default="all",
+        help=(
+            "Scope ministériel du retrieval. 'all' (défaut) = utilisateur pleinement granté "
+            "(tous les ministères du catalog + tables partagées); 'none' = comportement "
+            "historique (v3_tables runtime seulement, mso/mi/masa invisibles)."
+        ),
+    )
     parser.add_argument("--judge-model", default=os.getenv("SCALEWAY_JUDGE_MODEL", DEFAULT_JUDGE_MODEL), help="Scaleway judge model.")
     parser.add_argument(
         "--ragas-model",
@@ -1402,6 +1466,10 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
 
     pipe = create_pipeline(config=pipeline_config, dsn=dsn)
     api_key = os.getenv("SCALEWAY_API_KEY", "").strip()
+    # Scope « pleinement granté » (défaut): reflète un agent DRH ayant tous
+    # les droits ministériels — sans lui, mso/mi/masa sont invisibles de
+    # l'eval (l'app scope par groupe, jamais via v3_tables).
+    retrieval_scope = None if args.ministry_scope == "none" else build_full_ministry_scope()
     items: list[EvalItem] = []
     status = "completed"
     error = ""
@@ -1420,6 +1488,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 ragas_model=args.ragas_model,
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,
+                retrieval_scope=retrieval_scope,
             )
             items.append(item)
             if item_conn is not None and run_id is not None:
