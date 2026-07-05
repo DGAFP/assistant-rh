@@ -43,6 +43,13 @@ def patch_llm(monkeypatch: pytest.MonkeyPatch):
             "assistant_rh_rag_pipeline.context_selector.LLMClient",
             lambda **kwargs: FakeLLM(response),
         )
+        # Hermétique: load_prompt lit les prompts en base (DSN requis) — sans
+        # ce patch, l'exception fait retomber select() sur « keep all » et le
+        # test ne mesure plus le plancher.
+        monkeypatch.setattr(
+            "assistant_rh_rag_pipeline.context_selector.load_prompt",
+            lambda *args, **kwargs: "Question: {query}\n\nSections:\n{context}",
+        )
 
     return _patch
 
