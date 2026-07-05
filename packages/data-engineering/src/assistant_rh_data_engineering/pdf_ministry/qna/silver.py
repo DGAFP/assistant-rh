@@ -107,10 +107,16 @@ def _flatten_body(markdown: str) -> str:
     return "\n".join(_flatten_markdown_line(line) for line in markdown.splitlines())
 
 
-def qna_section_uuid(identity: MinistryIdentity, doc_id: str, qa_id: str) -> str:
-    """section_id stable par (doc, qa_id) — comme le notebook MSO: les qa_id
-    des parseurs sont déterministes, donc re-runs => mêmes section_id."""
-    return stable_uuid_from_parts(identity.namespace, doc_id, "section", qa_id)
+def qna_section_uuid(identity: MinistryIdentity, doc_id: str, qa_id: str, section_index: int) -> str:
+    """section_id stable par (doc, qa_id, index de section).
+
+    Les qa_id legacy ne sont PAS uniques par document (MATTE: sha1 de la
+    question seule — deux rubriques peuvent répéter la même question): sans
+    le sel section_index, deux sections partageraient un section_id et
+    l'upsert (doc_id, section_index) violerait la PK — le document entier
+    partirait en erreur. qa_id et section_index étant déterministes, les
+    re-runs produisent les mêmes ids."""
+    return stable_uuid_from_parts(identity.namespace, doc_id, "section", qa_id, section_index)
 
 
 class QnaSilverBuilder:
@@ -130,8 +136,10 @@ class QnaSilverBuilder:
         theme = str(row.fields.get("theme") or "").strip()
 
         text = flatten_ocr_to_text(asset.ocr)
-        mode, blocks = parse_document(text, source_name, theme, self.engine_config)
+        mode, blocks, parse_coverage = parse_document(text, source_name, theme, self.engine_config)
         doc_text_hash = sha256_text(text)
+        for block in blocks:
+            block.section_id = qna_section_uuid(self.identity, doc_id, block.qa_id, block.section_index)
 
         doc_record = {
             "doc_id": doc_id,
@@ -157,6 +165,7 @@ class QnaSilverBuilder:
                 "ocr_provider": asset.ocr.provider,
                 "ocr_from_cache": asset.ocr_from_cache,
                 "parse_mode": mode,
+                "parse_coverage": round(parse_coverage, 3),
                 "section_aware": True,
             },
             "doc_markdown": text,
@@ -188,7 +197,7 @@ class QnaSilverBuilder:
     def _section_record(self, block: SectionBlock, doc_id: str, doc_text_hash: str) -> dict[str, Any]:
         section_markdown = f"## {block.section_title}\n\n{block.answer}".strip()
         return {
-            "section_id": qna_section_uuid(self.identity, doc_id, block.qa_id),
+            "section_id": block.section_id,
             "doc_id": doc_id,
             "heading": block.section_title,
             "heading_path": block.section_path,
@@ -208,12 +217,14 @@ class QnaSilverBuilder:
             "is_indexable": True,
             # Payload consommé par QnaGoldBuilder (clé ignorée par RagDbWriter
             # si la table n'a pas de colonne metadata: _prepare_rows filtre).
+            # PAS d'answer ici: section_markdown la contient déjà (le gold la
+            # dérive en retirant le préfixe « ## {heading}\n\n ») — la
+            # dupliquer doublerait le poids des artefacts silver.
             "metadata": {
                 "qna": {
                     "qa_id": block.qa_id,
                     "parent_qa_id": block.parent_qa_id,
                     "pseudo_question": block.pseudo_question,
-                    "answer": block.answer,
                     "thematique": block.thematique,
                     "source_name": block.source_name,
                 }

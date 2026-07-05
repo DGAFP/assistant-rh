@@ -1,3 +1,12 @@
+> **⚠️ Document historique (Phase D — #248, 2026-07-05).**
+> Le notebook `scripts/extract_pdf_MSO.ipynb` décrit ci-dessous a été **retiré
+> du repo** : le corpus MSO est désormais ingéré par le pipeline PDF
+> ministériel (`data-ingestion mso medallion`), dont le moteur QNA
+> (`packages/data-engineering/src/assistant_rh_data_engineering/pdf_ministry/qna/`)
+> porte la logique de chunking de ce notebook. Ne PAS restaurer le notebook
+> pour ré-ingérer MSO — cela recréerait le drift que la Phase D élimine.
+> Les commandes de ce document ne sont plus exécutables (historique git).
+
 # Handover: `scripts/extract_pdf_MSO.ipynb`
 
 ## Scope

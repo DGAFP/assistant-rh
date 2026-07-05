@@ -77,7 +77,7 @@ def test_matte_qna_markers_parsing() -> None:
 
 
 def test_matte_routing_prefers_qna_markers() -> None:
-    mode, blocks = parse_document(MATTE_QR_TEXT, "fiche3.pdf", "remuneration", MATTE_ENGINE)
+    mode, blocks, _ = parse_document(MATTE_QR_TEXT, "fiche3.pdf", "remuneration", MATTE_ENGINE)
     assert mode == "qna_markers"
     assert blocks
 
@@ -85,12 +85,12 @@ def test_matte_routing_prefers_qna_markers() -> None:
 def test_mso_routing_has_no_qna_markers_mode() -> None:
     # Le même texte Q:/R: passe en guide côté MSO (fidélité au routage legacy
     # MSO qui n'avait pas le parseur à marqueurs explicites).
-    mode, _ = parse_document(MATTE_QR_TEXT, "fiche3.pdf", "remuneration", MSO_ENGINE)
+    mode, _, _ = parse_document(MATTE_QR_TEXT, "fiche3.pdf", "remuneration", MSO_ENGINE)
     assert mode != "qna_markers"
 
 
 def test_chunks_format_qr_matte() -> None:
-    _, blocks = parse_document(MATTE_QR_TEXT, "fiche3.pdf", "remuneration", MATTE_ENGINE)
+    _, blocks, _ = parse_document(MATTE_QR_TEXT, "fiche3.pdf", "remuneration", MATTE_ENGINE)
     chunks = section_blocks_to_chunks(blocks, MATTE_ENGINE)
 
     roles = {c.role for c in chunks}
@@ -108,7 +108,7 @@ def test_chunks_format_qr_matte() -> None:
 
 
 def test_chunks_format_titre_section_mso() -> None:
-    mode, blocks = parse_document(FAQ_TEXT, "PSC_FAQ.pdf", "psc", MSO_ENGINE)
+    mode, blocks, _ = parse_document(FAQ_TEXT, "PSC_FAQ.pdf", "psc", MSO_ENGINE)
     assert mode == "faq"
     chunks = section_blocks_to_chunks(blocks, MSO_ENGINE)
 
@@ -124,18 +124,22 @@ def test_chunks_format_titre_section_mso() -> None:
             assert c.chunk_index >= 2
 
 
-def test_chunk_hashes_stables_et_dedupliques() -> None:
-    _, blocks = parse_document(MATTE_QR_TEXT, "fiche3.pdf", "remuneration", MATTE_ENGINE)
+def test_chunks_stables_et_dedupliques() -> None:
+    _, blocks, _ = parse_document(MATTE_QR_TEXT, "fiche3.pdf", "remuneration", MATTE_ENGINE)
     first = section_blocks_to_chunks(blocks, MATTE_ENGINE)
     second = section_blocks_to_chunks(blocks, MATTE_ENGINE)
 
-    assert [c.hash_id for c in first] == [c.hash_id for c in second]
-    assert len({c.hash_id for c in first}) == len(first)
+    def key(c):
+        # Tuple équivalent au seed hash_id (propriété de utils/gold.build_chunk_row).
+        return (c.source_name, c.qa_id, c.role, c.chunk_index, c.text[:256])
+
+    assert [key(c) for c in first] == [key(c) for c in second]
+    assert len({key(c) for c in first}) == len(first)
 
 
 def test_fallback_un_bloc_couvre_tout() -> None:
     text = "Texte brut sans structure exploitable, mais du contenu métier réel sur les congés."
-    mode, blocks = parse_document(text, "note.pdf", "conges", QnaEngineConfig(modes=("faq",)))
+    mode, blocks, _ = parse_document(text, "note.pdf", "conges", QnaEngineConfig(modes=("faq",)))
 
     assert mode == "fallback"
     assert len(blocks) == 1
@@ -385,7 +389,7 @@ def test_coverage_guard_discards_low_coverage_mode() -> None:
     text = f"Le logigramme de la procédure de recrutement\n\n{content}\n\nvalidation du dossier"
 
     config = QnaEngineConfig(modes=("process", "guide"), min_parse_coverage=0.35)
-    mode, blocks = parse_document(text, "Processus - Je recrute.pdf", "", config)
+    mode, blocks, _ = parse_document(text, "Processus - Je recrute.pdf", "", config)
 
     captured = sum(len(b.answer) for b in blocks)
     assert captured >= 0.35 * len(content)  # le contenu n'est plus jeté
@@ -393,6 +397,6 @@ def test_coverage_guard_discards_low_coverage_mode() -> None:
 
     # Sans le garde-fou, le mode process est retenu et jette tout.
     permissive = QnaEngineConfig(modes=("process", "guide"), min_parse_coverage=0.0)
-    mode_legacy, blocks_legacy = parse_document(text, "Processus - Je recrute.pdf", "", permissive)
+    mode_legacy, blocks_legacy, _ = parse_document(text, "Processus - Je recrute.pdf", "", permissive)
     assert mode_legacy == "process"
     assert sum(len(b.answer) for b in blocks_legacy) < 0.1 * len(content)

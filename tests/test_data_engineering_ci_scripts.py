@@ -213,9 +213,13 @@ def test_workflow_dispatch_matte_selects_embeddings_backfill(tmp_path: Path, mon
     assert outputs["embeddings"] == "true"
     assert outputs["run_embeddings"] == "true"
     assert outputs["embedding_source"] == "matte"
+    # Granularité par ministère (revue #267): source=<ministère> sélectionne
+    # AUSSI le domaine pdf_sources, scopé à SON job medallion.
+    assert outputs["pdf_sources"] == "true"
+    assert outputs["pdf_sources_ministry"] == "matte"
     assert outputs["has_builds"] == "true"
     assert outputs["has_runs"] == "true"
-    assert matrix["include"] == [{"image": "embeddings-job", "dockerfile": "Dockerfile.embeddings_job"}]
+    assert {item["image"] for item in matrix["include"]} == {"pdf-sources-pipeline", "embeddings-job"}
 
 
 def test_data_engineering_ci_runs_for_embeddings_script_changes() -> None:
@@ -1346,7 +1350,9 @@ def test_workflow_dispatch_mi_selects_embeddings_backfill(tmp_path: Path, monkey
     assert outputs["embeddings"] == "true"
     assert outputs["run_embeddings"] == "true"
     assert outputs["embedding_source"] == "mi"
-    assert matrix["include"] == [{"image": "embeddings-job", "dockerfile": "Dockerfile.embeddings_job"}]
+    assert outputs["pdf_sources"] == "true"
+    assert outputs["pdf_sources_ministry"] == "mi"
+    assert {item["image"] for item in matrix["include"]} == {"pdf-sources-pipeline", "embeddings-job"}
 
 
 def test_should_run_gates_pdf_sources_domain() -> None:
@@ -1459,3 +1465,27 @@ def test_pdf_sources_dispatch_with_embeddings_targets_mi_backfill(tmp_path: Path
 
     outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
     assert outputs["embedding_source"] == "mi"
+
+
+def test_should_run_pdf_sources_scoped_to_single_ministry() -> None:
+    # Granularité par ministère (revue #266/#267): --pdf-sources-ministry=masa
+    # ne démarre que pdf-sources-masa-medallion, pas les 3 autres corpus.
+    args = SimpleNamespace(
+        service_public=False,
+        legifrance=False,
+        pdf_sources=True,
+        embeddings=False,
+        run_ingestion=True,
+        run_embeddings=False,
+        embedding_source="all",
+        pdf_sources_ministry="masa",
+        wipe_existing_chunks=False,
+    )
+    config = json.loads((REPO_ROOT / ".github/data-engineering-jobs.json").read_text(encoding="utf-8"))
+    selected = [spec["key"] for spec in config["jobs"] if scaleway_data_jobs.should_run(spec, args)]
+    assert selected == ["pdf-sources-masa-medallion"]
+
+    # Sans filtre: les 4 medallions du domaine démarrent (comportement domaine entier).
+    args.pdf_sources_ministry = ""
+    selected = [spec["key"] for spec in config["jobs"] if scaleway_data_jobs.should_run(spec, args)]
+    assert {"pdf-sources-mi-medallion", "pdf-sources-masa-medallion", "pdf-sources-matte-medallion", "pdf-sources-mso-medallion"} <= set(selected)

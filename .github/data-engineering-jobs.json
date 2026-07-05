@@ -235,6 +235,7 @@
       "domain": "embeddings",
       "image": "embeddings-job",
       "description": "CI/CD MATTE embeddings backfill.",
+      "requires_explicit_embedding_source": true,
       "cpu_limit": 2000,
       "memory_limit": 8192,
       "local_storage_capacity": 8192,

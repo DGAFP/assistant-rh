@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -49,6 +49,12 @@ class SectionBlock:
     answer: str
     source_name: str
     thematique: str
+    # Rattachement DB, rempli par les builders silver/gold — PAS par les
+    # parseurs. Voyage avec le bloc jusqu'aux chunks: les qa_id legacy ne sont
+    # pas uniques par document (MATTE: sha1 de la question seule — deux
+    # rubriques peuvent répéter la même question), un mapping qa_id->section
+    # écraserait en last-wins.
+    section_id: str | None = None
 
 
 @dataclass(kw_only=True)
@@ -601,12 +607,12 @@ MATTE_EXTRA_HEADING_PATTERNS: tuple[tuple[int, str], ...] = (
 
 
 def looks_like_qna_markers_text(text: str) -> bool:
-    """Un document se parse en mode marqueurs explicites s'il contient assez de
-    lignes-questions au sens MATTE (Q_PAT). Seuil: >= 3, comme le fallback en
-    chaîne du notebook (parse_qna_blocks d'abord, non vide => retenu)."""
+    """Pré-filtre du mode marqueurs explicites: au moins UNE ligne-question au
+    sens MATTE (Q_PAT) — parité avec le notebook legacy, qui retenait
+    parse_qna_blocks dès qu'il produisait un bloc. Le garde-fou de couverture
+    de parse_document protège des routages faméliques."""
     lines = [line.strip() for line in text.split("\n") if line.strip()]
-    hits = sum(1 for line in lines if MATTE_Q_PAT.match(line))
-    return hits >= 3
+    return any(MATTE_Q_PAT.match(line) for line in lines)
 
 
 def parse_qna_markers_blocks(text: str, source_name: str, thematique: str) -> list[SectionBlock]:
@@ -1101,7 +1107,7 @@ def parse_document(
     source_name: str,
     thematique: str,
     config: QnaEngineConfig,
-) -> tuple[str, list[SectionBlock]]:
+) -> tuple[str, list[SectionBlock], float]:
     """Route un document vers son parseur selon config.modes et retourne
     (mode retenu, blocs dédupliqués). Chaîne de fallback fidèle aux notebooks:
     un mode qui ne produit rien passe au suivant; en dernier recours un bloc
@@ -1119,9 +1125,7 @@ def parse_document(
     content_length = _content_length(text)
     blocks: list[SectionBlock] = []
     mode_used = "fallback"
-    best_blocks: list[SectionBlock] = []
-    best_mode = "fallback"
-    best_coverage = 0.0
+    coverage = 0.0
 
     for mode in config.modes:
         if mode == "qna_markers":
@@ -1146,19 +1150,14 @@ def parse_document(
             raise ValueError(f"Mode de parsing QNA inconnu: {mode!r}")
         if not candidate:
             continue
-        coverage = _blocks_coverage(candidate, content_length)
-        if coverage >= config.min_parse_coverage:
+        candidate_coverage = _blocks_coverage(candidate, content_length)
+        if candidate_coverage >= config.min_parse_coverage:
             blocks = candidate
             mode_used = mode
+            coverage = candidate_coverage
             break
-        if coverage > best_coverage:
-            best_blocks, best_mode, best_coverage = candidate, mode, coverage
-
-    # Aucun mode n'atteint le plancher: on ne garde PAS le meilleur partiel
-    # (il perdrait l'essentiel du contenu) — le bloc fallback ci-dessous
-    # couvre 100 % du document. best_blocks/best_mode restent tracés pour
-    # d'éventuels diagnostics futurs.
-    del best_blocks, best_mode
+        # Mode écarté (couverture sous le plancher): mode suivant, puis
+        # fallback à 100 % — on ne garde jamais un partiel qui perd le contenu.
 
     if not blocks and text:
         first_line = next((line.strip() for line in text.split("\n") if line.strip()), "")
@@ -1179,19 +1178,21 @@ def parse_document(
             )
         ]
         mode_used = "fallback"
+        coverage = 1.0
 
-    return mode_used, dedupe_section_blocks(blocks)
-
-
-def make_hash_id(source_name: str, qa_id: str, role: str, chunk_index: int, text: str) -> str:
-    return sha1_u(f"{source_name}|{qa_id}|{role}|{chunk_index}|{text[:256]}")
+    return mode_used, dedupe_section_blocks(blocks), coverage
 
 
 @dataclass
 class QnaChunk:
-    """Chunk QNA avant enrichissement par le gold builder (embeddings, ids)."""
+    """Chunk QNA avant enrichissement par le gold builder.
 
-    hash_id: str
+    Pas de hash_id ici: le seed du contrat d'identité des chunks appartient à
+    utils/gold.build_chunk_row seul (un fork du seed entre dédup interne et
+    hash persisté ferait diverger les deux sans erreur). La dédup de
+    section_blocks_to_chunks utilise le tuple équivalent au seed.
+    """
+
     qa_id: str
     parent_qa_id: str | None
     role: str
@@ -1200,7 +1201,7 @@ class QnaChunk:
     text: str
     source_name: str
     thematique: str
-    references_juridiques: list = field(default_factory=list)
+    section_id: str | None = None
 
 
 def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig) -> list[QnaChunk]:
@@ -1222,7 +1223,6 @@ def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig
             q_text = f"{prefix}\nQuestion utilisateur probable: {q}"
             rows.append(
                 QnaChunk(
-                    hash_id=make_hash_id(block.source_name, block.qa_id, "Q_ONLY", 0, q_text),
                     qa_id=block.qa_id,
                     parent_qa_id=block.parent_qa_id,
                     role="Q_ONLY",
@@ -1231,12 +1231,12 @@ def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig
                     text=q_text,
                     source_name=block.source_name,
                     thematique=block.thematique,
+                    section_id=block.section_id,
                 )
             )
             composite = f"{prefix}\nQuestion utilisateur probable: {q}\n\nContenu:\n{a}"[: config.composite_max_chars]
             rows.append(
                 QnaChunk(
-                    hash_id=make_hash_id(block.source_name, block.qa_id, "QA_COMPOSITE", 1, composite),
                     qa_id=block.qa_id,
                     parent_qa_id=block.parent_qa_id or block.qa_id,
                     role="QA_COMPOSITE",
@@ -1245,6 +1245,7 @@ def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig
                     text=composite,
                     source_name=block.source_name,
                     thematique=block.thematique,
+                    section_id=block.section_id,
                 )
             )
             next_index = 2
@@ -1252,7 +1253,6 @@ def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig
                 atomic = f"Titre: {block.section_title}\nSection: {block.section_path}\nQuestion utilisateur probable: {q}\n\nContenu:\n{piece}"
                 rows.append(
                     QnaChunk(
-                        hash_id=make_hash_id(block.source_name, block.qa_id, "A_ATOMIC", next_index, atomic),
                         qa_id=block.qa_id,
                         parent_qa_id=block.parent_qa_id or block.qa_id,
                         role="A_ATOMIC",
@@ -1261,6 +1261,7 @@ def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig
                         text=atomic,
                         source_name=block.source_name,
                         thematique=block.thematique,
+                        section_id=block.section_id,
                     )
                 )
                 next_index += 1
@@ -1270,7 +1271,6 @@ def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig
             if question:
                 rows.append(
                     QnaChunk(
-                        hash_id=make_hash_id(block.source_name, block.qa_id, "Q_ONLY", 0, question),
                         qa_id=block.qa_id,
                         parent_qa_id=block.parent_qa_id,
                         role="Q_ONLY",
@@ -1279,6 +1279,7 @@ def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig
                         text=question,
                         source_name=block.source_name,
                         thematique=block.thematique,
+                        section_id=block.section_id,
                     )
                 )
             parent_for_children = block.parent_qa_id or block.qa_id
@@ -1287,7 +1288,6 @@ def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig
                 composite = f"Q: {question}\n\nR: {a}" if question else a
                 rows.append(
                     QnaChunk(
-                        hash_id=make_hash_id(block.source_name, block.qa_id, "QA_COMPOSITE", 1, composite[: config.composite_max_chars]),
                         qa_id=block.qa_id,
                         parent_qa_id=parent_for_children,
                         role="QA_COMPOSITE",
@@ -1296,6 +1296,7 @@ def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig
                         text=composite[: config.composite_max_chars],
                         source_name=block.source_name,
                         thematique=block.thematique,
+                        section_id=block.section_id,
                     )
                 )
                 next_index = 2
@@ -1304,7 +1305,6 @@ def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig
                     atomic = f"Q: {q_short}\nR: {piece}"
                     rows.append(
                         QnaChunk(
-                            hash_id=make_hash_id(block.source_name, block.qa_id, "A_ATOMIC", next_index, atomic),
                             qa_id=block.qa_id,
                             parent_qa_id=parent_for_children,
                             role="A_ATOMIC",
@@ -1313,6 +1313,7 @@ def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig
                             text=atomic,
                             source_name=block.source_name,
                             thematique=block.thematique,
+                            section_id=block.section_id,
                         )
                     )
                     next_index += 1
@@ -1322,7 +1323,6 @@ def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig
                         if p and MATTE_TABLE_HINT.match(p):
                             rows.append(
                                 QnaChunk(
-                                    hash_id=make_hash_id(block.source_name, block.qa_id, "TABLE", next_index, p),
                                     qa_id=block.qa_id,
                                     parent_qa_id=parent_for_children,
                                     role="TABLE",
@@ -1331,6 +1331,7 @@ def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig
                                     text=p,
                                     source_name=block.source_name,
                                     thematique=block.thematique,
+                                    section_id=block.section_id,
                                 )
                             )
                             next_index += 1
@@ -1338,10 +1339,11 @@ def section_blocks_to_chunks(blocks: list[SectionBlock], config: QnaEngineConfig
             raise ValueError(f"chunk_format inconnu: {config.chunk_format!r}")
 
     deduped: list[QnaChunk] = []
-    seen: set[str] = set()
+    seen: set[tuple[str, str, str, int, str]] = set()
     for row in rows:
-        if row.hash_id in seen:
+        key = (row.source_name, row.qa_id, row.role, row.chunk_index, row.text[:256])
+        if key in seen:
             continue
-        seen.add(row.hash_id)
+        seen.add(key)
         deduped.append(row)
     return deduped

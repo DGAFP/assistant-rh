@@ -265,6 +265,7 @@ jobs:
             --service-public "${{ needs.plan.outputs.service_public }}" \
             --legifrance "${{ needs.plan.outputs.legifrance }}" \
             --pdf-sources "${{ needs.plan.outputs.pdf_sources }}" \
+            --pdf-sources-ministry "${{ needs.plan.outputs.pdf_sources_ministry }}" \
             --embeddings "${{ needs.plan.outputs.embeddings }}" \
             --run-ingestion "${RUN_INGESTION}" \
             --wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}" \

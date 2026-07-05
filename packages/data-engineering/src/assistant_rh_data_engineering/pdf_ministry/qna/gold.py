@@ -42,34 +42,51 @@ class QnaGoldBuilder:
         return self._embedders
 
     @staticmethod
-    def _blocks_from_sections(sections: list[dict[str, Any]]) -> tuple[list[SectionBlock], dict[str, str]]:
+    def _blocks_from_sections(sections: list[dict[str, Any]]) -> list[SectionBlock]:
         blocks: list[SectionBlock] = []
-        section_id_by_qa_id: dict[str, str] = {}
         for section in sorted(sections, key=lambda s: int(s.get("section_index") or 0)):
             qna = (section.get("metadata") or {}).get("qna") or {}
             qa_id = str(qna.get("qa_id") or "")
             if not qa_id:
                 continue
+            heading = str(section.get("heading") or "")
+            section_markdown = str(section.get("section_markdown") or "")
+            # L'answer est dérivée de section_markdown (« ## {heading}\n\n{answer} »,
+            # construction du silver) — elle n'est pas dupliquée dans metadata.
+            prefix = f"## {heading}\n\n"
+            if section_markdown.startswith(prefix):
+                answer = section_markdown[len(prefix) :]
+            elif section_markdown.startswith(f"## {heading}"):
+                answer = section_markdown[len(f"## {heading}") :].lstrip("\n")
+            else:
+                answer = section_markdown
             blocks.append(
                 SectionBlock(
                     qa_id=qa_id,
                     parent_qa_id=qna.get("parent_qa_id"),
                     parent_section_path=None,
-                    section_path=str(section.get("heading_path") or section.get("heading") or ""),
+                    section_path=str(section.get("heading_path") or heading or ""),
                     section_index=int(section.get("section_index") or 0),
                     heading_level=int(section.get("level") or 2),
-                    section_title=str(section.get("heading") or ""),
+                    section_title=heading,
                     pseudo_question=str(qna.get("pseudo_question") or ""),
-                    answer=str(qna.get("answer") or ""),
+                    answer=answer,
                     source_name=str(qna.get("source_name") or ""),
                     thematique=str(qna.get("thematique") or ""),
+                    # Le section_id voyage avec le bloc (les qa_id legacy ne
+                    # sont pas uniques par document — pas de dict qa_id->id).
+                    section_id=str(section.get("section_id") or "") or None,
                 )
             )
-            section_id_by_qa_id[qa_id] = str(section.get("section_id") or "")
-        return blocks, section_id_by_qa_id
+        return blocks
 
     def build_chunks(self, document: dict[str, Any], sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        blocks, section_id_by_qa_id = self._blocks_from_sections(sections)
+        blocks = self._blocks_from_sections(sections)
+        if sections and not blocks:
+            # Contrat silver->gold: des sections sans payload metadata.qna
+            # signifient un appariement de builders erroné (silver heading +
+            # gold QNA) — échec explicite plutôt qu'un gold silencieusement vide.
+            raise ValueError("QnaGoldBuilder: aucune section ne porte metadata.qna — builder silver incompatible ?")
         qna_chunks = section_blocks_to_chunks(blocks, self.engine_config)
 
         chunk_rows: list[dict[str, Any]] = []
@@ -89,8 +106,8 @@ class QnaGoldBuilder:
                         "text": chunk.text,
                         "thematique": chunk.thematique,
                         "lang": "fr",
-                        "references_juridiques": chunk.references_juridiques or [],
-                        "section_id": section_id_by_qa_id.get(chunk.qa_id) or None,
+                        "references_juridiques": [],
+                        "section_id": chunk.section_id,
                     },
                     source=self.identity.chunk_source,
                 )
