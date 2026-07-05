@@ -131,6 +131,11 @@ scope « all » (lancés avant le per-question), baseline de comparaison = run 5
 - **Hypothèses** : récupérer les points MATTE perdus à la contamination ;
   conserver MSO à ~1,0 ; c'est la config candidate pour devenir la nouvelle
   baseline de référence.
+- **⚠️ Chantier parallèle (06/07, Paul)** : correction en cours des erreurs de
+  **mismatch doc_id / short_id** qui faussent plusieurs maillons (résolution
+  des golds, matching retrieval, liaisons sections/chunks). Si les fixes
+  touchent la base pendant le run 60, celui-ci sera partiellement contaminé
+  (même précédent que le run 54) — à re-baseliner après la stabilisation.
 - **Résultats : à compléter.**
 
 ## Backlog priorisé (état au 06/07)
