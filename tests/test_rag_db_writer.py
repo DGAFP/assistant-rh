@@ -234,7 +234,12 @@ def test_ingest_document_bundle_single_transaction_and_section_cleanup(monkeypat
     # (sinon un échec après l'upsert du document fige un checksum à jour avec
     # des chunks périmés => ignore_inchange au run suivant), et les sections
     # de l'ancienne version sont purgées (delete-puis-insert par doc_id).
-    writer, calls, events = make_writer([{"rowcount": 5}, {"rowcount": 7}])
+    script = [
+        {"rows": [("11111111-2222-3333-4444-555555555555",)]},  # SELECT doc_id canonique (identique: pas de remap)
+        {"rowcount": 5},  # DELETE rag_sections
+        {"rowcount": 7},  # DELETE chunks par short_id
+    ]
+    writer, calls, events = make_writer(script)
     order: list[str] = []
     monkeypatch.setattr(writer, "_upsert_documents", lambda conn, docs: order.append("documents") or 1)
     monkeypatch.setattr(writer, "_upsert_sections", lambda conn, sections: order.append("sections") or len(sections))
@@ -252,7 +257,82 @@ def test_ingest_document_bundle_single_transaction_and_section_cleanup(monkeypat
 
     assert events == ["commit"]  # une seule transaction
     assert order == ["documents", "sections", "chunks:rag_chunks_mi"]
-    assert "DELETE FROM" in calls[0]["query"] and "rag_sections" in calls[0]["query"]
-    assert calls[0]["params"] == ("11111111-2222-3333-4444-555555555555",)
-    assert "UPPER(TRIM(short_id))" in calls[1]["query"]  # purge des chunks par short_id
+    assert "rag_documents" in calls[0]["query"]  # lecture du doc_id canonique
+    assert calls[0]["params"] == ("MI-0001",)
+    assert "DELETE FROM" in calls[1]["query"] and "rag_sections" in calls[1]["query"]
+    assert calls[1]["params"] == ("11111111-2222-3333-4444-555555555555",)
+    assert "UPPER(TRIM(short_id))" in calls[2]["query"]  # purge des chunks par short_id
     assert result == {"documents": 1, "sections": 2, "chunks_deleted": 7, "chunks": 3}
+
+
+def test_ingest_document_bundle_remaps_bundle_on_preexisting_doc_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    # L'upsert documents préserve le doc_id existant sur conflit short_id
+    # (update_exclude_cols): un document homonyme préexistant doit réaligner
+    # sections.doc_id et chunks.source_document_id sur le doc_id canonique,
+    # et la purge des sections doit viser le doc_id canonique.
+    canonical = "99999999-8888-7777-6666-555555555555"
+    generated = "11111111-2222-3333-4444-555555555555"
+    script = [
+        {"rows": [(canonical,)]},  # SELECT doc_id canonique (diverge)
+        {"rowcount": 0},  # DELETE rag_sections (doc_id canonique)
+        {"rowcount": 0},  # DELETE chunks par short_id
+    ]
+    writer, calls, events = make_writer(script)
+    monkeypatch.setattr(writer, "_upsert_documents", lambda conn, docs: 1)
+    monkeypatch.setattr(writer, "_upsert_sections", lambda conn, sections: len(sections))
+    monkeypatch.setattr(writer, "_upsert", lambda conn, table, rows, conflict, **kwargs: len(rows))
+
+    sections = [{"section_id": "s1", "doc_id": generated}]
+    chunks = [{"hash_id": "c1", "source_document_id": generated}]
+    writer.ingest_document_bundle(
+        {"doc_id": generated, "short_id": "mi-0001", "checksum": "sha"},
+        sections,
+        chunks,
+    )
+
+    assert sections[0]["doc_id"] == canonical
+    assert chunks[0]["source_document_id"] == canonical
+    assert calls[1]["params"] == (canonical,)  # purge des sections sous l'id canonique
+    assert events == ["commit"]
+
+
+def test_ingest_document_bundle_keeps_doc_id_when_short_id_ambiguous(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Plusieurs lignes pour un même short_id (schéma sans index unique):
+    # on ne devine pas, le bundle garde son doc_id généré.
+    generated = "11111111-2222-3333-4444-555555555555"
+    script = [
+        {"rows": [("a-1",), ("a-2",)]},  # SELECT doc_id canonique: ambigu
+        {"rowcount": 0},
+        {"rowcount": 0},
+    ]
+    writer, calls, _ = make_writer(script)
+    monkeypatch.setattr(writer, "_upsert_documents", lambda conn, docs: 1)
+    monkeypatch.setattr(writer, "_upsert_sections", lambda conn, sections: len(sections))
+    monkeypatch.setattr(writer, "_upsert", lambda conn, table, rows, conflict, **kwargs: len(rows))
+
+    sections = [{"section_id": "s1", "doc_id": generated}]
+    writer.ingest_document_bundle({"doc_id": generated, "short_id": "mi-0001", "checksum": "sha"}, sections, [])
+
+    assert sections[0]["doc_id"] == generated
+    assert calls[1]["params"] == (generated,)
+
+
+def test_delete_chunks_not_in_short_ids_sweeps_null_and_unknown() -> None:
+    writer, calls, events = make_writer([{"rowcount": 42}])
+
+    deleted = writer.delete_chunks_not_in_short_ids([" matte-0001 ", "MATTE-0002"])
+
+    assert deleted == 42
+    assert calls[0]["params"] == (["MATTE-0001", "MATTE-0002"],)
+    assert "short_id IS NULL" in calls[0]["query"]
+    assert "<> ALL" in calls[0]["query"]
+    assert events == ["commit"]
+
+
+def test_delete_chunks_not_in_short_ids_refuses_empty_keep_list() -> None:
+    # Garde anti-wipe: une liste vide balayerait la table entière.
+    writer, calls, _ = make_writer([])
+
+    with pytest.raises(ValueError, match="anti-wipe"):
+        writer.delete_chunks_not_in_short_ids(["  ", ""])
+    assert calls == []

@@ -11,9 +11,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 # Orchestrateur unique des corpus PDF (manifest Grist + dropzone + OCR).
-# Un seul job paramétré par ministère; MATTE/MSO s'enregistrent ici
-# en phase D (issue #248).
-MINISTERES = ("mi", "masa")
+# Un seul job paramétré par ministère (dispatch par convention de package).
+MINISTERES = ("mi", "masa", "matte", "mso")
 
 
 def build_parser() -> argparse.ArgumentParser:

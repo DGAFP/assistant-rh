@@ -19,8 +19,9 @@ from assistant_rh_data_engineering.masa.config import (
     MasaPipelineConfig,
 )
 from assistant_rh_data_engineering.masa.gold import MasaGoldBuilder
-from assistant_rh_data_engineering.masa.pipeline import MasaPipeline, plan_reconciliation
+from assistant_rh_data_engineering.masa.pipeline import MasaPipeline
 from assistant_rh_data_engineering.masa.silver import MasaSilverBuilder
+from assistant_rh_data_engineering.pdf_ministry.pipeline import plan_reconciliation
 from assistant_rh_data_engineering.utils.grist import ManifestRow
 from assistant_rh_data_engineering.utils.ocr import OcrResult
 
@@ -101,7 +102,12 @@ def test_plan_zero_chunk_document_with_matching_checksum_converges() -> None:
     expected = {"MASA-0001": make_row("MASA-0001")}
     current = {"MASA-0001": {"doc_id": "d1", "checksum": "a" * 64, "nb_chunks": 0}}
 
-    plan = plan_reconciliation(expected, current, {"MASA-0001": "a" * 64})
+    plan = plan_reconciliation(
+        expected,
+        current,
+        {"MASA-0001": "a" * 64},
+        retry_zero_chunk=MasaPipelineConfig().retry_zero_chunk,
+    )
 
     assert plan["ignore_inchange"] == ["MASA-0001"]
     assert plan["ingest"] == []
@@ -432,7 +438,12 @@ class FakeDbWriter:
         self.upserted_sections: list[dict[str, Any]] = []
         self.replaced_chunks: list[tuple[list[str], int]] = []
         self.cascade_deletes: list[list[str]] = []
+        self.purge_keep_lists: list[list[str]] = []
         self.runs: list[dict[str, Any]] = []
+
+    def delete_chunks_not_in_short_ids(self, short_ids_to_keep: list[str], table: str | None = None) -> int:
+        self.purge_keep_lists.append(sorted(short_ids_to_keep))
+        return 0
 
     def list_short_ids_with_checksum(self, source: str, table: str | None = None) -> dict[str, dict[str, Any]]:
         return dict(self.state)

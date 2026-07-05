@@ -320,6 +320,19 @@ class MedallionPipeline:
                 if abrogated_row is not None and writeback_enabled:
                     self._writeback(abrogated_row.record_id, statut=STATUT_SUPPRIME, nb_chunks=0)
 
+        # Balayage des chunks hors manifest: les lignes legacy backfillées par
+        # la migration de bascule (rétention du retrieval pendant la
+        # reconstruction MATTE/MSO) portent des short_ids notebooks absents du
+        # manifest et pas toujours de source_document_id — la cascade
+        # documentaire ci-dessus ne les couvre pas toutes. Restreint aux runs
+        # corpus complet: un run --doc-id ne voit qu'une tranche du manifest
+        # et balayerait le reste du corpus.
+        purged_chunks = 0
+        if ingest and not requested and expected:
+            purged_chunks = self.db_writer.delete_chunks_not_in_short_ids(sorted(expected))
+            if purged_chunks:
+                details["_purge_hors_manifest"] = {"chunks": purged_chunks}
+
         # Acquittement des lignes inactives sans document en base (a_supprimer
         # jamais ingéré, abrogé déjà purgé): statut => supprime, une seule fois
         # — une ligne déjà à « supprime » n'est pas re-PATCHée à chaque run.

@@ -52,6 +52,16 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
         "Run the MASA (Agriculture et Souveraineté alimentaire) PDF sources medallion pipeline.",
         ("--ministere", "masa"),
     ),
+    ("matte", "medallion"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.pdf_sources_medallion",
+        "Run the MATTE PDF sources medallion pipeline (rebuild Phase D).",
+        ("--ministere", "matte"),
+    ),
+    ("mso", "medallion"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.pdf_sources_medallion",
+        "Run the MSO (Ministères sociaux) PDF sources medallion pipeline (rebuild Phase D).",
+        ("--ministere", "mso"),
+    ),
     ("embeddings", "backfill"): CommandSpec(
         "assistant_rh_data_engineering.jobs.embeddings_backfill",
         "Backfill DB embeddings from an explicit manifest.",
@@ -80,6 +90,11 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
         "assistant_rh_data_engineering.jobs.embeddings_backfill",
         "Backfill MASA DB embeddings.",
         ("--config", "config/masa_embedding_tables.json"),
+    ),
+    ("embeddings", "mso"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.embeddings_backfill",
+        "Backfill MSO DB embeddings.",
+        ("--config", "config/mso_embedding_tables.json"),
     ),
     ("chunks", "backfill-text"): CommandSpec(
         "assistant_rh_data_engineering.jobs.chunk_text_backfill",

@@ -61,8 +61,11 @@ def classify_from_source(source: str) -> dict[str, bool]:
         # Sélection explicite uniquement (tracer bullet #246): un dispatch
         # source=all ne doit ni exiger les secrets Grist/Albert ni écrire le
         # corpus MI. Le cron/prod arrive en Phase F (#250).
-        "pdf_sources": source == "pdf_sources",
-        "embeddings": source in {"all", "embeddings", "matte", "mi", "masa"},
+        # source=<ministère> scope le domaine pdf_sources à SON job medallion
+        # (pdf_sources_ministry) — à 4 ministères, relancer l'un ne doit pas
+        # redémarrer les trois autres (suivi de la revue #266).
+        "pdf_sources": source in {"pdf_sources", "mi", "masa", "matte", "mso"},
+        "embeddings": source in {"all", "embeddings", "matte", "mi", "masa", "mso"},
     }
 
 
@@ -133,14 +136,19 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
                 "packages/data-engineering/src/assistant_rh_data_engineering/pdf_ministry/",
                 "packages/data-engineering/src/assistant_rh_data_engineering/mi/",
                 "packages/data-engineering/src/assistant_rh_data_engineering/masa/",
+                "packages/data-engineering/src/assistant_rh_data_engineering/matte/",
+                "packages/data-engineering/src/assistant_rh_data_engineering/mso/",
                 "packages/data-engineering/src/assistant_rh_data_engineering/jobs/pdf_sources_",
             ),
         ) or path in {
             "Dockerfile.pdf_sources_pipeline",
             "config/scaleway_serverless_job_pdf_sources_mi.json",
             "config/scaleway_serverless_job_pdf_sources_masa.json",
+            "config/scaleway_serverless_job_pdf_sources_matte.json",
+            "config/scaleway_serverless_job_pdf_sources_mso.json",
             "config/mi_embedding_tables.json",
             "config/masa_embedding_tables.json",
+            "config/mso_embedding_tables.json",
         }:
             result["pdf_sources"] = True
 
@@ -152,7 +160,7 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
             # backfills SP/Légifrance.
             or (
                 contains_any(path, ("embedding_tables", "embeddings_job"))
-                and path not in {"config/mi_embedding_tables.json", "config/masa_embedding_tables.json"}
+                and path not in {"config/mi_embedding_tables.json", "config/masa_embedding_tables.json", "config/mso_embedding_tables.json"}
             )
         ):
             result["embeddings"] = True
@@ -167,13 +175,13 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
 
 
 def infer_embedding_source(selected: dict[str, bool], requested_source: str = "") -> str:
-    if requested_source in {"service_public", "legifrance", "matte", "mi", "masa"}:
+    if requested_source in {"service_public", "legifrance", "matte", "mi", "masa", "mso"}:
         return requested_source
     if requested_source == "pdf_sources":
-        # Le domaine pdf_sources couvre plusieurs ministères (MI, MASA):
-        # dispatcher le backfill d'un ministère précis se fait via source=mi
-        # ou source=masa. Le mapping historique vers MI est conservé pour ne
-        # pas relancer TOUS les backfills via le fallback "all".
+        # Le domaine pdf_sources couvre les 4 ministères (MI, MASA, MATTE,
+        # MSO): le backfill d'un ministère précis se dispatch via
+        # source=<ministère>. Le mapping historique vers MI est conservé pour
+        # ne pas relancer TOUS les backfills via le fallback "all".
         return "mi"
     if selected["service_public"] and not selected["legifrance"]:
         return "service_public"
@@ -193,10 +201,13 @@ def write_outputs(outputs: dict[str, str]) -> None:
 
 
 def main() -> int:
+    pdf_sources_ministry = ""
     if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
         source = os.getenv("INPUT_SOURCE") or "all"
         selected = classify_from_source(source)
-        run_embeddings = source in {"embeddings", "matte", "mi", "masa"} or os.getenv("INPUT_RUN_EMBEDDINGS", "").strip().lower() == "true"
+        if source in {"mi", "masa", "matte", "mso"}:
+            pdf_sources_ministry = source
+        run_embeddings = source in {"embeddings", "matte", "mi", "masa", "mso"} or os.getenv("INPUT_RUN_EMBEDDINGS", "").strip().lower() == "true"
         if run_embeddings:
             selected["embeddings"] = True
         files: list[str] = []
@@ -222,6 +233,7 @@ def main() -> int:
         "embeddings": str(selected["embeddings"]).lower(),
         "run_embeddings": str(run_embeddings).lower(),
         "embedding_source": embedding_source,
+        "pdf_sources_ministry": pdf_sources_ministry,
         "has_builds": str(bool(matrix)).lower(),
         "has_runs": str(selected["service_public"] or selected["legifrance"] or selected["pdf_sources"] or selected["embeddings"]).lower(),
         "matrix": json.dumps({"include": matrix or [{"image": "noop", "dockerfile": "Dockerfile.service_public_pipeline"}]}),

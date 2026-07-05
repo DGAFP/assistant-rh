@@ -39,7 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--service-public-fiche-config", default="config/service_public_fiches.json")
     parser.add_argument("--wipe-existing-chunks", type=parse_bool, default=False)
     parser.add_argument("--legifrance-article-ids-json", default="config/legifrance_article_cids.json")
-    parser.add_argument("--embedding-source", choices=("all", "service_public", "legifrance", "matte", "mi", "masa"), default="all")
+    parser.add_argument("--embedding-source", choices=("all", "service_public", "legifrance", "matte", "mi", "masa", "mso"), default="all")
+    parser.add_argument("--pdf-sources-ministry", choices=("", "mi", "masa", "matte", "mso"), default="")
     parser.add_argument("--embedding-only-column", default="")
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -269,6 +270,12 @@ def should_run(spec: dict[str, Any], args: argparse.Namespace) -> bool:
         return False
     if domain == "pdf_sources" and not getattr(args, "pdf_sources", False):
         return False
+    if domain == "pdf_sources":
+        # Granularité par ministère (revue #266/#267): source=<ministère> ne
+        # démarre que SON job medallion — pas les 3 autres corpus.
+        ministry = str(getattr(args, "pdf_sources_ministry", "") or "")
+        if ministry and str(spec.get("key") or "") != f"pdf-sources-{ministry}-medallion":
+            return False
     if domain == "embeddings" and not args.embeddings:
         return False
     if os.getenv("GITHUB_EVENT_NAME") == "push" and spec.get("auto_start_on_push") is False:
