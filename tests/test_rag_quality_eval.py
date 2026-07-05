@@ -684,3 +684,86 @@ def test_resolve_question_scope_per_question_routes_ministries() -> None:
 
     assert resolve_question_scope(mso_question, "none") is None
     assert resolve_question_scope(mso_question, "all").selected_ministry == "eval_all_ministries"
+
+
+class _FakeCursorResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self):
+        return self._rows
+
+
+class _FakeConn:
+    """Connexion factice: 1er execute = probe colonne, 2e = requête principale.
+
+    ``probe_error`` simule une erreur transitoire sur le probe de colonne.
+    """
+
+    def __init__(self, *, has_column, main_rows, probe_error=None):
+        self._has_column = has_column
+        self._main_rows = main_rows
+        self._probe_error = probe_error
+        self._calls = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return None
+
+    def execute(self, sql, params=None):
+        self._calls += 1
+        if self._calls == 1:  # probe information_schema
+            if self._probe_error is not None:
+                raise self._probe_error
+            return _FakeCursorResult([{"?column?": 1}] if self._has_column else [])
+        return _FakeCursorResult(self._main_rows)
+
+
+def test_load_goldset_uses_gold_doc_ids_when_column_present(monkeypatch) -> None:
+    import src.goldset.eval as eval_module
+
+    rows = [
+        {
+            "id": 7,
+            "question": "q",
+            "gold_answer": "a",
+            "gold_sources": ["F1"],
+            "theme": "",
+            "tags": ["baseline_v1"],
+            "goldset_name": "reference_v1",
+            "source": "MATTE",
+            "gold_doc_ids": ["F1", "uuid-resolved-1"],
+        }
+    ]
+    monkeypatch.setattr(
+        eval_module.psycopg,
+        "connect",
+        lambda *a, **k: _FakeConn(has_column=True, main_rows=rows),
+    )
+    qs = eval_module.load_goldset_questions("postgresql://x", goldset_name="reference_v1", tags=["baseline_v1"], any_goldset=True)
+    assert qs[0].gold_doc_ids == ["F1", "uuid-resolved-1"]
+    # retrieval_gold DOIT prendre les doc_ids résolus, pas les labels bruts.
+    assert qs[0].retrieval_gold == ["F1", "uuid-resolved-1"]
+
+
+def test_load_goldset_propagates_probe_error_not_silent_degrade(monkeypatch) -> None:
+    # Régression run 67 (06/07/2026): un probe de colonne échouant en silence
+    # (ancien _column_exists) faisait charger gold_doc_ids=NULL pour TOUT le run
+    # -> matching sur labels bruts, hit_rate/doc_recall corrompus, juge biaisé.
+    # Le probe partage désormais la connexion de la requête: l'erreur se propage.
+    import psycopg
+
+    import src.goldset.eval as eval_module
+
+    monkeypatch.setattr(
+        eval_module.psycopg,
+        "connect",
+        lambda *a, **k: _FakeConn(has_column=True, main_rows=[], probe_error=psycopg.OperationalError("transient")),
+    )
+    with pytest.raises(psycopg.OperationalError):
+        eval_module.load_goldset_questions("postgresql://x", goldset_name="reference_v1", tags=["baseline_v1"], any_goldset=True)

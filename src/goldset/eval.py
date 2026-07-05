@@ -162,18 +162,6 @@ def config_fingerprint(config: RAGConfig) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _column_exists(dsn: str, table_name: str, column_name: str) -> bool:
-    try:
-        with psycopg.connect(dsn, row_factory=dict_row) as conn:
-            row = conn.execute(
-                "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=%s AND column_name=%s",
-                (table_name, column_name),
-            ).fetchone()
-        return row is not None
-    except psycopg.Error:
-        return False
-
-
 def load_goldset_questions(
     dsn: str,
     *,
@@ -199,16 +187,33 @@ def load_goldset_questions(
         limit_sql = " LIMIT %s"
         params.append(limit)
 
-    # ``gold_doc_ids`` is an optional pre-resolution column; tolerate its absence.
-    gold_doc_ids_col = "gold_doc_ids" if _column_exists(dsn, "goldset_questions_v2", "gold_doc_ids") else "NULL::text[] AS gold_doc_ids"
-    sql = f"""
-        SELECT id, question, gold_answer, gold_sources, theme, tags, goldset_name, source, {gold_doc_ids_col}
-        FROM public.goldset_questions_v2
-        WHERE {" AND ".join(where)}
-        ORDER BY id
-        {limit_sql}
-    """
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        # ``gold_doc_ids`` est une colonne de PRÉ-RÉSOLUTION (labels humains ->
+        # doc_ids corpus): sans elle, le matching retombe sur les labels bruts
+        # (F-fiches, noms de docs) qui ne matchent jamais les UUID/short_ids du
+        # retriever, et le juge reçoit de faux ``retrieval_diagnostics``
+        # (hit_rate=0, missing_gold_sources). La présence de la colonne est
+        # vérifiée sur LA MÊME connexion que la requête: un probe sur une
+        # connexion séparée (ancien ``_column_exists``, ``except psycopg.Error:
+        # return False``) transformait une erreur transitoire en dégradation
+        # SILENCIEUSE de tout le run (run 67, 06/07/2026: gold_doc_ids ignorés,
+        # hit_rate/doc_recall corrompus, juge biaisé sur MATTE/MSO). Ici toute
+        # erreur se propage — fail loud plutôt que corrompre en silence.
+        has_gold_doc_ids = (
+            conn.execute(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema='public' "
+                "AND table_name='goldset_questions_v2' AND column_name='gold_doc_ids'"
+            ).fetchone()
+            is not None
+        )
+        gold_doc_ids_col = "gold_doc_ids" if has_gold_doc_ids else "NULL::text[] AS gold_doc_ids"
+        sql = f"""
+            SELECT id, question, gold_answer, gold_sources, theme, tags, goldset_name, source, {gold_doc_ids_col}
+            FROM public.goldset_questions_v2
+            WHERE {" AND ".join(where)}
+            ORDER BY id
+            {limit_sql}
+        """
         rows = conn.execute(sql, params).fetchall()
 
     return [
