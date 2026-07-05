@@ -1311,6 +1311,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-ragas", action="store_true", help="Skip RAGAS metrics.")
     parser.add_argument("--skip-judge", action="store_true", help="Skip Scaleway LLM-as-judge.")
     parser.add_argument(
+        "--selector-model",
+        default="",
+        help="Override du modèle du sélecteur (ex: mistral-medium-2508) sans toucher à la config runtime partagée.",
+    )
+    parser.add_argument(
+        "--section-rerank-top-k",
+        type=int,
+        default=None,
+        help="Override du nombre de sections offertes au sélecteur (v3_rerank_top_k runtime sinon).",
+    )
+    parser.add_argument(
         "--ministry-scope",
         choices=["all", "none"],
         default="all",
@@ -1378,6 +1389,16 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     runtime_config = get_rag_config()
     pipeline_config = runtime_config_to_rag_config(runtime_config)
     config_adjustments: list[str] = []
+    # Overrides d'expérimentation A/B: la config runtime (rag_config, ligne
+    # unique en base) est PARTAGÉE — deux runs parallèles avec des réglages
+    # différents doivent surcharger localement, pas muter la base. Appliqués
+    # AVANT le fingerprint pour que la clé de dédup/comparabilité les voie.
+    if args.selector_model:
+        pipeline_config.selector.model = args.selector_model
+        config_adjustments.append(f"selector_model={args.selector_model}")
+    if args.section_rerank_top_k is not None:
+        pipeline_config.aggregation.section_rerank_top_k = args.section_rerank_top_k
+        config_adjustments.append(f"section_rerank_top_k={args.section_rerank_top_k}")
     config_hash = config_fingerprint(pipeline_config)
     git_sha = _git_sha()
     run_label = args.run_label or f"{datetime.now(tz=UTC).strftime('%Y%m%dT%H%M%SZ')}_{args.goldset_name}"
