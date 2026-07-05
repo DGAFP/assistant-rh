@@ -98,19 +98,40 @@
   (93 docs Légifrance) — restent 7 questions citant des articles **abrogés**
   (recodification 2025) à réviser sur le fond.
 
-## Runs 58 & 59 — A/B en cours (06/07)
+## Runs 58 & 59 — A/B sections vs modèle sélecteur (06/07) — INTERROMPUS à 22/100
 
-Les deux partagent : probes+top_k, juge découplé+doctrine, goldset corrigé,
+Les deux partageaient : probes+top_k, juge découplé+doctrine, goldset corrigé,
 scope « all » (lancés avant le per-question), baseline de comparaison = run 52.
 
 - **Run 58** `ab_sections20_20260706` : `--section-rerank-top-k 20`, sélecteur gpt-oss.
-  Hypothèse : desserrer l'étage rigide convertit les gains de retrieval.
-- **Run 59** `ab_selector_mistral_20260706` : `--selector-model mistral-medium-2508`
-  (pinné), 10 sections. Hypothèse : un sélecteur plus stable réduit la variance.
+- **Run 59** `ab_selector_mistral_20260706` : `--selector-model mistral-medium-2508`, 10 sections.
 - Sonde qualitative pré-run (6 questions × 2 variantes) : **0 refus / 12**,
-  gold MSO dans le contexte (le scope fonctionne), pas d'écart visible entre
-  variantes à cette échelle.
-- **Résultats : à compléter à la fin des runs.**
+  gold MSO dans le contexte (le scope fonctionne).
+- **Résultats appariés à l'arrêt (22 questions communes, décision d'interrompre)** :
+  - judge_pass identique : **0,59 (A) = 0,59 (B)** (réf. 52 sur ces questions : 0,64)
+    → **le modèle du sélecteur n'est pas le levier** ; gpt-oss conservé.
+  - Avantage secondaire à A : hit 0,73 vs 0,68, refus 1 vs 3
+    → **20 sections retenues**.
+  - **MSO 3/3 pass** dans les deux runs — première fois de la campagne
+    (plafonné 0,25 depuis le run 19) : le triptyque scope + juge découplé +
+    goldset enrichi débloque le corpus reconstruit.
+  - **MATTE 0,56 vs 0,75 (run 52, mêmes questions)** dans les deux variantes :
+    la contamination inter-ministères du scope « all » coûte cher (le
+    Vademecum MSO pollue les réponses MATTE — il n'existait pas dans les
+    tables du run 52). Confirme la décision de passer au scope per-question.
+- **Décision** : arrêt à 22/100 (les deux hypothèses étaient tranchées), runs
+  marqués `aborted` en base, remplacés par le run 60.
+
+## Run 60 — `per_question_scope_20260706` — scope par ministère (en cours)
+
+- **Changements vs 58/59** : `--ministry-scope per-question` (défaut du CLI
+  depuis 4411ea1) — chaque question ministérielle évaluée dans le scope de SON
+  ministère ({ministère} + service_public + dgafp), comme dans l'app ;
+  `--section-rerank-top-k 20` (gagnant de l'A/B) ; sélecteur gpt-oss (idem).
+- **Hypothèses** : récupérer les points MATTE perdus à la contamination ;
+  conserver MSO à ~1,0 ; c'est la config candidate pour devenir la nouvelle
+  baseline de référence.
+- **Résultats : à compléter.**
 
 ## Backlog priorisé (état au 06/07)
 
