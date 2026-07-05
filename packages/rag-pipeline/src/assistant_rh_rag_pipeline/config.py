@@ -129,7 +129,13 @@ CHUNK_TABLES: Dict[str, ChunkTable] = {
 class RetrievalConfig:
     search_mode: SearchMode = SearchMode.SEMANTIC
     embedding_model: EmbeddingModel = EmbeddingModel.ALBERT
-    initial_top_k: int = 15
+    initial_top_k: int = 30
+    # Nombre de listes IVFFLAT sondées par requête vectorielle. Sans SET
+    # explicite, PostgreSQL utilise probes=1: sur nos index lists=100, chaque
+    # recherche ne scanne qu'1 % des listes — recall silencieusement amputé
+    # (constaté au goldset du 05/07/2026: fiches gold absentes du pool alors
+    # que présentes en base). 0 = laisser le défaut serveur.
+    ivfflat_probes: int = 15
     alpha: float = 0.5
     tables: List[str] = field(default_factory=lambda: ["matte", "service_public", "dgafp", "rgrh"])
     enable_chunk_reranker: bool = False
