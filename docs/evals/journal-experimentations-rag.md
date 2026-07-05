@@ -140,9 +140,36 @@ scope « all » (lancés avant le per-question), baseline de comparaison = run 5
   cours en base. À relancer après stabilisation — même config, plus la règle
   ci-dessous.
 - **Règle de scope ajoutée (décision Paul 06/07)** : les questions `manual`
-  (57/100 du panel, collectées auprès d'agents MATTE) suivent le **parcours
+  (56 du panel, collectées auprès d'agents MATTE) suivent le **parcours
   MATTE** en mode per-question (scope matte + tables partagées), pas le scope
   complet. `synthetic`/`DGAFP`/`Service-Public` restent en scope complet.
+
+## Run de référence — `reference_v1_20260706` (06/07) — EN COURS
+
+**Le premier run avec tout le paquet cohérent**, et le premier à évaluer les
+20 questions MI/MSO de Paul. Panel élargi : **115 questions** =
+`baseline_v1` (99, dont q195 retirée) ∪ `mi_mso_v1` (16 nouvelles) — sélection
+`--tag baseline_v1 --tag mi_mso_v1` (overlap = union). Répartition : manual 56
+(→ scope MATTE), Service-Public 14, MATTE 12, synthetic 11, MSO 10, MI 10, DGAFP 2.
+
+- **Config** (tous les changements du 06/07, mergés sur dev) :
+  - retrieval : `ivfflat.probes=15`, `initial_top_k=30` (PR #272) ;
+  - entonnoir : `--section-rerank-top-k 20` (override CLI ; gagnant de l'A/B 58/59) ;
+    `min_kept_sections=4` (PR #271), `doc_entire_threshold_wide=9000` (PR #271) ;
+  - sélecteur : gpt-oss-120b (l'A/B a montré que le modèle n'est pas le levier) ;
+  - juge : cap retrieval découplé (soft) + doctrine corpus réglementaire (PR #273) ;
+  - **scope : `per-question`** — chaque question ministérielle dans le scope de
+    SON ministère, `manual`→MATTE (PR #275), pas de contamination inter-ministères ;
+  - matching : durci #276 (n° décret/article, alias LEGIARTI↔doc_id,
+    `rag_chunks_legifrance` exclu du crédit).
+- **Comparaison** : run 52 comme référence sur le sous-ensemble commun (99
+  questions baseline_v1) — calculée en SQL car le panel diffère (115 vs 100 ;
+  `--baseline-run-id` marquerait « not_comparable »).
+- **Substrat vérifié avant lancement** (workflow parallèle 5 axes : merge/tests,
+  matching #276, intégrité goldset, câblage scope, config runtime).
+- **Hypothèses** : MSO/MI passent enfin (scope + goldset) ; MATTE récupère les
+  points perdus à la contamination ; devient la nouvelle baseline de référence.
+- **Résultats : à compléter à la fin du run.**
 
 ## Backlog priorisé (état au 06/07)
 
