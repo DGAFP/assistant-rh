@@ -319,6 +319,11 @@ def test_matte_pipeline_smoke_over_fakes(tmp_path: Path) -> None:
         def delete_documents_cascade(self, short_ids, table=None, *, source):
             return {"chunks": 0, "sections": 0, "documents": 0}
 
+        def delete_chunks_not_in_short_ids(self, short_ids_to_keep, table=None):
+            self.purge_keep_lists = getattr(self, "purge_keep_lists", [])
+            self.purge_keep_lists.append(sorted(short_ids_to_keep))
+            return 0
+
         def insert_ingestion_run(self, run):
             self.runs.append(run)
             return 1

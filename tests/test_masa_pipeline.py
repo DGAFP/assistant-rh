@@ -438,7 +438,12 @@ class FakeDbWriter:
         self.upserted_sections: list[dict[str, Any]] = []
         self.replaced_chunks: list[tuple[list[str], int]] = []
         self.cascade_deletes: list[list[str]] = []
+        self.purge_keep_lists: list[list[str]] = []
         self.runs: list[dict[str, Any]] = []
+
+    def delete_chunks_not_in_short_ids(self, short_ids_to_keep: list[str], table: str | None = None) -> int:
+        self.purge_keep_lists.append(sorted(short_ids_to_keep))
+        return 0
 
     def list_short_ids_with_checksum(self, source: str, table: str | None = None) -> dict[str, dict[str, Any]]:
         return dict(self.state)

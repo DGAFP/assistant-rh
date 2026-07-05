@@ -257,6 +257,13 @@ def build_chunk_row(document: dict, chunk: dict, *, source: str) -> dict:
     copies changerait les hash_id d'un corpus (dédup/upsert incohérents).
     Seule la valeur de `source` varie (jamais une constante partagée: le
     hardcode SERVICE PUBLIC qui avait fui dans MATTE est le bug à éviter).
+
+    Unicité inter-documents: le seed suppose source_name UNIQUE par corpus.
+    Garanti par convention — ministères PDF: source_name = basename de
+    cle_bucket, préfixé par l'uid Grist ({uid}_{fichier}) par la page d'import
+    admin; Service-Public: source_name = {short_id}.xml. NE PAS élargir le
+    seed (short_id/doc_id) « par prudence »: cela ré-identifierait tous les
+    chunks des corpus déjà ingérés (goldsets et traces référencent hash_id).
     """
     import hashlib
 
