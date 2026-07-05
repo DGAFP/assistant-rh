@@ -3,11 +3,17 @@
 Les parseurs legacy consomment du texte plat ligne à ligne (sortie pdftotext
 avec marqueurs [PAGE n]); mistral-ocr sort du markdown. flatten_ocr_to_text
 fait l'aplatissement à drift minimal: marqueurs de page conservés au format
-legacy, marqueurs de heading retirés (le texte du titre reste en ligne isolée,
-détectable par les heuristiques), lignes de tableaux dé-pipées, refs d'images
-non annotées retirées. Améliorer la détection en s'appuyant sur la structure
-markdown est possible plus tard — divergence à documenter et à arbitrer au
-goldset, conformément à la règle de la Phase D.
+legacy, tableaux externalisés (page["tables"]) réinjectés puis dé-pipés,
+marqueurs de heading retirés (le titre reste en ligne isolée, détectable par
+les heuristiques), refs d'images non annotées retirées.
+
+Divergences connues (arbitrage au goldset, règle de la Phase D):
+- Documents « process » type slides/logigramme (ex: « Je recrute un contractuel
+  en AC »): l'OCR linéarise les slides autrement que pdftotext, le parseur
+  process (porté à l'identique) en tire moins de sections que le legacy
+  (3-12 vs 28-34 chunks). Non bloquant (jamais zéro chunk, le fallback couvre),
+  contenu intrinsèquement visuel; les descriptions VLM d'images ([Illustration
+  — …]) compensent en partie. À ré-arbitrer si le goldset MSO régresse.
 """
 
 from __future__ import annotations
@@ -39,6 +45,33 @@ _MODE_DOC_TYPES = {
 }
 
 
+# Référence d'une table externalisée par mistral-ocr: `[tbl-0.md](tbl-0.md)`.
+# Le contenu réel (markdown de tableau) vit dans page["tables"], pas dans le
+# markdown de page — il faut l'inliner avant l'aplatissement, sinon les
+# parseurs table_matrix/process ne voient rien (régression du rebuild MSO
+# constatée le 05/07: « Liste des actes déconcentrés » 183->3 chunks).
+_TABLE_REF_RE = re.compile(r"!?\[(tbl-[^\]]+)\]\([^)]*\)")
+
+
+def _inline_ocr_tables(markdown: str, tables: list[dict]) -> str:
+    """Remplace les références [tbl-N.md] par le contenu markdown de la table.
+
+    mistral-ocr externalise les tableaux complexes: page["tables"] =
+    [{"id": "tbl-0.md", "content": "| ... |\\n| --- |\\n| ... |"}]. Le contenu
+    est un markdown de tableau propre, dé-pipé plus loin par _flatten_markdown_line
+    au format « cellule cellule cellule » qu'attendent split_table_row et
+    les heuristiques de process legacy.
+    """
+    if not tables:
+        return markdown
+    by_id = {str(t.get("id") or ""): str(t.get("content") or "") for t in tables if isinstance(t, dict)}
+
+    def _replace(match: re.Match[str]) -> str:
+        return by_id.get(match.group(1), match.group(0))
+
+    return _TABLE_REF_RE.sub(_replace, markdown)
+
+
 def _flatten_markdown_line(line: str) -> str:
     line = _HEADING_MARKER_RE.sub("", line)
     line = _BOLD_RE.sub(r"\1", line)
@@ -54,19 +87,24 @@ def _flatten_markdown_line(line: str) -> str:
 
 def flatten_ocr_to_text(ocr: OcrResult) -> str:
     """Markdown OCR -> texte plat au format attendu par les parseurs legacy
-    (marqueurs de page [PAGE n] comme la sortie pdftotext des notebooks)."""
-    pages = [str(page.get("markdown") or "") for page in ocr.pages]
-    if not any(page.strip() for page in pages):
-        pages = [ocr.markdown or ""]
+    (marqueurs de page [PAGE n] comme la sortie pdftotext des notebooks).
+
+    Les tableaux externalisés par l'OCR (page["tables"]) sont réinjectés dans
+    le flux avant aplatissement — indispensable aux modes table_matrix/process.
+    """
+    page_markdowns = [str(page.get("markdown") or "") for page in ocr.pages]
+    if not any(md.strip() for md in page_markdowns):
+        return normalize_text(_flatten_body(ocr.markdown or ""))
     parts: list[str] = []
-    for number, page in enumerate(pages, start=1):
-        flat_lines = [_flatten_markdown_line(line) for line in page.splitlines()]
-        body = "\n".join(flat_lines)
-        if len(pages) > 1:
-            parts.append(f"[PAGE {number}]\n{body}")
-        else:
-            parts.append(body)
+    for number, page in enumerate(ocr.pages, start=1):
+        markdown = _inline_ocr_tables(str(page.get("markdown") or ""), page.get("tables") or [])
+        body = _flatten_body(markdown)
+        parts.append(f"[PAGE {number}]\n{body}" if len(ocr.pages) > 1 else body)
     return normalize_text("\n\n".join(parts))
+
+
+def _flatten_body(markdown: str) -> str:
+    return "\n".join(_flatten_markdown_line(line) for line in markdown.splitlines())
 
 
 def qna_section_uuid(identity: MinistryIdentity, doc_id: str, qa_id: str) -> str:

@@ -162,6 +162,43 @@ def test_flatten_ocr_to_text() -> None:
     assert "|" not in flat and "Acte 1° Déconcentré" in flat  # lignes de tableau dé-pipées
 
 
+def test_flatten_inlines_externalized_ocr_tables() -> None:
+    # mistral-ocr externalise les grands tableaux: la page ne porte que la
+    # référence [tbl-0.md], le contenu vit dans page["tables"]. Sans inlining,
+    # le mode table_matrix ne voit rien (régression rebuild MSO du 05/07).
+    ocr = OcrResult(
+        provider="albert",
+        version="v",
+        markdown="",
+        pages=[
+            {
+                "index": 0,
+                "markdown": "Références : Vademecum de gestion.\n\n[tbl-0.md](tbl-0.md)\n\nNotice",
+                "tables": [
+                    {
+                        "id": "tbl-0.md",
+                        "content": "\n".join(
+                            ["|  Type d'actes | Entité de gestion  |   |", "| --- | --- | --- |"]
+                            + [f"|  Acte de gestion numéro {i} pour un agent contractuel | {i}° | DRH-BPECO  |" for i in range(1, 7)]
+                            + [f"|  Autre acte déconcentré numéro {i} | 1° | Déconcentré  |" for i in range(1, 4)]
+                        ),
+                    }
+                ],
+            }
+        ],
+    )
+
+    flat = flatten_ocr_to_text(ocr)
+
+    assert "[tbl-0.md]" not in flat  # référence remplacée par le contenu
+    assert "Type d'actes Entité de gestion" in flat  # tableau inliné et dé-pipé
+    assert "Acte de gestion numéro 1 pour un agent contractuel 1° DRH-BPECO" in flat
+    # Le contenu inliné suffit à router le doc en table_matrix (sinon: guide).
+    from assistant_rh_data_engineering.pdf_ministry.qna.engine import detect_document_mode
+
+    assert detect_document_mode(flat, "Liste des actes déconcentrés.pdf") == "table_matrix"
+
+
 # --- Builders silver/gold sur un asset fake ---------------------------------------
 
 
