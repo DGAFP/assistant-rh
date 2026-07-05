@@ -144,8 +144,48 @@ scope « all » (lancés avant le per-question), baseline de comparaison = run 5
   MATTE** en mode per-question (scope matte + tables partagées), pas le scope
   complet. `synthetic`/`DGAFP`/`Service-Public` restent en scope complet.
 
+## Runs 67 / 68 / 69 — ANNULÉS : bug de gold_doc_ids (régression #276)
+
+Le run 67 (id 67) puis les relances 68/69 ont révélé une **régression de #276**
+qui corrompt les métriques retrieval et **biaise le juge** :
+
+- **Symptôme** : `hit_rate=0` généralisé sur MATTE/MSO/MI alors que le gold est
+  **servi dans le contexte** (recompute avec la colonne → hit=1.0). Le juge
+  reçoit `retrieval_diagnostics` (hit_rate, `missing_gold_sources`) → nourri de
+  faux « sources manquantes », il pénalise à tort les corpus à gold-UUID.
+- **Cause racine** (après une première fausse piste `_column_exists`) :
+  `run_eval` **écrasait** `question.gold_doc_ids` (colonne pré-résolue : pont
+  par similarité de titres MATTE/MSO + résolution décrets) par
+  `resolve_gold_doc_ids(gold_sources, maps)` — qui ne sait PAS mapper les
+  F-codes/annexes MATTE vers un doc_id (short_ids ministériels = hex). run 52
+  (pré-#276) utilisait la colonne → MATTE hit=1.0 ; runs 67+ re-résolvaient →
+  hit=0.
+- **Fix (PR #277)** : deux commits — (a) `_column_exists` supprimé (probe sur
+  connexion séparée qui dégradait en silence → fail loud sur la connexion
+  partagée) ; (b) `merge_gold_doc_ids` = **UNION** colonne curée ∪ résolution
+  runtime, au lieu d'écraser. Vérifié en run réel (70) : q3 hit 0.0 → **1.0**.
+- **Signaux directionnels avant annulation** (à re-mesurer proprement) : global
+  provisoire ~0,65 ; **apparié vs run 52 = +12 pts** ; vs run 19 = +3 (mais
+  DÉPRIMÉ par le bug sur MATTE/MSO/MI, donc plancher) ; MI 0,80, manual 0,78,
+  MSO 0,50 (2× le run 19), SP 0,55. **SP** : le retrieval SP est réglé (5/6
+  échecs ont le doc), les fails sont désormais en aval (1 génération fautive,
+  1 sélecteur `all_rejected` → 0 section servie, nuances juge).
+
+## Run 70 — `reference_v1_union_20260706` (run id **70**) — RÉFÉRENCE PROPRE, EN COURS
+
+Identique au run 67 (115 q, per-question + manual→MATTE, 20 sections, gpt-oss,
+juge découplé+doctrine) **plus le fix gold_doc_ids (PR #277)**. Premier run où
+le juge reçoit des diagnostics retrieval corrects sur tous les corpus.
+Comparaison run 52 (sous-ensemble commun) + run 19 en SQL.
+- **Résultats : à compléter à la fin.**
+
 ## Backlog priorisé (état au 06/07)
 
+0. **Nettoyer la colonne `gold_doc_ids`** : le pont a APPENDU les UUID aux labels
+   bruts → double-comptage qui sous-estime `doc_recall` (pas `hit_rate`). Idéal :
+   remplacer les labels résolus au lieu de les cumuler.
+0bis. **Plancher sélecteur pour le cas `all_rejected`** (SP q16 : gold dans le
+   pool mais 0 section servie → refus forcé) — quick win.
 1. Résultats 58/59 → merger #274, choisir le modèle du sélecteur.
 2. Recherche hybride BM25+dense par défaut (index GIN déjà en place ; nbsp SP à
    normaliser d'abord — 46 % des chunks SP en contiennent, cf. reprise PR #183).
