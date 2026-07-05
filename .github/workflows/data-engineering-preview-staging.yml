@@ -53,6 +53,7 @@ on:
           - matte
           - mi
           - masa
+          - mso
           - pdf_sources
           - embeddings
       run_ingestion:
@@ -82,6 +83,7 @@ on:
           - matte
           - mi
           - masa
+          - mso
       embedding_only_column:
         description: "Colonne embeddings cible optionnelle, ex: embedding_m3"
         required: false
@@ -204,8 +206,8 @@ jobs:
       SERVICE_PUBLIC_SELECTED: ${{ needs.plan.outputs.service_public }}
       RUN_INGESTION: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_ingestion) || false }}
       WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}
-      RUN_EMBEDDINGS: ${{ (github.event_name == 'push' && needs.plan.outputs.run_embeddings == 'true') || (github.event_name == 'workflow_dispatch' && (inputs.run_embeddings || inputs.source == 'embeddings' || inputs.source == 'matte' || inputs.source == 'mi' || inputs.source == 'masa')) || false }}
-      EMBEDDING_SOURCE: ${{ (github.event_name == 'push' && needs.plan.outputs.embedding_source) || (github.event_name == 'workflow_dispatch' && (inputs.source == 'matte' && 'matte' || inputs.source == 'mi' && 'mi' || inputs.source == 'masa' && 'masa' || inputs.embedding_source)) || 'all' }}
+      RUN_EMBEDDINGS: ${{ (github.event_name == 'push' && needs.plan.outputs.run_embeddings == 'true') || (github.event_name == 'workflow_dispatch' && (inputs.run_embeddings || inputs.source == 'embeddings' || inputs.source == 'matte' || inputs.source == 'mi' || inputs.source == 'masa' || inputs.source == 'mso')) || false }}
+      EMBEDDING_SOURCE: ${{ (github.event_name == 'push' && needs.plan.outputs.embedding_source) || (github.event_name == 'workflow_dispatch' && (inputs.source == 'matte' && 'matte' || inputs.source == 'mi' && 'mi' || inputs.source == 'masa' && 'masa' || inputs.source == 'mso' && 'mso' || inputs.embedding_source)) || 'all' }}
       EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
       SERVICE_PUBLIC_FICHE_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.service_public_fiche_config || 'config/service_public_fiches.json' }}
       LEGIFRANCE_ARTICLE_IDS_JSON: ${{ github.event_name == 'workflow_dispatch' && inputs.legifrance_article_ids_json || 'config/legifrance_article_cids.json' }}
@@ -263,6 +265,7 @@ jobs:
             --service-public "${{ needs.plan.outputs.service_public }}" \
             --legifrance "${{ needs.plan.outputs.legifrance }}" \
             --pdf-sources "${{ needs.plan.outputs.pdf_sources }}" \
+            --pdf-sources-ministry "${{ needs.plan.outputs.pdf_sources_ministry }}" \
             --embeddings "${{ needs.plan.outputs.embeddings }}" \
             --run-ingestion "${RUN_INGESTION}" \
             --wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}" \

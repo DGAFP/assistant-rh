@@ -260,6 +260,20 @@ class RagDbWriter:
         doc_id = str(document.get("doc_id") or "")
         with self._connect() as conn:
             documents_count = self._upsert_documents(conn, [document])
+            # L'arbitre d'upsert sur short_id PRÉSERVE le doc_id existant
+            # (update_exclude_cols=["doc_id"]): si un document homonyme
+            # préexistait en base (ligne legacy, autre pipeline), le doc_id
+            # généré par le bundle diverge du doc_id réellement retenu — les
+            # sections et chunks référenceraient alors un document fantôme.
+            # On réaligne tout le bundle sur le doc_id canonique post-upsert.
+            canonical_doc_id = self._canonical_doc_id(conn, short_id) if short_id else None
+            if canonical_doc_id and doc_id and canonical_doc_id != doc_id:
+                doc_id = canonical_doc_id
+                for section in sections:
+                    section["doc_id"] = canonical_doc_id
+                for chunk in chunks:
+                    if "source_document_id" in chunk:
+                        chunk["source_document_id"] = canonical_doc_id
             # Delete-puis-insert des sections: un document raccourci laisserait
             # sinon ses sections de queue (section_index au-delà du nouveau
             # compte) avec le contenu de la version précédente.
@@ -331,6 +345,28 @@ class RagDbWriter:
             cur.execute(query, (doc_ids,))
             return int(cur.rowcount or 0)
 
+    def _canonical_doc_id(self, conn: psycopg.Connection, short_id: str) -> str | None:
+        """doc_id réellement en base pour un short_id, dans la transaction courante.
+
+        Retourne None si le short_id est absent ou ambigu (plusieurs lignes,
+        schéma sans index unique): dans ces cas on ne devine pas et le bundle
+        garde son doc_id généré.
+        """
+        with conn.cursor() as cur:
+            query = sql.SQL(
+                """
+                SELECT doc_id
+                FROM {}.{}
+                WHERE UPPER(TRIM(short_id)) = %s
+                  AND short_id IS NOT NULL
+                """
+            ).format(sql.Identifier(self.schema), sql.Identifier("rag_documents"))
+            cur.execute(query, (short_id,))
+            rows = cur.fetchall()
+        if len(rows) == 1:
+            return str(rows[0][0])
+        return None
+
     def delete_chunks_by_short_ids(
         self,
         short_ids: list[str],
@@ -338,6 +374,40 @@ class RagDbWriter:
     ) -> int:
         with self._connect() as conn:
             deleted = self._delete_chunks_by_short_ids(conn, short_ids, table=table)
+            conn.commit()
+            return deleted
+
+    def delete_chunks_not_in_short_ids(
+        self,
+        short_ids_to_keep: list[str],
+        table: str | None = None,
+    ) -> int:
+        """Balaye les chunks orphelins du manifest (short_id NULL ou inconnu).
+
+        Utilisé par la réconciliation corpus complet: les lignes legacy
+        backfillées par une migration de bascule (rétention du retrieval
+        pendant la reconstruction) portent des short_ids notebooks absents du
+        manifest Grist et pas toujours de source_document_id — la cascade
+        documentaire ne les couvre donc pas toutes.
+
+        Garde anti-wipe: refuse une liste vide (un manifest vide balayerait
+        la table entière).
+        """
+        resolved_table = self._require_chunk_table(table)
+        keep = self._normalize_short_ids(short_ids_to_keep)
+        if not keep:
+            raise ValueError("liste de short_ids à conserver vide: refus de balayer la table entière (garde anti-wipe).")
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                query = sql.SQL(
+                    """
+                    DELETE FROM {}.{}
+                    WHERE short_id IS NULL
+                       OR UPPER(TRIM(short_id)) <> ALL(%s)
+                    """
+                ).format(sql.Identifier(self.schema), sql.Identifier(resolved_table))
+                cur.execute(query, (keep,))
+                deleted = int(cur.rowcount or 0)
             conn.commit()
             return deleted
 

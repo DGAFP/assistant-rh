@@ -17,8 +17,9 @@ from assistant_rh_data_engineering.mi.config import (
     MiPipelineConfig,
 )
 from assistant_rh_data_engineering.mi.gold import MiGoldBuilder
-from assistant_rh_data_engineering.mi.pipeline import MiPipeline, plan_reconciliation
+from assistant_rh_data_engineering.mi.pipeline import MiPipeline
 from assistant_rh_data_engineering.mi.silver import MiSilverBuilder
+from assistant_rh_data_engineering.pdf_ministry.pipeline import plan_reconciliation
 from assistant_rh_data_engineering.utils.grist import ManifestRow
 from assistant_rh_data_engineering.utils.ocr import OcrResult
 
@@ -396,7 +397,12 @@ class FakeDbWriter:
         self.upserted_sections: list[dict[str, Any]] = []
         self.replaced_chunks: list[tuple[list[str], int]] = []
         self.cascade_deletes: list[list[str]] = []
+        self.purge_keep_lists: list[list[str]] = []
         self.runs: list[dict[str, Any]] = []
+
+    def delete_chunks_not_in_short_ids(self, short_ids_to_keep: list[str], table: str | None = None) -> int:
+        self.purge_keep_lists.append(sorted(short_ids_to_keep))
+        return 0
 
     def list_short_ids_with_checksum(self, source: str, table: str | None = None) -> dict[str, dict[str, Any]]:
         return dict(self.state)
@@ -553,6 +559,9 @@ def test_removed_manifest_row_triggers_cascade_delete(tmp_path: Path) -> None:
     assert summary["deleted_count"] == 1
     assert writer.cascade_deletes == [["MI-0009"]]
     assert summary["details"]["MI-0009"]["statut"] == "supprime"
+    # Run corpus complet: le balayage des chunks hors manifest tourne (couvre
+    # les lignes legacy backfillées sans source_document_id).
+    assert writer.purge_keep_lists == [["MI-0001"]]
 
 
 def test_abrogated_row_is_deleted_and_written_back(tmp_path: Path) -> None:
@@ -628,6 +637,9 @@ def test_doc_id_filter_disables_orphan_deletion(tmp_path: Path) -> None:
     assert summary["ingested_count"] == 1
     assert summary["deleted_count"] == 0
     assert writer.cascade_deletes == []
+    # Run scopé --doc-id: pas de balayage hors manifest (il ne voit qu'une
+    # tranche du manifest et balayerait le reste du corpus).
+    assert writer.purge_keep_lists == []
 
 
 def test_skip_grist_writeback(tmp_path: Path) -> None:
