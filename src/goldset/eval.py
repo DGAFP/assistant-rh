@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import time
+import unicodedata
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -645,6 +646,10 @@ def context_payload(result: PipelineResult) -> list[dict[str, Any]]:
 # Same-base ranges (the common form) are fine.
 _CODE_RE = re.compile(r"[FLRD]\.?\s?\d+(?:-\d+)*", re.IGNORECASE)
 _RANGE_RE = re.compile(r"([LRD])\.?\s?(\d+)-(\d+)\s*à\s*[LRD]?\.?\s?\d+-(\d+)", re.IGNORECASE)
+_DECREE_NUMBER_RE = re.compile(r"\b(?:décret|decret)\s*(?:n[°o]\s*)?(\d{2,4}-\d+)\b", re.IGNORECASE)
+_ARTICLE_RANGE_RE = re.compile(r"\barticles?\s+(\d+(?:-\d+)?)\s*(?:à|a)\s*(\d+(?:-\d+)?)\b", re.IGNORECASE)
+_ARTICLE_SINGLE_RE = re.compile(r"\b(?:article|art\.)\s*(\d+(?:-\d+)?)\b", re.IGNORECASE)
+_ARTICLE_LIST_RE = re.compile(r"\barticles?\s+((?:\d+(?:-\d+)?)(?:\s*(?:,|;|et)\s*\d+(?:-\d+)?)+)", re.IGNORECASE)
 
 
 def _match_key(value: str) -> str:
@@ -654,20 +659,86 @@ def _match_key(value: str) -> str:
     return "".join(str(value or "").upper().split()).replace(".", "")
 
 
+def _ascii_lower(value: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", str(value or "").lower())
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def _alias_key(value: str) -> str:
+    return _match_key(value)
+
+
+def _add_alias_group(aliases: dict[str, set[str]], values: list[str]) -> None:
+    clean_values = _stable_unique([str(value or "").strip() for value in values if str(value or "").strip()])
+    for value in clean_values:
+        key = _alias_key(value)
+        if not key:
+            continue
+        aliases.setdefault(key, set()).update(v for v in clean_values if _alias_key(v) != key)
+
+
+def _legal_ref_key(decree_number: str, article_number: str) -> str:
+    return f"DECREE:{_match_key(decree_number)}:ARTICLE:{_match_key(article_number)}"
+
+
+def _extract_decree_number(value: str) -> str | None:
+    match = _DECREE_NUMBER_RE.search(_ascii_lower(value))
+    return match.group(1) if match else None
+
+
+def _numeric_article_range(start: str, end: str) -> list[str]:
+    """Expand same-base article ranges such as 10 à 15.
+
+    Hyphenated article ranges with different suffixes are intentionally not
+    guessed; they are uncommon in the goldset and ambiguous without corpus data.
+    """
+    if "-" in start or "-" in end:
+        return [start, end] if start != end else [start]
+    start_i = int(start)
+    end_i = int(end)
+    if start_i > end_i or end_i - start_i > 100:
+        return [start, end]
+    return [str(value) for value in range(start_i, end_i + 1)]
+
+
+def _extract_article_numbers(value: str) -> list[str]:
+    text = _ascii_lower(value)
+    numbers: list[str] = []
+    for match in _ARTICLE_RANGE_RE.finditer(text):
+        numbers.extend(_numeric_article_range(match.group(1), match.group(2)))
+    for match in _ARTICLE_LIST_RE.finditer(text):
+        numbers.extend(re.findall(r"\d+(?:-\d+)?", match.group(1)))
+    for match in _ARTICLE_SINGLE_RE.finditer(text):
+        numbers.append(match.group(1))
+    return _stable_unique(numbers)
+
+
 def load_gold_id_maps(dsn: str) -> dict[str, dict[str, Any]]:
     """Build the lookups that resolve human-facing ``gold_sources`` to the corpus
     ``doc_id``s the retriever actually returns: ``rag_documents.short_id`` (MATTE
     doc names) -> doc_id, ``rag_chunks_matte.short_id`` (annex codes) ->
     source_document_id, ``rag_chunks_dgafp.number`` (article codes) -> cid.
+    Intentionally do not resolve against ``rag_chunks_legifrance``: that table
+    contains legacy full-text Légifrance residue that the production retriever
+    does not query, so crediting it would inflate eval results.
+
+    The returned ``aliases`` map captures corpus-equivalent identifiers. This is
+    needed because the DGAFP retriever often logs a Légifrance ``cid``/short_id
+    (``LEGIARTI...``), while pre-resolved gold rows may contain the corresponding
+    ``rag_documents.doc_id`` UUID.
+
     Returns empty maps if the corpus tables are absent."""
-    maps: dict[str, dict[str, Any]] = {"doc_short": {}, "matte_short": {}, "article": {}}
+    maps: dict[str, dict[str, Any]] = {"doc_short": {}, "matte_short": {}, "article": {}, "legal_ref": {}, "aliases": {}}
     queries = {
-        "doc_short": "SELECT short_id, doc_id FROM public.rag_documents WHERE short_id IS NOT NULL",
+        "doc_short": "SELECT short_id, doc_id, source_url FROM public.rag_documents WHERE short_id IS NOT NULL",
         "matte_short": (
             "SELECT DISTINCT short_id, source_document_id AS v FROM public.rag_chunks_matte "
             "WHERE short_id IS NOT NULL AND source_document_id IS NOT NULL"
         ),
-        "article": ("SELECT DISTINCT number AS short_id, cid AS v FROM public.rag_chunks_dgafp WHERE number IS NOT NULL AND cid IS NOT NULL"),
+        "article": (
+            "SELECT DISTINCT number AS short_id, cid AS v, title, full_title "
+            "FROM public.rag_chunks_dgafp WHERE number IS NOT NULL AND cid IS NOT NULL"
+        ),
     }
     try:
         with psycopg.connect(dsn, row_factory=dict_row) as conn:
@@ -679,10 +750,23 @@ def load_gold_id_maps(dsn: str) -> dict[str, dict[str, Any]]:
                         continue
                     if name == "doc_short":
                         maps[name][key] = value
+                        aliases = maps["aliases"]
+                        alias_values = [value, str(row["short_id"])]
+                        source_url = str(row.get("source_url") or "").strip()
+                        if source_url:
+                            alias_values.append(source_url)
+                            alias_values.append(source_url.rstrip("/").rsplit("/", 1)[-1])
+                        _add_alias_group(aliases, alias_values)
                     else:
                         maps[name].setdefault(key, set()).add(value)
+                        if name == "article":
+                            title = str(row.get("title") or "")
+                            full_title = str(row.get("full_title") or "")
+                            decree_number = _extract_decree_number(f"{title} {full_title}")
+                            if decree_number:
+                                maps["legal_ref"].setdefault(_legal_ref_key(decree_number, str(row["short_id"])), set()).add(value)
     except psycopg.Error:
-        return {"doc_short": {}, "matte_short": {}, "article": {}}
+        return {"doc_short": {}, "matte_short": {}, "article": {}, "legal_ref": {}, "aliases": {}}
     return maps
 
 
@@ -702,20 +786,39 @@ def resolve_gold_doc_ids(gold_sources: list[str], maps: dict[str, dict[str, Any]
         if range_match:
             prefix, base, start, end = range_match.group(1), range_match.group(2), int(range_match.group(3)), int(range_match.group(4))
             tokens.update(f"{prefix}{base}-{i}" for i in range(start, end + 1))
+
+        decree_number = _extract_decree_number(raw)
+        if decree_number:
+            for article_number in _extract_article_numbers(raw):
+                resolved_for_raw.extend(maps.get("legal_ref", {}).get(_legal_ref_key(decree_number, article_number), []))
+
         for token in tokens:
             key = _match_key(token)
-            if key in maps["article"]:
+            if key in maps.get("article", {}):
                 resolved_for_raw.extend(maps["article"][key])
-            if key in maps["matte_short"]:
+            if key in maps.get("matte_short", {}):
                 resolved_for_raw.extend(maps["matte_short"][key])
-            if key in maps["doc_short"]:
+            if key in maps.get("doc_short", {}):
                 resolved_for_raw.append(maps["doc_short"][key])
         resolved.extend(resolved_for_raw or [raw])
     return _stable_unique(resolved)
 
 
 def retrieved_doc_ids(result: PipelineResult, contexts: list[dict[str, Any]]) -> list[str]:
-    ids = [str(ctx.get("doc_id") or "").strip() for ctx in contexts]
+    def ids_from_ref(value: dict[str, Any]) -> list[str]:
+        ids: list[str] = []
+        for key in ("doc_id", "document_id", "source_document_id", "cid", "short_id", "doc_short_id", "document_short_id"):
+            raw = value.get(key)
+            if raw is not None and str(raw).strip():
+                ids.append(str(raw).strip())
+        metadata = value.get("metadata")
+        if isinstance(metadata, dict):
+            ids.extend(ids_from_ref(metadata))
+        return ids
+
+    ids: list[str] = []
+    for ctx in contexts:
+        ids.extend(ids_from_ref(ctx))
     metadata = result.metadata if isinstance(result.metadata, dict) else {}
     for key in ("context_items_ref", "chunks_after_rerank", "chunks_raw", "retrieved_chunks"):
         values = metadata.get(key)
@@ -724,13 +827,26 @@ def retrieved_doc_ids(result: PipelineResult, contexts: list[dict[str, Any]]) ->
         for value in values:
             if not isinstance(value, dict):
                 continue
-            ids.append(str(value.get("doc_id") or value.get("document_id") or "").strip())
+            ids.extend(ids_from_ref(value))
     return _stable_unique(ids)
 
 
-def deterministic_metrics(gold_sources: list[str], retrieved_ids: list[str]) -> dict[str, Any]:
-    gold = _stable_unique(gold_sources)
-    retrieved = _stable_unique(retrieved_ids)
+def _expand_identifier_aliases(values: list[str], aliases: dict[str, set[str]] | None) -> list[str]:
+    if not aliases:
+        return _stable_unique(values)
+    expanded: list[str] = []
+    for value in values:
+        clean = str(value or "").strip()
+        if not clean:
+            continue
+        expanded.append(clean)
+        expanded.extend(aliases.get(_alias_key(clean), []))
+    return _stable_unique(expanded)
+
+
+def deterministic_metrics(gold_sources: list[str], retrieved_ids: list[str], aliases: dict[str, set[str]] | None = None) -> dict[str, Any]:
+    gold = _expand_identifier_aliases(gold_sources, aliases)
+    retrieved = _expand_identifier_aliases(retrieved_ids, aliases)
     gold_set = {_match_key(g) for g in gold}
     retrieved_keys = [_match_key(r) for r in retrieved]
     retrieved_set = set(retrieved_keys)
@@ -1179,6 +1295,7 @@ def run_question(
     *,
     pipe: Any,
     question: GoldsetQuestion,
+    identifier_aliases: dict[str, set[str]] | None = None,
     run_ragas: bool,
     run_judge: bool,
     judge_model: str,
@@ -1205,7 +1322,7 @@ def run_question(
         item.sources = result.sources
         item.timing = {**result.timing, "eval_total_ms": elapsed_ms}
         item.metadata = result.metadata
-        item.deterministic_metrics = deterministic_metrics(question.retrieval_gold, doc_ids)
+        item.deterministic_metrics = deterministic_metrics(question.retrieval_gold, doc_ids, aliases=identifier_aliases)
 
         context_texts = [str(context.get("content") or "") for context in contexts if str(context.get("content") or "").strip()]
         if run_ragas:
@@ -1442,6 +1559,11 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     questions = load_goldset_questions(dsn, goldset_name=args.goldset_name, tags=args.tag, limit=args.limit, any_goldset=args.any_goldset)
     if not questions:
         raise RuntimeError(f"No questions found for goldset={args.goldset_name!r}, tags={args.tag!r}.")
+    gold_id_maps = load_gold_id_maps(dsn)
+    if any(gold_id_maps.get(key) for key in ("doc_short", "matte_short", "article", "legal_ref")):
+        for question in questions:
+            question.gold_doc_ids = resolve_gold_doc_ids(question.gold_sources, gold_id_maps)
+    identifier_aliases = gold_id_maps.get("aliases", {})
     eval_scope = build_eval_scope(args, questions)
 
     run_id: int | None = None
@@ -1532,6 +1654,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
             item = run_question(
                 pipe=pipe,
                 question=question,
+                identifier_aliases=identifier_aliases,
                 run_ragas=not args.skip_ragas,
                 run_judge=not args.skip_judge,
                 judge_model=args.judge_model,

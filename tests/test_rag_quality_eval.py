@@ -20,6 +20,7 @@ from src.goldset.eval import (
     deterministic_metrics,
     load_goldset_questions,
     parse_text_list,
+    retrieved_doc_ids,
     write_artifacts,
 )
 
@@ -189,6 +190,73 @@ def test_resolved_gold_doc_ids_do_not_penalize_raw_label_misses() -> None:
 
     assert metrics["doc_recall"] == 1.0
     assert metrics["missing_gold_sources"] == []
+
+
+def test_resolve_gold_doc_ids_maps_decree_article_references() -> None:
+    from src.goldset.eval import resolve_gold_doc_ids
+
+    maps = {
+        "doc_short": {},
+        "matte_short": {},
+        "article": {},
+        "legal_ref": {
+            "DECREE:86-83:ARTICLE:10": {"LEGIA-10"},
+            "DECREE:86-83:ARTICLE:11": {"LEGIA-11"},
+            "DECREE:86-83:ARTICLE:12": {"LEGIA-12"},
+            "DECREE:86-83:ARTICLE:15": {"LEGIA-15"},
+        },
+    }
+
+    assert resolve_gold_doc_ids(["Decret 86-83, Article 15"], maps) == ["LEGIA-15"]
+    assert resolve_gold_doc_ids(["Décret 86-83, Articles 10 à 12"], maps) == ["LEGIA-10", "LEGIA-11", "LEGIA-12"]
+
+
+def test_resolve_gold_doc_ids_does_not_credit_stale_legacy_legifrance_text() -> None:
+    from src.goldset.eval import resolve_gold_doc_ids
+
+    maps = {
+        "doc_short": {},
+        "matte_short": {},
+        "article": {"R331-2": {"LEGIARTI000051962495"}},
+        "legal_ref": {},
+    }
+
+    assert resolve_gold_doc_ids(["Decret 86-83, Art.3"], maps) == ["Decret 86-83, Art.3"]
+
+
+def test_deterministic_metrics_treats_document_aliases_as_equivalent() -> None:
+    aliases = {
+        "UUID-DOC": {"LEGIARTI000045662556"},
+        "LEGIARTI000045662556": {"uuid-doc"},
+    }
+
+    metrics = deterministic_metrics(["uuid-doc"], ["LEGIARTI000045662556"], aliases=aliases)
+
+    assert metrics["hit_rate"] == 1.0
+    assert metrics["doc_recall"] == 1.0
+    assert metrics["missing_gold_sources"] == []
+
+
+def test_retrieved_doc_ids_collects_canonical_trace_alias_columns() -> None:
+    class Result:
+        metadata = {
+            "chunks_raw": [
+                {"cid": "LEGIARTI000045662556"},
+                {"metadata": {"source_document_id": "doc-from-nested-metadata"}},
+            ],
+            "chunks_after_rerank": [{"short_id": "F1606"}],
+            "context_items_ref": [{"document_id": "doc-from-context-ref"}],
+        }
+
+    contexts = [{"doc_id": "doc-from-context", "metadata": {"doc_short_id": "LEGIARTI000051268709"}}]
+
+    ids = retrieved_doc_ids(Result(), contexts)  # type: ignore[arg-type]
+
+    assert "LEGIARTI000045662556" in ids
+    assert "doc-from-nested-metadata" in ids
+    assert "F1606" in ids
+    assert "doc-from-context-ref" in ids
+    assert "LEGIARTI000051268709" in ids
 
 
 def test_deterministic_metrics_empty_gold_sources_yields_none_recall() -> None:
