@@ -588,3 +588,22 @@ def test_resolve_gold_doc_ids_keeps_multi_segment_codes() -> None:
 
     assert "CHILD" in resolved
     assert "PARENT" not in resolved
+
+
+def test_resolve_question_scope_per_question_routes_ministries() -> None:
+    from src.goldset.eval import resolve_question_scope
+
+    mso_question = GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[], source="MSO")
+    manual_question = GoldsetQuestion(id=2, question="q", gold_answer="a", gold_sources=[], source="manual")
+
+    mso_scope = resolve_question_scope(mso_question, "per-question")
+    assert mso_scope.selected_ministry == "mso"
+    assert "mso" in mso_scope.table_keys
+    # Pas de contamination inter-ministères: matte absent du scope MSO.
+    assert "matte" not in mso_scope.table_keys
+
+    manual_scope = resolve_question_scope(manual_question, "per-question")
+    assert manual_scope.selected_ministry == "eval_all_ministries"
+
+    assert resolve_question_scope(mso_question, "none") is None
+    assert resolve_question_scope(mso_question, "all").selected_ministry == "eval_all_ministries"

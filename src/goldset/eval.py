@@ -55,6 +55,9 @@ class GoldsetQuestion:
     theme: str = ""
     tags: list[str] = field(default_factory=list)
     goldset_name: str = ""
+    # Corpus d'origine de la question (MATTE/MSO/MI/Service-Public/manual…):
+    # pilote le scope ministériel par question (--ministry-scope per-question).
+    source: str = ""
     # Pre-resolved corpus doc_ids for ``gold_sources`` (deterministic retrieval
     # matching uses these when present; falls back to gold_sources otherwise).
     gold_doc_ids: list[str] = field(default_factory=list)
@@ -198,7 +201,7 @@ def load_goldset_questions(
     # ``gold_doc_ids`` is an optional pre-resolution column; tolerate its absence.
     gold_doc_ids_col = "gold_doc_ids" if _column_exists(dsn, "goldset_questions_v2", "gold_doc_ids") else "NULL::text[] AS gold_doc_ids"
     sql = f"""
-        SELECT id, question, gold_answer, gold_sources, theme, tags, goldset_name, {gold_doc_ids_col}
+        SELECT id, question, gold_answer, gold_sources, theme, tags, goldset_name, source, {gold_doc_ids_col}
         FROM public.goldset_questions_v2
         WHERE {" AND ".join(where)}
         ORDER BY id
@@ -216,6 +219,7 @@ def load_goldset_questions(
             theme=str(row.get("theme") or ""),
             tags=parse_text_list(row.get("tags")),
             goldset_name=str(row.get("goldset_name") or ""),
+            source=str(row.get("source") or ""),
             gold_doc_ids=parse_text_list(row.get("gold_doc_ids")),
         )
         for row in rows
@@ -1144,6 +1148,28 @@ def build_full_ministry_scope() -> Any:
     return RetrievalScope(selected_ministry="eval_all_ministries", table_keys=(*ministry_keys, *SHARED_TABLE_KEYS))
 
 
+def resolve_question_scope(question: GoldsetQuestion, ministry_scope_mode: str) -> Any:
+    """Scope de retrieval d'une question selon le mode choisi.
+
+    'per-question' (recommandé): une question MATTE/MSO/MI/MASA est évaluée
+    dans le scope de SON ministère + tables partagées — comme un agent de ce
+    ministère dans l'app. Sonde du 06/07/2026 en scope « all »: contamination
+    inter-ministères (question MSO répondue depuis un mode opératoire MASA,
+    questions MATTE depuis le Vademecum MSO) — aucun utilisateur réel n'a ce
+    scope-là. Les questions non ministérielles (Service-Public, manual,
+    synthetic, DGAFP) gardent le scope complet.
+    """
+    if ministry_scope_mode == "none":
+        return None
+    if ministry_scope_mode == "per-question":
+        from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG, build_retrieval_scope
+
+        ministry_id = (question.source or "").strip().lower()
+        if ministry_id in MINISTRY_CATALOG:
+            return build_retrieval_scope(ministry_id)
+    return build_full_ministry_scope()
+
+
 def run_question(
     *,
     pipe: Any,
@@ -1323,12 +1349,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--ministry-scope",
-        choices=["all", "none"],
-        default="all",
+        choices=["per-question", "all", "none"],
+        default="per-question",
         help=(
-            "Scope ministériel du retrieval. 'all' (défaut) = utilisateur pleinement granté "
-            "(tous les ministères du catalog + tables partagées); 'none' = comportement "
-            "historique (v3_tables runtime seulement, mso/mi/masa invisibles)."
+            "Scope ministériel du retrieval. 'per-question' (défaut) = une question MATTE/MSO/MI/MASA "
+            "est évaluée dans le scope de SON ministère (comme un agent de ce ministère dans l'app), "
+            "les autres questions en scope complet; 'all' = utilisateur pleinement granté partout "
+            "(contamination inter-ministères possible); 'none' = comportement historique "
+            "(v3_tables runtime seulement, mso/mi/masa invisibles)."
         ),
     )
     parser.add_argument("--judge-model", default=os.getenv("SCALEWAY_JUDGE_MODEL", DEFAULT_JUDGE_MODEL), help="Scaleway judge model.")
@@ -1487,10 +1515,6 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
 
     pipe = create_pipeline(config=pipeline_config, dsn=dsn)
     api_key = os.getenv("SCALEWAY_API_KEY", "").strip()
-    # Scope « pleinement granté » (défaut): reflète un agent DRH ayant tous
-    # les droits ministériels — sans lui, mso/mi/masa sont invisibles de
-    # l'eval (l'app scope par groupe, jamais via v3_tables).
-    retrieval_scope = None if args.ministry_scope == "none" else build_full_ministry_scope()
     items: list[EvalItem] = []
     status = "completed"
     error = ""
@@ -1509,7 +1533,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 ragas_model=args.ragas_model,
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,
-                retrieval_scope=retrieval_scope,
+                retrieval_scope=resolve_question_scope(question, args.ministry_scope),
             )
             items.append(item)
             if item_conn is not None and run_id is not None:
