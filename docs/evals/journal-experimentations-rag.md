@@ -144,7 +144,7 @@ scope « all » (lancés avant le per-question), baseline de comparaison = run 5
   MATTE** en mode per-question (scope matte + tables partagées), pas le scope
   complet. `synthetic`/`DGAFP`/`Service-Public` restent en scope complet.
 
-## Run de référence — `reference_v1_20260706` (06/07) — EN COURS
+## Run de référence — `reference_v1_20260706` (run id **67**, 06/07) — LANCÉ, EN COURS
 
 **Le premier run avec tout le paquet cohérent**, et le premier à évaluer les
 20 questions MI/MSO de Paul. Panel élargi : **115 questions** =
@@ -165,8 +165,15 @@ scope « all » (lancés avant le per-question), baseline de comparaison = run 5
 - **Comparaison** : run 52 comme référence sur le sous-ensemble commun (99
   questions baseline_v1) — calculée en SQL car le panel diffère (115 vs 100 ;
   `--baseline-run-id` marquerait « not_comparable »).
-- **Substrat vérifié avant lancement** (workflow parallèle 5 axes : merge/tests,
-  matching #276, intégrité goldset, câblage scope, config runtime).
+- **Substrat vérifié avant lancement (5 axes, tous verts)** : imports OK + 49
+  tests eval passés + 6 PRs (#271–#276) sur dev ; matching #276 `legal_ref`
+  (220) + `aliases` (12383) présents, legifrance exclu ; goldset 109/115
+  résolvables (6 manual = articles décret 86-83 abrogés, non-bloquant car cap
+  soft) ; **sonde retrieval réelle par corpus : zéro contamination
+  inter-ministères**, manual→matte confirmé ; config câblée. (Le workflow de
+  vérif initial a été tué par la suppression d'un worktree en cours de session
+  — vérif refaite en direct.)
+- **Panel confirmé en base** : 115 questions, `ministry_scope=per-question`.
 - **Hypothèses** : MSO/MI passent enfin (scope + goldset) ; MATTE récupère les
   points perdus à la contamination ; devient la nouvelle baseline de référence.
 - **Résultats : à compléter à la fin du run.**
