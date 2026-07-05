@@ -18,13 +18,11 @@ from typing import Any
 
 from ..service_public.qna_chunking import split_on_paragraphs
 from ..service_public.section_splitter import PAGE_MARKER_RE
-from ..utils.gold import GoldBundle, GoldRepository, build_embedders
+from ..utils.gold import SECTION_CHUNK_ROLE, GoldBundle, GoldRepository, build_chunk_row, build_embedders
 from ..utils.helpers import utc_now_iso
 from ..utils.image_annotation import IMAGE_REF_RE
 from .config import EmbeddingConfig, GoldConfig
 from .identity import MinistryIdentity
-
-SECTION_CHUNK_ROLE = "SECTION_ATOMIC"
 
 __all__ = ["GoldBundle", "GoldRepository", "SectionAtomicGoldBuilder", "split_section_markdown"]
 
@@ -246,34 +244,7 @@ class SectionAtomicGoldBuilder:
         return chunk_rows
 
     def _build_chunk_row(self, document: dict[str, Any], chunk: dict[str, Any]) -> dict[str, Any]:
-        row = {
-            "qa_id": chunk["qa_id"],
-            "parent_qa_id": chunk["parent_qa_id"],
-            "source_name": chunk["source_name"],
-            "section_path": chunk["section_path"],
-            "role": chunk["role"],
-            "chunk_index": chunk["chunk_index"],
-            "text": chunk["text"],
-            "chunk_text": chunk["text"],
-            "thematique": chunk["thematique"],
-            "lang": chunk["lang"],
-            "references_juridiques": chunk.get("references_juridiques") or [],
-            "source_document_id": document["doc_id"],
-            "section_id": chunk.get("section_id"),
-            "short_id": document["short_id"],
-            "source": self.identity.chunk_source,
-        }
-        seed = "|".join(
-            [
-                row["source_name"],
-                row["qa_id"],
-                row["role"],
-                str(row["chunk_index"]),
-                row["text"][:256],
-            ]
-        )
-        row["hash_id"] = hashlib.sha1(seed.encode("utf-8")).hexdigest()
-        return row
+        return build_chunk_row(document, chunk, source=self.identity.chunk_source)
 
     def persist_bundle(self, repository: GoldRepository, silver_bundle: Any) -> GoldBundle:
         chunks = self.build_chunks(silver_bundle.document, silver_bundle.sections)

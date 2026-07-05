@@ -17,8 +17,9 @@ from assistant_rh_data_engineering.mi.config import (
     MiPipelineConfig,
 )
 from assistant_rh_data_engineering.mi.gold import MiGoldBuilder
-from assistant_rh_data_engineering.mi.pipeline import MiPipeline, plan_reconciliation
+from assistant_rh_data_engineering.mi.pipeline import MiPipeline
 from assistant_rh_data_engineering.mi.silver import MiSilverBuilder
+from assistant_rh_data_engineering.pdf_ministry.pipeline import plan_reconciliation
 from assistant_rh_data_engineering.utils.grist import ManifestRow
 from assistant_rh_data_engineering.utils.ocr import OcrResult
 

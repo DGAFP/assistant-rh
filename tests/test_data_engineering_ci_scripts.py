@@ -259,9 +259,12 @@ def test_preview_staging_exposes_matte_embedding_dispatch() -> None:
     assert "- matte" in embedding_source_block
     assert "- masa" in source_block
     assert "- masa" in embedding_source_block
+    assert "- mso" in source_block
+    assert "- mso" in embedding_source_block
     assert "inputs.source == 'embeddings' || inputs.source == 'matte'" in workflow
     assert (
-        "inputs.source == 'matte' && 'matte' || inputs.source == 'mi' && 'mi' || inputs.source == 'masa' && 'masa' || inputs.embedding_source"
+        "inputs.source == 'matte' && 'matte' || inputs.source == 'mi' && 'mi' || inputs.source == 'masa' && 'masa' "
+        "|| inputs.source == 'mso' && 'mso' || inputs.embedding_source"
     ) in workflow
 
 

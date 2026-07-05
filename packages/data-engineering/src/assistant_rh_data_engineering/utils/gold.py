@@ -241,3 +241,50 @@ class GoldRepository:
         path = self.manifest_dir / f"gold_manifest_{manifest['run_id']}.json"
         write_json(path, manifest)
         return path
+
+
+# Rôle des chunks section-atomiques: valeur discriminante de la colonne
+# `role` en base, partagée entre tous les corpus qui chunkent par section.
+SECTION_CHUNK_ROLE = "SECTION_ATOMIC"
+
+
+def build_chunk_row(document: dict, chunk: dict, *, source: str) -> dict:
+    """Ligne de chunk au contrat DB commun + hash_id.
+
+    Le seed du hash_id (source_name|qa_id|role|chunk_index|text[:256]) est le
+    CONTRAT D'IDENTITÉ des chunks, partagé par tous les corpus (Service-Public,
+    ministères PDF): il ne doit exister qu'ici — un fork silencieux entre
+    copies changerait les hash_id d'un corpus (dédup/upsert incohérents).
+    Seule la valeur de `source` varie (jamais une constante partagée: le
+    hardcode SERVICE PUBLIC qui avait fui dans MATTE est le bug à éviter).
+    """
+    import hashlib
+
+    row = {
+        "qa_id": chunk["qa_id"],
+        "parent_qa_id": chunk["parent_qa_id"],
+        "source_name": chunk["source_name"],
+        "section_path": chunk["section_path"],
+        "role": chunk["role"],
+        "chunk_index": chunk["chunk_index"],
+        "text": chunk["text"],
+        "chunk_text": chunk["text"],
+        "thematique": chunk["thematique"],
+        "lang": chunk["lang"],
+        "references_juridiques": chunk.get("references_juridiques") or [],
+        "source_document_id": document["doc_id"],
+        "section_id": chunk.get("section_id"),
+        "short_id": document["short_id"],
+        "source": source,
+    }
+    seed = "|".join(
+        [
+            row["source_name"],
+            row["qa_id"],
+            row["role"],
+            str(row["chunk_index"]),
+            row["text"][:256],
+        ]
+    )
+    row["hash_id"] = hashlib.sha1(seed.encode("utf-8")).hexdigest()
+    return row

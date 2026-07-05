@@ -153,6 +153,48 @@
       ]
     },
     {
+      "key": "pdf-sources-matte-medallion",
+      "domain": "pdf_sources",
+      "image": "pdf-sources-pipeline",
+      "description": "CI/CD MATTE PDF sources medallion pipeline (rebuild Phase D — Grist manifest, OCR, réconciliation).",
+      "cpu_limit": 2000,
+      "memory_limit": 4096,
+      "local_storage_capacity": 4096,
+      "job_timeout": "7200s",
+      "auto_start_on_push": false,
+      "requires_ingestion": true,
+      "env_groups": ["object_storage", "postgres", "grist", "albert", "embeddings_api"],
+      "args": [
+        "matte",
+        "medallion",
+        "--target-env",
+        "{target_env}",
+        "--ingest",
+        "--sync-object-storage"
+      ]
+    },
+    {
+      "key": "pdf-sources-mso-medallion",
+      "domain": "pdf_sources",
+      "image": "pdf-sources-pipeline",
+      "description": "CI/CD MSO PDF sources medallion pipeline (rebuild Phase D — Grist manifest, OCR, réconciliation).",
+      "cpu_limit": 2000,
+      "memory_limit": 4096,
+      "local_storage_capacity": 4096,
+      "job_timeout": "7200s",
+      "auto_start_on_push": false,
+      "requires_ingestion": true,
+      "env_groups": ["object_storage", "postgres", "grist", "albert", "embeddings_api"],
+      "args": [
+        "mso",
+        "medallion",
+        "--target-env",
+        "{target_env}",
+        "--ingest",
+        "--sync-object-storage"
+      ]
+    },
+    {
       "key": "embeddings-service-public",
       "domain": "embeddings",
       "image": "embeddings-job",
@@ -243,6 +285,26 @@
       "args": [
         "embeddings",
         "masa",
+        "--dsn-env",
+        "SCW_POSTGRES_DSN"
+      ]
+    },
+    {
+      "key": "embeddings-mso",
+      "domain": "embeddings",
+      "image": "embeddings-job",
+      "description": "CI/CD MSO embeddings backfill.",
+      "cpu_limit": 2000,
+      "memory_limit": 8192,
+      "local_storage_capacity": 8192,
+      "job_timeout": "14400s",
+      "requires_embeddings": true,
+      "requires_explicit_embedding_source": true,
+      "auto_start_on_push": false,
+      "env_groups": ["postgres", "embeddings_api"],
+      "args": [
+        "embeddings",
+        "mso",
         "--dsn-env",
         "SCW_POSTGRES_DSN"
       ]

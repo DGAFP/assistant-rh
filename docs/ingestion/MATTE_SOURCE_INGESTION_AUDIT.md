@@ -1,3 +1,11 @@
+> **⚠️ Document historique (audit #103, soldé par la Phase D — #248).**
+> Les corpus MATTE et MSO sont reconstruits via le pipeline PDF ministériel
+> (`pdf_ministry/` + moteur QNA `pdf_ministry/qna/`). Les notebooks et
+> l'outillage d'audit référencés ci-dessous ont été retirés du repo
+> (historique disponible dans git). Les tables legacy sont conservées une
+> release sous `rag_chunks_{matte,mso}_legacy_20260705` (rollback documenté
+> dans la migration).
+
 # Audit de l'ingestion source MATTE — Issue #103
 
 > **Statut :** audit read-only, scope limité à la documentation + un outil
