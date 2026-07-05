@@ -174,7 +174,14 @@ class ContextBuildConfig:
     # Wide mode overrides
     token_budget_wide: int = 12000
     max_full_docs_wide: int = 2
-    doc_entire_threshold_wide: int = 5000
+    # 5000 -> 9000 (05/07/2026): les doc_markdown des fiches reconstruites par
+    # OCR (Phase D) sont ~3-5 % plus longs que les legacy — les fiches clés
+    # (ex: fiche MATTE 6 = 5144 tokens) passaient juste au-dessus du seuil et
+    # perdaient l'injection en doc entier (le générateur recevait une section
+    # de ~300 tokens au lieu de la fiche complète => « je n'ai pas trouvé »
+    # sur du contenu présent). 9000 récupère la bande 5000-9000 (8 docs MATTE
+    # dont les fiches) en restant sous le token_budget_wide.
+    doc_entire_threshold_wide: int = 9000
     max_sections_wide: int = 20
     legal_refs_budget_wide: int = 2000
 
@@ -208,6 +215,14 @@ class SelectorConfig:
     model: str = "openweight-large"
     temperature: float = 0.0
     prompt_name: str = "v3_selector_business.md"
+    # Plancher de sections servies au générateur quand le sélecteur a gardé
+    # quelque chose: le LLM sélecteur élague à 1-2 sections en moyenne, ce qui
+    # suffisait avec les gros chunks legacy mais affame le générateur depuis le
+    # chunking par sections fines (eval du 05/07/2026: pass 0.13 à <=1 section
+    # servie vs 0.27 au-delà; réponse présente dans le corpus mais hors du
+    # contexte servi). Le complément est pris au rang d'agrégation; le budget
+    # tokens du ContextBuilder reste la limite haute. 0 = désactivé.
+    min_kept_sections: int = 4
 
     def to_dict(self) -> dict:
         return {**asdict(self), "provider": self.provider.value}
