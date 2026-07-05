@@ -159,7 +159,14 @@ class SectionAggregationConfig:
     weight_mean_score: float = 0.3
     weight_chunk_count: float = 0.2
     enable_section_reranker: bool = True
-    section_rerank_top_k: int = 10
+    # 10 -> 16 (06/07/2026): c'était l'étage rigide de l'entonnoir — le run 54
+    # a élargi l'amont (chunks bruts 110->160 via probes+initial_top_k) mais
+    # les sections offertes au sélecteur restaient plafonnées à 10.0 pile,
+    # étranglant la conversion des gains de retrieval (hit_avg 0.36->0.43 sans
+    # effet sur le pass). L'entrée du sélecteur ne pèse que ~6 800 tokens pour
+    # 10 sections (fenêtre gpt-oss-120b: 131k) — 16 sections restent indolores.
+    # NB: la valeur runtime v3_rerank_top_k écrase ce défaut à l'exécution.
+    section_rerank_top_k: int = 16
 
     def to_dict(self) -> dict:
         return asdict(self)
