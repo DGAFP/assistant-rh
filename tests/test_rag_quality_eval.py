@@ -767,3 +767,27 @@ def test_load_goldset_propagates_probe_error_not_silent_degrade(monkeypatch) -> 
     )
     with pytest.raises(psycopg.OperationalError):
         eval_module.load_goldset_questions("postgresql://x", goldset_name="reference_v1", tags=["baseline_v1"], any_goldset=True)
+
+
+def test_merge_gold_doc_ids_keeps_pre_resolved_and_unions_runtime() -> None:
+    # Régression #276 (runs 67/68): resolve_gold_doc_ids ne mappe pas les
+    # F-codes MATTE -> doc UUID; l'écrasement jetait l'UUID pré-résolu (pont)
+    # -> hit_rate=0 alors que le gold est retrouvé. merge_gold_doc_ids garde
+    # l'union: colonne curée ∪ résolution runtime.
+    from src.goldset.eval import merge_gold_doc_ids
+
+    maps = {"doc_short": {}, "matte_short": {}, "article": {"L332-4": {"LEGIA-4"}}, "legal_ref": {}, "aliases": {}}
+    # gold_sources = un F-code MATTE (irrésoluble par les maps) + un article CGFP.
+    pre_resolved = ["F1", "uuid-fiche-matte-1"]  # pont: F1 -> uuid
+    merged = merge_gold_doc_ids(pre_resolved, ["F1", "CGFP L. 332-4"], maps)
+
+    assert "uuid-fiche-matte-1" in merged  # l'UUID du pont n'est PAS jeté
+    assert "LEGIA-4" in merged  # la résolution runtime (#276) est ajoutée
+
+
+def test_merge_gold_doc_ids_empty_pre_resolved_falls_back_to_runtime() -> None:
+    from src.goldset.eval import merge_gold_doc_ids
+
+    maps = {"doc_short": {}, "matte_short": {}, "article": {"L332-4": {"LEGIA-4"}}, "legal_ref": {}, "aliases": {}}
+    merged = merge_gold_doc_ids([], ["CGFP L. 332-4"], maps)
+    assert merged == ["LEGIA-4"]
