@@ -1301,8 +1301,16 @@ def resolve_question_scope(question: GoldsetQuestion, ministry_scope_mode: str) 
     ministère dans l'app. Sonde du 06/07/2026 en scope « all »: contamination
     inter-ministères (question MSO répondue depuis un mode opératoire MASA,
     questions MATTE depuis le Vademecum MSO) — aucun utilisateur réel n'a ce
-    scope-là. Les questions non ministérielles (Service-Public, manual,
-    synthetic, DGAFP) gardent le scope complet.
+    scope-là.
+
+    Les questions NON ministérielles (Service-Public, manual, synthetic,
+    DGAFP) suivent aussi le **parcours MATTE** (matte + tables partagées SP +
+    Légifrance) — décision Paul 06/07/2026. Le goldset est construit en
+    contexte MATTE/DGAFP et 55/68 de ces questions ont leur gold dans SP ou
+    Légifrance (couvert par les tables partagées, présentes dans TOUT scope
+    ministériel). Les évaluer en scope complet leur infligeait le pool le plus
+    bruité (chunks mso/mi/masa hors-sujet) sans qu'aucun utilisateur réel n'ait
+    ce scope — un agent DGAFP/MATTE n'interroge jamais tous les ministères.
     """
     if ministry_scope_mode == "none":
         return None
@@ -1310,13 +1318,11 @@ def resolve_question_scope(question: GoldsetQuestion, ministry_scope_mode: str) 
         from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG, build_retrieval_scope
 
         ministry_id = (question.source or "").strip().lower()
-        # Les questions « manual » ont été collectées auprès d'agents MATTE:
-        # elles s'évaluent dans le parcours MATTE (décision Paul 06/07/2026),
-        # pas en scope complet.
-        if ministry_id == "manual":
+        # Sources non ministérielles (manual/Service-Public/synthetic/DGAFP)
+        # -> parcours MATTE (matte + SP + Légifrance), pas scope complet.
+        if ministry_id not in MINISTRY_CATALOG:
             ministry_id = "matte"
-        if ministry_id in MINISTRY_CATALOG:
-            return build_retrieval_scope(ministry_id)
+        return build_retrieval_scope(ministry_id)
     return build_full_ministry_scope()
 
 
@@ -1498,6 +1504,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override du nombre de sections offertes au sélecteur (v3_rerank_top_k runtime sinon).",
     )
+    parser.add_argument("--initial-top-k", type=int, default=None, help="Override retrieval.initial_top_k (ablation).")
+    parser.add_argument("--ivfflat-probes", type=int, default=None, help="Override retrieval.ivfflat_probes (ablation; 0=défaut serveur).")
+    parser.add_argument("--min-kept-sections", type=int, default=None, help="Override selector.min_kept_sections (ablation; 0=désactivé).")
+    parser.add_argument("--doc-entire-threshold-wide", type=int, default=None, help="Override context.doc_entire_threshold_wide (ablation).")
     parser.add_argument(
         "--ministry-scope",
         choices=["per-question", "all", "none"],
@@ -1578,6 +1588,18 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.section_rerank_top_k is not None:
         pipeline_config.aggregation.section_rerank_top_k = args.section_rerank_top_k
         config_adjustments.append(f"section_rerank_top_k={args.section_rerank_top_k}")
+    if args.initial_top_k is not None:
+        pipeline_config.retrieval.initial_top_k = args.initial_top_k
+        config_adjustments.append(f"initial_top_k={args.initial_top_k}")
+    if args.ivfflat_probes is not None:
+        pipeline_config.retrieval.ivfflat_probes = args.ivfflat_probes
+        config_adjustments.append(f"ivfflat_probes={args.ivfflat_probes}")
+    if args.min_kept_sections is not None:
+        pipeline_config.selector.min_kept_sections = args.min_kept_sections
+        config_adjustments.append(f"min_kept_sections={args.min_kept_sections}")
+    if args.doc_entire_threshold_wide is not None:
+        pipeline_config.context.doc_entire_threshold_wide = args.doc_entire_threshold_wide
+        config_adjustments.append(f"doc_entire_threshold_wide={args.doc_entire_threshold_wide}")
     config_hash = config_fingerprint(pipeline_config)
     git_sha = _git_sha()
     run_label = args.run_label or f"{datetime.now(tz=UTC).strftime('%Y%m%dT%H%M%SZ')}_{args.goldset_name}"

@@ -179,6 +179,42 @@ le juge reçoit des diagnostics retrieval corrects sur tous les corpus.
 Comparaison run 52 (sous-ensemble commun) + run 19 en SQL.
 - **Résultats : à compléter à la fin.**
 
+## Ablation config + candidat v2 — récupération MATTE/SP (06/07)
+
+**Question de Paul** : « à la base on n'avait pas les probes, on était à k30, c'était
+plus simple » — mes changements de config Phase D (tunés en partie contre des
+métriques CORROMPUES par le bug gold_doc_ids) ont-ils fait régresser MATTE/SP ?
+
+**Diff config run 19 (bon MATTE/SP) → run 70** : 5 deltas, tous introduits par moi :
+`initial_top_k` 20→30, `ivfflat_probes` (1)→15, `section_rerank_top_k` 10→20,
+`doc_entire_threshold_wide` 5000→9000, `min_kept_sections` off→4.
+
+**Ablation (20 cas, appariés vs run 70 : MATTE 0,56 / SP 0,50)** — un param reverté à la fois :
+- reverter `probes` OU `min_kept` → MATTE↑ ET SP↑ (les deux aident les deux corpus).
+- reverter `top_k` OU `rerank` → MATTE↑ mais SP indifférent ; reverter les 4 (full simple)
+  → MATTE 0,78 mais **SP 0,40** (top_k=20+rerank=10 affament SP).
+- **Sweep offline retrieval** : `probes=5` = sweet spot (recall 0,92 comme 15, mais
+  Alan 0,25 vs 0,58) ; `probes=1` perd du recall (0,83) ; `probes=15` le plus bruité.
+
+**Scope SP corrigé (question de Paul)** : les questions source=Service-Public/synthetic/
+DGAFP tournaient en scope COMPLET (`matte,mso,mi,masa,sp,dgafp`) = pool le plus bruité,
+irréaliste. Or 55/68 des questions manual+MATTE ont leur gold dans SP/Légifrance (donc
+matte-path suffit) et aucun agent réel n'interroge tous les ministères → **toute source
+non ministérielle suit désormais le parcours MATTE** (matte+sp+dgafp).
+
+**Candidat v2** (`probes=5` + `min_kept=0` + scope matte-path pour SP ; top_k=30/rerank=20/
+doc_entire=9000 inchangés) — 20 cas appariés vs run 70 :
+| Corpus | candidat v2 | run 70 | run 19 (cible) |
+|---|---|---|---|
+| MATTE | **0,78** | 0,56 | 0,73 ✅ |
+| Service-Public | **0,70** | 0,50 | 0,71 ✅ |
+| GLOBAL | **0,75** | 0,55 | — |
+- Décomposition : fix scope SP → SP +20 ; probes 15→5 → MATTE +22 ; min_kept→0 aide les deux.
+- Les 3 changements sont justes **sur le fond** (probes 15 sur-bruité, min_kept force des
+  sections = risque d'invention réglementaire, scope complet irréaliste), pas des hacks d'éval.
+- **`candidate_v2_20260706` = full run 115 en cours** pour confirmer global + non-régression MI/MSO
+  (n=20 avait 1 seul MSO). Résultats à compléter.
+
 ## Backlog priorisé (état au 06/07)
 
 0. **Nettoyer la colonne `gold_doc_ids`** : le pont a APPENDU les UUID aux labels

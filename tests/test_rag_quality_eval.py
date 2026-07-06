@@ -676,11 +676,18 @@ def test_resolve_question_scope_per_question_routes_ministries() -> None:
     assert manual_scope.selected_ministry == "matte"
     assert "mso" not in manual_scope.table_keys
 
-    synthetic_scope = resolve_question_scope(
-        GoldsetQuestion(id=3, question="q", gold_answer="a", gold_sources=[], source="synthetic"),
-        "per-question",
-    )
-    assert synthetic_scope.selected_ministry == "eval_all_ministries"
+    # Sources non ministérielles (synthetic/Service-Public/DGAFP) -> parcours
+    # MATTE aussi (matte + SP + Légifrance), pas scope complet (décision Paul
+    # 06/07/2026): leur gold vit dans SP/Légifrance, présents dans tout scope
+    # ministériel, et le scope complet leur infligeait le pool le plus bruité.
+    for src in ("synthetic", "Service-Public", "DGAFP"):
+        scope = resolve_question_scope(
+            GoldsetQuestion(id=3, question="q", gold_answer="a", gold_sources=[], source=src),
+            "per-question",
+        )
+        assert scope.selected_ministry == "matte", src
+        assert "mso" not in scope.table_keys and "mi" not in scope.table_keys, src
+        assert "service_public" in scope.table_keys, src
 
     assert resolve_question_scope(mso_question, "none") is None
     assert resolve_question_scope(mso_question, "all").selected_ministry == "eval_all_ministries"
