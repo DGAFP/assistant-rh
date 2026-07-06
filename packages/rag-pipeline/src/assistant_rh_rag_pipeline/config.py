@@ -167,9 +167,14 @@ class SectionAggregationConfig:
     # les sections offertes au sélecteur restaient plafonnées à 10.0 pile,
     # étranglant la conversion des gains de retrieval (hit_avg 0.36->0.43 sans
     # effet sur le pass). L'entrée du sélecteur ne pèse que ~6 800 tokens pour
-    # 10 sections (fenêtre gpt-oss-120b: 131k) — 16 sections restent indolores.
-    # NB: la valeur runtime v3_rerank_top_k écrase ce défaut à l'exécution.
-    section_rerank_top_k: int = 16
+    # 10 sections (fenêtre gpt-oss-120b: 131k).
+    # 16 -> 20 (06/07/2026): alignement sur la config MESURÉE — l'A/B (runs
+    # 58/59) et le run de référence candidate_v2 (run 115) ont validé 20 via
+    # --section-rerank-top-k; 16 ne correspondait à aucun run. NB: la valeur
+    # runtime v3_rerank_top_k écrase ce défaut à l'exécution — la ligne
+    # rag_config partagée doit être alignée à 20 pour que la prod serve la
+    # config validée (sinon l'entonnoir reste étranglé à 10).
+    section_rerank_top_k: int = 20
 
     def to_dict(self) -> dict:
         return asdict(self)

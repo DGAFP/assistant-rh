@@ -371,9 +371,12 @@ with tab_config:
         
         if new_v3_reranker:
             current_v3_rerank_top_k = getattr(config, 'v3_rerank_top_k', 5)
+            # max 15 -> 30: la config validée par l'eval (candidate_v2, run 115)
+            # utilise 20 sections — le plafond 15 rendait la valeur mesurée
+            # inatteignable depuis l'UI.
             new_v3_rerank_top_k = st.slider(
                 "Sections après rerank",
-                min_value=3, max_value=15, value=current_v3_rerank_top_k, step=1,
+                min_value=3, max_value=30, value=current_v3_rerank_top_k, step=1,
                 help="Nombre de sections conservées après reranking",
                 key="slider_v3_rerank_top_k"
             )
