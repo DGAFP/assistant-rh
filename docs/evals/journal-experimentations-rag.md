@@ -212,8 +212,16 @@ doc_entire=9000 inchangés) — 20 cas appariés vs run 70 :
 - Décomposition : fix scope SP → SP +20 ; probes 15→5 → MATTE +22 ; min_kept→0 aide les deux.
 - Les 3 changements sont justes **sur le fond** (probes 15 sur-bruité, min_kept force des
   sections = risque d'invention réglementaire, scope complet irréaliste), pas des hacks d'éval.
-- **`candidate_v2_20260706` = full run 115 en cours** pour confirmer global + non-régression MI/MSO
-  (n=20 avait 1 seul MSO). Résultats à compléter.
+- **`candidate_v2_20260706` = full run 115 — RÉSULTATS** : judge_pass **0,678**
+  (run 70: 0,643). Apparié **+4 vs run 70**, **+9 vs run 19** (99 communes: 0,68 vs 0,59).
+  Par corpus : MI 0,90 · **SP 0,79** (run 19 0,71, dépassé) · synthetic 0,73 ·
+  **MATTE 0,75** (run 19 0,73, récupéré) · manual 0,63 · **MSO 0,40 (régression)** · DGAFP 1,00.
+  **Objectif MATTE/SP atteint.** Seule ombre : MSO 0,60→0,40 (le plancher min_kept
+  l'aidait). Accepté temporairement — fix propre = **override config PAR MINISTÈRE**
+  (MSO garde le plancher, les autres non), au backlog.
+- **Défauts de config committés** : `ivfflat_probes` 15→5, `min_kept_sections` 4→0
+  (config.py, code-only, non mappés runtime). Scope SP→matte-path = eval-only
+  (l'app scope par groupe). Ces 3 changements sont justes sur le fond, pas des hacks.
 
 ## Backlog priorisé (état au 06/07)
 

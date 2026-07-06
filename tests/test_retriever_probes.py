@@ -69,5 +69,7 @@ def test_exec_de_table_zero_probes_keeps_server_default(capture: list[str]) -> N
 
 def test_default_config_widens_funnel() -> None:
     config = RetrievalConfig()
-    assert config.ivfflat_probes == 15
+    # probes=5: sweet spot (recall plein, moitié moins de bruit qu'à 15) —
+    # ablation goldset du 06/07/2026.
+    assert config.ivfflat_probes == 5
     assert config.initial_top_k == 30
