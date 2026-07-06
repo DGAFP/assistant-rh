@@ -21,7 +21,6 @@ import os
 import re
 import subprocess
 import time
-import unicodedata
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,6 +30,7 @@ import psycopg
 from assistant_rh_rag_pipeline import PipelineResult, create_pipeline
 from assistant_rh_rag_pipeline.admin import get_rag_config, runtime_config_to_rag_config
 from assistant_rh_rag_pipeline.config import RAGConfig
+from assistant_rh_rag_pipeline.query_processor import _fold as _fold_text
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
@@ -368,6 +368,13 @@ def _load_eval_run(
     else:
         if not goldset_name or tags is None or eval_scope is None:
             return None
+        # Un candidat ministry_scope="none" est comparable aux runs historiques
+        # enregistrés AVANT l'introduction de la clé (aucun scope appliqué =
+        # même comportement): accepter aussi la variante legacy sans la clé,
+        # sinon le lookup auto ne trouve jamais de baseline pré-06/07/2026.
+        scope_variants = [eval_scope]
+        if eval_scope.get("ministry_scope") == "none":
+            scope_variants.append({key: value for key, value in eval_scope.items() if key != "ministry_scope"})
         rows = conn.execute(
             """
             SELECT id, status, created_at, completed_at, goldset_name, tag_filter,
@@ -375,12 +382,12 @@ def _load_eval_run(
             FROM public.rag_quality_eval_runs
             WHERE goldset_name = %s
               AND tag_filter = %s::text[]
-              AND metadata -> 'eval_scope' = %s::jsonb
+              AND metadata -> 'eval_scope' = ANY(%s::jsonb[])
               AND status = 'completed'
             ORDER BY completed_at DESC NULLS LAST, created_at DESC
             LIMIT 1
             """,
-            (goldset_name, tags, json.dumps(eval_scope, sort_keys=True, ensure_ascii=False, default=str)),
+            (goldset_name, tags, [json.dumps(variant, sort_keys=True, ensure_ascii=False, default=str) for variant in scope_variants]),
         ).fetchall()
     return dict(rows[0]) if rows else None
 
@@ -395,6 +402,13 @@ def _baseline_is_comparable(
     reasons: list[str] = []
     metadata = _json_dict(baseline_run.get("metadata"))
     baseline_scope = _json_dict(metadata.get("eval_scope"))
+    # Les runs antérieurs au 06/07/2026 n'avaient pas de scope ministériel —
+    # comportement identique à ministry_scope="none". Sans ce backfill, l'ajout
+    # de la clé rendait TOUTES les baselines historiques non comparables, y
+    # compris pour un candidat "none" pourtant à périmètre strictement
+    # identique (le gate CI COMPARE_BASELINE échouait jusqu'à re-baseline).
+    if "ministry_scope" in eval_scope and "ministry_scope" not in baseline_scope:
+        baseline_scope = {**baseline_scope, "ministry_scope": "none"}
     if baseline_run.get("status") != "completed":
         reasons.append(f"baseline status is {baseline_run.get('status')!r}, expected 'completed'")
     if str(baseline_run.get("goldset_name") or "") != goldset_name:
@@ -665,8 +679,11 @@ def _match_key(value: str) -> str:
 
 
 def _ascii_lower(value: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", str(value or "").lower())
-    return "".join(char for char in decomposed if not unicodedata.combining(char))
+    # Réutilise le fold canonique du pipeline: NFKD seul ne décompose PAS les
+    # tirets typographiques (U+2011 insécable, U+2212 moins — courants dans les
+    # collages PDF/Légifrance), et « Décret 86‑83 » échouait alors
+    # _DECREE_NUMBER_RE, abandonnant la résolution legal_ref en silence.
+    return _fold_text(str(value or ""))
 
 
 def _alias_key(value: str) -> str:
@@ -732,7 +749,12 @@ def load_gold_id_maps(dsn: str) -> dict[str, dict[str, Any]]:
     (``LEGIARTI...``), while pre-resolved gold rows may contain the corresponding
     ``rag_documents.doc_id`` UUID.
 
-    Returns empty maps if the corpus tables are absent."""
+    Toute erreur DB se propage — même doctrine fail-loud que le probe
+    ``gold_doc_ids`` de ``load_goldset_questions``: un ``except psycopg.Error``
+    qui rendait des maps vides transformait une erreur transitoire (ou une
+    colonne absente) en dégradation SILENCIEUSE de tout le run — résolution
+    runtime et alias désactivés, métriques hit_rate/doc_recall corrompues,
+    juge biaisé (mécanisme du run 67, 06/07/2026)."""
     maps: dict[str, dict[str, Any]] = {"doc_short": {}, "matte_short": {}, "article": {}, "legal_ref": {}, "aliases": {}}
     queries = {
         "doc_short": "SELECT short_id, doc_id, source_url FROM public.rag_documents WHERE short_id IS NOT NULL",
@@ -745,33 +767,30 @@ def load_gold_id_maps(dsn: str) -> dict[str, dict[str, Any]]:
             "FROM public.rag_chunks_dgafp WHERE number IS NOT NULL AND cid IS NOT NULL"
         ),
     }
-    try:
-        with psycopg.connect(dsn, row_factory=dict_row) as conn:
-            for name, sql in queries.items():
-                for row in conn.execute(sql).fetchall():
-                    key = _match_key(row["short_id"])
-                    value = str(row.get("doc_id") or row.get("v") or "").strip()
-                    if not key or not value:
-                        continue
-                    if name == "doc_short":
-                        maps[name][key] = value
-                        aliases = maps["aliases"]
-                        alias_values = [value, str(row["short_id"])]
-                        source_url = str(row.get("source_url") or "").strip()
-                        if source_url:
-                            alias_values.append(source_url)
-                            alias_values.append(source_url.rstrip("/").rsplit("/", 1)[-1])
-                        _add_alias_group(aliases, alias_values)
-                    else:
-                        maps[name].setdefault(key, set()).add(value)
-                        if name == "article":
-                            title = str(row.get("title") or "")
-                            full_title = str(row.get("full_title") or "")
-                            decree_number = _extract_decree_number(f"{title} {full_title}")
-                            if decree_number:
-                                maps["legal_ref"].setdefault(_legal_ref_key(decree_number, str(row["short_id"])), set()).add(value)
-    except psycopg.Error:
-        return {"doc_short": {}, "matte_short": {}, "article": {}, "legal_ref": {}, "aliases": {}}
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        for name, sql in queries.items():
+            for row in conn.execute(sql).fetchall():
+                key = _match_key(row["short_id"])
+                value = str(row.get("doc_id") or row.get("v") or "").strip()
+                if not key or not value:
+                    continue
+                if name == "doc_short":
+                    maps[name][key] = value
+                    aliases = maps["aliases"]
+                    alias_values = [value, str(row["short_id"])]
+                    source_url = str(row.get("source_url") or "").strip()
+                    if source_url:
+                        alias_values.append(source_url)
+                        alias_values.append(source_url.rstrip("/").rsplit("/", 1)[-1])
+                    _add_alias_group(aliases, alias_values)
+                else:
+                    maps[name].setdefault(key, set()).add(value)
+                    if name == "article":
+                        title = str(row.get("title") or "")
+                        full_title = str(row.get("full_title") or "")
+                        decree_number = _extract_decree_number(f"{title} {full_title}")
+                        if decree_number:
+                            maps["legal_ref"].setdefault(_legal_ref_key(decree_number, str(row["short_id"])), set()).add(value)
     return maps
 
 
@@ -828,8 +847,19 @@ def merge_gold_doc_ids(
     On garde le meilleur des deux mondes: résolution runtime (#276: DGAFP,
     décrets, alias LEGIARTI) ∪ colonne curée (pont MATTE/MSO). Le matching
     ``hit_rate`` est un « au moins un recouvrement », donc l'union ne peut que
-    rétablir des hits légitimes sans en inventer."""
+    rétablir des hits légitimes sans en inventer.
+
+    Quand la colonne curée est non vide, les labels bruts que la résolution
+    runtime n'a pas su mapper (passthrough ``resolved_for_raw or [raw]``) sont
+    écartés: ids résolus et labels bruts sont des ALTERNATIVES pour la même
+    source attendue, pas des sources supplémentaires. Les garder rendait
+    ``doc_recall < 1.0`` structurel (un F-code ne matche jamais un UUID),
+    déclenchait le cap soft ``missing_expected_source`` à chaque question
+    pontée et nourrissait le juge de faux ``missing_gold_sources``."""
     runtime_resolved = resolve_gold_doc_ids(gold_sources, maps)
+    if pre_resolved:
+        raw_keys = {_match_key(source) for source in gold_sources}
+        runtime_resolved = [value for value in runtime_resolved if _match_key(value) not in raw_keys]
     return _stable_unique([*(pre_resolved or []), *runtime_resolved])
 
 
@@ -1166,6 +1196,11 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
 
     parsed["raw_model_score"] = raw_model_score
     parsed["score"] = final_score
+    # Persister la base du pass: le score stocké est plafonné par les caps soft
+    # (ex. 0.6 sur hit_rate=0) alors que le pass s'évalue AVANT — sans ce champ,
+    # une ligne pass=true/score=0.6 contredit pass_min_score=0.8 pour tout SQL
+    # qui recalcule le pass depuis le score.
+    parsed["pass_basis_score"] = pass_basis_score
     parsed["pass"] = pass_value
     parsed["failure_category"] = "none" if pass_value else failure_category if failure_category != "none" else "quality_gate_failed"
     parsed["dimensions"] = normalized_dimensions

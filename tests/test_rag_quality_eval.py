@@ -564,6 +564,12 @@ def test_resolve_goldset_doc_ids_dry_run_does_not_mutate(monkeypatch) -> None:
             executed.append(sql)
             return self
 
+        def fetchone(self):
+            # Probe information_schema: la colonne gold_doc_ids n'existe pas
+            # encore (dry-run avant l'ALTER) — le script doit alors merger
+            # depuis un existant vide.
+            return None
+
         def fetchall(self):
             return [{"id": 1, "gold_sources": "F8"}]
 
@@ -798,3 +804,21 @@ def test_merge_gold_doc_ids_empty_pre_resolved_falls_back_to_runtime() -> None:
     maps = {"doc_short": {}, "matte_short": {}, "article": {"L332-4": {"LEGIA-4"}}, "legal_ref": {}, "aliases": {}}
     merged = merge_gold_doc_ids([], ["CGFP L. 332-4"], maps)
     assert merged == ["LEGIA-4"]
+
+
+def test_merge_gold_doc_ids_drops_unresolved_raw_labels_when_curated() -> None:
+    # Ids résolus et labels bruts sont des ALTERNATIVES pour la même source:
+    # quand la colonne curée porte l'UUID du pont, le passthrough runtime du
+    # F-code irrésoluble ne doit pas re-devenir un gold supplémentaire —
+    # sinon doc_recall < 1.0 structurel, cap soft missing_expected_source à
+    # chaque question pontée et faux missing_gold_sources envoyés au juge.
+    from src.goldset.eval import merge_gold_doc_ids
+
+    maps = {"doc_short": {}, "matte_short": {}, "article": {}, "legal_ref": {}, "aliases": {}}
+    merged = merge_gold_doc_ids(["uuid-fiche-matte-1"], ["F1"], maps)
+
+    assert merged == ["uuid-fiche-matte-1"]  # pas de « F1 » jamais-matchable
+
+    # Sans colonne curée, le label brut reste le seul candidat de matching
+    # (alias/url-tail au moment des métriques) — il est conservé.
+    assert merge_gold_doc_ids([], ["F1"], maps) == ["F1"]
