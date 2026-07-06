@@ -167,7 +167,10 @@ class ContextSelector:
                 logger.warning("Selector parse failure – keeping top %d sections", _FALLBACK_K)
                 return sections[:_FALLBACK_K]
 
-            selected_ids = [i for i in parsed.ids if 0 <= i < len(sections)]
+            # Dédup en préservant l'ordre: un LLM peut répéter un indice, ce qui
+            # servirait deux fois la même section au générateur (et la listerait
+            # deux fois dans la trace kept).
+            selected_ids = list(dict.fromkeys(i for i in parsed.ids if 0 <= i < len(sections)))
             # Le plancher est appliqué AVANT de figer la trace kept/removed:
             # les sections repêchées sont réellement servies au générateur et
             # doivent apparaître dans "kept" (chat_logger et les pages d'audit
