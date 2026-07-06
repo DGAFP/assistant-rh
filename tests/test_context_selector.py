@@ -120,3 +120,17 @@ def test_parse_failure_keeps_legacy_top5_fallback(patch_llm) -> None:
     kept = selector.select("question", sections)
 
     assert kept == sections[:5]
+
+
+def test_duplicate_ids_are_not_served_twice(patch_llm) -> None:
+    # Un LLM peut répéter un indice: la section ne doit être servie qu'une fois
+    # (sinon contexte dupliqué au générateur et trace kept incohérente).
+    patch_llm('{"selected_ids": [2, 2, 0], "reason": "doublon"}')
+    selector = ContextSelector(SelectorConfig(enabled=True, min_kept_sections=0))
+    sections = make_sections(6)
+
+    kept = selector.select("question", sections)
+
+    assert [s.section_id for s in kept] == ["s2", "s0"]
+    kept_idx = [entry["idx"] for entry in selector.last_decisions["kept"]]
+    assert kept_idx == [2, 0]

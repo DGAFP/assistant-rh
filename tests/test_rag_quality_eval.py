@@ -806,38 +806,38 @@ def test_merge_gold_doc_ids_empty_pre_resolved_falls_back_to_runtime() -> None:
     assert merged == ["LEGIA-4"]
 
 
-def test_merge_gold_doc_ids_drops_unresolved_raw_labels_when_curated() -> None:
-    # Ids résolus et labels bruts sont des ALTERNATIVES pour la même source:
-    # quand la colonne curée porte l'UUID du pont, le passthrough runtime du
-    # F-code irrésoluble ne doit pas re-devenir un gold supplémentaire —
-    # sinon doc_recall < 1.0 structurel, cap soft missing_expected_source à
-    # chaque question pontée et faux missing_gold_sources envoyés au juge.
+def test_merge_gold_doc_ids_drops_raw_label_that_sits_in_the_column() -> None:
+    # Constat live (46/116 lignes staging): l'ANCIEN script écrivait le F-code
+    # brut DANS la colonne, à côté du pont UUID (gold_doc_ids = ['F1', 'uuid']).
+    # Ids résolus et label brut sont des ALTERNATIVES pour la même source:
+    # garder 'F1' (jamais-matchable) rendait doc_recall < 1.0 structurel, cap
+    # soft missing_expected_source et faux missing_gold_sources au juge. Le brut
+    # co-résident d'un id résolu DANS la colonne est retiré -> ré-exécuter le
+    # script nettoie la colonne en place.
     from src.goldset.eval import merge_gold_doc_ids
 
     maps = {"doc_short": {}, "matte_short": {}, "article": {}, "legal_ref": {}, "aliases": {}}
-    merged = merge_gold_doc_ids(["uuid-fiche-matte-1"], ["F1"], maps)
-
-    assert merged == ["uuid-fiche-matte-1"]  # pas de « F1 » jamais-matchable
+    assert merge_gold_doc_ids(["F1", "uuid-fiche-matte-1"], ["F1"], maps) == ["uuid-fiche-matte-1"]
 
     # Sans colonne curée, le label brut reste le seul candidat de matching
     # (alias/url-tail au moment des métriques) — il est conservé.
     assert merge_gold_doc_ids([], ["F1"], maps) == ["F1"]
 
 
-def test_merge_gold_doc_ids_cleans_raw_label_already_in_column() -> None:
-    # Re-review PR #281 (constat live: 46/116 lignes staging): l'ANCIEN script
-    # avait écrit le label brut DANS la colonne, à côté du pont UUID
-    # (gold_doc_ids = ['F3', 'uuid']). Le filtre du premier fix ne portait que
-    # sur runtime_resolved -> le 'F3' de la colonne survivait et plombait
-    # doc_recall. Le filtre porte désormais sur l'UNION: dès qu'un doc_id corpus
-    # est présent, tout label brut résiduel (colonne OU runtime) est écarté,
-    # donc ré-exécuter le script nettoie la colonne en place.
+def test_merge_gold_doc_ids_keeps_passthrough_of_uncovered_source() -> None:
+    # Re-review follow-up PR #281: multi-source. La colonne ne ponte QUE la
+    # source A (uuid). La source B est irrésoluble et n'est PAS dans la colonne
+    # -> son label brut (passthrough runtime) est son SEUL ancrage et doit
+    # survivre, même si A résout. Le retirer gonflerait doc_recall et masquerait
+    # le retrieval gap de B. Le filtre ne touche donc QUE les bruts déjà présents
+    # dans la colonne curée, pas les passthrough de sources non couvertes.
     from src.goldset.eval import merge_gold_doc_ids
 
     maps = {"doc_short": {}, "matte_short": {}, "article": {}, "legal_ref": {}, "aliases": {}}
-    merged = merge_gold_doc_ids(["F3", "uuid-fiche-3"], ["F3", "autre source"], maps)
+    merged = merge_gold_doc_ids(["uuid-A"], ["A", "arrete-B-irresoluble"], maps)
 
-    assert merged == ["uuid-fiche-3"]
+    assert "uuid-A" in merged
+    assert "arrete-B-irresoluble" in merged  # ancrage de la source B préservé
 
 
 def test_merge_gold_doc_ids_keeps_raw_labels_when_nothing_resolves() -> None:
