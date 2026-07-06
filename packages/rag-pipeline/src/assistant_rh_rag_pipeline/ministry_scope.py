@@ -24,6 +24,16 @@ class MinistrySource:
     chunk_table: str
     publisher: str
 
+    @property
+    def sigle(self) -> str:
+        """Short ministry tag used to name its source in prompts (e.g. ``MATTE``)."""
+        return self.publisher
+
+    @property
+    def fiches_label(self) -> str:
+        """How to refer to this ministry's internal fiches in prompts."""
+        return f"fiches {self.publisher}"
+
 
 @dataclass(frozen=True)
 class RetrievalScope:
@@ -97,3 +107,59 @@ def build_retrieval_scope(selected_ministry: str) -> RetrievalScope:
         selected_ministry=ministry.id,
         table_keys=(ministry.table_key, *SHARED_TABLE_KEYS),
     )
+
+
+def resolve_ministry(scope: RetrievalScope | str | None) -> MinistrySource | None:
+    """Resolve a scope (or ministry id) to a catalog entry, or *None*.
+
+    Fails soft: an unknown/empty ministry yields *None* so prompt rendering
+    falls back to generic wording instead of raising in the hot path.
+    """
+
+    if scope is None:
+        return None
+    ministry_id = scope.selected_ministry if isinstance(scope, RetrievalScope) else scope
+    try:
+        return get_ministry(ministry_id)
+    except MinistryScopeError:
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Prompt rendering (ministry-agnostic templates)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Generic wording used when no ministry is resolved (admin previews, eval
+# harness, scripts). Keeps prompts readable and never leaks raw placeholders.
+_FALLBACK_PLACEHOLDERS: dict[str, str] = {
+    "ministere_label": "votre ministère",
+    "ministere_sigle": "votre ministère",
+    "ministere_fiches": "fiches ministérielles",
+}
+
+
+def ministry_placeholders(ministry: MinistrySource | None) -> dict[str, str]:
+    """Return the ``{ministere_*}`` substitution map for *ministry*."""
+
+    if ministry is None:
+        return dict(_FALLBACK_PLACEHOLDERS)
+    return {
+        "ministere_label": ministry.label,
+        "ministere_sigle": ministry.sigle,
+        "ministere_fiches": ministry.fiches_label,
+    }
+
+
+def render_ministry_prompt(text: str, ministry: MinistrySource | None) -> str:
+    """Substitute ``{ministere_label}`` / ``{ministere_sigle}`` / ``{ministere_fiches}``.
+
+    Uses plain ``str.replace`` (not ``str.format``) so it composes with prompts
+    that legitimately contain other braces (JSON few-shot examples, ``{query}``
+    placeholders resolved later downstream).
+    """
+
+    if not text:
+        return text
+    for key, value in ministry_placeholders(ministry).items():
+        text = text.replace("{" + key + "}", value)
+    return text

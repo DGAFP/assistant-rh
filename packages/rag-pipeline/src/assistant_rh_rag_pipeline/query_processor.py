@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional
 from .config import QueryProcessorConfig
 from .db_helpers import get_acronym_dict, load_prompt
 from .llm_client import LLMClient
+from .ministry_scope import MinistrySource, render_ministry_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +242,7 @@ class QueryProcessor:
         self,
         query: str,
         conversation_history: Optional[List[Dict[str, str]]] = None,
+        ministry: MinistrySource | None = None,
     ) -> QueryProcessResult:
         # Canonicalize the user input at the API boundary so the LLM, retriever,
         # and replay cache all see the same byte sequence regardless of whether
@@ -252,7 +254,7 @@ class QueryProcessor:
 
         # --- intent gating (single LLM call) --------------------------------
         if self.config.enable_intent_gating:
-            intent_data = self._classify(query, conversation_history, detected)
+            intent_data = self._classify(query, conversation_history, detected, ministry)
         else:
             intent_data = self._fallback_expand(query, detected)
 
@@ -311,6 +313,7 @@ class QueryProcessor:
         query: str,
         history: Optional[List[Dict[str, str]]],
         detected_acronyms: Dict[str, str],
+        ministry: MinistrySource | None = None,
     ) -> Dict[str, Any]:
         """Run the unified intent prompt via a lightweight LLM call."""
         try:
@@ -338,6 +341,8 @@ class QueryProcessor:
             if not template:
                 raise FileNotFoundError("Intent prompt not found")
 
+            # Resolve {ministere_*} before .format() fills history/query/acronyms.
+            template = render_ministry_prompt(template, ministry)
             prompt = template.format(history=history_text, query=query, acronyms_section=acr_section)
             raw = llm.chat(prompt, system_prompt="")
 

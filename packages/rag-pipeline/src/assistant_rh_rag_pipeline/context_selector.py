@@ -25,6 +25,7 @@ from typing import List, Union
 from .config import SelectorConfig
 from .db_helpers import load_prompt
 from .llm_client import LLMClient
+from .ministry_scope import MinistrySource, render_ministry_prompt
 from .models import AggregatedSection, ContextItem
 
 logger = logging.getLogger(__name__)
@@ -99,6 +100,7 @@ class ContextSelector:
         self,
         query: str,
         sections: List[AggregatedSection],
+        ministry: MinistrySource | None = None,
     ) -> List[AggregatedSection]:
         """
         Filter *sections* through the LLM selector.
@@ -123,6 +125,8 @@ class ContextSelector:
                 "selector.md",
                 default=_DEFAULT_PROMPT,
             )
+            # Resolve {ministere_*} before format_map fills {query}/{context}.
+            prompt_template = render_ministry_prompt(prompt_template, ministry)
 
             numbered = []
             for i, sec in enumerate(sections):
