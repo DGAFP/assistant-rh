@@ -851,28 +851,34 @@ def merge_gold_doc_ids(
 
     Un label brut (valeur qui est elle-même un ``gold_source``, non résolu vers
     un doc_id) et un id corpus sont des ALTERNATIVES pour la même source
-    attendue, pas des sources supplémentaires. Dès qu'AU MOINS un doc_id corpus
-    est présent dans l'union, on écarte les labels bruts résiduels — qu'ils
-    viennent du passthrough runtime OU de la colonne curée elle-même (l'ancien
-    ``resolve_goldset_doc_ids`` écrivait ``resolved_for_raw or [raw]`` en base,
-    laissant des F-codes/sentences décret À CÔTÉ du pont UUID: 46/116 lignes
-    staging au 06/07/2026). Les garder rendait ``doc_recall < 1.0`` structurel
-    (un F-code ne matche jamais un UUID), déclenchait le cap soft
-    ``missing_expected_source`` à chaque question et nourrissait le juge de faux
-    ``missing_gold_sources``. Comme le filtre porte sur l'UNION, ré-exécuter
-    ``scripts/resolve_goldset_doc_ids.py`` nettoie la colonne en place.
+    attendue, pas des sources supplémentaires. On écarte les labels bruts
+    RÉSIDUELS DE LA COLONNE curée: l'ancien ``resolve_goldset_doc_ids`` écrivait
+    ``resolved_for_raw or [raw]`` en base, laissant des F-codes/sentences décret
+    À CÔTÉ du pont UUID (46/116 lignes staging au 06/07/2026). Les garder rendait
+    ``doc_recall < 1.0`` structurel (un F-code ne matche jamais un UUID),
+    déclenchait le cap soft ``missing_expected_source`` à chaque question et
+    nourrissait le juge de faux ``missing_gold_sources``. Le filtre ne s'applique
+    qu'en présence d'AU MOINS un doc_id corpus dans l'union; comme il porte sur
+    ``pre_resolved``, ré-exécuter ``scripts/resolve_goldset_doc_ids.py`` nettoie
+    la colonne en place.
 
-    Tension assumée: une source multi-doc dont AUCUNE variante ne résout perd
-    son ancrage par label brut si une AUTRE source de la ligne, elle, résout.
-    ``gold_sources`` garde la provenance (et sert de repli quand ``gold_doc_ids``
-    est vide). Si rien ne résout, on conserve les labels bruts comme seul
-    ancrage best-effort (alias/url-tail)."""
+    En revanche on GARDE le passthrough runtime d'une source réellement
+    irrésoluble qui n'est PAS déjà dans la colonne: c'est son seul ancrage
+    (alias/url-tail), et une AUTRE source résolue sur la même ligne ne doit pas
+    le faire disparaître (sinon doc_recall gonflé, retrieval gap masqué). Si rien
+    ne résout, on conserve tous les labels bruts."""
     runtime_resolved = resolve_gold_doc_ids(gold_sources, maps)
     merged = _stable_unique([*(pre_resolved or []), *runtime_resolved])
     source_keys = {_match_key(source) for source in gold_sources if str(source).strip()}
     resolved_ids = [value for value in merged if _match_key(value) not in source_keys]
     # Aucun doc_id corpus: garder les labels bruts (seul ancrage possible).
-    return resolved_ids if resolved_ids else merged
+    if not resolved_ids:
+        return merged
+    # Un label brut n'est écarté que s'il traînait DANS la colonne curée à côté
+    # d'un id résolu (leftover de l'ancien script). Le passthrough runtime d'une
+    # source non couverte (absente de la colonne) reste son unique ancrage.
+    pre_keys = {_match_key(value) for value in (pre_resolved or [])}
+    return [value for value in merged if _match_key(value) not in source_keys or _match_key(value) not in pre_keys]
 
 
 def retrieved_doc_ids(result: PipelineResult, contexts: list[dict[str, Any]]) -> list[str]:
@@ -1560,11 +1566,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["per-question", "all", "none"],
         default="per-question",
         help=(
-            "Scope ministériel du retrieval. 'per-question' (défaut) = une question MATTE/MSO/MI/MASA "
-            "est évaluée dans le scope de SON ministère (comme un agent de ce ministère dans l'app), "
-            "les autres questions en scope complet; 'all' = utilisateur pleinement granté partout "
-            "(contamination inter-ministères possible); 'none' = comportement historique "
-            "(v3_tables runtime seulement, mso/mi/masa invisibles)."
+            "Scope ministériel du retrieval. 'per-question' (défaut) = les questions MSO/MI/MASA "
+            "sont évaluées dans le scope de LEUR ministère (comme un agent de ce ministère dans l'app); "
+            "toutes les autres (MATTE, manual, Service-Public, synthetic, DGAFP) suivent le parcours MATTE "
+            "(matte + tables partagées SP/Légifrance), PAS le scope complet; 'all' = utilisateur "
+            "pleinement granté partout (contamination inter-ministères possible); 'none' = comportement "
+            "historique (v3_tables runtime seulement, mso/mi/masa invisibles)."
         ),
     )
     parser.add_argument("--judge-model", default=os.getenv("SCALEWAY_JUDGE_MODEL", DEFAULT_JUDGE_MODEL), help="Scaleway judge model.")
