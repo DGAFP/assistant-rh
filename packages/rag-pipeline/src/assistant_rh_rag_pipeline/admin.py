@@ -96,9 +96,15 @@ class RuntimeRAGConfig:
     v3_enable_escalation: bool = True
     v3_enable_selector: bool = True
     v3_triangulation_sections: int = 2
-    v3_initial_top_k: int = 10
+    # Defaults alignés sur la config VALIDÉE (candidate_v2, run 115): 30 chunks
+    # amont / 20 sections après rerank. Ces valeurs seedent un rag_config neuf
+    # (INSERT-if-empty) et servent de repli si la clé manque du JSONB — un env
+    # frais est ainsi cohérent avec l'éval, au lieu de 10/5. NB: les lignes
+    # rag_config existantes (staging/prod) portent des valeurs explicites et ne
+    # sont PAS modifiées par ce changement — elles se règlent via update_rag_config.
+    v3_initial_top_k: int = 30
     v3_enable_reranker: bool = True
-    v3_rerank_top_k: int = 5
+    v3_rerank_top_k: int = 20
     v3_alpha: float = 0.5
     v3_selector_model: str = "openweight-large"
     v3_selector_prompt_name: str = "v3_selector_business.md"
