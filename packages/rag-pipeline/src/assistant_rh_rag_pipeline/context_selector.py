@@ -167,24 +167,27 @@ class ContextSelector:
                 logger.warning("Selector parse failure – keeping top %d sections", _FALLBACK_K)
                 return sections[:_FALLBACK_K]
 
-            kept_set = set(parsed.ids)
-            removed_ids = [i for i in range(len(sections)) if i not in kept_set]
+            selected_ids = [i for i in parsed.ids if 0 <= i < len(sections)]
+            # Le plancher est appliqué AVANT de figer la trace kept/removed:
+            # les sections repêchées sont réellement servies au générateur et
+            # doivent apparaître dans "kept" (chat_logger et les pages d'audit
+            # Streamlit lisent ces listes comme le contexte servi).
+            served_ids = self._top_up_ids(selected_ids, len(sections))
+            served_set = set(served_ids)
+            removed_ids = [i for i in range(len(sections)) if i not in served_set]
             self._last_decisions = {
-                "kept": [
-                    {"idx": i, "heading": (sections[i].heading or "")[:80], "publisher": sections[i].publisher or ""}
-                    for i in parsed.ids
-                    if 0 <= i < len(sections)
-                ],
-                "removed": [
-                    {"idx": i, "heading": (sections[i].heading or "")[:80], "publisher": sections[i].publisher or ""}
-                    for i in removed_ids
-                    if 0 <= i < len(sections)
-                ],
+                "kept": [{"idx": i, "heading": (sections[i].heading or "")[:80], "publisher": sections[i].publisher or ""} for i in served_ids],
+                "removed": [{"idx": i, "heading": (sections[i].heading or "")[:80], "publisher": sections[i].publisher or ""} for i in removed_ids],
                 "reason": reason,
             }
+            if len(served_ids) > len(selected_ids):
+                self._last_decisions["topped_up_to_min"] = {
+                    "floor": self._config.min_kept_sections,
+                    "selected_by_llm": len(selected_ids),
+                    "served": len(served_ids),
+                }
 
-            filtered = [sections[i] for i in parsed.ids if 0 <= i < len(sections)]
-            filtered = self._top_up_to_floor(filtered, sections)
+            filtered = [sections[i] for i in served_ids]
             logger.info("Selector kept %d / %d sections", len(filtered), len(sections))
             return filtered if filtered else sections
 
@@ -192,11 +195,7 @@ class ContextSelector:
             logger.warning("Context selector failed (%s), keeping all sections", exc)
             return sections
 
-    def _top_up_to_floor(
-        self,
-        kept: List[AggregatedSection],
-        sections: List[AggregatedSection],
-    ) -> List[AggregatedSection]:
+    def _top_up_ids(self, selected_ids: List[int], total: int) -> List[int]:
         """Complète la sélection jusqu'au plancher ``min_kept_sections``.
 
         Le sélecteur LLM élague le bruit mais ne doit pas affamer le
@@ -205,24 +204,18 @@ class ContextSelector:
         score). Le rejet explicite total (all_rejected) n'est pas concerné —
         il pilote la logique de retry du pipeline et doit rester vide.
         """
-        floor = getattr(self._config, "min_kept_sections", 0) or 0
-        if not kept or len(kept) >= floor:
-            return kept
-        kept_ids = {id(section) for section in kept}
-        topped = list(kept)
-        for section in sections:
-            if len(topped) >= floor:
+        floor = self._config.min_kept_sections or 0
+        if not selected_ids or len(selected_ids) >= floor:
+            return selected_ids
+        served = list(selected_ids)
+        seen = set(served)
+        for i in range(total):
+            if len(served) >= floor:
                 break
-            if id(section) not in kept_ids:
-                topped.append(section)
-                kept_ids.add(id(section))
-        if len(topped) > len(kept):
-            self._last_decisions["topped_up_to_min"] = {
-                "floor": floor,
-                "selected_by_llm": len(kept),
-                "served": len(topped),
-            }
-        return topped
+            if i not in seen:
+                served.append(i)
+                seen.add(i)
+        return served
 
     def select_context(
         self,
