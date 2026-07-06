@@ -1467,9 +1467,10 @@ def test_pdf_sources_dispatch_with_embeddings_targets_mi_backfill(tmp_path: Path
     assert outputs["embedding_source"] == "mi"
 
 
-def test_should_run_pdf_sources_scoped_to_single_ministry() -> None:
+def test_should_run_pdf_sources_scoped_to_single_ministry(monkeypatch: pytest.MonkeyPatch) -> None:
     # Granularité par ministère (revue #266/#267): --pdf-sources-ministry=masa
     # ne démarre que pdf-sources-masa-medallion, pas les 3 autres corpus.
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     args = SimpleNamespace(
         service_public=False,
         legifrance=False,

@@ -129,7 +129,16 @@ CHUNK_TABLES: Dict[str, ChunkTable] = {
 class RetrievalConfig:
     search_mode: SearchMode = SearchMode.SEMANTIC
     embedding_model: EmbeddingModel = EmbeddingModel.ALBERT
-    initial_top_k: int = 15
+    initial_top_k: int = 30
+    # Nombre de listes IVFFLAT sondées par requête vectorielle. Sans SET
+    # explicite, PostgreSQL utilise probes=1: sur nos index lists=100, chaque
+    # recherche ne scanne qu'1 % des listes — recall silencieusement amputé.
+    # 15 -> 5 (06/07/2026): sweep offline du goldset — probes=5 est le point
+    # d'équilibre (recall MATTE 0,92 comme probes=15, mais bruit Alan 0,25 vs
+    # 0,58 ; probes=1 perd du recall à 0,83). Ablation appariée: probes 15->5
+    # remonte MATTE de 0,56 à 0,78 (moins de bruit dans le pool du sélecteur).
+    # 0 = laisser le défaut serveur.
+    ivfflat_probes: int = 5
     alpha: float = 0.5
     tables: List[str] = field(default_factory=lambda: ["matte", "service_public", "dgafp", "rgrh"])
     enable_chunk_reranker: bool = False
@@ -153,7 +162,19 @@ class SectionAggregationConfig:
     weight_mean_score: float = 0.3
     weight_chunk_count: float = 0.2
     enable_section_reranker: bool = True
-    section_rerank_top_k: int = 10
+    # 10 -> 16 (06/07/2026): c'était l'étage rigide de l'entonnoir — le run 54
+    # a élargi l'amont (chunks bruts 110->160 via probes+initial_top_k) mais
+    # les sections offertes au sélecteur restaient plafonnées à 10.0 pile,
+    # étranglant la conversion des gains de retrieval (hit_avg 0.36->0.43 sans
+    # effet sur le pass). L'entrée du sélecteur ne pèse que ~6 800 tokens pour
+    # 10 sections (fenêtre gpt-oss-120b: 131k).
+    # 16 -> 20 (06/07/2026): alignement sur la config MESURÉE — l'A/B (runs
+    # 58/59) et le run de référence candidate_v2 (run 115) ont validé 20 via
+    # --section-rerank-top-k; 16 ne correspondait à aucun run. NB: la valeur
+    # runtime v3_rerank_top_k écrase ce défaut à l'exécution — la ligne
+    # rag_config partagée doit être alignée à 20 pour que la prod serve la
+    # config validée (sinon l'entonnoir reste étranglé à 10).
+    section_rerank_top_k: int = 20
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -174,7 +195,14 @@ class ContextBuildConfig:
     # Wide mode overrides
     token_budget_wide: int = 12000
     max_full_docs_wide: int = 2
-    doc_entire_threshold_wide: int = 5000
+    # 5000 -> 9000 (05/07/2026): les doc_markdown des fiches reconstruites par
+    # OCR (Phase D) sont ~3-5 % plus longs que les legacy — les fiches clés
+    # (ex: fiche MATTE 6 = 5144 tokens) passaient juste au-dessus du seuil et
+    # perdaient l'injection en doc entier (le générateur recevait une section
+    # de ~300 tokens au lieu de la fiche complète => « je n'ai pas trouvé »
+    # sur du contenu présent). 9000 récupère la bande 5000-9000 (8 docs MATTE
+    # dont les fiches) en restant sous le token_budget_wide.
+    doc_entire_threshold_wide: int = 9000
     max_sections_wide: int = 20
     legal_refs_budget_wide: int = 2000
 
@@ -208,6 +236,17 @@ class SelectorConfig:
     model: str = "openweight-large"
     temperature: float = 0.0
     prompt_name: str = "v3_selector_business.md"
+    # Plancher de sections servies au générateur quand le sélecteur a gardé
+    # quelque chose (complément au rang d'agrégation).
+    # 4 -> 0 (06/07/2026, DÉSACTIVÉ): forcer des sections que le sélecteur a
+    # écartées est risqué en corpus RÉGLEMENTAIRE — quand le pool est bruité et
+    # que le sélecteur rejette, servir les top-N par score peut pousser le
+    # générateur à INVENTER depuis un contexte marginal (mieux vaut un refus
+    # honnête). L'ablation appariée du goldset le confirme au pass: min_kept 4->0
+    # remonte MATTE et Service-Public. Tension connue: MSO bénéficiait du plancher
+    # (0,60 -> 0,40) — à traiter par un override config PAR MINISTÈRE (backlog),
+    # pas par un plancher global. 0 = désactivé.
+    min_kept_sections: int = 0
 
     def to_dict(self) -> dict:
         return {**asdict(self), "provider": self.provider.value}

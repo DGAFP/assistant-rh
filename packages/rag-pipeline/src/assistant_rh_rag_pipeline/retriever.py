@@ -779,6 +779,13 @@ class Retriever:
         chunks: List[RetrievedChunk] = []
         try:
             with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+                # Défaut serveur probes=1: 1 % des listes IVFFLAT scannées.
+                # SET n'accepte pas de paramètre bindé — int() garde le
+                # littéral sûr. Connexion dédiée à la requête: portée session
+                # sans fuite. Sans effet sur les requêtes purement lexicales.
+                probes = int(getattr(self.config, "ivfflat_probes", 0) or 0)
+                if probes > 0:
+                    conn.execute(f"SET ivfflat.probes = {probes}")
                 rows = conn.execute(sql, params).fetchall()
 
             for row in rows:

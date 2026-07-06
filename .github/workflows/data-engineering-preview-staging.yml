@@ -124,6 +124,11 @@ jobs:
       service_public: ${{ steps.plan.outputs.service_public }}
       legifrance: ${{ steps.plan.outputs.legifrance }}
       pdf_sources: ${{ steps.plan.outputs.pdf_sources }}
+      # Sans cette déclaration, needs.plan.outputs.pdf_sources_ministry (passé à
+      # scaleway_data_jobs.py) se résout en chaîne vide et un dispatch
+      # source=<ministère> lance le domaine pdf_sources ENTIER (constaté le
+      # 05/07: source=matte a démarré mi+masa+matte).
+      pdf_sources_ministry: ${{ steps.plan.outputs.pdf_sources_ministry }}
       embeddings: ${{ steps.plan.outputs.embeddings }}
       run_embeddings: ${{ steps.plan.outputs.run_embeddings }}
       embedding_source: ${{ steps.plan.outputs.embedding_source }}

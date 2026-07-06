@@ -20,6 +20,7 @@ from src.goldset.eval import (
     deterministic_metrics,
     load_goldset_questions,
     parse_text_list,
+    retrieved_doc_ids,
     write_artifacts,
 )
 
@@ -191,6 +192,73 @@ def test_resolved_gold_doc_ids_do_not_penalize_raw_label_misses() -> None:
     assert metrics["missing_gold_sources"] == []
 
 
+def test_resolve_gold_doc_ids_maps_decree_article_references() -> None:
+    from src.goldset.eval import resolve_gold_doc_ids
+
+    maps = {
+        "doc_short": {},
+        "matte_short": {},
+        "article": {},
+        "legal_ref": {
+            "DECREE:86-83:ARTICLE:10": {"LEGIA-10"},
+            "DECREE:86-83:ARTICLE:11": {"LEGIA-11"},
+            "DECREE:86-83:ARTICLE:12": {"LEGIA-12"},
+            "DECREE:86-83:ARTICLE:15": {"LEGIA-15"},
+        },
+    }
+
+    assert resolve_gold_doc_ids(["Decret 86-83, Article 15"], maps) == ["LEGIA-15"]
+    assert resolve_gold_doc_ids(["Décret 86-83, Articles 10 à 12"], maps) == ["LEGIA-10", "LEGIA-11", "LEGIA-12"]
+
+
+def test_resolve_gold_doc_ids_does_not_credit_stale_legacy_legifrance_text() -> None:
+    from src.goldset.eval import resolve_gold_doc_ids
+
+    maps = {
+        "doc_short": {},
+        "matte_short": {},
+        "article": {"R331-2": {"LEGIARTI000051962495"}},
+        "legal_ref": {},
+    }
+
+    assert resolve_gold_doc_ids(["Decret 86-83, Art.3"], maps) == ["Decret 86-83, Art.3"]
+
+
+def test_deterministic_metrics_treats_document_aliases_as_equivalent() -> None:
+    aliases = {
+        "UUID-DOC": {"LEGIARTI000045662556"},
+        "LEGIARTI000045662556": {"uuid-doc"},
+    }
+
+    metrics = deterministic_metrics(["uuid-doc"], ["LEGIARTI000045662556"], aliases=aliases)
+
+    assert metrics["hit_rate"] == 1.0
+    assert metrics["doc_recall"] == 1.0
+    assert metrics["missing_gold_sources"] == []
+
+
+def test_retrieved_doc_ids_collects_canonical_trace_alias_columns() -> None:
+    class Result:
+        metadata = {
+            "chunks_raw": [
+                {"cid": "LEGIARTI000045662556"},
+                {"metadata": {"source_document_id": "doc-from-nested-metadata"}},
+            ],
+            "chunks_after_rerank": [{"short_id": "F1606"}],
+            "context_items_ref": [{"document_id": "doc-from-context-ref"}],
+        }
+
+    contexts = [{"doc_id": "doc-from-context", "metadata": {"doc_short_id": "LEGIARTI000051268709"}}]
+
+    ids = retrieved_doc_ids(Result(), contexts)  # type: ignore[arg-type]
+
+    assert "LEGIARTI000045662556" in ids
+    assert "doc-from-nested-metadata" in ids
+    assert "F1606" in ids
+    assert "doc-from-context-ref" in ids
+    assert "LEGIARTI000051268709" in ids
+
+
 def test_deterministic_metrics_empty_gold_sources_yields_none_recall() -> None:
     metrics = deterministic_metrics([], ["doc-a", "doc-b"])
 
@@ -208,16 +276,30 @@ def test_calibrate_passes_when_no_expected_sources_declared() -> None:
     assert calibrated["pass"] is True
 
 
-def test_retrieval_shortfall_caps_score_but_partial_can_pass() -> None:
+def test_retrieval_shortfall_caps_score_but_never_blocks_pass() -> None:
+    # Arbitrage du 06/07/2026 (audit run 52): les métriques retrieval sont un
+    # diagnostic — hit_rate=0 plafonne le score stocké (visibilité) mais ne
+    # bloque plus le pass d'une réponse par ailleurs parfaite (le cap dur
+    # rendait le pass impossible pour 29/100 questions, artefacts d'ids
+    # compris, avec des rationales 100 % positifs à score 0.6).
     none_hit = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.0, "hit_rate": 0.0})
-    assert {"reason": "no_expected_source_retrieved", "max_score": 0.6} in none_hit["calibration_caps"]
-    assert none_hit["score"] == 0.6
-    assert none_hit["pass"] is False
+    assert any(c["reason"] == "no_expected_source_retrieved" and c.get("soft") for c in none_hit["calibration_caps"])
+    assert none_hit["score"] == 0.6  # score stocké plafonné pour la visibilité
+    assert none_hit["pass"] is True  # le pass s'évalue AVANT caps soft
 
     partial = calibrate_judge_result(_perfect_parsed(), {"doc_recall": 0.5, "hit_rate": 1.0})
     assert any(c["reason"] == "missing_expected_source" and c.get("soft") for c in partial["calibration_caps"])
     assert partial["score"] == 0.85
     assert partial["pass"] is True
+
+
+def test_retrieval_soft_cap_does_not_rescue_a_bad_answer() -> None:
+    # Le découplage ne crée pas de faux pass: une réponse faible échoue
+    # toujours sur ses dimensions, avec ou sans trou de retrieval.
+    parsed = _perfect_parsed()
+    parsed["dimensions"]["legal_correctness"] = 0.5
+    calibrated = calibrate_judge_result(parsed, {"doc_recall": 0.0, "hit_rate": 0.0})
+    assert calibrated["pass"] is False
 
 
 @pytest.mark.parametrize(
@@ -312,10 +394,11 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         GoldsetQuestion(id=1, question="q1", gold_answer="a1", gold_sources=["doc-a"]),
         GoldsetQuestion(id=2, question="q2", gold_answer="a2", gold_sources=["doc-b"]),
     ]
-    smoke = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a")
-    full = argparse.Namespace(limit=None, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a")
-    no_judge = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=True, judge_model="judge-a")
-    no_ragas = argparse.Namespace(limit=1, skip_ragas=True, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a")
+    smoke = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="all")
+    full = argparse.Namespace(limit=None, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="all")
+    no_judge = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=True, judge_model="judge-a", ministry_scope="all")
+    no_ragas = argparse.Namespace(limit=1, skip_ragas=True, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="all")
+    unscoped = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="none")
 
     smoke_scope = build_eval_scope(smoke, questions[:1])
 
@@ -327,10 +410,13 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         "ragas_model": "ragas-a",
         "judge_enabled": True,
         "judge_model": "judge-a",
+        "ministry_scope": "all",
     }
     assert build_eval_scope(full, questions) != smoke_scope
     assert build_eval_scope(no_judge, questions[:1]) != smoke_scope
     assert build_eval_scope(no_ragas, questions[:1]) != smoke_scope
+    # Un run scopé « all ministries » n'est pas comparable à un run historique.
+    assert build_eval_scope(unscoped, questions[:1]) != smoke_scope
 
 
 def test_baseline_comparison_passes_within_allowed_drop() -> None:
@@ -478,6 +564,12 @@ def test_resolve_goldset_doc_ids_dry_run_does_not_mutate(monkeypatch) -> None:
             executed.append(sql)
             return self
 
+        def fetchone(self):
+            # Probe information_schema: la colonne gold_doc_ids n'existe pas
+            # encore (dry-run avant l'ALTER) — le script doit alors merger
+            # depuis un existant vide.
+            return None
+
         def fetchall(self):
             return [{"id": 1, "gold_sources": "F8"}]
 
@@ -570,3 +662,190 @@ def test_resolve_gold_doc_ids_keeps_multi_segment_codes() -> None:
 
     assert "CHILD" in resolved
     assert "PARENT" not in resolved
+
+
+def test_resolve_question_scope_per_question_routes_ministries() -> None:
+    from src.goldset.eval import resolve_question_scope
+
+    mso_question = GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[], source="MSO")
+    manual_question = GoldsetQuestion(id=2, question="q", gold_answer="a", gold_sources=[], source="manual")
+
+    mso_scope = resolve_question_scope(mso_question, "per-question")
+    assert mso_scope.selected_ministry == "mso"
+    assert "mso" in mso_scope.table_keys
+    # Pas de contamination inter-ministères: matte absent du scope MSO.
+    assert "matte" not in mso_scope.table_keys
+
+    # Les questions manual ont été collectées auprès d'agents MATTE:
+    # elles suivent le parcours MATTE (décision Paul 06/07/2026).
+    manual_scope = resolve_question_scope(manual_question, "per-question")
+    assert manual_scope.selected_ministry == "matte"
+    assert "mso" not in manual_scope.table_keys
+
+    # Sources non ministérielles (synthetic/Service-Public/DGAFP) -> parcours
+    # MATTE aussi (matte + SP + Légifrance), pas scope complet (décision Paul
+    # 06/07/2026): leur gold vit dans SP/Légifrance, présents dans tout scope
+    # ministériel, et le scope complet leur infligeait le pool le plus bruité.
+    for src in ("synthetic", "Service-Public", "DGAFP"):
+        scope = resolve_question_scope(
+            GoldsetQuestion(id=3, question="q", gold_answer="a", gold_sources=[], source=src),
+            "per-question",
+        )
+        assert scope.selected_ministry == "matte", src
+        assert "mso" not in scope.table_keys and "mi" not in scope.table_keys, src
+        assert "service_public" in scope.table_keys, src
+
+    assert resolve_question_scope(mso_question, "none") is None
+    assert resolve_question_scope(mso_question, "all").selected_ministry == "eval_all_ministries"
+
+
+class _FakeCursorResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self):
+        return self._rows
+
+
+class _FakeConn:
+    """Connexion factice: 1er execute = probe colonne, 2e = requête principale.
+
+    ``probe_error`` simule une erreur transitoire sur le probe de colonne.
+    """
+
+    def __init__(self, *, has_column, main_rows, probe_error=None):
+        self._has_column = has_column
+        self._main_rows = main_rows
+        self._probe_error = probe_error
+        self._calls = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return None
+
+    def execute(self, sql, params=None):
+        self._calls += 1
+        if self._calls == 1:  # probe information_schema
+            if self._probe_error is not None:
+                raise self._probe_error
+            return _FakeCursorResult([{"?column?": 1}] if self._has_column else [])
+        return _FakeCursorResult(self._main_rows)
+
+
+def test_load_goldset_uses_gold_doc_ids_when_column_present(monkeypatch) -> None:
+    import src.goldset.eval as eval_module
+
+    rows = [
+        {
+            "id": 7,
+            "question": "q",
+            "gold_answer": "a",
+            "gold_sources": ["F1"],
+            "theme": "",
+            "tags": ["baseline_v1"],
+            "goldset_name": "reference_v1",
+            "source": "MATTE",
+            "gold_doc_ids": ["F1", "uuid-resolved-1"],
+        }
+    ]
+    monkeypatch.setattr(
+        eval_module.psycopg,
+        "connect",
+        lambda *a, **k: _FakeConn(has_column=True, main_rows=rows),
+    )
+    qs = eval_module.load_goldset_questions("postgresql://x", goldset_name="reference_v1", tags=["baseline_v1"], any_goldset=True)
+    assert qs[0].gold_doc_ids == ["F1", "uuid-resolved-1"]
+    # retrieval_gold DOIT prendre les doc_ids résolus, pas les labels bruts.
+    assert qs[0].retrieval_gold == ["F1", "uuid-resolved-1"]
+
+
+def test_load_goldset_propagates_probe_error_not_silent_degrade(monkeypatch) -> None:
+    # Régression run 67 (06/07/2026): un probe de colonne échouant en silence
+    # (ancien _column_exists) faisait charger gold_doc_ids=NULL pour TOUT le run
+    # -> matching sur labels bruts, hit_rate/doc_recall corrompus, juge biaisé.
+    # Le probe partage désormais la connexion de la requête: l'erreur se propage.
+    import psycopg
+
+    import src.goldset.eval as eval_module
+
+    monkeypatch.setattr(
+        eval_module.psycopg,
+        "connect",
+        lambda *a, **k: _FakeConn(has_column=True, main_rows=[], probe_error=psycopg.OperationalError("transient")),
+    )
+    with pytest.raises(psycopg.OperationalError):
+        eval_module.load_goldset_questions("postgresql://x", goldset_name="reference_v1", tags=["baseline_v1"], any_goldset=True)
+
+
+def test_merge_gold_doc_ids_keeps_pre_resolved_and_unions_runtime() -> None:
+    # Régression #276 (runs 67/68): resolve_gold_doc_ids ne mappe pas les
+    # F-codes MATTE -> doc UUID; l'écrasement jetait l'UUID pré-résolu (pont)
+    # -> hit_rate=0 alors que le gold est retrouvé. merge_gold_doc_ids garde
+    # l'union: colonne curée ∪ résolution runtime.
+    from src.goldset.eval import merge_gold_doc_ids
+
+    maps = {"doc_short": {}, "matte_short": {}, "article": {"L332-4": {"LEGIA-4"}}, "legal_ref": {}, "aliases": {}}
+    # gold_sources = un F-code MATTE (irrésoluble par les maps) + un article CGFP.
+    pre_resolved = ["F1", "uuid-fiche-matte-1"]  # pont: F1 -> uuid
+    merged = merge_gold_doc_ids(pre_resolved, ["F1", "CGFP L. 332-4"], maps)
+
+    assert "uuid-fiche-matte-1" in merged  # l'UUID du pont n'est PAS jeté
+    assert "LEGIA-4" in merged  # la résolution runtime (#276) est ajoutée
+
+
+def test_merge_gold_doc_ids_empty_pre_resolved_falls_back_to_runtime() -> None:
+    from src.goldset.eval import merge_gold_doc_ids
+
+    maps = {"doc_short": {}, "matte_short": {}, "article": {"L332-4": {"LEGIA-4"}}, "legal_ref": {}, "aliases": {}}
+    merged = merge_gold_doc_ids([], ["CGFP L. 332-4"], maps)
+    assert merged == ["LEGIA-4"]
+
+
+def test_merge_gold_doc_ids_drops_raw_label_that_sits_in_the_column() -> None:
+    # Constat live (46/116 lignes staging): l'ANCIEN script écrivait le F-code
+    # brut DANS la colonne, à côté du pont UUID (gold_doc_ids = ['F1', 'uuid']).
+    # Ids résolus et label brut sont des ALTERNATIVES pour la même source:
+    # garder 'F1' (jamais-matchable) rendait doc_recall < 1.0 structurel, cap
+    # soft missing_expected_source et faux missing_gold_sources au juge. Le brut
+    # co-résident d'un id résolu DANS la colonne est retiré -> ré-exécuter le
+    # script nettoie la colonne en place.
+    from src.goldset.eval import merge_gold_doc_ids
+
+    maps = {"doc_short": {}, "matte_short": {}, "article": {}, "legal_ref": {}, "aliases": {}}
+    assert merge_gold_doc_ids(["F1", "uuid-fiche-matte-1"], ["F1"], maps) == ["uuid-fiche-matte-1"]
+
+    # Sans colonne curée, le label brut reste le seul candidat de matching
+    # (alias/url-tail au moment des métriques) — il est conservé.
+    assert merge_gold_doc_ids([], ["F1"], maps) == ["F1"]
+
+
+def test_merge_gold_doc_ids_keeps_passthrough_of_uncovered_source() -> None:
+    # Re-review follow-up PR #281: multi-source. La colonne ne ponte QUE la
+    # source A (uuid). La source B est irrésoluble et n'est PAS dans la colonne
+    # -> son label brut (passthrough runtime) est son SEUL ancrage et doit
+    # survivre, même si A résout. Le retirer gonflerait doc_recall et masquerait
+    # le retrieval gap de B. Le filtre ne touche donc QUE les bruts déjà présents
+    # dans la colonne curée, pas les passthrough de sources non couvertes.
+    from src.goldset.eval import merge_gold_doc_ids
+
+    maps = {"doc_short": {}, "matte_short": {}, "article": {}, "legal_ref": {}, "aliases": {}}
+    merged = merge_gold_doc_ids(["uuid-A"], ["A", "arrete-B-irresoluble"], maps)
+
+    assert "uuid-A" in merged
+    assert "arrete-B-irresoluble" in merged  # ancrage de la source B préservé
+
+
+def test_merge_gold_doc_ids_keeps_raw_labels_when_nothing_resolves() -> None:
+    # Aucune source ne résout et pas de pont: les labels bruts sont le seul
+    # ancrage best-effort (alias/url-tail), on ne doit pas les jeter.
+    from src.goldset.eval import merge_gold_doc_ids
+
+    maps = {"doc_short": {}, "matte_short": {}, "article": {}, "legal_ref": {}, "aliases": {}}
+    merged = merge_gold_doc_ids(["F3", "F4"], ["F3", "F4"], maps)
+
+    assert set(merged) == {"F3", "F4"}

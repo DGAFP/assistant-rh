@@ -30,6 +30,7 @@ import psycopg
 from assistant_rh_rag_pipeline import PipelineResult, create_pipeline
 from assistant_rh_rag_pipeline.admin import get_rag_config, runtime_config_to_rag_config
 from assistant_rh_rag_pipeline.config import RAGConfig
+from assistant_rh_rag_pipeline.query_processor import _fold as _fold_text
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
@@ -55,6 +56,9 @@ class GoldsetQuestion:
     theme: str = ""
     tags: list[str] = field(default_factory=list)
     goldset_name: str = ""
+    # Corpus d'origine de la question (MATTE/MSO/MI/Service-Public/manual…):
+    # pilote le scope ministériel par question (--ministry-scope per-question).
+    source: str = ""
     # Pre-resolved corpus doc_ids for ``gold_sources`` (deterministic retrieval
     # matching uses these when present; falls back to gold_sources otherwise).
     gold_doc_ids: list[str] = field(default_factory=list)
@@ -158,18 +162,6 @@ def config_fingerprint(config: RAGConfig) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _column_exists(dsn: str, table_name: str, column_name: str) -> bool:
-    try:
-        with psycopg.connect(dsn, row_factory=dict_row) as conn:
-            row = conn.execute(
-                "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=%s AND column_name=%s",
-                (table_name, column_name),
-            ).fetchone()
-        return row is not None
-    except psycopg.Error:
-        return False
-
-
 def load_goldset_questions(
     dsn: str,
     *,
@@ -195,16 +187,33 @@ def load_goldset_questions(
         limit_sql = " LIMIT %s"
         params.append(limit)
 
-    # ``gold_doc_ids`` is an optional pre-resolution column; tolerate its absence.
-    gold_doc_ids_col = "gold_doc_ids" if _column_exists(dsn, "goldset_questions_v2", "gold_doc_ids") else "NULL::text[] AS gold_doc_ids"
-    sql = f"""
-        SELECT id, question, gold_answer, gold_sources, theme, tags, goldset_name, {gold_doc_ids_col}
-        FROM public.goldset_questions_v2
-        WHERE {" AND ".join(where)}
-        ORDER BY id
-        {limit_sql}
-    """
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        # ``gold_doc_ids`` est une colonne de PRÉ-RÉSOLUTION (labels humains ->
+        # doc_ids corpus): sans elle, le matching retombe sur les labels bruts
+        # (F-fiches, noms de docs) qui ne matchent jamais les UUID/short_ids du
+        # retriever, et le juge reçoit de faux ``retrieval_diagnostics``
+        # (hit_rate=0, missing_gold_sources). La présence de la colonne est
+        # vérifiée sur LA MÊME connexion que la requête: un probe sur une
+        # connexion séparée (ancien ``_column_exists``, ``except psycopg.Error:
+        # return False``) transformait une erreur transitoire en dégradation
+        # SILENCIEUSE de tout le run (run 67, 06/07/2026: gold_doc_ids ignorés,
+        # hit_rate/doc_recall corrompus, juge biaisé sur MATTE/MSO). Ici toute
+        # erreur se propage — fail loud plutôt que corrompre en silence.
+        has_gold_doc_ids = (
+            conn.execute(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema='public' "
+                "AND table_name='goldset_questions_v2' AND column_name='gold_doc_ids'"
+            ).fetchone()
+            is not None
+        )
+        gold_doc_ids_col = "gold_doc_ids" if has_gold_doc_ids else "NULL::text[] AS gold_doc_ids"
+        sql = f"""
+            SELECT id, question, gold_answer, gold_sources, theme, tags, goldset_name, source, {gold_doc_ids_col}
+            FROM public.goldset_questions_v2
+            WHERE {" AND ".join(where)}
+            ORDER BY id
+            {limit_sql}
+        """
         rows = conn.execute(sql, params).fetchall()
 
     return [
@@ -216,6 +225,7 @@ def load_goldset_questions(
             theme=str(row.get("theme") or ""),
             tags=parse_text_list(row.get("tags")),
             goldset_name=str(row.get("goldset_name") or ""),
+            source=str(row.get("source") or ""),
             gold_doc_ids=parse_text_list(row.get("gold_doc_ids")),
         )
         for row in rows
@@ -358,6 +368,13 @@ def _load_eval_run(
     else:
         if not goldset_name or tags is None or eval_scope is None:
             return None
+        # Un candidat ministry_scope="none" est comparable aux runs historiques
+        # enregistrés AVANT l'introduction de la clé (aucun scope appliqué =
+        # même comportement): accepter aussi la variante legacy sans la clé,
+        # sinon le lookup auto ne trouve jamais de baseline pré-06/07/2026.
+        scope_variants = [eval_scope]
+        if eval_scope.get("ministry_scope") == "none":
+            scope_variants.append({key: value for key, value in eval_scope.items() if key != "ministry_scope"})
         rows = conn.execute(
             """
             SELECT id, status, created_at, completed_at, goldset_name, tag_filter,
@@ -365,12 +382,12 @@ def _load_eval_run(
             FROM public.rag_quality_eval_runs
             WHERE goldset_name = %s
               AND tag_filter = %s::text[]
-              AND metadata -> 'eval_scope' = %s::jsonb
+              AND metadata -> 'eval_scope' = ANY(%s::jsonb[])
               AND status = 'completed'
             ORDER BY completed_at DESC NULLS LAST, created_at DESC
             LIMIT 1
             """,
-            (goldset_name, tags, json.dumps(eval_scope, sort_keys=True, ensure_ascii=False, default=str)),
+            (goldset_name, tags, [json.dumps(variant, sort_keys=True, ensure_ascii=False, default=str) for variant in scope_variants]),
         ).fetchall()
     return dict(rows[0]) if rows else None
 
@@ -385,6 +402,13 @@ def _baseline_is_comparable(
     reasons: list[str] = []
     metadata = _json_dict(baseline_run.get("metadata"))
     baseline_scope = _json_dict(metadata.get("eval_scope"))
+    # Les runs antérieurs au 06/07/2026 n'avaient pas de scope ministériel —
+    # comportement identique à ministry_scope="none". Sans ce backfill, l'ajout
+    # de la clé rendait TOUTES les baselines historiques non comparables, y
+    # compris pour un candidat "none" pourtant à périmètre strictement
+    # identique (le gate CI COMPARE_BASELINE échouait jusqu'à re-baseline).
+    if "ministry_scope" in eval_scope and "ministry_scope" not in baseline_scope:
+        baseline_scope = {**baseline_scope, "ministry_scope": "none"}
     if baseline_run.get("status") != "completed":
         reasons.append(f"baseline status is {baseline_run.get('status')!r}, expected 'completed'")
     if str(baseline_run.get("goldset_name") or "") != goldset_name:
@@ -511,6 +535,9 @@ def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion])
         "ragas_model": args.ragas_model if ragas_enabled else "",
         "judge_enabled": judge_enabled,
         "judge_model": args.judge_model if judge_enabled else "",
+        # Partie de la clé de comparabilité: un run scopé « all ministries »
+        # n'est pas comparable à un run historique sans scope.
+        "ministry_scope": getattr(args, "ministry_scope", "none"),
     }
 
 
@@ -633,10 +660,15 @@ def context_payload(result: PipelineResult) -> list[dict[str, Any]]:
 # like "L. 332-22-1" is captured whole instead of collapsing to the parent "L332-22".
 # TODO(pr212-review): _RANGE_RE still reuses only the first base ("L. 331-1 à L. 335-9"
 # expands to L331-* only), dropping cross-base ranges — understates the diagnostic-only
-# retrieval metrics (doc_recall/hit_rate no longer gate judge pass, so impact is bounded).
+# retrieval metrics (doc_recall/hit_rate ne gatent plus le judge pass depuis le
+# 06/07/2026 — caps retrieval passés en soft, cf. calibrate_judge_result).
 # Same-base ranges (the common form) are fine.
 _CODE_RE = re.compile(r"[FLRD]\.?\s?\d+(?:-\d+)*", re.IGNORECASE)
 _RANGE_RE = re.compile(r"([LRD])\.?\s?(\d+)-(\d+)\s*à\s*[LRD]?\.?\s?\d+-(\d+)", re.IGNORECASE)
+_DECREE_NUMBER_RE = re.compile(r"\b(?:décret|decret)\s*(?:n[°o]\s*)?(\d{2,4}-\d+)\b", re.IGNORECASE)
+_ARTICLE_RANGE_RE = re.compile(r"\barticles?\s+(\d+(?:-\d+)?)\s*(?:à|a)\s*(\d+(?:-\d+)?)\b", re.IGNORECASE)
+_ARTICLE_SINGLE_RE = re.compile(r"\b(?:article|art\.)\s*(\d+(?:-\d+)?)\b", re.IGNORECASE)
+_ARTICLE_LIST_RE = re.compile(r"\barticles?\s+((?:\d+(?:-\d+)?)(?:\s*(?:,|;|et)\s*\d+(?:-\d+)?)+)", re.IGNORECASE)
 
 
 def _match_key(value: str) -> str:
@@ -646,35 +678,119 @@ def _match_key(value: str) -> str:
     return "".join(str(value or "").upper().split()).replace(".", "")
 
 
+def _ascii_lower(value: str) -> str:
+    # Réutilise le fold canonique du pipeline: NFKD seul ne décompose PAS les
+    # tirets typographiques (U+2011 insécable, U+2212 moins — courants dans les
+    # collages PDF/Légifrance), et « Décret 86‑83 » échouait alors
+    # _DECREE_NUMBER_RE, abandonnant la résolution legal_ref en silence.
+    return _fold_text(str(value or ""))
+
+
+def _alias_key(value: str) -> str:
+    return _match_key(value)
+
+
+def _add_alias_group(aliases: dict[str, set[str]], values: list[str]) -> None:
+    clean_values = _stable_unique([str(value or "").strip() for value in values if str(value or "").strip()])
+    for value in clean_values:
+        key = _alias_key(value)
+        if not key:
+            continue
+        aliases.setdefault(key, set()).update(v for v in clean_values if _alias_key(v) != key)
+
+
+def _legal_ref_key(decree_number: str, article_number: str) -> str:
+    return f"DECREE:{_match_key(decree_number)}:ARTICLE:{_match_key(article_number)}"
+
+
+def _extract_decree_number(value: str) -> str | None:
+    match = _DECREE_NUMBER_RE.search(_ascii_lower(value))
+    return match.group(1) if match else None
+
+
+def _numeric_article_range(start: str, end: str) -> list[str]:
+    """Expand same-base article ranges such as 10 à 15.
+
+    Hyphenated article ranges with different suffixes are intentionally not
+    guessed; they are uncommon in the goldset and ambiguous without corpus data.
+    """
+    if "-" in start or "-" in end:
+        return [start, end] if start != end else [start]
+    start_i = int(start)
+    end_i = int(end)
+    if start_i > end_i or end_i - start_i > 100:
+        return [start, end]
+    return [str(value) for value in range(start_i, end_i + 1)]
+
+
+def _extract_article_numbers(value: str) -> list[str]:
+    text = _ascii_lower(value)
+    numbers: list[str] = []
+    for match in _ARTICLE_RANGE_RE.finditer(text):
+        numbers.extend(_numeric_article_range(match.group(1), match.group(2)))
+    for match in _ARTICLE_LIST_RE.finditer(text):
+        numbers.extend(re.findall(r"\d+(?:-\d+)?", match.group(1)))
+    for match in _ARTICLE_SINGLE_RE.finditer(text):
+        numbers.append(match.group(1))
+    return _stable_unique(numbers)
+
+
 def load_gold_id_maps(dsn: str) -> dict[str, dict[str, Any]]:
     """Build the lookups that resolve human-facing ``gold_sources`` to the corpus
     ``doc_id``s the retriever actually returns: ``rag_documents.short_id`` (MATTE
     doc names) -> doc_id, ``rag_chunks_matte.short_id`` (annex codes) ->
     source_document_id, ``rag_chunks_dgafp.number`` (article codes) -> cid.
-    Returns empty maps if the corpus tables are absent."""
-    maps: dict[str, dict[str, Any]] = {"doc_short": {}, "matte_short": {}, "article": {}}
+    Intentionally do not resolve against ``rag_chunks_legifrance``: that table
+    contains legacy full-text Légifrance residue that the production retriever
+    does not query, so crediting it would inflate eval results.
+
+    The returned ``aliases`` map captures corpus-equivalent identifiers. This is
+    needed because the DGAFP retriever often logs a Légifrance ``cid``/short_id
+    (``LEGIARTI...``), while pre-resolved gold rows may contain the corresponding
+    ``rag_documents.doc_id`` UUID.
+
+    Toute erreur DB se propage — même doctrine fail-loud que le probe
+    ``gold_doc_ids`` de ``load_goldset_questions``: un ``except psycopg.Error``
+    qui rendait des maps vides transformait une erreur transitoire (ou une
+    colonne absente) en dégradation SILENCIEUSE de tout le run — résolution
+    runtime et alias désactivés, métriques hit_rate/doc_recall corrompues,
+    juge biaisé (mécanisme du run 67, 06/07/2026)."""
+    maps: dict[str, dict[str, Any]] = {"doc_short": {}, "matte_short": {}, "article": {}, "legal_ref": {}, "aliases": {}}
     queries = {
-        "doc_short": "SELECT short_id, doc_id FROM public.rag_documents WHERE short_id IS NOT NULL",
+        "doc_short": "SELECT short_id, doc_id, source_url FROM public.rag_documents WHERE short_id IS NOT NULL",
         "matte_short": (
             "SELECT DISTINCT short_id, source_document_id AS v FROM public.rag_chunks_matte "
             "WHERE short_id IS NOT NULL AND source_document_id IS NOT NULL"
         ),
-        "article": ("SELECT DISTINCT number AS short_id, cid AS v FROM public.rag_chunks_dgafp WHERE number IS NOT NULL AND cid IS NOT NULL"),
+        "article": (
+            "SELECT DISTINCT number AS short_id, cid AS v, title, full_title "
+            "FROM public.rag_chunks_dgafp WHERE number IS NOT NULL AND cid IS NOT NULL"
+        ),
     }
-    try:
-        with psycopg.connect(dsn, row_factory=dict_row) as conn:
-            for name, sql in queries.items():
-                for row in conn.execute(sql).fetchall():
-                    key = _match_key(row["short_id"])
-                    value = str(row.get("doc_id") or row.get("v") or "").strip()
-                    if not key or not value:
-                        continue
-                    if name == "doc_short":
-                        maps[name][key] = value
-                    else:
-                        maps[name].setdefault(key, set()).add(value)
-    except psycopg.Error:
-        return {"doc_short": {}, "matte_short": {}, "article": {}}
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        for name, sql in queries.items():
+            for row in conn.execute(sql).fetchall():
+                key = _match_key(row["short_id"])
+                value = str(row.get("doc_id") or row.get("v") or "").strip()
+                if not key or not value:
+                    continue
+                if name == "doc_short":
+                    maps[name][key] = value
+                    aliases = maps["aliases"]
+                    alias_values = [value, str(row["short_id"])]
+                    source_url = str(row.get("source_url") or "").strip()
+                    if source_url:
+                        alias_values.append(source_url)
+                        alias_values.append(source_url.rstrip("/").rsplit("/", 1)[-1])
+                    _add_alias_group(aliases, alias_values)
+                else:
+                    maps[name].setdefault(key, set()).add(value)
+                    if name == "article":
+                        title = str(row.get("title") or "")
+                        full_title = str(row.get("full_title") or "")
+                        decree_number = _extract_decree_number(f"{title} {full_title}")
+                        if decree_number:
+                            maps["legal_ref"].setdefault(_legal_ref_key(decree_number, str(row["short_id"])), set()).add(value)
     return maps
 
 
@@ -694,20 +810,92 @@ def resolve_gold_doc_ids(gold_sources: list[str], maps: dict[str, dict[str, Any]
         if range_match:
             prefix, base, start, end = range_match.group(1), range_match.group(2), int(range_match.group(3)), int(range_match.group(4))
             tokens.update(f"{prefix}{base}-{i}" for i in range(start, end + 1))
+
+        decree_number = _extract_decree_number(raw)
+        if decree_number:
+            for article_number in _extract_article_numbers(raw):
+                resolved_for_raw.extend(maps.get("legal_ref", {}).get(_legal_ref_key(decree_number, article_number), []))
+
         for token in tokens:
             key = _match_key(token)
-            if key in maps["article"]:
+            if key in maps.get("article", {}):
                 resolved_for_raw.extend(maps["article"][key])
-            if key in maps["matte_short"]:
+            if key in maps.get("matte_short", {}):
                 resolved_for_raw.extend(maps["matte_short"][key])
-            if key in maps["doc_short"]:
+            if key in maps.get("doc_short", {}):
                 resolved_for_raw.append(maps["doc_short"][key])
         resolved.extend(resolved_for_raw or [raw])
     return _stable_unique(resolved)
 
 
+def merge_gold_doc_ids(
+    pre_resolved: list[str],
+    gold_sources: list[str],
+    maps: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Union de la colonne ``gold_doc_ids`` pré-résolue et de la résolution
+    runtime des ``gold_sources``.
+
+    Régression #276: ``run_eval`` remplaçait ``gold_doc_ids`` par
+    ``resolve_gold_doc_ids(gold_sources, maps)`` — mais cette résolution ne sait
+    pas mapper les codes MATTE/MSO (F-fiche, annexe) vers un doc_id (les
+    short_ids ministériels sont des hex, pas des F-codes). La colonne
+    pré-résolue porte ces résolutions (pont par similarité de titres) que
+    l'écrasement jetait: ``hit_rate=0`` sur MATTE/MSO alors que le gold est
+    retrouvé, et juge biaisé par de faux ``missing_gold_sources`` (runs 67/68).
+
+    On garde le meilleur des deux mondes: résolution runtime (#276: DGAFP,
+    décrets, alias LEGIARTI) ∪ colonne curée (pont MATTE/MSO). Le matching
+    ``hit_rate`` est un « au moins un recouvrement », donc l'union ne peut que
+    rétablir des hits légitimes sans en inventer.
+
+    Un label brut (valeur qui est elle-même un ``gold_source``, non résolu vers
+    un doc_id) et un id corpus sont des ALTERNATIVES pour la même source
+    attendue, pas des sources supplémentaires. On écarte les labels bruts
+    RÉSIDUELS DE LA COLONNE curée: l'ancien ``resolve_goldset_doc_ids`` écrivait
+    ``resolved_for_raw or [raw]`` en base, laissant des F-codes/sentences décret
+    À CÔTÉ du pont UUID (46/116 lignes staging au 06/07/2026). Les garder rendait
+    ``doc_recall < 1.0`` structurel (un F-code ne matche jamais un UUID),
+    déclenchait le cap soft ``missing_expected_source`` à chaque question et
+    nourrissait le juge de faux ``missing_gold_sources``. Le filtre ne s'applique
+    qu'en présence d'AU MOINS un doc_id corpus dans l'union; comme il porte sur
+    ``pre_resolved``, ré-exécuter ``scripts/resolve_goldset_doc_ids.py`` nettoie
+    la colonne en place.
+
+    En revanche on GARDE le passthrough runtime d'une source réellement
+    irrésoluble qui n'est PAS déjà dans la colonne: c'est son seul ancrage
+    (alias/url-tail), et une AUTRE source résolue sur la même ligne ne doit pas
+    le faire disparaître (sinon doc_recall gonflé, retrieval gap masqué). Si rien
+    ne résout, on conserve tous les labels bruts."""
+    runtime_resolved = resolve_gold_doc_ids(gold_sources, maps)
+    merged = _stable_unique([*(pre_resolved or []), *runtime_resolved])
+    source_keys = {_match_key(source) for source in gold_sources if str(source).strip()}
+    resolved_ids = [value for value in merged if _match_key(value) not in source_keys]
+    # Aucun doc_id corpus: garder les labels bruts (seul ancrage possible).
+    if not resolved_ids:
+        return merged
+    # Un label brut n'est écarté que s'il traînait DANS la colonne curée à côté
+    # d'un id résolu (leftover de l'ancien script). Le passthrough runtime d'une
+    # source non couverte (absente de la colonne) reste son unique ancrage.
+    pre_keys = {_match_key(value) for value in (pre_resolved or [])}
+    return [value for value in merged if _match_key(value) not in source_keys or _match_key(value) not in pre_keys]
+
+
 def retrieved_doc_ids(result: PipelineResult, contexts: list[dict[str, Any]]) -> list[str]:
-    ids = [str(ctx.get("doc_id") or "").strip() for ctx in contexts]
+    def ids_from_ref(value: dict[str, Any]) -> list[str]:
+        ids: list[str] = []
+        for key in ("doc_id", "document_id", "source_document_id", "cid", "short_id", "doc_short_id", "document_short_id"):
+            raw = value.get(key)
+            if raw is not None and str(raw).strip():
+                ids.append(str(raw).strip())
+        metadata = value.get("metadata")
+        if isinstance(metadata, dict):
+            ids.extend(ids_from_ref(metadata))
+        return ids
+
+    ids: list[str] = []
+    for ctx in contexts:
+        ids.extend(ids_from_ref(ctx))
     metadata = result.metadata if isinstance(result.metadata, dict) else {}
     for key in ("context_items_ref", "chunks_after_rerank", "chunks_raw", "retrieved_chunks"):
         values = metadata.get(key)
@@ -716,13 +904,26 @@ def retrieved_doc_ids(result: PipelineResult, contexts: list[dict[str, Any]]) ->
         for value in values:
             if not isinstance(value, dict):
                 continue
-            ids.append(str(value.get("doc_id") or value.get("document_id") or "").strip())
+            ids.extend(ids_from_ref(value))
     return _stable_unique(ids)
 
 
-def deterministic_metrics(gold_sources: list[str], retrieved_ids: list[str]) -> dict[str, Any]:
-    gold = _stable_unique(gold_sources)
-    retrieved = _stable_unique(retrieved_ids)
+def _expand_identifier_aliases(values: list[str], aliases: dict[str, set[str]] | None) -> list[str]:
+    if not aliases:
+        return _stable_unique(values)
+    expanded: list[str] = []
+    for value in values:
+        clean = str(value or "").strip()
+        if not clean:
+            continue
+        expanded.append(clean)
+        expanded.extend(aliases.get(_alias_key(clean), []))
+    return _stable_unique(expanded)
+
+
+def deterministic_metrics(gold_sources: list[str], retrieved_ids: list[str], aliases: dict[str, set[str]] | None = None) -> dict[str, Any]:
+    gold = _expand_identifier_aliases(gold_sources, aliases)
+    retrieved = _expand_identifier_aliases(retrieved_ids, aliases)
     gold_set = {_match_key(g) for g in gold}
     retrieved_keys = [_match_key(r) for r in retrieved]
     retrieved_set = set(retrieved_keys)
@@ -784,6 +985,15 @@ def aggregate_items(items: list[EvalItem]) -> dict[str, Any]:
         "judge_score_avg": _metric_average(items, "score", "judge_result"),
         "judge_raw_score_avg": _metric_average(items, "raw_model_score", "judge_result"),
         "judge_pass_rate": sum(1 for item in judged if item.judge_result.get("pass") is True) / len(judged) if judged else None,
+        # Part des questions dont AUCUN gold doc n'est retrouvé (hit_rate=0):
+        # diagnostic retrieval découplé du judge_pass depuis le 06/07/2026
+        # (le cap n'est plus bloquant) — à surveiller côté pipeline/goldset.
+        "retrieval_gap_rate": (
+            sum(1 for item in items if item.deterministic_metrics.get("hit_rate") == 0.0)
+            / len([item for item in items if item.deterministic_metrics.get("hit_rate") is not None])
+            if any(item.deterministic_metrics.get("hit_rate") is not None for item in items)
+            else None
+        ),
         "judge_legal_correctness_avg": _judge_dimension_average(items, "legal_correctness"),
         "judge_completeness_avg": _judge_dimension_average(items, "completeness"),
         "judge_gold_answer_alignment_avg": _judge_dimension_average(items, "gold_answer_alignment"),
@@ -965,28 +1175,38 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
         if normalized_dimensions[dim] < floor:
             caps.append({"reason": reason, "max_score": max_score})
 
-    # A total miss of declared expected sources is still a hard cap. Partial
-    # recall is a soft cap: it lowers the stored score for visibility, but does
-    # not independently block a pass when answer quality remains above threshold.
-    # ``doc_recall=None`` (empty gold set) yields no retrieval cap at all.
+    # Les métriques de retrieval sont un DIAGNOSTIC, pas un verdict qualité:
+    # arbitrage du 06/07/2026 (audit run 52) — le cap dur sur hit_rate=0
+    # rendait le pass structurellement impossible pour 29/100 questions alors
+    # que la réponse pouvait être parfaite (rationale positif, score 0.6), et
+    # confondait artefacts d'ids gold avec échecs réels. Les deux caps
+    # retrieval sont désormais soft: ils plafonnent le score stocké pour la
+    # visibilité mais ne bloquent plus le pass; la part de hit_rate=0 est
+    # agrégée séparément (retrieval_gap_rate).
+    # ``doc_recall=None`` (gold set vide) => aucun cap retrieval.
     doc_recall = deterministic.get("doc_recall")
     hit_rate = deterministic.get("hit_rate")
     soft_caps: list[dict[str, Any]] = []
     if isinstance(doc_recall, int | float):
         if hit_rate == 0.0:
-            caps.append({"reason": "no_expected_source_retrieved", "max_score": rubric.no_expected_source_cap})
+            soft_caps.append({"reason": "no_expected_source_retrieved", "max_score": rubric.no_expected_source_cap, "soft": True})
         elif doc_recall < 1.0:
             soft_caps.append({"reason": "missing_expected_source", "max_score": rubric.missing_expected_source_cap, "soft": True})
 
+    # Le pass s'évalue sur le score AVANT caps soft: un cap soft (diagnostic
+    # retrieval) plafonne le score stocké mais ne doit pas pouvoir faire
+    # passer le score sous pass_min_score et bloquer le pass par ricochet.
     final_score = candidate_score
-    score_caps = caps + soft_caps
-    if score_caps:
-        final_score = min(final_score, *(float(cap["max_score"]) for cap in score_caps))
+    if caps:
+        final_score = min(final_score, *(float(cap["max_score"]) for cap in caps))
+    pass_basis_score = min(1.0, max(0.0, final_score))
+    if soft_caps:
+        final_score = min(final_score, *(float(cap["max_score"]) for cap in soft_caps))
     final_score = min(1.0, max(0.0, final_score))
 
     failure_category = str(parsed.get("failure_category") or "none")
     pass_value = (
-        final_score >= rubric.pass_min_score
+        pass_basis_score >= rubric.pass_min_score
         and not material_contradiction
         and not caps
         and all(normalized_dimensions[dim] >= floor for dim, floor in rubric.pass_dimension_floors.items())
@@ -994,6 +1214,11 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
 
     parsed["raw_model_score"] = raw_model_score
     parsed["score"] = final_score
+    # Persister la base du pass: le score stocké est plafonné par les caps soft
+    # (ex. 0.6 sur hit_rate=0) alors que le pass s'évalue AVANT — sans ce champ,
+    # une ligne pass=true/score=0.6 contredit pass_min_score=0.8 pour tout SQL
+    # qui recalcule le pass depuis le score.
+    parsed["pass_basis_score"] = pass_basis_score
     parsed["pass"] = pass_value
     parsed["failure_category"] = "none" if pass_value else failure_category if failure_category != "none" else "quality_gate_failed"
     parsed["dimensions"] = normalized_dimensions
@@ -1055,7 +1280,7 @@ def judge_answer(
             },
             "score": "your uncalibrated overall score from 0.0 to 1.0 before code-side caps",
             "pass": "true only when the answer is legally correct, covers the required points, aligns with the gold answer, and is source-supported",
-            "failure_category": "one of: none, wrong_law, incomplete, unsupported, hallucination, refusal, irrelevant",
+            "failure_category": "one of: none, wrong_law, incomplete, unsupported, hallucination, refusal, irrelevant, retrieval_gap",
             "material_contradiction": (
                 "true ONLY when the candidate directly asserts the OPPOSITE of a legally material point in the gold answer "
                 "(e.g. eligible vs not eligible, owed vs not owed, allowed vs forbidden). "
@@ -1069,6 +1294,21 @@ def judge_answer(
         "Compare the candidate answer against the gold answer first, then against retrieved contexts. "
         "Reward a correct, source-grounded answer even when it is concise; do not require exhaustiveness. "
         "Do not reward a fluent answer that contradicts the gold answer on a material legal point. "
+        # Doctrine corpus réglementaire (audit du 06/07/2026): le juge évalue la
+        # génération PAR RAPPORT AUX CONTEXTS SERVIS, jamais depuis son propre
+        # savoir, et ne blâme pas la génération pour un trou de retrieval.
+        "STRICT RULES — this is a regulatory corpus. "
+        "(1) Judge ONLY from the gold answer and the retrieved_contexts provided; "
+        "NEVER use your own legal knowledge to fill gaps or to fault the answer. "
+        "(2) If the substance required by the gold answer is ABSENT from the retrieved_contexts, "
+        "then a refusal or an explicit statement that the sources do not cover the point is the "
+        "CORRECT candidate behavior: set failure_category='retrieval_gap', do not blame the answer, "
+        "and never demand that the candidate infer or extrapolate beyond the contexts. "
+        "(3) An answer that covers the gold answer's required points and whose additional statements "
+        "are each anchored in the retrieved_contexts is NOT contradictory and NOT misaligned — "
+        "anchored completeness is never a failure. "
+        "(4) material_contradiction requires quoting the candidate sentence and the gold sentence "
+        "that directly conflict; if you cannot quote both, it is not material. "
         "Return only valid JSON with keys: score, pass, failure_category, material_contradiction, "
         "dimensions, missing_required_points, contradictions, rationale, source_support."
     )
@@ -1091,16 +1331,66 @@ def judge_answer(
         return {"status": "failed", "reason": str(exc)}
 
 
+def build_full_ministry_scope() -> Any:
+    """Scope « utilisateur pleinement granté »: tous les ministères du catalog
+    + les tables partagées.
+
+    L'app route les corpus ministériels par RetrievalScope construit à chaque
+    requête selon les droits du groupe (jamais via v3_tables — question de
+    droits, pas de config globale). Sans scope, l'eval retombait sur v3_tables
+    et les corpus mso/mi/masa étaient invisibles: les questions MSO
+    plafonnaient à 0.25 uniquement pour ça (constat du 06/07/2026)."""
+    from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG, SHARED_TABLE_KEYS, RetrievalScope
+
+    ministry_keys = tuple(ministry.table_key for ministry in MINISTRY_CATALOG.values())
+    return RetrievalScope(selected_ministry="eval_all_ministries", table_keys=(*ministry_keys, *SHARED_TABLE_KEYS))
+
+
+def resolve_question_scope(question: GoldsetQuestion, ministry_scope_mode: str) -> Any:
+    """Scope de retrieval d'une question selon le mode choisi.
+
+    'per-question' (recommandé): une question MATTE/MSO/MI/MASA est évaluée
+    dans le scope de SON ministère + tables partagées — comme un agent de ce
+    ministère dans l'app. Sonde du 06/07/2026 en scope « all »: contamination
+    inter-ministères (question MSO répondue depuis un mode opératoire MASA,
+    questions MATTE depuis le Vademecum MSO) — aucun utilisateur réel n'a ce
+    scope-là.
+
+    Les questions NON ministérielles (Service-Public, manual, synthetic,
+    DGAFP) suivent aussi le **parcours MATTE** (matte + tables partagées SP +
+    Légifrance) — décision Paul 06/07/2026. Le goldset est construit en
+    contexte MATTE/DGAFP et 55/68 de ces questions ont leur gold dans SP ou
+    Légifrance (couvert par les tables partagées, présentes dans TOUT scope
+    ministériel). Les évaluer en scope complet leur infligeait le pool le plus
+    bruité (chunks mso/mi/masa hors-sujet) sans qu'aucun utilisateur réel n'ait
+    ce scope — un agent DGAFP/MATTE n'interroge jamais tous les ministères.
+    """
+    if ministry_scope_mode == "none":
+        return None
+    if ministry_scope_mode == "per-question":
+        from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG, build_retrieval_scope
+
+        ministry_id = (question.source or "").strip().lower()
+        # Sources non ministérielles (manual/Service-Public/synthetic/DGAFP)
+        # -> parcours MATTE (matte + SP + Légifrance), pas scope complet.
+        if ministry_id not in MINISTRY_CATALOG:
+            ministry_id = "matte"
+        return build_retrieval_scope(ministry_id)
+    return build_full_ministry_scope()
+
+
 def run_question(
     *,
     pipe: Any,
     question: GoldsetQuestion,
+    identifier_aliases: dict[str, set[str]] | None = None,
     run_ragas: bool,
     run_judge: bool,
     judge_model: str,
     ragas_model: str,
     scaleway_base_url: str,
     scaleway_api_key: str,
+    retrieval_scope: Any = None,
 ) -> EvalItem:
     started = time.perf_counter()
     item = EvalItem(
@@ -1110,7 +1400,7 @@ def run_question(
         gold_sources=question.gold_sources,
     )
     try:
-        result = pipe.run_with_trace(question.question)
+        result = pipe.run_with_trace(question.question, retrieval_scope=retrieval_scope)
         elapsed_ms = (time.perf_counter() - started) * 1000
         contexts = context_payload(result)
         doc_ids = retrieved_doc_ids(result, contexts)
@@ -1120,7 +1410,7 @@ def run_question(
         item.sources = result.sources
         item.timing = {**result.timing, "eval_total_ms": elapsed_ms}
         item.metadata = result.metadata
-        item.deterministic_metrics = deterministic_metrics(question.retrieval_gold, doc_ids)
+        item.deterministic_metrics = deterministic_metrics(question.retrieval_gold, doc_ids, aliases=identifier_aliases)
 
         context_texts = [str(context.get("content") or "") for context in contexts if str(context.get("content") or "").strip()]
         if run_ragas:
@@ -1256,6 +1546,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--skip-ragas", action="store_true", help="Skip RAGAS metrics.")
     parser.add_argument("--skip-judge", action="store_true", help="Skip Scaleway LLM-as-judge.")
+    parser.add_argument(
+        "--selector-model",
+        default="",
+        help="Override du modèle du sélecteur (ex: mistral-medium-2508) sans toucher à la config runtime partagée.",
+    )
+    parser.add_argument(
+        "--section-rerank-top-k",
+        type=int,
+        default=None,
+        help="Override du nombre de sections offertes au sélecteur (v3_rerank_top_k runtime sinon).",
+    )
+    parser.add_argument("--initial-top-k", type=int, default=None, help="Override retrieval.initial_top_k (ablation).")
+    parser.add_argument("--ivfflat-probes", type=int, default=None, help="Override retrieval.ivfflat_probes (ablation; 0=défaut serveur).")
+    parser.add_argument("--min-kept-sections", type=int, default=None, help="Override selector.min_kept_sections (ablation; 0=désactivé).")
+    parser.add_argument("--doc-entire-threshold-wide", type=int, default=None, help="Override context.doc_entire_threshold_wide (ablation).")
+    parser.add_argument(
+        "--ministry-scope",
+        choices=["per-question", "all", "none"],
+        default="per-question",
+        help=(
+            "Scope ministériel du retrieval. 'per-question' (défaut) = les questions MSO/MI/MASA "
+            "sont évaluées dans le scope de LEUR ministère (comme un agent de ce ministère dans l'app); "
+            "toutes les autres (MATTE, manual, Service-Public, synthetic, DGAFP) suivent le parcours MATTE "
+            "(matte + tables partagées SP/Légifrance), PAS le scope complet; 'all' = utilisateur "
+            "pleinement granté partout (contamination inter-ministères possible); 'none' = comportement "
+            "historique (v3_tables runtime seulement, mso/mi/masa invisibles)."
+        ),
+    )
     parser.add_argument("--judge-model", default=os.getenv("SCALEWAY_JUDGE_MODEL", DEFAULT_JUDGE_MODEL), help="Scaleway judge model.")
     parser.add_argument(
         "--ragas-model",
@@ -1314,6 +1632,28 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     runtime_config = get_rag_config()
     pipeline_config = runtime_config_to_rag_config(runtime_config)
     config_adjustments: list[str] = []
+    # Overrides d'expérimentation A/B: la config runtime (rag_config, ligne
+    # unique en base) est PARTAGÉE — deux runs parallèles avec des réglages
+    # différents doivent surcharger localement, pas muter la base. Appliqués
+    # AVANT le fingerprint pour que la clé de dédup/comparabilité les voie.
+    if args.selector_model:
+        pipeline_config.selector.model = args.selector_model
+        config_adjustments.append(f"selector_model={args.selector_model}")
+    if args.section_rerank_top_k is not None:
+        pipeline_config.aggregation.section_rerank_top_k = args.section_rerank_top_k
+        config_adjustments.append(f"section_rerank_top_k={args.section_rerank_top_k}")
+    if args.initial_top_k is not None:
+        pipeline_config.retrieval.initial_top_k = args.initial_top_k
+        config_adjustments.append(f"initial_top_k={args.initial_top_k}")
+    if args.ivfflat_probes is not None:
+        pipeline_config.retrieval.ivfflat_probes = args.ivfflat_probes
+        config_adjustments.append(f"ivfflat_probes={args.ivfflat_probes}")
+    if args.min_kept_sections is not None:
+        pipeline_config.selector.min_kept_sections = args.min_kept_sections
+        config_adjustments.append(f"min_kept_sections={args.min_kept_sections}")
+    if args.doc_entire_threshold_wide is not None:
+        pipeline_config.context.doc_entire_threshold_wide = args.doc_entire_threshold_wide
+        config_adjustments.append(f"doc_entire_threshold_wide={args.doc_entire_threshold_wide}")
     config_hash = config_fingerprint(pipeline_config)
     git_sha = _git_sha()
     run_label = args.run_label or f"{datetime.now(tz=UTC).strftime('%Y%m%dT%H%M%SZ')}_{args.goldset_name}"
@@ -1324,6 +1664,11 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     questions = load_goldset_questions(dsn, goldset_name=args.goldset_name, tags=args.tag, limit=args.limit, any_goldset=args.any_goldset)
     if not questions:
         raise RuntimeError(f"No questions found for goldset={args.goldset_name!r}, tags={args.tag!r}.")
+    gold_id_maps = load_gold_id_maps(dsn)
+    if any(gold_id_maps.get(key) for key in ("doc_short", "matte_short", "article", "legal_ref")):
+        for question in questions:
+            question.gold_doc_ids = merge_gold_doc_ids(question.gold_doc_ids, question.gold_sources, gold_id_maps)
+    identifier_aliases = gold_id_maps.get("aliases", {})
     eval_scope = build_eval_scope(args, questions)
 
     run_id: int | None = None
@@ -1414,12 +1759,14 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
             item = run_question(
                 pipe=pipe,
                 question=question,
+                identifier_aliases=identifier_aliases,
                 run_ragas=not args.skip_ragas,
                 run_judge=not args.skip_judge,
                 judge_model=args.judge_model,
                 ragas_model=args.ragas_model,
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,
+                retrieval_scope=resolve_question_scope(question, args.ministry_scope),
             )
             items.append(item)
             if item_conn is not None and run_id is not None:

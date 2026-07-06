@@ -26,7 +26,7 @@ from psycopg.rows import dict_row
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from src.goldset.eval import load_gold_id_maps, parse_text_list, resolve_dsn, resolve_gold_doc_ids  # noqa: E402
+from src.goldset.eval import load_gold_id_maps, merge_gold_doc_ids, parse_text_list, resolve_dsn  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -51,13 +51,28 @@ def main(argv: list[str] | None = None) -> int:
     with psycopg.connect(dsn, row_factory=dict_row, autocommit=True) as conn:
         if not args.dry_run:
             conn.execute("ALTER TABLE public.goldset_questions_v2 ADD COLUMN IF NOT EXISTS gold_doc_ids TEXT[]")
-        rows = conn.execute(f"SELECT id, gold_sources FROM public.goldset_questions_v2 WHERE {' AND '.join(where)} ORDER BY id", params).fetchall()
+        # La colonne porte des résolutions CURÉES (pont MATTE/MSO par similarité
+        # de titres) que la résolution runtime ne sait pas reproduire (F-codes /
+        # annexes -> UUID). Un UPDATE sec les écraserait définitivement et
+        # réinstallerait la corruption des runs 67/68, cette fois persistée en
+        # base — d'où le merge (colonne ∪ résolution) au lieu du remplacement.
+        has_column = (
+            conn.execute(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema='public' "
+                "AND table_name='goldset_questions_v2' AND column_name='gold_doc_ids'"
+            ).fetchone()
+            is not None
+        )
+        gold_doc_ids_col = ", gold_doc_ids" if has_column else ""
+        sql = f"SELECT id, gold_sources{gold_doc_ids_col} FROM public.goldset_questions_v2 WHERE {' AND '.join(where)} ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         print(f"rows to resolve: {len(rows)}")
 
         updated = resolved_beyond_raw = 0
         for row in rows:
             gold_sources = parse_text_list(row["gold_sources"])
-            gold_doc_ids = resolve_gold_doc_ids(gold_sources, maps)
+            existing = parse_text_list(row.get("gold_doc_ids")) if has_column else []
+            gold_doc_ids = merge_gold_doc_ids(existing, gold_sources, maps)
             # "resolved beyond raw" = produced at least one id that was not just the raw token
             if set(gold_doc_ids) - {str(s).strip() for s in gold_sources}:
                 resolved_beyond_raw += 1

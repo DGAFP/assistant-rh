@@ -370,10 +370,15 @@ with tab_config:
             changes["v3_enable_reranker"] = new_v3_reranker
         
         if new_v3_reranker:
-            current_v3_rerank_top_k = getattr(config, 'v3_rerank_top_k', 5)
+            # max 15 -> 30: la config validée par l'eval (candidate_v2, run 115)
+            # utilise 20 sections — le plafond 15 rendait la valeur mesurée
+            # inatteignable depuis l'UI. Clamp de la valeur DB dans [3,30]: une
+            # valeur hors bornes (posée par SQL/ancien code) ferait crasher
+            # st.slider (value hors [min,max]).
+            current_v3_rerank_top_k = max(3, min(30, getattr(config, 'v3_rerank_top_k', 5)))
             new_v3_rerank_top_k = st.slider(
                 "Sections après rerank",
-                min_value=3, max_value=15, value=current_v3_rerank_top_k, step=1,
+                min_value=3, max_value=30, value=current_v3_rerank_top_k, step=1,
                 help="Nombre de sections conservées après reranking",
                 key="slider_v3_rerank_top_k"
             )
