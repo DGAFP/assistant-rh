@@ -202,6 +202,28 @@ le juge reçoit des diagnostics retrieval corrects sur tous les corpus.
 - **Bilan** : MATTE/SP ~0,56 n'est PAS un plafond dur — 70 % des échecs fixables
   (sélecteur surtout), 30 % plancher de fidélité. Fixer sélecteur + juge ≈ +5-7 pts.
 
+### Diagnostic ISO-JUGE — régression MATTE legacy → Phase D (expérience du 06/07)
+
+Question de Paul : le brut MATTE 0,73 (run 19) → 0,58 (run 70) est-il une vraie
+régression, ou du sous-jugement historique + dérive du juge ? **Méthode** :
+re-juger les réponses FIGÉES de run 19 (legacy) ET de run 70 (Phase D) avec le
+MÊME juge actuel + gold corrigé (`scratchpad/rejudge_matte.py`, 2 passes/question
+pour lisser le bruit). Ça isole la qualité de génération.
+
+- **Résultat** : run 19 re-jugé **0,750** vs run 70 re-jugé **0,667** → **vraie
+  régression de ~8 pts** (pas un artefact). Le « −15 » brut était surestimé (dérive
+  juge + bug gold). run 19 était à 0,73 ancien juge → 0,75 nouveau juge : **legacy
+  PAS significativement sous-évalué** sur MATTE.
+- **Mécanisme (2 questions, même cause)** : q2 (L332-22) — legacy récupérait la
+  fiche 1, Phase D ne la récupère plus (retrieval/chunking) ; q11 (proration RTT)
+  — legacy servait la **fiche entière** (passage porteur inclus), Phase D sert
+  3,5 sections mais pas la bonne (famine sélecteur). **L'injection fiche-entière
+  du legacy garantissait le passage-réponse ; le chunking fin le délivre moins
+  fiablement.** = exactement le levier priorité 1. Régression réelle mais bornée
+  et diagnostiquée ; le correctif sélecteur devrait la refermer.
+- À faire : même re-jugement iso-juge sur SP/MSO (SP non rebuild → une baisse y
+  serait pipeline, pas corpus).
+
 ## Backlog priorisé (état au 06/07)
 
 0. **[PRIORITÉ 1] Famine du sélecteur** (audit run 70 : 3/10 échecs MATTE/SP) —
