@@ -849,18 +849,30 @@ def merge_gold_doc_ids(
     ``hit_rate`` est un « au moins un recouvrement », donc l'union ne peut que
     rétablir des hits légitimes sans en inventer.
 
-    Quand la colonne curée est non vide, les labels bruts que la résolution
-    runtime n'a pas su mapper (passthrough ``resolved_for_raw or [raw]``) sont
-    écartés: ids résolus et labels bruts sont des ALTERNATIVES pour la même
-    source attendue, pas des sources supplémentaires. Les garder rendait
-    ``doc_recall < 1.0`` structurel (un F-code ne matche jamais un UUID),
-    déclenchait le cap soft ``missing_expected_source`` à chaque question
-    pontée et nourrissait le juge de faux ``missing_gold_sources``."""
+    Un label brut (valeur qui est elle-même un ``gold_source``, non résolu vers
+    un doc_id) et un id corpus sont des ALTERNATIVES pour la même source
+    attendue, pas des sources supplémentaires. Dès qu'AU MOINS un doc_id corpus
+    est présent dans l'union, on écarte les labels bruts résiduels — qu'ils
+    viennent du passthrough runtime OU de la colonne curée elle-même (l'ancien
+    ``resolve_goldset_doc_ids`` écrivait ``resolved_for_raw or [raw]`` en base,
+    laissant des F-codes/sentences décret À CÔTÉ du pont UUID: 46/116 lignes
+    staging au 06/07/2026). Les garder rendait ``doc_recall < 1.0`` structurel
+    (un F-code ne matche jamais un UUID), déclenchait le cap soft
+    ``missing_expected_source`` à chaque question et nourrissait le juge de faux
+    ``missing_gold_sources``. Comme le filtre porte sur l'UNION, ré-exécuter
+    ``scripts/resolve_goldset_doc_ids.py`` nettoie la colonne en place.
+
+    Tension assumée: une source multi-doc dont AUCUNE variante ne résout perd
+    son ancrage par label brut si une AUTRE source de la ligne, elle, résout.
+    ``gold_sources`` garde la provenance (et sert de repli quand ``gold_doc_ids``
+    est vide). Si rien ne résout, on conserve les labels bruts comme seul
+    ancrage best-effort (alias/url-tail)."""
     runtime_resolved = resolve_gold_doc_ids(gold_sources, maps)
-    if pre_resolved:
-        raw_keys = {_match_key(source) for source in gold_sources}
-        runtime_resolved = [value for value in runtime_resolved if _match_key(value) not in raw_keys]
-    return _stable_unique([*(pre_resolved or []), *runtime_resolved])
+    merged = _stable_unique([*(pre_resolved or []), *runtime_resolved])
+    source_keys = {_match_key(source) for source in gold_sources if str(source).strip()}
+    resolved_ids = [value for value in merged if _match_key(value) not in source_keys]
+    # Aucun doc_id corpus: garder les labels bruts (seul ancrage possible).
+    return resolved_ids if resolved_ids else merged
 
 
 def retrieved_doc_ids(result: PipelineResult, contexts: list[dict[str, Any]]) -> list[str]:

@@ -822,3 +822,30 @@ def test_merge_gold_doc_ids_drops_unresolved_raw_labels_when_curated() -> None:
     # Sans colonne curée, le label brut reste le seul candidat de matching
     # (alias/url-tail au moment des métriques) — il est conservé.
     assert merge_gold_doc_ids([], ["F1"], maps) == ["F1"]
+
+
+def test_merge_gold_doc_ids_cleans_raw_label_already_in_column() -> None:
+    # Re-review PR #281 (constat live: 46/116 lignes staging): l'ANCIEN script
+    # avait écrit le label brut DANS la colonne, à côté du pont UUID
+    # (gold_doc_ids = ['F3', 'uuid']). Le filtre du premier fix ne portait que
+    # sur runtime_resolved -> le 'F3' de la colonne survivait et plombait
+    # doc_recall. Le filtre porte désormais sur l'UNION: dès qu'un doc_id corpus
+    # est présent, tout label brut résiduel (colonne OU runtime) est écarté,
+    # donc ré-exécuter le script nettoie la colonne en place.
+    from src.goldset.eval import merge_gold_doc_ids
+
+    maps = {"doc_short": {}, "matte_short": {}, "article": {}, "legal_ref": {}, "aliases": {}}
+    merged = merge_gold_doc_ids(["F3", "uuid-fiche-3"], ["F3", "autre source"], maps)
+
+    assert merged == ["uuid-fiche-3"]
+
+
+def test_merge_gold_doc_ids_keeps_raw_labels_when_nothing_resolves() -> None:
+    # Aucune source ne résout et pas de pont: les labels bruts sont le seul
+    # ancrage best-effort (alias/url-tail), on ne doit pas les jeter.
+    from src.goldset.eval import merge_gold_doc_ids
+
+    maps = {"doc_short": {}, "matte_short": {}, "article": {}, "legal_ref": {}, "aliases": {}}
+    merged = merge_gold_doc_ids(["F3", "F4"], ["F3", "F4"], maps)
+
+    assert set(merged) == {"F3", "F4"}
