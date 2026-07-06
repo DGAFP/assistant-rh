@@ -849,3 +849,74 @@ def test_merge_gold_doc_ids_keeps_raw_labels_when_nothing_resolves() -> None:
     merged = merge_gold_doc_ids(["F3", "F4"], ["F3", "F4"], maps)
 
     assert set(merged) == {"F3", "F4"}
+
+
+def test_usage_cost_eur_scaleway_and_free_and_unknown() -> None:
+    from src.goldset.eval import _usage_cost_eur
+
+    # qwen3-235b: 0.75 € / 2.25 € par M tokens (in / out)
+    assert _usage_cost_eur("qwen3-235b-a22b-instruct-2507", 1_000_000, 1_000_000) == 3.0
+    # Albert (gpt-oss-120b via openweight-large) = gratuit
+    assert _usage_cost_eur("openweight-large", 5_000_000, 5_000_000) == 0.0
+    # modèle inconnu -> pas de tarif
+    assert _usage_cost_eur("modele-inconnu", 1000, 1000) is None
+
+
+def test_instrument_usage_tallies_every_create_call() -> None:
+    # RAGAS fait N appels internes: l'instrumentation doit tous les capter.
+    from src.goldset.eval import _instrument_usage, _TokenUsage
+
+    class _Usage:
+        def __init__(self, p: int, c: int) -> None:
+            self.prompt_tokens = p
+            self.completion_tokens = c
+
+    class _Resp:
+        def __init__(self, p: int, c: int) -> None:
+            self.usage = _Usage(p, c)
+
+    class _Completions:
+        def create(self, **kwargs: object) -> _Resp:
+            return _Resp(10, 3)
+
+    class _Chat:
+        completions = _Completions()
+
+    class _Client:
+        chat = _Chat()
+
+    client = _Client()
+    tracker = _TokenUsage()
+    _instrument_usage(client, tracker)
+    client.chat.completions.create(model="x")
+    client.chat.completions.create(model="x")
+
+    assert (tracker.prompt_tokens, tracker.completion_tokens, tracker.calls) == (20, 6, 2)
+    assert tracker.as_dict("llama-3.3-70b-instruct")["cost_eur"] == round(20 / 1e6 * 0.9 + 6 / 1e6 * 0.9, 6)
+
+
+def test_aggregate_token_usage_exact_billable_plus_free_estimate() -> None:
+    from src.goldset.eval import EvalItem, _aggregate_token_usage
+
+    item = EvalItem(question_id=1, question="q", gold_answer="g", gold_sources=[])
+    item.judge_result = {
+        "status": "completed",
+        "usage": {"prompt_tokens": 1000, "completion_tokens": 200, "calls": 1, "model": "qwen3-235b-a22b-instruct-2507"},
+    }
+    item.ragas_metrics = {
+        "status": "completed",
+        "usage": {"prompt_tokens": 5000, "completion_tokens": 500, "calls": 8, "model": "llama-3.3-70b-instruct"},
+    }
+    item.timing = {"response_length_tokens": 300}
+    item.contexts = [{"content": "x" * 400}]
+    item.metadata = {"context_before_selector": "y" * 800, "selector_raw_response": "z" * 40}
+
+    out = _aggregate_token_usage([item])
+
+    assert out["judge"]["prompt_tokens"] == 1000
+    assert out["ragas"]["calls"] == 8
+    expected = round((1000 / 1e6 * 0.75 + 200 / 1e6 * 2.25) + (5000 / 1e6 * 0.9 + 500 / 1e6 * 0.9), 4)
+    assert out["billable_cost_eur"] == expected
+    # générateur Albert (gratuit): sortie = compteur réel, coût nul
+    assert out["generator_albert_est"]["completion_tokens"] == 300
+    assert out["generator_albert_est"]["cost_eur"] == 0.0

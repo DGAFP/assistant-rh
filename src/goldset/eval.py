@@ -1001,6 +1001,123 @@ def aggregate_items(items: list[EvalItem]) -> dict[str, Any]:
         "ragas_faithfulness_avg": _metric_average(items, "faithfulness", "ragas_metrics"),
         "ragas_context_precision_avg": _metric_average(items, "context_precision", "ragas_metrics"),
         "ragas_context_recall_avg": _metric_average(items, "context_recall", "ragas_metrics"),
+        "token_usage": _aggregate_token_usage(items),
+    }
+
+
+# Prix Scaleway Generative APIs (EUR / 1M tokens, input/output) — modèles juge &
+# RAGAS. Albert (API Etalab, générateur/sélecteur/embeddings) est GRATUIT pour le
+# projet gouvernemental, d'où (0, 0). Source: scaleway.com/en/pricing/model-as-a-service.
+_LLM_PRICE_EUR_PER_MTOK: dict[str, tuple[float, float]] = {
+    "qwen3-235b-a22b-instruct-2507": (0.75, 2.25),
+    "llama-3.3-70b-instruct": (0.90, 0.90),
+    "llama-3.1-70b-instruct": (0.90, 0.90),  # non listé publiquement; aligné sur llama-3.3-70b
+    "openweight-large": (0.0, 0.0),  # Albert (gpt-oss-120b) — gratuit
+    "gpt-oss-120b": (0.0, 0.0),  # Albert — gratuit
+}
+
+
+def _usage_cost_eur(model: str, prompt_tokens: int, completion_tokens: int) -> float | None:
+    """Coût € d'un usage donné, ou None si le modèle n'a pas de tarif connu."""
+    price = _LLM_PRICE_EUR_PER_MTOK.get(model or "")
+    if price is None:
+        return None
+    return round(prompt_tokens / 1_000_000 * price[0] + completion_tokens / 1_000_000 * price[1], 6)
+
+
+class _TokenUsage:
+    """Cumule les tokens facturables sur un client OpenAI-compatible.
+
+    Le juge fait 1 appel; RAGAS en fait N (extraction de statements, NLI de
+    faithfulness, context precision/recall) qui ré-envoient le contexte. On
+    instrumente ``chat.completions.create`` pour tout capter sans dépendre des
+    internes de RAGAS."""
+
+    def __init__(self) -> None:
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.calls = 0
+
+    def record(self, usage: Any) -> None:
+        if not usage:
+            return
+        self.prompt_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
+        self.completion_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
+        self.calls += 1
+
+    def as_dict(self, model: str) -> dict[str, Any]:
+        return {
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "calls": self.calls,
+            "model": model,
+            "cost_eur": _usage_cost_eur(model, self.prompt_tokens, self.completion_tokens),
+        }
+
+
+def _instrument_usage(client: Any, tracker: _TokenUsage) -> None:
+    """Instrumente ``client.chat.completions.create`` pour cumuler l'usage.
+
+    On surcharge la méthode sur l'instance (``chat``/``completions`` sont des
+    cached_property stables en openai v1) plutôt que d'envelopper le client:
+    ``llm_factory`` de RAGAS vérifie le type, il faut garder l'instance réelle."""
+    try:
+        completions = client.chat.completions
+        original = completions.create
+
+        def wrapped(*args: Any, **kwargs: Any) -> Any:
+            response = original(*args, **kwargs)
+            try:
+                tracker.record(getattr(response, "usage", None))
+            except Exception:  # noqa: BLE001 — le tally ne doit jamais casser l'appel LLM
+                pass
+            return response
+
+        completions.create = wrapped
+    except Exception:  # noqa: BLE001 — si l'API change, on dégrade sans usage plutôt que crasher
+        pass
+
+
+def _aggregate_token_usage(items: list["EvalItem"]) -> dict[str, Any]:
+    """Agrège l'usage LLM d'un run: exact pour juge+RAGAS (Scaleway, facturé),
+    estimé pour générateur+sélecteur (Albert, gratuit)."""
+
+    def _sum(getter: Any) -> dict[str, Any]:
+        prompt = completion = calls = counted = 0
+        model = ""
+        for item in items:
+            usage = getter(item)
+            if isinstance(usage, dict) and (usage.get("prompt_tokens") or usage.get("completion_tokens")):
+                prompt += int(usage.get("prompt_tokens") or 0)
+                completion += int(usage.get("completion_tokens") or 0)
+                calls += int(usage.get("calls") or 0)
+                counted += 1
+                model = usage.get("model") or model
+        return {
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+            "calls": calls,
+            "items": counted,
+            "model": model,
+            "cost_eur": _usage_cost_eur(model, prompt, completion),
+        }
+
+    judge = _sum(lambda it: it.judge_result.get("usage"))
+    ragas = _sum(lambda it: it.ragas_metrics.get("usage"))
+    # Générateur/sélecteur = Albert (gratuit): estimation depuis les volumes stockés
+    # (sortie générateur = compteur réel response_length_tokens; input ~ chars/4).
+    gen_out = sum(int((item.timing or {}).get("response_length_tokens") or 0) for item in items)
+    gen_in_est = sum(len(json.dumps(item.contexts, ensure_ascii=False, default=str)) for item in items) // 4
+    sel_in_est = sum(len(str((item.metadata or {}).get("context_before_selector") or "")) for item in items) // 4
+    sel_out_est = sum(len(str((item.metadata or {}).get("selector_raw_response") or "")) for item in items) // 4
+    billable = round(sum(part["cost_eur"] or 0.0 for part in (judge, ragas)), 4)
+    return {
+        "judge": judge,
+        "ragas": ragas,
+        "generator_albert_est": {"prompt_tokens": gen_in_est, "completion_tokens": gen_out, "cost_eur": 0.0},
+        "selector_albert_est": {"prompt_tokens": sel_in_est, "completion_tokens": sel_out_est, "cost_eur": 0.0},
+        "billable_cost_eur": billable,
+        "note": "Coût exact juge+RAGAS (usage API Scaleway); Albert gratuit, tokens estimés (~4 chars/tok).",
     }
 
 
@@ -1037,6 +1154,8 @@ def compute_ragas_metrics(
             ]
         )
         client = OpenAI(api_key=api_key, base_url=base_url)
+        usage = _TokenUsage()
+        _instrument_usage(client, usage)  # capte tous les sous-appels RAGAS
         llm = llm_factory(
             model=model,
             provider="openai",
@@ -1052,6 +1171,7 @@ def compute_ragas_metrics(
             "faithfulness": _safe_float(row.get("faithfulness")),
             "context_precision": _safe_float(row.get("context_precision")),
             "context_recall": _safe_float(row.get("context_recall")),
+            "usage": usage.as_dict(model),
         }
     except Exception as exc:
         return {"status": "failed", "reason": str(exc)}
@@ -1326,7 +1446,11 @@ def judge_answer(
         content = response.choices[0].message.content or "{}"
         parsed = _extract_json_object(content)
         parsed["status"] = "completed"
-        return calibrate_judge_result(parsed, deterministic_metrics)
+        calibrated = calibrate_judge_result(parsed, deterministic_metrics)
+        usage = _TokenUsage()
+        usage.record(getattr(response, "usage", None))
+        calibrated["usage"] = usage.as_dict(model)
+        return calibrated
     except Exception as exc:
         return {"status": "failed", "reason": str(exc)}
 
