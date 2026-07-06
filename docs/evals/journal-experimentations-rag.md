@@ -171,21 +171,73 @@ qui corrompt les métriques retrieval et **biaise le juge** :
   échecs ont le doc), les fails sont désormais en aval (1 génération fautive,
   1 sélecteur `all_rejected` → 0 section servie, nuances juge).
 
-## Run 70 — `reference_v1_union_20260706` (run id **70**) — RÉFÉRENCE PROPRE, EN COURS
+## Run 70 — `reference_v1_union_20260706` (run id **70**) — RÉFÉRENCE PROPRE ✅
 
 Identique au run 67 (115 q, per-question + manual→MATTE, 20 sections, gpt-oss,
 juge découplé+doctrine) **plus le fix gold_doc_ids (PR #277)**. Premier run où
 le juge reçoit des diagnostics retrieval corrects sur tous les corpus.
-Comparaison run 52 (sous-ensemble commun) + run 19 en SQL.
-- **Résultats : à compléter à la fin.**
+
+- **Résultats (115/115)** : judge_pass **0,643** · hit_rate **0,791** (honnête,
+  était corrompu à 0 sur MATTE/MSO avant le fix) · doc_recall 0,591.
+  Par corpus : MI **0,80** · synthetic 0,73 · SP 0,64 · manual 0,63 · MSO 0,60 ·
+  MATTE 0,58 · DGAFP 0,50.
+- **Comparaisons appariées (SQL, sous-ensemble commun)** :
+  - vs **run 52** (dégradé) : **+34 pts** (0,61 vs 0,27) — spectaculaire mais
+    flatté par le fait que run 52 était un mauvais run (cap dur + gpt-oss du soir).
+  - vs **run 19** (vraie baseline legacy) : **+4 pts** (0,61 vs 0,57) — LE signal
+    honnête. Modeste, avec redistribution : MSO/MI/manual up, **MATTE en retrait**
+    (0,58 vs 0,73 : le rebuild Phase D perd l'injection de fiches entières du legacy).
+- **Audit des 10 échecs MATTE/SP (workflow 10 agents)** — **7 fixables / 3 plancher** :
+  - **SÉLECTEUR affame le générateur (q11, q16, q17)** = levier majeur : q16
+    `all_rejected` → 0 section servie ; q11/q17 doc gold récupéré (hit=1) mais
+    mauvaises sections servies (heading générique au lieu du passage porteur).
+  - **JUGE trop sévère (q15, q23)** : pénalise la complétude vs des détails du
+    gold ABSENTS du contexte servi (issus d'une autre fiche non servie) → juger
+    la complétude vs le servable, pas vs un gold plus large.
+  - **GOLD défectueux (q32)** : omet l'IM 545 déconcentré (la réponse le donne).
+  - **RETRIEVAL_MISS (q2)** : fiche 1 L332-22 pas récupérée (cas historique).
+  - **Plancher irréductible (q1, q3, q21)** = vraies fautes de génération (refus
+    CDIsation obligatoire ; IFC « suspendue » à tort ; 100 % vs 90 % congé
+    maladie) — le juge a raison, doctrine réglementaire. Fidélité de génération.
+- **Bilan** : MATTE/SP ~0,56 n'est PAS un plafond dur — 70 % des échecs fixables
+  (sélecteur surtout), 30 % plancher de fidélité. Fixer sélecteur + juge ≈ +5-7 pts.
+
+### Diagnostic ISO-JUGE — régression MATTE legacy → Phase D (expérience du 06/07)
+
+Question de Paul : le brut MATTE 0,73 (run 19) → 0,58 (run 70) est-il une vraie
+régression, ou du sous-jugement historique + dérive du juge ? **Méthode** :
+re-juger les réponses FIGÉES de run 19 (legacy) ET de run 70 (Phase D) avec le
+MÊME juge actuel + gold corrigé (`scratchpad/rejudge_matte.py`, 2 passes/question
+pour lisser le bruit). Ça isole la qualité de génération.
+
+- **Résultat** : run 19 re-jugé **0,750** vs run 70 re-jugé **0,667** → **vraie
+  régression de ~8 pts** (pas un artefact). Le « −15 » brut était surestimé (dérive
+  juge + bug gold). run 19 était à 0,73 ancien juge → 0,75 nouveau juge : **legacy
+  PAS significativement sous-évalué** sur MATTE.
+- **Mécanisme (2 questions, même cause)** : q2 (L332-22) — legacy récupérait la
+  fiche 1, Phase D ne la récupère plus (retrieval/chunking) ; q11 (proration RTT)
+  — legacy servait la **fiche entière** (passage porteur inclus), Phase D sert
+  3,5 sections mais pas la bonne (famine sélecteur). **L'injection fiche-entière
+  du legacy garantissait le passage-réponse ; le chunking fin le délivre moins
+  fiablement.** = exactement le levier priorité 1. Régression réelle mais bornée
+  et diagnostiquée ; le correctif sélecteur devrait la refermer.
+- À faire : même re-jugement iso-juge sur SP/MSO (SP non rebuild → une baisse y
+  serait pipeline, pas corpus).
 
 ## Backlog priorisé (état au 06/07)
 
-0. **Nettoyer la colonne `gold_doc_ids`** : le pont a APPENDU les UUID aux labels
-   bruts → double-comptage qui sous-estime `doc_recall` (pas `hit_rate`). Idéal :
-   remplacer les labels résolus au lieu de les cumuler.
-0bis. **Plancher sélecteur pour le cas `all_rejected`** (SP q16 : gold dans le
-   pool mais 0 section servie → refus forcé) — quick win.
+0. **[PRIORITÉ 1] Famine du sélecteur** (audit run 70 : 3/10 échecs MATTE/SP) —
+   deux sous-fixes : (a) plancher `all_rejected` : servir un top-N minimum quand
+   le pool contient un hit (q16 : 0 section servie → refus forcé) ; (b) garantir
+   que la section PORTEUSE d'un doc `hit=1` survive à la sélection (q11/q17 :
+   heading générique servi au lieu du passage-réponse). Généralise au-delà de MATTE/SP.
+0bis. **[PRIORITÉ 2] Calibration juge : complétude vs servable** (q15, q23) — ne
+   pas pénaliser des détails du gold absents du contexte servi (les attribuer au
+   retrieval/sélecteur, pas à la génération).
+0ter. **Nettoyer la colonne `gold_doc_ids`** : le pont a APPENDU les UUID aux
+   labels bruts → double-comptage qui sous-estime `doc_recall` (pas `hit_rate`).
+0quater. **Fidélité de génération** (plancher : q1/q3/q21) — vraies fautes
+   réglementaires malgré contexte correct ; prompt/vérification/modèle.
 1. Résultats 58/59 → merger #274, choisir le modèle du sélecteur.
 2. Recherche hybride BM25+dense par défaut (index GIN déjà en place ; nbsp SP à
    normaliser d'abord — 46 % des chunks SP en contiennent, cf. reprise PR #183).
