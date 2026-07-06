@@ -224,6 +224,50 @@ pour lisser le bruit). Ça isole la qualité de génération.
 - À faire : même re-jugement iso-juge sur SP/MSO (SP non rebuild → une baisse y
   serait pipeline, pas corpus).
 
+## Ablation config + candidat v2 — récupération MATTE/SP (06/07)
+
+**Question de Paul** : « à la base on n'avait pas les probes, on était à k30, c'était
+plus simple » — mes changements de config Phase D (tunés en partie contre des
+métriques CORROMPUES par le bug gold_doc_ids) ont-ils fait régresser MATTE/SP ?
+
+**Diff config run 19 (bon MATTE/SP) → run 70** : 5 deltas, tous introduits par moi :
+`initial_top_k` 20→30, `ivfflat_probes` (1)→15, `section_rerank_top_k` 10→20,
+`doc_entire_threshold_wide` 5000→9000, `min_kept_sections` off→4.
+
+**Ablation (20 cas, appariés vs run 70 : MATTE 0,56 / SP 0,50)** — un param reverté à la fois :
+- reverter `probes` OU `min_kept` → MATTE↑ ET SP↑ (les deux aident les deux corpus).
+- reverter `top_k` OU `rerank` → MATTE↑ mais SP indifférent ; reverter les 4 (full simple)
+  → MATTE 0,78 mais **SP 0,40** (top_k=20+rerank=10 affament SP).
+- **Sweep offline retrieval** : `probes=5` = sweet spot (recall 0,92 comme 15, mais
+  Alan 0,25 vs 0,58) ; `probes=1` perd du recall (0,83) ; `probes=15` le plus bruité.
+
+**Scope SP corrigé (question de Paul)** : les questions source=Service-Public/synthetic/
+DGAFP tournaient en scope COMPLET (`matte,mso,mi,masa,sp,dgafp`) = pool le plus bruité,
+irréaliste. Or 55/68 des questions manual+MATTE ont leur gold dans SP/Légifrance (donc
+matte-path suffit) et aucun agent réel n'interroge tous les ministères → **toute source
+non ministérielle suit désormais le parcours MATTE** (matte+sp+dgafp).
+
+**Candidat v2** (`probes=5` + `min_kept=0` + scope matte-path pour SP ; top_k=30/rerank=20/
+doc_entire=9000 inchangés) — 20 cas appariés vs run 70 :
+| Corpus | candidat v2 | run 70 | run 19 (cible) |
+|---|---|---|---|
+| MATTE | **0,78** | 0,56 | 0,73 ✅ |
+| Service-Public | **0,70** | 0,50 | 0,71 ✅ |
+| GLOBAL | **0,75** | 0,55 | — |
+- Décomposition : fix scope SP → SP +20 ; probes 15→5 → MATTE +22 ; min_kept→0 aide les deux.
+- Les 3 changements sont justes **sur le fond** (probes 15 sur-bruité, min_kept force des
+  sections = risque d'invention réglementaire, scope complet irréaliste), pas des hacks d'éval.
+- **`candidate_v2_20260706` = full run 115 — RÉSULTATS** : judge_pass **0,678**
+  (run 70: 0,643). Apparié **+4 vs run 70**, **+9 vs run 19** (99 communes: 0,68 vs 0,59).
+  Par corpus : MI 0,90 · **SP 0,79** (run 19 0,71, dépassé) · synthetic 0,73 ·
+  **MATTE 0,75** (run 19 0,73, récupéré) · manual 0,63 · **MSO 0,40 (régression)** · DGAFP 1,00.
+  **Objectif MATTE/SP atteint.** Seule ombre : MSO 0,60→0,40 (le plancher min_kept
+  l'aidait). Accepté temporairement — fix propre = **override config PAR MINISTÈRE**
+  (MSO garde le plancher, les autres non), au backlog.
+- **Défauts de config committés** : `ivfflat_probes` 15→5, `min_kept_sections` 4→0
+  (config.py, code-only, non mappés runtime). Scope SP→matte-path = eval-only
+  (l'app scope par groupe). Ces 3 changements sont justes sur le fond, pas des hacks.
+
 ## Backlog priorisé (état au 06/07)
 
 0. **[PRIORITÉ 1] Famine du sélecteur** (audit run 70 : 3/10 échecs MATTE/SP) —

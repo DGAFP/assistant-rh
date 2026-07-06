@@ -132,10 +132,13 @@ class RetrievalConfig:
     initial_top_k: int = 30
     # Nombre de listes IVFFLAT sondées par requête vectorielle. Sans SET
     # explicite, PostgreSQL utilise probes=1: sur nos index lists=100, chaque
-    # recherche ne scanne qu'1 % des listes — recall silencieusement amputé
-    # (constaté au goldset du 05/07/2026: fiches gold absentes du pool alors
-    # que présentes en base). 0 = laisser le défaut serveur.
-    ivfflat_probes: int = 15
+    # recherche ne scanne qu'1 % des listes — recall silencieusement amputé.
+    # 15 -> 5 (06/07/2026): sweep offline du goldset — probes=5 est le point
+    # d'équilibre (recall MATTE 0,92 comme probes=15, mais bruit Alan 0,25 vs
+    # 0,58 ; probes=1 perd du recall à 0,83). Ablation appariée: probes 15->5
+    # remonte MATTE de 0,56 à 0,78 (moins de bruit dans le pool du sélecteur).
+    # 0 = laisser le défaut serveur.
+    ivfflat_probes: int = 5
     alpha: float = 0.5
     tables: List[str] = field(default_factory=lambda: ["matte", "service_public", "dgafp", "rgrh"])
     enable_chunk_reranker: bool = False
@@ -229,13 +232,16 @@ class SelectorConfig:
     temperature: float = 0.0
     prompt_name: str = "v3_selector_business.md"
     # Plancher de sections servies au générateur quand le sélecteur a gardé
-    # quelque chose: le LLM sélecteur élague à 1-2 sections en moyenne, ce qui
-    # suffisait avec les gros chunks legacy mais affame le générateur depuis le
-    # chunking par sections fines (eval du 05/07/2026: pass 0.13 à <=1 section
-    # servie vs 0.27 au-delà; réponse présente dans le corpus mais hors du
-    # contexte servi). Le complément est pris au rang d'agrégation; le budget
-    # tokens du ContextBuilder reste la limite haute. 0 = désactivé.
-    min_kept_sections: int = 4
+    # quelque chose (complément au rang d'agrégation).
+    # 4 -> 0 (06/07/2026, DÉSACTIVÉ): forcer des sections que le sélecteur a
+    # écartées est risqué en corpus RÉGLEMENTAIRE — quand le pool est bruité et
+    # que le sélecteur rejette, servir les top-N par score peut pousser le
+    # générateur à INVENTER depuis un contexte marginal (mieux vaut un refus
+    # honnête). L'ablation appariée du goldset le confirme au pass: min_kept 4->0
+    # remonte MATTE et Service-Public. Tension connue: MSO bénéficiait du plancher
+    # (0,60 -> 0,40) — à traiter par un override config PAR MINISTÈRE (backlog),
+    # pas par un plancher global. 0 = désactivé.
+    min_kept_sections: int = 0
 
     def to_dict(self) -> dict:
         return {**asdict(self), "provider": self.provider.value}
