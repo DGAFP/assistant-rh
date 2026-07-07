@@ -58,8 +58,14 @@ _REPLACEMENTS: Tuple[Tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"'MATTE'", _I), "'ministere'"),
     (re.compile(r'"Service-Public"', _I), '"service_public"'),
     (re.compile(r"'Service-Public'", _I), "'service_public'"),
-    # tenant full name, with or without the trailing "- MATTE" / "(MATTE)"
-    (re.compile(_FULL_NAME + r"\s*[-–(]\s*MATTE\s*\)?", _I), "{ministere_label} ({ministere_sigle})"),
+    # tenant full name + sigle. Two forms handled separately to preserve any
+    # parentheses already surrounding the name in the text:
+    #   "… Écologique (MATTE)"  → wrap the sigle in its own parens
+    #   "… Écologique - MATTE"  → keep the dash, add NO parens (otherwise a
+    #                             pre-existing wrapping "(… - MATTE)" ends up
+    #                             unbalanced, e.g. "française ({label} ({sigle}).")
+    (re.compile(_FULL_NAME + r"\s*\(\s*MATTE\s*\)", _I), "{ministere_label} ({ministere_sigle})"),
+    (re.compile(_FULL_NAME + r"\s*[-–]\s*MATTE", _I), "{ministere_label} - {ministere_sigle}"),
     (re.compile(_FULL_NAME, _I), "{ministere_label}"),
     # catch-all: any remaining standalone MATTE (source tag / practice reference)
     (re.compile(r"\bMATTE\b", _I), "{ministere_sigle}"),

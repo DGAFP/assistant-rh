@@ -142,3 +142,18 @@ def test_migration_transform_is_case_insensitive_but_table_safe() -> None:
     # Empty / NULL rows must not crash re.sub.
     assert transform("") == ""
     assert transform(None) is None
+
+
+def test_migration_full_name_keeps_parentheses_balanced() -> None:
+    transform = _load_migration_module().ministry_agnostic_transform
+
+    # A full name already wrapped in parens with a "- MATTE" suffix must not gain
+    # an extra unbalanced paren pair (real staging intent_unified.md header).
+    dash = transform("assistant (Ministère de la Transition Écologique - MATTE).")
+    assert dash == "assistant ({ministere_label} - {ministere_sigle})."
+    rendered = render_ministry_prompt(dash, get_ministry("matte"))
+    assert rendered.count("(") == rendered.count(")")
+
+    # Paren form "(MATTE)" keeps its own parens.
+    paren = transform("Ministère de la Transition Écologique (MATTE)")
+    assert paren == "{ministere_label} ({ministere_sigle})"
