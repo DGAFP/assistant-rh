@@ -32,7 +32,9 @@ from assistant_rh_rag_pipeline.config import (
 from assistant_rh_rag_pipeline.config import (
     get_acronym_dict as _get_acro,
 )
+from assistant_rh_rag_pipeline.context_selector import ContextSelector
 from assistant_rh_rag_pipeline.db_helpers import get_dsn as get_app_dsn
+from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG, resolve_ministry
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
@@ -220,6 +222,7 @@ def _cfg_to_dict(cfg: "PipelineEvalConfig") -> dict:
         "enable_llm_selector": cfg.enable_llm_selector,
         "selector_model": cfg.selector_model,
         "selector_prompt": cfg.selector_prompt,
+        "ministry": cfg.ministry,
         "extra_de_tables": cfg.extra_de_tables,
     }
 
@@ -336,6 +339,7 @@ def load_experiment(exp_id: int) -> Optional[Dict]:
             enable_llm_selector=cd.get("enable_llm_selector", False),
             selector_model=cd.get("selector_model", "openweight-large"),
             selector_prompt=cd.get("selector_prompt", "v3_selector_business.md"),
+            ministry=cd.get("ministry", "matte"),
             extra_de_tables=cd.get("extra_de_tables", []),
         )
         configs.append(cfg)
@@ -392,6 +396,7 @@ class PipelineEvalConfig:
     enable_llm_selector: bool = True
     selector_model: str = "openweight-large"
     selector_prompt: str = "v3_selector_business.md"
+    ministry: str = "matte"  # tenant used to render ministry-agnostic prompts
     extra_de_tables: List[str] = field(default_factory=list)
 
 
@@ -502,6 +507,13 @@ def render_config_sidebar(idx: int, color: str) -> PipelineEvalConfig:
                 sel_model = st.selectbox("Selector Model", SELECTOR_MODELS, key=f"cfg_selmod_{idx}")
                 sel_prompt_label = st.selectbox("Selector Prompt", list(SELECTOR_PROMPTS.keys()), key=f"cfg_selprompt_{idx}")
                 sel_prompt = SELECTOR_PROMPTS[sel_prompt_label]
+            ministry_id = st.selectbox(
+                "Ministère (prompts)",
+                list(MINISTRY_CATALOG.keys()),
+                format_func=lambda mid: MINISTRY_CATALOG[mid].label,
+                key=f"cfg_ministry_{idx}",
+                help="Ministère pour lequel les prompts ministère-agnostiques sont rendus (ex: selector).",
+            )
 
         # Extra DE tables
         extra_de = st.multiselect(
@@ -532,6 +544,7 @@ def render_config_sidebar(idx: int, color: str) -> PipelineEvalConfig:
         enable_llm_selector=llm_selector,
         selector_model=sel_model,
         selector_prompt=sel_prompt,
+        ministry=ministry_id,
         extra_de_tables=extra_de_tables,
     )
     cfg.name = auto_name(cfg)
@@ -704,12 +717,17 @@ def run_lightweight_pipeline(
     if cfg.enable_llm_selector and sections:
         t0 = time.time()
         try:
-            selected_sections = pipe._selector.select(query_for_retrieval, sections)
+            # A bare Pipeline never populates ``pipe._selector`` (only run()/run_stream
+            # do), so build a request-scoped selector here and render its prompt for
+            # the configured ministry.
+            selector = ContextSelector(config.selector)
+            ministry = resolve_ministry(cfg.ministry)
+            selected_sections = selector.select(query_for_retrieval, sections, ministry=ministry)
             selector_detail = {
                 "n_items_input": len(sections),
                 "n_items_selected": len(selected_sections),
-                "all_rejected": pipe._selector.all_rejected,
-                "reason": pipe._selector.last_reasoning,
+                "all_rejected": selector.all_rejected,
+                "reason": selector.last_reasoning,
             }
         except Exception as e:
             selector_detail = {"error": str(e)}
