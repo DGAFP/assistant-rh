@@ -29,11 +29,6 @@ class MinistrySource:
         """Short ministry tag used to name its source in prompts (e.g. ``MATTE``)."""
         return self.publisher
 
-    @property
-    def fiches_label(self) -> str:
-        """How to refer to this ministry's internal fiches in prompts."""
-        return f"fiches {self.publisher}"
-
 
 @dataclass(frozen=True)
 class RetrievalScope:
@@ -134,7 +129,6 @@ def resolve_ministry(scope: RetrievalScope | str | None) -> MinistrySource | Non
 _FALLBACK_PLACEHOLDERS: dict[str, str] = {
     "ministere_label": "votre ministère",
     "ministere_sigle": "votre ministère",
-    "ministere_fiches": "fiches ministérielles",
 }
 
 
@@ -146,12 +140,11 @@ def ministry_placeholders(ministry: MinistrySource | None) -> dict[str, str]:
     return {
         "ministere_label": ministry.label,
         "ministere_sigle": ministry.sigle,
-        "ministere_fiches": ministry.fiches_label,
     }
 
 
 def render_ministry_prompt(text: str, ministry: MinistrySource | None) -> str:
-    """Substitute ``{ministere_label}`` / ``{ministere_sigle}`` / ``{ministere_fiches}``.
+    """Substitute ``{ministere_label}`` / ``{ministere_sigle}`` in a prompt template.
 
     Uses plain ``str.replace`` (not ``str.format``) so it composes with prompts
     that legitimately contain other braces (JSON few-shot examples, ``{query}``

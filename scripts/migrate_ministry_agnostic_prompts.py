@@ -116,13 +116,18 @@ def main() -> int:
             for name, prompt_type, content in rows:
                 scanned += 1
                 new_content = ministry_agnostic_transform(content)
+                # Scan every prompt (changed or not): a glued "MATTE" (e.g.
+                # "MATTE_v2") that the word-boundary rule can't rewrite leaves the
+                # prompt unchanged, so this must run before the no-op skip below.
+                # Case-sensitive on purpose — lowercase table names like
+                # ``rag_chunks_matte`` are legitimate and must not be flagged.
+                if "MATTE" in new_content:
+                    leftover_matte.append(name)
                 if new_content == content:
                     continue
                 changed += 1
                 print(f"\n=== {name}  [{prompt_type}] ===")
                 print(_diff(name, content, new_content))
-                if re.search(r"\bMATTE\b", new_content):
-                    leftover_matte.append(name)
                 if args.apply:
                     cur.execute(
                         "UPDATE system_prompts SET content = %s, updated_by = %s, updated_at = CURRENT_TIMESTAMP WHERE name = %s",

@@ -361,6 +361,10 @@ class QueryProcessor:
             if theme and theme not in AVAILABLE_THEMES:
                 theme = "autre"
 
+            # NB: the intent prompt also emits ``requested_source``
+            # ("ministere"|"service_public"). It is intentionally NOT consumed
+            # yet — reserved for a future per-source retrieval filter. Wire it
+            # here (map "ministere" → current publisher) when that lands.
             return {
                 "intent": intent,
                 "confidence": float(data.get("confidence", 0.8)),

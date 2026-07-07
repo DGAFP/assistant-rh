@@ -18,7 +18,7 @@ from assistant_rh_rag_pipeline.ministry_scope import (
 )
 
 _ALL_IDS = ["matte", "mso", "mi", "masa"]
-_TOKENS = ("{ministere_label}", "{ministere_sigle}", "{ministere_fiches}")
+_TOKENS = ("{ministere_label}", "{ministere_sigle}")
 
 
 # ── render_ministry_prompt ────────────────────────────────────────────────
@@ -27,7 +27,7 @@ _TOKENS = ("{ministere_label}", "{ministere_sigle}", "{ministere_fiches}")
 @pytest.mark.parametrize("ministry_id", _ALL_IDS)
 def test_render_substitutes_all_tokens_for_each_ministry(ministry_id: str) -> None:
     ministry = get_ministry(ministry_id)
-    text = "Source: {ministere_sigle}. Ministère: {ministere_label}. Voir {ministere_fiches}."
+    text = "Source: {ministere_sigle}. Ministère: {ministere_label}."
 
     rendered = render_ministry_prompt(text, ministry)
 
@@ -65,7 +65,6 @@ def test_placeholders_match_catalog() -> None:
     ph = ministry_placeholders(get_ministry("masa"))
     assert ph["ministere_sigle"] == "MASA"
     assert ph["ministere_label"] == MINISTRY_CATALOG["masa"].label
-    assert ph["ministere_fiches"] == "fiches MASA"
 
 
 # ── resolve_ministry ──────────────────────────────────────────────────────
