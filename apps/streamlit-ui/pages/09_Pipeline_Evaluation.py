@@ -56,6 +56,7 @@ st.caption("Mesure l'impact de chaque module du pipeline V3 — Retrieval léger
 # DATABASE CONNECTION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def get_dsn() -> str:
     tunnel_dsn = os.getenv("TUNNEL_DSN")
     if tunnel_dsn:
@@ -149,8 +150,11 @@ CONFIG_COLORS = ["#636EFA", "#EF553B", "#00CC96", "#AB63FA"]
 K_VALUES = [1, 3, 5, 10, 20, 50]
 
 TIMING_KEYS = [
-    "query_processing", "chunk_retrieval",
-    "section_aggregation", "llm_selector", "context_build",
+    "query_processing",
+    "chunk_retrieval",
+    "section_aggregation",
+    "llm_selector",
+    "context_build",
 ]
 
 TIMING_LABELS = {
@@ -165,6 +169,7 @@ TIMING_LABELS = {
 # ═══════════════════════════════════════════════════════════════════════════════
 # EXPERIMENT SAVE / LOAD
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def auto_detect_theme(configs) -> str:
     """Auto-detect experiment theme from what varies between configs."""
@@ -197,17 +202,24 @@ def auto_detect_theme(configs) -> str:
 def _cfg_to_dict(cfg: "PipelineEvalConfig") -> dict:
     """Serialize a PipelineEvalConfig to JSON-safe dict."""
     return {
-        "name": cfg.name, "color": cfg.color,
-        "embedding_key": cfg.embedding_key, "search_mode": cfg.search_mode,
-        "alpha": cfg.alpha, "enable_acronym_expansion": cfg.enable_acronym_expansion,
-        "acronym_mode": cfg.acronym_mode, "acronym_llm_model": cfg.acronym_llm_model,
-        "enable_hyde": cfg.enable_hyde, "hyde_model": cfg.hyde_model,
+        "name": cfg.name,
+        "color": cfg.color,
+        "embedding_key": cfg.embedding_key,
+        "search_mode": cfg.search_mode,
+        "alpha": cfg.alpha,
+        "enable_acronym_expansion": cfg.enable_acronym_expansion,
+        "acronym_mode": cfg.acronym_mode,
+        "acronym_llm_model": cfg.acronym_llm_model,
+        "enable_hyde": cfg.enable_hyde,
+        "hyde_model": cfg.hyde_model,
         "initial_top_k": cfg.initial_top_k,
-        "enable_chunk_reranker": cfg.enable_chunk_reranker, "rerank_top_k": cfg.rerank_top_k,
+        "enable_chunk_reranker": cfg.enable_chunk_reranker,
+        "rerank_top_k": cfg.rerank_top_k,
         "enable_section_reranker": cfg.enable_section_reranker,
         "section_rerank_top_k": cfg.section_rerank_top_k,
         "enable_llm_selector": cfg.enable_llm_selector,
-        "selector_model": cfg.selector_model, "selector_prompt": cfg.selector_prompt,
+        "selector_model": cfg.selector_model,
+        "selector_prompt": cfg.selector_prompt,
         "extra_de_tables": cfg.extra_de_tables,
     }
 
@@ -242,23 +254,31 @@ def save_experiment(
         q_copy = {k: v for k, v in q.items()}
         pq_clean.append(q_copy)
 
-    cur.execute("""
+    cur.execute(
+        """
         INSERT INTO pipeline_eval_experiments
             (name, theme, description, n_questions, goldset_names, tag_filter,
              publisher_filter, configs, aggregate, per_question,
              best_config, best_mrr, total_time_seconds)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
-    """, [
-        name, theme, description,
-        results.get("n_questions", 0),
-        goldset_names or [], tag_filter or [],
-        publisher_filter or "Tous",
-        json.dumps(configs_json),
-        json.dumps(results.get("aggregate", {})),
-        json.dumps(pq_clean),
-        best_cfg, best_mrr, elapsed_seconds,
-    ])
+    """,
+        [
+            name,
+            theme,
+            description,
+            results.get("n_questions", 0),
+            goldset_names or [],
+            tag_filter or [],
+            publisher_filter or "Tous",
+            json.dumps(configs_json),
+            json.dumps(results.get("aggregate", {})),
+            json.dumps(pq_clean),
+            best_cfg,
+            best_mrr,
+            elapsed_seconds,
+        ],
+    )
     exp_id = cur.fetchone()["id"]
     return exp_id
 
@@ -267,13 +287,16 @@ def list_experiments(limit: int = 30) -> List[Dict]:
     """List recent experiments for browsing."""
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         SELECT id, created_at, name, theme, n_questions, best_config, best_mrr,
                total_time_seconds, goldset_names, tag_filter
         FROM pipeline_eval_experiments
         ORDER BY created_at DESC
         LIMIT %s
-    """, [limit])
+    """,
+        [limit],
+    )
     return cur.fetchall()
 
 
@@ -281,9 +304,12 @@ def load_experiment(exp_id: int) -> Optional[Dict]:
     """Load a saved experiment by ID."""
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         SELECT * FROM pipeline_eval_experiments WHERE id = %s
-    """, [exp_id])
+    """,
+        [exp_id],
+    )
     row = cur.fetchone()
     if not row:
         return None
@@ -292,7 +318,8 @@ def load_experiment(exp_id: int) -> Optional[Dict]:
     configs = []
     for cd in row["configs"]:
         cfg = PipelineEvalConfig(
-            name=cd["name"], color=cd["color"],
+            name=cd["name"],
+            color=cd["color"],
             embedding_key=cd.get("embedding_key", "albert_raw"),
             search_mode=cd.get("search_mode", "semantic"),
             alpha=cd.get("alpha", 0.5),
@@ -345,6 +372,7 @@ DE_SOURCE_OPTIONS = {
 @dataclass
 class PipelineEvalConfig:
     """A named pipeline configuration for evaluation."""
+
     name: str
     color: str
 
@@ -397,8 +425,7 @@ def auto_name(cfg: PipelineEvalConfig) -> str:
         parts.append(f"Selector({sel_short.get(cfg.selector_model, cfg.selector_model)})")
 
     if cfg.extra_de_tables:
-        short_names = {"rag_chunks_rgrh": "RGRH", "rag_chunks_dgafp": "DGAFP",
-                       "rag_chunks_matte": "DE-MATTE", "rag_chunks_service_public": "DE-SP"}
+        short_names = {"rag_chunks_rgrh": "RGRH", "rag_chunks_dgafp": "DGAFP", "rag_chunks_matte": "DE-MATTE", "rag_chunks_service_public": "DE-SP"}
         de_parts = [short_names.get(t, t) for t in cfg.extra_de_tables]
         parts.append(f"+{'+'.join(de_parts)}")
 
@@ -408,16 +435,20 @@ def auto_name(cfg: PipelineEvalConfig) -> str:
 def render_config_sidebar(idx: int, color: str) -> PipelineEvalConfig:
     """Render sidebar widgets for one pipeline config."""
     default_name = auto_name(PipelineEvalConfig(name="", color=color))
-    label = f"Config {idx+1}" if idx > 0 else "Baseline"
+    label = f"Config {idx + 1}" if idx > 0 else "Baseline"
 
     with st.expander(f"⚙️ {label}", expanded=(idx == 0)):
         col1, col2 = st.columns(2)
         with col1:
             embed_label = st.selectbox(
-                "Embedding", options=list(EMBEDDING_OPTIONS.keys()), key=f"cfg_embed_{idx}",
+                "Embedding",
+                options=list(EMBEDDING_OPTIONS.keys()),
+                key=f"cfg_embed_{idx}",
             )
             search_mode = st.selectbox(
-                "Search Mode", options=SEARCH_MODE_OPTIONS, key=f"cfg_search_{idx}",
+                "Search Mode",
+                options=SEARCH_MODE_OPTIONS,
+                key=f"cfg_search_{idx}",
             )
         with col2:
             top_k = st.slider("Top K", 10, 100, 50, key=f"cfg_topk_{idx}")
@@ -432,7 +463,8 @@ def render_config_sidebar(idx: int, color: str) -> PipelineEvalConfig:
             acro_llm_model = "openweight-medium"
             if acronym:
                 acro_mode = st.selectbox(
-                    "Mode", ["rule", "llm"],
+                    "Mode",
+                    ["rule", "llm"],
                     key=f"cfg_acromode_{idx}",
                     help="rule = regex instantané, llm = validation LLM (comme en prod)",
                 )
@@ -446,7 +478,8 @@ def render_config_sidebar(idx: int, color: str) -> PipelineEvalConfig:
             hyde_model = "openweight-medium"
             if hyde:
                 hyde_model = st.selectbox(
-                    "HyDE Model", ["openweight-medium", "openweight-large", "openweight-small"],
+                    "HyDE Model",
+                    ["openweight-medium", "openweight-large", "openweight-small"],
                     key=f"cfg_hydemod_{idx}",
                 )
         with col4:
@@ -467,9 +500,7 @@ def render_config_sidebar(idx: int, color: str) -> PipelineEvalConfig:
             sel_prompt = "v3_selector_business.md"
             if llm_selector:
                 sel_model = st.selectbox("Selector Model", SELECTOR_MODELS, key=f"cfg_selmod_{idx}")
-                sel_prompt_label = st.selectbox(
-                    "Selector Prompt", list(SELECTOR_PROMPTS.keys()), key=f"cfg_selprompt_{idx}"
-                )
+                sel_prompt_label = st.selectbox("Selector Prompt", list(SELECTOR_PROMPTS.keys()), key=f"cfg_selprompt_{idx}")
                 sel_prompt = SELECTOR_PROMPTS[sel_prompt_label]
 
         # Extra DE tables
@@ -510,6 +541,7 @@ def render_config_sidebar(idx: int, color: str) -> PipelineEvalConfig:
 # ═══════════════════════════════════════════════════════════════════════════════
 # GOLDSET LOADING
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def get_available_goldset_names() -> List[str]:
     conn = get_connection()
@@ -596,6 +628,7 @@ def load_goldset_questions(
 # ~10x faster than run_retrieval_only()
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @st.cache_resource
 def get_acronym_dict() -> Dict:
     """Load acronym dictionary once."""
@@ -618,8 +651,12 @@ def run_lightweight_pipeline(
     timing: Dict[str, float] = {}
 
     search_map = {"semantic": SearchMode.SEMANTIC, "lexical": SearchMode.LEXICAL, "hybrid": SearchMode.HYBRID}
-    embed_map = {"albert_raw": EmbeddingModel.ALBERT, "albert_ctx": EmbeddingModel.ALBERT,
-                 "albert_raw_text": EmbeddingModel.ALBERT, "bge_scaleway": EmbeddingModel.BGE_SCALEWAY}
+    embed_map = {
+        "albert_raw": EmbeddingModel.ALBERT,
+        "albert_ctx": EmbeddingModel.ALBERT,
+        "albert_raw_text": EmbeddingModel.ALBERT,
+        "bge_scaleway": EmbeddingModel.BGE_SCALEWAY,
+    }
 
     config = RAGConfigV3()
     config.retrieval = RetrievalConfig(
@@ -689,15 +726,9 @@ def run_lightweight_pipeline(
             dist[pub or "unknown"] += 1
         return dict(dist)
 
-    source_dist_chunks = _publisher_dist(
-        [{"publisher": c.metadata.get("publisher", c.table_source)} for c in chunks]
-    )
-    source_dist_sections = _publisher_dist(
-        [{"publisher": s.publisher} for s in sections]
-    )
-    source_dist_selected = _publisher_dist(
-        [{"publisher": s.publisher} for s in selected_sections]
-    )
+    source_dist_chunks = _publisher_dist([{"publisher": c.metadata.get("publisher", c.table_source)} for c in chunks])
+    source_dist_sections = _publisher_dist([{"publisher": s.publisher} for s in sections])
+    source_dist_selected = _publisher_dist([{"publisher": s.publisher} for s in selected_sections])
 
     def _sections_to_dicts(secs):
         return [
@@ -755,6 +786,7 @@ def run_lightweight_pipeline(
 # METRICS COMPUTATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def _is_hit(item: Dict, gold_sources: str) -> bool:
     short_id = item.get("doc_short_id", "")
     return gold_sources_match(gold_sources, short_id)
@@ -801,6 +833,7 @@ def compute_all_metrics(items: List[Dict], gold: str) -> Dict:
 # EVALUATION ENGINE
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def run_evaluation(
     configs: List[PipelineEvalConfig],
     goldset_names: Optional[List[str]] = None,
@@ -823,10 +856,7 @@ def run_evaluation(
 
     for q_idx, q in enumerate(questions):
         if progress_callback:
-            progress_callback(
-                (q_idx + 1) / total,
-                f"Q {q_idx+1}/{total} — {q['question'][:50]}..."
-            )
+            progress_callback((q_idx + 1) / total, f"Q {q_idx + 1}/{total} — {q['question'][:50]}...")
 
         gold = q.get("gold_sources") or ""
         tags = q.get("tags") or []
@@ -868,11 +898,14 @@ def run_evaluation(
 
             except Exception as e:
                 import traceback
+
                 print(f"  ❌ [ERROR] Config={cfg.name}, Q={q['question'][:40]}: {e}")
                 traceback.print_exc()
                 q_result[cfg.name] = {
-                    "metrics": {}, "timing": {},
-                    "error": str(e), "skipped": True,
+                    "metrics": {},
+                    "timing": {},
+                    "error": str(e),
+                    "skipped": True,
                 }
                 config_metrics[cfg.name].append({})
                 config_timings[cfg.name].append({})
@@ -929,6 +962,7 @@ def run_evaluation(
 # VISUALIZATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def format_pct(val) -> str:
     return f"{val * 100:.1f}%" if val is not None else "—"
 
@@ -947,7 +981,7 @@ def build_summary_table(results: Dict) -> pd.DataFrame:
             row[f"NDCG@{k}"] = f"{agg.get(f'ndcg@{k}', 0):.4f}"
         avg_rank = agg.get("avg_first_hit_rank")
         row["Avg Rank"] = f"{avg_rank:.2f}" if avg_rank else "—"
-        n_err = agg.get('n_errors', 0)
+        n_err = agg.get("n_errors", 0)
         found_missed = f"{agg.get('n_found', 0)} / {agg.get('n_missed', 0)}"
         if n_err > 0:
             found_missed += f" ({n_err} err)"
@@ -966,13 +1000,22 @@ def recall_curve_chart(results: Dict) -> go.Figure:
         if not agg:
             continue
         ys = [agg.get(f"recall@{k}", 0) * 100 for k in K_VALUES]
-        fig.add_trace(go.Scatter(
-            x=K_VALUES, y=ys, mode="lines+markers", name=cfg.name,
-            line=dict(color=cfg.color, width=3), marker=dict(size=10),
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=K_VALUES,
+                y=ys,
+                mode="lines+markers",
+                name=cfg.name,
+                line=dict(color=cfg.color, width=3),
+                marker=dict(size=10),
+            )
+        )
     fig.update_layout(
-        title="Recall@K", xaxis_title="K", yaxis_title="Recall (%)",
-        yaxis=dict(range=[0, 105]), height=400,
+        title="Recall@K",
+        xaxis_title="K",
+        yaxis_title="Recall (%)",
+        yaxis=dict(range=[0, 105]),
+        height=400,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
     return fig
@@ -987,10 +1030,17 @@ def mrr_bar_chart(results: Dict) -> go.Figure:
         names.append(cfg.name)
         values.append(agg.get("mrr", 0))
         colors.append(cfg.color)
-    fig = go.Figure(data=[go.Bar(
-        x=names, y=values, marker_color=colors,
-        text=[f"{v:.4f}" for v in values], textposition="auto",
-    )])
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=names,
+                y=values,
+                marker_color=colors,
+                text=[f"{v:.4f}" for v in values],
+                textposition="auto",
+            )
+        ]
+    )
     fig.update_layout(title="MRR", yaxis_title="MRR", yaxis=dict(range=[0, 1.05]), height=350)
     return fig
 
@@ -1006,13 +1056,21 @@ def first_hit_histogram(results: Dict) -> go.Figure:
                 if r is not None:
                     ranks.append(r)
         if ranks:
-            fig.add_trace(go.Histogram(
-                x=ranks, name=cfg.name, marker_color=cfg.color, opacity=0.7, nbinsx=20,
-            ))
+            fig.add_trace(
+                go.Histogram(
+                    x=ranks,
+                    name=cfg.name,
+                    marker_color=cfg.color,
+                    opacity=0.7,
+                    nbinsx=20,
+                )
+            )
     fig.update_layout(
         title="Distribution du rang du 1er hit",
-        xaxis_title="Rang", yaxis_title="Nb questions",
-        barmode="overlay", height=400,
+        xaxis_title="Rang",
+        yaxis_title="Nb questions",
+        barmode="overlay",
+        height=400,
     )
     return fig
 
@@ -1021,8 +1079,10 @@ def latency_stacked_bar(results: Dict) -> go.Figure:
     fig = go.Figure()
     config_names = [cfg.name for cfg in results["configs"] if cfg.name in results["aggregate"]]
     module_colors = {
-        "query_processing": "#636EFA", "chunk_retrieval": "#00CC96",
-        "section_aggregation": "#AB63FA", "llm_selector": "#EF553B",
+        "query_processing": "#636EFA",
+        "chunk_retrieval": "#00CC96",
+        "section_aggregation": "#AB63FA",
+        "llm_selector": "#EF553B",
         "context_build": "#FFA15A",
     }
     for key in TIMING_KEYS:
@@ -1031,13 +1091,19 @@ def latency_stacked_bar(results: Dict) -> go.Figure:
             agg = results["aggregate"].get(cfg.name, {})
             vals.append(agg.get(f"avg_timing_{key}", 0))
         if any(v > 0 for v in vals):
-            fig.add_trace(go.Bar(
-                name=TIMING_LABELS.get(key, key), x=config_names, y=vals,
-                marker_color=module_colors.get(key, "#999"),
-            ))
+            fig.add_trace(
+                go.Bar(
+                    name=TIMING_LABELS.get(key, key),
+                    x=config_names,
+                    y=vals,
+                    marker_color=module_colors.get(key, "#999"),
+                )
+            )
     fig.update_layout(
-        barmode="stack", title="Latence moyenne par module (ms)",
-        yaxis_title="Temps (ms)", height=450,
+        barmode="stack",
+        title="Latence moyenne par module (ms)",
+        yaxis_title="Temps (ms)",
+        height=450,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
     return fig
@@ -1063,7 +1129,7 @@ def latency_detail_table(results: Dict) -> pd.DataFrame:
 def _build_aliases(configs) -> Dict[str, str]:
     """Build short aliases: Config A, Config B, ... for display."""
     letters = "ABCD"
-    return {cfg.name: letters[i] if i < len(letters) else f"C{i+1}" for i, cfg in enumerate(configs)}
+    return {cfg.name: letters[i] if i < len(letters) else f"C{i + 1}" for i, cfg in enumerate(configs)}
 
 
 def per_question_df(results: Dict) -> pd.DataFrame:
@@ -1141,7 +1207,7 @@ def ablation_matrix(results: Dict) -> pd.DataFrame:
         for metric in ["recall@5", "recall@10", "mrr", "ndcg@10"]:
             delta = (agg.get(metric, 0) or 0) - (baseline_agg.get(metric, 0) or 0)
             sign = "+" if delta > 0 else ""
-            row[f"Δ {metric}"] = f"{sign}{delta*100:.1f}pp" if "recall" in metric else f"{sign}{delta:.4f}"
+            row[f"Δ {metric}"] = f"{sign}{delta * 100:.1f}pp" if "recall" in metric else f"{sign}{delta:.4f}"
         base_rank = baseline_agg.get("avg_first_hit_rank")
         cfg_rank = agg.get("avg_first_hit_rank")
         if base_rank and cfg_rank:
@@ -1171,8 +1237,7 @@ def ablation_matrix(results: Dict) -> pd.DataFrame:
             diffs.append(f"Search={cfg.search_mode}")
         if set(cfg.extra_de_tables) != set(b.extra_de_tables):
             added = set(cfg.extra_de_tables) - set(b.extra_de_tables)
-            short = {"rag_chunks_rgrh": "RGRH", "rag_chunks_dgafp": "DGAFP",
-                     "rag_chunks_matte": "DE-MATTE", "rag_chunks_service_public": "DE-SP"}
+            short = {"rag_chunks_rgrh": "RGRH", "rag_chunks_dgafp": "DGAFP", "rag_chunks_matte": "DE-MATTE", "rag_chunks_service_public": "DE-SP"}
             diffs.append(f"+{','.join(short.get(t, t) for t in added)}" if added else "DE changed")
         row["Modules modifiés"] = " | ".join(diffs) if diffs else "Identique"
         rows.append(row)
@@ -1194,14 +1259,21 @@ def ablation_heatmap(results: Dict) -> Optional[go.Figure]:
             d = (agg.get(m, 0) or 0) - (baseline_agg.get(m, 0) or 0)
             row_z.append(d)
             s = "+" if d > 0 else ""
-            row_t.append(f"{s}{d*100:.1f}pp" if "recall" in m else f"{s}{d:.4f}")
+            row_t.append(f"{s}{d * 100:.1f}pp" if "recall" in m else f"{s}{d:.4f}")
         z.append(row_z)
         text_vals.append(row_t)
 
-    fig = go.Figure(data=go.Heatmap(
-        z=z, x=labels, y=[c.name for c in configs[1:]],
-        text=text_vals, texttemplate="%{text}", colorscale="RdYlGn", zmid=0,
-    ))
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=z,
+            x=labels,
+            y=[c.name for c in configs[1:]],
+            text=text_vals,
+            texttemplate="%{text}",
+            colorscale="RdYlGn",
+            zmid=0,
+        )
+    )
     fig.update_layout(title=f"Ablation vs {configs[0].name}", height=max(200, 80 * len(configs[1:])))
     return fig
 
@@ -1217,13 +1289,15 @@ with st.sidebar:
     available_tags = get_available_tags()
 
     selected_goldsets = st.multiselect(
-        "Goldset(s)", options=goldset_names,
+        "Goldset(s)",
+        options=goldset_names,
         help="Filtrer par goldset_name. Vide = tous.",
     )
     selected_goldsets = selected_goldsets if selected_goldsets else None
 
     tag_filter = st.multiselect(
-        "Tags", options=available_tags,
+        "Tags",
+        options=available_tags,
         help="Filtrer par tags (AND). Ex: 'acronym' pour tester l'expansion.",
     )
     tag_filter = tag_filter if tag_filter else None
@@ -1256,8 +1330,7 @@ with st.sidebar:
 
     if experiments:
         exp_options = {
-            f"#{e['id']} — {e['theme']} — {e['name']} ({e['n_questions']}q, MRR={(e.get('best_mrr') or 0):.3f})": e["id"]
-            for e in experiments
+            f"#{e['id']} — {e['theme']} — {e['name']} ({e['n_questions']}q, MRR={(e.get('best_mrr') or 0):.3f})": e["id"] for e in experiments
         }
         selected_exp = st.selectbox("Charger une expérience", ["—"] + list(exp_options.keys()))
         if selected_exp != "—":
@@ -1277,9 +1350,7 @@ with st.sidebar:
                     exp_id = exp_options[selected_exp]
                     try:
                         conn = get_connection()
-                        conn.cursor().execute(
-                            "DELETE FROM pipeline_eval_experiments WHERE id = %s", [exp_id]
-                        )
+                        conn.cursor().execute("DELETE FROM pipeline_eval_experiments WHERE id = %s", [exp_id])
                         st.success(f"Expérience #{exp_id} supprimée")
                         st.rerun()
                     except Exception as e:
@@ -1289,18 +1360,24 @@ with st.sidebar:
 
 
 # ── Tabs ──
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🚀 Run & Overview", "⏱️ Latence", "📋 Détail par question", "🔬 Ablation", "📊 Sources & Selector",
-])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    [
+        "🚀 Run & Overview",
+        "⏱️ Latence",
+        "📋 Détail par question",
+        "🔬 Ablation",
+        "📊 Sources & Selector",
+    ]
+)
 
 with tab1:
     st.header("🚀 Run & Overview")
 
     # Preview
-    preview_qs = load_goldset_questions(selected_goldsets, tag_filter, max_questions=5,
-                                         publisher_filter=publisher_filter if publisher_filter != "Tous" else None)
-    n_total = len(load_goldset_questions(selected_goldsets, tag_filter,
-                                          publisher_filter=publisher_filter if publisher_filter != "Tous" else None))
+    preview_qs = load_goldset_questions(
+        selected_goldsets, tag_filter, max_questions=5, publisher_filter=publisher_filter if publisher_filter != "Tous" else None
+    )
+    n_total = len(load_goldset_questions(selected_goldsets, tag_filter, publisher_filter=publisher_filter if publisher_filter != "Tous" else None))
 
     n_excluded = count_excluded_no_gold(selected_goldsets, tag_filter)
 
@@ -1351,8 +1428,7 @@ with tab1:
             for cfg in configs:
                 agg = results.get("aggregate", {}).get(cfg.name, {})
                 n_err = agg.get("n_errors", 0)
-                st.markdown(f"**{cfg.name}** (`{cfg.search_mode}`) — "
-                            f"n_questions={agg.get('n_questions', 0)}, n_errors={n_err}")
+                st.markdown(f"**{cfg.name}** (`{cfg.search_mode}`) — n_questions={agg.get('n_questions', 0)}, n_errors={n_err}")
 
                 pq = results.get("per_question", [])
                 if pq:
@@ -1361,11 +1437,13 @@ with tab1:
                     if q_data.get("skipped"):
                         st.error(f"  ❌ Q1 error: {q_data.get('error', 'unknown')}")
                     else:
-                        st.markdown(f"  Q1: n_chunks={q_data.get('n_chunks', '?')}, "
-                                    f"n_sections={q_data.get('n_sections', '?')}, "
-                                    f"n_selected={q_data.get('n_selected', '?')}")
+                        st.markdown(
+                            f"  Q1: n_chunks={q_data.get('n_chunks', '?')}, "
+                            f"n_sections={q_data.get('n_sections', '?')}, "
+                            f"n_selected={q_data.get('n_selected', '?')}"
+                        )
                         metrics = q_data.get("metrics", {})
-                        mrr_val = metrics.get('mrr')
+                        mrr_val = metrics.get("mrr")
                         if isinstance(mrr_val, (int, float)):
                             st.markdown(f"  Q1 metrics: recall@10={metrics.get('recall@10', '?')}, mrr={mrr_val:.4f}")
                         else:
@@ -1378,8 +1456,10 @@ with tab1:
         # ── Save experiment ──
         loaded_meta = st.session_state.get("loaded_experiment")
         if loaded_meta:
-            st.info(f"🔄 Expérience chargée : **{loaded_meta.get('name', '')}** "
-                     f"(#{loaded_meta.get('id')}, {loaded_meta.get('theme')}, {loaded_meta.get('created_at', '')[:16]})")
+            st.info(
+                f"🔄 Expérience chargée : **{loaded_meta.get('name', '')}** "
+                f"(#{loaded_meta.get('id')}, {loaded_meta.get('theme')}, {loaded_meta.get('created_at', '')[:16]})"
+            )
         else:
             detected_theme = auto_detect_theme(results.get("configs", configs))
             with st.expander("💾 Sauvegarder cette expérience", expanded=False):
@@ -1438,10 +1518,14 @@ with tab2:
                     total_ms = sum(t.get(k, 0) for k in TIMING_KEYS if k in t) * 1000
                     box_data.append({"Config": cfg.name, "Latence (ms)": total_ms})
         if box_data:
-            fig = px.box(pd.DataFrame(box_data), x="Config", y="Latence (ms)",
-                         color="Config",
-                         color_discrete_map={c.name: c.color for c in results["configs"]},
-                         title="Distribution latence par question")
+            fig = px.box(
+                pd.DataFrame(box_data),
+                x="Config",
+                y="Latence (ms)",
+                color="Config",
+                color_discrete_map={c.name: c.color for c in results["configs"]},
+                title="Distribution latence par question",
+            )
             fig.update_layout(height=400, showlegend=False)
             st.plotly_chart(fig, width="stretch")
 
@@ -1467,7 +1551,8 @@ with tab3:
             # Outcome filter
             outcomes_available = sorted(pq_df["Outcome"].unique()) if "Outcome" in pq_df.columns else []
             outcome_filter = st.multiselect(
-                "Filtrer par Outcome", options=outcomes_available,
+                "Filtrer par Outcome",
+                options=outcomes_available,
                 help="All hit, All miss, ou configs gagnantes",
             )
 
@@ -1504,8 +1589,7 @@ with tab3:
             with c1:
                 st.dataframe(oc, width="stretch")
             with c2:
-                st.plotly_chart(px.pie(values=oc.values, names=oc.index, title="Outcomes", height=300),
-                                width="stretch", key="outcome_pie")
+                st.plotly_chart(px.pie(values=oc.values, names=oc.index, title="Outcomes", height=300), width="stretch", key="outcome_pie")
 
         st.dataframe(pq_df, width="stretch", hide_index=True, height=600)
         st.download_button("📥 CSV", pq_df.to_csv(index=False), "pipeline_eval.csv", "text/csv")
@@ -1539,9 +1623,9 @@ with tab4:
             t_d = (agg.get("avg_total_time_ms", 0) or 0) - (baseline_agg.get("avg_total_time_ms", 0) or 0)
             st.markdown(f"""
 **{cfg.name}** vs {baseline} :
-- {"🟢" if mrr_d > 0 else "🔴" if mrr_d < 0 else "⚪"} MRR : {'+' if mrr_d >= 0 else ''}{mrr_d:.4f}
-- {"🟢" if r10_d > 0 else "🔴" if r10_d < 0 else "⚪"} Recall@10 : {'+' if r10_d >= 0 else ''}{r10_d*100:.1f}pp
-- {"🟢" if t_d < 0 else "🔴" if t_d > 0 else "⚪"} Latence : {'+' if t_d >= 0 else ''}{t_d:.0f}ms
+- {"🟢" if mrr_d > 0 else "🔴" if mrr_d < 0 else "⚪"} MRR : {"+" if mrr_d >= 0 else ""}{mrr_d:.4f}
+- {"🟢" if r10_d > 0 else "🔴" if r10_d < 0 else "⚪"} Recall@10 : {"+" if r10_d >= 0 else ""}{r10_d * 100:.1f}pp
+- {"🟢" if t_d < 0 else "🔴" if t_d > 0 else "⚪"} Latence : {"+" if t_d >= 0 else ""}{t_d:.0f}ms
 """)
 
 
@@ -1610,15 +1694,20 @@ with tab5:
                     continue
                 total = sum(agg_dist[stage].values())
                 for pub, cnt in agg_dist[stage].items():
-                    bar_data.append({
-                        "Étape": stage_labels[stage],
-                        "Publisher": pub,
-                        "Moy/question": cnt / n_valid if n_valid > 0 else 0,
-                    })
+                    bar_data.append(
+                        {
+                            "Étape": stage_labels[stage],
+                            "Publisher": pub,
+                            "Moy/question": cnt / n_valid if n_valid > 0 else 0,
+                        }
+                    )
             if bar_data:
                 fig = px.bar(
-                    pd.DataFrame(bar_data), x="Étape", y="Moy/question",
-                    color="Publisher", barmode="stack",
+                    pd.DataFrame(bar_data),
+                    x="Étape",
+                    y="Moy/question",
+                    color="Publisher",
+                    barmode="stack",
                     title=f"Sources moyennes par question — {a}",
                     height=300,
                 )
@@ -1654,14 +1743,16 @@ with tab5:
                     if sd.get("all_rejected"):
                         all_rejected_count += 1
 
-                    sel_rows.append({
-                        "Question": q["question"][:60],
-                        "Gold": q.get("gold_sources", ""),
-                        "Input": sd.get("n_items_input", ""),
-                        "Selected": sd.get("n_items_selected", ""),
-                        "Rejeté": "❌" if sd.get("all_rejected") else "",
-                        "Reason": (sd.get("reason") or "")[:100],
-                    })
+                    sel_rows.append(
+                        {
+                            "Question": q["question"][:60],
+                            "Gold": q.get("gold_sources", ""),
+                            "Input": sd.get("n_items_input", ""),
+                            "Selected": sd.get("n_items_selected", ""),
+                            "Rejeté": "❌" if sd.get("all_rejected") else "",
+                            "Reason": (sd.get("reason") or "")[:100],
+                        }
+                    )
 
                 n_sel = len(sel_rows)
                 if n_sel > 0:
