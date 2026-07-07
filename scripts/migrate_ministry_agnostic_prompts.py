@@ -68,6 +68,8 @@ _REPLACEMENTS: Tuple[Tuple[re.Pattern[str], str], ...] = (
 
 def ministry_agnostic_transform(content: str) -> str:
     """Return *content* with ministry-specific wording replaced by placeholders."""
+    if not content:  # empty or NULL row → nothing to transform, don't crash re.sub
+        return content
     for pattern, replacement in _REPLACEMENTS:
         content = pattern.sub(replacement, content)
     return content

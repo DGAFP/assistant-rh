@@ -29,7 +29,7 @@ La pertinence par rapport à la question est prioritaire sur la source.
 - Apportent une information spécifique utile (pas seulement un mot-clé en commun)
 
 **Règle de précision** :
-- N'inclus jamais une section {ministere_sigle} si elle est hors-sujet ou trop générale, même si la source est prioritaire.
+- N'inclus jamais une section de {ministere_sigle} si elle est hors-sujet ou trop générale, même si la source est prioritaire.
 - Si une section Service-Public ou DGAFP répond plus précisément à la question, garde-la.
 
 **ÉLIMINE** les sections qui :

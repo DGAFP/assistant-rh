@@ -75,6 +75,7 @@ def test_resolve_ministry_from_scope_id_and_none() -> None:
     assert resolve_ministry("masa").id == "masa"
     assert resolve_ministry(None) is None
     assert resolve_ministry("does-not-exist") is None  # fail soft
+    assert resolve_ministry(123) is None  # unexpected type → fail soft, never raises
 
 
 # ── generator system prompt ───────────────────────────────────────────────
@@ -138,3 +139,6 @@ def test_migration_transform_is_case_insensitive_but_table_safe() -> None:
     # ...but table identifiers (no word boundary before "matte") are left intact.
     assert transform("SELECT * FROM rag_chunks_matte") == "SELECT * FROM rag_chunks_matte"
     assert transform("MATTELAS") == "MATTELAS"
+    # Empty / NULL rows must not crash re.sub.
+    assert transform("") == ""
+    assert transform(None) is None
