@@ -28,7 +28,7 @@ Tu es un classificateur d'intention pour un assistant RH de la fonction publique
 **Règle pour `document_request` :**
 - L'utilisateur demande un document, une fiche, un PDF, une liste de documents
 - MAIS ne pose PAS de vraie question RH sur un sujet (licenciement, congés, salaire...)
-- Exemples : "fiche {ministere_sigle} numéro 2", "quelles fiches tu as ?", "donne-moi les documents du ministère"
+- Exemples : "fiche de {ministere_sigle} numéro 2", "quelles fiches tu as ?", "donne-moi les documents du ministère"
 - Contre-exemple : "y a-t-il une fiche sur le licenciement ?" → `rag_query` car c'est une vraie question sur un sujet RH
 
 **Règles pour les questions de suivi :**
@@ -155,7 +155,7 @@ Question: "Y a-t-il une fiche du ministère sur le licenciement ?"
 Question: "Donne-moi la fiche service-public sur les congés annuels"
 → `{{"intent": "rag_query", "theme": "conges", "needs_legal_search": false, "requested_source": "service_public", "is_catalog_query": true, "catalog_keyword": "congés annuels", "reformulated_query": null, "query_for_retrieval": null, "confidence": 0.95, "reasoning": "Demande de fiche Service-Public spécifique sur les congés"}}`
 
-Question: "Quelles fiches {ministere_sigle} tu as à disposition ?"
+Question: "Quelles fiches de {ministere_sigle} tu as à disposition ?"
 → `{{"intent": "document_request", "theme": null, "needs_legal_search": false, "requested_source": "ministere", "is_catalog_query": false, "catalog_keyword": null, "reformulated_query": null, "query_for_retrieval": null, "confidence": 0.95, "reasoning": "Demande de liste de documents sans question RH spécifique"}}`
 
 Question: "Donne-moi la fiche numéro 2"

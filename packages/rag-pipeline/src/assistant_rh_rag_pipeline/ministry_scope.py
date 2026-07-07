@@ -111,9 +111,13 @@ def resolve_ministry(scope: RetrievalScope | str | None) -> MinistrySource | Non
     falls back to generic wording instead of raising in the hot path.
     """
 
-    if scope is None:
+    if isinstance(scope, RetrievalScope):
+        ministry_id = scope.selected_ministry
+    elif isinstance(scope, str):
+        ministry_id = scope
+    else:
+        # None or any unexpected type → fail soft (generic wording), never raise.
         return None
-    ministry_id = scope.selected_ministry if isinstance(scope, RetrievalScope) else scope
     try:
         return get_ministry(ministry_id)
     except MinistryScopeError:
