@@ -1364,6 +1364,58 @@ def test_should_run_gates_pdf_sources_domain() -> None:
     assert scaleway_data_jobs.should_run(spec, args_off) is False
 
 
+def test_resolve_mode_defaults_to_apply_and_validates() -> None:
+    # Socle #288 : défaut apply (comportement historique), valeur inconnue -> apply.
+    assert data_engineering_plan.resolve_mode(None) == "apply"
+    assert data_engineering_plan.resolve_mode("") == "apply"
+    assert data_engineering_plan.resolve_mode("bogus") == "apply"
+    assert data_engineering_plan.resolve_mode("PLAN") == "plan"
+    assert data_engineering_plan.resolve_mode(" apply ") == "apply"
+
+
+def test_plan_mode_overrides_disable_all_mutation() -> None:
+    # plan = détection seule : ni ingestion Postgres, ni backfill embeddings.
+    assert scaleway_data_jobs.plan_mode_overrides("plan", True, True) == (False, False)
+    # apply = comportement historique, inchangé.
+    assert scaleway_data_jobs.plan_mode_overrides("apply", True, False) == (True, False)
+    assert scaleway_data_jobs.plan_mode_overrides("apply", False, True) == (False, True)
+
+
+def test_should_run_plan_mode_skips_ingestion_and_embeddings() -> None:
+    # En mode plan, les specs mutantes (requires_ingestion / requires_embeddings)
+    # ne sont pas retenues une fois plan_mode_overrides appliqué.
+    ingestion_spec = {"key": "service-public-ingestion", "domain": "service_public", "requires_ingestion": True}
+    backfill_spec = {"key": "embeddings-service-public", "domain": "embeddings", "requires_embeddings": True}
+    base = [
+        "--target-env",
+        "staging",
+        "--image-tag",
+        "x",
+        "--service-public",
+        "true",
+        "--embeddings",
+        "true",
+        "--run-ingestion",
+        "true",
+        "--run-embeddings",
+        "true",
+    ]
+
+    apply_args = scaleway_data_jobs.build_parser().parse_args([*base, "--mode", "apply"])
+    apply_args.run_ingestion, apply_args.run_embeddings = scaleway_data_jobs.plan_mode_overrides(
+        apply_args.mode, apply_args.run_ingestion, apply_args.run_embeddings
+    )
+    assert scaleway_data_jobs.should_run(ingestion_spec, apply_args) is True
+    assert scaleway_data_jobs.should_run(backfill_spec, apply_args) is True
+
+    plan_args = scaleway_data_jobs.build_parser().parse_args([*base, "--mode", "plan"])
+    plan_args.run_ingestion, plan_args.run_embeddings = scaleway_data_jobs.plan_mode_overrides(
+        plan_args.mode, plan_args.run_ingestion, plan_args.run_embeddings
+    )
+    assert scaleway_data_jobs.should_run(ingestion_spec, plan_args) is False
+    assert scaleway_data_jobs.should_run(backfill_spec, plan_args) is False
+
+
 def test_pdf_sources_job_skipped_on_push(monkeypatch: pytest.MonkeyPatch) -> None:
     # auto_start_on_push=false: le job MI ne part que par workflow_dispatch.
     monkeypatch.setenv("GITHUB_EVENT_NAME", "push")

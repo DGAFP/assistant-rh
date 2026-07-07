@@ -42,6 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--embedding-source", choices=("all", "service_public", "legifrance", "matte", "mi", "masa", "mso"), default="all")
     parser.add_argument("--pdf-sources-ministry", choices=("", "mi", "masa", "matte", "mso"), default="")
     parser.add_argument("--embedding-only-column", default="")
+    # Socle #288 — axe plan/apply. `plan` = détection seule, aucune mutation
+    # (ni ingestion Postgres, ni backfill embeddings) ; `apply` (défaut) =
+    # comportement historique. Le gating prod (apply prod = confirmation
+    # explicite) est câblé avec le workflow en PR-3.
+    parser.add_argument("--mode", choices=("plan", "apply"), default="apply")
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser
@@ -262,6 +267,18 @@ def job_environment(spec: dict[str, Any], target_env: str, region: str) -> dict[
     return env
 
 
+def plan_mode_overrides(mode: str, run_ingestion: bool, run_embeddings: bool) -> tuple[bool, bool]:
+    """En mode ``plan`` on ne mute rien : ni ingestion Postgres, ni backfill
+    embeddings. Le socle #288 sépare la détection (``plan``) de la
+    réconciliation (``apply``) ; ``apply`` conserve le comportement historique.
+
+    Renvoie ``(run_ingestion, run_embeddings)`` effectifs.
+    """
+    if mode == "plan":
+        return False, False
+    return run_ingestion, run_embeddings
+
+
 def should_run(spec: dict[str, Any], args: argparse.Namespace) -> bool:
     domain = spec["domain"]
     if domain == "service_public" and not args.service_public:
@@ -389,6 +406,14 @@ def start_definition(
 
 
 def upsert_and_start_jobs(args: argparse.Namespace) -> int:
+    # Socle #288 : en mode plan, neutraliser toute mutation avant la sélection
+    # des jobs (les specs requires_ingestion / requires_embeddings ne seront
+    # alors pas retenues par should_run).
+    args.run_ingestion, args.run_embeddings = plan_mode_overrides(
+        getattr(args, "mode", "apply"),
+        getattr(args, "run_ingestion", False),
+        getattr(args, "run_embeddings", False),
+    )
     config = load_config(Path(args.config))
     region = env_optional("SCW_DEFAULT_REGION", "fr-par")
     project_id = env_required("SCW_DEFAULT_PROJECT_ID")
