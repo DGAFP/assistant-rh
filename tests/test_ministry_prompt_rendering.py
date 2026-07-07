@@ -127,3 +127,14 @@ def test_migration_transform_and_idempotence() -> None:
     assert '"ministere|service_public"' in out
     # Idempotent: re-running changes nothing.
     assert transform(out) == out
+
+
+def test_migration_transform_is_case_insensitive_but_table_safe() -> None:
+    transform = _load_migration_module().ministry_agnostic_transform
+
+    # Lowercase/mixed-case tenant wording is migrated...
+    assert transform("fiches matte prioritaires") == "fiches {ministere_sigle} prioritaires"
+    assert transform("La pratique au Matte") == "La pratique au {ministere_sigle}"
+    # ...but table identifiers (no word boundary before "matte") are left intact.
+    assert transform("SELECT * FROM rag_chunks_matte") == "SELECT * FROM rag_chunks_matte"
+    assert transform("MATTELAS") == "MATTELAS"

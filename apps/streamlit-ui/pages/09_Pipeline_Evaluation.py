@@ -34,7 +34,11 @@ from assistant_rh_rag_pipeline.config import (
 )
 from assistant_rh_rag_pipeline.context_selector import ContextSelector
 from assistant_rh_rag_pipeline.db_helpers import get_dsn as get_app_dsn
-from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG, resolve_ministry
+from assistant_rh_rag_pipeline.ministry_scope import (
+    MINISTRY_CATALOG,
+    build_retrieval_scope,
+    resolve_ministry,
+)
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
@@ -508,11 +512,13 @@ def render_config_sidebar(idx: int, color: str) -> PipelineEvalConfig:
                 sel_prompt_label = st.selectbox("Selector Prompt", list(SELECTOR_PROMPTS.keys()), key=f"cfg_selprompt_{idx}")
                 sel_prompt = SELECTOR_PROMPTS[sel_prompt_label]
             ministry_id = st.selectbox(
-                "Ministère (prompts)",
+                "Ministère",
                 list(MINISTRY_CATALOG.keys()),
                 format_func=lambda mid: MINISTRY_CATALOG[mid].label,
                 key=f"cfg_ministry_{idx}",
-                help="Ministère pour lequel les prompts ministère-agnostiques sont rendus (ex: selector).",
+                help=(
+                    "Comme en prod : scope le retrieval (table du ministère + service_public + dgafp) ET le rendu des prompts ministère-agnostiques."
+                ),
             )
 
         # Extra DE tables
@@ -692,6 +698,7 @@ def run_lightweight_pipeline(
     config.selector = SelectorConfig(
         enabled=cfg.enable_llm_selector,
         model=getattr(cfg, "selector_model", "openweight-large"),
+        prompt_name=getattr(cfg, "selector_prompt", "v3_selector_business.md"),
     )
     config.verbose = False
 
@@ -703,8 +710,18 @@ def run_lightweight_pipeline(
 
     query_for_retrieval = qr.query_for_retrieval
 
+    # Scope retrieval to the selected ministry like prod (ministry chunk table +
+    # shared service_public/dgafp), so the selector prompt rendered for that
+    # ministry ranks over coherent sources instead of the full default table set.
+    scope = build_retrieval_scope(cfg.ministry)
+    force_hybrid = {"dgafp"} if "dgafp" in scope.table_keys else set()
+
     t0 = time.time()
-    chunks = pipe._retriever.retrieve(query_for_retrieval)
+    chunks = pipe._retriever.retrieve(
+        query_for_retrieval,
+        tables=list(scope.table_keys),
+        force_hybrid_tables=force_hybrid,
+    )
     timing["chunk_retrieval"] = time.time() - t0
 
     t0 = time.time()

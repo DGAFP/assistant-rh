@@ -18,11 +18,12 @@ Safety:
     nothing. Pass ``--apply`` to persist.
   - Reads the DSN from the standard environment (same resolution as the app).
 
-Usage::
+Usage (via ``uv`` so the workspace package ``assistant_rh_rag_pipeline`` is on
+the path — a plain ``python scripts/...`` fails with ModuleNotFoundError)::
 
-    python scripts/migrate_ministry_agnostic_prompts.py              # dry-run
-    python scripts/migrate_ministry_agnostic_prompts.py --apply       # write
-    python scripts/migrate_ministry_agnostic_prompts.py --name system_prompt_V6_optimized.md
+    uv run python scripts/migrate_ministry_agnostic_prompts.py              # dry-run
+    uv run python scripts/migrate_ministry_agnostic_prompts.py --apply       # write
+    uv run python scripts/migrate_ministry_agnostic_prompts.py --name system_prompt_V6_optimized.md
 """
 
 from __future__ import annotations
@@ -40,21 +41,28 @@ from typing import List, Tuple
 # Ordered replacements. Order matters: the quoted requested_source value and the
 # full ministry name are handled before the catch-all bare-word rule so they map
 # to the right placeholder / generic category.
+#
+# All patterns are case-insensitive so admin-tuned prompts with casual casing
+# ("matte", "Matte", lowercase full name) are migrated too. This is safe for
+# table identifiers: the bare-word rule uses ``\b`` boundaries, so ``matte``
+# inside ``rag_chunks_matte`` (preceded by ``_``, no word boundary) is left
+# untouched — only standalone occurrences are rewritten.
 _FULL_NAME = r"Minist[eè]re\s+de\s+la\s+Transition\s+[EÉ]cologique"
+_I = re.IGNORECASE
 
 _REPLACEMENTS: Tuple[Tuple[re.Pattern[str], str], ...] = (
     # intent requested_source enum → generic categories. Combined form first so
     # the standalone rules below don't partially rewrite it.
-    (re.compile(r'"MATTE\s*\|\s*Service-Public"'), '"ministere|service_public"'),
-    (re.compile(r'"MATTE"'), '"ministere"'),
-    (re.compile(r"'MATTE'"), "'ministere'"),
-    (re.compile(r'"Service-Public"'), '"service_public"'),
-    (re.compile(r"'Service-Public'"), "'service_public'"),
+    (re.compile(r'"MATTE\s*\|\s*Service-Public"', _I), '"ministere|service_public"'),
+    (re.compile(r'"MATTE"', _I), '"ministere"'),
+    (re.compile(r"'MATTE'", _I), "'ministere'"),
+    (re.compile(r'"Service-Public"', _I), '"service_public"'),
+    (re.compile(r"'Service-Public'", _I), "'service_public'"),
     # tenant full name, with or without the trailing "- MATTE" / "(MATTE)"
-    (re.compile(_FULL_NAME + r"\s*[-–(]\s*MATTE\s*\)?"), "{ministere_label} ({ministere_sigle})"),
-    (re.compile(_FULL_NAME), "{ministere_label}"),
-    # catch-all: any remaining bare MATTE (source tag / practice reference)
-    (re.compile(r"\bMATTE\b"), "{ministere_sigle}"),
+    (re.compile(_FULL_NAME + r"\s*[-–(]\s*MATTE\s*\)?", _I), "{ministere_label} ({ministere_sigle})"),
+    (re.compile(_FULL_NAME, _I), "{ministere_label}"),
+    # catch-all: any remaining standalone MATTE (source tag / practice reference)
+    (re.compile(r"\bMATTE\b", _I), "{ministere_sigle}"),
 )
 
 
@@ -100,11 +108,16 @@ def main() -> int:
     args = parser.parse_args()
 
     # Imported lazily so ``--help`` and the pure transform work without a DSN.
-    from assistant_rh_rag_pipeline.db_helpers import _db_conn
+    from assistant_rh_rag_pipeline.db_helpers import _db_conn, has_dsn
 
+    # get_dsn() raises RuntimeError when unset (not caught by _db_conn), so guard
+    # first to give a clean message instead of a traceback.
+    if not has_dsn():
+        print("ERROR: no database connection (set the DSN env, e.g. SCW_POSTGRES_DSN).", file=sys.stderr)
+        return 2
     conn = _db_conn()
     if conn is None:
-        print("ERROR: no database connection (set the DSN env, e.g. SCW_POSTGRES_DSN).", file=sys.stderr)
+        print("ERROR: database connection failed (DSN set but unreachable).", file=sys.stderr)
         return 2
 
     changed = 0
@@ -119,9 +132,10 @@ def main() -> int:
                 # Scan every prompt (changed or not): a glued "MATTE" (e.g.
                 # "MATTE_v2") that the word-boundary rule can't rewrite leaves the
                 # prompt unchanged, so this must run before the no-op skip below.
-                # Case-sensitive on purpose — lowercase table names like
-                # ``rag_chunks_matte`` are legitimate and must not be flagged.
-                if "MATTE" in new_content:
+                # Case-insensitive standalone "matte" only (``\b`` boundaries):
+                # lowercase table names like ``rag_chunks_matte`` have no leading
+                # boundary and are correctly ignored.
+                if re.search(r"\bmatte\b", new_content, _I):
                     leftover_matte.append(name)
                 if new_content == content:
                     continue
