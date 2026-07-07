@@ -29,7 +29,7 @@ from .context_builder import ContextBuilder
 from .context_selector import ContextSelector
 from .db_helpers import get_dsn
 from .generator import StreamingGenerator
-from .ministry_scope import RetrievalScope
+from .ministry_scope import MinistrySource, RetrievalScope, resolve_ministry
 from .models import ContextItem, PipelineResult, estimate_tokens, serialize_raw_chunks, serialize_section_chunks
 from .query_processor import QueryProcessor, QueryProcessResult
 from .retriever import Retriever
@@ -189,9 +189,10 @@ class Pipeline:
         self,
         query: str,
         conversation_history: list[Dict[str, str]] | None = None,
+        retrieval_scope: RetrievalScope | None = None,
     ) -> QueryProcessResult:
         state = _RunState()
-        qr = self._process_query(query, conversation_history, state)
+        qr = self._process_query(query, conversation_history, state, ministry=resolve_ministry(retrieval_scope))
         self._timing = dict(state.timing)
         return qr
 
@@ -210,7 +211,8 @@ class Pipeline:
     ) -> PipelineResult:
         state = _RunState(turn_id=turn_id or "", trace_id=normalize_trace_id(trace_id))
         _record_scope(state, retrieval_scope)
-        qr = self._process_query(query, conversation_history, state)
+        ministry = resolve_ministry(retrieval_scope)
+        qr = self._process_query(query, conversation_history, state, ministry=ministry)
 
         if not qr.should_proceed:
             metadata: Dict[str, Any] = {
@@ -244,7 +246,7 @@ class Pipeline:
             self._timing = dict(result.timing)
             return result
 
-        context_items = self._retrieve_and_build(qr, state, retrieval_scope=retrieval_scope)
+        context_items = self._retrieve_and_build(qr, state, retrieval_scope=retrieval_scope, ministry=ministry)
 
         if not context_items and state.stage_refs.get("selector_all_rejected"):
             no_answer = (
@@ -269,7 +271,7 @@ class Pipeline:
             return result
 
         t0 = time.time()
-        answer = self._generator.generate(qr.query_for_retrieval, context_items)
+        answer = self._generator.generate(qr.query_for_retrieval, context_items, ministry=ministry)
         generation_ms = (time.time() - t0) * 1000
         state.timing["generation_ms"] = generation_ms
         state.timing["response_length_tokens"] = estimate_tokens(answer)
@@ -331,6 +333,7 @@ class Pipeline:
         """
         state = _RunState(turn_id=turn_id or "", trace_id=normalize_trace_id(trace_id))
         _record_scope(state, retrieval_scope)
+        ministry = resolve_ministry(retrieval_scope)
         self._record_query_processor_event(
             query=qr.original_query,
             conversation_history=conversation_history,
@@ -341,7 +344,7 @@ class Pipeline:
         _notify = on_status or (lambda _: None)
 
         _notify("📚 Recherche dans les sources...")
-        context_items = self._retrieve_and_build(qr, state, retrieval_scope=retrieval_scope)
+        context_items = self._retrieve_and_build(qr, state, retrieval_scope=retrieval_scope, ministry=ministry)
 
         if not context_items and state.stage_refs.get("selector_all_rejected"):
             _notify("🚫 Aucune source pertinente trouvée")
@@ -364,7 +367,7 @@ class Pipeline:
         collected: list[str] = []
         t0 = time.time()
         ttft: float = 0.0
-        for token in self._generator.stream(qr.query_for_retrieval, context_items, conversation_history):
+        for token in self._generator.stream(qr.query_for_retrieval, context_items, conversation_history, ministry=ministry):
             if not collected:
                 ttft = (time.time() - t0) * 1000
             collected.append(token)
@@ -391,9 +394,10 @@ class Pipeline:
         query: str,
         conversation_history: list[Dict[str, str]] | None,
         state: _RunState,
+        ministry: MinistrySource | None = None,
     ) -> QueryProcessResult:
         t0 = time.time()
-        qr = self._query_processor.process(query, conversation_history)
+        qr = self._query_processor.process(query, conversation_history, ministry=ministry)
         duration_ms = (time.time() - t0) * 1000
         state.timing["query_processing_ms"] = duration_ms
         self._record_query_processor_event(query=query, conversation_history=conversation_history, qr=qr, state=state, duration_ms=duration_ms)
@@ -406,6 +410,7 @@ class Pipeline:
         state: _RunState,
         *,
         retrieval_scope: RetrievalScope | None = None,
+        ministry: MinistrySource | None = None,
     ) -> List[ContextItem]:
         retrieval_query = qr.query_for_retrieval
 
@@ -424,6 +429,7 @@ class Pipeline:
             search_mode=self.config.retrieval.search_mode,
             top_k=self.config.retrieval.initial_top_k,
             strict_table_errors=strict_table_errors,
+            ministry=ministry,
         )
         attempts = [initial_attempt]
         items = initial_attempt.context_items_ref
@@ -452,6 +458,7 @@ class Pipeline:
             search_mode=self.config.retrieval.selector_retry_search_mode,
             top_k=self.config.retrieval.selector_retry_top_k,
             strict_table_errors=strict_table_errors,
+            ministry=ministry,
         )
         attempts.append(retry_attempt)
         retry_has_context = bool(retry_attempt.context_items_ref)
@@ -477,6 +484,7 @@ class Pipeline:
         search_mode: SearchMode,
         top_k: int,
         strict_table_errors: bool,
+        ministry: MinistrySource | None = None,
     ) -> _RetrievalAttempt:
         tables_searched = list(active_tables)
 
@@ -587,7 +595,7 @@ class Pipeline:
             sections_before = len(sections)
             t0 = time.time()
             selector = ContextSelector(self.config.selector)
-            sections = selector.select(retrieval_query, sections)
+            sections = selector.select(retrieval_query, sections, ministry=ministry)
             selector_ms = (time.time() - t0) * 1000
             state.timing[f"selector_{name}_ms"] = selector_ms
             attempt.selector_decisions = selector.last_decisions
