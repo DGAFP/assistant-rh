@@ -56,6 +56,14 @@ on:
           - mso
           - pdf_sources
           - embeddings
+      mode:
+        description: "plan = detection seule (aucune mutation) ; apply = ingestion/reconciliation"
+        required: true
+        default: "apply"
+        type: choice
+        options:
+          - apply
+          - plan
       run_ingestion:
         description: "Ingerer aussi dans la base Scaleway staging"
         required: true
@@ -135,6 +143,7 @@ jobs:
       has_builds: ${{ steps.plan.outputs.has_builds }}
       has_runs: ${{ steps.plan.outputs.has_runs }}
       matrix: ${{ steps.plan.outputs.matrix }}
+      mode: ${{ steps.plan.outputs.mode }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -148,6 +157,7 @@ jobs:
           INPUT_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
           INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_embeddings || false }}
           INPUT_EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_source || '' }}
+          INPUT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'apply' }}
         run: python3 .github/scripts/data_engineering_plan.py
 
   build-staging-images:
@@ -209,9 +219,12 @@ jobs:
       # Staging branch pushes run a complete preview with destructive chunk wipe disabled.
       # Manual dispatch keeps operator controls.
       SERVICE_PUBLIC_SELECTED: ${{ needs.plan.outputs.service_public }}
-      RUN_INGESTION: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_ingestion) || false }}
+      # mode=plan (socle #288) neutralise toute mutation, y compris l'ingestion
+      # interne du médaillon PDF (via RUN_INGESTION). push et dispatch apply
+      # gardent le comportement historique.
+      RUN_INGESTION: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_ingestion && inputs.mode == 'apply') || false }}
       WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}
-      RUN_EMBEDDINGS: ${{ (github.event_name == 'push' && needs.plan.outputs.run_embeddings == 'true') || (github.event_name == 'workflow_dispatch' && (inputs.run_embeddings || inputs.source == 'embeddings' || inputs.source == 'matte' || inputs.source == 'mi' || inputs.source == 'masa' || inputs.source == 'mso')) || false }}
+      RUN_EMBEDDINGS: ${{ (github.event_name == 'push' && needs.plan.outputs.run_embeddings == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' && (inputs.run_embeddings || inputs.source == 'embeddings' || inputs.source == 'matte' || inputs.source == 'mi' || inputs.source == 'masa' || inputs.source == 'mso')) || false }}
       EMBEDDING_SOURCE: ${{ (github.event_name == 'push' && needs.plan.outputs.embedding_source) || (github.event_name == 'workflow_dispatch' && (inputs.source == 'matte' && 'matte' || inputs.source == 'mi' && 'mi' || inputs.source == 'masa' && 'masa' || inputs.source == 'mso' && 'mso' || inputs.embedding_source)) || 'all' }}
       EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
       SERVICE_PUBLIC_FICHE_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.service_public_fiche_config || 'config/service_public_fiches.json' }}
@@ -267,6 +280,7 @@ jobs:
           python3 .github/scripts/scaleway_data_jobs.py \
             --target-env staging \
             --image-tag "${STAGING_IMAGE_TAG}" \
+            --mode "${{ needs.plan.outputs.mode }}" \
             --service-public "${{ needs.plan.outputs.service_public }}" \
             --legifrance "${{ needs.plan.outputs.legifrance }}" \
             --pdf-sources "${{ needs.plan.outputs.pdf_sources }}" \
