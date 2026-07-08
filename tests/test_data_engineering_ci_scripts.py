@@ -247,11 +247,29 @@ def test_preview_staging_push_runs_complete_preview_with_wipe_disabled() -> None
 
     assert "github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_preview_jobs)" in workflow
     assert (
-        "RUN_INGESTION: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_ingestion) || false }}"
+        "RUN_INGESTION: ${{ github.event_name == 'push' || "
+        "(github.event_name == 'workflow_dispatch' && inputs.run_ingestion && inputs.mode == 'apply') || false }}"
     ) in workflow
     assert "WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}" in workflow
     assert "RUN_EMBEDDINGS: ${{ (github.event_name == 'push' && needs.plan.outputs.run_embeddings == 'true')" in workflow
     assert "EMBEDDING_SOURCE: ${{ (github.event_name == 'push' && needs.plan.outputs.embedding_source)" in workflow
+
+
+def test_preview_staging_threads_plan_apply_mode() -> None:
+    # Socle #288 : l'axe mode est câblé de bout en bout (input -> plan -> dispatch).
+    # Défaut apply (comportement inchangé) ; plan neutralise ingestion + embeddings.
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-preview-staging.yml").read_text(encoding="utf-8")
+
+    inputs_block = workflow.split("workflow_dispatch:", 1)[1].split("jobs:", 1)[0]
+    assert "mode:" in inputs_block
+    assert 'default: "apply"' in inputs_block
+
+    assert "INPUT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'apply' }}" in workflow
+    assert "mode: ${{ steps.plan.outputs.mode }}" in workflow
+    assert '--mode "${{ needs.plan.outputs.mode }}"' in workflow
+    # mode=plan neutralise la mutation côté env (ingestion PDF + embeddings).
+    assert "inputs.run_ingestion && inputs.mode == 'apply'" in workflow
+    assert "inputs.mode == 'apply' && (inputs.run_embeddings" in workflow
 
 
 def test_preview_staging_exposes_matte_embedding_dispatch() -> None:
