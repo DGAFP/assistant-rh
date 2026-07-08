@@ -247,7 +247,8 @@ def test_preview_staging_push_runs_complete_preview_with_wipe_disabled() -> None
 
     assert "github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_preview_jobs)" in workflow
     assert (
-        "RUN_INGESTION: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_ingestion && inputs.mode == 'apply') || false }}"
+        "RUN_INGESTION: ${{ github.event_name == 'push' || "
+        "(github.event_name == 'workflow_dispatch' && inputs.run_ingestion && inputs.mode == 'apply') || false }}"
     ) in workflow
     assert "WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}" in workflow
     assert "RUN_EMBEDDINGS: ${{ (github.event_name == 'push' && needs.plan.outputs.run_embeddings == 'true')" in workflow
