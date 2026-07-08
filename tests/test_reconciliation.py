@@ -110,14 +110,41 @@ def test_weak_removal_is_flagged_not_auto() -> None:
 
 
 def test_protected_is_never_removed_or_reingested() -> None:
-    # Incident d'acquisition : ni suppression stale, ni suppression abrogée.
-    manifest = _manifest(ManifestEntry("A", abrogated=True))
+    # Incident d'acquisition : ni suppression (stale/abrogée), ni ré-ingestion.
+    manifest = _manifest(
+        ManifestEntry("A", abrogated=True),  # abrogé mais protégé
+        ManifestEntry("C", content_hash="new"),  # en vigueur, hash changé mais protégé
+    )
     corpus = _corpus(
         CorpusEntry("A", content_hash="h", nb_chunks=2),  # abrogé mais protégé
+        CorpusEntry("C", content_hash="old", nb_chunks=2),  # changé mais protégé -> pas ré-ingéré
         CorpusEntry("Z", content_hash="hz", nb_chunks=1),  # stale mais protégé
     )
 
-    plan = build_plan(manifest, corpus, protected={"A", "Z"})
+    plan = build_plan(manifest, corpus, protected={"A", "C", "Z"})
 
     assert plan.removals == ()
     assert plan.acknowledged == ()
+    # Le doc protégé à hash divergent n'est PAS ré-ingéré (contrat "jamais touché").
+    assert plan.changed == ()
+    assert plan.to_ingest == ()
+
+
+def test_empty_manifest_downgrades_stale_to_flagged() -> None:
+    # Manifest vide + corpus non vide = fetch échoué, pas une purge : les stale
+    # basculent en WEAK (flag), jamais auto-supprimés (garde-fou anti-purge).
+    corpus = _corpus(
+        CorpusEntry("A", content_hash="h", nb_chunks=2),
+        CorpusEntry("B", content_hash="h2", nb_chunks=1),
+    )
+
+    plan = build_plan(_manifest(), corpus)
+
+    assert plan.auto_removals == ()
+    assert plan.flagged_removals == ("A", "B")
+    assert all(r.reason == "stale" for r in plan.removals)
+
+    # Garde-fou désactivable : comportement autoritaire historique.
+    unguarded = build_plan(_manifest(), corpus, guard_empty_manifest=False)
+    assert unguarded.auto_removals == ("A", "B")
+    assert unguarded.flagged_removals == ()

@@ -115,6 +115,7 @@ def build_plan(
     *,
     protected: Collection[str] = (),
     retry_zero_chunk: bool = True,
+    guard_empty_manifest: bool = True,
 ) -> ReconciliationPlan:
     """Diff pur manifest ↔ corpus.
 
@@ -125,8 +126,16 @@ def build_plan(
     - ``removals`` : ``abrogated`` (manifest ``abroge``, autoritaire) +
       ``flagged`` (``weak_removal``, faible) + ``stale`` (en base hors manifest,
       autoritaire).
-    - ``protected`` : uids dont l'acquisition source a échoué → JAMAIS supprimés
-      ni touchés (un incident transitoire ne doit pas purger un doc sain).
+    - ``protected`` : uids dont l'acquisition source a échoué → JAMAIS touchés :
+      ni supprimés, ni (ré)ingérés. Un incident transitoire ne doit ni purger ni
+      re-payer l'OCR d'un doc sain ; un hash source manquant/divergent pendant
+      l'incident n'est PAS un signal de changement. Le doc reste tel quel en base.
+    - ``guard_empty_manifest`` (défaut ``True``) : garde-fou anti-purge. Un
+      manifest vide alors que le corpus ne l'est pas trahit presque toujours un
+      échec de fetch (Grist), pas une suppression volontaire de tout le corpus ;
+      on refuse alors le signal autoritaire et les ``stale`` basculent en
+      ``WEAK`` (flag + confirmation), jamais auto-appliqués. Mettre à ``False``
+      pour retrouver le comportement autoritaire historique.
     """
     protected_set = {str(uid) for uid in protected}
     new: list[str] = []
@@ -137,10 +146,13 @@ def build_plan(
 
     for uid in sorted(manifest):
         entry = manifest[uid]
+        if uid in protected_set:
+            # Acquisition échouée ce run : ne jamais toucher un doc sain — ni le
+            # supprimer, ni le (ré)ingérer. Vaut aussi pour les docs en vigueur :
+            # un hash source manquant/divergent pendant l'incident ne classe pas
+            # le doc en `changed`. Il reste tel quel en base.
+            continue
         if entry.abrogated or entry.weak_removal:
-            if uid in protected_set:
-                # Ne jamais toucher un doc dont l'acquisition a échoué ce run.
-                continue
             if uid not in corpus:
                 acknowledged.append(uid)
                 continue
@@ -158,10 +170,16 @@ def build_plan(
             changed.append(uid)
 
     manifest_keys = set(manifest)
+    # Garde-fou anti-purge : un manifest vide (corpus non vide) trahit un fetch
+    # échoué, pas une purge volontaire → stale non autoritaire (flag, jamais
+    # auto-appliqué). Voir `guard_empty_manifest`.
+    stale_confidence = Confidence.AUTHORITATIVE
+    if guard_empty_manifest and not manifest_keys and corpus:
+        stale_confidence = Confidence.WEAK
     for uid in sorted(corpus):
         if uid in manifest_keys or uid in protected_set:
             continue
-        removals.append(Removal(uid, "stale", Confidence.AUTHORITATIVE))
+        removals.append(Removal(uid, "stale", stale_confidence))
 
     return ReconciliationPlan(
         new=tuple(new),
