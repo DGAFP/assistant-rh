@@ -42,6 +42,7 @@ def summarize_pipeline_outputs(
     bronze_assets: list[Any],
     silver_bundles: list[Any],
     gold_bundles: list[Any],
+    gold_reused_chunks: dict[str, int] | None = None,
 ) -> dict[str, dict[str, int]]:
     bronze_ids = {str(getattr(asset, "fiche_id", "")).strip().upper() for asset in bronze_assets}
     silver_by_id = {
@@ -50,18 +51,22 @@ def summarize_pipeline_outputs(
     gold_by_id = {
         str(bundle.document.get("short_id", "")).strip().upper(): bundle for bundle in gold_bundles if getattr(bundle, "document", None) is not None
     }
+    # Mode --delta : fiches dont le gold existant a été réutilisé (contenu
+    # source inchangé) — comptées comme complètes, pas comme manquantes.
+    reused = dict(gold_reused_chunks or {})
 
     per_fiche: dict[str, dict[str, int]] = {}
     errors: list[str] = []
     for fiche_id in requested_fiche_ids:
         silver_bundle = silver_by_id.get(fiche_id)
         gold_bundle = gold_by_id.get(fiche_id)
+        reused_count = reused.get(fiche_id)
         counts = {
             "bronze": 1 if fiche_id in bronze_ids else 0,
             "documents": 1 if silver_bundle is not None else 0,
             "sections": len(getattr(silver_bundle, "sections", []) or []),
-            "gold_documents": 1 if gold_bundle is not None else 0,
-            "chunks": len(getattr(gold_bundle, "chunks", []) or []),
+            "gold_documents": 1 if (gold_bundle is not None or reused_count is not None) else 0,
+            "chunks": len(getattr(gold_bundle, "chunks", []) or []) if gold_bundle is not None else int(reused_count or 0),
         }
         per_fiche[fiche_id] = counts
 
@@ -162,6 +167,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pousse rag_documents/rag_sections/rag_chunks_service_public en base.",
     )
     parser.add_argument(
+        "--from-grist",
+        action="store_true",
+        help=(
+            "Sélection depuis le référentiel Grist (lignes Service-Public actives : a_ingerer/ingere/erreur, "
+            "abroge != oui) au lieu de --fiche-config — la config committée devient un cache (E2.3-c, #289)."
+        ),
+    )
+    parser.add_argument(
+        "--grist-table-id",
+        default=None,
+        help="Table Grist du référentiel (défaut : variable d'environnement GRIST_TABLE_ID).",
+    )
+    parser.add_argument(
+        "--delta",
+        action="store_true",
+        help=(
+            "Ne reconstruit gold+embeddings que pour les fiches nouvelles ou dont le contenu source a changé "
+            "(hash silver vs artefact existant) ; les inchangées réutilisent leur gold. Le fetch bronze reste "
+            "complet — nécessaire à la détection de changement."
+        ),
+    )
+    parser.add_argument(
         "--schema",
         default="public",
         help="Schéma Postgres cible.",
@@ -186,12 +213,30 @@ def main() -> int:
     load_dotenv(REPO_ROOT / ".env")
 
     args = build_parser().parse_args()
+    if args.delta and args.ingest:
+        raise SystemExit(
+            "--ingest est incompatible avec --delta : utiliser le job d'ingestion en mode --delta (E2.3-a), qui réconcilie Grist↔corpus."
+        )
 
     config = ServicePublicPipelineConfig(paths=LakePaths(root_dir=Path(args.lake_root)))
     fiche_config_path = Path(args.fiche_config)
-    fiche_config = load_fiche_config(fiche_config_path)
-    fiche_ids = resolve_fiche_ids(list(fiche_config.get("fiche_ids", [])) + list(args.fiche_ids or []))
-    situation = args.situation or fiche_config.get("situation")
+    if args.from_grist:
+        from assistant_rh_data_engineering.service_public.reconcile import select_manifest_rows
+        from assistant_rh_data_engineering.utils.grist import GristClient, GristError
+
+        try:
+            grist = GristClient()
+            records = grist.list_records(args.grist_table_id) if args.grist_table_id else grist.list_records()
+            manifest_rows = select_manifest_rows(records)
+        except GristError as exc:
+            raise SystemExit(f"Échec Grist en mode --from-grist (aucune écriture): {exc}") from exc
+        fiche_ids = resolve_fiche_ids([row.uid for row in manifest_rows if row.active] + list(args.fiche_ids or []))
+        # Même défaut que la config générée par le générateur E2.1 ("FPE").
+        situation = args.situation or "FPE"
+    else:
+        fiche_config = load_fiche_config(fiche_config_path)
+        fiche_ids = resolve_fiche_ids(list(fiche_config.get("fiche_ids", [])) + list(args.fiche_ids or []))
+        situation = args.situation or fiche_config.get("situation")
     if args.batch_from_db:
         db = ServicePublicDbWriter(schema=args.schema)
         fiche_ids = resolve_fiche_ids(
@@ -213,14 +258,44 @@ def main() -> int:
     elif args.with_scaleway_bge:
         config.embeddings.enable_bge_scaleway = True
 
+    # Mode --delta : mémoriser les checksums silver AVANT le run (les artefacts
+    # sont réécrits par run_silver) pour décider quoi reconstruire en gold.
+    previous_checksums: dict[str, str] = {}
+    if args.delta:
+        for doc_path in sorted((config.paths.silver_dir / "documents").glob("*.document.json")):
+            try:
+                payload = json.loads(doc_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            uid = str(payload.get("short_id") or "").strip().upper()
+            if uid:
+                previous_checksums[uid] = str(payload.get("checksum") or "")
+
     pipeline = ServicePublicPipeline(config)
     bronze_assets = pipeline.run_bronze()
     silver_bundles = []
     gold_bundles = []
+    gold_skipped: list[str] = []
+    reused_gold_chunks: dict[str, int] = {}
 
     for batch in chunked(bronze_assets, args.batch_size):
         silver_batch = pipeline.run_silver(batch)
-        gold_batch = pipeline.run_gold(silver_batch)
+        if args.delta:
+            to_build = []
+            for bundle in silver_batch:
+                uid = str(bundle.document.get("short_id") or "").strip().upper()
+                checksum = str(bundle.document.get("checksum") or "")
+                chunks_path = config.paths.gold_dir / "chunks" / f"{uid}.chunks.jsonl"
+                if checksum and previous_checksums.get(uid) == checksum and chunks_path.exists():
+                    # Contenu source inchangé et gold déjà construit : on ne
+                    # re-paye pas les embeddings, l'artefact existant est réutilisé.
+                    gold_skipped.append(uid)
+                    reused_gold_chunks[uid] = sum(1 for line in chunks_path.read_text(encoding="utf-8").splitlines() if line.strip())
+                    continue
+                to_build.append(bundle)
+            gold_batch = pipeline.run_gold(to_build) if to_build else []
+        else:
+            gold_batch = pipeline.run_gold(silver_batch)
         silver_bundles.extend(silver_batch)
         gold_bundles.extend(gold_batch)
 
@@ -229,6 +304,7 @@ def main() -> int:
         bronze_assets,
         silver_bundles,
         gold_bundles,
+        gold_reused_chunks=reused_gold_chunks,
     )
 
     ingested: dict[str, int] | None = None
@@ -241,11 +317,15 @@ def main() -> int:
 
     result = {
         "requested_fiche_ids": fiche_ids,
-        "fiche_config_path": str(fiche_config_path),
+        "fiche_config_path": None if args.from_grist else str(fiche_config_path),
+        "from_grist": args.from_grist,
+        "delta": args.delta,
         "bronze_assets": len(bronze_assets),
         "silver_documents": len(silver_bundles),
         "gold_documents": len(gold_bundles),
         "gold_chunks": sum(len(bundle.chunks) for bundle in gold_bundles),
+        "gold_skipped_unchanged": sorted(gold_skipped),
+        "gold_chunks_reused": sum(reused_gold_chunks.values()),
         "lake_root": str(config.paths.root_dir),
         "batch_size": args.batch_size,
         "target_env": args.target_env,
