@@ -228,6 +228,30 @@ def test_plan_empty_selection_guard_downgrades_stale_to_flagged() -> None:
     assert plan.flagged_removals == ("D1",)
 
 
+def test_plan_mass_stale_guard_downgrades_bulk_removals(capsys: Any) -> None:
+    # Migration : le corpus staging réel contient ~1600 documents hérités hors
+    # Grist. Un volume de stale > max_auto_stale ne doit JAMAIS être cascadé
+    # automatiquement — revue opérateur d'abord. L'abrogation Grist, elle,
+    # reste autoritaire quel que soit le volume.
+    selection = _selection([_rec(1, **_code()), _rec(2, **_texte("D_ABROGE", statut="a_supprimer"))])
+    toc = {LEGITEXT: _arts(("LEGIARTI001", "VIGUEUR"))}
+    corpus = _corpus(LEGIARTI001=("h1", 1), D_ABROGE=("ha", 1))
+    corpus.update({f"VIEUX_DOC_{i:04d}": {"doc_id": f"d{i}", "checksum": "h", "nb_chunks": 1} for i in range(60)})
+
+    lf_plan = reconcile.build_legifrance_plan(selection, toc, {"LEGIARTI001": "h1"}, corpus, max_auto_stale=50)
+
+    assert lf_plan.mass_stale_guard is True
+    assert lf_plan.plan.auto_removals == ("D_ABROGE",)  # l'abrogation opérateur reste appliquée
+    assert len(lf_plan.plan.flagged_removals) == 60
+    assert "max_auto_stale" in capsys.readouterr().out
+    assert reconcile.plan_summary(lf_plan)["mass_stale_guard"] is True
+
+    # Garde désactivé explicitement (nettoyage de migration délibéré).
+    lf_plan_off = reconcile.build_legifrance_plan(selection, toc, {"LEGIARTI001": "h1"}, corpus, max_auto_stale=None)
+    assert lf_plan_off.mass_stale_guard is False
+    assert len(lf_plan_off.plan.auto_removals) == 61
+
+
 def test_plan_summary_reports_buckets() -> None:
     selection = _selection(
         [
@@ -407,6 +431,23 @@ def test_ingest_delta_staging_only_touches_toggles() -> None:
     assert by_record[2] == {"ingere_staging": True}  # texte ingéré
     assert by_record[3] == {"ingere_staging": False}  # texte cascadé
     assert all("statut" not in fields for fields in by_record.values())
+
+
+def test_ingest_delta_mass_stale_guard_blocks_cascade() -> None:
+    # Bout-en-bout job : au-delà de --max-auto-stale, aucune cascade des stale.
+    grist = _RecordingGrist([_rec(1, **_code())])
+    piste = _FakePiste(_arts(("LEGIARTI001", "VIGUEUR")))
+    corpus = _corpus(LEGIARTI001=("h1", 1))
+    corpus.update({f"VIEUX_DOC_{i:04d}": {"doc_id": f"d{i}", "checksum": "h", "nb_chunks": 1} for i in range(10)})
+    writer = _DeltaWriter(corpus)
+    documents = [{"short_id": "LEGIARTI001", "doc_id": "da1", "checksum": "h1"}]
+
+    summary = legifrance_ingestion.ingest_delta(writer, grist, piste, documents, [], [], toc_date_millis=1000, max_auto_stale=5)
+
+    assert summary["plan"]["mass_stale_guard"] is True
+    assert summary["plan"]["flagged"]["count"] == 10
+    assert summary["applied"]["deleted"] == 0
+    assert writer.article_cascades == [] and writer.texte_cascades == []
 
 
 def test_ingest_delta_piste_http_error_raises_piste_error() -> None:

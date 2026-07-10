@@ -217,6 +217,7 @@ def ingest_delta(
     grist_table_id: str | None = None,
     target_env: str = "prod",
     toc_date_millis: int | None = None,
+    max_auto_stale: int | None = None,
 ) -> dict[str, Any]:
     """Ingestion delta-aware Légifrance (E2.3-b, #289).
 
@@ -233,6 +234,7 @@ def ingest_delta(
 
     from assistant_rh_data_engineering.legifrance.piste import PisteError, walk_table_matieres
     from assistant_rh_data_engineering.legifrance.reconcile import (
+        DEFAULT_MAX_AUTO_STALE,
         STATUT_ERREUR,
         STATUT_INGERE,
         STATUT_REEL_INGERE,
@@ -264,7 +266,9 @@ def ingest_delta(
         str(document.get("short_id") or "").strip().upper(): str(document.get("checksum") or "") for document in documents if document.get("short_id")
     }
     corpus = writer.list_legifrance_corpus(source)
-    lf_plan = build_legifrance_plan(selection, toc_by_legitext, silver_checksums, corpus, requested=requested)
+    # max_auto_stale : None = défaut du module ; 0 = garde désactivé (nettoyage délibéré).
+    effective_max_stale = DEFAULT_MAX_AUTO_STALE if max_auto_stale is None else (max_auto_stale if max_auto_stale > 0 else None)
+    lf_plan = build_legifrance_plan(selection, toc_by_legitext, silver_checksums, corpus, requested=requested, max_auto_stale=effective_max_stale)
     plan = lf_plan.plan
 
     summary: dict[str, Any] = {
@@ -480,6 +484,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Table Grist du référentiel (défaut : variable d'environnement GRIST_TABLE_ID).",
     )
     parser.add_argument(
+        "--max-auto-stale",
+        type=int,
+        default=None,
+        help=(
+            "Mode delta : au-delà de ce nombre de documents stale, la suppression auto est refusée et les stale "
+            "basculent en flagged (revue opérateur). Défaut : 50. 0 = désactive le garde (nettoyage délibéré)."
+        ),
+    )
+    parser.add_argument(
         "--schema",
         default="public",
         help="Schéma Postgres cible.",
@@ -608,6 +621,7 @@ def main() -> int:
                 writeback_enabled=not (args.dry_run or args.skip_grist_writeback),
                 grist_table_id=args.grist_table_id,
                 target_env=args.target_env,
+                max_auto_stale=args.max_auto_stale,
             )
         except (GristError, PisteError) as exc:
             # Config/fetch/contrat Grist ou PISTE en échec : message opérateur

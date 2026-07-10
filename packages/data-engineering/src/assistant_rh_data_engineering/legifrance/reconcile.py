@@ -31,7 +31,7 @@ from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..reconciliation import CorpusEntry, ManifestEntry, ReconciliationPlan, build_plan
+from ..reconciliation import Confidence, CorpusEntry, ManifestEntry, ReconciliationPlan, Removal, build_plan
 from ..utils.grist import (
     STATUT_ERREUR,
     STATUT_INGERE,
@@ -55,6 +55,14 @@ ACTIVE_STATUTS: frozenset[str] = frozenset({"a_ingerer", "ingere", "erreur"})
 REMOVAL_STATUTS: frozenset[str] = frozenset({"a_supprimer", "supprime"})
 
 VIGUEUR = "VIGUEUR"
+
+# Garde anti-suppression-massive : au-delà de ce nombre de `stale` (docs au
+# corpus hors manifest), le signal ressemble plus à un état de migration (corpus
+# historique non curé, cf. dry-run staging du 10/07/2026 : 1597 stale hérités)
+# ou à un manifest partiel qu'à une curation volontaire → les stale basculent en
+# `flagged` (jamais auto-appliqués), à passer par une revue opérateur. Les
+# abrogations (Grist/ETAT), elles, restent autoritaires quel que soit le volume.
+DEFAULT_MAX_AUTO_STALE = 50
 
 
 def _fold(value: Any) -> str:
@@ -209,6 +217,8 @@ class LegifrancePlan:
     pending: tuple[str, ...] = ()
     out_of_scope: tuple[int, ...] = ()
     pending_mapping: tuple[int, ...] = ()
+    # True si le garde anti-suppression-massive a rétrogradé les stale en flagged.
+    mass_stale_guard: bool = False
 
 
 def build_legifrance_plan(
@@ -220,6 +230,7 @@ def build_legifrance_plan(
     requested: Collection[str] | None = None,
     retry_zero_chunk: bool = True,
     guard_empty_manifest: bool = True,
+    max_auto_stale: int | None = DEFAULT_MAX_AUTO_STALE,
 ) -> LegifrancePlan:
     """Adapte référentiel Grist + TOC PISTE + état corpus au diff ``build_plan``.
 
@@ -228,6 +239,9 @@ def build_legifrance_plan(
     tous ses articles du corpus seraient classés ``stale`` → purge (~2500 docs)
     sur un simple incident API. ``requested`` : sous-ensemble ``--uid`` (CID ou
     short_id texte) — restreint manifest ET corpus comme en SP.
+    ``max_auto_stale`` : au-delà de ce volume de ``stale``, ils basculent tous
+    en ``flagged`` (revue opérateur, jamais auto-appliqués) — ``None`` désactive
+    le garde (nettoyage de migration délibéré).
     """
     requested_set: set[str] | None = None
     if requested is not None:
@@ -326,6 +340,30 @@ def build_legifrance_plan(
         retry_zero_chunk=retry_zero_chunk,
         guard_empty_manifest=effective_guard,
     )
+
+    # Garde anti-suppression-massive : un volume anormal de stale trahit un état
+    # de migration (corpus historique non curé) ou un manifest partiel, pas une
+    # curation opérateur — on rétrograde TOUS les stale en flagged (WEAK).
+    mass_stale_guard = False
+    stale_auto = [r for r in plan.removals if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE]
+    if max_auto_stale is not None and len(stale_auto) > max_auto_stale:
+        mass_stale_guard = True
+        downgraded = tuple(
+            Removal(r.uid, r.reason, Confidence.WEAK) if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE else r
+            for r in plan.removals
+        )
+        plan = ReconciliationPlan(
+            new=plan.new,
+            changed=plan.changed,
+            unchanged=plan.unchanged,
+            removals=downgraded,
+            acknowledged=plan.acknowledged,
+        )
+        print(
+            f"[warn] {len(stale_auto)} documents stale (> max_auto_stale={max_auto_stale}): "
+            "suppression auto refusée, basculés en flagged (revue opérateur — relancer avec --max-auto-stale ajusté pour un nettoyage délibéré)."
+        )
+
     return LegifrancePlan(
         plan=plan,
         texte_record_ids=dict(texte_record_ids),
@@ -335,15 +373,18 @@ def build_legifrance_plan(
         pending=tuple(sorted(pending)),
         out_of_scope=selection.out_of_scope,
         pending_mapping=selection.pending_mapping,
+        mass_stale_guard=mass_stale_guard,
     )
 
 
 def plan_summary(lf_plan: LegifrancePlan, *, sample: int = 10) -> dict[str, Any]:
     """Résumé JSON du plan (compteurs + échantillons), même forme que SP."""
     plan = lf_plan.plan
-    removals_by_reason: dict[str, list[str]] = {}
-    for removal in plan.removals:
-        removals_by_reason.setdefault(removal.reason, []).append(removal.uid)
+    # Buckets par ce qui sera réellement APPLIQUÉ : `stale`/`abrogated` =
+    # suppressions autoritaires (auto), `flagged` = tout signal faible (jamais
+    # auto-appliqué), y compris les stale rétrogradés par un garde.
+    abrogated = [r.uid for r in plan.removals if r.reason == "abrogated" and r.confidence is Confidence.AUTHORITATIVE]
+    stale = [r.uid for r in plan.removals if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE]
 
     def bucket(uids: Sequence[str]) -> dict[str, Any]:
         ordered = sorted(uids)
@@ -353,9 +394,9 @@ def plan_summary(lf_plan: LegifrancePlan, *, sample: int = 10) -> dict[str, Any]
         "new": bucket(plan.new),
         "changed": bucket(plan.changed),
         "unchanged": bucket(plan.unchanged),
-        "abrogated": bucket(removals_by_reason.get("abrogated", [])),
-        "stale": bucket(removals_by_reason.get("stale", [])),
-        "flagged": bucket(removals_by_reason.get("flagged", [])),
+        "abrogated": bucket(abrogated),
+        "stale": bucket(stale),
+        "flagged": bucket(plan.flagged_removals),
         "acknowledged": bucket(plan.acknowledged),
         "protected_limbo": bucket(lf_plan.protected),
         "pending_artifact": bucket(lf_plan.pending),
@@ -363,11 +404,13 @@ def plan_summary(lf_plan: LegifrancePlan, *, sample: int = 10) -> dict[str, Any]
         "pending_mapping_rows": {"count": len(lf_plan.pending_mapping)},
         "to_ingest": {"count": len(plan.to_ingest)},
         "auto_removals": {"count": len(plan.auto_removals)},
+        "mass_stale_guard": lf_plan.mass_stale_guard,
     }
 
 
 __all__ = [
     "ACTIVE_STATUTS",
+    "DEFAULT_MAX_AUTO_STALE",
     "REMOVAL_STATUTS",
     "STATUT_ERREUR",
     "STATUT_INGERE",
