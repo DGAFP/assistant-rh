@@ -1,27 +1,31 @@
 #!/usr/bin/env python3
-"""Seed the live selector prompt from the canonical fallback file (issue #299).
+"""Seed the v2 selector prompt as a NEW row and switch the runtime pointer (issue #299).
 
-The runtime reads the selector prompt from the ``system_prompts`` DB row
-``v3_selector_business.md`` and only falls back to the packaged file
-``assistant_rh_rag_pipeline/prompts/selector.md`` when the DB is unreachable.
-This script pushes the packaged file's content into the live row so both stay
-aligned — run it against each environment (dev → staging) after editing the
-fallback file.
+La table ``system_prompts`` n'a pas de versioning (PK = ``name``) : la
+convention du repo est de versionner par le nom (cf. ``system_prompt_V6_optimized.md``)
+et de basculer le pointeur runtime ``rag_config.v3_selector_prompt_name``.
 
-The write is idempotent: when the DB row already matches the file, nothing
-happens. When it differs (including admin-tuned content), the unified diff is
-printed so the operator sees exactly what would be overwritten.
+Ce script pousse le contenu du fichier fallback packagé
+(``assistant_rh_rag_pipeline/prompts/selector.md``) dans une **nouvelle** ligne
+``v3_selector_business_v2.md`` — la ligne ``v3_selector_business.md`` existante
+n'est pas touchée, elle reste disponible pour rollback et comparaison au rejeu
+(#298). La bascule du pointeur est une étape séparée (``--activate``).
+
+Idempotent : si la ligne v2 porte déjà le contenu du fichier (et que le
+pointeur est déjà basculé, avec ``--activate``), le script ne fait rien.
 
 Safety:
-  - Dry-run by default: prints the diff and writes nothing. Pass ``--apply``
-    to persist.
-  - Reads the DSN from the standard environment (same resolution as the app).
+  - Dry-run par défaut : affiche le diff (vs la v1 active, ou vs la v2 si elle
+    existe déjà) et n'écrit rien. ``--apply`` écrit la ligne v2 ;
+    ``--activate`` (implique ``--apply``) bascule en plus le pointeur.
+  - DSN lu dans l'environnement standard (même résolution que l'app).
 
 Usage (via ``uv`` so the workspace package ``assistant_rh_rag_pipeline`` is on
 the path — a plain ``python scripts/...`` fails with ModuleNotFoundError)::
 
-    uv run python scripts/seed_selector_prompt.py           # dry-run
-    uv run python scripts/seed_selector_prompt.py --apply   # write
+    uv run python scripts/seed_selector_prompt.py              # dry-run
+    uv run python scripts/seed_selector_prompt.py --apply      # écrit la ligne v2
+    uv run python scripts/seed_selector_prompt.py --activate   # écrit + bascule le pointeur
 """
 
 from __future__ import annotations
@@ -30,17 +34,19 @@ import argparse
 import difflib
 import sys
 
-PROMPT_NAME = "v3_selector_business.md"
+OLD_PROMPT_NAME = "v3_selector_business.md"
+PROMPT_NAME = "v3_selector_business_v2.md"
 PROMPT_TYPE = "llm_selector"
-DESCRIPTION = "Selector V3 — cascade ministérielle, sélection généreuse, périmètre FPE (#299)"
+DESCRIPTION = "Selector V3 v2 — cascade ministérielle, sélection généreuse, périmètre FPE (#299)"
+POINTER_KEY = "v3_selector_prompt_name"
 
 
-def _diff(before: str, after: str) -> str:
+def _diff(before: str, after: str, from_label: str) -> str:
     return "".join(
         difflib.unified_diff(
             before.splitlines(keepends=True),
             after.splitlines(keepends=True),
-            fromfile=f"{PROMPT_NAME} (DB)",
+            fromfile=f"{from_label} (DB)",
             tofile=f"{PROMPT_NAME} (fichier)",
         )
     )
@@ -48,12 +54,24 @@ def _diff(before: str, after: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--apply", action="store_true", help="Persist changes (default: dry-run).")
+    parser.add_argument("--apply", action="store_true", help="Écrit la ligne v2 (défaut : dry-run).")
+    parser.add_argument(
+        "--activate",
+        action="store_true",
+        help=f"Écrit la ligne v2 (implique --apply) puis pointe rag_config.{POINTER_KEY} dessus.",
+    )
     parser.add_argument("--updated-by", default="issue-299-selector-cascade")
     args = parser.parse_args()
+    apply = args.apply or args.activate
 
     # Imported lazily so ``--help`` works without a DSN.
-    from assistant_rh_rag_pipeline.db_helpers import _PROMPTS_DIR, _db_conn, has_dsn
+    from assistant_rh_rag_pipeline.db_helpers import (
+        _PROMPTS_DIR,
+        _db_conn,
+        get_runtime_config,
+        has_dsn,
+        update_runtime_config,
+    )
 
     content = (_PROMPTS_DIR / "selector.md").read_text(encoding="utf-8")
 
@@ -67,18 +85,26 @@ def main() -> int:
 
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT content FROM system_prompts WHERE name = %s", (PROMPT_NAME,))
-            row = cur.fetchone()
-            before = row[0] if row and row[0] else ""
+            cur.execute(
+                "SELECT name, content FROM system_prompts WHERE name IN (%s, %s)",
+                (OLD_PROMPT_NAME, PROMPT_NAME),
+            )
+            rows = {name: row_content or "" for name, row_content in cur.fetchall()}
 
-            if before == content:
-                print(f"{PROMPT_NAME}: already up to date — nothing to do.")
-                return 0
+            row_up_to_date = rows.get(PROMPT_NAME) == content
+            if row_up_to_date:
+                print(f"{PROMPT_NAME}: déjà à jour.")
+            else:
+                # Diff vs la v2 si elle existe (re-seed), sinon vs la v1 active
+                # pour que l'opérateur voie ce que la nouvelle version change.
+                if PROMPT_NAME in rows:
+                    before, label = rows[PROMPT_NAME], PROMPT_NAME
+                else:
+                    before, label = rows.get(OLD_PROMPT_NAME, ""), OLD_PROMPT_NAME
+                print(f"=== {PROMPT_NAME} (nouvelle ligne, {OLD_PROMPT_NAME} non modifiée) ===")
+                print(_diff(before, content, label))
 
-            print(f"=== {PROMPT_NAME} ===" if row else f"=== {PROMPT_NAME} (nouvelle ligne) ===")
-            print(_diff(before, content))
-
-            if args.apply:
+            if apply and not row_up_to_date:
                 cur.execute(
                     """INSERT INTO system_prompts (name, content, description, prompt_type, updated_by, updated_at)
                        VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
@@ -88,11 +114,24 @@ def main() -> int:
                     (PROMPT_NAME, content, DESCRIPTION, PROMPT_TYPE, args.updated_by),
                 )
                 conn.commit()
-                print("Applied.")
-            else:
-                print("Dry-run only — re-run with --apply to persist.")
+                print(f"Ligne {PROMPT_NAME} écrite.")
     finally:
         conn.close()
+
+    pointer = get_runtime_config().get(POINTER_KEY)
+    print(f"Pointeur runtime {POINTER_KEY} = {pointer!r}")
+    if args.activate:
+        if pointer == PROMPT_NAME:
+            print("Pointeur déjà basculé — rien à faire.")
+        elif update_runtime_config({POINTER_KEY: PROMPT_NAME}, updated_by=args.updated_by):
+            print(f"Pointeur basculé sur {PROMPT_NAME}.")
+        else:
+            print("ERROR: bascule du pointeur échouée.", file=sys.stderr)
+            return 1
+    elif pointer != PROMPT_NAME:
+        print(f"Bascule non demandée : le runtime reste sur {pointer!r} (utiliser --activate).")
+    if not apply:
+        print("Dry-run only — re-run with --apply (ou --activate) to persist.")
     return 0
 
 

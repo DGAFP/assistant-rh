@@ -109,7 +109,10 @@ class RuntimeRAGConfig:
     v3_rerank_input_k: int = 20
     v3_alpha: float = 0.5
     v3_selector_model: str = "openweight-large"
-    v3_selector_prompt_name: str = "v3_selector_business.md"
+    # v2 = cascade ministérielle #299 (versionné par le nom ; la v1 reste en
+    # base). Les rag_config live portent une valeur explicite : bascule via
+    # scripts/seed_selector_prompt.py --activate, pas par ce défaut.
+    v3_selector_prompt_name: str = "v3_selector_business_v2.md"
     v3_intent_prompt_name: str = "intent_unified.md"
     v3_generator_model: str = "openweight-large"
     v3_temperature: float = 0.0

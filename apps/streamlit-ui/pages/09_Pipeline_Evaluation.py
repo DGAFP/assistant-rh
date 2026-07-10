@@ -145,7 +145,8 @@ EMBEDDING_OPTIONS = {
 SEARCH_MODE_OPTIONS = ["semantic", "lexical", "hybrid"]
 
 SELECTOR_PROMPTS = {
-    "Business (default)": "v3_selector_business.md",
+    "Business v2 (default)": "v3_selector_business_v2.md",
+    "Business v1": "v3_selector_business.md",
     "Default": "v3_selector_default.md",
 }
 
@@ -342,7 +343,7 @@ def load_experiment(exp_id: int) -> Optional[Dict]:
             section_rerank_top_k=cd.get("section_rerank_top_k", 10),
             enable_llm_selector=cd.get("enable_llm_selector", False),
             selector_model=cd.get("selector_model", "openweight-large"),
-            selector_prompt=cd.get("selector_prompt", "v3_selector_business.md"),
+            selector_prompt=cd.get("selector_prompt", "v3_selector_business_v2.md"),
             ministry=cd.get("ministry", "matte"),
             extra_de_tables=cd.get("extra_de_tables", []),
         )
@@ -399,7 +400,7 @@ class PipelineEvalConfig:
     section_rerank_top_k: int = 10
     enable_llm_selector: bool = True
     selector_model: str = "openweight-large"
-    selector_prompt: str = "v3_selector_business.md"
+    selector_prompt: str = "v3_selector_business_v2.md"
     ministry: str = "matte"  # tenant used to render ministry-agnostic prompts
     extra_de_tables: List[str] = field(default_factory=list)
 
@@ -506,7 +507,7 @@ def render_config_sidebar(idx: int, color: str) -> PipelineEvalConfig:
         with col6:
             llm_selector = st.checkbox("LLM Selector", value=(idx == 0), key=f"cfg_llmsel_{idx}")
             sel_model = "openweight-large"
-            sel_prompt = "v3_selector_business.md"
+            sel_prompt = "v3_selector_business_v2.md"
             if llm_selector:
                 sel_model = st.selectbox("Selector Model", SELECTOR_MODELS, key=f"cfg_selmod_{idx}")
                 sel_prompt_label = st.selectbox("Selector Prompt", list(SELECTOR_PROMPTS.keys()), key=f"cfg_selprompt_{idx}")
@@ -698,7 +699,7 @@ def run_lightweight_pipeline(
     config.selector = SelectorConfig(
         enabled=cfg.enable_llm_selector,
         model=getattr(cfg, "selector_model", "openweight-large"),
-        prompt_name=getattr(cfg, "selector_prompt", "v3_selector_business.md"),
+        prompt_name=getattr(cfg, "selector_prompt", "v3_selector_business_v2.md"),
     )
     config.verbose = False
 

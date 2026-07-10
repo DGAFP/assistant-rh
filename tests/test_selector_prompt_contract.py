@@ -6,8 +6,9 @@ qu'une fiche Service-Public couvrait le sujet), la sélection était trop
 parcimonieuse (1-3 sections sur 20) et une section étiquetée FPT était gardée
 sur une question FPE. Ces tests verrouillent les invariants du prompt fallback
 ``prompts/selector.md`` (même contenu seedé en base sous
-``v3_selector_business.md`` via ``scripts/seed_selector_prompt.py``) et son
-rendu à travers le chemin réel (render_ministry_prompt puis format_map).
+``v3_selector_business_v2.md`` via ``scripts/seed_selector_prompt.py`` — la
+v1 reste en base pour rollback) et son rendu à travers le chemin réel
+(render_ministry_prompt puis format_map).
 """
 
 from __future__ import annotations

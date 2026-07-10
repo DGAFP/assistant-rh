@@ -243,7 +243,9 @@ class SelectorConfig:
     provider: LLMProvider = LLMProvider.ALBERT
     model: str = "openweight-large"
     temperature: float = 0.0
-    prompt_name: str = "v3_selector_business.md"
+    # Versionné par le nom (system_prompts n'a pas de versioning, PK = name) :
+    # v2 = cascade ministérielle #299 ; la v1 reste en base pour rollback.
+    prompt_name: str = "v3_selector_business_v2.md"
     # Plancher de sections servies au générateur quand le sélecteur a gardé
     # quelque chose (complément au rang d'agrégation).
     # 4 -> 0 (06/07/2026, DÉSACTIVÉ): forcer des sections que le sélecteur a

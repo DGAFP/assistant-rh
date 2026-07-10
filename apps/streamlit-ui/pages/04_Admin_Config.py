@@ -494,7 +494,7 @@ with tab_config:
         st.markdown("**🎯 LLM Selector**")
         selector_prompts = list_system_prompts("llm_selector")
         if selector_prompts:
-            current_selector_prompt = getattr(config, "v3_selector_prompt_name", "v3_selector_business.md")
+            current_selector_prompt = getattr(config, "v3_selector_prompt_name", "v3_selector_business_v2.md")
             if current_selector_prompt not in selector_prompts:
                 selector_prompts.insert(0, current_selector_prompt)
             selector_idx = selector_prompts.index(current_selector_prompt) if current_selector_prompt in selector_prompts else 0
@@ -504,7 +504,7 @@ with tab_config:
             if new_selector_prompt != current_selector_prompt:
                 changes["v3_selector_prompt_name"] = new_selector_prompt
         else:
-            st.info("v3_selector_business.md (default)")
+            st.info("v3_selector_business_v2.md (default)")
 
     with col_p3:
         st.markdown("**💬 Generator**")
