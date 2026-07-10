@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import psycopg
 from psycopg import sql
 
@@ -330,6 +332,240 @@ class LegifranceDbWriter(ServicePublicDbWriter):
 
     def upsert_chunks(self, chunks: list[dict]) -> int:
         return self.upsert_legacy_chunks(chunks)
+
+    # --- Réconciliation delta (E2.3-b, #289) ---------------------------------
+    # La table legacy (articles, rag_chunks_dgafp) n'a NI short_id NI
+    # source_document_id : le rattachement au document se fait par `cid`
+    # (= short_id du document article). Les helpers du socle (bundle, cascade,
+    # list_short_ids_with_checksum) supposent ces colonnes — d'où les variantes
+    # ci-dessous. La table moderne (textes legacy, rag_chunks_legifrance) est,
+    # elle, pleinement compatible socle.
+
+    _EMBEDDING_COLUMNS_LEGACY = ["embedding_m3", "embedding_bge_scw", "embedding_qwen3"]
+    _EMBEDDING_COLUMNS_MODERN = ["embedding_m3", "embedding_bge_scw"]
+
+    def list_legifrance_corpus(self, source: str = "legifrance") -> dict[str, dict[str, Any]]:
+        """État corpus Légifrance : short_id -> {doc_id, checksum, nb_chunks}.
+
+        ``nb_chunks`` additionne les chunks legacy (rattachés par ``cid``) et
+        modernes (par ``short_id``) — un uid ne vit que dans une des deux
+        tables, l'addition est donc un simple merge.
+        """
+        self.ensure_legacy_target_table()
+        self.ensure_modern_target_table()
+        with self._connect() as conn, conn.cursor() as cur:
+            document_columns = self._column_types(conn, "rag_documents")
+            checksum_expr = sql.Identifier("checksum") if "checksum" in document_columns else sql.SQL("NULL")
+            cur.execute(
+                sql.SQL(
+                    """
+                    SELECT short_id, doc_id, {} AS checksum
+                    FROM {}.{}
+                    WHERE LOWER(TRIM(source)) = %s AND short_id IS NOT NULL
+                    """
+                ).format(checksum_expr, sql.Identifier(self.schema), sql.Identifier("rag_documents")),
+                (source.strip().lower(),),
+            )
+            corpus = {
+                str(row[0]).strip().upper(): {
+                    "doc_id": str(row[1]),
+                    "checksum": (str(row[2]) if row[2] is not None else None),
+                    "nb_chunks": 0,
+                }
+                for row in cur.fetchall()
+            }
+
+            for table, join_column in ((self.legacy_table_name, "cid"), (self.modern_table_name, "short_id")):
+                cur.execute(
+                    sql.SQL(
+                        """
+                        SELECT UPPER(TRIM({})), COUNT(*)
+                        FROM {}.{}
+                        WHERE {} IS NOT NULL
+                        GROUP BY 1
+                        """
+                    ).format(
+                        sql.Identifier(join_column),
+                        sql.Identifier(self.schema),
+                        sql.Identifier(table),
+                        sql.Identifier(join_column),
+                    )
+                )
+                for uid, count in cur.fetchall():
+                    if uid in corpus:
+                        corpus[uid]["nb_chunks"] += int(count or 0)
+            return corpus
+
+    def _ingest_bundle_tx(
+        self,
+        document: dict[str, Any],
+        sections: list[dict[str, Any]],
+        projected_chunks: list[dict[str, Any]],
+        *,
+        table: str,
+        chunk_join_column: str,
+        chunk_conflict_column: str,
+        preserve_embedding_columns: list[str],
+        realign_source_document_id: bool,
+    ) -> dict[str, int]:
+        """Document + sections + remplacement des chunks en UNE transaction.
+
+        Même invariant que ``ingest_document_bundle`` du socle (jamais un
+        checksum à jour avec des chunks périmés), mais adapté aux tables Legi :
+        upsert des chunks sur leur clé propre en **préservant les embeddings**
+        (backfillés par un job séparé, un delete+insert aveugle les perdrait),
+        puis suppression des seuls chunks orphelins de la nouvelle version.
+        """
+        short_id = str(document.get("short_id") or "").strip().upper()
+        doc_id = str(document.get("doc_id") or "")
+        with self._connect() as conn:
+            documents_count = self._upsert_documents(conn, [document])
+            canonical_doc_id = self._canonical_doc_id(conn, short_id) if short_id else None
+            if canonical_doc_id and doc_id and canonical_doc_id != doc_id:
+                doc_id = canonical_doc_id
+                for section in sections:
+                    section["doc_id"] = canonical_doc_id
+                if realign_source_document_id:
+                    for chunk in projected_chunks:
+                        if "source_document_id" in chunk:
+                            chunk["source_document_id"] = canonical_doc_id
+            if doc_id:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        sql.SQL("DELETE FROM {}.{} WHERE doc_id = %s::uuid").format(sql.Identifier(self.schema), sql.Identifier("rag_sections")),
+                        (doc_id,),
+                    )
+            sections_count = self._upsert_sections(conn, sections) if sections else 0
+
+            new_ids = [str(chunk.get(chunk_conflict_column) or "") for chunk in projected_chunks if chunk.get(chunk_conflict_column)]
+            deleted = 0
+            if short_id:
+                with conn.cursor() as cur:
+                    if new_ids:
+                        query = sql.SQL(
+                            """
+                            DELETE FROM {}.{}
+                            WHERE UPPER(TRIM({})) = %s
+                              AND ({} <> ALL(%s::text[]) OR {} IS NULL)
+                            """
+                        ).format(
+                            sql.Identifier(self.schema),
+                            sql.Identifier(table),
+                            sql.Identifier(chunk_join_column),
+                            sql.Identifier(chunk_conflict_column),
+                            sql.Identifier(chunk_conflict_column),
+                        )
+                        cur.execute(query, (short_id, new_ids))
+                    else:
+                        query = sql.SQL("DELETE FROM {}.{} WHERE UPPER(TRIM({})) = %s").format(
+                            sql.Identifier(self.schema),
+                            sql.Identifier(table),
+                            sql.Identifier(chunk_join_column),
+                        )
+                        cur.execute(query, (short_id,))
+                    deleted = int(cur.rowcount or 0)
+            inserted = 0
+            for batch in self._batched_rows(projected_chunks, 1000):
+                inserted += self._upsert(
+                    conn,
+                    table,
+                    batch,
+                    [chunk_conflict_column],
+                    preserve_on_null_cols=preserve_embedding_columns,
+                )
+            conn.commit()
+            return {
+                "documents": documents_count,
+                "sections": sections_count,
+                "chunks_deleted": deleted,
+                "chunks": inserted,
+            }
+
+    def ingest_article_bundle(
+        self,
+        document: dict[str, Any],
+        sections: list[dict[str, Any]],
+        chunks: list[dict[str, Any]],
+    ) -> dict[str, int]:
+        """Ré-ingestion atomique d'un article du code (table legacy, clé cid/chunk_id)."""
+        self.ensure_legacy_target_table()
+        return self._ingest_bundle_tx(
+            document,
+            sections,
+            self.project_legacy_chunks(chunks),
+            table=self.legacy_table_name,
+            chunk_join_column="cid",
+            chunk_conflict_column="chunk_id",
+            preserve_embedding_columns=self._EMBEDDING_COLUMNS_LEGACY,
+            realign_source_document_id=False,
+        )
+
+    def ingest_texte_bundle(
+        self,
+        document: dict[str, Any],
+        sections: list[dict[str, Any]],
+        chunks: list[dict[str, Any]],
+    ) -> dict[str, int]:
+        """Ré-ingestion atomique d'un texte legacy (table moderne, clé short_id/hash_id)."""
+        self.ensure_modern_target_table()
+        return self._ingest_bundle_tx(
+            document,
+            sections,
+            self.project_modern_chunks(chunks),
+            table=self.modern_table_name,
+            chunk_join_column="short_id",
+            chunk_conflict_column="hash_id",
+            preserve_embedding_columns=self._EMBEDDING_COLUMNS_MODERN,
+            realign_source_document_id=True,
+        )
+
+    def delete_articles_cascade(self, cids: list[str], *, source: str = "legifrance") -> dict[str, int]:
+        """Cascade chunks legacy (par cid) + sections + documents, en une transaction.
+
+        Équivalent de ``delete_documents_cascade`` du socle pour la table
+        legacy sans ``source_document_id`` : les chunks sont supprimés par
+        ``cid`` (couvre aussi les chunks legacy sans ligne document).
+        """
+        normalized = self._normalize_short_ids(cids)
+        if not normalized:
+            return {"chunks": 0, "sections": 0, "documents": 0}
+        self.ensure_legacy_target_table()
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                sql.SQL(
+                    "SELECT doc_id FROM {}.{} WHERE UPPER(TRIM(short_id)) = ANY(%s) AND short_id IS NOT NULL AND LOWER(TRIM(source)) = %s"
+                ).format(sql.Identifier(self.schema), sql.Identifier("rag_documents")),
+                (normalized, source.strip().lower()),
+            )
+            doc_ids = [str(row[0]) for row in cur.fetchall()]
+
+            cur.execute(
+                sql.SQL("DELETE FROM {}.{} WHERE UPPER(TRIM(cid)) = ANY(%s)").format(
+                    sql.Identifier(self.schema), sql.Identifier(self.legacy_table_name)
+                ),
+                (normalized,),
+            )
+            deleted_chunks = int(cur.rowcount or 0)
+
+            deleted_sections = 0
+            deleted_documents = 0
+            if doc_ids:
+                cur.execute(
+                    sql.SQL("DELETE FROM {}.{} WHERE doc_id = ANY(%s::uuid[])").format(sql.Identifier(self.schema), sql.Identifier("rag_sections")),
+                    (doc_ids,),
+                )
+                deleted_sections = int(cur.rowcount or 0)
+                cur.execute(
+                    sql.SQL("DELETE FROM {}.{} WHERE doc_id = ANY(%s::uuid[])").format(sql.Identifier(self.schema), sql.Identifier("rag_documents")),
+                    (doc_ids,),
+                )
+                deleted_documents = int(cur.rowcount or 0)
+            conn.commit()
+            return {"chunks": deleted_chunks, "sections": deleted_sections, "documents": deleted_documents}
+
+    def delete_textes_cascade(self, short_ids: list[str], *, source: str = "legifrance") -> dict[str, int]:
+        """Cascade d'un texte legacy — socle standard sur la table moderne."""
+        return self.delete_documents_cascade(short_ids, table=self.modern_table_name, source=source)
 
 
 def writer_from_gold_config(
