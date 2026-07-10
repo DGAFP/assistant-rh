@@ -73,6 +73,31 @@ def test_select_manifest_rows_rejects_service_public_row_without_fcode() -> None
         reconcile.select_manifest_rows(records)
 
 
+def test_select_manifest_rows_rejects_abrogated_row_without_fcode() -> None:
+    # Sans F-code on ne sait pas QUOI cascader : refus franc, comme pour une active.
+    records = [_rec(4, **_sp(titre_document="Fiche à retirer", statut="a_supprimer"))]
+
+    with pytest.raises(reconcile.GristContractError, match="Grist 4"):
+        reconcile.select_manifest_rows(records)
+
+
+def test_select_manifest_rows_skips_limbo_row_without_fcode(capsys: Any) -> None:
+    # Un brouillon opérateur (limbo, pas encore de F-code) ne doit pas bloquer le
+    # cron quotidien : la ligne ne participe ni à l'ingestion ni à la cascade,
+    # elle est ignorée avec un warning au lieu de tuer le run.
+    records = [
+        _rec(5, **_sp(titre_document="Brouillon en cours", statut="en_attente")),
+        _rec(6, **_sp(titre_document="Brouillon sans statut")),
+        _rec(3, **_sp(id_extraction="F9", statut="ingere")),
+    ]
+
+    rows = reconcile.select_manifest_rows(records)
+
+    assert [row.uid for row in rows] == ["F9"]
+    out = capsys.readouterr().out
+    assert "Grist 5" in out and "Grist 6" in out and "ignorée" in out
+
+
 def test_select_manifest_rows_extracts_fcode_from_title_then_uid() -> None:
     records = [
         _rec(1, **_sp(titre_document="Congés (F12345)", statut="ingere")),
@@ -242,14 +267,16 @@ class _RecordingGrist:
         self._records = records or []
         self._fail = fail
         self.writebacks: list[tuple[int, dict[str, Any]]] = []
+        self.update_calls = 0
 
     def list_records(self, table_id: str | None = None) -> list[dict[str, Any]]:
         return self._records
 
-    def writeback_status(self, record_id: int, fields: dict[str, Any], table_id: str | None = None) -> None:
+    def update_records(self, records: list[dict[str, Any]], table_id: str | None = None) -> None:
         if self._fail:
             raise RuntimeError("grist down")
-        self.writebacks.append((record_id, fields))
+        self.update_calls += 1
+        self.writebacks.extend((int(record["id"]), dict(record["fields"])) for record in records)
 
 
 def test_writeback_fiche_writes_statut_and_reality_columns() -> None:
@@ -382,6 +409,28 @@ def test_ingest_delta_apply_ingests_changed_cascades_and_writes_back() -> None:
     assert by_record[103]["statut_ingestion_reelle"] == "non_trouve"
     # F7 (stale, sans ligne Grist) est cascadé mais non writeback (pas de record_id).
     assert set(by_record) == {101, 102, 103}
+    # Writebacks poussés en UN lot (pas un appel API par fiche).
+    assert grist.update_calls == 1
+
+
+def test_ingest_delta_acknowledged_terminal_row_not_rewritten_each_run() -> None:
+    # Ligne déjà `supprime` et absente du corpus : acquittement déjà fait, on ne
+    # la re-touche pas (sinon derniere_ingestion avancerait chaque nuit). Une
+    # ligne `a_supprimer` absente du corpus reçoit en revanche son acquittement.
+    grist = _RecordingGrist(
+        [
+            _rec(201, **_sp(id_extraction="F1", statut="supprime")),  # déjà acquittée
+            _rec(202, **_sp(id_extraction="F2", statut="a_supprimer")),  # à acquitter
+        ]
+    )
+    writer = _DeltaWriter({})
+
+    summary = service_public_ingestion.ingest_delta(writer, grist, [], [], [])
+
+    assert summary["applied"] == {"ingested": 0, "skipped": 0, "deleted": 0, "failed": 0}
+    by_record = {record_id: fields for record_id, fields in grist.writebacks}
+    assert set(by_record) == {202}
+    assert by_record[202]["statut"] == "supprime"
 
 
 def test_ingest_delta_targeted_missing_artifact_is_a_failure() -> None:
@@ -505,3 +554,31 @@ def test_main_delta_apply_ingests_and_cascades(
     by_record = {record_id: fields for record_id, fields in grist.writebacks}
     assert by_record[102]["statut"] == "ingere"
     assert by_record[103]["statut"] == "supprime"
+
+
+def test_main_delta_grist_failure_exits_cleanly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Un échec Grist (env manquant, fetch KO, contrat violé) doit sortir avec un
+    # message opérateur propre (SystemExit), pas une stacktrace brute.
+    import assistant_rh_data_engineering.utils.grist as grist_module
+
+    lake_root = tmp_path / "lake"
+    _seed_lake(lake_root, "F1", "h1")
+    config_path = tmp_path / "service_public_fiches.json"
+    _write_json(config_path, {"fiche_ids": ["F1"]})
+
+    def _boom(*args: Any, **kwargs: Any) -> Any:
+        raise grist_module.GristError("GRIST_API_KEY manquant")
+
+    _patch_writer(monkeypatch, _DeltaWriter({}))
+    monkeypatch.setattr(grist_module, "GristClient", _boom)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["sp-ingest", "--lake-root", str(lake_root), "--fiche-config", str(config_path), "--dsn", "postgresql://unused", "--delta"],
+    )
+
+    with pytest.raises(SystemExit, match="Échec Grist en mode --delta"):
+        service_public_ingestion.main()

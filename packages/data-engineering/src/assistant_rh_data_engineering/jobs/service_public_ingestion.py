@@ -328,7 +328,8 @@ def ingest_delta(
     Lit le manifest Grist + l'état corpus, calcule le plan de réconciliation
     (``build_plan``), puis — hors ``dry_run`` — ré-ingère fiche par fiche
     (atomique) les nouvelles/modifiées, cascade les abrogées/retirées, et écrit
-    le statut en retour dans Grist. Retourne un résumé JSON (plan + compteurs).
+    le statut en retour dans Grist (accumulé, un appel API batché en fin de
+    run). Retourne un résumé JSON (plan + compteurs).
     """
     from assistant_rh_data_engineering.service_public.reconcile import (
         STATUT_ERREUR,
@@ -337,9 +338,10 @@ def ingest_delta(
         STATUT_REEL_NON_TROUVE,
         STATUT_SUPPRIME,
         build_service_public_plan,
+        build_writeback_fields,
         plan_summary,
         select_manifest_rows,
-        writeback_fiche,
+        writeback_fiches,
     )
 
     records = grist.list_records(grist_table_id) if grist_table_id else grist.list_records()
@@ -367,9 +369,14 @@ def ingest_delta(
 
     bundles = _group_artifacts_by_fiche(documents, sections, chunks)
 
+    # Writebacks accumulés puis poussés en UN lot en fin de run (une fiche =
+    # au plus une entrée : les buckets du plan sont disjoints).
+    writebacks: list[tuple[int, dict[str, Any]]] = []
+
     def _writeback(uid: str, **kwargs: Any) -> None:
-        if writeback_enabled:
-            writeback_fiche(grist, record_ids.get(uid), table_id=grist_table_id, **kwargs)
+        record_id = record_ids.get(uid)
+        if writeback_enabled and record_id is not None:
+            writebacks.append((record_id, build_writeback_fields(**kwargs)))
 
     ingested: list[str] = []
     failures: dict[str, str] = {}
@@ -418,9 +425,17 @@ def ingest_delta(
         for uid in removals:
             _writeback(uid, statut=STATUT_SUPPRIME, statut_reel=STATUT_REEL_NON_TROUVE, nb_chunks=0)
 
+    rows_by_uid = {row.uid: row for row in manifest_rows}
     for uid in plan.acknowledged:
-        # Abrogée/retirée mais déjà absente du corpus : acquittement terminal.
-        _writeback(uid, statut=STATUT_SUPPRIME, statut_reel=STATUT_REEL_NON_TROUVE, nb_chunks=0)
+        # Abrogée/retirée mais déjà absente du corpus : acquittement terminal —
+        # écrit UNE fois ; une ligne déjà `supprime` n'est pas re-touchée à
+        # chaque run (sinon sa derniere_ingestion avancerait chaque nuit).
+        row = rows_by_uid.get(uid)
+        already_terminal = row is not None and str(row.fields.get("statut") or "").strip().lower() == STATUT_SUPPRIME
+        if not already_terminal:
+            _writeback(uid, statut=STATUT_SUPPRIME, statut_reel=STATUT_REEL_NON_TROUVE, nb_chunks=0)
+
+    writeback_fiches(grist, writebacks, table_id=grist_table_id)
 
     summary["applied"] = {
         "ingested": len(ingested),
@@ -577,23 +592,28 @@ def main() -> int:
     writer = ServicePublicDbWriter(schema=args.schema, dsn=dsn)
 
     if delta:
-        from assistant_rh_data_engineering.utils.grist import GristClient
+        from assistant_rh_data_engineering.utils.grist import GristClient, GristError
 
-        grist = GristClient()
-        summary = ingest_delta(
-            writer,
-            grist,
-            documents,
-            sections,
-            chunks,
-            source="service_public",
-            # Un run ciblé --fiche-id ne réconcilie/supprime QUE le sous-ensemble
-            # demandé ; un run complet voit tout le corpus.
-            requested=(set(short_ids) if args.fiche_ids else None),
-            dry_run=args.dry_run,
-            writeback_enabled=not (args.dry_run or args.skip_grist_writeback),
-            grist_table_id=args.grist_table_id,
-        )
+        try:
+            grist = GristClient()
+            summary = ingest_delta(
+                writer,
+                grist,
+                documents,
+                sections,
+                chunks,
+                source="service_public",
+                # Un run ciblé --fiche-id ne réconcilie/supprime QUE le sous-ensemble
+                # demandé ; un run complet voit tout le corpus.
+                requested=(set(short_ids) if args.fiche_ids else None),
+                dry_run=args.dry_run,
+                writeback_enabled=not (args.dry_run or args.skip_grist_writeback),
+                grist_table_id=args.grist_table_id,
+            )
+        except GristError as exc:
+            # Config/fetch/contrat Grist en échec : message opérateur propre
+            # (pas de stacktrace), aucun plan destructif n'a été appliqué.
+            raise SystemExit(f"Échec Grist en mode --delta (aucune écriture corpus): {exc}") from exc
         summary["schema"] = args.schema
         summary["target_env"] = args.target_env
         summary["lake_root"] = str(lake_root)

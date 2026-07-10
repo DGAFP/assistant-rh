@@ -107,23 +107,30 @@ def _precedence(row: ServicePublicManifestRow) -> int:
 def select_manifest_rows(records: Iterable[Mapping[str, Any]]) -> list[ServicePublicManifestRow]:
     """Lignes SP du référentiel → manifest rows, dédupliquées par F-code.
 
-    Ignore les lignes d'un autre corpus. Une ligne Service-Public sans F-code
-    résoluble invalide le manifest : continuer ferait disparaître cette ligne du
-    diff et pourrait classer sa fiche existante comme ``stale`` autoritaire.
+    Ignore les lignes d'un autre corpus. Une ligne Service-Public active ou
+    abrogée sans F-code résoluble invalide le manifest : continuer ferait
+    disparaître cette ligne du diff et pourrait classer sa fiche existante comme
+    ``stale`` autoritaire. Une ligne **limbo** sans F-code (brouillon opérateur
+    en cours de saisie) est en revanche ignorée avec un warning : elle ne
+    participe ni à l'ingestion ni à la cascade, la skipper ne rend aucun plan
+    destructif possible — un brouillon ne doit pas bloquer le cron quotidien.
     """
     rows_by_uid: dict[str, ServicePublicManifestRow] = {}
     for record in records:
         fields = record.get("fields") or {}
         if not is_service_public(fields):
             continue
-        uid = extract_fiche_id(fields)
-        if not uid:
-            record_id = int(record.get("id") or 0)
-            raise GristContractError(f"Ligne Service-Public Grist {record_id} sans F-code résoluble: refus de calculer un plan destructif.")
         statut = str(fields.get("statut") or "").strip().lower()
         abroge = str(fields.get("abroge") or "").strip().lower() == "oui"
         abrogated = abroge or statut in REMOVAL_STATUTS
         active = (statut in ACTIVE_STATUTS) and not abrogated
+        uid = extract_fiche_id(fields)
+        if not uid:
+            record_id = int(record.get("id") or 0)
+            if active or abrogated:
+                raise GristContractError(f"Ligne Service-Public Grist {record_id} sans F-code résoluble: refus de calculer un plan destructif.")
+            print(f"[warn] ligne Service-Public Grist {record_id} sans F-code résoluble ignorée (limbo, brouillon en cours de saisie).")
+            continue
         row = ServicePublicManifestRow(
             record_id=int(record.get("id") or 0),
             uid=uid,
@@ -260,26 +267,17 @@ def plan_summary(sp_plan: ServicePublicPlan, *, sample: int = 10) -> dict[str, A
     }
 
 
-def writeback_fiche(
-    grist: Any,
-    record_id: int | None,
+def build_writeback_fields(
     *,
     statut: str,
     statut_reel: str | None = None,
     nb_chunks: int | None = None,
     hash_contenu: str = "",
     erreur: str = "",
-    table_id: str | None = None,
-) -> None:
-    """Écrit le statut d'ingestion d'une fiche en Grist (best-effort).
-
-    Écrit le cycle de vie unifié #289 dans ``statut``
-    (``ingere``/``erreur``/``supprime``), les métadonnées historiques, et
-    ``statut_ingestion_reelle`` (réalité corpus vérifiée à ce run, cf. #294).
-    Le writeback ne doit jamais faire échouer l'ingestion.
-    """
-    if record_id is None:
-        return
+) -> dict[str, Any]:
+    """Champs de writeback d'une fiche : cycle de vie unifié #289 dans ``statut``
+    (``ingere``/``erreur``/``supprime``), métadonnées historiques, et
+    ``statut_ingestion_reelle`` (réalité corpus vérifiée à ce run, cf. #294)."""
     fields: dict[str, Any] = {
         "statut": statut,
         "derniere_ingestion": utc_now_iso(),
@@ -291,10 +289,44 @@ def writeback_fiche(
         fields["nb_chunks"] = nb_chunks
     if hash_contenu:
         fields["hash_contenu"] = hash_contenu
-    try:
-        grist.writeback_status(record_id, fields, table_id)
-    except Exception as exc:  # noqa: BLE001 — le writeback ne doit pas faire échouer l'ingestion
-        print(f"[warn] writeback Grist échoué pour record {record_id}: {exc}")
+    return fields
+
+
+_WRITEBACK_BATCH_SIZE = 100
+
+
+def writeback_fiches(
+    grist: Any,
+    updates: Sequence[tuple[int | None, Mapping[str, Any]]],
+    *,
+    table_id: str | None = None,
+) -> None:
+    """Écrit les statuts d'ingestion en Grist par lots (best-effort).
+
+    Un appel API par lot de ``_WRITEBACK_BATCH_SIZE`` records au lieu d'un appel
+    par fiche (le cron quotidien parcourt tout le manifest). Les ``record_id``
+    ``None`` (fiche corpus sans ligne Grist) sont ignorés. Le writeback ne doit
+    jamais faire échouer l'ingestion.
+    """
+    records = [{"id": record_id, "fields": dict(fields)} for record_id, fields in updates if record_id is not None]
+    for start in range(0, len(records), _WRITEBACK_BATCH_SIZE):
+        batch = records[start : start + _WRITEBACK_BATCH_SIZE]
+        try:
+            grist.update_records(batch, table_id=table_id)
+        except Exception as exc:  # noqa: BLE001 — le writeback ne doit pas faire échouer l'ingestion
+            ids = ", ".join(str(record["id"]) for record in batch)
+            print(f"[warn] writeback Grist échoué pour records {ids}: {exc}")
+
+
+def writeback_fiche(
+    grist: Any,
+    record_id: int | None,
+    *,
+    table_id: str | None = None,
+    **fields_kwargs: Any,
+) -> None:
+    """Writeback d'une seule fiche — cf. ``writeback_fiches``."""
+    writeback_fiches(grist, [(record_id, build_writeback_fields(**fields_kwargs))], table_id=table_id)
 
 
 # Ré-export des constantes de statut pour l'appelant (évite un double import).
@@ -310,9 +342,11 @@ __all__ = [
     "ServicePublicManifestRow",
     "ServicePublicPlan",
     "build_service_public_plan",
+    "build_writeback_fields",
     "extract_fiche_id",
     "is_service_public",
     "plan_summary",
     "select_manifest_rows",
     "writeback_fiche",
+    "writeback_fiches",
 ]
