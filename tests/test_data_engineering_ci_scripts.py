@@ -247,11 +247,29 @@ def test_preview_staging_push_runs_complete_preview_with_wipe_disabled() -> None
 
     assert "github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_preview_jobs)" in workflow
     assert (
-        "RUN_INGESTION: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_ingestion) || false }}"
+        "RUN_INGESTION: ${{ github.event_name == 'push' || "
+        "(github.event_name == 'workflow_dispatch' && inputs.run_ingestion && inputs.mode == 'apply') || false }}"
     ) in workflow
     assert "WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}" in workflow
     assert "RUN_EMBEDDINGS: ${{ (github.event_name == 'push' && needs.plan.outputs.run_embeddings == 'true')" in workflow
     assert "EMBEDDING_SOURCE: ${{ (github.event_name == 'push' && needs.plan.outputs.embedding_source)" in workflow
+
+
+def test_preview_staging_threads_plan_apply_mode() -> None:
+    # Socle #288 : l'axe mode est câblé de bout en bout (input -> plan -> dispatch).
+    # Défaut apply (comportement inchangé) ; plan neutralise ingestion + embeddings.
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-preview-staging.yml").read_text(encoding="utf-8")
+
+    inputs_block = workflow.split("workflow_dispatch:", 1)[1].split("jobs:", 1)[0]
+    assert "mode:" in inputs_block
+    assert 'default: "apply"' in inputs_block
+
+    assert "INPUT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'apply' }}" in workflow
+    assert "mode: ${{ steps.plan.outputs.mode }}" in workflow
+    assert '--mode "${{ needs.plan.outputs.mode }}"' in workflow
+    # mode=plan neutralise la mutation côté env (ingestion PDF + embeddings).
+    assert "inputs.run_ingestion && inputs.mode == 'apply'" in workflow
+    assert "inputs.mode == 'apply' && (inputs.run_embeddings" in workflow
 
 
 def test_preview_staging_exposes_matte_embedding_dispatch() -> None:
@@ -1362,6 +1380,58 @@ def test_should_run_gates_pdf_sources_domain() -> None:
 
     args_off = scaleway_data_jobs.build_parser().parse_args(["--target-env", "staging", "--image-tag", "staging-x"])
     assert scaleway_data_jobs.should_run(spec, args_off) is False
+
+
+def test_resolve_mode_defaults_to_apply_and_validates() -> None:
+    # Socle #288 : défaut apply (comportement historique), valeur inconnue -> apply.
+    assert data_engineering_plan.resolve_mode(None) == "apply"
+    assert data_engineering_plan.resolve_mode("") == "apply"
+    assert data_engineering_plan.resolve_mode("bogus") == "apply"
+    assert data_engineering_plan.resolve_mode("PLAN") == "plan"
+    assert data_engineering_plan.resolve_mode(" apply ") == "apply"
+
+
+def test_plan_mode_overrides_disable_all_mutation() -> None:
+    # plan = détection seule : ni ingestion Postgres, ni backfill embeddings.
+    assert scaleway_data_jobs.plan_mode_overrides("plan", True, True) == (False, False)
+    # apply = comportement historique, inchangé.
+    assert scaleway_data_jobs.plan_mode_overrides("apply", True, False) == (True, False)
+    assert scaleway_data_jobs.plan_mode_overrides("apply", False, True) == (False, True)
+
+
+def test_should_run_plan_mode_skips_ingestion_and_embeddings() -> None:
+    # En mode plan, les specs mutantes (requires_ingestion / requires_embeddings)
+    # ne sont pas retenues une fois plan_mode_overrides appliqué.
+    ingestion_spec = {"key": "service-public-ingestion", "domain": "service_public", "requires_ingestion": True}
+    backfill_spec = {"key": "embeddings-service-public", "domain": "embeddings", "requires_embeddings": True}
+    base = [
+        "--target-env",
+        "staging",
+        "--image-tag",
+        "x",
+        "--service-public",
+        "true",
+        "--embeddings",
+        "true",
+        "--run-ingestion",
+        "true",
+        "--run-embeddings",
+        "true",
+    ]
+
+    apply_args = scaleway_data_jobs.build_parser().parse_args([*base, "--mode", "apply"])
+    apply_args.run_ingestion, apply_args.run_embeddings = scaleway_data_jobs.plan_mode_overrides(
+        apply_args.mode, apply_args.run_ingestion, apply_args.run_embeddings
+    )
+    assert scaleway_data_jobs.should_run(ingestion_spec, apply_args) is True
+    assert scaleway_data_jobs.should_run(backfill_spec, apply_args) is True
+
+    plan_args = scaleway_data_jobs.build_parser().parse_args([*base, "--mode", "plan"])
+    plan_args.run_ingestion, plan_args.run_embeddings = scaleway_data_jobs.plan_mode_overrides(
+        plan_args.mode, plan_args.run_ingestion, plan_args.run_embeddings
+    )
+    assert scaleway_data_jobs.should_run(ingestion_spec, plan_args) is False
+    assert scaleway_data_jobs.should_run(backfill_spec, plan_args) is False
 
 
 def test_pdf_sources_job_skipped_on_push(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -200,8 +200,16 @@ def write_outputs(outputs: dict[str, str]) -> None:
             handle.write(f"{key}={value}\n")
 
 
+def resolve_mode(raw: str | None) -> str:
+    """Socle #288 — axe plan/apply. Défaut ``apply`` (comportement historique) ;
+    toute valeur inconnue retombe sur ``apply`` par sécurité."""
+    mode = (raw or "apply").strip().lower()
+    return mode if mode in {"plan", "apply"} else "apply"
+
+
 def main() -> int:
     pdf_sources_ministry = ""
+    mode = resolve_mode(os.getenv("INPUT_MODE"))
     if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
         source = os.getenv("INPUT_SOURCE") or "all"
         selected = classify_from_source(source)
@@ -234,6 +242,7 @@ def main() -> int:
         "run_embeddings": str(run_embeddings).lower(),
         "embedding_source": embedding_source,
         "pdf_sources_ministry": pdf_sources_ministry,
+        "mode": mode,
         "has_builds": str(bool(matrix)).lower(),
         "has_runs": str(selected["service_public"] or selected["legifrance"] or selected["pdf_sources"] or selected["embeddings"]).lower(),
         "matrix": json.dumps({"include": matrix or [{"image": "noop", "dockerfile": "Dockerfile.service_public_pipeline"}]}),
