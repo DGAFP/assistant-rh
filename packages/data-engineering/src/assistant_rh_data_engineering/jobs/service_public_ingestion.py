@@ -56,6 +56,7 @@ def load_artifacts(
     short_ids: list[str],
     *,
     skip_chunks: bool = False,
+    tolerate_missing: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, dict[str, int]]]:
     silver_documents_dir = lake_root / "silver" / "documents"
     silver_sections_dir = lake_root / "silver" / "sections"
@@ -74,6 +75,13 @@ def load_artifacts(
         document_path = silver_documents_dir / f"{short_id}.document.json"
         sections_path = silver_sections_dir / f"{short_id}.sections.jsonl"
         chunks_path = gold_chunks_dir / f"{short_id}.chunks.jsonl"
+
+        # Mode delta : une fiche ENTIÈREMENT absente du lake (ex. fiche à supprimer
+        # jamais reconstruite) est tolérée — la réconciliation la cascade via
+        # Grist+corpus, sans artefact. Un artefact PARTIEL/corrompu reste une erreur.
+        if tolerate_missing and not document_path.exists() and not sections_path.exists() and not chunks_path.exists():
+            per_fiche[short_id] = {"documents": 0, "sections": 0, "chunks": 0}
+            continue
 
         document: dict[str, Any] | None = None
         if document_path.exists():
@@ -258,6 +266,200 @@ def remap_existing_document_ids(
     }
 
 
+def _group_artifacts_by_fiche(
+    documents: list[dict[str, Any]],
+    sections: list[dict[str, Any]],
+    chunks: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Regroupe les artefacts chargés par F-code (``short_id`` en upper).
+
+    Les sections ne portent pas de ``short_id`` : elles sont rattachées via
+    ``doc_id -> uid`` (le document porte les deux). Les chunks portent ``short_id``.
+    Sert au chemin delta, qui ré-ingère fiche par fiche (``ingest_document_bundle``).
+    """
+    docs_by_uid: dict[str, dict[str, Any]] = {}
+    docid_to_uid: dict[str, str] = {}
+    for document in documents:
+        uid = str(document.get("short_id") or "").strip().upper()
+        if not uid:
+            continue
+        docs_by_uid[uid] = document
+        doc_id = str(document.get("doc_id") or "")
+        if doc_id:
+            docid_to_uid[doc_id] = uid
+
+    sections_by_uid: dict[str, list[dict[str, Any]]] = {uid: [] for uid in docs_by_uid}
+    for section in sections:
+        uid = docid_to_uid.get(str(section.get("doc_id") or ""))
+        if uid is not None:
+            sections_by_uid[uid].append(section)
+
+    chunks_by_uid: dict[str, list[dict[str, Any]]] = {uid: [] for uid in docs_by_uid}
+    for chunk in chunks:
+        uid = str(chunk.get("short_id") or "").strip().upper()
+        if uid in chunks_by_uid:
+            chunks_by_uid[uid].append(chunk)
+
+    return {
+        uid: {
+            "document": docs_by_uid[uid],
+            "sections": sections_by_uid.get(uid, []),
+            "chunks": chunks_by_uid.get(uid, []),
+        }
+        for uid in docs_by_uid
+    }
+
+
+def ingest_delta(
+    writer: Any,
+    grist: Any,
+    documents: list[dict[str, Any]],
+    sections: list[dict[str, Any]],
+    chunks: list[dict[str, Any]],
+    *,
+    source: str = "service_public",
+    requested: set[str] | None = None,
+    dry_run: bool = False,
+    writeback_enabled: bool = True,
+    grist_table_id: str | None = None,
+    target_env: str = "prod",
+) -> dict[str, Any]:
+    """Ingestion delta-aware Service-Public (E2.3-a, #289).
+
+    Lit le manifest Grist + l'état corpus, calcule le plan de réconciliation
+    (``build_plan``), puis — hors ``dry_run`` — ré-ingère fiche par fiche
+    (atomique) les nouvelles/modifiées, cascade les abrogées/retirées, et écrit
+    le statut en retour dans Grist (accumulé, un appel API batché en fin de
+    run). Le writeback dépend de ``target_env`` : le run prod écrit le cycle de
+    vie canonique + son toggle ``ingere_prod`` ; un run staging ne coche/décoche
+    que ``ingere_staging`` (le doc Grist est partagé entre environnements).
+    Retourne un résumé JSON (plan + compteurs).
+    """
+    from assistant_rh_data_engineering.service_public.reconcile import (
+        STATUT_ERREUR,
+        STATUT_INGERE,
+        STATUT_REEL_INGERE,
+        STATUT_REEL_NON_TROUVE,
+        STATUT_SUPPRIME,
+        build_service_public_plan,
+        build_writeback_fields,
+        plan_summary,
+        select_manifest_rows,
+        writeback_fiches,
+    )
+
+    records = grist.list_records(grist_table_id) if grist_table_id else grist.list_records()
+    manifest_rows = select_manifest_rows(records)
+    silver_checksums = {
+        str(document.get("short_id") or "").strip().upper(): str(document.get("checksum") or "") for document in documents if document.get("short_id")
+    }
+    corpus = writer.list_short_ids_with_checksum(source)
+    sp_plan = build_service_public_plan(manifest_rows, silver_checksums, corpus, requested=requested)
+    plan = sp_plan.plan
+    record_ids = sp_plan.record_ids
+
+    summary: dict[str, Any] = {
+        "status": "ok",
+        "mode": "delta",
+        "dry_run": dry_run,
+        "source": source,
+        "manifest_rows": len(manifest_rows),
+        "corpus_documents": len(corpus),
+        "plan": plan_summary(sp_plan),
+    }
+    if dry_run:
+        summary["applied"] = {"ingested": 0, "skipped": 0, "deleted": 0, "failed": 0}
+        return summary
+
+    bundles = _group_artifacts_by_fiche(documents, sections, chunks)
+
+    # Writebacks accumulés puis poussés en UN lot en fin de run (une fiche =
+    # au plus une entrée : les buckets du plan sont disjoints).
+    writebacks: list[tuple[int, dict[str, Any]]] = []
+
+    def _writeback(uid: str, **kwargs: Any) -> None:
+        record_id = record_ids.get(uid)
+        if writeback_enabled and record_id is not None:
+            writebacks.append((record_id, build_writeback_fields(env=target_env, **kwargs)))
+
+    ingested: list[str] = []
+    failures: dict[str, str] = {}
+    for uid in plan.to_ingest:
+        bundle = bundles.get(uid)
+        if bundle is None:
+            # Fiche attendue par Grist mais absente du lake (config/artefacts non
+            # régénérés) : tracée en erreur, jamais silencieusement sautée.
+            failures[uid] = "artefact silver/gold absent du lake"
+            continue
+        try:
+            counts = writer.ingest_document_bundle(bundle["document"], bundle["sections"], bundle["chunks"])
+            nb_chunks = int(counts.get("chunks") or 0)
+            ingested.append(uid)
+            _writeback(
+                uid,
+                statut=STATUT_INGERE,
+                statut_reel=STATUT_REEL_INGERE,
+                nb_chunks=nb_chunks,
+                hash_contenu=str(bundle["document"].get("checksum") or ""),
+                corpus_present=True,
+            )
+        except Exception as exc:  # noqa: BLE001 — erreur par fiche, le run continue
+            failures[uid] = str(exc)
+
+    skipped: list[str] = []
+    for uid in plan.unchanged:
+        nb_chunks = int(corpus.get(uid, {}).get("nb_chunks") or 0)
+        skipped.append(uid)
+        _writeback(
+            uid,
+            statut=STATUT_INGERE,
+            statut_reel=STATUT_REEL_INGERE,
+            nb_chunks=nb_chunks,
+            hash_contenu=silver_checksums.get(uid, ""),
+            corpus_present=True,
+        )
+
+    for uid, error in failures.items():
+        # Réalité corpus inconnue après un échec (l'ancienne version peut rester
+        # servie) : le toggle ingere_{env} n'est pas touché.
+        _writeback(uid, statut=STATUT_ERREUR, erreur=error[:500])
+
+    deleted: list[str] = []
+    cascade: dict[str, int] = {}
+    removals = list(plan.auto_removals)
+    if removals:
+        cascade = writer.delete_documents_cascade(removals, source=source)
+        deleted = removals
+        for uid in removals:
+            _writeback(uid, statut=STATUT_SUPPRIME, statut_reel=STATUT_REEL_NON_TROUVE, nb_chunks=0, corpus_present=False)
+
+    rows_by_uid = {row.uid: row for row in manifest_rows}
+    for uid in plan.acknowledged:
+        # Abrogée/retirée mais déjà absente du corpus : acquittement terminal —
+        # écrit UNE fois ; une ligne déjà `supprime` n'est pas re-touchée à
+        # chaque run (sinon sa derniere_ingestion avancerait chaque nuit).
+        row = rows_by_uid.get(uid)
+        already_terminal = row is not None and str(row.fields.get("statut") or "").strip().lower() == STATUT_SUPPRIME
+        if not already_terminal:
+            _writeback(uid, statut=STATUT_SUPPRIME, statut_reel=STATUT_REEL_NON_TROUVE, nb_chunks=0, corpus_present=False)
+
+    writeback_fiches(grist, writebacks, table_id=grist_table_id)
+
+    summary["applied"] = {
+        "ingested": len(ingested),
+        "skipped": len(skipped),
+        "deleted": len(deleted),
+        "failed": len(failures),
+    }
+    summary["ingested"] = sorted(ingested)
+    summary["deleted"] = sorted(deleted)
+    summary["failed"] = failures
+    summary["cascade"] = cascade
+    if failures:
+        summary["status"] = "partial"
+    return summary
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=("Job d'ingestion Service-Public: relit les artefacts silver/gold et applique les UPSERTs du notebook ingestion_pdf en base.")
@@ -282,7 +484,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--target-env",
         choices=["staging", "prod"],
         default="prod",
-        help="Préfixe Object Storage à utiliser si --from-object-storage est activé.",
+        help=(
+            "Environnement cible : préfixe Object Storage (si --from-object-storage) et routage du "
+            "writeback Grist en mode --delta (prod = statut canonique + ingere_prod ; staging = ingere_staging seul)."
+        ),
     )
     parser.add_argument(
         "--schema",
@@ -319,6 +524,30 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Supprime les chunks Service-Public existants des fiches ciblées avant ré-ingestion.",
     )
+    parser.add_argument(
+        "--delta",
+        action="store_true",
+        help=(
+            "Ingestion delta-aware (socle #288) : lit le référentiel Grist + l'état corpus, "
+            "ne (ré)ingère que les fiches nouvelles/modifiées, cascade les abrogées/retirées, "
+            "et écrit le statut en retour dans Grist. Sans ce flag : upsert-all (compat)."
+        ),
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Calcule et imprime le plan de réconciliation delta sans aucune écriture (Postgres ni Grist). Implique --delta.",
+    )
+    parser.add_argument(
+        "--skip-grist-writeback",
+        action="store_true",
+        help="Mode delta : n'écrit pas le statut d'ingestion en retour dans Grist.",
+    )
+    parser.add_argument(
+        "--grist-table-id",
+        default=None,
+        help="Table Grist du référentiel (défaut : variable d'environnement GRIST_TABLE_ID).",
+    )
     return parser
 
 
@@ -333,6 +562,11 @@ def main() -> int:
     args = build_parser().parse_args()
     if args.wipe_existing_chunks and args.skip_chunks:
         raise SystemExit("--wipe-existing-chunks ne peut pas être combiné avec --skip-chunks.")
+    delta = args.delta or args.dry_run
+    if delta and args.wipe_existing_chunks:
+        raise SystemExit("--wipe-existing-chunks est inutile en mode --delta (ré-ingestion atomique par fiche).")
+    if delta and args.skip_chunks:
+        raise SystemExit("--skip-chunks ne peut pas être combiné avec --delta (le delta ré-ingère des bundles complets).")
 
     fiche_config_path = REPO_ROOT / args.fiche_config
     fiche_config = load_fiche_config(fiche_config_path)
@@ -352,16 +586,55 @@ def main() -> int:
             include_layers=("silver", "gold"),
         )
 
+    # En dry-run delta, le plan ne dépend que des checksums silver : inutile
+    # d'exiger tout le lake gold pour afficher le plan. En delta, une fiche
+    # entièrement absente du lake (fiche à supprimer) est tolérée : la cascade
+    # se fait via Grist+corpus (cf. tolerate_missing).
     documents, sections, chunks, per_fiche = load_artifacts(
         lake_root,
         short_ids,
-        skip_chunks=args.skip_chunks,
+        skip_chunks=args.skip_chunks or (delta and args.dry_run),
+        tolerate_missing=delta,
     )
     chunks = dedupe_chunk_hash_ids(chunks)
     dsn = args.dsn or os.getenv(args.dsn_env)
     if not dsn:
         raise SystemExit(f"Aucun DSN trouvé pour l'ingestion. Passe --dsn ou définis {args.dsn_env}.")
     writer = ServicePublicDbWriter(schema=args.schema, dsn=dsn)
+
+    if delta:
+        from assistant_rh_data_engineering.utils.grist import GristClient, GristError
+
+        try:
+            grist = GristClient()
+            summary = ingest_delta(
+                writer,
+                grist,
+                documents,
+                sections,
+                chunks,
+                source="service_public",
+                # Un run ciblé --fiche-id ne réconcilie/supprime QUE le sous-ensemble
+                # demandé ; un run complet voit tout le corpus.
+                requested=(set(short_ids) if args.fiche_ids else None),
+                dry_run=args.dry_run,
+                writeback_enabled=not (args.dry_run or args.skip_grist_writeback),
+                grist_table_id=args.grist_table_id,
+                # prod = writeback canonique (statut + métadonnées) ; staging ne
+                # coche/décoche que son toggle ingere_staging.
+                target_env=args.target_env,
+            )
+        except GristError as exc:
+            # Config/fetch/contrat Grist en échec : message opérateur propre
+            # (pas de stacktrace), aucun plan destructif n'a été appliqué.
+            raise SystemExit(f"Échec Grist en mode --delta (aucune écriture corpus): {exc}") from exc
+        summary["schema"] = args.schema
+        summary["target_env"] = args.target_env
+        summary["lake_root"] = str(lake_root)
+        summary["short_ids"] = short_ids
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return 1 if summary.get("failed") else 0
+
     existing_doc_ids_by_short_id = writer.list_document_ids_by_short_id(short_ids)
     remapped = remap_existing_document_ids(
         documents,

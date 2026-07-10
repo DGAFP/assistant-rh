@@ -23,6 +23,7 @@ def test_selected_fiche_ids_filters_by_corpus_statut_abroge() -> None:
     records = [
         _rec(source_corpus="Service-public", statut="ingere", id_extraction="F12386"),
         _rec(source_corpus="Service-public", statut="a_ingerer", id_extraction="F465"),
+        _rec(source_corpus="Service-public", statut="erreur", id_extraction="F500"),  # retentée
         _rec(source_corpus="Service-public", statut="a_supprimer", id_extraction="F999"),  # exclu (intention)
         _rec(source_corpus="Service-public", statut="ingere", abroge="oui", id_extraction="F888"),  # exclu (abrogé)
         _rec(source_corpus="MATTE", statut="ingere", id_extraction="F777"),  # exclu (autre corpus)
@@ -30,8 +31,8 @@ def test_selected_fiche_ids_filters_by_corpus_statut_abroge() -> None:
         _rec(source_corpus="Service-public", statut="ingere", id_extraction="F12386"),  # doublon
     ]
 
-    # tri lexical (déterministe) : "F12386" < "F465"
-    assert gen.selected_fiche_ids(records) == ["F12386", "F465"]
+    # tri lexical (déterministe) : "F12386" < "F465" < "F500"
+    assert gen.selected_fiche_ids(records) == ["F12386", "F465", "F500"]
 
 
 def test_extract_fiche_id_prefers_id_extraction_then_title_then_uid() -> None:
