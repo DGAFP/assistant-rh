@@ -42,6 +42,7 @@ from assistant_rh_rag_pipeline.ministry_scope import (
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
+from src.pipeline_eval_helpers import final_items_for_metrics, selector_variant_label
 from src.ui.admin_auth import require_admin, show_admin_badge
 
 load_dotenv()
@@ -55,7 +56,7 @@ show_admin_badge()
 
 st.set_page_config(page_title="Pipeline Evaluation", page_icon="🔬", layout="wide")
 st.title("🔬 Pipeline Ablation Evaluation")
-st.caption("Mesure l'impact de chaque module du pipeline V3 — Retrieval léger, Latence, Ablation")
+st.caption("Mesure chaque module sur la première passe — le rejeu Suivi-Tests (#298) couvre le retry et la parité production")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -194,6 +195,10 @@ def auto_detect_theme(configs) -> str:
         if cfg.enable_acronym_expansion != base.enable_acronym_expansion or cfg.acronym_mode != base.acronym_mode:
             diffs.add("Acronymes")
         if cfg.enable_llm_selector != base.enable_llm_selector:
+            diffs.add("LLM_Selector")
+        if (cfg.enable_llm_selector or base.enable_llm_selector) and (
+            cfg.selector_model != base.selector_model or cfg.selector_prompt != base.selector_prompt
+        ):
             diffs.add("LLM_Selector")
         if cfg.enable_chunk_reranker != base.enable_chunk_reranker:
             diffs.add("Chunk_Reranker")
@@ -431,8 +436,7 @@ def auto_name(cfg: PipelineEvalConfig) -> str:
     if cfg.enable_section_reranker:
         parts.append(f"SecRR({cfg.section_rerank_top_k})")
     if cfg.enable_llm_selector:
-        sel_short = {"openweight-medium": "med", "openweight-large": "lg", "openweight-small": "sm"}
-        parts.append(f"Selector({sel_short.get(cfg.selector_model, cfg.selector_model)})")
+        parts.append(selector_variant_label(cfg.selector_model, cfg.selector_prompt))
 
     if cfg.extra_de_tables:
         short_names = {"rag_chunks_rgrh": "RGRH", "rag_chunks_dgafp": "DGAFP", "rag_chunks_matte": "DE-MATTE", "rag_chunks_service_public": "DE-SP"}
@@ -645,6 +649,8 @@ def load_goldset_questions(
 # ═══════════════════════════════════════════════════════════════════════════════
 # LIGHTWEIGHT EVAL PIPELINE
 # Uses V3 modules directly — no intent gating, no legal refs, no escalation.
+# This page scores the selector's first pass; the #298 Suivi-Tests replay is the
+# production-parity path for validating selector_retry.
 # ~10x faster than run_retrieval_only()
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -911,7 +917,7 @@ def run_evaluation(
                 result = run_lightweight_pipeline(q["question"], cfg, cached_modules)
 
                 # Metrics on final sections (post-selector if enabled)
-                final_items = result.get("selected_sections") or result["sections"]
+                final_items = final_items_for_metrics(result)
                 metrics = compute_all_metrics(final_items, gold)
                 timing = result["timing"]
 

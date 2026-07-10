@@ -44,6 +44,13 @@ def test_cascade_keeps_ministry_alongside_service_public() -> None:
     assert "même source" in lower
 
 
+def test_selection_guidance_stays_generous() -> None:
+    lower = PROMPT.lower()
+    assert "4 à 10 sections" in lower
+    assert "écarter la bonne source est l'erreur la plus coûteuse" in lower
+    assert "en cas de doute" in lower
+
+
 def test_fpe_scope_excludes_fpt_fph_and_special_statuses() -> None:
     assert "FPT" in PROMPT and "FPH" in PROMPT
     assert "police nationale" in PROMPT.lower()
