@@ -2,7 +2,8 @@
 """Génère ``config/service_public_fiches.json`` depuis le référentiel Grist (E2.1, #289).
 
 Le fichier cesse d'être maintenu à la main : les fiches à ingérer sont les lignes
-Service-Public de Grist dont ``statut ∈ {a_ingerer, ingere}`` et ``abroge ≠ oui``.
+Service-Public de Grist dont ``statut ∈ {a_ingerer, ingere, erreur}`` et
+``abroge ≠ oui``.
 Grist devient la source de vérité de la sélection ; ce fichier est un **artefact
 généré** (le job SP le consomme via ``--fiche-config``, inchangé).
 
@@ -27,7 +28,7 @@ DEFAULT_CONFIG = REPO_ROOT / "config" / "service_public_fiches.json"
 
 # Statuts (colonne `statut`, ex-`statut_cible`) qui expriment l'intention d'avoir
 # la fiche au corpus. a_supprimer/supprime/en_attente/... sont exclus.
-WANT_STATUTS = {"a_ingerer", "ingere"}
+WANT_STATUTS = {"a_ingerer", "ingere", "erreur"}
 SP_CORPUS_MARKER = "service-public"
 _F_CODE_RE = re.compile(r"F\d+", re.IGNORECASE)
 
@@ -71,7 +72,7 @@ def render_config(fiche_ids: list[str]) -> dict:
         "source": "service_public",
         "description": (
             "Liste de production des fiches Service-Public — GÉNÉRÉE depuis le référentiel "
-            "Grist (lignes statut a_ingerer/ingere, abroge != oui). Ne pas éditer à la main : "
+            "Grist (lignes statut a_ingerer/ingere/erreur, abroge != oui). Ne pas éditer à la main : "
             "régénérer via scripts/generate_service_public_config.py."
         ),
         "situation": "FPE",

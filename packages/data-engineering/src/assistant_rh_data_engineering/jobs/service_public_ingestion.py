@@ -332,7 +332,7 @@ def ingest_delta(
     """
     from assistant_rh_data_engineering.service_public.reconcile import (
         STATUT_ERREUR,
-        STATUT_OK,
+        STATUT_INGERE,
         STATUT_REEL_INGERE,
         STATUT_REEL_NON_TROUVE,
         STATUT_SUPPRIME,
@@ -386,7 +386,7 @@ def ingest_delta(
             ingested.append(uid)
             _writeback(
                 uid,
-                statut=STATUT_OK,
+                statut=STATUT_INGERE,
                 statut_reel=STATUT_REEL_INGERE,
                 nb_chunks=nb_chunks,
                 hash_contenu=str(bundle["document"].get("checksum") or ""),
@@ -400,7 +400,7 @@ def ingest_delta(
         skipped.append(uid)
         _writeback(
             uid,
-            statut=STATUT_OK,
+            statut=STATUT_INGERE,
             statut_reel=STATUT_REEL_INGERE,
             nb_chunks=nb_chunks,
             hash_contenu=silver_checksums.get(uid, ""),

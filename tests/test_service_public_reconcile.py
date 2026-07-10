@@ -47,6 +47,7 @@ def test_select_manifest_rows_classifies_active_abrogated_limbo() -> None:
         _rec(4, **_sp(id_extraction="F4", statut="a_supprimer")),
         _rec(5, **_sp(id_extraction="F5", statut="en_attente")),
         _rec(6, **_sp(id_extraction="F6", statut="supprime")),
+        _rec(7, **_sp(id_extraction="F7", statut="erreur")),
     ]
 
     rows = {row.uid: row for row in reconcile.select_manifest_rows(records)}
@@ -57,19 +58,19 @@ def test_select_manifest_rows_classifies_active_abrogated_limbo() -> None:
     assert rows["F4"].abrogated  # a_supprimer opérateur
     assert rows["F5"].limbo and not rows["F5"].active and not rows["F5"].abrogated
     assert rows["F6"].abrogated  # supprime terminal
+    assert rows["F7"].active  # erreur = retry
     assert rows["F1"].record_id == 1
 
 
-def test_select_manifest_rows_ignores_other_corpus_and_missing_fcode() -> None:
+def test_select_manifest_rows_rejects_service_public_row_without_fcode() -> None:
     records = [
         _rec(1, source_corpus="legifrance", uid="LEGIARTI0001", statut="ingere"),
         _rec(2, **_sp(titre_document="Une fiche sans code", statut="ingere")),
         _rec(3, **_sp(id_extraction="F9", statut="ingere")),
     ]
 
-    rows = reconcile.select_manifest_rows(records)
-
-    assert [row.uid for row in rows] == ["F9"]
+    with pytest.raises(reconcile.GristContractError, match="Grist 2"):
+        reconcile.select_manifest_rows(records)
 
 
 def test_select_manifest_rows_extracts_fcode_from_title_then_uid() -> None:
@@ -257,7 +258,7 @@ def test_writeback_fiche_writes_statut_and_reality_columns() -> None:
     reconcile.writeback_fiche(
         grist,
         42,
-        statut=reconcile.STATUT_OK,
+        statut=reconcile.STATUT_INGERE,
         statut_reel=reconcile.STATUT_REEL_INGERE,
         nb_chunks=7,
         hash_contenu="abc",
@@ -265,7 +266,8 @@ def test_writeback_fiche_writes_statut_and_reality_columns() -> None:
 
     (record_id, fields) = grist.writebacks[0]
     assert record_id == 42
-    assert fields["statut_ingestion"] == "ok"
+    assert fields["statut"] == "ingere"
+    assert "statut_ingestion" not in fields
     assert fields["statut_ingestion_reelle"] == "ingere"
     assert fields["nb_chunks"] == 7
     assert fields["hash_contenu"] == "abc"
@@ -274,7 +276,7 @@ def test_writeback_fiche_writes_statut_and_reality_columns() -> None:
 
 def test_writeback_fiche_noop_without_record_id() -> None:
     grist = _RecordingGrist()
-    reconcile.writeback_fiche(grist, None, statut=reconcile.STATUT_OK)
+    reconcile.writeback_fiche(grist, None, statut=reconcile.STATUT_INGERE)
     assert grist.writebacks == []
 
 
@@ -373,10 +375,10 @@ def test_ingest_delta_apply_ingests_changed_cascades_and_writes_back() -> None:
     assert summary["applied"] == {"ingested": 1, "skipped": 1, "deleted": 2, "failed": 0}
 
     by_record = {record_id: fields for record_id, fields in grist.writebacks}
-    assert by_record[102]["statut_ingestion"] == "ok"
+    assert by_record[102]["statut"] == "ingere"
     assert by_record[102]["statut_ingestion_reelle"] == "ingere"
-    assert by_record[101]["statut_ingestion"] == "ok"  # unchanged tracé aussi
-    assert by_record[103]["statut_ingestion"] == "supprime"
+    assert by_record[101]["statut"] == "ingere"  # unchanged tracé aussi
+    assert by_record[103]["statut"] == "supprime"
     assert by_record[103]["statut_ingestion_reelle"] == "non_trouve"
     # F7 (stale, sans ligne Grist) est cascadé mais non writeback (pas de record_id).
     assert set(by_record) == {101, 102, 103}
@@ -395,7 +397,7 @@ def test_ingest_delta_targeted_missing_artifact_is_a_failure() -> None:
     assert "F2" in summary["failed"]
     assert writer.bundles == []
     by_record = {record_id: fields for record_id, fields in grist.writebacks}
-    assert by_record[102]["statut_ingestion"] == "erreur"
+    assert by_record[102]["statut"] == "erreur"
 
 
 # --- main() end-to-end (dispatch argparse -> GristClient -> ingest_delta) ------
@@ -501,5 +503,5 @@ def test_main_delta_apply_ingests_and_cascades(
     assert writer.bundles == ["F2"]
     assert writer.cascaded == (["F3"], "service_public")
     by_record = {record_id: fields for record_id, fields in grist.writebacks}
-    assert by_record[102]["statut_ingestion"] == "ok"
-    assert by_record[103]["statut_ingestion"] == "supprime"
+    assert by_record[102]["statut"] == "ingere"
+    assert by_record[103]["statut"] == "supprime"

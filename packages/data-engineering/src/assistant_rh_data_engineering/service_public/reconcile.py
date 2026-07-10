@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..reconciliation import CorpusEntry, ManifestEntry, ReconciliationPlan, build_plan
-from ..utils.grist import STATUT_ERREUR, STATUT_OK, STATUT_SUPPRIME
+from ..utils.grist import STATUT_ERREUR, STATUT_SUPPRIME, GristContractError
 from ..utils.helpers import utc_now_iso
 
 # --- Sélection SP dans le référentiel Grist (miroir du générateur E2.1) --------
@@ -39,14 +39,15 @@ from ..utils.helpers import utc_now_iso
 SP_CORPUS_MARKER = "service-public"
 # Statuts (colonne `statut`, ex-`statut_cible`) exprimant l'intention d'avoir la
 # fiche au corpus. Identique à WANT_STATUTS du générateur E2.1.
-ACTIVE_STATUTS: frozenset[str] = frozenset({"a_ingerer", "ingere"})
+ACTIVE_STATUTS: frozenset[str] = frozenset({"a_ingerer", "ingere", "erreur"})
 # Intentions de suppression opérateur / état terminal. abroge=oui (juridique) est
 # traité en plus, quel que soit le statut.
 REMOVAL_STATUTS: frozenset[str] = frozenset({"a_supprimer", "supprime"})
 _F_CODE_RE = re.compile(r"F\d+", re.IGNORECASE)
 
-# Réalité corpus écrite dans `statut_ingestion_reelle` (vocabulaire du matcher de
-# drift, #294). Le `statut_ingestion` reste le canal historique (ok/erreur/supprime).
+# Cycle de vie unifié dans `statut` (#289) + réalité corpus écrite dans
+# `statut_ingestion_reelle` (vocabulaire du matcher de drift, #294).
+STATUT_INGERE = "ingere"
 STATUT_REEL_INGERE = "ingere"
 STATUT_REEL_NON_TROUVE = "non_trouve"
 
@@ -106,7 +107,9 @@ def _precedence(row: ServicePublicManifestRow) -> int:
 def select_manifest_rows(records: Iterable[Mapping[str, Any]]) -> list[ServicePublicManifestRow]:
     """Lignes SP du référentiel → manifest rows, dédupliquées par F-code.
 
-    Ignore les lignes d'un autre corpus et celles sans F-code résoluble.
+    Ignore les lignes d'un autre corpus. Une ligne Service-Public sans F-code
+    résoluble invalide le manifest : continuer ferait disparaître cette ligne du
+    diff et pourrait classer sa fiche existante comme ``stale`` autoritaire.
     """
     rows_by_uid: dict[str, ServicePublicManifestRow] = {}
     for record in records:
@@ -115,7 +118,8 @@ def select_manifest_rows(records: Iterable[Mapping[str, Any]]) -> list[ServicePu
             continue
         uid = extract_fiche_id(fields)
         if not uid:
-            continue
+            record_id = int(record.get("id") or 0)
+            raise GristContractError(f"Ligne Service-Public Grist {record_id} sans F-code résoluble: refus de calculer un plan destructif.")
         statut = str(fields.get("statut") or "").strip().lower()
         abroge = str(fields.get("abroge") or "").strip().lower() == "oui"
         abrogated = abroge or statut in REMOVAL_STATUTS
@@ -269,18 +273,15 @@ def writeback_fiche(
 ) -> None:
     """Écrit le statut d'ingestion d'une fiche en Grist (best-effort).
 
-    Reprend le contrat du pipeline PDF (``statut_ingestion`` = ok/erreur/supprime,
-    ``derniere_ingestion``, ``erreur_ingestion`` + ``nb_chunks``/``hash_contenu``
-    conditionnels) et ajoute ``statut_ingestion_reelle`` (réalité corpus vérifiée
-    à ce run, cf. #294). Le writeback ne doit jamais faire échouer l'ingestion :
-    le renommage ``statut_cible → statut`` du modèle de statut #289 est une
-    migration Grist coordonnée, hors de cette PR — on écrit donc la colonne
-    ``statut_ingestion`` que le code possède déjà.
+    Écrit le cycle de vie unifié #289 dans ``statut``
+    (``ingere``/``erreur``/``supprime``), les métadonnées historiques, et
+    ``statut_ingestion_reelle`` (réalité corpus vérifiée à ce run, cf. #294).
+    Le writeback ne doit jamais faire échouer l'ingestion.
     """
     if record_id is None:
         return
     fields: dict[str, Any] = {
-        "statut_ingestion": statut,
+        "statut": statut,
         "derniere_ingestion": utc_now_iso(),
         "erreur_ingestion": erreur,
     }
@@ -299,9 +300,10 @@ def writeback_fiche(
 # Ré-export des constantes de statut pour l'appelant (évite un double import).
 __all__ = [
     "ACTIVE_STATUTS",
+    "GristContractError",
     "REMOVAL_STATUTS",
     "STATUT_ERREUR",
-    "STATUT_OK",
+    "STATUT_INGERE",
     "STATUT_REEL_INGERE",
     "STATUT_REEL_NON_TROUVE",
     "STATUT_SUPPRIME",
