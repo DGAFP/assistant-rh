@@ -322,6 +322,7 @@ def ingest_delta(
     dry_run: bool = False,
     writeback_enabled: bool = True,
     grist_table_id: str | None = None,
+    target_env: str = "prod",
 ) -> dict[str, Any]:
     """Ingestion delta-aware Service-Public (E2.3-a, #289).
 
@@ -329,7 +330,10 @@ def ingest_delta(
     (``build_plan``), puis — hors ``dry_run`` — ré-ingère fiche par fiche
     (atomique) les nouvelles/modifiées, cascade les abrogées/retirées, et écrit
     le statut en retour dans Grist (accumulé, un appel API batché en fin de
-    run). Retourne un résumé JSON (plan + compteurs).
+    run). Le writeback dépend de ``target_env`` : le run prod écrit le cycle de
+    vie canonique + son toggle ``ingere_prod`` ; un run staging ne coche/décoche
+    que ``ingere_staging`` (le doc Grist est partagé entre environnements).
+    Retourne un résumé JSON (plan + compteurs).
     """
     from assistant_rh_data_engineering.service_public.reconcile import (
         STATUT_ERREUR,
@@ -376,7 +380,7 @@ def ingest_delta(
     def _writeback(uid: str, **kwargs: Any) -> None:
         record_id = record_ids.get(uid)
         if writeback_enabled and record_id is not None:
-            writebacks.append((record_id, build_writeback_fields(**kwargs)))
+            writebacks.append((record_id, build_writeback_fields(env=target_env, **kwargs)))
 
     ingested: list[str] = []
     failures: dict[str, str] = {}
@@ -397,6 +401,7 @@ def ingest_delta(
                 statut_reel=STATUT_REEL_INGERE,
                 nb_chunks=nb_chunks,
                 hash_contenu=str(bundle["document"].get("checksum") or ""),
+                corpus_present=True,
             )
         except Exception as exc:  # noqa: BLE001 — erreur par fiche, le run continue
             failures[uid] = str(exc)
@@ -411,9 +416,12 @@ def ingest_delta(
             statut_reel=STATUT_REEL_INGERE,
             nb_chunks=nb_chunks,
             hash_contenu=silver_checksums.get(uid, ""),
+            corpus_present=True,
         )
 
     for uid, error in failures.items():
+        # Réalité corpus inconnue après un échec (l'ancienne version peut rester
+        # servie) : le toggle ingere_{env} n'est pas touché.
         _writeback(uid, statut=STATUT_ERREUR, erreur=error[:500])
 
     deleted: list[str] = []
@@ -423,7 +431,7 @@ def ingest_delta(
         cascade = writer.delete_documents_cascade(removals, source=source)
         deleted = removals
         for uid in removals:
-            _writeback(uid, statut=STATUT_SUPPRIME, statut_reel=STATUT_REEL_NON_TROUVE, nb_chunks=0)
+            _writeback(uid, statut=STATUT_SUPPRIME, statut_reel=STATUT_REEL_NON_TROUVE, nb_chunks=0, corpus_present=False)
 
     rows_by_uid = {row.uid: row for row in manifest_rows}
     for uid in plan.acknowledged:
@@ -433,7 +441,7 @@ def ingest_delta(
         row = rows_by_uid.get(uid)
         already_terminal = row is not None and str(row.fields.get("statut") or "").strip().lower() == STATUT_SUPPRIME
         if not already_terminal:
-            _writeback(uid, statut=STATUT_SUPPRIME, statut_reel=STATUT_REEL_NON_TROUVE, nb_chunks=0)
+            _writeback(uid, statut=STATUT_SUPPRIME, statut_reel=STATUT_REEL_NON_TROUVE, nb_chunks=0, corpus_present=False)
 
     writeback_fiches(grist, writebacks, table_id=grist_table_id)
 
@@ -476,7 +484,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--target-env",
         choices=["staging", "prod"],
         default="prod",
-        help="Préfixe Object Storage à utiliser si --from-object-storage est activé.",
+        help=(
+            "Environnement cible : préfixe Object Storage (si --from-object-storage) et routage du "
+            "writeback Grist en mode --delta (prod = statut canonique + ingere_prod ; staging = ingere_staging seul)."
+        ),
     )
     parser.add_argument(
         "--schema",
@@ -609,6 +620,9 @@ def main() -> int:
                 dry_run=args.dry_run,
                 writeback_enabled=not (args.dry_run or args.skip_grist_writeback),
                 grist_table_id=args.grist_table_id,
+                # prod = writeback canonique (statut + métadonnées) ; staging ne
+                # coche/décoche que son toggle ingere_staging.
+                target_env=args.target_env,
             )
         except GristError as exc:
             # Config/fetch/contrat Grist en échec : message opérateur propre

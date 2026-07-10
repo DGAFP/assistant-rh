@@ -301,6 +301,21 @@ def test_writeback_fiche_writes_statut_and_reality_columns() -> None:
     assert "derniere_ingestion" in fields
 
 
+def test_build_writeback_fields_routes_by_env() -> None:
+    # prod (canonique) : statut + métadonnées + toggle ingere_prod.
+    prod = reconcile.build_writeback_fields(statut="ingere", nb_chunks=3, corpus_present=True)
+    assert prod["statut"] == "ingere"
+    assert prod["ingere_prod"] is True
+    assert "ingere_staging" not in prod
+
+    # staging : UNIQUEMENT le toggle ingere_staging — jamais le statut canonique.
+    staging = reconcile.build_writeback_fields(statut="ingere", nb_chunks=3, env="staging", corpus_present=True)
+    assert staging == {"ingere_staging": True}
+
+    # staging, réalité inconnue (échec) : rien à écrire.
+    assert reconcile.build_writeback_fields(statut="erreur", erreur="boom", env="staging") == {}
+
+
 def test_writeback_fiche_noop_without_record_id() -> None:
     grist = _RecordingGrist()
     reconcile.writeback_fiche(grist, None, statut=reconcile.STATUT_INGERE)
@@ -404,13 +419,43 @@ def test_ingest_delta_apply_ingests_changed_cascades_and_writes_back() -> None:
     by_record = {record_id: fields for record_id, fields in grist.writebacks}
     assert by_record[102]["statut"] == "ingere"
     assert by_record[102]["statut_ingestion_reelle"] == "ingere"
+    assert by_record[102]["ingere_prod"] is True  # run prod par défaut
     assert by_record[101]["statut"] == "ingere"  # unchanged tracé aussi
     assert by_record[103]["statut"] == "supprime"
     assert by_record[103]["statut_ingestion_reelle"] == "non_trouve"
+    assert by_record[103]["ingere_prod"] is False
     # F7 (stale, sans ligne Grist) est cascadé mais non writeback (pas de record_id).
     assert set(by_record) == {101, 102, 103}
     # Writebacks poussés en UN lot (pas un appel API par fiche).
     assert grist.update_calls == 1
+
+
+def test_ingest_delta_staging_only_touches_its_toggle() -> None:
+    # Run staging : le doc Grist est partagé — on ne réécrit JAMAIS le statut
+    # canonique (propriété du run prod), seulement ingere_staging. Un échec ne
+    # touche même pas le toggle (réalité inconnue).
+    documents, sections, chunks = _artifacts()
+    grist = _RecordingGrist(
+        [
+            _rec(101, **_sp(id_extraction="F1", statut="ingere")),  # unchanged
+            _rec(102, **_sp(id_extraction="F2", statut="a_ingerer")),  # new -> ingest
+            _rec(103, **_sp(id_extraction="F3", statut="ingere", abroge="oui")),  # abrogé -> cascade
+            _rec(104, **_sp(id_extraction="F4", statut="a_ingerer")),  # artefact absent -> échec
+        ]
+    )
+    writer = _DeltaWriter(_corpus(F1=("h1", 3), F3=("h3", 2)))
+
+    summary = service_public_ingestion.ingest_delta(
+        writer, grist, documents, sections, chunks, requested={"F1", "F2", "F3", "F4"}, target_env="staging"
+    )
+
+    assert summary["applied"]["failed"] == 1
+    by_record = {record_id: fields for record_id, fields in grist.writebacks}
+    assert by_record[101] == {"ingere_staging": True}
+    assert by_record[102] == {"ingere_staging": True}
+    assert by_record[103] == {"ingere_staging": False}
+    # F4 en échec : aucun writeback staging (le statut canonique reste intact).
+    assert 104 not in by_record
 
 
 def test_ingest_delta_acknowledged_terminal_row_not_rewritten_each_run() -> None:

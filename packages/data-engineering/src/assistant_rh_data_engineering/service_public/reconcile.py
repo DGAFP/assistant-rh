@@ -51,6 +51,12 @@ STATUT_INGERE = "ingere"
 STATUT_REEL_INGERE = "ingere"
 STATUT_REEL_NON_TROUVE = "non_trouve"
 
+# Réalité corpus PAR ENVIRONNEMENT (colonnes Bool du référentiel). Le doc Grist
+# est partagé entre les environnements : seul le run prod écrit le cycle de vie
+# canonique (`statut` + métadonnées) ; chaque run coche/décoche son toggle.
+INGERE_ENV_COLUMNS: dict[str, str] = {"prod": "ingere_prod", "staging": "ingere_staging"}
+CANONICAL_ENV = "prod"
+
 
 def is_service_public(fields: Mapping[str, Any]) -> bool:
     return SP_CORPUS_MARKER in str(fields.get("source_corpus") or "").strip().lower()
@@ -274,21 +280,39 @@ def build_writeback_fields(
     nb_chunks: int | None = None,
     hash_contenu: str = "",
     erreur: str = "",
+    env: str = CANONICAL_ENV,
+    corpus_present: bool | None = None,
 ) -> dict[str, Any]:
-    """Champs de writeback d'une fiche : cycle de vie unifié #289 dans ``statut``
-    (``ingere``/``erreur``/``supprime``), métadonnées historiques, et
-    ``statut_ingestion_reelle`` (réalité corpus vérifiée à ce run, cf. #294)."""
-    fields: dict[str, Any] = {
-        "statut": statut,
-        "derniere_ingestion": utc_now_iso(),
-        "erreur_ingestion": erreur,
-    }
-    if statut_reel is not None:
-        fields["statut_ingestion_reelle"] = statut_reel
-    if nb_chunks is not None:
-        fields["nb_chunks"] = nb_chunks
-    if hash_contenu:
-        fields["hash_contenu"] = hash_contenu
+    """Champs de writeback d'une fiche, selon l'environnement du run.
+
+    Le doc Grist est partagé entre les environnements, donc :
+    - ``env == "prod"`` (canonique) : cycle de vie unifié #289 dans ``statut``
+      (``ingere``/``erreur``/``supprime``), métadonnées historiques, et
+      ``statut_ingestion_reelle`` (réalité corpus vérifiée à ce run, cf. #294) ;
+    - tout environnement connu (``INGERE_ENV_COLUMNS``) coche/décoche son toggle
+      ``ingere_{env}`` quand la réalité corpus est établie (``corpus_present``) —
+      ``None`` = réalité inconnue (ex. échec d'ingestion), toggle non touché.
+
+    Un run staging n'écrit donc JAMAIS le statut canonique : il ne peut pas
+    mentir sur l'état prod. Peut retourner un dict vide (rien à écrire).
+    """
+    fields: dict[str, Any] = {}
+    if env == CANONICAL_ENV:
+        fields.update(
+            {
+                "statut": statut,
+                "derniere_ingestion": utc_now_iso(),
+                "erreur_ingestion": erreur,
+            }
+        )
+        if statut_reel is not None:
+            fields["statut_ingestion_reelle"] = statut_reel
+        if nb_chunks is not None:
+            fields["nb_chunks"] = nb_chunks
+        if hash_contenu:
+            fields["hash_contenu"] = hash_contenu
+    if corpus_present is not None and env in INGERE_ENV_COLUMNS:
+        fields[INGERE_ENV_COLUMNS[env]] = corpus_present
     return fields
 
 
@@ -308,7 +332,7 @@ def writeback_fiches(
     ``None`` (fiche corpus sans ligne Grist) sont ignorés. Le writeback ne doit
     jamais faire échouer l'ingestion.
     """
-    records = [{"id": record_id, "fields": dict(fields)} for record_id, fields in updates if record_id is not None]
+    records = [{"id": record_id, "fields": dict(fields)} for record_id, fields in updates if record_id is not None and fields]
     for start in range(0, len(records), _WRITEBACK_BATCH_SIZE):
         batch = records[start : start + _WRITEBACK_BATCH_SIZE]
         try:
@@ -332,7 +356,9 @@ def writeback_fiche(
 # Ré-export des constantes de statut pour l'appelant (évite un double import).
 __all__ = [
     "ACTIVE_STATUTS",
+    "CANONICAL_ENV",
     "GristContractError",
+    "INGERE_ENV_COLUMNS",
     "REMOVAL_STATUTS",
     "STATUT_ERREUR",
     "STATUT_INGERE",
