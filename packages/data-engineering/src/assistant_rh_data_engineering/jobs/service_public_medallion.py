@@ -247,6 +247,8 @@ def main() -> int:
             )
         )
     if not fiche_ids:
+        if args.from_grist:
+            raise SystemExit("Aucune ligne Service-Public active dans le référentiel Grist (statuts a_ingerer/ingere/erreur, abroge != oui).")
         raise SystemExit(
             "Aucune fiche fournie. Renseigne config/service_public_fiches.json, --fiche-id, ou utilise --batch-from-db pour la migration."
         )
@@ -275,7 +277,6 @@ def main() -> int:
     bronze_assets = pipeline.run_bronze()
     silver_bundles = []
     gold_bundles = []
-    gold_skipped: list[str] = []
     reused_gold_chunks: dict[str, int] = {}
 
     for batch in chunked(bronze_assets, args.batch_size):
@@ -286,12 +287,17 @@ def main() -> int:
                 uid = str(bundle.document.get("short_id") or "").strip().upper()
                 checksum = str(bundle.document.get("checksum") or "")
                 chunks_path = config.paths.gold_dir / "chunks" / f"{uid}.chunks.jsonl"
+                reused_count = 0
                 if checksum and previous_checksums.get(uid) == checksum and chunks_path.exists():
+                    reused_count = sum(1 for line in chunks_path.read_text(encoding="utf-8").splitlines() if line.strip())
+                if reused_count > 0:
                     # Contenu source inchangé et gold déjà construit : on ne
                     # re-paye pas les embeddings, l'artefact existant est réutilisé.
-                    gold_skipped.append(uid)
-                    reused_gold_chunks[uid] = sum(1 for line in chunks_path.read_text(encoding="utf-8").splitlines() if line.strip())
+                    reused_gold_chunks[uid] = reused_count
                     continue
+                # Nouveau, modifié, OU gold existant vide/corrompu malgré un hash
+                # inchangé : reconstruire (leçon retry_zero_chunk — un skip ici
+                # ferait échouer chaque run delta sans jamais s'auto-réparer).
                 to_build.append(bundle)
             gold_batch = pipeline.run_gold(to_build) if to_build else []
         else:
@@ -324,7 +330,7 @@ def main() -> int:
         "silver_documents": len(silver_bundles),
         "gold_documents": len(gold_bundles),
         "gold_chunks": sum(len(bundle.chunks) for bundle in gold_bundles),
-        "gold_skipped_unchanged": sorted(gold_skipped),
+        "gold_skipped_unchanged": sorted(reused_gold_chunks),
         "gold_chunks_reused": sum(reused_gold_chunks.values()),
         "lake_root": str(config.paths.root_dir),
         "batch_size": args.batch_size,

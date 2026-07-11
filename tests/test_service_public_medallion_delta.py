@@ -125,6 +125,36 @@ def test_delta_rebuilds_only_new_and_changed(
     assert payload["per_fiche"]["F2"]["chunks"] == 1
 
 
+def test_delta_rebuilds_when_existing_gold_is_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Hash inchangé MAIS gold existant vide (write interrompu, sync partiel) :
+    # reconstruire, jamais skipper — sinon le run delta échouerait en boucle
+    # sans s'auto-réparer (leçon retry_zero_chunk).
+    lake_root = tmp_path / "lake"
+    _seed_silver(lake_root, "F1", "h1")
+    _seed_gold(lake_root, "F1", nb_chunks=0)  # fichier présent mais vide
+    config_path = _write_config(tmp_path, ["F1"])
+    _patch_pipeline(monkeypatch, {"F1": "h1"})
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["sp-medallion", "--lake-root", str(lake_root), "--fiche-config", str(config_path), "--delta", "--no-embed"],
+    )
+
+    assert service_public_medallion.main() == 0  # pas de RuntimeError « gold chunks »
+
+    pipeline = _FakePipeline.last
+    assert pipeline is not None
+    assert pipeline.gold_calls == [["F1"]]  # reconstruite malgré le hash inchangé
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["gold_skipped_unchanged"] == []
+    assert payload["per_fiche"]["F1"]["chunks"] == 1
+
+
 def test_from_grist_selects_active_rows_and_ignores_config(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -170,6 +200,21 @@ def test_from_grist_failure_exits_cleanly(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(sys, "argv", ["sp-medallion", "--from-grist"])
 
     with pytest.raises(SystemExit, match="Échec Grist en mode --from-grist"):
+        service_public_medallion.main()
+
+
+def test_from_grist_without_active_rows_exits_with_clear_message(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import assistant_rh_data_engineering.utils.grist as grist_module
+
+    records = [{"id": 1, "fields": {"source_corpus": "service-public", "id_extraction": "F9", "statut": "ingere", "abroge": "oui"}}]
+    monkeypatch.setattr(grist_module, "GristClient", lambda *a, **k: _FakeGrist(records))
+    monkeypatch.setattr(sys, "argv", ["sp-medallion", "--lake-root", str(tmp_path / "lake"), "--from-grist"])
+
+    # Le message doit pointer les statuts Grist, pas la config committée.
+    with pytest.raises(SystemExit, match="ligne Service-Public active"):
         service_public_medallion.main()
 
 
