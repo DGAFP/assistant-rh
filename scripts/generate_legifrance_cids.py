@@ -47,6 +47,11 @@ def render_config(legitext: str, cids: list[str], generated_at: str) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from dotenv import load_dotenv
+
+    # Avant le parser : le défaut --legitext lit LEGIFRANCE_CODE_ID de l'env.
+    load_dotenv(REPO_ROOT / ".env")
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--legitext", default=os.getenv("LEGIFRANCE_CODE_ID") or CGFP_LEGITEXT)
