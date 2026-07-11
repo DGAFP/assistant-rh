@@ -110,7 +110,13 @@ def parse_article_xml(article_path: Path) -> dict[str, Any]:
     # corpus (short_id / rag_chunks_dgafp.cid). Historiquement ce parseur posait
     # cid = ID → toute la base était keyed version (bug d'identité, 11/07/2026).
     article_id = _findtext(root, "./META/META_COMMUN/ID") or article_path.stem
-    chronical_id = _findtext(root, "./META/META_SPEC/META_ARTICLE/CID") or article_id
+    chronical_id = _findtext(root, "./META/META_SPEC/META_ARTICLE/CID")
+    if not chronical_id:
+        # Repli sur l'ID de version : identité potentiellement instable (churn
+        # au prochain changement de version) — tracé pour ne jamais fusionner
+        # silencieusement les deux familles d'identifiants.
+        print(f"[warn] {article_path.name}: META_ARTICLE/CID absent, repli sur l'ID de version {article_id}.")
+        chronical_id = article_id
     num_article = _findtext(root, "./META/META_SPEC/META_ARTICLE/NUM") or article_id
     status = _findtext(root, "./META/META_SPEC/META_ARTICLE/ETAT") or "VIGUEUR"
     start_date = _findtext(root, "./META/META_SPEC/META_ARTICLE/DATE_DEBUT")

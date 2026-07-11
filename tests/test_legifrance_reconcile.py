@@ -559,6 +559,46 @@ def test_ingest_delta_article_failure_marks_followed_row_erreur() -> None:
     assert "nb_chunks" not in by_record[1]
 
 
+def test_ingest_delta_deferral_is_scoped_per_followed_text() -> None:
+    # Revue v2 : l'instabilité du texte A (article pending, hors lake) ne doit
+    # PAS geler indéfiniment la migration d'identité du texte B, sain.
+    grist = _RecordingGrist([_rec(1, **_texte(JORF_D1)), _rec(2, **_texte(JORF_D2))])
+    piste = _FakePiste(
+        {
+            JORF_D1: _arts(("LEGIARTI_A1", "VIGUEUR", "LEGIARTI_A1_OLD")),  # remplaçant hors lake -> pending
+            JORF_D2: _arts(("LEGIARTI_B1", "VIGUEUR", "LEGIARTI_B1_OLD")),  # remplaçant dispo
+        }
+    )
+    writer = _DeltaWriter(_corpus(LEGIARTI_A1_OLD=("ha", 1), LEGIARTI_B1_OLD=("hb", 1)))
+    documents = [{"short_id": "LEGIARTI_B1", "doc_id": "db1", "checksum": "hb1"}]
+    sections = [{"doc_id": "db1", "section_index": 0, "section_id": "sb1"}]
+    chunks = [{"cid": "LEGIARTI_B1", "chunk_id": "LEGIARTI_B1_0", "_targets": ["legacy"]}]
+
+    summary = legifrance_ingestion.ingest_delta(writer, grist, piste, documents, sections, chunks, toc_date_millis=1000)
+
+    assert writer.article_bundles == ["LEGIARTI_B1"]
+    assert writer.article_cascades == [["LEGIARTI_B1_OLD"]]  # le texte sain migre
+    assert summary["deferred_removals"] == ["LEGIARTI_A1_OLD"]  # le texte instable attend
+    assert summary["plan"]["pending_artifact"]["sample"] == ["LEGIARTI_A1"]
+
+
+def test_ingest_delta_targeted_alias_swaps_atomically() -> None:
+    # --uid sur un ancien alias de version doit embarquer son cid chronique :
+    # jamais de cascade sans ingestion du remplaçant dans le même run.
+    grist = _RecordingGrist([_rec(1, **_code())])
+    piste = _FakePiste({LEGITEXT: _arts(("LEGIARTI_NEW", "VIGUEUR", "LEGIARTI_OLD"))})
+    writer = _DeltaWriter(_corpus(LEGIARTI_OLD=("h-old", 1)))
+    documents = [{"short_id": "LEGIARTI_NEW", "doc_id": "dn", "checksum": "hn"}]
+    sections = [{"doc_id": "dn", "section_index": 0, "section_id": "sn"}]
+    chunks = [{"cid": "LEGIARTI_NEW", "chunk_id": "LEGIARTI_NEW_0", "_targets": ["legacy"]}]
+
+    summary = legifrance_ingestion.ingest_delta(writer, grist, piste, documents, sections, chunks, requested={"LEGIARTI_OLD"}, toc_date_millis=1000)
+
+    assert writer.article_bundles == ["LEGIARTI_NEW"]  # le cid jumeau est embarqué
+    assert writer.article_cascades == [["LEGIARTI_OLD"]]
+    assert summary["applied"] == {"ingested": 1, "skipped": 0, "deleted": 1, "failed": 0}
+
+
 def test_ingest_delta_incomplete_bundle_defers_stale_cascade() -> None:
     grist = _RecordingGrist([_rec(1, **_code())])
     # LEGIARTI_OLD = ancien alias version du nouvel article suivi -> stale

@@ -247,7 +247,7 @@ def ingest_delta(
         writeback_fiches,
     )
 
-    records = grist.list_records(grist_table_id) if grist_table_id else grist.list_records()
+    records = grist.list_records(grist_table_id)
     selection = select_legifrance_rows(records)
 
     toc_by_text: dict[str, Any] = {}
@@ -263,6 +263,19 @@ def ingest_delta(
             # Texte abrogé dont la TOC ne répond plus : ses articles resteront
             # inattribuables (flagged), jamais cascadés à l'aveugle.
             print(f"[warn] TOC PISTE indisponible pour le texte abrogé {row.uid}: articles laissés en flagged. ({exc})")
+
+    if requested is not None:
+        # Un --uid ciblant un alias de version doit embarquer son cid chronique
+        # (et inversement) : sinon un run ciblé cascaderait l'ancienne identité
+        # SANS ingérer son remplaçant (trou de couverture le temps d'un run).
+        expanded = {str(uid).strip().upper() for uid in requested}
+        for articles in toc_by_text.values():
+            for article in articles:
+                cid = str(article.cid).strip().upper()
+                version_id = str(getattr(article, "version_id", "") or "").strip().upper()
+                if version_id and (cid in expanded or version_id in expanded):
+                    expanded.update((cid, version_id))
+        requested = expanded
 
     silver_checksums = {
         str(document.get("short_id") or "").strip().upper(): str(document.get("checksum") or "") for document in documents if document.get("short_id")
@@ -319,11 +332,25 @@ def ingest_delta(
 
     # Suppressions différées (revue #307) : ne jamais cascader un stale si des
     # remplacements attendus sont absents/en échec — le swap doit rester
-    # in-avant-out dans le même run.
+    # in-avant-out dans le même run. Scopé PAR texte suivi (revue v2) : l'échec
+    # d'un article du texte A ne gèle pas indéfiniment la cascade du texte B.
     planned_removals = list(plan.auto_removals)
     removal_reasons = {removal.uid: removal.reason for removal in plan.removals}
-    unsafe_swap = bool(set(failures) | set(lf_plan.pending))
-    deferred_removals = [uid for uid in planned_removals if removal_reasons.get(uid) == "stale" and unsafe_swap]
+    unsafe_uids = set(failures) | set(lf_plan.pending)
+    unsafe_texts = {text_uid for text_uid, arts in lf_plan.followed_articles.items() if unsafe_uids & arts}
+
+    def _stale_deferred(uid: str) -> bool:
+        if removal_reasons.get(uid) != "stale":
+            return False
+        owners = [text_uid for text_uid, arts in lf_plan.followed_articles.items() if uid in arts]
+        if not owners:
+            # Stale autoritaire sans texte propriétaire : ne devrait pas exister
+            # (inattribuable = flagged) — par sûreté, différer si quoi que ce
+            # soit est instable.
+            return bool(unsafe_uids)
+        return any(text_uid in unsafe_texts for text_uid in owners)
+
+    deferred_removals = [uid for uid in planned_removals if _stale_deferred(uid)]
     deferred_removal_set = set(deferred_removals)
     removals = [uid for uid in planned_removals if uid not in deferred_removal_set]
     if deferred_removals:
