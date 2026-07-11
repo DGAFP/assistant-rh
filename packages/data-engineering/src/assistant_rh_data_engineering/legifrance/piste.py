@@ -24,16 +24,25 @@ DEFAULT_BASE_URL = "https://api.piste.gouv.fr/dila/legifrance/lf-engine-app"
 
 @dataclass(frozen=True)
 class CodeArticle:
-    """Un article d'un code, tel que renvoyé par ``tableMatieres``."""
+    """Un article d'un texte, tel que renvoyé par ``tableMatieres``/``lawDecree``.
 
-    cid: str  # LEGIARTI...
+    ``cid`` = identifiant **chronique** (stable à travers les versions — c'est
+    l'identité corpus). ``version_id`` = identifiant de la **version courante**
+    (change à chaque modification légistique ; ``== cid`` pour un article jamais
+    modifié). Le corpus historique étant keyed version, les deux servent à la
+    réconciliation (migration d'identité version→chronique).
+    """
+
+    cid: str  # LEGIARTI... (chronique)
     etat: str  # VIGUEUR | ABROGE | ...
     num: str | None = None  # numéro d'article (L1, R.331-7, ...)
+    version_id: str = ""  # LEGIARTI... (version courante)
 
 
 def walk_table_matieres(payload: dict) -> list[CodeArticle]:
-    """Extrait récursivement les articles (``cid`` LEGIARTI + ``etat`` + ``num``)
-    d'une réponse ``tableMatieres``, quel que soit l'imbriquement des sections.
+    """Extrait récursivement les articles (``cid`` chronique + ``version_id`` +
+    ``etat`` + ``num``) d'une réponse ``tableMatieres``/``lawDecree``, quel que
+    soit l'imbriquement des sections.
 
     Fonction pure (aucun I/O) — testable sur un fixture.
     """
@@ -43,7 +52,14 @@ def walk_table_matieres(payload: dict) -> list[CodeArticle]:
         if isinstance(node, dict):
             ident = str(node.get("cid") or node.get("id") or "")
             if ident.startswith("LEGIARTI"):
-                found.append(CodeArticle(cid=ident, etat=str(node.get("etat") or ""), num=node.get("num")))
+                found.append(
+                    CodeArticle(
+                        cid=ident,
+                        etat=str(node.get("etat") or ""),
+                        num=node.get("num"),
+                        version_id=str(node.get("id") or ""),
+                    )
+                )
             for value in node.values():
                 _walk(value)
         elif isinstance(node, list):
@@ -114,6 +130,17 @@ class PisteClient:
         """Structure d'un code (LEGITEXT) à une date (epoch millis)."""
         return self.consult("legi/tableMatieres", {"textId": legitext, "date": date_millis, "sctId": "", "nature": nature})
 
+    def law_decree(self, jorftext: str, date_millis: int) -> dict:
+        """Contenu/structure d'un texte LODA (loi, décret, arrêté) par son
+        JORFTEXT à une date — ses articles avec cid chronique + version + ETAT."""
+        return self.consult("lawDecree", {"textId": jorftext, "date": date_millis, "searchedString": ""})
+
+    def text_articles(self, text_uid: str, date_millis: int, *, kind: str = "code") -> list[CodeArticle]:
+        """Articles (TOC follow-live) d'un texte suivi : ``kind='code'`` →
+        ``legi/tableMatieres(LEGITEXT)`` ; ``kind='texte'`` → ``lawDecree(JORFTEXT)``."""
+        payload = self.table_matieres(text_uid, date_millis) if kind == "code" else self.law_decree(text_uid, date_millis)
+        return walk_table_matieres(payload)
+
     def code_articles_en_vigueur(self, legitext: str, date_millis: int) -> list[str]:
-        """CIDs des articles en vigueur d'un code à une date (le set follow-live)."""
+        """CIDs chroniques des articles en vigueur d'un code à une date."""
         return articles_en_vigueur(self.table_matieres(legitext, date_millis))

@@ -1,31 +1,37 @@
-"""Réconciliation delta pour l'ingestion Légifrance (E2.3-b, #289).
+"""Réconciliation delta pour l'ingestion Légifrance (E2.3-b v2, #289).
 
 Branche le socle d'orchestration #288 (``reconciliation.build_plan``) sur
-l'ingestion Légifrance, sur le modèle de ``service_public/reconcile.py``
-(E2.3-a). Deux familles de lignes dans le référentiel Grist, discriminées par
-``type_id`` :
+l'ingestion Légifrance. **Modèle « texte suivi » unifié** (décision du
+11/07/2026, consolidation sur ``rag_chunks_dgafp``) :
 
-- ``legifrance_code`` — la ligne « code suivi » (CGFP) : ``id_extraction``
-  porte le ``LEGITEXT``. Ses articles ne sont PAS listés en Grist : le manifest
-  par article est **dérivé du follow-live PISTE** (``tableMatieres`` → CIDs +
-  ETAT, cf. E2.2). Un CID ``VIGUEUR`` = attendu au corpus ; un CID non-VIGUEUR
-  = abrogation autoritaire ; un article du corpus disparu de la TOC (churn de
-  version LEGIARTI, recodification) = ``stale`` autoritaire → cascade.
-- ``legifrance_texte`` — un décret/arrêté legacy (JORFTEXT) : 1 ligne = 1
-  document, ``document_ids`` porte le ``short_id`` exact en base (posé par le
-  matcher #294). Sémantique statut/abroge identique à SP.
+- chaque ligne Grist Légifrance = **un texte suivi en live via PISTE** —
+  ``legifrance_code`` (le CGFP : LEGITEXT dans ``id_extraction``, TOC via
+  ``legi/tableMatieres``) ou ``legifrance_texte`` (décret/arrêté : JORFTEXT
+  dans ``jorftext``/``id_extraction``/``url_legifrance``, TOC via
+  ``consult/lawDecree``) ;
+- le manifest par article est l'**union des TOCs** des textes suivis ; l'unique
+  surface corpus est la table legacy ``rag_chunks_dgafp`` (article-level,
+  rattachement par ``cid``) — la table moderne est en cours de décommission ;
+- **identité stable = CID chronique** (``article.cid``). L'``id`` de version
+  LEGIARTI change à chaque modification : le corpus historique est keyed
+  version (bug parseur corrigé dans ``xml_article_parser``), la TOC porte les
+  deux → un doc corpus égal à un ``version_id`` d'un texte suivi est un
+  **ancien alias d'identité** → ``stale`` autoritaire (migration d'identité,
+  remplacé par son cid chronique) ;
+- un article du corpus **hors de toutes les TOCs suivies** est inattribuable :
+  ``flagged`` (revue opérateur), **jamais** de suppression autoritaire — c'est
+  la protection structurelle des articles d'autres textes (les « 244 »).
 
-Les lignes Légifrance **sans** ``type_id`` (circulaires ingérées via d'autres
-pipelines, dossiers…) sont le résidu structurel documenté dans #289 : hors
-périmètre Legi, jamais touchées, comptées dans le résumé.
-
-Le hash de contenu est le ``sha256`` du markdown posé en silver dans
-``document["checksum"]`` (= ``rag_documents.checksum``) — identique à SP, le
-delta ne recalcule rien.
+Les lignes sans ``type_id`` (circulaires, dossiers) restent hors périmètre
+(résidu structurel) ; les documents texte-level de la table moderne encore en
+base sont protégés et surfacés (``legacy_text_docs``) jusqu'à leur
+décommission. Le hash de contenu est le ``sha256`` du markdown silver
+(= ``rag_documents.checksum``) — le delta ne recalcule rien.
 """
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -55,13 +61,14 @@ ACTIVE_STATUTS: frozenset[str] = frozenset({"a_ingerer", "ingere", "erreur"})
 REMOVAL_STATUTS: frozenset[str] = frozenset({"a_supprimer", "supprime"})
 
 VIGUEUR = "VIGUEUR"
+_JORFTEXT_RE = re.compile(r"JORFTEXT\d+", re.IGNORECASE)
 
 # Garde anti-suppression-massive : au-delà de ce nombre de `stale` (docs au
 # corpus hors manifest), le signal ressemble plus à un état de migration (corpus
-# historique non curé, cf. dry-run staging du 10/07/2026 : 1597 stale hérités)
-# ou à un manifest partiel qu'à une curation volontaire → les stale basculent en
-# `flagged` (jamais auto-appliqués), à passer par une revue opérateur. Les
-# abrogations (Grist/ETAT), elles, restent autoritaires quel que soit le volume.
+# historique keyed version, cf. dry-run staging du 10/07/2026) ou à un manifest
+# partiel qu'à une curation volontaire → les stale basculent en `flagged`
+# (jamais auto-appliqués), à passer par une revue opérateur. Les abrogations
+# (Grist/ETAT), elles, restent autoritaires quel que soit le volume.
 DEFAULT_MAX_AUTO_STALE = 50
 
 
@@ -76,19 +83,28 @@ def is_legifrance(fields: Mapping[str, Any]) -> bool:
 
 
 def is_article_uid(uid: str) -> bool:
-    """Routage table : les articles du code vivent dans la table legacy
-    (``rag_chunks_dgafp``, rattachement par ``cid``), le reste dans la table
-    moderne (``rag_chunks_legifrance``)."""
+    """Un uid d'article (LEGIARTI…) — la seule identité du corpus dgafp."""
     return str(uid or "").upper().startswith("LEGIARTI")
+
+
+def extract_jorftext(fields: Mapping[str, Any]) -> str | None:
+    """JORFTEXT d'une ligne texte : ``jorftext``, sinon ``id_extraction``,
+    sinon extrait de ``url_legifrance`` (…/loda/id/JORFTEXT…)."""
+    for source in (fields.get("jorftext"), fields.get("id_extraction"), fields.get("url_legifrance")):
+        match = _JORFTEXT_RE.search(str(source or ""))
+        if match:
+            return match.group(0).upper()
+    return None
 
 
 @dataclass(frozen=True)
 class LegifranceManifestRow:
     """Ligne Légifrance du référentiel, résolue pour la réconciliation.
 
-    ``kind`` : ``code`` (uid = LEGITEXT, articles dérivés de la TOC PISTE) ou
-    ``texte`` (uid = ``document_ids`` = short_id en base). Sémantique
-    active/abrogated/juridical/limbo identique à SP.
+    ``kind`` : ``code`` (uid = LEGITEXT, TOC ``legi/tableMatieres``) ou
+    ``texte`` (uid = JORFTEXT, TOC ``consult/lawDecree``). Dans les deux cas la
+    ligne représente un **texte suivi** dont les articles sont dérivés de sa
+    TOC. Sémantique active/abrogated/juridical/limbo identique à SP.
     """
 
     record_id: int
@@ -111,7 +127,7 @@ class LegifranceSelection:
     rows: tuple[LegifranceManifestRow, ...]
     out_of_scope: tuple[int, ...] = ()  # record_ids sans type_id Légifrance
     out_of_scope_uids: tuple[str, ...] = ()  # short_ids déjà mappés, à protéger du stale
-    pending_mapping: tuple[int, ...] = ()  # textes actifs sans document_ids (matcher pas passé)
+    pending_mapping: tuple[int, ...] = ()  # textes actifs sans JORFTEXT résoluble
 
     @property
     def code_rows(self) -> tuple[LegifranceManifestRow, ...]:
@@ -120,6 +136,11 @@ class LegifranceSelection:
     @property
     def texte_rows(self) -> tuple[LegifranceManifestRow, ...]:
         return tuple(row for row in self.rows if row.kind == "texte")
+
+    @property
+    def followed_rows(self) -> tuple[LegifranceManifestRow, ...]:
+        """Textes suivis participant au plan (TOC à fetcher si non-limbo)."""
+        return self.rows
 
 
 def _precedence(row: LegifranceManifestRow) -> int:
@@ -135,16 +156,16 @@ def _precedence(row: LegifranceManifestRow) -> int:
 
 
 def select_legifrance_rows(records: Iterable[Mapping[str, Any]]) -> LegifranceSelection:
-    """Lignes Légifrance du référentiel → manifest rows, dédupliquées par uid.
+    """Lignes Légifrance du référentiel → textes suivis, dédupliqués par uid.
 
-    - ``type_id=legifrance_code`` : le LEGITEXT vient de ``id_extraction``
-      (fallback colonne ``legitext``). Une ligne code active/abrogée sans
-      LEGITEXT résoluble invalide le manifest (plan destructif incalculable).
-    - ``type_id=legifrance_texte`` : l'uid vient de ``document_ids`` (short_id
-      en base). Une ligne texte active/abrogée sans mapping est surfacée en
-      ``pending_mapping`` (le matcher #294 n'est pas passé) : jamais touchée,
-      jamais bloquante.
-    - sans ``type_id`` Légifrance : hors périmètre (résidu structurel), compté.
+    - ``type_id=legifrance_code`` : LEGITEXT via ``id_extraction`` (fallback
+      colonne ``legitext``). Une ligne code active/abrogée sans LEGITEXT
+      résoluble invalide le manifest (plan destructif incalculable).
+    - ``type_id=legifrance_texte`` : JORFTEXT via ``jorftext``/``id_extraction``/
+      ``url_legifrance``. Une ligne texte active/abrogée sans JORFTEXT est
+      surfacée en ``pending_mapping`` : jamais touchée, jamais bloquante.
+    - sans ``type_id`` Légifrance : hors périmètre (résidu structurel), compté ;
+      son ``document_ids`` éventuel est protégé du stale.
     """
     rows_by_uid: dict[str, LegifranceManifestRow] = {}
     out_of_scope: list[int] = []
@@ -170,13 +191,13 @@ def select_legifrance_rows(records: Iterable[Mapping[str, Any]]) -> LegifranceSe
                 continue
             kind, uid = "code", raw
         elif type_id == TYPE_TEXTE:
-            uid = str(fields.get("document_ids") or "").strip().upper()
-            if not uid:
+            jorftext = extract_jorftext(fields)
+            if not jorftext:
                 if active or abrogated:
                     pending_mapping.append(record_id)
-                    print(f"[warn] ligne texte Légifrance Grist {record_id} sans document_ids (matcher pas passé): surfacée, jamais touchée.")
+                    print(f"[warn] ligne texte Légifrance Grist {record_id} sans JORFTEXT résoluble: surfacée, jamais touchée.")
                 continue
-            kind = "texte"
+            kind, uid = "texte", jorftext
         else:
             # Résidu structurel (#289) : circulaires/dossiers hors pipeline Legi.
             out_of_scope.append(record_id)
@@ -210,26 +231,28 @@ def select_legifrance_rows(records: Iterable[Mapping[str, Any]]) -> LegifranceSe
 
 @dataclass(frozen=True)
 class LegifrancePlan:
-    """Plan de réconciliation Legi + index de writeback et de routage."""
+    """Plan de réconciliation Legi + index de writeback et d'attribution."""
 
     plan: ReconciliationPlan
-    # Writeback per-ligne (textes) : uid -> record_id.
-    texte_record_ids: Mapping[str, int]
-    # Writeback agrégé (codes suivis) : LEGITEXT -> record_id.
-    code_record_ids: Mapping[str, int]
-    # Articles rattachés à chaque code suivi (uids TOC ∪ corpus), pour agréger.
-    code_articles: Mapping[str, frozenset[str]]
+    # Writeback AGRÉGÉ par texte suivi : uid de ligne (LEGITEXT/JORFTEXT) -> record_id.
+    followed_record_ids: Mapping[str, int]
+    # Articles rattachés à chaque texte suivi (cids ∪ version_ids de sa TOC),
+    # pour agréger le writeback et attribuer le stale.
+    followed_articles: Mapping[str, frozenset[str]]
     protected: tuple[str, ...] = ()
     pending: tuple[str, ...] = ()
     out_of_scope: tuple[int, ...] = ()
     pending_mapping: tuple[int, ...] = ()
+    # Documents texte-level de la table moderne encore en base : protégés
+    # jusqu'à la décommission (consolidation dgafp), surfacés au résumé.
+    legacy_text_docs: tuple[str, ...] = ()
     # True si le garde anti-suppression-massive a rétrogradé les stale en flagged.
     mass_stale_guard: bool = False
 
 
 def build_legifrance_plan(
     selection: LegifranceSelection,
-    toc_by_legitext: Mapping[str, Sequence[CodeArticle]],
+    toc_by_text: Mapping[str, Sequence[CodeArticle]],
     silver_checksums: Mapping[str, str],
     corpus: Mapping[str, Mapping[str, Any]],
     *,
@@ -238,20 +261,23 @@ def build_legifrance_plan(
     guard_empty_manifest: bool = True,
     max_auto_stale: int | None = DEFAULT_MAX_AUTO_STALE,
 ) -> LegifrancePlan:
-    """Adapte référentiel Grist + TOC PISTE + état corpus au diff ``build_plan``.
+    """Adapte référentiel Grist + TOCs PISTE + état corpus au diff ``build_plan``.
 
-    ``toc_by_legitext`` : follow-live PISTE par code actif (CIDs + ETAT). Une
-    TOC absente ou vide pour un code **actif** invalide le plan : sans elle,
-    tous ses articles du corpus seraient classés ``stale`` → purge (~2500 docs)
-    sur un simple incident API. ``requested`` : sous-ensemble ``--uid`` (CID ou
-    short_id texte) — restreint manifest ET corpus comme en SP.
-    ``max_auto_stale`` : au-delà de ce volume de ``stale``, ils basculent tous
-    en ``flagged`` (revue opérateur, jamais auto-appliqués) — ``None`` désactive
-    le garde (nettoyage de migration délibéré).
+    ``toc_by_text`` : follow-live PISTE par texte suivi (clé = uid de ligne,
+    LEGITEXT ou JORFTEXT ; valeurs = articles avec cid chronique + version_id +
+    ETAT). Une TOC absente ou vide pour un texte **actif** invalide le plan.
+    Pour un texte **abrogé**, la TOC sert à attribuer ses articles à cascader ;
+    absente, ses articles restent inattribuables (flagged, jamais cascadés).
+
+    Attribution du stale : un article du corpus absent du manifest n'est
+    ``stale`` autoritaire que s'il est **attribuable** à un texte suivi
+    (== un ``cid`` ou un ``version_id`` de sa TOC — ce dernier cas est la
+    migration d'identité version→chronique). Sinon → ``flagged``.
+
+    ``requested`` : sous-ensemble ``--uid`` — restreint manifest ET corpus.
+    ``max_auto_stale`` : au-delà de ce volume de ``stale``, tous basculent en
+    ``flagged`` — ``None`` désactive (migration délibérée).
     """
-    if len(selection.code_rows) > 1:
-        raise GristContractError("plusieurs codes Légifrance suivis: refus de réconcilier sans rattachement fiable article -> LEGITEXT.")
-
     requested_set: set[str] | None = None
     if requested is not None:
         requested_set = {str(uid).strip().upper() for uid in requested}
@@ -261,11 +287,13 @@ def build_legifrance_plan(
         return requested_set is None or uid in requested_set
 
     corpus_article_uids = {str(uid).strip().upper() for uid in corpus if is_article_uid(str(uid))}
+    corpus_text_docs = {str(uid).strip().upper() for uid in corpus if not is_article_uid(str(uid))}
 
     manifest: dict[str, ManifestEntry] = {}
-    texte_record_ids: dict[str, int] = {}
-    code_record_ids: dict[str, int] = {}
-    code_articles: dict[str, set[str]] = {}
+    followed_record_ids: dict[str, int] = {}
+    followed_articles: dict[str, set[str]] = {}
+    # attribuable = ∪ (cids ∪ version_ids) des TOCs des textes suivis.
+    attributable: set[str] = set()
     # Les lignes sans type_id sont explicitement hors du pipeline Legi. Quand
     # le matcher a déjà posé leur short_id, elles doivent rester hors du diff
     # stale au lieu d'être supprimées comme des orphelins du manifest.
@@ -280,56 +308,55 @@ def build_legifrance_plan(
             # jamais un faux échec ni une cascade (même règle que SP).
             pending.add(uid)
 
-    for row in selection.texte_rows:
-        if not _wanted(row.uid):
-            continue
-        texte_record_ids[row.uid] = row.record_id
-        if row.abrogated:
-            manifest[row.uid] = ManifestEntry(row.uid, abrogated=True)
-        elif row.active:
-            _add_active(row.uid)
-        else:
-            protected.add(row.uid)
-
-    for row in selection.code_rows:
-        code_record_ids[row.uid] = row.record_id
-        arts = code_articles.setdefault(row.uid, set())
+    for row in selection.followed_rows:
+        followed_record_ids[row.uid] = row.record_id
+        arts = followed_articles.setdefault(row.uid, set())
+        toc = toc_by_text.get(row.uid)
         if row.active:
-            toc = toc_by_legitext.get(row.uid)
             if not toc:
                 raise GristContractError(
-                    f"TOC PISTE indisponible ou vide pour le code actif {row.uid}: refus de calculer un plan destructif sur ses articles."
+                    f"TOC PISTE indisponible ou vide pour le texte actif {row.uid}: refus de calculer un plan destructif sur ses articles."
                 )
-            for article in toc:
-                uid = str(article.cid).strip().upper()
-                arts.add(uid)
-                if not _wanted(uid):
-                    continue
-                if str(article.etat).strip().upper() == VIGUEUR:
-                    _add_active(uid)
-                else:
-                    # Abrogation calculée à la source (ETAT) : autoritaire.
-                    manifest[uid] = ManifestEntry(uid, abrogated=True)
-            # Un article du corpus absent de la TOC (recodification, churn de
-            # CID) n'est PAS ajouté au manifest → classé stale par build_plan.
-            arts.update(corpus_article_uids)
-        elif row.abrogated:
-            # Code entier retiré (opérateur) : cascade de tous ses articles
-            # présents au corpus.
-            for uid in corpus_article_uids:
-                arts.add(uid)
-                if _wanted(uid):
-                    manifest[uid] = ManifestEntry(uid, abrogated=True)
-        else:
-            # Code en limbo : ses articles ne sont jamais touchés.
-            arts.update(corpus_article_uids)
-            protected.update(uid for uid in corpus_article_uids if _wanted(uid))
+        elif not toc:
+            # Texte abrogé/limbo sans TOC : ses articles corpus restent
+            # inattribuables → flagged, jamais cascadés à l'aveugle.
+            continue
+        for article in toc:
+            cid = str(article.cid).strip().upper()
+            version_id = str(getattr(article, "version_id", "") or "").strip().upper()
+            arts.add(cid)
+            attributable.add(cid)
+            if version_id:
+                arts.add(version_id)
+                attributable.add(version_id)
+            if not _wanted(cid):
+                continue
+            if row.limbo:
+                # Texte en limbo : jamais ingéré ni supprimé ; ses articles
+                # déjà en base sont protégés du stale.
+                protected.update(uid for uid in (cid, version_id) if uid and uid in corpus_article_uids)
+            elif row.abrogated or str(article.etat).strip().upper() != VIGUEUR:
+                # Retrait opérateur du texte entier OU abrogation calculée à
+                # la source (ETAT) : autoritaire.
+                manifest[cid] = ManifestEntry(cid, abrogated=True)
+            else:
+                _add_active(cid)
+            # NB : un doc corpus keyed par version_id d'un article suivi n'est
+            # PAS ajouté au manifest → stale autoritaire attribuable (migration
+            # d'identité version→chronique, remplacé par son cid).
 
-    if not selection.code_rows and corpus_article_uids:
-        # Aucun code suivi en Grist mais des articles au corpus : sans ligne
-        # code on ne peut pas distinguer « retrait volontaire » d'un fetch
-        # partiel → protégés (jamais de purge silencieuse de ~2500 articles).
-        protected.update(uid for uid in corpus_article_uids if _wanted(uid))
+    # Corpus article hors de toutes les TOCs suivies : inattribuable → flagged
+    # (weak_removal), jamais de suppression autoritaire. C'est la protection
+    # structurelle des articles d'autres textes (les « 244 » du 11/07).
+    for uid in corpus_article_uids:
+        if uid in manifest or uid in attributable or uid in protected or not _wanted(uid):
+            continue
+        manifest[uid] = ManifestEntry(uid, weak_removal=True)
+
+    # Documents texte-level (table moderne) encore en base : protégés jusqu'à
+    # la décommission (consolidation dgafp), jamais gérés par ce delta.
+    legacy_text_docs = tuple(sorted(uid for uid in corpus_text_docs if uid not in protected))
+    protected.update(corpus_text_docs)
 
     corpus_entries: dict[str, CorpusEntry] = {}
     for raw_uid, state in corpus.items():
@@ -354,8 +381,8 @@ def build_legifrance_plan(
     )
 
     # Garde anti-suppression-massive : un volume anormal de stale trahit un état
-    # de migration (corpus historique non curé) ou un manifest partiel, pas une
-    # curation opérateur — on rétrograde TOUS les stale en flagged (WEAK).
+    # de migration ou un manifest partiel, pas une curation opérateur — on
+    # rétrograde TOUS les stale en flagged (WEAK).
     mass_stale_guard = False
     stale_auto = [r for r in plan.removals if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE]
     if max_auto_stale is not None and len(stale_auto) > max_auto_stale:
@@ -373,18 +400,18 @@ def build_legifrance_plan(
         )
         print(
             f"[warn] {len(stale_auto)} documents stale (> max_auto_stale={max_auto_stale}): "
-            "suppression auto refusée, basculés en flagged (revue opérateur — relancer avec --max-auto-stale ajusté pour un nettoyage délibéré)."
+            "suppression auto refusée, basculés en flagged (revue opérateur — relancer avec --max-auto-stale ajusté pour une migration délibérée)."
         )
 
     return LegifrancePlan(
         plan=plan,
-        texte_record_ids=dict(texte_record_ids),
-        code_record_ids=dict(code_record_ids),
-        code_articles={k: frozenset(v) for k, v in code_articles.items()},
+        followed_record_ids=dict(followed_record_ids),
+        followed_articles={k: frozenset(v) for k, v in followed_articles.items()},
         protected=tuple(sorted(protected)),
         pending=tuple(sorted(pending)),
         out_of_scope=selection.out_of_scope,
         pending_mapping=selection.pending_mapping,
+        legacy_text_docs=legacy_text_docs,
         mass_stale_guard=mass_stale_guard,
     )
 
@@ -394,7 +421,8 @@ def plan_summary(lf_plan: LegifrancePlan, *, sample: int = 10) -> dict[str, Any]
     plan = lf_plan.plan
     # Buckets par ce qui sera réellement APPLIQUÉ : `stale`/`abrogated` =
     # suppressions autoritaires (auto), `flagged` = tout signal faible (jamais
-    # auto-appliqué), y compris les stale rétrogradés par un garde.
+    # auto-appliqué), y compris les stale rétrogradés par un garde et les
+    # articles inattribuables à un texte suivi.
     abrogated = [r.uid for r in plan.removals if r.reason == "abrogated" and r.confidence is Confidence.AUTHORITATIVE]
     stale = [r.uid for r in plan.removals if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE]
 
@@ -412,6 +440,7 @@ def plan_summary(lf_plan: LegifrancePlan, *, sample: int = 10) -> dict[str, Any]
         "acknowledged": bucket(plan.acknowledged),
         "protected_limbo": bucket(lf_plan.protected),
         "pending_artifact": bucket(lf_plan.pending),
+        "legacy_text_docs": bucket(lf_plan.legacy_text_docs),
         "out_of_scope_rows": {"count": len(lf_plan.out_of_scope)},
         "pending_mapping_rows": {"count": len(lf_plan.pending_mapping)},
         "to_ingest": {"count": len(plan.to_ingest)},
@@ -435,6 +464,7 @@ __all__ = [
     "LegifranceSelection",
     "build_legifrance_plan",
     "build_writeback_fields",
+    "extract_jorftext",
     "is_article_uid",
     "is_legifrance",
     "plan_summary",

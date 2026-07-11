@@ -87,13 +87,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def load_article_ids_from_json(path_str: str) -> tuple[list[str], int]:
-    """Returns (deduped_normalized_ids, raw_requested_count_before_dedup)."""
+    """Returns (deduped_normalized_ids, raw_requested_count_before_dedup).
+
+    Les fichiers du dump DILA sont nommés par identifiant de **version**
+    (``META_COMMUN/ID``) : on préfère donc ``article_version_ids`` (cache v2,
+    follow-live). ``article_cids`` (identité chronique) reste le fallback —
+    correct pour les articles jamais modifiés (version == chronique).
+    """
     path = Path(path_str)
     payload = json.loads(path.read_text(encoding="utf-8"))
     if isinstance(payload, list):
         article_ids = payload
     elif isinstance(payload, dict):
-        article_ids = payload.get("article_cids") or payload.get("article_ids") or []
+        article_ids = payload.get("article_version_ids") or payload.get("article_cids") or payload.get("article_ids") or []
     else:
         article_ids = []
     raw_count = sum(1 for item in article_ids if str(item).strip())

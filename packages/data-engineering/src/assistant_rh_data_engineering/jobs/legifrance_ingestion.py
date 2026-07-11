@@ -219,20 +219,20 @@ def ingest_delta(
     toc_date_millis: int | None = None,
     max_auto_stale: int | None = None,
 ) -> dict[str, Any]:
-    """Ingestion delta-aware Légifrance (E2.3-b, #289).
+    """Ingestion delta-aware Légifrance (E2.3-b v2, #289).
 
-    Manifest = référentiel Grist (lignes ``legifrance_texte``) + follow-live
-    PISTE (articles du/des codes suivis, lignes ``legifrance_code``). Hors
-    ``dry_run`` : ré-ingère new/changed document par document (atomique, route
-    articles → table legacy / textes → table moderne), cascade les
-    abrogés/retirés/stale, et écrit le statut en Grist — per-ligne pour les
-    textes, **agrégé** sur la ligne code suivi pour ses ~2500 articles.
+    Chaque ligne Grist Légifrance = un **texte suivi** dont les articles sont
+    dérivés de sa TOC PISTE (``legi/tableMatieres`` pour le code,
+    ``lawDecree`` pour les décrets/arrêtés). Hors ``dry_run`` : ré-ingère
+    new/changed article par article (atomique, table legacy dgafp — l'unique
+    surface servie), cascade les abrogés/retirés/stale **attribuables**, et
+    écrit le statut en Grist, **agrégé par texte suivi**.
     """
     import time as _time
 
     import requests as _requests
 
-    from assistant_rh_data_engineering.legifrance.piste import PisteError, walk_table_matieres
+    from assistant_rh_data_engineering.legifrance.piste import PisteError
     from assistant_rh_data_engineering.legifrance.reconcile import (
         DEFAULT_MAX_AUTO_STALE,
         STATUT_ERREUR,
@@ -240,10 +240,8 @@ def ingest_delta(
         STATUT_REEL_INGERE,
         STATUT_REEL_NON_TROUVE,
         STATUT_SUPPRIME,
-        GristContractError,
         build_legifrance_plan,
         build_writeback_fields,
-        is_article_uid,
         plan_summary,
         select_legifrance_rows,
         writeback_fiches,
@@ -251,27 +249,28 @@ def ingest_delta(
 
     records = grist.list_records(grist_table_id) if grist_table_id else grist.list_records()
     selection = select_legifrance_rows(records)
-    if len(selection.code_rows) > 1:
-        raise GristContractError("plusieurs codes Légifrance suivis: refus de réconcilier sans rattachement fiable article -> LEGITEXT.")
 
-    toc_by_legitext: dict[str, Any] = {}
+    toc_by_text: dict[str, Any] = {}
     date_millis = toc_date_millis if toc_date_millis is not None else int(_time.time() * 1000)
-    for row in selection.code_rows:
-        if not row.active:
+    for row in selection.followed_rows:
+        if row.limbo:
             continue
         try:
-            payload = piste.table_matieres(row.uid, date_millis)
+            toc_by_text[row.uid] = piste.text_articles(row.uid, date_millis, kind=row.kind)
         except _requests.RequestException as exc:
-            raise PisteError(f"tableMatieres({row.uid}) en échec: {exc}") from exc
-        toc_by_legitext[row.uid] = walk_table_matieres(payload)
+            if row.active:
+                raise PisteError(f"TOC PISTE ({row.kind} {row.uid}) en échec: {exc}") from exc
+            # Texte abrogé dont la TOC ne répond plus : ses articles resteront
+            # inattribuables (flagged), jamais cascadés à l'aveugle.
+            print(f"[warn] TOC PISTE indisponible pour le texte abrogé {row.uid}: articles laissés en flagged. ({exc})")
 
     silver_checksums = {
         str(document.get("short_id") or "").strip().upper(): str(document.get("checksum") or "") for document in documents if document.get("short_id")
     }
     corpus = writer.list_legifrance_corpus(source)
-    # max_auto_stale : None = défaut du module ; 0 = garde désactivé (nettoyage délibéré).
+    # max_auto_stale : None = défaut du module ; 0 = garde désactivé (migration délibérée).
     effective_max_stale = DEFAULT_MAX_AUTO_STALE if max_auto_stale is None else (max_auto_stale if max_auto_stale > 0 else None)
-    lf_plan = build_legifrance_plan(selection, toc_by_legitext, silver_checksums, corpus, requested=requested, max_auto_stale=effective_max_stale)
+    lf_plan = build_legifrance_plan(selection, toc_by_text, silver_checksums, corpus, requested=requested, max_auto_stale=effective_max_stale)
     plan = lf_plan.plan
 
     summary: dict[str, Any] = {
@@ -290,12 +289,6 @@ def ingest_delta(
     bundles = _group_artifacts_by_uid(documents, sections, chunks)
 
     writebacks: list[tuple[int, dict[str, Any]]] = []
-    texte_rows_by_uid = {row.uid: row for row in selection.texte_rows}
-
-    def _writeback_texte(uid: str, **kwargs: Any) -> None:
-        record_id = lf_plan.texte_record_ids.get(uid)
-        if writeback_enabled and record_id is not None:
-            writebacks.append((record_id, build_writeback_fields(env=target_env, **kwargs)))
 
     ingested: list[str] = []
     ingested_chunks: dict[str, int] = {}
@@ -305,64 +298,32 @@ def ingest_delta(
         if bundle is None:
             failures[uid] = "artefact silver/gold absent du lake"
             continue
-        expected_chunk_target = "legacy" if is_article_uid(uid) else "modern"
-        has_expected_chunks = any(expected_chunk_target in (chunk.get("_targets") or ["legacy", "modern"]) for chunk in bundle["chunks"])
+        has_legacy_chunks = any("legacy" in (chunk.get("_targets") or ["legacy", "modern"]) for chunk in bundle["chunks"])
         missing_parts = ["sections"] if not bundle["sections"] else []
-        if not has_expected_chunks:
-            missing_parts.append(f"chunks {expected_chunk_target}")
+        if not has_legacy_chunks:
+            missing_parts.append("chunks legacy")
         if missing_parts:
             failures[uid] = f"artefact silver/gold incomplet: {', '.join(missing_parts)} absent(s)"
             continue
         try:
-            if is_article_uid(uid):
-                counts = writer.ingest_article_bundle(bundle["document"], bundle["sections"], bundle["chunks"])
-            else:
-                counts = writer.ingest_texte_bundle(bundle["document"], bundle["sections"], bundle["chunks"])
+            counts = writer.ingest_article_bundle(bundle["document"], bundle["sections"], bundle["chunks"])
             nb_chunks = int(counts.get("chunks") or 0)
             if nb_chunks <= 0:
-                raise RuntimeError(f"bundle {uid} ingéré sans aucun chunk {expected_chunk_target}")
+                raise RuntimeError(f"bundle {uid} ingéré sans aucun chunk legacy")
             ingested.append(uid)
             ingested_chunks[uid] = nb_chunks
-            if not is_article_uid(uid):
-                _writeback_texte(
-                    uid,
-                    statut=STATUT_INGERE,
-                    statut_reel=STATUT_REEL_INGERE,
-                    nb_chunks=nb_chunks,
-                    hash_contenu=str(bundle["document"].get("checksum") or ""),
-                    corpus_present=True,
-                )
-        except Exception as exc:  # noqa: BLE001 — erreur par document, le run continue
+        except Exception as exc:  # noqa: BLE001 — erreur par article, le run continue
             failures[uid] = str(exc)
 
-    skipped: list[str] = []
-    for uid in plan.unchanged:
-        skipped.append(uid)
-        if not is_article_uid(uid):
-            _writeback_texte(
-                uid,
-                statut=STATUT_INGERE,
-                statut_reel=STATUT_REEL_INGERE,
-                nb_chunks=int(corpus.get(uid, {}).get("nb_chunks") or 0),
-                hash_contenu=silver_checksums.get(uid, ""),
-                corpus_present=True,
-            )
+    skipped = list(plan.unchanged)
 
-    for uid, error in failures.items():
-        if not is_article_uid(uid):
-            # Réalité corpus inconnue après un échec : toggle non touché.
-            _writeback_texte(uid, statut=STATUT_ERREUR, erreur=error[:500])
-
+    # Suppressions différées (revue #307) : ne jamais cascader un stale si des
+    # remplacements attendus sont absents/en échec — le swap doit rester
+    # in-avant-out dans le même run.
     planned_removals = list(plan.auto_removals)
     removal_reasons = {removal.uid: removal.reason for removal in plan.removals}
-    unsafe_uids = set(failures) | set(lf_plan.pending)
-    unsafe_article_swap = any(is_article_uid(uid) for uid in unsafe_uids)
-    unsafe_texte_swap = any(not is_article_uid(uid) for uid in unsafe_uids)
-    deferred_removals = [
-        uid
-        for uid in planned_removals
-        if removal_reasons.get(uid) == "stale" and ((is_article_uid(uid) and unsafe_article_swap) or (not is_article_uid(uid) and unsafe_texte_swap))
-    ]
+    unsafe_swap = bool(set(failures) | set(lf_plan.pending))
+    deferred_removals = [uid for uid in planned_removals if removal_reasons.get(uid) == "stale" and unsafe_swap]
     deferred_removal_set = set(deferred_removals)
     removals = [uid for uid in planned_removals if uid not in deferred_removal_set]
     if deferred_removals:
@@ -370,43 +331,27 @@ def ingest_delta(
             f"[warn] {len(deferred_removals)} suppressions stale différées: "
             "des remplacements attendus sont absents ou en échec dans le même périmètre."
         )
-    article_removals = [uid for uid in removals if is_article_uid(uid)]
-    texte_removals = [uid for uid in removals if not is_article_uid(uid)]
     cascade: dict[str, int] = {"chunks": 0, "sections": 0, "documents": 0}
-    if article_removals:
-        counts = writer.delete_articles_cascade(article_removals, source=source)
+    if removals:
+        counts = writer.delete_articles_cascade(removals, source=source)
         for key in cascade:
             cascade[key] += int(counts.get(key) or 0)
-    if texte_removals:
-        counts = writer.delete_textes_cascade(texte_removals, source=source)
-        for key in cascade:
-            cascade[key] += int(counts.get(key) or 0)
-    for uid in texte_removals:
-        _writeback_texte(uid, statut=STATUT_SUPPRIME, statut_reel=STATUT_REEL_NON_TROUVE, nb_chunks=0, corpus_present=False)
 
-    for uid in plan.acknowledged:
-        if is_article_uid(uid):
-            continue
-        row = texte_rows_by_uid.get(uid)
-        already_terminal = row is not None and str(row.fields.get("statut") or "").strip().lower() == STATUT_SUPPRIME
-        if not already_terminal:
-            _writeback_texte(uid, statut=STATUT_SUPPRIME, statut_reel=STATUT_REEL_NON_TROUVE, nb_chunks=0, corpus_present=False)
-
-    # Writeback AGRÉGÉ des lignes code suivi : 1 ligne Grist ↔ ~2500 articles.
-    code_rows_by_uid = {row.uid: row for row in selection.code_rows}
-    for legitext, record_id in lf_plan.code_record_ids.items():
+    # Writeback AGRÉGÉ par texte suivi : 1 ligne Grist ↔ les articles de sa TOC.
+    rows_by_uid = {row.uid: row for row in selection.followed_rows}
+    removal_set = set(removals)
+    for text_uid, record_id in lf_plan.followed_record_ids.items():
         if not writeback_enabled:
             continue
-        arts = lf_plan.code_articles.get(legitext, frozenset())
-        code_row = code_rows_by_uid.get(legitext)
-        if code_row is None or code_row.limbo:
+        row = rows_by_uid.get(text_uid)
+        if row is None or row.limbo:
             continue
+        arts = lf_plan.followed_articles.get(text_uid, frozenset())
         art_failed = sorted(uid for uid in failures if uid in arts)
         if requested is not None:
-            # Un plan --uid ne voit qu'un sous-ensemble du code: il ne peut pas
+            # Un plan --uid ne voit qu'un sous-ensemble du texte: il ne peut pas
             # recalculer honnêtement nb_chunks/statut_reel/ingere_{env} agrégés.
-            # On ne remonte qu'une éventuelle erreur canonique, sans toucher la
-            # réalité corpus globale de la ligne code.
+            # On ne remonte qu'une éventuelle erreur canonique.
             if art_failed:
                 fields = build_writeback_fields(
                     statut=STATUT_ERREUR,
@@ -423,14 +368,20 @@ def ingest_delta(
         for uid, count in ingested_chunks.items():
             if uid in arts and count > 0:
                 post_apply_chunks[uid] = count
-        for uid in removals:
+        for uid in removal_set:
             post_apply_chunks.pop(uid, None)
         present = bool(post_apply_chunks)
         nb_chunks_total = sum(post_apply_chunks.values())
 
-        if code_row.abrogated:
+        if row.abrogated:
             statut = STATUT_SUPPRIME
             erreur = ""
+            already_terminal = str(row.fields.get("statut") or "").strip().lower() == STATUT_SUPPRIME
+            touched = bool(art_failed) or any(uid in arts for uid in removal_set) or any(uid in arts for uid in ingested)
+            if already_terminal and not touched and not present:
+                # Acquittement déjà fait et rien n'a bougé : ne pas bumper
+                # derniere_ingestion chaque nuit (idempotence, cf. E2.3-a).
+                continue
         elif art_failed:
             statut = STATUT_ERREUR
             erreur = f"{len(art_failed)} articles en échec (ex: {', '.join(art_failed[:5])})"
@@ -446,7 +397,7 @@ def ingest_delta(
                     nb_chunks=nb_chunks_total,
                     erreur=erreur,
                     env=target_env,
-                    corpus_present=present > 0,
+                    corpus_present=present,
                 ),
             )
         )
@@ -509,9 +460,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--delta",
         action="store_true",
         help=(
-            "Ingestion delta-aware (socle #288) : manifest = référentiel Grist (textes legacy) + follow-live "
-            "PISTE (articles du code suivi), ne (ré)ingère que le new/changed, cascade abrogés/retirés/stale, "
-            "writeback Grist. Sans ce flag : upsert-all (compat)."
+            "Ingestion delta-aware (socle #288, modèle texte-suivi v2) : chaque ligne Grist Légifrance = un texte "
+            "suivi dont les articles sont dérivés de sa TOC PISTE (tableMatieres/lawDecree, identité = cid chronique). "
+            "Ne (ré)ingère que le new/changed, cascade les abrogés/retirés/stale ATTRIBUABLES, writeback Grist agrégé "
+            "par texte. Sans ce flag : upsert-all (compat)."
         ),
     )
     parser.add_argument(
@@ -523,7 +475,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--uid",
         dest="uids",
         action="append",
-        help="Mode delta : restreint la réconciliation à cet uid (CID LEGIARTI ou short_id texte). Peut être répété.",
+        help="Mode delta : restreint la réconciliation à cet uid (CID chronique LEGIARTI). Peut être répété.",
     )
     parser.add_argument(
         "--skip-grist-writeback",

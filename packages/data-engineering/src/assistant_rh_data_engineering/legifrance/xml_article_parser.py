@@ -64,10 +64,7 @@ def _select_best_title_node(
         title_start = clean_nullable(title_node.attrib.get("debut"))
         title_end = clean_nullable(title_node.attrib.get("fin"))
         is_legitext = int(title_id.startswith("LEGITEXT"))
-        matches_article_date = int(
-            bool(article_start_date)
-            and (title_start or "") <= article_start_date <= (title_end or "9999-12-31")
-        )
+        matches_article_date = int(bool(article_start_date) and (title_start or "") <= article_start_date <= (title_end or "9999-12-31"))
         rank = (matches_article_date, is_legitext, f"{title_start or ''}|{index}")
         if preferred_rank is None or rank > preferred_rank:
             preferred_node = title_node
@@ -107,7 +104,13 @@ def _parse_links(root: ET.Element) -> dict[str, list[dict[str, Any]]]:
 
 def parse_article_xml(article_path: Path) -> dict[str, Any]:
     root = ET.parse(article_path).getroot()
+    # META_COMMUN/ID = identifiant de VERSION (change à chaque modification —
+    # c'est aussi le nom du fichier dans le dump DILA). META_ARTICLE/CID =
+    # identifiant CHRONIQUE, stable à travers les versions : c'est LUI l'identité
+    # corpus (short_id / rag_chunks_dgafp.cid). Historiquement ce parseur posait
+    # cid = ID → toute la base était keyed version (bug d'identité, 11/07/2026).
     article_id = _findtext(root, "./META/META_COMMUN/ID") or article_path.stem
+    chronical_id = _findtext(root, "./META/META_SPEC/META_ARTICLE/CID") or article_id
     num_article = _findtext(root, "./META/META_SPEC/META_ARTICLE/NUM") or article_id
     status = _findtext(root, "./META/META_SPEC/META_ARTICLE/ETAT") or "VIGUEUR"
     start_date = _findtext(root, "./META/META_SPEC/META_ARTICLE/DATE_DEBUT")
@@ -116,19 +119,11 @@ def parse_article_xml(article_path: Path) -> dict[str, Any]:
     body = _flatten_xml_content(root.find("./BLOC_TEXTUEL/CONTENU"))
 
     texte_context = root.find("./CONTEXTE/TEXTE")
-    category = normalize_legifrance_category(
-        texte_context.attrib.get("nature") if texte_context is not None else None
-    )
+    category = normalize_legifrance_category(texte_context.attrib.get("nature") if texte_context is not None else None)
     titre_nodes = texte_context.findall("./TITRE_TXT") if texte_context is not None else []
     selected_title_node = _select_best_title_node(titre_nodes, start_date)
-    full_title = (
-        _normalize_text("".join(selected_title_node.itertext()))
-        if selected_title_node is not None
-        else article_id
-    )
-    short_title = clean_nullable(
-        selected_title_node.attrib.get("c_titre_court") if selected_title_node is not None else None
-    ) or full_title
+    full_title = _normalize_text("".join(selected_title_node.itertext())) if selected_title_node is not None else article_id
+    short_title = clean_nullable(selected_title_node.attrib.get("c_titre_court") if selected_title_node is not None else None) or full_title
 
     tm_nodes = texte_context.findall(".//TITRE_TM") if texte_context is not None else []
     subtitles_parts: list[str] = []
@@ -147,7 +142,8 @@ def parse_article_xml(article_path: Path) -> dict[str, Any]:
 
     return {
         "article_id": article_id,
-        "cid": article_id,
+        "cid": chronical_id,
+        "version_id": article_id,
         "num_article": num_article,
         "title": short_title,
         "full_title": full_title,
@@ -165,9 +161,7 @@ def parse_article_xml(article_path: Path) -> dict[str, Any]:
         "date_version": None,
         "start_date": start_date,
         "end_date": end_date,
-        "ministry": clean_nullable(
-            texte_context.attrib.get("ministere") if texte_context is not None else None
-        ),
+        "ministry": clean_nullable(texte_context.attrib.get("ministere") if texte_context is not None else None),
         "nota": nota,
         "origin": "legi_bulk",
         "search_source": "legi_bulk",
