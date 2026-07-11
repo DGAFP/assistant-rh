@@ -349,11 +349,18 @@ class LegifranceDbWriter(ServicePublicDbWriter):
 
         ``nb_chunks`` additionne les chunks legacy (rattachés par ``cid``) et
         modernes (par ``short_id``) — un uid ne vit que dans une des deux
-        tables, l'addition est donc un simple merge.
+        tables, l'addition est donc un simple merge. Cette inspection est
+        strictement read-only afin que ``--dry-run`` ne crée ni table ni index.
         """
-        self.ensure_legacy_target_table()
-        self.ensure_modern_target_table()
         with self._connect() as conn, conn.cursor() as cur:
+
+            def table_exists(table: str) -> bool:
+                cur.execute("SELECT to_regclass(%s)", (f"{self.schema}.{table}",))
+                row = cur.fetchone()
+                return bool(row and row[0])
+
+            if not table_exists("rag_documents"):
+                return {}
             document_columns = self._column_types(conn, "rag_documents")
             checksum_expr = sql.Identifier("checksum") if "checksum" in document_columns else sql.SQL("NULL")
             cur.execute(
@@ -376,6 +383,8 @@ class LegifranceDbWriter(ServicePublicDbWriter):
             }
 
             for table, join_column in ((self.legacy_table_name, "cid"), (self.modern_table_name, "short_id")):
+                if not table_exists(table):
+                    continue
                 cur.execute(
                     sql.SQL(
                         """
@@ -488,11 +497,14 @@ class LegifranceDbWriter(ServicePublicDbWriter):
         chunks: list[dict[str, Any]],
     ) -> dict[str, int]:
         """Ré-ingestion atomique d'un article du code (table legacy, clé cid/chunk_id)."""
+        projected_chunks = self.project_legacy_chunks(chunks)
+        if not projected_chunks:
+            raise ValueError("bundle article sans chunk legacy: remplacement destructif refusé")
         self.ensure_legacy_target_table()
         return self._ingest_bundle_tx(
             document,
             sections,
-            self.project_legacy_chunks(chunks),
+            projected_chunks,
             table=self.legacy_table_name,
             chunk_join_column="cid",
             chunk_conflict_column="chunk_id",
@@ -507,11 +519,14 @@ class LegifranceDbWriter(ServicePublicDbWriter):
         chunks: list[dict[str, Any]],
     ) -> dict[str, int]:
         """Ré-ingestion atomique d'un texte legacy (table moderne, clé short_id/hash_id)."""
+        projected_chunks = self.project_modern_chunks(chunks)
+        if not projected_chunks:
+            raise ValueError("bundle texte sans chunk moderne: remplacement destructif refusé")
         self.ensure_modern_target_table()
         return self._ingest_bundle_tx(
             document,
             sections,
-            self.project_modern_chunks(chunks),
+            projected_chunks,
             table=self.modern_table_name,
             chunk_join_column="short_id",
             chunk_conflict_column="hash_id",

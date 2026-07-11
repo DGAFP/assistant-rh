@@ -240,6 +240,7 @@ def ingest_delta(
         STATUT_REEL_INGERE,
         STATUT_REEL_NON_TROUVE,
         STATUT_SUPPRIME,
+        GristContractError,
         build_legifrance_plan,
         build_writeback_fields,
         is_article_uid,
@@ -250,6 +251,8 @@ def ingest_delta(
 
     records = grist.list_records(grist_table_id) if grist_table_id else grist.list_records()
     selection = select_legifrance_rows(records)
+    if len(selection.code_rows) > 1:
+        raise GristContractError("plusieurs codes Légifrance suivis: refus de réconcilier sans rattachement fiable article -> LEGITEXT.")
 
     toc_by_legitext: dict[str, Any] = {}
     date_millis = toc_date_millis if toc_date_millis is not None else int(_time.time() * 1000)
@@ -302,12 +305,22 @@ def ingest_delta(
         if bundle is None:
             failures[uid] = "artefact silver/gold absent du lake"
             continue
+        expected_chunk_target = "legacy" if is_article_uid(uid) else "modern"
+        has_expected_chunks = any(expected_chunk_target in (chunk.get("_targets") or ["legacy", "modern"]) for chunk in bundle["chunks"])
+        missing_parts = ["sections"] if not bundle["sections"] else []
+        if not has_expected_chunks:
+            missing_parts.append(f"chunks {expected_chunk_target}")
+        if missing_parts:
+            failures[uid] = f"artefact silver/gold incomplet: {', '.join(missing_parts)} absent(s)"
+            continue
         try:
             if is_article_uid(uid):
                 counts = writer.ingest_article_bundle(bundle["document"], bundle["sections"], bundle["chunks"])
             else:
                 counts = writer.ingest_texte_bundle(bundle["document"], bundle["sections"], bundle["chunks"])
             nb_chunks = int(counts.get("chunks") or 0)
+            if nb_chunks <= 0:
+                raise RuntimeError(f"bundle {uid} ingéré sans aucun chunk {expected_chunk_target}")
             ingested.append(uid)
             ingested_chunks[uid] = nb_chunks
             if not is_article_uid(uid):
@@ -340,7 +353,23 @@ def ingest_delta(
             # Réalité corpus inconnue après un échec : toggle non touché.
             _writeback_texte(uid, statut=STATUT_ERREUR, erreur=error[:500])
 
-    removals = list(plan.auto_removals)
+    planned_removals = list(plan.auto_removals)
+    removal_reasons = {removal.uid: removal.reason for removal in plan.removals}
+    unsafe_uids = set(failures) | set(lf_plan.pending)
+    unsafe_article_swap = any(is_article_uid(uid) for uid in unsafe_uids)
+    unsafe_texte_swap = any(not is_article_uid(uid) for uid in unsafe_uids)
+    deferred_removals = [
+        uid
+        for uid in planned_removals
+        if removal_reasons.get(uid) == "stale" and ((is_article_uid(uid) and unsafe_article_swap) or (not is_article_uid(uid) and unsafe_texte_swap))
+    ]
+    deferred_removal_set = set(deferred_removals)
+    removals = [uid for uid in planned_removals if uid not in deferred_removal_set]
+    if deferred_removals:
+        print(
+            f"[warn] {len(deferred_removals)} suppressions stale différées: "
+            "des remplacements attendus sont absents ou en échec dans le même périmètre."
+        )
     article_removals = [uid for uid in removals if is_article_uid(uid)]
     texte_removals = [uid for uid in removals if not is_article_uid(uid)]
     cascade: dict[str, int] = {"chunks": 0, "sections": 0, "documents": 0}
@@ -370,14 +399,36 @@ def ingest_delta(
             continue
         arts = lf_plan.code_articles.get(legitext, frozenset())
         code_row = code_rows_by_uid.get(legitext)
-        art_ingested = [uid for uid in ingested if uid in arts]
-        art_unchanged = [uid for uid in plan.unchanged if uid in arts]
+        if code_row is None or code_row.limbo:
+            continue
         art_failed = sorted(uid for uid in failures if uid in arts)
-        present = len(art_ingested) + len(art_unchanged)
-        nb_chunks_total = sum(ingested_chunks.get(uid, 0) for uid in art_ingested) + sum(
-            int(corpus.get(uid, {}).get("nb_chunks") or 0) for uid in art_unchanged
-        )
-        if code_row is not None and code_row.abrogated:
+        if requested is not None:
+            # Un plan --uid ne voit qu'un sous-ensemble du code: il ne peut pas
+            # recalculer honnêtement nb_chunks/statut_reel/ingere_{env} agrégés.
+            # On ne remonte qu'une éventuelle erreur canonique, sans toucher la
+            # réalité corpus globale de la ligne code.
+            if art_failed:
+                fields = build_writeback_fields(
+                    statut=STATUT_ERREUR,
+                    erreur=f"{len(art_failed)} articles en échec (ex: {', '.join(art_failed[:5])})",
+                    env=target_env,
+                )
+                if fields:
+                    writebacks.append((record_id, fields))
+            continue
+
+        post_apply_chunks = {
+            uid: int(corpus.get(uid, {}).get("nb_chunks") or 0) for uid in arts if int(corpus.get(uid, {}).get("nb_chunks") or 0) > 0
+        }
+        for uid, count in ingested_chunks.items():
+            if uid in arts and count > 0:
+                post_apply_chunks[uid] = count
+        for uid in removals:
+            post_apply_chunks.pop(uid, None)
+        present = bool(post_apply_chunks)
+        nb_chunks_total = sum(post_apply_chunks.values())
+
+        if code_row.abrogated:
             statut = STATUT_SUPPRIME
             erreur = ""
         elif art_failed:
@@ -410,6 +461,7 @@ def ingest_delta(
     }
     summary["ingested"] = sorted(ingested)
     summary["deleted"] = sorted(removals)
+    summary["deferred_removals"] = sorted(deferred_removals)
     summary["failed"] = failures
     summary["cascade"] = cascade
     if failures:

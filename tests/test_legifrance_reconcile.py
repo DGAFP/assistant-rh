@@ -61,7 +61,7 @@ def test_select_classifies_code_texte_out_of_scope_and_pending_mapping(capsys: A
         _rec(1, **_code()),
         _rec(2, **_texte("DECRET_86_83_AB", statut="a_ingerer")),
         _rec(3, **_texte("", statut="a_ingerer")),  # matcher pas passé -> pending_mapping
-        _rec(4, **_legi(titre_document="Circulaire hors périmètre", statut="a_ingerer")),  # sans type_id
+        _rec(4, **_legi(titre_document="Circulaire hors périmètre", document_ids="CIRC1", statut="a_ingerer")),  # sans type_id
         _rec(5, **_texte("VIEUX_DECRET", statut="a_supprimer")),
         _rec(6, source_corpus="service-public", id_extraction="F1", statut="ingere"),  # autre corpus
     ]
@@ -77,6 +77,7 @@ def test_select_classifies_code_texte_out_of_scope_and_pending_mapping(capsys: A
     assert code.active and code.record_id == 1
     assert selection.texte_rows[1].abrogated
     assert selection.out_of_scope == (4,)
+    assert selection.out_of_scope_uids == ("CIRC1",)
     assert selection.pending_mapping == (3,)
     assert "matcher pas passé" in capsys.readouterr().out
 
@@ -196,6 +197,41 @@ def test_plan_no_code_row_protects_corpus_articles_from_purge() -> None:
 
     assert "LEGIARTI001" in lf_plan.protected
     assert lf_plan.plan.auto_removals == ()
+
+
+def test_plan_protects_mapped_out_of_scope_documents() -> None:
+    selection = _selection(
+        [
+            _rec(1, **_code()),
+            _rec(2, **_legi(document_ids="CIRC1", statut="a_ingerer")),
+        ]
+    )
+    toc = {LEGITEXT: _arts(("LEGIARTI001", "VIGUEUR"))}
+    corpus = _corpus(LEGIARTI001=("h1", 1), CIRC1=("hc", 2))
+
+    lf_plan = reconcile.build_legifrance_plan(selection, toc, {"LEGIARTI001": "h1"}, corpus)
+
+    assert "CIRC1" in lf_plan.protected
+    assert "CIRC1" not in lf_plan.plan.auto_removals
+
+
+def test_plan_rejects_multiple_code_rows_without_article_ownership() -> None:
+    selection = _selection(
+        [
+            _rec(1, **_code()),
+            _rec(
+                2,
+                **_legi(
+                    type_id="legifrance_code",
+                    id_extraction="LEGITEXT000000000002",
+                    statut="ingere",
+                ),
+            ),
+        ]
+    )
+
+    with pytest.raises(reconcile.GristContractError, match="plusieurs codes"):
+        reconcile.build_legifrance_plan(selection, {}, {}, {})
 
 
 def test_plan_full_run_article_absent_from_lake_is_pending() -> None:
@@ -415,7 +451,150 @@ def test_ingest_delta_article_failure_marks_code_row_erreur() -> None:
     by_record = {record_id: fields for record_id, fields in grist.writebacks}
     assert by_record[1]["statut"] == "erreur"
     assert "LEGIARTI002" in by_record[1]["erreur_ingestion"]
-    assert "ingere_prod" not in by_record[1] or by_record[1]["ingere_prod"] is False
+    assert "ingere_prod" not in by_record[1]
+    assert "statut_ingestion_reelle" not in by_record[1]
+    assert "nb_chunks" not in by_record[1]
+
+
+def test_ingest_delta_incomplete_bundle_defers_stale_cascade() -> None:
+    grist = _RecordingGrist([_rec(1, **_code())])
+    piste = _FakePiste(_arts(("LEGIARTI_NEW", "VIGUEUR")))
+    writer = _DeltaWriter(_corpus(LEGIARTI_OLD=("old", 4)))
+    documents = [{"short_id": "LEGIARTI_NEW", "doc_id": "new-doc", "checksum": "new"}]
+    sections = [{"doc_id": "new-doc", "section_index": 0, "section_id": "new-section"}]
+
+    summary = legifrance_ingestion.ingest_delta(
+        writer,
+        grist,
+        piste,
+        documents,
+        sections,
+        [],
+        toc_date_millis=1000,
+        max_auto_stale=0,
+    )
+
+    assert "chunks" in summary["failed"]["LEGIARTI_NEW"]
+    assert summary["deleted"] == []
+    assert summary["deferred_removals"] == ["LEGIARTI_OLD"]
+    assert writer.article_bundles == []
+    assert writer.article_cascades == []
+    code_fields = dict(grist.writebacks)[1]
+    assert code_fields["statut"] == "erreur"
+    assert code_fields["ingere_prod"] is True
+    assert code_fields["nb_chunks"] == 4
+
+
+def test_ingest_delta_rejects_article_chunks_for_wrong_target() -> None:
+    grist = _RecordingGrist([_rec(1, **_code())])
+    piste = _FakePiste(_arts(("LEGIARTI_NEW", "VIGUEUR")))
+    writer = _DeltaWriter(_corpus(LEGIARTI_OLD=("old", 2)))
+    documents = [{"short_id": "LEGIARTI_NEW", "doc_id": "new-doc", "checksum": "new"}]
+    sections = [{"doc_id": "new-doc", "section_index": 0, "section_id": "new-section"}]
+    chunks = [{"cid": "LEGIARTI_NEW", "hash_id": "modern-only", "_targets": ["modern"]}]
+
+    summary = legifrance_ingestion.ingest_delta(
+        writer,
+        grist,
+        piste,
+        documents,
+        sections,
+        chunks,
+        toc_date_millis=1000,
+        max_auto_stale=0,
+    )
+
+    assert "chunks legacy" in summary["failed"]["LEGIARTI_NEW"]
+    assert summary["deferred_removals"] == ["LEGIARTI_OLD"]
+    assert writer.article_bundles == []
+    assert writer.article_cascades == []
+
+
+def test_ingest_delta_rejects_text_chunks_for_wrong_target() -> None:
+    grist = _RecordingGrist([_rec(1, **_texte("D1", statut="ingere"))])
+    piste = _FakePiste([])
+    writer = _DeltaWriter(_corpus(D1=("old", 2), D_OLD=("stale", 1)))
+    documents = [{"short_id": "D1", "doc_id": "doc-d1", "checksum": "new"}]
+    sections = [{"doc_id": "doc-d1", "section_index": 0, "section_id": "section-d1"}]
+    chunks = [{"short_id": "D1", "chunk_id": "legacy-only", "_targets": ["legacy"]}]
+
+    summary = legifrance_ingestion.ingest_delta(
+        writer,
+        grist,
+        piste,
+        documents,
+        sections,
+        chunks,
+        toc_date_millis=1000,
+        max_auto_stale=0,
+    )
+
+    assert "chunks modern" in summary["failed"]["D1"]
+    assert summary["deferred_removals"] == ["D_OLD"]
+    assert writer.texte_bundles == []
+    assert writer.texte_cascades == []
+    fields = dict(grist.writebacks)[1]
+    assert fields["statut"] == "erreur"
+    assert "ingere_prod" not in fields
+
+
+def test_ingest_delta_failure_keeps_stale_but_applies_explicit_abrogation(monkeypatch: pytest.MonkeyPatch) -> None:
+    grist = _RecordingGrist([_rec(1, **_code())])
+    piste = _FakePiste(_arts(("LEGIARTI_NEW", "VIGUEUR"), ("LEGIARTI_ABROGE", "ABROGE")))
+    writer = _DeltaWriter(_corpus(LEGIARTI_OLD=("old", 1), LEGIARTI_ABROGE=("ha", 1)))
+    documents = [{"short_id": "LEGIARTI_NEW", "doc_id": "new-doc", "checksum": "new"}]
+    sections = [{"doc_id": "new-doc", "section_index": 0, "section_id": "new-section"}]
+    chunks = [{"cid": "LEGIARTI_NEW", "chunk_id": "new-chunk", "_targets": ["legacy"]}]
+    monkeypatch.setattr(writer, "ingest_article_bundle", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("db failure")))
+
+    summary = legifrance_ingestion.ingest_delta(
+        writer,
+        grist,
+        piste,
+        documents,
+        sections,
+        chunks,
+        toc_date_millis=1000,
+        max_auto_stale=0,
+    )
+
+    assert summary["deleted"] == ["LEGIARTI_ABROGE"]
+    assert summary["deferred_removals"] == ["LEGIARTI_OLD"]
+    assert writer.article_cascades == [["LEGIARTI_ABROGE"]]
+
+
+def test_ingest_delta_targeted_text_does_not_overwrite_code_aggregate() -> None:
+    documents, sections, chunks = _artifacts()
+    grist = _RecordingGrist([_rec(1, **_code()), _rec(2, **_texte("D1", statut="ingere"))])
+    piste = _FakePiste(_arts(("LEGIARTI001", "VIGUEUR")))
+    writer = _DeltaWriter(_corpus(LEGIARTI001=("h1", 7), D1=("old", 2)))
+
+    legifrance_ingestion.ingest_delta(
+        writer,
+        grist,
+        piste,
+        documents,
+        sections,
+        chunks,
+        requested={"D1"},
+        toc_date_millis=1000,
+    )
+
+    by_record = {record_id: fields for record_id, fields in grist.writebacks}
+    assert 1 not in by_record
+    assert by_record[2]["statut"] == "ingere"
+
+
+def test_ingest_delta_limbo_code_is_protected_without_writeback() -> None:
+    grist = _RecordingGrist([_rec(1, **_code(statut="en_attente"))])
+    piste = _FakePiste([])
+    writer = _DeltaWriter(_corpus(LEGIARTI001=("h1", 3)))
+
+    summary = legifrance_ingestion.ingest_delta(writer, grist, piste, [], [], [], toc_date_millis=1000)
+
+    assert summary["plan"]["protected_limbo"]["sample"] == ["LEGIARTI001"]
+    assert grist.writebacks == []
+    assert writer.article_cascades == []
 
 
 def test_ingest_delta_staging_only_touches_toggles() -> None:

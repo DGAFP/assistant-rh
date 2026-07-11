@@ -110,6 +110,7 @@ class LegifranceSelection:
 
     rows: tuple[LegifranceManifestRow, ...]
     out_of_scope: tuple[int, ...] = ()  # record_ids sans type_id Légifrance
+    out_of_scope_uids: tuple[str, ...] = ()  # short_ids déjà mappés, à protéger du stale
     pending_mapping: tuple[int, ...] = ()  # textes actifs sans document_ids (matcher pas passé)
 
     @property
@@ -147,6 +148,7 @@ def select_legifrance_rows(records: Iterable[Mapping[str, Any]]) -> LegifranceSe
     """
     rows_by_uid: dict[str, LegifranceManifestRow] = {}
     out_of_scope: list[int] = []
+    out_of_scope_uids: list[str] = []
     pending_mapping: list[int] = []
     for record in records:
         fields = record.get("fields") or {}
@@ -178,6 +180,9 @@ def select_legifrance_rows(records: Iterable[Mapping[str, Any]]) -> LegifranceSe
         else:
             # Résidu structurel (#289) : circulaires/dossiers hors pipeline Legi.
             out_of_scope.append(record_id)
+            mapped_uid = str(fields.get("document_ids") or "").strip().upper()
+            if mapped_uid:
+                out_of_scope_uids.append(mapped_uid)
             continue
 
         row = LegifranceManifestRow(
@@ -195,6 +200,7 @@ def select_legifrance_rows(records: Iterable[Mapping[str, Any]]) -> LegifranceSe
     return LegifranceSelection(
         rows=tuple(sorted(rows_by_uid.values(), key=lambda r: r.uid)),
         out_of_scope=tuple(out_of_scope),
+        out_of_scope_uids=tuple(sorted(set(out_of_scope_uids))),
         pending_mapping=tuple(pending_mapping),
     )
 
@@ -243,6 +249,9 @@ def build_legifrance_plan(
     en ``flagged`` (revue opérateur, jamais auto-appliqués) — ``None`` désactive
     le garde (nettoyage de migration délibéré).
     """
+    if len(selection.code_rows) > 1:
+        raise GristContractError("plusieurs codes Légifrance suivis: refus de réconcilier sans rattachement fiable article -> LEGITEXT.")
+
     requested_set: set[str] | None = None
     if requested is not None:
         requested_set = {str(uid).strip().upper() for uid in requested}
@@ -257,7 +266,10 @@ def build_legifrance_plan(
     texte_record_ids: dict[str, int] = {}
     code_record_ids: dict[str, int] = {}
     code_articles: dict[str, set[str]] = {}
-    protected: set[str] = set()
+    # Les lignes sans type_id sont explicitement hors du pipeline Legi. Quand
+    # le matcher a déjà posé leur short_id, elles doivent rester hors du diff
+    # stale au lieu d'être supprimées comme des orphelins du manifest.
+    protected: set[str] = set(selection.out_of_scope_uids)
     pending: set[str] = set()
 
     def _add_active(uid: str) -> None:
