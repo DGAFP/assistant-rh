@@ -271,10 +271,13 @@ def ingest_delta(
         expanded = {str(uid).strip().upper() for uid in requested}
         for articles in toc_by_text.values():
             for article in articles:
-                cid = str(article.cid).strip().upper()
+                aliases = {str(alias).strip().upper() for alias in (getattr(article, "alias_ids", ()) or ()) if alias}
+                aliases.add(str(article.cid).strip().upper())
                 version_id = str(getattr(article, "version_id", "") or "").strip().upper()
-                if version_id and (cid in expanded or version_id in expanded):
-                    expanded.update((cid, version_id))
+                if version_id:
+                    aliases.add(version_id)
+                if aliases & expanded:
+                    expanded.update(aliases)
         requested = expanded
 
     silver_checksums = {

@@ -323,18 +323,19 @@ def build_legifrance_plan(
             continue
         for article in toc:
             cid = str(article.cid).strip().upper()
+            aliases = {str(alias).strip().upper() for alias in (getattr(article, "alias_ids", ()) or ()) if alias}
+            aliases.add(cid)
             version_id = str(getattr(article, "version_id", "") or "").strip().upper()
-            arts.add(cid)
-            attributable.add(cid)
             if version_id:
-                arts.add(version_id)
-                attributable.add(version_id)
+                aliases.add(version_id)
+            arts.update(aliases)
+            attributable.update(aliases)
             if not _wanted(cid):
                 continue
             if row.limbo:
                 # Texte en limbo : jamais ingéré ni supprimé ; ses articles
                 # déjà en base sont protégés du stale.
-                protected.update(uid for uid in (cid, version_id) if uid and uid in corpus_article_uids)
+                protected.update(uid for uid in aliases if uid in corpus_article_uids)
             elif row.abrogated or str(article.etat).strip().upper() != VIGUEUR:
                 # Retrait opérateur du texte entier OU abrogation calculée à
                 # la source (ETAT) : autoritaire.

@@ -24,42 +24,45 @@ DEFAULT_BASE_URL = "https://api.piste.gouv.fr/dila/legifrance/lf-engine-app"
 
 @dataclass(frozen=True)
 class CodeArticle:
-    """Un article d'un texte, tel que renvoyé par ``tableMatieres``/``lawDecree``.
+    """Un article d'un texte, agrégé depuis ``tableMatieres``/``lawDecree``.
 
-    ``cid`` = identifiant **chronique** (stable à travers les versions — c'est
-    l'identité corpus). ``version_id`` = identifiant de la **version courante**
-    (change à chaque modification légistique ; ``== cid`` pour un article jamais
-    modifié). Le corpus historique étant keyed version, les deux servent à la
-    réconciliation (migration d'identité version→chronique).
+    ``cid`` = l'identité **stable** retenue pour le corpus : le cid chronique
+    LEGIARTI quand la réponse en porte un ; pour les articles dont le ``cid``
+    API est un JORFARTI (arrêtés/décrets non re-chroniqués côté LEGI), c'est
+    l'``id`` LEGIARTI de la version en vigueur. ``version_id`` = l'identifiant
+    LEGIARTI de la version courante. ``alias_ids`` = TOUS les identifiants vus
+    pour cet article (toutes versions + cid API) — le corpus historique étant
+    keyé par version, ils servent à l'attribution (migration d'identité).
+
+    L'API renvoie UN NŒUD PAR VERSION (revue #307 : le décret 86-83 art. 50 a
+    un nœud VIGUEUR et un nœud ABROGE pour le même cid) : ``walk_table_matieres``
+    agrège par article avec précédence VIGUEUR — jamais d'écrasement dernier-gagne.
     """
 
-    cid: str  # LEGIARTI... (chronique)
+    cid: str  # identité stable (LEGIARTI)
     etat: str  # VIGUEUR | ABROGE | ...
     num: str | None = None  # numéro d'article (L1, R.331-7, ...)
     version_id: str = ""  # LEGIARTI... (version courante)
+    alias_ids: tuple[str, ...] = ()  # tous les identifiants vus (versions + cid API)
 
 
 def walk_table_matieres(payload: dict) -> list[CodeArticle]:
-    """Extrait récursivement les articles (``cid`` chronique + ``version_id`` +
-    ``etat`` + ``num``) d'une réponse ``tableMatieres``/``lawDecree``, quel que
-    soit l'imbriquement des sections.
+    """Extrait les articles d'une réponse ``tableMatieres``/``lawDecree``, quel
+    que soit l'imbriquement, en agrégeant les nœuds PAR ARTICLE (l'API émet un
+    nœud par version). Précédence d'état : VIGUEUR gagne sur tout autre état.
 
     Fonction pure (aucun I/O) — testable sur un fixture.
     """
-    found: list[CodeArticle] = []
+    # Groupes par clé d'article = cid API (chronique LEGIARTI ou JORFARTI).
+    groups: dict[str, list[dict]] = {}
 
     def _walk(node: object) -> None:
         if isinstance(node, dict):
-            ident = str(node.get("cid") or node.get("id") or "")
-            if ident.startswith("LEGIARTI"):
-                found.append(
-                    CodeArticle(
-                        cid=ident,
-                        etat=str(node.get("etat") or ""),
-                        num=node.get("num"),
-                        version_id=str(node.get("id") or ""),
-                    )
-                )
+            node_id = str(node.get("id") or "")
+            node_cid = str(node.get("cid") or "")
+            if node_id.startswith(("LEGIARTI", "JORFARTI")) or node_cid.startswith(("LEGIARTI", "JORFARTI")):
+                key = node_cid or node_id
+                groups.setdefault(key, []).append({"id": node_id, "cid": node_cid, "etat": str(node.get("etat") or ""), "num": node.get("num")})
             for value in node.values():
                 _walk(value)
         elif isinstance(node, list):
@@ -67,6 +70,26 @@ def walk_table_matieres(payload: dict) -> list[CodeArticle]:
                 _walk(value)
 
     _walk(payload)
+
+    found: list[CodeArticle] = []
+    for key, nodes in groups.items():
+        current = next((n for n in nodes if n["etat"].upper() == "VIGUEUR"), nodes[-1])
+        aliases = tuple(sorted({ident for n in nodes for ident in (n["id"], n["cid"]) if ident}))
+        # Identité stable : le cid chronique LEGIARTI ; à défaut (cid JORFARTI),
+        # l'id LEGIARTI de la version en vigueur.
+        if key.startswith("LEGIARTI"):
+            stable = key
+        else:
+            stable = current["id"] if current["id"].startswith("LEGIARTI") else key
+        found.append(
+            CodeArticle(
+                cid=stable,
+                etat=current["etat"],
+                num=current["num"],
+                version_id=current["id"] or stable,
+                alias_ids=aliases,
+            )
+        )
     return found
 
 

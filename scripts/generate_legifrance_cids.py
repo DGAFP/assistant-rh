@@ -49,8 +49,7 @@ def current_cids(config_path: Path) -> list[str]:
 
 def render_config(
     texts: list[dict],
-    cids: list[str],
-    version_ids: list[str],
+    articles: list[dict],
     generated_at: str,
 ) -> dict:
     return {
@@ -58,8 +57,12 @@ def render_config(
         "source": "legifrance_api:follow-live",
         "generated_at": generated_at,
         "texts": texts,
-        "article_cids": cids,
-        "article_version_ids": version_ids,
+        # Paires d'identité : cid chronique stable + version courante + tous
+        # les alias vus (le XML DILA ne porte pas le chronique — le médaillon
+        # applique ce mapping en bronze).
+        "articles": articles,
+        "article_cids": sorted({a["cid"] for a in articles}),
+        "article_version_ids": sorted({a["version_id"] for a in articles}),
     }
 
 
@@ -89,16 +92,21 @@ def main(argv: list[str] | None = None) -> int:
 
     client = PisteClient()
     texts: list[dict] = []
-    cids: set[str] = set()
-    version_ids: set[str] = set()
+    articles_out: dict[str, dict] = {}
     for row in followed:
         articles = client.text_articles(row.uid, millis, kind=row.kind)
         en_vigueur = [a for a in articles if str(a.etat).strip().upper() == VIGUEUR]
         if not en_vigueur:
             print(f"[warn] TOC vide pour le texte actif {row.uid} ({row.kind}) — texte ignoré du cache.", file=sys.stderr)
             continue
-        cids.update(a.cid for a in en_vigueur)
-        version_ids.update(a.version_id or a.cid for a in en_vigueur)
+        for article in en_vigueur:
+            aliases = sorted({alias for alias in (*article.alias_ids, article.cid, article.version_id) if alias})
+            articles_out[article.cid] = {
+                "cid": article.cid,
+                "version_id": article.version_id or article.cid,
+                "aliases": aliases,
+                "text_uid": row.uid,
+            }
         texts.append(
             {
                 "uid": row.uid,
@@ -109,14 +117,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"{row.uid} ({row.kind}) @ {date} : {len(en_vigueur)} articles en vigueur")
 
-    if not cids:
+    if not articles_out:
         print("Aucun article en vigueur collecté — refus d'écrire un cache vide.", file=sys.stderr)
         return 1
 
-    sorted_cids = sorted(cids)
+    articles_list = [articles_out[cid] for cid in sorted(articles_out)]
+    sorted_cids = sorted(articles_out)
     old = set(current_cids(args.config))
-    added = sorted(cids - old)
-    removed = sorted(old - cids)
+    added = sorted(set(articles_out) - old)
+    removed = sorted(old - set(articles_out))
     print(f"\nTOTAL {len(followed)} textes suivis : {len(old)} -> {len(sorted_cids)} CIDs en vigueur")
     print(f"  + {len(added)} ajoutés")
     print(f"  - {len(removed)} retirés (abrogés / recodifiés / hors périmètre)")
@@ -125,9 +134,9 @@ def main(argv: list[str] | None = None) -> int:
         print("\n[dry-run] cache non modifié.")
         return 0
     generated_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    payload = render_config(texts, sorted_cids, sorted(version_ids), generated_at)
+    payload = render_config(texts, articles_list, generated_at)
     args.config.write_text(json.dumps(payload, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    print(f"\n✓ {args.config.relative_to(REPO_ROOT)} généré ({len(sorted_cids)} CIDs, {len(version_ids)} version_ids).")
+    print(f"\n✓ {args.config.relative_to(REPO_ROOT)} généré ({len(sorted_cids)} articles, mapping alias→chronique inclus).")
     return 0
 
 
