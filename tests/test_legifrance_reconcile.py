@@ -219,6 +219,26 @@ def test_plan_unattributable_corpus_article_is_flagged_never_auto() -> None:
     assert plan.flagged_removals == ("LEGIARTI244",)
 
 
+def test_plan_old_version_attributed_by_title_is_authoritative_stale() -> None:
+    # Revue #307 bis (P1) : une ANCIENNE version d'un article suivi (id hors
+    # des alias de la TOC, ex. L652-1 recodifié) porte le TITRE de son texte.
+    # Un titre possédé par un texte suivi (via un frère alias-attribué) rend
+    # ses autres articles corpus attribuables -> stale autoritaire scopé, plus
+    # jamais de doublon VIGUEUR retrievable. Sans titre possédé -> flagged.
+    selection = _selection([_rec(1, **_code())])
+    toc = {LEGITEXT: _arts(("LEGIARTI001", "VIGUEUR"))}
+    corpus = _corpus(LEGIARTI001=("h1", 1), LEGIARTI_L652_OLD=("h-old", 1), LEGIARTI244=("h244", 1))
+    corpus["LEGIARTI001"]["title"] = "Code général de la fonction publique"
+    corpus["LEGIARTI_L652_OLD"]["title"] = "Code général de la fonction publique"  # même texte
+    corpus["LEGIARTI244"]["title"] = "Décret n°86-83 du 17 janvier 1986"  # texte NON suivi ici
+
+    lf_plan = reconcile.build_legifrance_plan(selection, toc, {"LEGIARTI001": "h1"}, corpus)
+
+    assert lf_plan.plan.auto_removals == ("LEGIARTI_L652_OLD",)  # ancienne version cascadée
+    assert lf_plan.plan.flagged_removals == ("LEGIARTI244",)  # texte non suivi : revue opérateur
+    assert "LEGIARTI_L652_OLD" in lf_plan.followed_articles[LEGITEXT]  # rattachée (deferral/agrégat)
+
+
 def test_plan_non_legiarti_corpus_docs_protected_as_legacy_text_docs() -> None:
     # Documents texte-level (table moderne) encore en base : protégés + surfacés
     # jusqu'à la décommission, jamais gérés (ni cascadés) par ce delta.

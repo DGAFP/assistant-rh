@@ -83,8 +83,9 @@ def is_legifrance(fields: Mapping[str, Any]) -> bool:
 
 
 def is_article_uid(uid: str) -> bool:
-    """Un uid d'article (LEGIARTI…) — la seule identité du corpus dgafp."""
-    return str(uid or "").upper().startswith("LEGIARTI")
+    """Un uid d'article — identité du corpus dgafp : cid chronique LEGIARTI,
+    ou JORFARTI pour les textes non re-chroniqués côté LEGI (lui aussi stable)."""
+    return str(uid or "").upper().startswith(("LEGIARTI", "JORFARTI"))
 
 
 def extract_jorftext(fields: Mapping[str, Any]) -> str | None:
@@ -346,11 +347,37 @@ def build_legifrance_plan(
             # PAS ajouté au manifest → stale autoritaire attribuable (migration
             # d'identité version→chronique, remplacé par son cid).
 
-    # Corpus article hors de toutes les TOCs suivies : inattribuable → flagged
-    # (weak_removal), jamais de suppression autoritaire. C'est la protection
+    # Attribution TRANSITIVE par titre (revue #307 bis) : les TOCs ne listent
+    # que les versions courantes — une ANCIENNE version d'un article suivi
+    # (id hors alias, ex. L652-1 recodifié) resterait inattribuable et servie
+    # en doublon. Or les articles portent le titre de leur TEXTE : un titre
+    # dont AU MOINS un article corpus est alias-attribué à un texte suivi est
+    # « possédé » par ce texte, et ses autres articles corpus lui sont
+    # attribuables (stale autoritaire scopé). Un texte non suivi n'a par
+    # construction aucun article alias-attribué : ses articles restent flagged.
+    title_by_uid = {
+        str(raw_uid).strip().upper(): _fold(state.get("title"))
+        for raw_uid, state in corpus.items()
+        if state.get("title") and is_article_uid(str(raw_uid))
+    }
+    owned_titles: dict[str, str] = {}
+    for text_uid, arts_set in followed_articles.items():
+        for uid in arts_set & corpus_article_uids:
+            title = title_by_uid.get(uid)
+            if title:
+                owned_titles.setdefault(title, text_uid)
+
+    # Corpus article hors de toutes les TOCs suivies : attribuable par titre →
+    # stale autoritaire (ancienne version d'un texte suivi) ; sinon flagged
+    # (weak_removal), jamais de suppression autoritaire — protection
     # structurelle des articles d'autres textes (les « 244 » du 11/07).
     for uid in corpus_article_uids:
         if uid in manifest or uid in attributable or uid in protected or not _wanted(uid):
+            continue
+        owner = owned_titles.get(title_by_uid.get(uid, ""))
+        if owner:
+            attributable.add(uid)
+            followed_articles[owner].add(uid)
             continue
         manifest[uid] = ManifestEntry(uid, weak_removal=True)
 

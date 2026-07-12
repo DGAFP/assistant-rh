@@ -75,18 +75,17 @@ def walk_table_matieres(payload: dict) -> list[CodeArticle]:
     for key, nodes in groups.items():
         current = next((n for n in nodes if n["etat"].upper() == "VIGUEUR"), nodes[-1])
         aliases = tuple(sorted({ident for n in nodes for ident in (n["id"], n["cid"]) if ident}))
-        # Identité stable : le cid chronique LEGIARTI ; à défaut (cid JORFARTI),
-        # l'id LEGIARTI de la version en vigueur.
-        if key.startswith("LEGIARTI"):
-            stable = key
-        else:
-            stable = current["id"] if current["id"].startswith("LEGIARTI") else key
+        # Identité stable = le cid API, TOUJOURS (LEGIARTI chronique, ou
+        # JORFARTI pour les textes non re-chroniqués côté LEGI — lui aussi
+        # stable à travers les versions). Revue #307 bis : un fallback vers
+        # l'id LEGIARTI de la version courante recréerait le churn d'identité
+        # à chaque modification.
         found.append(
             CodeArticle(
-                cid=stable,
+                cid=key,
                 etat=current["etat"],
                 num=current["num"],
-                version_id=current["id"] or stable,
+                version_id=current["id"] or key,
                 alias_ids=aliases,
             )
         )

@@ -66,7 +66,7 @@ def test_list_legifrance_corpus_is_read_only(monkeypatch: pytest.MonkeyPatch) ->
     writer, calls, events = _writer(
         [
             {"rows": [("staging.rag_documents",)]},
-            {"rows": [("D1", "doc-1", "sha-1")]},
+            {"rows": [("D1", "doc-1", "sha-1", "Décret n°1 de test")]},
             {"rows": [("staging.rag_chunks_dgafp",)]},
             {"rows": [("D1", 2)]},
             {"rows": []},
@@ -78,7 +78,7 @@ def test_list_legifrance_corpus_is_read_only(monkeypatch: pytest.MonkeyPatch) ->
 
     corpus = writer.list_legifrance_corpus()
 
-    assert corpus == {"D1": {"doc_id": "doc-1", "checksum": "sha-1", "nb_chunks": 2}}
+    assert corpus == {"D1": {"doc_id": "doc-1", "checksum": "sha-1", "nb_chunks": 2, "title": "Décret n°1 de test"}}
     assert events == []
     assert all("CREATE" not in call["query"] and "ALTER" not in call["query"] for call in calls)
 

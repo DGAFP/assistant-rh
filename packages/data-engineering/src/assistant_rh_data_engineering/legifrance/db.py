@@ -366,7 +366,7 @@ class LegifranceDbWriter(ServicePublicDbWriter):
             cur.execute(
                 sql.SQL(
                     """
-                    SELECT short_id, doc_id, {} AS checksum
+                    SELECT short_id, doc_id, {} AS checksum, title
                     FROM {}.{}
                     WHERE LOWER(TRIM(source)) = %s AND short_id IS NOT NULL
                     """
@@ -378,6 +378,10 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                     "doc_id": str(row[1]),
                     "checksum": (str(row[2]) if row[2] is not None else None),
                     "nb_chunks": 0,
+                    # Titre du texte porteur (les articles portent le titre de
+                    # leur texte) : sert à l'attribution transitive des
+                    # anciennes versions que la TOC ne liste plus.
+                    "title": (str(row[3]) if row[3] is not None else None),
                 }
                 for row in cur.fetchall()
             }
