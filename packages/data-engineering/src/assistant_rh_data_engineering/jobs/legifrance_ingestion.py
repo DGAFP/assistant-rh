@@ -347,6 +347,34 @@ def ingest_delta(
 
     writebacks: list[tuple[int, dict[str, Any]]] = []
 
+    # Migration d'identité version→chronique (fix swap #307). Un article
+    # recodifié arrive sous son cid CHRONIQUE (to_ingest) avec un contenu
+    # BYTE-IDENTIQUE à son ancienne version encore en base (auto_removals/stale) :
+    # même (source, checksum). La contrainte uq_rag_documents_source_checksum
+    # interdit alors d'INSÉRER la chronique tant que le jumeau version occupe la
+    # clé — l'ingest échoue en boucle et la suppression du stale reste différée
+    # (deadlock du swap). On supprime donc le jumeau stale JUSTE AVANT d'insérer
+    # sa chronique (out-avant-in ciblé, même run). Le re-embedding est assumé
+    # (backfill séparé), conformément au design v2. Ambiguïté (≥2 stale au même
+    # checksum) = on ne devine pas : pas de migration, la collision remonte en
+    # échec (fail-closed).
+    removal_reasons = {removal.uid: removal.reason for removal in plan.removals}
+    stale_twin_by_checksum: dict[str, str] = {}
+    ambiguous_checksums: set[str] = set()
+    for stale_uid in plan.auto_removals:
+        if removal_reasons.get(stale_uid) != "stale":
+            continue
+        csum = str((corpus.get(stale_uid) or {}).get("checksum") or "")
+        if not csum:
+            continue
+        existing = stale_twin_by_checksum.get(csum)
+        if existing is not None and existing != stale_uid:
+            ambiguous_checksums.add(csum)
+        else:
+            stale_twin_by_checksum[csum] = stale_uid
+    migrated_out: set[str] = set()
+    identity_cascade = {"chunks": 0, "sections": 0, "documents": 0}
+
     ingested: list[str] = []
     ingested_chunks: dict[str, int] = {}
     failures: dict[str, str] = {}
@@ -363,12 +391,31 @@ def ingest_delta(
             failures[uid] = f"artefact silver/gold incomplet: {', '.join(missing_parts)} absent(s)"
             continue
         try:
-            counts = writer.ingest_article_bundle(bundle["document"], bundle["sections"], bundle["chunks"])
+            csum = str(silver_checksums.get(uid) or "")
+            twin = stale_twin_by_checksum.get(csum) if csum and csum not in ambiguous_checksums else None
+            if twin is not None and (twin == uid or twin in migrated_out):
+                twin = None
+            # Migration d'identité ATOMIQUE : le jumeau version bloquerait l'INSERT
+            # sur (source, checksum) ; on le cascade DANS LA MÊME TRANSACTION que
+            # l'ingest de la chronique. Si l'INSERT échoue, le rollback restaure le
+            # jumeau (jamais de trou) et migrated_out n'est PAS peuplé.
+            counts = writer.ingest_article_bundle(
+                bundle["document"],
+                bundle["sections"],
+                bundle["chunks"],
+                cascade_cids=[twin] if twin else None,
+                cascade_source=source,
+            )
             nb_chunks = int(counts.get("chunks") or 0)
             if nb_chunks <= 0:
                 raise RuntimeError(f"bundle {uid} ingéré sans aucun chunk legacy")
             ingested.append(uid)
             ingested_chunks[uid] = nb_chunks
+            if twin is not None:
+                migrated_out.add(twin)
+                mig = counts.get("migrated") or {}
+                for key in identity_cascade:
+                    identity_cascade[key] += int(mig.get(key) or 0)
         except Exception as exc:  # noqa: BLE001 — erreur par article, le run continue
             failures[uid] = str(exc)
 
@@ -378,8 +425,9 @@ def ingest_delta(
     # remplacements attendus sont absents/en échec — le swap doit rester
     # in-avant-out dans le même run. Scopé PAR texte suivi (revue v2) : l'échec
     # d'un article du texte A ne gèle pas indéfiniment la cascade du texte B.
-    planned_removals = list(plan.auto_removals)
-    removal_reasons = {removal.uid: removal.reason for removal in plan.removals}
+    # Les jumeaux déjà cascadés par la migration d'identité (out-avant-in) sont
+    # retirés des suppressions restantes : leur remplaçant chronique est ingéré.
+    planned_removals = [uid for uid in plan.auto_removals if uid not in migrated_out]
     unsafe_uids = set(failures) | set(lf_plan.pending)
     unsafe_texts = {text_uid for text_uid, arts in lf_plan.followed_articles.items() if unsafe_uids & arts}
 
@@ -403,6 +451,10 @@ def ingest_delta(
             "des remplacements attendus sont absents ou en échec dans le même périmètre."
         )
     cascade: dict[str, int] = {"chunks": 0, "sections": 0, "documents": 0}
+    # Les cascades de la migration d'identité (jumeaux stale retirés avant leur
+    # remplaçant) comptent dans le total supprimé.
+    for key in cascade:
+        cascade[key] += int(identity_cascade.get(key) or 0)
     if removals:
         counts = writer.delete_articles_cascade(removals, source=source)
         for key in cascade:
@@ -439,7 +491,9 @@ def ingest_delta(
         for uid, count in ingested_chunks.items():
             if uid in arts and count > 0:
                 post_apply_chunks[uid] = count
-        for uid in removal_set:
+        # Retirer les supprimés ET les jumeaux version migrés (leur count est
+        # remplacé par celui de la chronique ingérée — sinon double comptage).
+        for uid in removal_set | migrated_out:
             post_apply_chunks.pop(uid, None)
         present = bool(post_apply_chunks)
         nb_chunks_total = sum(post_apply_chunks.values())
@@ -478,11 +532,13 @@ def ingest_delta(
     summary["applied"] = {
         "ingested": len(ingested),
         "skipped": len(skipped),
-        "deleted": len(removals),
+        "deleted": len(removals) + len(migrated_out),
+        "identity_migrations": len(migrated_out),
         "failed": len(failures),
     }
     summary["ingested"] = sorted(ingested)
     summary["deleted"] = sorted(removals)
+    summary["identity_migrations"] = sorted(migrated_out)
     summary["deferred_removals"] = sorted(deferred_removals)
     summary["failed"] = failures
     summary["cascade"] = cascade

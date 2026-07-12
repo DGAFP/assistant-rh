@@ -141,3 +141,37 @@ def test_ingest_texte_bundle_realigns_children_after_canonical_upsert(monkeypatc
     assert upserted_chunks[0]["source_document_id"] == canonical
     assert calls[1]["params"] == (canonical,)
     assert events == ["commit"]
+
+
+def test_ingest_article_bundle_cascades_twin_in_same_transaction(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Fix swap #311 (P1 atomicité) : la cascade du jumeau version et l'ingest de
+    # la chronique partagent UNE seule transaction (un seul commit), la cascade
+    # précédant l'upsert de la chronique.
+    writer, calls, events = _writer(
+        [
+            {"rows": [("doc-old",)]},  # cascade: SELECT doc_id du jumeau
+            {"rowcount": 1},  # cascade: DELETE chunks legacy par cid
+            {"rowcount": 1},  # cascade: DELETE sections
+            {"rowcount": 1},  # cascade: DELETE documents
+            {"rowcount": 0},  # ingest: DELETE sections du doc chronique
+            {"rowcount": 0},  # ingest: DELETE chunks orphelins
+        ]
+    )
+    monkeypatch.setattr(writer, "ensure_legacy_target_table", lambda: None)
+    monkeypatch.setattr(writer, "_upsert_documents", lambda conn, documents: 1)
+    monkeypatch.setattr(writer, "_canonical_doc_id", lambda conn, short_id: None)
+    monkeypatch.setattr(writer, "_upsert_sections", lambda conn, sections: len(sections))
+    monkeypatch.setattr(writer, "_upsert", lambda conn, table, rows, conflict, **kwargs: len(rows))
+
+    counts = writer.ingest_article_bundle(
+        {"doc_id": "dn", "short_id": "LEGI_NEW", "checksum": "h"},
+        [{"section_id": "s", "doc_id": "dn", "section_index": 0}],
+        [{"cid": "LEGI_NEW", "chunk_id": "c", "_targets": ["legacy"]}],
+        cascade_cids=["LEGI_OLD"],
+    )
+
+    assert counts["migrated"] == {"chunks": 1, "sections": 1, "documents": 1}
+    assert events == ["commit"]  # une SEULE transaction pour cascade + ingest
+    # La cascade du jumeau (SELECT doc_id puis DELETE par cid) précède l'upsert.
+    assert "SELECT doc_id" in calls[0]["query"] and "rag_documents" in calls[0]["query"]
+    assert "DELETE" in calls[1]["query"] and "rag_chunks_dgafp" in calls[1]["query"]
