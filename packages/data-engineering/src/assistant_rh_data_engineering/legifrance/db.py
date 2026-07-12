@@ -416,6 +416,8 @@ class LegifranceDbWriter(ServicePublicDbWriter):
         chunk_conflict_column: str,
         preserve_embedding_columns: list[str],
         realign_source_document_id: bool,
+        cascade_cids: list[str] | None = None,
+        cascade_source: str = "legifrance",
     ) -> dict[str, int]:
         """Document + sections + remplacement des chunks en UNE transaction.
 
@@ -424,10 +426,21 @@ class LegifranceDbWriter(ServicePublicDbWriter):
         upsert des chunks sur leur clé propre en **préservant les embeddings**
         (backfillés par un job séparé, un delete+insert aveugle les perdrait),
         puis suppression des seuls chunks orphelins de la nouvelle version.
+
+        ``cascade_cids`` (migration d'identité version→chronique, fix swap #307) :
+        cascade ces cids (jumeaux version) DANS LA MÊME TRANSACTION, avant les
+        upserts. Atomique : si l'INSERT de la chronique échoue, le rollback
+        restaure le jumeau version — jamais de trou (ni version ni chronique).
+        Le résultat porte les comptes cascadés sous ``migrated``.
         """
         short_id = str(document.get("short_id") or "").strip().upper()
         doc_id = str(document.get("doc_id") or "")
         with self._connect() as conn:
+            migrated = {"chunks": 0, "sections": 0, "documents": 0}
+            if cascade_cids:
+                # Ne jamais s'auto-cascader (le short_id du bundle lui-même).
+                twins = [c for c in self._normalize_short_ids(cascade_cids) if c != short_id]
+                migrated = self._cascade_articles_ops(conn, twins, cascade_source)
             documents_count = self._upsert_documents(conn, [document])
             canonical_doc_id = self._canonical_doc_id(conn, short_id) if short_id else None
             if canonical_doc_id and doc_id and canonical_doc_id != doc_id:
@@ -488,6 +501,7 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                 "sections": sections_count,
                 "chunks_deleted": deleted,
                 "chunks": inserted,
+                "migrated": migrated,
             }
 
     def ingest_article_bundle(
@@ -495,8 +509,15 @@ class LegifranceDbWriter(ServicePublicDbWriter):
         document: dict[str, Any],
         sections: list[dict[str, Any]],
         chunks: list[dict[str, Any]],
+        *,
+        cascade_cids: list[str] | None = None,
+        cascade_source: str = "legifrance",
     ) -> dict[str, int]:
-        """Ré-ingestion atomique d'un article du code (table legacy, clé cid/chunk_id)."""
+        """Ré-ingestion atomique d'un article du code (table legacy, clé cid/chunk_id).
+
+        ``cascade_cids`` : jumeaux version à cascader dans la même transaction
+        avant l'ingest (migration d'identité, fix swap #307).
+        """
         projected_chunks = self.project_legacy_chunks(chunks)
         if not projected_chunks:
             raise ValueError("bundle article sans chunk legacy: remplacement destructif refusé")
@@ -510,6 +531,8 @@ class LegifranceDbWriter(ServicePublicDbWriter):
             chunk_conflict_column="chunk_id",
             preserve_embedding_columns=self._EMBEDDING_COLUMNS_LEGACY,
             realign_source_document_id=False,
+            cascade_cids=cascade_cids,
+            cascade_source=cascade_source,
         )
 
     def ingest_texte_bundle(
@@ -545,7 +568,19 @@ class LegifranceDbWriter(ServicePublicDbWriter):
         if not normalized:
             return {"chunks": 0, "sections": 0, "documents": 0}
         self.ensure_legacy_target_table()
-        with self._connect() as conn, conn.cursor() as cur:
+        with self._connect() as conn:
+            counts = self._cascade_articles_ops(conn, normalized, source)
+            conn.commit()
+            return counts
+
+    def _cascade_articles_ops(self, conn: Any, normalized: list[str], source: str) -> dict[str, int]:
+        """Cascade chunks legacy (par cid) + sections + documents sur une connexion
+        DONNÉE, SANS commit — réutilisable dans une transaction partagée (ex. la
+        migration d'identité, qui cascade le jumeau version puis ingère la
+        chronique dans une seule transaction atomique)."""
+        if not normalized:
+            return {"chunks": 0, "sections": 0, "documents": 0}
+        with conn.cursor() as cur:
             cur.execute(
                 sql.SQL(
                     "SELECT doc_id FROM {}.{} WHERE UPPER(TRIM(short_id)) = ANY(%s) AND short_id IS NOT NULL AND LOWER(TRIM(source)) = %s"
@@ -575,8 +610,7 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                     (doc_ids,),
                 )
                 deleted_documents = int(cur.rowcount or 0)
-            conn.commit()
-            return {"chunks": deleted_chunks, "sections": deleted_sections, "documents": deleted_documents}
+        return {"chunks": deleted_chunks, "sections": deleted_sections, "documents": deleted_documents}
 
     def delete_textes_cascade(self, short_ids: list[str], *, source: str = "legifrance") -> dict[str, int]:
         """Cascade d'un texte legacy — socle standard sur la table moderne."""

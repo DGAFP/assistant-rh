@@ -393,19 +393,29 @@ def ingest_delta(
         try:
             csum = str(silver_checksums.get(uid) or "")
             twin = stale_twin_by_checksum.get(csum) if csum and csum not in ambiguous_checksums else None
-            if twin is not None and twin != uid and twin not in migrated_out:
-                # Le jumeau version bloquerait l'INSERT sur (source, checksum) :
-                # on le cascade d'abord (il est de toute façon stale/à supprimer).
-                twin_counts = writer.delete_articles_cascade([twin], source=source)
-                migrated_out.add(twin)
-                for key in identity_cascade:
-                    identity_cascade[key] += int(twin_counts.get(key) or 0)
-            counts = writer.ingest_article_bundle(bundle["document"], bundle["sections"], bundle["chunks"])
+            if twin is not None and (twin == uid or twin in migrated_out):
+                twin = None
+            # Migration d'identité ATOMIQUE : le jumeau version bloquerait l'INSERT
+            # sur (source, checksum) ; on le cascade DANS LA MÊME TRANSACTION que
+            # l'ingest de la chronique. Si l'INSERT échoue, le rollback restaure le
+            # jumeau (jamais de trou) et migrated_out n'est PAS peuplé.
+            counts = writer.ingest_article_bundle(
+                bundle["document"],
+                bundle["sections"],
+                bundle["chunks"],
+                cascade_cids=[twin] if twin else None,
+                cascade_source=source,
+            )
             nb_chunks = int(counts.get("chunks") or 0)
             if nb_chunks <= 0:
                 raise RuntimeError(f"bundle {uid} ingéré sans aucun chunk legacy")
             ingested.append(uid)
             ingested_chunks[uid] = nb_chunks
+            if twin is not None:
+                migrated_out.add(twin)
+                mig = counts.get("migrated") or {}
+                for key in identity_cascade:
+                    identity_cascade[key] += int(mig.get(key) or 0)
         except Exception as exc:  # noqa: BLE001 — erreur par article, le run continue
             failures[uid] = str(exc)
 
@@ -481,7 +491,9 @@ def ingest_delta(
         for uid, count in ingested_chunks.items():
             if uid in arts and count > 0:
                 post_apply_chunks[uid] = count
-        for uid in removal_set:
+        # Retirer les supprimés ET les jumeaux version migrés (leur count est
+        # remplacé par celui de la chronique ingérée — sinon double comptage).
+        for uid in removal_set | migrated_out:
             post_apply_chunks.pop(uid, None)
         present = bool(post_apply_chunks)
         nb_chunks_total = sum(post_apply_chunks.values())
