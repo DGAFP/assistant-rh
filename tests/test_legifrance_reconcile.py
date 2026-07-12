@@ -219,23 +219,28 @@ def test_plan_unattributable_corpus_article_is_flagged_never_auto() -> None:
     assert plan.flagged_removals == ("LEGIARTI244",)
 
 
-def test_plan_old_version_attributed_by_title_is_authoritative_stale() -> None:
-    # Revue #307 bis (P1) : une ANCIENNE version d'un article suivi (id hors
-    # des alias de la TOC, ex. L652-1 recodifié) porte le TITRE de son texte.
-    # Un titre possédé par un texte suivi (via un frère alias-attribué) rend
-    # ses autres articles corpus attribuables -> stale autoritaire scopé, plus
-    # jamais de doublon VIGUEUR retrievable. Sans titre possédé -> flagged.
+def test_plan_extra_attribution_makes_old_version_authoritative_stale() -> None:
+    # Revue #307 ter : une ANCIENNE version hors TOC n'est cascadable que via
+    # une ownership VÉRIFIÉE (extra_attributions, résolue par PISTE getArticle
+    # dans le job). Owner suivi -> stale autoritaire scopé ; owner inconnu des
+    # textes suivis ou absent -> flagged (fail-closed).
     selection = _selection([_rec(1, **_code())])
     toc = {LEGITEXT: _arts(("LEGIARTI001", "VIGUEUR"))}
     corpus = _corpus(LEGIARTI001=("h1", 1), LEGIARTI_L652_OLD=("h-old", 1), LEGIARTI244=("h244", 1))
-    corpus["LEGIARTI001"]["title"] = "Code général de la fonction publique"
-    corpus["LEGIARTI_L652_OLD"]["title"] = "Code général de la fonction publique"  # même texte
-    corpus["LEGIARTI244"]["title"] = "Décret n°86-83 du 17 janvier 1986"  # texte NON suivi ici
 
-    lf_plan = reconcile.build_legifrance_plan(selection, toc, {"LEGIARTI001": "h1"}, corpus)
+    lf_plan = reconcile.build_legifrance_plan(
+        selection,
+        toc,
+        {"LEGIARTI001": "h1"},
+        corpus,
+        extra_attributions={
+            "LEGIARTI_L652_OLD": LEGITEXT,  # ownership vérifiée -> cascade scopée
+            "LEGIARTI244": "JORFTEXT000099999999",  # owner NON suivi -> ignoré, flagged
+        },
+    )
 
-    assert lf_plan.plan.auto_removals == ("LEGIARTI_L652_OLD",)  # ancienne version cascadée
-    assert lf_plan.plan.flagged_removals == ("LEGIARTI244",)  # texte non suivi : revue opérateur
+    assert lf_plan.plan.auto_removals == ("LEGIARTI_L652_OLD",)
+    assert lf_plan.plan.flagged_removals == ("LEGIARTI244",)
     assert "LEGIARTI_L652_OLD" in lf_plan.followed_articles[LEGITEXT]  # rattachée (deferral/agrégat)
 
 
@@ -451,12 +456,22 @@ class _FakePiste:
         self._fail = fail
         self._fail_uids = fail_uids or set()
         self.calls: list[tuple[str, int, str]] = []
+        # Ownership getArticle : uid -> texte parent ; uid absent = API en échec.
+        self.article_parents: dict[str, str] = {}
+        self.article_calls: list[str] = []
 
     def text_articles(self, text_uid: str, date_millis: int, *, kind: str = "code") -> list[CodeArticle]:
         self.calls.append((text_uid, date_millis, kind))
         if self._fail or text_uid in self._fail_uids:
             raise requests.ConnectionError("piste down")
         return list(self._toc.get(text_uid, []))
+
+    def get_article(self, article_id: str) -> dict[str, Any]:
+        self.article_calls.append(article_id)
+        parent = self.article_parents.get(article_id)
+        if parent is None:
+            raise requests.ConnectionError("getArticle down")
+        return {"article": {"cid": article_id, "textTitles": [{"cid": parent}]}}
 
 
 class _DeltaWriter:
@@ -617,6 +632,39 @@ def test_ingest_delta_targeted_alias_swaps_atomically() -> None:
     assert writer.article_bundles == ["LEGIARTI_NEW"]  # le cid jumeau est embarqué
     assert writer.article_cascades == [["LEGIARTI_OLD"]]
     assert summary["applied"] == {"ingested": 1, "skipped": 0, "deleted": 1, "failed": 0}
+
+
+def test_ingest_delta_resolves_out_of_toc_ownership_via_getarticle() -> None:
+    # Revue #307 ter : les articles hors TOC sont résolus via getArticle.
+    # Parent suivi -> stale attribué cascadé ; API en échec -> flagged (fail-closed).
+    grist = _RecordingGrist([_rec(1, **_texte(JORF_D1))])
+    piste = _FakePiste({JORF_D1: _arts(("LEGIARTI_A1", "VIGUEUR"))})
+    piste.article_parents["LEGIARTI_OLD_OWNED"] = JORF_D1  # ancienne version du texte suivi
+    # LEGIARTI_UNKNOWN absent de article_parents -> getArticle échoue -> flagged
+    writer = _DeltaWriter(_corpus(LEGIARTI_A1=("h1", 1), LEGIARTI_OLD_OWNED=("h-old", 1), LEGIARTI_UNKNOWN=("h-x", 1)))
+    documents = [{"short_id": "LEGIARTI_A1", "doc_id": "da1", "checksum": "h1"}]
+
+    summary = legifrance_ingestion.ingest_delta(writer, grist, piste, documents, [], [], toc_date_millis=1000)
+
+    assert sorted(piste.article_calls) == ["LEGIARTI_OLD_OWNED", "LEGIARTI_UNKNOWN"]
+    assert writer.article_cascades == [["LEGIARTI_OLD_OWNED"]]  # ownership vérifiée -> cascadé
+    assert summary["plan"]["stale"]["sample"] == ["LEGIARTI_OLD_OWNED"]
+    assert summary["plan"]["flagged"]["sample"] == ["LEGIARTI_UNKNOWN"]  # fail-closed
+
+
+def test_ingest_delta_getarticle_parent_not_followed_stays_flagged() -> None:
+    # Reproduction de la revue : un article d'un AUTRE texte (même s'il partage
+    # un titre) ne doit JAMAIS être cascadé — son parent résolu n'est pas suivi.
+    grist = _RecordingGrist([_rec(1, **_texte(JORF_D1))])
+    piste = _FakePiste({JORF_D1: _arts(("LEGIARTI_FOLLOWED", "VIGUEUR"))})
+    piste.article_parents["LEGIARTI_UNRELATED"] = "JORFTEXT000099999999"  # texte NON suivi
+    writer = _DeltaWriter(_corpus(LEGIARTI_FOLLOWED=("h1", 1), LEGIARTI_UNRELATED=("h2", 1)))
+    documents = [{"short_id": "LEGIARTI_FOLLOWED", "doc_id": "df", "checksum": "h1"}]
+
+    summary = legifrance_ingestion.ingest_delta(writer, grist, piste, documents, [], [], toc_date_millis=1000)
+
+    assert writer.article_cascades == []  # jamais de suppression autoritaire
+    assert summary["plan"]["flagged"]["sample"] == ["LEGIARTI_UNRELATED"]
 
 
 def test_ingest_delta_incomplete_bundle_defers_stale_cascade() -> None:

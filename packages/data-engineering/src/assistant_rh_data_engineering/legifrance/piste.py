@@ -92,6 +92,25 @@ def walk_table_matieres(payload: dict) -> list[CodeArticle]:
     return found
 
 
+def article_parent_text_uids(payload: dict) -> set[str]:
+    """JORFTEXT/LEGITEXT du (des) texte(s) parent(s) d'une réponse ``getArticle``.
+
+    Fonction pure — retourne un set (vide si non résoluble : fail-closed).
+    """
+    article = payload.get("article") or payload or {}
+    parents: set[str] = set()
+    for title in article.get("textTitles") or []:
+        for key in ("cid", "id"):
+            ident = str((title or {}).get(key) or "").strip().upper()
+            if ident.startswith(("JORFTEXT", "LEGITEXT")):
+                parents.add(ident)
+    for title in (article.get("context") or {}).get("titreTxt") or []:
+        ident = str((title or {}).get("cid") or "").strip().upper()
+        if ident.startswith(("JORFTEXT", "LEGITEXT")):
+            parents.add(ident)
+    return parents
+
+
 def articles_en_vigueur(payload: dict) -> list[str]:
     """CIDs des articles ``VIGUEUR`` d'une réponse ``tableMatieres``, dédupliqués + triés."""
     return sorted({article.cid for article in walk_table_matieres(payload) if article.etat.upper() == "VIGUEUR"})
@@ -151,6 +170,16 @@ class PisteClient:
     def table_matieres(self, legitext: str, date_millis: int, *, nature: str = "CODE") -> dict:
         """Structure d'un code (LEGITEXT) à une date (epoch millis)."""
         return self.consult("legi/tableMatieres", {"textId": legitext, "date": date_millis, "sctId": "", "nature": nature})
+
+    def get_article(self, article_id: str) -> dict:
+        """Un article par son identifiant LEGIARTI (version ou chronique).
+
+        La réponse porte l'**ownership vérifiable** : ``article.cid`` (chronique
+        de l'article) et ``textTitles[].cid`` (JORFTEXT/LEGITEXT du texte
+        parent) — sert à attribuer les anciennes versions du corpus que les
+        TOCs ne listent plus.
+        """
+        return self.consult("getArticle", {"id": article_id})
 
     def law_decree(self, jorftext: str, date_millis: int) -> dict:
         """Contenu/structure d'un texte LODA (loi, décret, arrêté) par son

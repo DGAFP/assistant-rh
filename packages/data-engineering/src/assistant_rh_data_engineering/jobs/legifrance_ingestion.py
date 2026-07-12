@@ -202,6 +202,11 @@ def _group_artifacts_by_uid(
     }
 
 
+# Résolution d'ownership PISTE (getArticle) des articles corpus hors TOC :
+# borne le nombre d'appels API par run — l'excédent reste flagged (fail-closed).
+_RESOLVE_OWNERSHIP_CAP = 200
+
+
 def ingest_delta(
     writer: Any,
     grist: Any,
@@ -233,6 +238,7 @@ def ingest_delta(
     import requests as _requests
 
     from assistant_rh_data_engineering.legifrance.piste import PisteError
+    from assistant_rh_data_engineering.legifrance.piste import article_parent_text_uids as _article_parent_text_uids
     from assistant_rh_data_engineering.legifrance.reconcile import (
         DEFAULT_MAX_AUTO_STALE,
         STATUT_ERREUR,
@@ -286,7 +292,42 @@ def ingest_delta(
     corpus = writer.list_legifrance_corpus(source)
     # max_auto_stale : None = défaut du module ; 0 = garde désactivé (migration délibérée).
     effective_max_stale = DEFAULT_MAX_AUTO_STALE if max_auto_stale is None else (max_auto_stale if max_auto_stale > 0 else None)
-    lf_plan = build_legifrance_plan(selection, toc_by_text, silver_checksums, corpus, requested=requested, max_auto_stale=effective_max_stale)
+
+    # Ownership vérifiable (revue #307 ter) : sonde GARDE LEVÉ (sinon les stale
+    # rétrogradés pollueraient la liste) pour isoler les articles corpus hors
+    # de toutes les TOCs (anciennes versions non listées), puis résolution un à
+    # un via PISTE getArticle → texte parent. Parent suivi et non ambigu =
+    # attribuable (stale autoritaire scopé) ; sinon, ou en cas d'erreur :
+    # flagged (fail-closed). Jamais d'attribution par titre (non unique).
+    probe = build_legifrance_plan(selection, toc_by_text, silver_checksums, corpus, requested=requested, max_auto_stale=None)
+    unresolved = sorted(probe.plan.flagged_removals)
+    extra_attributions: dict[str, str] = {}
+    if unresolved:
+        if len(unresolved) > _RESOLVE_OWNERSHIP_CAP:
+            print(
+                f"[warn] {len(unresolved)} articles hors TOC (> cap {_RESOLVE_OWNERSHIP_CAP}) : "
+                f"seuls les {_RESOLVE_OWNERSHIP_CAP} premiers sont résolus via PISTE, le reste reste flagged."
+            )
+        followed_uids = set(probe.followed_record_ids)
+        for uid in unresolved[:_RESOLVE_OWNERSHIP_CAP]:
+            try:
+                payload = piste.get_article(uid)
+            except Exception as exc:  # noqa: BLE001 — fail-closed : l'article reste flagged
+                print(f"[warn] résolution PISTE de {uid} en échec (reste flagged): {exc}")
+                continue
+            parents = {parent for parent in _article_parent_text_uids(payload) if parent in followed_uids}
+            if len(parents) == 1:
+                extra_attributions[uid] = next(iter(parents))
+
+    lf_plan = build_legifrance_plan(
+        selection,
+        toc_by_text,
+        silver_checksums,
+        corpus,
+        requested=requested,
+        max_auto_stale=effective_max_stale,
+        extra_attributions=extra_attributions or None,
+    )
     plan = lf_plan.plan
 
     summary: dict[str, Any] = {

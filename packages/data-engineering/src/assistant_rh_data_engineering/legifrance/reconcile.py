@@ -261,8 +261,14 @@ def build_legifrance_plan(
     retry_zero_chunk: bool = True,
     guard_empty_manifest: bool = True,
     max_auto_stale: int | None = DEFAULT_MAX_AUTO_STALE,
+    extra_attributions: Mapping[str, str] | None = None,
 ) -> LegifrancePlan:
     """Adapte référentiel Grist + TOCs PISTE + état corpus au diff ``build_plan``.
+
+    ``extra_attributions`` : ownership VÉRIFIÉE ``uid corpus → uid de texte
+    suivi`` pour les articles hors TOC (anciennes versions), établie en amont
+    par résolution PISTE ``getArticle``. Un owner inconnu des textes suivis est
+    ignoré (fail-closed → flagged).
 
     ``toc_by_text`` : follow-live PISTE par texte suivi (clé = uid de ligne,
     LEGITEXT ou JORFTEXT ; valeurs = articles avec cid chronique + version_id +
@@ -347,35 +353,18 @@ def build_legifrance_plan(
             # PAS ajouté au manifest → stale autoritaire attribuable (migration
             # d'identité version→chronique, remplacé par son cid).
 
-    # Attribution TRANSITIVE par titre (revue #307 bis) : les TOCs ne listent
-    # que les versions courantes — une ANCIENNE version d'un article suivi
-    # (id hors alias, ex. L652-1 recodifié) resterait inattribuable et servie
-    # en doublon. Or les articles portent le titre de leur TEXTE : un titre
-    # dont AU MOINS un article corpus est alias-attribué à un texte suivi est
-    # « possédé » par ce texte, et ses autres articles corpus lui sont
-    # attribuables (stale autoritaire scopé). Un texte non suivi n'a par
-    # construction aucun article alias-attribué : ses articles restent flagged.
-    title_by_uid = {
-        str(raw_uid).strip().upper(): _fold(state.get("title"))
-        for raw_uid, state in corpus.items()
-        if state.get("title") and is_article_uid(str(raw_uid))
-    }
-    owned_titles: dict[str, str] = {}
-    for text_uid, arts_set in followed_articles.items():
-        for uid in arts_set & corpus_article_uids:
-            title = title_by_uid.get(uid)
-            if title:
-                owned_titles.setdefault(title, text_uid)
-
-    # Corpus article hors de toutes les TOCs suivies : attribuable par titre →
-    # stale autoritaire (ancienne version d'un texte suivi) ; sinon flagged
-    # (weak_removal), jamais de suppression autoritaire — protection
-    # structurelle des articles d'autres textes (les « 244 » du 11/07).
+    # Corpus article hors de toutes les TOCs suivies : attribuable via une
+    # ownership VÉRIFIÉE en amont (``extra_attributions`` : résolution PISTE
+    # ``getArticle`` → texte parent, cf. job) → stale autoritaire scopé
+    # (ancienne version d'un texte suivi, ex. L652-1 recodifié). Sinon flagged
+    # (weak_removal), jamais de suppression autoritaire — fail-closed,
+    # protection structurelle des articles d'autres textes (les « 244 »).
+    extras = {str(uid).strip().upper(): str(owner).strip().upper() for uid, owner in (extra_attributions or {}).items()}
     for uid in corpus_article_uids:
         if uid in manifest or uid in attributable or uid in protected or not _wanted(uid):
             continue
-        owner = owned_titles.get(title_by_uid.get(uid, ""))
-        if owner:
+        owner = extras.get(uid)
+        if owner and owner in followed_articles:
             attributable.add(uid)
             followed_articles[owner].add(uid)
             continue
