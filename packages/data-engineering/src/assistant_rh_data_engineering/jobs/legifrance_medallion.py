@@ -27,15 +27,20 @@ def chunked(items: list[Any], size: int) -> list[list[Any]]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description=(
-            "Pipeline médaillon Légifrance ne traitant que le bronze/raw déjà disponible. "
-            "Le dump LEGI doit être préparé séparément."
-        )
+        description=("Pipeline médaillon Légifrance ne traitant que le bronze/raw déjà disponible. Le dump LEGI doit être préparé séparément.")
     )
     parser.add_argument(
         "--lake-root",
         default="data/lake/legifrance",
         help="Racine locale du data lake.",
+    )
+    parser.add_argument(
+        "--article-cids-json",
+        default="config/legifrance_article_cids.json",
+        help=(
+            "Cache follow-live des articles (clé 'articles' = paires version/alias → cid chronique) : "
+            "rétablit l'identité stable en bronze (le XML DILA ne porte pas le cid chronique)."
+        ),
     )
     parser.add_argument(
         "--batch-size",
@@ -129,6 +134,28 @@ def main() -> int:
     config = LegifrancePipelineConfig(paths=LakePaths(root_dir=Path(args.lake_root)))
     config.gold.legacy_table_name = args.legacy_table_name
     config.gold.modern_table_name = args.modern_table_name
+
+    # Identité stable (revue #307) : le XML DILA ne porte pas le cid chronique.
+    # Le mapping alias→chronique vient du cache follow-live (clé "articles").
+    cids_path = Path(args.article_cids_json)
+    if not cids_path.is_absolute():
+        cids_path = REPO_ROOT / cids_path
+    if cids_path.exists():
+        cache_payload = json.loads(cids_path.read_text(encoding="utf-8"))
+        mapping: dict[str, str] = {}
+        for entry in cache_payload.get("articles") or []:
+            chronical = str(entry.get("cid") or "").strip().upper()
+            if not chronical:
+                continue
+            for alias in [entry.get("version_id"), *(entry.get("aliases") or [])]:
+                alias_key = str(alias or "").strip().upper()
+                if alias_key:
+                    mapping[alias_key] = chronical
+        config.bronze.article_cid_mapping = mapping
+        if not mapping:
+            print(f"[warn] {cids_path.name} sans clé 'articles' (ancien format) : identités non stabilisées (cid = ID de version).")
+    else:
+        print(f"[warn] cache CIDs introuvable ({cids_path}) : identités non stabilisées (cid = ID de version).")
 
     if args.single_chunk_per_article:
         config.gold.single_chunk_per_article = True

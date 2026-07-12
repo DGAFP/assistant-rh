@@ -264,6 +264,13 @@ def job_environment(spec: dict[str, Any], target_env: str, region: str) -> dict[
     if "albert" in groups:
         env["ALBERT_API_KEY"] = env_required("ALBERT_API_KEY")
         env["ALBERT_BASE_URL"] = env_optional("ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1")
+    if "piste" in groups:
+        # API Légifrance (follow-live des textes suivis, mode --delta Legi).
+        # Groupe préparé mais PAS encore activé sur les jobs legifrance : le
+        # basculement CI du delta (avec pose des secrets LEGIFRANCE_*) est
+        # l'étape cron #250 — le chemin legacy upsert-all reste inchangé.
+        env["LEGIFRANCE_CLIENT_ID"] = env_required("LEGIFRANCE_CLIENT_ID")
+        env["LEGIFRANCE_CLIENT_SECRET"] = env_required("LEGIFRANCE_CLIENT_SECRET")
     return env
 
 
@@ -425,6 +432,7 @@ def upsert_and_start_jobs(args: argparse.Namespace) -> int:
         env_optional("SCALEWAY_API_KEY"),
         env_optional("GRIST_API_KEY"),
         env_optional("ALBERT_API_KEY"),
+        env_optional("LEGIFRANCE_CLIENT_SECRET"),
     ]
     context = {
         "target_env": args.target_env,

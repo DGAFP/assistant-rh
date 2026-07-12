@@ -24,26 +24,45 @@ DEFAULT_BASE_URL = "https://api.piste.gouv.fr/dila/legifrance/lf-engine-app"
 
 @dataclass(frozen=True)
 class CodeArticle:
-    """Un article d'un code, tel que renvoyé par ``tableMatieres``."""
+    """Un article d'un texte, agrégé depuis ``tableMatieres``/``lawDecree``.
 
-    cid: str  # LEGIARTI...
+    ``cid`` = l'identité **stable** retenue pour le corpus : le cid chronique
+    LEGIARTI quand la réponse en porte un ; pour les articles dont le ``cid``
+    API est un JORFARTI (arrêtés/décrets non re-chroniqués côté LEGI), c'est
+    l'``id`` LEGIARTI de la version en vigueur. ``version_id`` = l'identifiant
+    LEGIARTI de la version courante. ``alias_ids`` = TOUS les identifiants vus
+    pour cet article (toutes versions + cid API) — le corpus historique étant
+    keyé par version, ils servent à l'attribution (migration d'identité).
+
+    L'API renvoie UN NŒUD PAR VERSION (revue #307 : le décret 86-83 art. 50 a
+    un nœud VIGUEUR et un nœud ABROGE pour le même cid) : ``walk_table_matieres``
+    agrège par article avec précédence VIGUEUR — jamais d'écrasement dernier-gagne.
+    """
+
+    cid: str  # identité stable (LEGIARTI)
     etat: str  # VIGUEUR | ABROGE | ...
     num: str | None = None  # numéro d'article (L1, R.331-7, ...)
+    version_id: str = ""  # LEGIARTI... (version courante)
+    alias_ids: tuple[str, ...] = ()  # tous les identifiants vus (versions + cid API)
 
 
 def walk_table_matieres(payload: dict) -> list[CodeArticle]:
-    """Extrait récursivement les articles (``cid`` LEGIARTI + ``etat`` + ``num``)
-    d'une réponse ``tableMatieres``, quel que soit l'imbriquement des sections.
+    """Extrait les articles d'une réponse ``tableMatieres``/``lawDecree``, quel
+    que soit l'imbriquement, en agrégeant les nœuds PAR ARTICLE (l'API émet un
+    nœud par version). Précédence d'état : VIGUEUR gagne sur tout autre état.
 
     Fonction pure (aucun I/O) — testable sur un fixture.
     """
-    found: list[CodeArticle] = []
+    # Groupes par clé d'article = cid API (chronique LEGIARTI ou JORFARTI).
+    groups: dict[str, list[dict]] = {}
 
     def _walk(node: object) -> None:
         if isinstance(node, dict):
-            ident = str(node.get("cid") or node.get("id") or "")
-            if ident.startswith("LEGIARTI"):
-                found.append(CodeArticle(cid=ident, etat=str(node.get("etat") or ""), num=node.get("num")))
+            node_id = str(node.get("id") or "")
+            node_cid = str(node.get("cid") or "")
+            if node_id.startswith(("LEGIARTI", "JORFARTI")) or node_cid.startswith(("LEGIARTI", "JORFARTI")):
+                key = node_cid or node_id
+                groups.setdefault(key, []).append({"id": node_id, "cid": node_cid, "etat": str(node.get("etat") or ""), "num": node.get("num")})
             for value in node.values():
                 _walk(value)
         elif isinstance(node, list):
@@ -51,7 +70,45 @@ def walk_table_matieres(payload: dict) -> list[CodeArticle]:
                 _walk(value)
 
     _walk(payload)
+
+    found: list[CodeArticle] = []
+    for key, nodes in groups.items():
+        current = next((n for n in nodes if n["etat"].upper() == "VIGUEUR"), nodes[-1])
+        aliases = tuple(sorted({ident for n in nodes for ident in (n["id"], n["cid"]) if ident}))
+        # Identité stable = le cid API, TOUJOURS (LEGIARTI chronique, ou
+        # JORFARTI pour les textes non re-chroniqués côté LEGI — lui aussi
+        # stable à travers les versions). Revue #307 bis : un fallback vers
+        # l'id LEGIARTI de la version courante recréerait le churn d'identité
+        # à chaque modification.
+        found.append(
+            CodeArticle(
+                cid=key,
+                etat=current["etat"],
+                num=current["num"],
+                version_id=current["id"] or key,
+                alias_ids=aliases,
+            )
+        )
     return found
+
+
+def article_parent_text_uids(payload: dict) -> set[str]:
+    """JORFTEXT/LEGITEXT du (des) texte(s) parent(s) d'une réponse ``getArticle``.
+
+    Fonction pure — retourne un set (vide si non résoluble : fail-closed).
+    """
+    article = payload.get("article") or payload or {}
+    parents: set[str] = set()
+    for title in article.get("textTitles") or []:
+        for key in ("cid", "id"):
+            ident = str((title or {}).get(key) or "").strip().upper()
+            if ident.startswith(("JORFTEXT", "LEGITEXT")):
+                parents.add(ident)
+    for title in (article.get("context") or {}).get("titreTxt") or []:
+        ident = str((title or {}).get("cid") or "").strip().upper()
+        if ident.startswith(("JORFTEXT", "LEGITEXT")):
+            parents.add(ident)
+    return parents
 
 
 def articles_en_vigueur(payload: dict) -> list[str]:
@@ -114,6 +171,27 @@ class PisteClient:
         """Structure d'un code (LEGITEXT) à une date (epoch millis)."""
         return self.consult("legi/tableMatieres", {"textId": legitext, "date": date_millis, "sctId": "", "nature": nature})
 
+    def get_article(self, article_id: str) -> dict:
+        """Un article par son identifiant LEGIARTI (version ou chronique).
+
+        La réponse porte l'**ownership vérifiable** : ``article.cid`` (chronique
+        de l'article) et ``textTitles[].cid`` (JORFTEXT/LEGITEXT du texte
+        parent) — sert à attribuer les anciennes versions du corpus que les
+        TOCs ne listent plus.
+        """
+        return self.consult("getArticle", {"id": article_id})
+
+    def law_decree(self, jorftext: str, date_millis: int) -> dict:
+        """Contenu/structure d'un texte LODA (loi, décret, arrêté) par son
+        JORFTEXT à une date — ses articles avec cid chronique + version + ETAT."""
+        return self.consult("lawDecree", {"textId": jorftext, "date": date_millis, "searchedString": ""})
+
+    def text_articles(self, text_uid: str, date_millis: int, *, kind: str = "code") -> list[CodeArticle]:
+        """Articles (TOC follow-live) d'un texte suivi : ``kind='code'`` →
+        ``legi/tableMatieres(LEGITEXT)`` ; ``kind='texte'`` → ``lawDecree(JORFTEXT)``."""
+        payload = self.table_matieres(text_uid, date_millis) if kind == "code" else self.law_decree(text_uid, date_millis)
+        return walk_table_matieres(payload)
+
     def code_articles_en_vigueur(self, legitext: str, date_millis: int) -> list[str]:
-        """CIDs des articles en vigueur d'un code à une date (le set follow-live)."""
+        """CIDs chroniques des articles en vigueur d'un code à une date."""
         return articles_en_vigueur(self.table_matieres(legitext, date_millis))
