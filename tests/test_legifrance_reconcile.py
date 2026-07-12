@@ -562,7 +562,7 @@ def test_ingest_delta_apply_single_route_and_aggregated_writeback_per_text() -> 
     # par ingest_article_bundle / delete_articles_cascade.
     assert writer.article_bundles == ["LEGIARTI002", "LEGIARTI101"]
     assert writer.article_cascades == [["LEGIARTI004", "LEGIARTI201"]]
-    assert summary["applied"] == {"ingested": 2, "skipped": 0, "deleted": 2, "failed": 0}
+    assert summary["applied"] == {"ingested": 2, "skipped": 0, "deleted": 2, "identity_migrations": 0, "failed": 0}
     assert summary["plan"]["flagged"]["sample"] == ["LEGIARTI999"]  # inattribuable, jamais cascadé
 
     by_record = {record_id: fields for record_id, fields in grist.writebacks}
@@ -631,7 +631,49 @@ def test_ingest_delta_targeted_alias_swaps_atomically() -> None:
 
     assert writer.article_bundles == ["LEGIARTI_NEW"]  # le cid jumeau est embarqué
     assert writer.article_cascades == [["LEGIARTI_OLD"]]
-    assert summary["applied"] == {"ingested": 1, "skipped": 0, "deleted": 1, "failed": 0}
+    assert summary["applied"] == {"ingested": 1, "skipped": 0, "deleted": 1, "identity_migrations": 0, "failed": 0}
+
+
+def test_ingest_delta_identity_migration_deletes_checksum_twin_before_ingest() -> None:
+    # Migration d'identité version->chronique (fix swap #307) : l'article
+    # recodifié arrive sous son cid CHRONIQUE (new) avec un contenu identique à
+    # son ancienne version encore en base (stale, même checksum).
+    # uq_rag_documents_source_checksum bloquerait l'INSERT tant que le jumeau
+    # version occupe (source, checksum) -> on cascade le jumeau AVANT d'ingérer
+    # la chronique (out-avant-in), dans le même run.
+    grist = _RecordingGrist([_rec(1, **_code())])
+    piste = _FakePiste({LEGITEXT: _arts(("LEGIARTI_NEW", "VIGUEUR", "LEGIARTI_OLD"))})
+    # Le jumeau OLD est en base avec le MÊME checksum que le bundle chronique.
+    writer = _DeltaWriter(_corpus(LEGIARTI_OLD=("same-hash", 1)))
+    documents = [{"short_id": "LEGIARTI_NEW", "doc_id": "dn", "checksum": "same-hash"}]
+    sections = [{"doc_id": "dn", "section_index": 0, "section_id": "sn"}]
+    chunks = [{"cid": "LEGIARTI_NEW", "chunk_id": "LEGIARTI_NEW_0", "_targets": ["legacy"]}]
+
+    summary = legifrance_ingestion.ingest_delta(writer, grist, piste, documents, sections, chunks, toc_date_millis=1000)
+
+    # Le jumeau version est cascadé (une seule fois) AVANT l'ingest de la chronique.
+    assert writer.article_cascades == [["LEGIARTI_OLD"]]
+    assert writer.article_bundles == ["LEGIARTI_NEW"]
+    assert summary["identity_migrations"] == ["LEGIARTI_OLD"]
+    assert summary["applied"] == {"ingested": 1, "skipped": 0, "deleted": 1, "identity_migrations": 1, "failed": 0}
+    # Pas de double suppression : le jumeau migré n'est pas re-cascadé au sweep.
+    assert summary["deleted"] == []
+
+
+def test_ingest_delta_distinct_checksum_is_not_treated_as_identity_migration() -> None:
+    # Garde-fou : un stale au checksum DIFFÉRENT du bundle n'est pas un jumeau
+    # d'identité -> pas de suppression anticipée, comportement inchangé.
+    grist = _RecordingGrist([_rec(1, **_code())])
+    piste = _FakePiste({LEGITEXT: _arts(("LEGIARTI_NEW", "VIGUEUR", "LEGIARTI_OLD"))})
+    writer = _DeltaWriter(_corpus(LEGIARTI_OLD=("other-hash", 1)))
+    documents = [{"short_id": "LEGIARTI_NEW", "doc_id": "dn", "checksum": "new-hash"}]
+    sections = [{"doc_id": "dn", "section_index": 0, "section_id": "sn"}]
+    chunks = [{"cid": "LEGIARTI_NEW", "chunk_id": "LEGIARTI_NEW_0", "_targets": ["legacy"]}]
+
+    summary = legifrance_ingestion.ingest_delta(writer, grist, piste, documents, sections, chunks, toc_date_millis=1000)
+
+    assert summary["applied"]["identity_migrations"] == 0
+    assert summary["identity_migrations"] == []
 
 
 def test_ingest_delta_resolves_out_of_toc_ownership_via_getarticle() -> None:
@@ -933,7 +975,7 @@ def test_main_delta_apply_end_to_end(
     assert legifrance_ingestion.main() == 0
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload["applied"] == {"ingested": 1, "skipped": 0, "deleted": 0, "failed": 0}
+    assert payload["applied"] == {"ingested": 1, "skipped": 0, "deleted": 0, "identity_migrations": 0, "failed": 0}
     assert writer.article_bundles == ["LEGIARTI002"]
     by_record = {record_id: fields for record_id, fields in grist.writebacks}
     assert by_record[1]["statut"] == "ingere"
