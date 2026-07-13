@@ -46,6 +46,9 @@ jobs:
       GRIST_TABLE_ID: ${{ vars.GRIST_TABLE_ID }}
       ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
       ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
+      # Follow-live PISTE (ingest Legi --delta) : activation delta = étape #250.
+      LEGIFRANCE_CLIENT_ID: ${{ secrets.LEGIFRANCE_CLIENT_ID }}
+      LEGIFRANCE_CLIENT_SECRET: ${{ secrets.LEGIFRANCE_CLIENT_SECRET }}
 
     steps:
       - name: Checkout code

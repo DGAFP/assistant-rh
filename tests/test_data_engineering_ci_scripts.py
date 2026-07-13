@@ -418,8 +418,77 @@ def test_cron_delta_workflow_chains_delta_on_staging() -> None:
     assert "--wait" in workflow  # chaîne séquentielle medallion->ingest->embeddings
     assert "--service-public true" in workflow and "--legifrance true" in workflow
     assert "--run-ingestion true" in workflow and "--run-embeddings true" in workflow
+    # Le cron fournit les creds Grist ET Légifrance/PISTE (jobs delta).
+    assert "GRIST_API_KEY:" in workflow
+    assert "LEGIFRANCE_CLIENT_ID:" in workflow and "LEGIFRANCE_CLIENT_SECRET:" in workflow
     # Le cron ne touche jamais la prod.
     assert "scaleway-production" not in workflow and "--target-env prod" not in workflow
+
+
+def test_delta_env_groups_for_adds_grist_and_piste_where_needed() -> None:
+    assert scaleway_data_jobs.delta_env_groups_for("service-public-medallion") == ["grist"]
+    assert scaleway_data_jobs.delta_env_groups_for("service-public-ingestion") == ["grist"]
+    assert scaleway_data_jobs.delta_env_groups_for("legifrance-ingestion") == ["grist", "piste"]
+    assert scaleway_data_jobs.delta_env_groups_for("legifrance-medallion") == []  # cache-driven
+    assert scaleway_data_jobs.delta_env_groups_for("legifrance-bulk-dump") == []
+
+
+def test_delta_chain_selects_medallion_ingest_embeddings_without_bulk_dump() -> None:
+    # Valide les jobs RÉELLEMENT sélectionnés (pas juste les flags) : la chaîne
+    # est medallion->ingest->embeddings dans l'ordre, SANS le bulk dump legacy.
+    args = scaleway_data_jobs.build_parser().parse_args(
+        [
+            "--target-env",
+            "staging",
+            "--image-tag",
+            "t",
+            "--delta",
+            "true",
+            "--service-public",
+            "true",
+            "--legifrance",
+            "true",
+            "--embeddings",
+            "true",
+            "--run-ingestion",
+            "true",
+            "--run-embeddings",
+            "true",
+        ]
+    )
+    config = scaleway_data_jobs.load_config(scaleway_data_jobs.DEFAULT_CONFIG)
+    selected = [job["key"] for job in config["jobs"] if scaleway_data_jobs.should_run(job, args)]
+    assert selected == [
+        "service-public-medallion",
+        "service-public-ingestion",
+        "legifrance-medallion",
+        "legifrance-ingestion",
+        "embeddings-service-public",
+        "embeddings-legifrance",
+    ]
+    assert "legifrance-bulk-dump" not in selected
+
+
+def test_delta_job_environment_injects_grist_and_piste_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Valide les ENV propagés : un ingest Legi delta reçoit bien GRIST_* + LEGIFRANCE_*.
+    required = (
+        "SCW_ACCESS_KEY",
+        "SCW_SECRET_KEY",
+        "SCW_POSTGRES_DSN",
+        "GRIST_API_BASE_URL",
+        "GRIST_API_KEY",
+        "GRIST_DOC_ID",
+        "LEGIFRANCE_CLIENT_ID",
+        "LEGIFRANCE_CLIENT_SECRET",
+    )
+    for name in required:
+        monkeypatch.setenv(name, f"val-{name}")
+    base_groups = ["object_storage", "postgres"]
+    augmented = base_groups + scaleway_data_jobs.delta_env_groups_for("legifrance-ingestion")
+    env = scaleway_data_jobs.job_environment({"env_groups": augmented}, "staging", "fr-par")
+    assert env["GRIST_API_KEY"] == "val-GRIST_API_KEY"
+    assert env["LEGIFRANCE_CLIENT_ID"] == "val-LEGIFRANCE_CLIENT_ID"
+    assert env["LEGIFRANCE_CLIENT_SECRET"] == "val-LEGIFRANCE_CLIENT_SECRET"
 
 
 def test_scaleway_job_environment_albert_group_injects_albert_creds(monkeypatch: pytest.MonkeyPatch) -> None:

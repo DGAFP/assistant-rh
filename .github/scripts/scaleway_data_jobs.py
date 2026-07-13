@@ -178,6 +178,23 @@ def delta_args_for(key: str) -> list[str]:
     return extra
 
 
+def delta_env_groups_for(key: str) -> list[str]:
+    """Env groups SUPPLÉMENTAIRES requis par un job en mode delta (#250).
+
+    Ajoutés UNIQUEMENT quand --delta est actif, pour ne pas casser le chemin
+    legacy (dont les workflows ne fournissent pas GRIST_*/LEGIFRANCE_*) :
+    - medallion SP (--from-grist) et ingest SP (--delta) lisent le référentiel
+      Grist -> ``grist`` ;
+    - ingest Legi (--delta) lit Grist ET la TOC PISTE (follow-live) -> ``grist`` + ``piste`` ;
+    - medallion Legi (--delta) reste cache-driven (article_cids) -> aucun ajout.
+    """
+    if key in {"service-public-medallion", "service-public-ingestion"}:
+        return ["grist"]
+    if key == "legifrance-ingestion":
+        return ["grist", "piste"]
+    return []
+
+
 def indexed_args(prefix: str, values: list[str]) -> list[str]:
     return [f"{prefix}.{index}={value}" for index, value in enumerate(values)]
 
@@ -312,6 +329,11 @@ def plan_mode_overrides(mode: str, run_ingestion: bool, run_embeddings: bool) ->
 
 def should_run(spec: dict[str, Any], args: argparse.Namespace) -> bool:
     domain = spec["domain"]
+    if getattr(args, "delta", False) and str(spec.get("key") or "") == "legifrance-bulk-dump":
+        # Chaîne delta quotidienne (#250) = medallion->ingest->embeddings. Le bulk
+        # dump (raw DILA, job legacy ~4h) refresh le contenu à une cadence séparée,
+        # il n'est jamais démarré par le cron delta.
+        return False
     if domain == "service_public" and not args.service_public:
         return False
     if domain == "legifrance" and not args.legifrance:
@@ -494,7 +516,12 @@ def upsert_and_start_jobs(args: argparse.Namespace) -> int:
             command_args.extend(["--only-column", embedding_only_column])
         if args.target_env == "prod":
             command_args.extend(render_args(spec.get("prod_args") or [], context))
-        environment = job_environment(spec, args.target_env, region)
+        environment_spec = spec
+        if getattr(args, "delta", False):
+            extra_groups = delta_env_groups_for(str(spec.get("key") or ""))
+            if extra_groups:
+                environment_spec = {**spec, "env_groups": list(spec.get("env_groups") or []) + extra_groups}
+        environment = job_environment(environment_spec, args.target_env, region)
         print(f"Starting Scaleway job {name}: data-ingestion {' '.join(command_args)}")
         start_definition(
             job_id,
