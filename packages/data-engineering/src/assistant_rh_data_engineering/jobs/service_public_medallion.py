@@ -6,6 +6,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from assistant_rh_data_engineering.utils.medallion_delta import (
+    capture_previous_checksums,
+    count_valid_gold_chunks,  # noqa: F401 — ré-exporté (référencé par les tests SP)
+    gold_reuse_fingerprint,
+    hydrate_silver_gold,
+    read_gold_fingerprints,
+    reusable_gold_chunk_count,
+    write_gold_fingerprints,
+)
+
 cwd = Path.cwd().resolve()
 REPO_ROOT = cwd.parent if cwd.name == "scripts" else cwd
 if str(REPO_ROOT) not in sys.path:
@@ -16,28 +26,6 @@ def chunked(items: list[str], size: int) -> list[list[str]]:
     if size <= 0:
         return [items]
     return [items[i : i + size] for i in range(0, len(items), size)]
-
-
-def count_valid_gold_chunks(chunks_path: Path) -> int:
-    """Nombre de chunks gold VALIDES (une ligne = un JSON). 0 si réutilisation impossible.
-
-    Un gold vide, illisible (``OSError``) ou dont une ligne n'est pas du JSON
-    valide (``JSONDecodeError``) renvoie 0 -> reconstruit plutôt que réutiliser un
-    artefact corrompu (leçon retry_zero_chunk : un skip ici bloquerait chaque run
-    delta sans jamais s'auto-réparer).
-    """
-    try:
-        lines = [line for line in chunks_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    except OSError:
-        return 0
-    count = 0
-    for line in lines:
-        try:
-            json.loads(line)
-        except json.JSONDecodeError:
-            return 0
-        count += 1
-    return count
 
 
 def load_fiche_config(config_path: Path) -> dict[str, Any]:
@@ -290,25 +278,24 @@ def main() -> int:
     # --sync-object-storage), le lake est persistant : rien à hydrater.
     hydrated_from_object_storage: dict[str, str] | None = None
     if args.delta and args.sync_object_storage:
-        downloader = ScalewayObjectStorageSync(ObjectStorageConfig.from_env())
-        hydrated_from_object_storage = downloader.download_medallion_root(
-            config.paths.root_dir,
-            args.target_env,
-            include_layers=("silver", "gold"),
-        )
+        syncer = ScalewayObjectStorageSync(ObjectStorageConfig.from_env())
+        hydrated_from_object_storage = hydrate_silver_gold(syncer, config.paths.root_dir, args.target_env, "service_public")
 
-    # Mode --delta : mémoriser les checksums silver AVANT le run (les artefacts
-    # sont réécrits par run_silver) pour décider quoi reconstruire en gold.
+    # Mode --delta : mémoriser les checksums silver AVANT le run (run_silver les
+    # réécrit) pour décider quoi reconstruire en gold. La réutilisation est gatée
+    # par l'empreinte config gold/embeddings (un checksum silver inchangé ne
+    # suffit pas si le chunking/embeddings a changé depuis le run précédent).
     previous_checksums: dict[str, str] = {}
+    gold_fingerprint: str | None = None
+    previous_fingerprints: dict[str, str] = {}
+    processed_uids: set[str] = set()
     if args.delta:
-        for doc_path in sorted((config.paths.silver_dir / "documents").glob("*.document.json")):
-            try:
-                payload = json.loads(doc_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            uid = str(payload.get("short_id") or "").strip().upper()
-            if uid:
-                previous_checksums[uid] = str(payload.get("checksum") or "")
+        previous_checksums = capture_previous_checksums(config.paths.silver_dir / "documents")
+        gold_fingerprint = gold_reuse_fingerprint(
+            single_chunk_per_article=getattr(config.gold, "single_chunk_per_article", False),
+            embeddings=config.embeddings,
+        )
+        previous_fingerprints = read_gold_fingerprints(config.paths.gold_dir)
 
     pipeline = ServicePublicPipeline(config)
     bronze_assets = pipeline.run_bronze()
@@ -323,17 +310,17 @@ def main() -> int:
             for bundle in silver_batch:
                 uid = str(bundle.document.get("short_id") or "").strip().upper()
                 checksum = str(bundle.document.get("checksum") or "")
-                chunks_path = config.paths.gold_dir / "chunks" / f"{uid}.chunks.jsonl"
+                processed_uids.add(uid)
                 reused_count = 0
-                if checksum and previous_checksums.get(uid) == checksum and chunks_path.exists():
-                    reused_count = count_valid_gold_chunks(chunks_path)
+                if previous_fingerprints.get(uid) == gold_fingerprint:
+                    reused_count = reusable_gold_chunk_count(config.paths.gold_dir / "chunks", uid, checksum, previous_checksums)
                 if reused_count > 0:
-                    # Contenu source inchangé et gold déjà construit : on ne
-                    # re-paye pas les embeddings, l'artefact existant est réutilisé.
+                    # Contenu source inchangé, config gold inchangée pour CE doc,
+                    # gold valide : on ne re-paye pas les embeddings, artefact réutilisé.
                     reused_gold_chunks[uid] = reused_count
                     continue
-                # Nouveau, modifié, OU gold existant vide/corrompu malgré un hash
-                # inchangé : reconstruire (leçon retry_zero_chunk — un skip ici
+                # Nouveau, modifié, config gold changée pour ce doc, OU gold vide/
+                # corrompu : reconstruire (leçon retry_zero_chunk — un skip ici
                 # ferait échouer chaque run delta sans jamais s'auto-réparer).
                 to_build.append(bundle)
             gold_batch = pipeline.run_gold(to_build) if to_build else []
@@ -341,6 +328,14 @@ def main() -> int:
             gold_batch = pipeline.run_gold(silver_batch)
         silver_bundles.extend(silver_batch)
         gold_bundles.extend(gold_batch)
+
+    # Persiste l'empreinte PAR DOCUMENT traité (round-trip OS avec le gold), en
+    # PRÉSERVANT les entrées des documents hors de ce run partiel.
+    if args.delta and gold_fingerprint is not None:
+        merged = dict(previous_fingerprints)
+        for uid in processed_uids:
+            merged[uid] = gold_fingerprint
+        write_gold_fingerprints(config.paths.gold_dir, merged)
 
     per_fiche = summarize_pipeline_outputs(
         fiche_ids,
