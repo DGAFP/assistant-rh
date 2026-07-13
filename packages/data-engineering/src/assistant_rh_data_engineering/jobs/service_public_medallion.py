@@ -18,6 +18,28 @@ def chunked(items: list[str], size: int) -> list[list[str]]:
     return [items[i : i + size] for i in range(0, len(items), size)]
 
 
+def count_valid_gold_chunks(chunks_path: Path) -> int:
+    """Nombre de chunks gold VALIDES (une ligne = un JSON). 0 si réutilisation impossible.
+
+    Un gold vide, illisible (``OSError``) ou dont une ligne n'est pas du JSON
+    valide (``JSONDecodeError``) renvoie 0 -> reconstruit plutôt que réutiliser un
+    artefact corrompu (leçon retry_zero_chunk : un skip ici bloquerait chaque run
+    delta sans jamais s'auto-réparer).
+    """
+    try:
+        lines = [line for line in chunks_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except OSError:
+        return 0
+    count = 0
+    for line in lines:
+        try:
+            json.loads(line)
+        except json.JSONDecodeError:
+            return 0
+        count += 1
+    return count
+
+
 def load_fiche_config(config_path: Path) -> dict[str, Any]:
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -260,6 +282,21 @@ def main() -> int:
     elif args.with_scaleway_bge:
         config.embeddings.enable_bge_scaleway = True
 
+    # Mode --delta sur job STATELESS (Serverless Jobs Scaleway) : l'état précédent
+    # (silver pour les checksums, gold pour les chunks réutilisables) vit dans
+    # l'Object Storage, pas sur le disque local éphémère du job. On l'hydrate DONC
+    # avant de lire previous_checksums / le gold existant, sinon chaque cron
+    # repartirait de zéro et reconstruirait tout. En local (sans
+    # --sync-object-storage), le lake est persistant : rien à hydrater.
+    hydrated_from_object_storage: dict[str, str] | None = None
+    if args.delta and args.sync_object_storage:
+        downloader = ScalewayObjectStorageSync(ObjectStorageConfig.from_env())
+        hydrated_from_object_storage = downloader.download_medallion_root(
+            config.paths.root_dir,
+            args.target_env,
+            include_layers=("silver", "gold"),
+        )
+
     # Mode --delta : mémoriser les checksums silver AVANT le run (les artefacts
     # sont réécrits par run_silver) pour décider quoi reconstruire en gold.
     previous_checksums: dict[str, str] = {}
@@ -289,7 +326,7 @@ def main() -> int:
                 chunks_path = config.paths.gold_dir / "chunks" / f"{uid}.chunks.jsonl"
                 reused_count = 0
                 if checksum and previous_checksums.get(uid) == checksum and chunks_path.exists():
-                    reused_count = sum(1 for line in chunks_path.read_text(encoding="utf-8").splitlines() if line.strip())
+                    reused_count = count_valid_gold_chunks(chunks_path)
                 if reused_count > 0:
                     # Contenu source inchangé et gold déjà construit : on ne
                     # re-paye pas les embeddings, l'artefact existant est réutilisé.
@@ -326,6 +363,7 @@ def main() -> int:
         "fiche_config_path": None if args.from_grist else str(fiche_config_path),
         "from_grist": args.from_grist,
         "delta": args.delta,
+        "hydrated_from_object_storage": hydrated_from_object_storage,
         "bronze_assets": len(bronze_assets),
         "silver_documents": len(silver_bundles),
         "gold_documents": len(gold_bundles),

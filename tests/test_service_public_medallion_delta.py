@@ -223,3 +223,110 @@ def test_delta_rejects_ingest_flag(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(SystemExit, match="incompatible avec --delta"):
         service_public_medallion.main()
+
+
+def test_delta_with_sync_hydrates_silver_and_gold_before_processing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Revue #308 P1 : job stateless (Scaleway) -> l'état précédent vit dans
+    # l'Object Storage. --delta --sync-object-storage doit HYDRATER silver+gold
+    # AVANT de lire previous_checksums, sinon chaque cron reconstruit tout.
+    import assistant_rh_data_engineering.utils.object_storage as object_storage
+
+    class _FakeSyncer:
+        calls: list[dict[str, Any]] = []
+
+        def __init__(self, config: Any) -> None:
+            pass
+
+        def download_medallion_root(
+            self, root: Any, target_env: str, include_layers: tuple[str, ...] = ("bronze", "silver", "gold")
+        ) -> dict[str, str]:
+            _FakeSyncer.calls.append({"root": str(root), "layers": tuple(include_layers)})
+            return {"silver": "s3://x/silver/", "gold": "s3://x/gold/"}
+
+        def sync_medallion_root(self, root: Any, target_env: str, **kwargs: Any) -> dict[str, str]:
+            return {"bronze": "s3://x/bronze/", "silver": "s3://x/silver/", "gold": "s3://x/gold/"}
+
+    _FakeSyncer.calls = []
+    monkeypatch.setattr(object_storage, "ScalewayObjectStorageSync", _FakeSyncer)
+    monkeypatch.setattr(object_storage.ObjectStorageConfig, "from_env", classmethod(lambda cls: SimpleNamespace()))
+
+    lake_root = tmp_path / "lake"
+    _seed_silver(lake_root, "F1", "h1")
+    _seed_gold(lake_root, "F1", nb_chunks=2)
+    config_path = _write_config(tmp_path, ["F1"])
+    _patch_pipeline(monkeypatch, {"F1": "h1"})
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "sp-medallion",
+            "--lake-root",
+            str(lake_root),
+            "--fiche-config",
+            str(config_path),
+            "--delta",
+            "--sync-object-storage",
+            "--no-embed",
+            "--target-env",
+            "staging",
+        ],
+    )
+
+    assert service_public_medallion.main() == 0
+
+    # Hydratation silver+gold AVANT traitement (une seule fois, layers exacts).
+    assert _FakeSyncer.calls == [{"root": str(lake_root), "layers": ("silver", "gold")}]
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["hydrated_from_object_storage"] == {"silver": "s3://x/silver/", "gold": "s3://x/gold/"}
+    # État hydraté exploité : F1 inchangée -> réutilisée, pas reconstruite.
+    assert payload["gold_skipped_unchanged"] == ["F1"]
+    assert _FakePipeline.last is not None and _FakePipeline.last.gold_calls == []
+
+
+def test_delta_rebuilds_when_existing_gold_is_corrupt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Revue #308 P2 : hash inchangé MAIS gold non-vide et illisible (JSONL
+    # corrompu, sync partiel) -> reconstruire, jamais réutiliser un artefact invalide.
+    lake_root = tmp_path / "lake"
+    _seed_silver(lake_root, "F1", "h1")
+    corrupt = lake_root / "gold" / "chunks" / "F1.chunks.jsonl"
+    corrupt.parent.mkdir(parents=True, exist_ok=True)
+    corrupt.write_text('{"ok": 1}\nCECI N EST PAS DU JSON', encoding="utf-8")
+    config_path = _write_config(tmp_path, ["F1"])
+    _patch_pipeline(monkeypatch, {"F1": "h1"})
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["sp-medallion", "--lake-root", str(lake_root), "--fiche-config", str(config_path), "--delta", "--no-embed"],
+    )
+
+    assert service_public_medallion.main() == 0
+
+    assert _FakePipeline.last is not None and _FakePipeline.last.gold_calls == [["F1"]]  # reconstruite
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["gold_skipped_unchanged"] == []
+
+
+def test_count_valid_gold_chunks_handles_valid_empty_corrupt_and_unreadable(tmp_path: Path) -> None:
+    good = tmp_path / "good.jsonl"
+    good.write_text('{"a": 1}\n{"b": 2}\n', encoding="utf-8")
+    assert service_public_medallion.count_valid_gold_chunks(good) == 2
+
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("", encoding="utf-8")
+    assert service_public_medallion.count_valid_gold_chunks(empty) == 0
+
+    corrupt = tmp_path / "corrupt.jsonl"
+    corrupt.write_text('{"ok": 1}\nnope', encoding="utf-8")
+    assert service_public_medallion.count_valid_gold_chunks(corrupt) == 0
+
+    unreadable = tmp_path / "adir.jsonl"
+    unreadable.mkdir()  # lire un répertoire -> OSError
+    assert service_public_medallion.count_valid_gold_chunks(unreadable) == 0
