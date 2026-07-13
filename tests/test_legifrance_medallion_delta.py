@@ -16,6 +16,17 @@ from typing import Any
 
 import pytest
 from assistant_rh_data_engineering.jobs import legifrance_medallion
+from assistant_rh_data_engineering.legifrance.config import EmbeddingConfig
+from assistant_rh_data_engineering.utils.medallion_delta import gold_reuse_fingerprint, write_gold_fingerprint
+
+
+def _seed_gold_fingerprint(lake_root: Path, *, enable_m3: bool = False, enable_bge: bool = False, single_chunk: bool = True) -> None:
+    """Sidecar d'empreinte config (défaut = run --no-embed, single_chunk par défaut True côté Legi)."""
+    fp = gold_reuse_fingerprint(
+        single_chunk_per_article=single_chunk,
+        embeddings=EmbeddingConfig(enable_m3=enable_m3, enable_bge_scaleway=enable_bge),
+    )
+    write_gold_fingerprint(lake_root / "gold", fp)
 
 
 class _Bundle:
@@ -93,6 +104,7 @@ def test_delta_rebuilds_only_new_and_changed(
     _seed_gold(lake_root, "A1", nb_chunks=3)
     _seed_silver(lake_root, "A2", "h2-old")
     _seed_gold(lake_root, "A2")
+    _seed_gold_fingerprint(lake_root)
     _patch_pipeline(monkeypatch, ["A1", "A2", "A3"], {"A1": "h1", "A2": "h2-new", "A3": "h3"})
     monkeypatch.setattr(
         sys,
@@ -123,6 +135,7 @@ def test_delta_rebuilds_when_existing_gold_is_corrupt(
     corrupt = lake_root / "gold" / "chunks" / "A1.chunks.jsonl"
     corrupt.parent.mkdir(parents=True, exist_ok=True)
     corrupt.write_text('{"ok": 1}\nPAS DU JSON', encoding="utf-8")  # non-vide mais invalide
+    _seed_gold_fingerprint(lake_root)  # config inchangée -> le rebuild vient du gold corrompu
     _patch_pipeline(monkeypatch, ["A1"], {"A1": "h1"})
     monkeypatch.setattr(sys, "argv", ["legi-medallion", "--lake-root", str(lake_root), "--delta", "--no-embed"])
 
@@ -130,6 +143,29 @@ def test_delta_rebuilds_when_existing_gold_is_corrupt(
 
     assert _FakeLegiPipeline.last is not None and _FakeLegiPipeline.last.gold_calls == [["A1"]]  # reconstruit
     payload = json.loads(capsys.readouterr().out)
+    assert payload["gold_skipped_unchanged"] == []
+
+
+def test_delta_rebuilds_when_gold_config_changed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Revue #313 P1 : A1 inchangé (silver+gold+hash) MAIS empreinte config
+    # différente (embeddings changés) -> reconstruire, jamais réutiliser un gold
+    # produit sous une autre config.
+    lake_root = tmp_path / "lake"
+    _seed_silver(lake_root, "A1", "h1")
+    _seed_gold(lake_root, "A1", nb_chunks=2)
+    _seed_gold_fingerprint(lake_root, enable_m3=True, enable_bge=True)  # config PRÉCÉDENTE différente
+    _patch_pipeline(monkeypatch, ["A1"], {"A1": "h1"})
+    monkeypatch.setattr(sys, "argv", ["legi-medallion", "--lake-root", str(lake_root), "--delta", "--no-embed"])
+
+    assert legifrance_medallion.main() == 0
+
+    assert _FakeLegiPipeline.last is not None and _FakeLegiPipeline.last.gold_calls == [["A1"]]  # reconstruit malgré silver inchangé
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["gold_config_unchanged"] is False
     assert payload["gold_skipped_unchanged"] == []
 
 
@@ -162,6 +198,7 @@ def test_delta_hydrates_silver_gold_with_legifrance_source(
     lake_root = tmp_path / "lake"
     _seed_silver(lake_root, "A1", "h1")
     _seed_gold(lake_root, "A1", nb_chunks=2)
+    _seed_gold_fingerprint(lake_root)
     _patch_pipeline(monkeypatch, ["A1"], {"A1": "h1"})
     monkeypatch.setattr(
         sys,

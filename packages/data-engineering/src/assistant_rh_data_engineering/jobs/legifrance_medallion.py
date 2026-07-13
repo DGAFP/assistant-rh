@@ -20,8 +20,11 @@ for entry in reversed(PYTHONPATH_ENTRIES):
 
 from assistant_rh_data_engineering.utils.medallion_delta import (  # noqa: E402 — après le setup sys.path
     capture_previous_checksums,
+    gold_reuse_fingerprint,
     hydrate_silver_gold,
+    read_previous_gold_fingerprint,
     reusable_gold_chunk_count,
+    write_gold_fingerprint,
 )
 
 
@@ -210,12 +213,19 @@ def main() -> int:
     # gold+embeddings que pour le new/changed (~3750 articles CGFP : gros gain).
     hydrated_from_object_storage: dict[str, str] | None = None
     previous_checksums: dict[str, str] = {}
+    gold_fingerprint: str | None = None
+    # Réutilisation gatée par la config gold/embeddings : un checksum silver
+    # inchangé ne suffit pas si le chunking/embeddings a changé depuis le run
+    # précédent -> on ne réutilise QUE si l'empreinte config est identique.
+    gold_config_matches = False
     if args.delta:
         if args.from_object_storage or args.sync_object_storage:
             if syncer is None:
                 syncer = ScalewayObjectStorageSync(ObjectStorageConfig.from_env())
             hydrated_from_object_storage = hydrate_silver_gold(syncer, config.paths.root_dir, args.target_env, "legifrance")
         previous_checksums = capture_previous_checksums(config.paths.silver_dir / "documents")
+        gold_fingerprint = gold_reuse_fingerprint(single_chunk_per_article=config.gold.single_chunk_per_article, embeddings=config.embeddings)
+        gold_config_matches = read_previous_gold_fingerprint(config.paths.gold_dir) == gold_fingerprint
 
     silver_bundles = []
     gold_bundles = []
@@ -228,9 +238,11 @@ def main() -> int:
             for bundle in silver_batch:
                 uid = str(bundle.document.get("short_id") or "").strip().upper()
                 checksum = str(bundle.document.get("checksum") or "")
-                reused_count = reusable_gold_chunk_count(config.paths.gold_dir / "chunks", uid, checksum, previous_checksums)
+                reused_count = 0
+                if gold_config_matches:
+                    reused_count = reusable_gold_chunk_count(config.paths.gold_dir / "chunks", uid, checksum, previous_checksums)
                 if reused_count > 0:
-                    # Contenu inchangé et gold valide : réutilisé, embeddings non re-payés.
+                    # Contenu inchangé, config gold inchangée, gold valide : réutilisé.
                     reused_gold_chunks[uid] = reused_count
                     continue
                 to_build.append(bundle)
@@ -246,6 +258,11 @@ def main() -> int:
                 schema=args.schema,
                 dsn=args.dsn,
             )
+
+    # Persiste l'empreinte config du run courant (round-trip via l'Object Storage
+    # avec la couche gold) pour gater la réutilisation au prochain run delta.
+    if args.delta and gold_fingerprint is not None:
+        write_gold_fingerprint(config.paths.gold_dir, gold_fingerprint)
 
     object_storage = None
     if args.sync_object_storage:
@@ -264,6 +281,7 @@ def main() -> int:
                 "lake_root": str(config.paths.root_dir),
                 "delta": args.delta,
                 "hydrated_from_object_storage": hydrated_from_object_storage,
+                "gold_config_unchanged": gold_config_matches,
                 "bronze_assets": len(bronze_assets),
                 "silver_documents": len(silver_bundles),
                 "gold_documents": len(gold_bundles),

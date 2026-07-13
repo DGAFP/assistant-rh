@@ -9,8 +9,11 @@ from typing import Any
 from assistant_rh_data_engineering.utils.medallion_delta import (
     capture_previous_checksums,
     count_valid_gold_chunks,  # noqa: F401 — ré-exporté (référencé par les tests SP)
+    gold_reuse_fingerprint,
     hydrate_silver_gold,
+    read_previous_gold_fingerprint,
     reusable_gold_chunk_count,
+    write_gold_fingerprint,
 )
 
 cwd = Path.cwd().resolve()
@@ -279,10 +282,19 @@ def main() -> int:
         hydrated_from_object_storage = hydrate_silver_gold(syncer, config.paths.root_dir, args.target_env, "service_public")
 
     # Mode --delta : mémoriser les checksums silver AVANT le run (run_silver les
-    # réécrit) pour décider quoi reconstruire en gold.
+    # réécrit) pour décider quoi reconstruire en gold. La réutilisation est gatée
+    # par l'empreinte config gold/embeddings (un checksum silver inchangé ne
+    # suffit pas si le chunking/embeddings a changé depuis le run précédent).
     previous_checksums: dict[str, str] = {}
+    gold_fingerprint: str | None = None
+    gold_config_matches = False
     if args.delta:
         previous_checksums = capture_previous_checksums(config.paths.silver_dir / "documents")
+        gold_fingerprint = gold_reuse_fingerprint(
+            single_chunk_per_article=getattr(config.gold, "single_chunk_per_article", False),
+            embeddings=config.embeddings,
+        )
+        gold_config_matches = read_previous_gold_fingerprint(config.paths.gold_dir) == gold_fingerprint
 
     pipeline = ServicePublicPipeline(config)
     bronze_assets = pipeline.run_bronze()
@@ -297,14 +309,16 @@ def main() -> int:
             for bundle in silver_batch:
                 uid = str(bundle.document.get("short_id") or "").strip().upper()
                 checksum = str(bundle.document.get("checksum") or "")
-                reused_count = reusable_gold_chunk_count(config.paths.gold_dir / "chunks", uid, checksum, previous_checksums)
+                reused_count = 0
+                if gold_config_matches:
+                    reused_count = reusable_gold_chunk_count(config.paths.gold_dir / "chunks", uid, checksum, previous_checksums)
                 if reused_count > 0:
-                    # Contenu source inchangé et gold déjà construit : on ne
-                    # re-paye pas les embeddings, l'artefact existant est réutilisé.
+                    # Contenu source inchangé, config gold inchangée, gold valide :
+                    # on ne re-paye pas les embeddings, l'artefact est réutilisé.
                     reused_gold_chunks[uid] = reused_count
                     continue
-                # Nouveau, modifié, OU gold existant vide/corrompu malgré un hash
-                # inchangé : reconstruire (leçon retry_zero_chunk — un skip ici
+                # Nouveau, modifié, config gold changée, OU gold existant vide/
+                # corrompu : reconstruire (leçon retry_zero_chunk — un skip ici
                 # ferait échouer chaque run delta sans jamais s'auto-réparer).
                 to_build.append(bundle)
             gold_batch = pipeline.run_gold(to_build) if to_build else []
@@ -312,6 +326,11 @@ def main() -> int:
             gold_batch = pipeline.run_gold(silver_batch)
         silver_bundles.extend(silver_batch)
         gold_bundles.extend(gold_batch)
+
+    # Persiste l'empreinte config du run courant (round-trip OS avec le gold)
+    # pour gater la réutilisation au prochain run delta.
+    if args.delta and gold_fingerprint is not None:
+        write_gold_fingerprint(config.paths.gold_dir, gold_fingerprint)
 
     per_fiche = summarize_pipeline_outputs(
         fiche_ids,
@@ -335,6 +354,7 @@ def main() -> int:
         "from_grist": args.from_grist,
         "delta": args.delta,
         "hydrated_from_object_storage": hydrated_from_object_storage,
+        "gold_config_unchanged": gold_config_matches,
         "bronze_assets": len(bronze_assets),
         "silver_documents": len(silver_bundles),
         "gold_documents": len(gold_bundles),
