@@ -313,6 +313,16 @@ def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:
     assert '--embedding-only-column "${EMBEDDING_ONLY_COLUMN}"' in start_step
 
 
+def test_job_starting_workflows_provide_albert_credentials() -> None:
+    # Le job embeddings-legifrance a l'env group `albert` (embedding_m3 via API
+    # Albert) : tout workflow qui DÉMARRE des jobs Scaleway doit fournir
+    # ALBERT_API_KEY, sinon job_environment lève "ALBERT_API_KEY manquant".
+    for name in ("data-engineering-preview-staging.yml", "data-engineering-promote-prod.yml"):
+        workflow = (REPO_ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+        assert "ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}" in workflow, name
+        assert "ALBERT_BASE_URL:" in workflow, name
+
+
 def test_prod_ingestion_workflow_does_not_run_embedding_backfill_on_github_runner() -> None:
     workflow = (REPO_ROOT / ".github/workflows/data-engineering-prod-ingestion.yml").read_text(encoding="utf-8")
 

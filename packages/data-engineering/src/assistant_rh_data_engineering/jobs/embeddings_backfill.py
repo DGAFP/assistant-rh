@@ -287,8 +287,8 @@ class AlbertEmbedClient:
     Aligne le backfill sur le runtime (rag-pipeline ``_AlbertEmbedder``) et le
     médaillon, qui embarquent déjà m3 via Albert — au lieu de charger BGE-M3 en
     local (sentence-transformers), coûteux en RAM (OOM du job container à 8 Go).
-    Lit ``ALBERT_BASE_URL`` / ``ALBERT_API_KEY`` / ``ALBERT_EMBED_MODEL`` (déjà
-    injectés dans le job par l'env group ``embeddings_api``).
+    Lit ``ALBERT_BASE_URL`` / ``ALBERT_API_KEY`` / ``ALBERT_EMBED_MODEL`` (injectés
+    dans le job par l'env group ``albert``, cf. data-engineering-jobs.json).
     """
 
     def __init__(self, model_name: str | None = None, base_url: str | None = None, session: requests.Session | None = None):
