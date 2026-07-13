@@ -6,6 +6,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from assistant_rh_data_engineering.utils.medallion_delta import (
+    capture_previous_checksums,
+    count_valid_gold_chunks,  # noqa: F401 — ré-exporté (référencé par les tests SP)
+    hydrate_silver_gold,
+    reusable_gold_chunk_count,
+)
+
 cwd = Path.cwd().resolve()
 REPO_ROOT = cwd.parent if cwd.name == "scripts" else cwd
 if str(REPO_ROOT) not in sys.path:
@@ -16,28 +23,6 @@ def chunked(items: list[str], size: int) -> list[list[str]]:
     if size <= 0:
         return [items]
     return [items[i : i + size] for i in range(0, len(items), size)]
-
-
-def count_valid_gold_chunks(chunks_path: Path) -> int:
-    """Nombre de chunks gold VALIDES (une ligne = un JSON). 0 si réutilisation impossible.
-
-    Un gold vide, illisible (``OSError``) ou dont une ligne n'est pas du JSON
-    valide (``JSONDecodeError``) renvoie 0 -> reconstruit plutôt que réutiliser un
-    artefact corrompu (leçon retry_zero_chunk : un skip ici bloquerait chaque run
-    delta sans jamais s'auto-réparer).
-    """
-    try:
-        lines = [line for line in chunks_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    except OSError:
-        return 0
-    count = 0
-    for line in lines:
-        try:
-            json.loads(line)
-        except json.JSONDecodeError:
-            return 0
-        count += 1
-    return count
 
 
 def load_fiche_config(config_path: Path) -> dict[str, Any]:
@@ -290,25 +275,14 @@ def main() -> int:
     # --sync-object-storage), le lake est persistant : rien à hydrater.
     hydrated_from_object_storage: dict[str, str] | None = None
     if args.delta and args.sync_object_storage:
-        downloader = ScalewayObjectStorageSync(ObjectStorageConfig.from_env())
-        hydrated_from_object_storage = downloader.download_medallion_root(
-            config.paths.root_dir,
-            args.target_env,
-            include_layers=("silver", "gold"),
-        )
+        syncer = ScalewayObjectStorageSync(ObjectStorageConfig.from_env())
+        hydrated_from_object_storage = hydrate_silver_gold(syncer, config.paths.root_dir, args.target_env, "service_public")
 
-    # Mode --delta : mémoriser les checksums silver AVANT le run (les artefacts
-    # sont réécrits par run_silver) pour décider quoi reconstruire en gold.
+    # Mode --delta : mémoriser les checksums silver AVANT le run (run_silver les
+    # réécrit) pour décider quoi reconstruire en gold.
     previous_checksums: dict[str, str] = {}
     if args.delta:
-        for doc_path in sorted((config.paths.silver_dir / "documents").glob("*.document.json")):
-            try:
-                payload = json.loads(doc_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            uid = str(payload.get("short_id") or "").strip().upper()
-            if uid:
-                previous_checksums[uid] = str(payload.get("checksum") or "")
+        previous_checksums = capture_previous_checksums(config.paths.silver_dir / "documents")
 
     pipeline = ServicePublicPipeline(config)
     bronze_assets = pipeline.run_bronze()
@@ -323,10 +297,7 @@ def main() -> int:
             for bundle in silver_batch:
                 uid = str(bundle.document.get("short_id") or "").strip().upper()
                 checksum = str(bundle.document.get("checksum") or "")
-                chunks_path = config.paths.gold_dir / "chunks" / f"{uid}.chunks.jsonl"
-                reused_count = 0
-                if checksum and previous_checksums.get(uid) == checksum and chunks_path.exists():
-                    reused_count = count_valid_gold_chunks(chunks_path)
+                reused_count = reusable_gold_chunk_count(config.paths.gold_dir / "chunks", uid, checksum, previous_checksums)
                 if reused_count > 0:
                     # Contenu source inchangé et gold déjà construit : on ne
                     # re-paye pas les embeddings, l'artefact existant est réutilisé.

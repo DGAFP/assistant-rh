@@ -242,9 +242,9 @@ def test_delta_with_sync_hydrates_silver_and_gold_before_processing(
             pass
 
         def download_medallion_root(
-            self, root: Any, target_env: str, include_layers: tuple[str, ...] = ("bronze", "silver", "gold")
+            self, root: Any, target_env: str, source_name: str = "service_public", include_layers: tuple[str, ...] = ("bronze", "silver", "gold")
         ) -> dict[str, str]:
-            _FakeSyncer.calls.append({"root": str(root), "layers": tuple(include_layers)})
+            _FakeSyncer.calls.append({"root": str(root), "source_name": source_name, "layers": tuple(include_layers)})
             return {"silver": "s3://x/silver/", "gold": "s3://x/gold/"}
 
         def sync_medallion_root(self, root: Any, target_env: str, **kwargs: Any) -> dict[str, str]:
@@ -278,8 +278,8 @@ def test_delta_with_sync_hydrates_silver_and_gold_before_processing(
 
     assert service_public_medallion.main() == 0
 
-    # Hydratation silver+gold AVANT traitement (une seule fois, layers exacts).
-    assert _FakeSyncer.calls == [{"root": str(lake_root), "layers": ("silver", "gold")}]
+    # Hydratation silver+gold AVANT traitement (une seule fois, source+layers exacts).
+    assert _FakeSyncer.calls == [{"root": str(lake_root), "source_name": "service_public", "layers": ("silver", "gold")}]
     payload = json.loads(capsys.readouterr().out)
     assert payload["hydrated_from_object_storage"] == {"silver": "s3://x/silver/", "gold": "s3://x/gold/"}
     # État hydraté exploité : F1 inchangée -> réutilisée, pas reconstruite.
