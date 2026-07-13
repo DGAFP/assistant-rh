@@ -37,6 +37,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bge-base-url", help="Base URL Scaleway pour embedding_bge_scw.")
     parser.add_argument("--bge-workers", type=int, default=2)
     parser.add_argument("--bge-batch-size", type=int, default=32)
+    parser.add_argument("--albert-model", default="openweight-embeddings", help="Modèle Albert pour embedding_m3 (BGE-M3, 1024 dims).")
+    parser.add_argument("--albert-base-url", help="Base URL Albert pour embedding_m3 (défaut: ALBERT_BASE_URL ou l'endpoint public).")
+    parser.add_argument("--albert-workers", type=int, default=4)
+    parser.add_argument("--albert-batch-size", type=int, default=32)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--only-table")
     parser.add_argument("--only-column")
@@ -212,6 +216,42 @@ def evaluate_coverage_report(report: dict[str, Any], *, coverage_min_pct: float 
     return (1 if problems else 0), problems
 
 
+def _embed_via_api_with_retry(post_embeddings: Any, label: str) -> list[float]:
+    """Appelle une API d'embeddings OpenAI-compatible avec retry sur 429/5xx/réseau.
+
+    ``post_embeddings`` est un callable sans argument renvoyant la réponse HTTP.
+    Partagé par les clients Scaleway (``embedding_bge_scw``) et Albert
+    (``embedding_m3``) : même contrat ``/embeddings`` -> ``data[0].embedding``.
+    """
+    max_attempts = 6
+    last_error: Exception | None = None
+    for attempt in range(max_attempts):
+        try:
+            response = post_embeddings()
+            response.raise_for_status()
+            payload = response.json()
+            embedding = payload["data"][0]["embedding"]
+            if not isinstance(embedding, list):
+                raise ValueError(f"Réponse embeddings {label} invalide: embedding absent ou non-list.")
+            return embedding
+        except requests.HTTPError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            # Seuls 429 et 5xx sont transitoires; les autres 4xx (clé invalide,
+            # modèle inconnu...) ne se résoudront pas en réessayant.
+            if status_code != 429 and not (status_code is not None and status_code >= 500):
+                raise
+            last_error = exc
+            logger.debug("Erreur HTTP %s %s, retry %s/%s.", status_code, label, attempt + 1, max_attempts)
+        except requests.RequestException as exc:
+            last_error = exc
+            logger.debug("Erreur réseau %s, retry %s/%s: %s", label, attempt + 1, max_attempts, exc)
+        if attempt < max_attempts - 1:
+            time.sleep(min(30, 2**attempt))
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"Echec embedding {label} sans erreur explicite.")
+
+
 class ScalewayBgeClient:
     def __init__(self, model_name: str, base_url: str | None = None, session: requests.Session | None = None):
         config = Config()
@@ -238,33 +278,42 @@ class ScalewayBgeClient:
         )
 
     def embed_text(self, text: str) -> list[float]:
-        max_attempts = 6
-        last_error: Exception | None = None
-        for attempt in range(max_attempts):
-            try:
-                response = self._post_embeddings(text)
-                response.raise_for_status()
-                payload = response.json()
-                embedding = payload["data"][0]["embedding"]
-                if not isinstance(embedding, list):
-                    raise ValueError("Réponse embeddings Scaleway invalide: embedding absent ou non-list.")
-                return embedding
-            except requests.HTTPError as exc:
-                status_code = exc.response.status_code if exc.response is not None else None
-                # Seuls 429 et 5xx sont transitoires; les autres 4xx (clé invalide,
-                # modèle inconnu...) ne se résoudront pas en réessayant.
-                if status_code != 429 and not (status_code is not None and status_code >= 500):
-                    raise
-                last_error = exc
-                logger.debug("Erreur HTTP %s embedding_bge_scw, retry %s/%s.", status_code, attempt + 1, max_attempts)
-            except requests.RequestException as exc:
-                last_error = exc
-                logger.debug("Erreur réseau embedding_bge_scw, retry %s/%s: %s", attempt + 1, max_attempts, exc)
-            if attempt < max_attempts - 1:
-                time.sleep(min(30, 2**attempt))
-        if last_error is not None:
-            raise last_error
-        raise RuntimeError("Echec embedding_bge_scw sans erreur explicite.")
+        return _embed_via_api_with_retry(lambda: self._post_embeddings(text), "embedding_bge_scw")
+
+
+class AlbertEmbedClient:
+    """Client embeddings via l'API Albert (``openweight-embeddings`` = BGE-M3, 1024 dims).
+
+    Aligne le backfill sur le runtime (rag-pipeline ``_AlbertEmbedder``) et le
+    médaillon, qui embarquent déjà m3 via Albert — au lieu de charger BGE-M3 en
+    local (sentence-transformers), coûteux en RAM (OOM du job container à 8 Go).
+    Lit ``ALBERT_BASE_URL`` / ``ALBERT_API_KEY`` / ``ALBERT_EMBED_MODEL`` (déjà
+    injectés dans le job par l'env group ``embeddings_api``).
+    """
+
+    def __init__(self, model_name: str | None = None, base_url: str | None = None, session: requests.Session | None = None):
+        resolved_base_url = (base_url or "").strip() or os.getenv("ALBERT_BASE_URL") or "https://albert.api.etalab.gouv.fr/v1"
+        self.base_url = resolved_base_url.rstrip("/")
+        self.api_key = os.getenv("ALBERT_API_KEY", "")
+        if not self.api_key:
+            raise RuntimeError("ALBERT_API_KEY manquant pour embedding_m3 via Albert.")
+        self.model_name = (model_name or "").strip() or os.getenv("ALBERT_EMBED_MODEL") or "openweight-embeddings"
+        self.session = session
+
+    def _post_embeddings(self, text: str) -> requests.Response:
+        post = self.session.post if self.session is not None else requests.post
+        return post(
+            f"{self.base_url}/embeddings",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={"model": self.model_name, "input": text},
+            timeout=30,
+        )
+
+    def embed_text(self, text: str) -> list[float]:
+        return _embed_via_api_with_retry(lambda: self._post_embeddings(text), "embedding_m3 (Albert)")
 
 
 def fetch_missing_rows(
@@ -419,6 +468,47 @@ def backfill_bge_scaleway(
     return total
 
 
+def backfill_albert(
+    conn: psycopg.Connection,
+    schema: str,
+    table_spec: dict[str, Any],
+    embedding_column: str,
+    model_name: str,
+    base_url: str | None,
+    workers: int,
+    batch_size: int,
+    limit: int | None,
+) -> int:
+    """Backfill m3 via l'API Albert (pas de modèle local -> pas d'OOM container)."""
+    rows = fetch_missing_rows(
+        conn,
+        schema,
+        table_spec["table"],
+        table_spec["id_column"],
+        table_spec["text_column"],
+        embedding_column,
+        limit,
+    )
+    if not rows:
+        return 0
+    total = 0
+    client = AlbertEmbedClient(model_name=model_name, base_url=base_url)
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        for start in range(0, len(rows), batch_size):
+            batch = rows[start : start + batch_size]
+            vectors = list(pool.map(client.embed_text, [str(row["text"]) for row in batch]))
+            prepared = [{"id": row["id"], "vector": _normalize_vector(list(vectors[index]))} for index, row in enumerate(batch)]
+            total += update_embeddings(
+                conn,
+                schema,
+                table_spec["table"],
+                table_spec["id_column"],
+                embedding_column,
+                prepared,
+            )
+    return total
+
+
 def main() -> int:
     args = build_parser().parse_args()
     load_dotenv(Path(args.env_file))
@@ -498,6 +588,18 @@ def main() -> int:
                         base_url=args.bge_base_url,
                         workers=args.bge_workers,
                         batch_size=args.bge_batch_size,
+                        limit=args.limit,
+                    )
+                elif algorithm in {"albert", "m3_albert", "albert_m3"}:
+                    table_summary[embedding_column] = backfill_albert(
+                        conn,
+                        args.schema,
+                        table_spec,
+                        embedding_column,
+                        model_name=args.albert_model,
+                        base_url=args.albert_base_url,
+                        workers=args.albert_workers,
+                        batch_size=args.albert_batch_size,
                         limit=args.limit,
                     )
                 else:
