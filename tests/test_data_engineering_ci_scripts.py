@@ -313,6 +313,16 @@ def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:
     assert '--embedding-only-column "${EMBEDDING_ONLY_COLUMN}"' in start_step
 
 
+def test_job_starting_workflows_provide_albert_credentials() -> None:
+    # Le job embeddings-legifrance a l'env group `albert` (embedding_m3 via API
+    # Albert) : tout workflow qui DÉMARRE des jobs Scaleway doit fournir
+    # ALBERT_API_KEY, sinon job_environment lève "ALBERT_API_KEY manquant".
+    for name in ("data-engineering-preview-staging.yml", "data-engineering-promote-prod.yml"):
+        workflow = (REPO_ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+        assert "ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}" in workflow, name
+        assert "ALBERT_BASE_URL:" in workflow, name
+
+
 def test_prod_ingestion_workflow_does_not_run_embedding_backfill_on_github_runner() -> None:
     workflow = (REPO_ROOT / ".github/workflows/data-engineering-prod-ingestion.yml").read_text(encoding="utf-8")
 
@@ -377,6 +387,24 @@ def test_scaleway_job_environment_fails_on_missing_required_secret(monkeypatch: 
 
     with pytest.raises(RuntimeError, match="SCW_ACCESS_KEY"):
         scaleway_data_jobs.job_environment({"env_groups": ["object_storage"]}, "prod", "fr-par")
+
+
+def test_scaleway_job_environment_albert_group_injects_albert_creds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALBERT_API_KEY", "albert-key")
+    monkeypatch.delenv("ALBERT_BASE_URL", raising=False)
+
+    environment = scaleway_data_jobs.job_environment({"env_groups": ["albert"]}, "staging", "fr-par")
+
+    assert environment["ALBERT_API_KEY"] == "albert-key"
+    assert environment["ALBERT_BASE_URL"] == "https://albert.api.etalab.gouv.fr/v1"
+
+
+def test_embeddings_legifrance_declares_albert_env_group() -> None:
+    # Le backfill m3 Legi passe par l'API Albert (embedding_m3=albert) : sans le
+    # groupe `albert`, ALBERT_API_KEY ne serait pas injecté et le job crasherait.
+    config = scaleway_data_jobs.load_config(scaleway_data_jobs.DEFAULT_CONFIG)
+    spec = next(job for job in config["jobs"] if job["key"] == "embeddings-legifrance")
+    assert "albert" in spec["env_groups"]
 
 
 def test_redacted_handles_overlapping_secrets_longest_first() -> None:
