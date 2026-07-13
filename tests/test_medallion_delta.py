@@ -101,15 +101,15 @@ def test_gold_reuse_fingerprint_depends_on_config() -> None:
     assert fp != medallion_delta.gold_reuse_fingerprint(single_chunk_per_article=True, embeddings=other_model)
 
 
-def test_gold_fingerprint_roundtrip_and_missing(tmp_path: Path) -> None:
+def test_gold_fingerprints_roundtrip_missing_and_corrupt(tmp_path: Path) -> None:
     gold = tmp_path / "gold"
-    assert medallion_delta.read_previous_gold_fingerprint(gold) is None  # absent -> None
+    assert medallion_delta.read_gold_fingerprints(gold) == {}  # absent -> {}
 
-    medallion_delta.write_gold_fingerprint(gold, "abc123")
-    assert medallion_delta.read_previous_gold_fingerprint(gold) == "abc123"
+    medallion_delta.write_gold_fingerprints(gold, {"F1": "abc", "F2": "def"})
+    assert medallion_delta.read_gold_fingerprints(gold) == {"F1": "abc", "F2": "def"}
 
     (gold / medallion_delta.GOLD_STATE_FILENAME).write_text("{pas du json", encoding="utf-8")
-    assert medallion_delta.read_previous_gold_fingerprint(gold) is None  # corrompu -> None
+    assert medallion_delta.read_gold_fingerprints(gold) == {}  # corrompu -> {}
 
 
 def test_hydrate_silver_gold_downloads_only_silver_and_gold(tmp_path: Path) -> None:

@@ -126,23 +126,36 @@ def gold_reuse_fingerprint(*, single_chunk_per_article: bool, embeddings: Any) -
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
 
-def read_previous_gold_fingerprint(gold_dir: Path) -> str | None:
-    """Empreinte config du run précédent (None si absente/illisible -> pas de réutilisation)."""
+def read_gold_fingerprints(gold_dir: Path) -> dict[str, str]:
+    """``{short_id (upper): empreinte config}`` PAR document du run précédent.
+
+    Par document (pas global) car les médaillons supportent des runs PARTIELS
+    (``--fiche-id``, sous-ensemble Grist) : une empreinte globale, avancée après
+    un rebuild partiel, ferait passer TOUT le lake pour la nouvelle config et
+    autoriserait à tort la réutilisation du gold périmé des documents non
+    reconstruits. ``{}`` si l'état est absent/illisible/corrompu.
+    """
     try:
         payload = json.loads((gold_dir / GOLD_STATE_FILENAME).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
+        return {}
     if not isinstance(payload, dict):
-        return None
-    fingerprint = payload.get("gold_fingerprint")
-    return str(fingerprint) if fingerprint else None
+        return {}
+    fingerprints = payload.get("gold_fingerprints")
+    if not isinstance(fingerprints, dict):
+        return {}
+    return {str(uid).strip().upper(): str(fp) for uid, fp in fingerprints.items() if str(fp or "").strip()}
 
 
-def write_gold_fingerprint(gold_dir: Path, fingerprint: str) -> None:
-    """Persiste l'empreinte config du run courant à la racine du gold (round-trip OS)."""
+def write_gold_fingerprints(gold_dir: Path, fingerprints: dict[str, str]) -> None:
+    """Persiste la map ``{uid: empreinte}`` à la racine du gold (round-trip OS).
+
+    L'appelant doit PRÉSERVER les entrées des documents hors du run courant
+    (subset-safe) et ne mettre à jour que celles des documents traités.
+    """
     gold_dir.mkdir(parents=True, exist_ok=True)
     (gold_dir / GOLD_STATE_FILENAME).write_text(
-        json.dumps({"gold_fingerprint": fingerprint}, ensure_ascii=False),
+        json.dumps({"gold_fingerprints": fingerprints}, ensure_ascii=False, sort_keys=True),
         encoding="utf-8",
     )
 

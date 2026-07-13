@@ -17,11 +17,11 @@ from typing import Any
 import pytest
 from assistant_rh_data_engineering.jobs import service_public_medallion
 from assistant_rh_data_engineering.service_public.config import EmbeddingConfig
-from assistant_rh_data_engineering.utils.medallion_delta import gold_reuse_fingerprint, write_gold_fingerprint
+from assistant_rh_data_engineering.utils.medallion_delta import gold_reuse_fingerprint, write_gold_fingerprints
 
 
-def _seed_gold_fingerprint(lake_root: Path, *, enable_m3: bool = False, enable_bge: bool = False) -> None:
-    """Sidecar d'empreinte config : sans lui, la réutilisation delta est gatée off.
+def _seed_gold_fingerprint(lake_root: Path, uids: list[str], *, enable_m3: bool = False, enable_bge: bool = False) -> None:
+    """Sidecar d'empreinte config PAR document : sans lui, la réutilisation est gatée off.
 
     Défaut = empreinte d'un run --no-embed (m3/bge désactivés). Passer des flags
     différents simule un changement de config gold/embeddings (invalide la réutilisation).
@@ -30,7 +30,7 @@ def _seed_gold_fingerprint(lake_root: Path, *, enable_m3: bool = False, enable_b
         single_chunk_per_article=False,  # SP GoldConfig n'a pas ce champ (getattr -> False)
         embeddings=EmbeddingConfig(enable_m3=enable_m3, enable_bge_scaleway=enable_bge),
     )
-    write_gold_fingerprint(lake_root / "gold", fp)
+    write_gold_fingerprints(lake_root / "gold", {uid.upper(): fp for uid in uids})
 
 
 class _Bundle:
@@ -118,7 +118,7 @@ def test_delta_rebuilds_only_new_and_changed(
     _seed_gold(lake_root, "F1", nb_chunks=3)
     _seed_silver(lake_root, "F2", "h2-old")
     _seed_gold(lake_root, "F2")
-    _seed_gold_fingerprint(lake_root)
+    _seed_gold_fingerprint(lake_root, ["F1", "F2"])
     config_path = _write_config(tmp_path, ["F1", "F2", "F3"])
     _patch_pipeline(monkeypatch, {"F1": "h1", "F2": "h2-new", "F3": "h3"})
     monkeypatch.setattr(
@@ -152,7 +152,7 @@ def test_delta_rebuilds_when_existing_gold_is_empty(
     lake_root = tmp_path / "lake"
     _seed_silver(lake_root, "F1", "h1")
     _seed_gold(lake_root, "F1", nb_chunks=0)  # fichier présent mais vide
-    _seed_gold_fingerprint(lake_root)  # config inchangée -> le rebuild vient du gold vide
+    _seed_gold_fingerprint(lake_root, ["F1"])  # config inchangée -> le rebuild vient du gold vide
     config_path = _write_config(tmp_path, ["F1"])
     _patch_pipeline(monkeypatch, {"F1": "h1"})
     monkeypatch.setattr(
@@ -274,7 +274,7 @@ def test_delta_with_sync_hydrates_silver_and_gold_before_processing(
     lake_root = tmp_path / "lake"
     _seed_silver(lake_root, "F1", "h1")
     _seed_gold(lake_root, "F1", nb_chunks=2)
-    _seed_gold_fingerprint(lake_root)
+    _seed_gold_fingerprint(lake_root, ["F1"])
     config_path = _write_config(tmp_path, ["F1"])
     _patch_pipeline(monkeypatch, {"F1": "h1"})
     monkeypatch.setattr(
@@ -317,7 +317,7 @@ def test_delta_rebuilds_when_existing_gold_is_corrupt(
     corrupt = lake_root / "gold" / "chunks" / "F1.chunks.jsonl"
     corrupt.parent.mkdir(parents=True, exist_ok=True)
     corrupt.write_text('{"ok": 1}\nCECI N EST PAS DU JSON', encoding="utf-8")
-    _seed_gold_fingerprint(lake_root)  # config inchangée -> le rebuild vient du gold corrompu
+    _seed_gold_fingerprint(lake_root, ["F1"])  # config inchangée -> le rebuild vient du gold corrompu
     config_path = _write_config(tmp_path, ["F1"])
     _patch_pipeline(monkeypatch, {"F1": "h1"})
     monkeypatch.setattr(
@@ -344,7 +344,7 @@ def test_delta_rebuilds_when_gold_config_changed(
     lake_root = tmp_path / "lake"
     _seed_silver(lake_root, "F1", "h1")
     _seed_gold(lake_root, "F1", nb_chunks=2)
-    _seed_gold_fingerprint(lake_root, enable_m3=True, enable_bge=True)  # config PRÉCÉDENTE différente du run --no-embed
+    _seed_gold_fingerprint(lake_root, ["F1"], enable_m3=True, enable_bge=True)  # config PRÉCÉDENTE différente du run --no-embed
     config_path = _write_config(tmp_path, ["F1"])
     _patch_pipeline(monkeypatch, {"F1": "h1"})
     monkeypatch.setattr(
@@ -357,8 +357,40 @@ def test_delta_rebuilds_when_gold_config_changed(
 
     assert _FakePipeline.last is not None and _FakePipeline.last.gold_calls == [["F1"]]  # reconstruite malgré silver inchangé
     payload = json.loads(capsys.readouterr().out)
-    assert payload["gold_config_unchanged"] is False
     assert payload["gold_skipped_unchanged"] == []
+
+
+def test_delta_subset_run_does_not_reuse_stale_doc_after_config_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Revue #313 (re-review) : état PAR document (subset-safe). F1 et F2 ont un
+    # gold sous config A. Run 1 (subset F1) sous config B -> F1 rebuild, F2
+    # intouché. L'empreinte ne doit PAS faire passer F2 pour config B : run 2
+    # (subset F2) sous B doit RECONSTRUIRE F2 (silver inchangé mais gold config-A périmé).
+    lake_root = tmp_path / "lake"
+    _seed_silver(lake_root, "F1", "h1")
+    _seed_gold(lake_root, "F1", nb_chunks=2)
+    _seed_silver(lake_root, "F2", "h2")
+    _seed_gold(lake_root, "F2", nb_chunks=2)
+    _seed_gold_fingerprint(lake_root, ["F1", "F2"], enable_m3=True, enable_bge=True)  # config A pour F1 ET F2
+
+    # Run 1 : subset F1 sous config B (--no-embed).
+    config1 = _write_config(tmp_path, ["F1"])
+    _patch_pipeline(monkeypatch, {"F1": "h1"})
+    monkeypatch.setattr(sys, "argv", ["sp-medallion", "--lake-root", str(lake_root), "--fiche-config", str(config1), "--delta", "--no-embed"])
+    assert service_public_medallion.main() == 0
+    assert _FakePipeline.last is not None and _FakePipeline.last.gold_calls == [["F1"]]  # F1 rebuild (config A->B)
+    capsys.readouterr()
+
+    # Run 2 : subset F2 sous config B -> F2 reconstruit, jamais réutilisé.
+    config2 = _write_config(tmp_path, ["F2"])
+    _patch_pipeline(monkeypatch, {"F2": "h2"})
+    monkeypatch.setattr(sys, "argv", ["sp-medallion", "--lake-root", str(lake_root), "--fiche-config", str(config2), "--delta", "--no-embed"])
+    assert service_public_medallion.main() == 0
+    assert _FakePipeline.last is not None and _FakePipeline.last.gold_calls == [["F2"]]  # F2 rebuild, pas réutilisé
+    assert json.loads(capsys.readouterr().out)["gold_skipped_unchanged"] == []
 
 
 def test_count_valid_gold_chunks_handles_valid_empty_corrupt_and_unreadable(tmp_path: Path) -> None:
