@@ -47,6 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
     # comportement historique. Le gating prod (apply prod = confirmation
     # explicite) est câblé avec le workflow en PR-3.
     parser.add_argument("--mode", choices=("plan", "apply"), default="apply")
+    # Chaîne delta quotidienne (#250) : ajoute --delta aux jobs medallion+ingest
+    # SP/Legi (et --from-grist au medallion SP) pour ne (re)traiter que le
+    # new/changed. Le chemin legacy (upsert-all) reste le défaut.
+    parser.add_argument("--delta", type=parse_bool, default=False)
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser
@@ -152,6 +156,26 @@ def extract_run(payload: Any) -> dict[str, Any]:
 
 def render_args(values: list[str], context: dict[str, str]) -> list[str]:
     return [value.format(**context) for value in values]
+
+
+# Jobs medallion+ingest SP/Legi éligibles au delta (les autres — bulk-dump,
+# embeddings, PDF — gardent leur comportement legacy).
+_DELTA_JOB_KEYS = frozenset({"service-public-medallion", "service-public-ingestion", "legifrance-medallion", "legifrance-ingestion"})
+
+
+def delta_args_for(key: str) -> list[str]:
+    """Flags à ajouter à un job en chaîne delta (#250).
+
+    ``--delta`` pour les medallion+ingest SP/Legi ; ``--from-grist`` en plus pour
+    le medallion SP (piloté par le référentiel Grist — le medallion Legi reste
+    cache-driven via ``article_cids``).
+    """
+    extra: list[str] = []
+    if key in _DELTA_JOB_KEYS:
+        extra.append("--delta")
+    if key == "service-public-medallion":
+        extra.append("--from-grist")
+    return extra
 
 
 def indexed_args(prefix: str, values: list[str]) -> list[str]:
@@ -461,6 +485,8 @@ def upsert_and_start_jobs(args: argparse.Namespace) -> int:
             job_id = create_definition(spec, name, image, project_id, region, secrets=secrets, dry_run=args.dry_run)
 
         command_args = render_args(spec["args"], context)
+        if getattr(args, "delta", False):
+            command_args.extend(delta_args_for(str(spec.get("key") or "")))
         if spec.get("key") == "service-public-ingestion" and getattr(args, "wipe_existing_chunks", False):
             command_args.append("--wipe-existing-chunks")
         embedding_only_column = str(getattr(args, "embedding_only_column", "") or "").strip()

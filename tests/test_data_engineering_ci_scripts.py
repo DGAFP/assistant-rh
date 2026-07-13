@@ -389,6 +389,39 @@ def test_scaleway_job_environment_fails_on_missing_required_secret(monkeypatch: 
         scaleway_data_jobs.job_environment({"env_groups": ["object_storage"]}, "prod", "fr-par")
 
 
+def test_delta_args_for_targets_medallion_and_ingest_only() -> None:
+    # --delta sur medallion+ingest SP/Legi ; --from-grist EN PLUS pour le medallion SP.
+    assert scaleway_data_jobs.delta_args_for("service-public-medallion") == ["--delta", "--from-grist"]
+    assert scaleway_data_jobs.delta_args_for("service-public-ingestion") == ["--delta"]
+    assert scaleway_data_jobs.delta_args_for("legifrance-medallion") == ["--delta"]  # cache-driven, pas --from-grist
+    assert scaleway_data_jobs.delta_args_for("legifrance-ingestion") == ["--delta"]
+    # Hors périmètre delta -> aucun flag (comportement legacy).
+    assert scaleway_data_jobs.delta_args_for("legifrance-bulk-dump") == []
+    assert scaleway_data_jobs.delta_args_for("embeddings-service-public") == []
+    assert scaleway_data_jobs.delta_args_for("pdf-sources-mi-medallion") == []
+
+
+def test_scaleway_data_jobs_parses_delta_flag() -> None:
+    args = scaleway_data_jobs.build_parser().parse_args(["--target-env", "staging", "--image-tag", "t", "--delta", "true"])
+    assert args.delta is True
+    default = scaleway_data_jobs.build_parser().parse_args(["--target-env", "staging", "--image-tag", "t"])
+    assert default.delta is False
+
+
+def test_cron_delta_workflow_chains_delta_on_staging() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-cron-delta.yml").read_text(encoding="utf-8")
+    assert "schedule:" in workflow and "cron:" in workflow  # planifié
+    assert "environment: scaleway-staging" in workflow  # staging uniquement
+    assert "--target-env staging" in workflow
+    assert "--delta true" in workflow
+    assert "--image-tag staging-latest" in workflow  # tag stable, pas de rebuild
+    assert "--wait" in workflow  # chaîne séquentielle medallion->ingest->embeddings
+    assert "--service-public true" in workflow and "--legifrance true" in workflow
+    assert "--run-ingestion true" in workflow and "--run-embeddings true" in workflow
+    # Le cron ne touche jamais la prod.
+    assert "scaleway-production" not in workflow and "--target-env prod" not in workflow
+
+
 def test_scaleway_job_environment_albert_group_injects_albert_creds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ALBERT_API_KEY", "albert-key")
     monkeypatch.delenv("ALBERT_BASE_URL", raising=False)
