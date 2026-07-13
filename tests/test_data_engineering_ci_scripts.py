@@ -379,6 +379,24 @@ def test_scaleway_job_environment_fails_on_missing_required_secret(monkeypatch: 
         scaleway_data_jobs.job_environment({"env_groups": ["object_storage"]}, "prod", "fr-par")
 
 
+def test_scaleway_job_environment_albert_group_injects_albert_creds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALBERT_API_KEY", "albert-key")
+    monkeypatch.delenv("ALBERT_BASE_URL", raising=False)
+
+    environment = scaleway_data_jobs.job_environment({"env_groups": ["albert"]}, "staging", "fr-par")
+
+    assert environment["ALBERT_API_KEY"] == "albert-key"
+    assert environment["ALBERT_BASE_URL"] == "https://albert.api.etalab.gouv.fr/v1"
+
+
+def test_embeddings_legifrance_declares_albert_env_group() -> None:
+    # Le backfill m3 Legi passe par l'API Albert (embedding_m3=albert) : sans le
+    # groupe `albert`, ALBERT_API_KEY ne serait pas injecté et le job crasherait.
+    config = scaleway_data_jobs.load_config(scaleway_data_jobs.DEFAULT_CONFIG)
+    spec = next(job for job in config["jobs"] if job["key"] == "embeddings-legifrance")
+    assert "albert" in spec["env_groups"]
+
+
 def test_redacted_handles_overlapping_secrets_longest_first() -> None:
     secrets = ["plain-secret", "plain-secret-extended", ""]
 

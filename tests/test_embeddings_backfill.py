@@ -272,6 +272,17 @@ def test_albert_embed_client_resolves_base_url_model_from_explicit_then_env(albe
     assert explicit_client.model_name == "m"
 
 
+def test_albert_embed_client_honors_env_model_when_arg_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Ordre arg -> env -> défaut : le défaut CLI est None (build_parser), donc
+    # ALBERT_EMBED_MODEL doit primer quand aucun --albert-model n'est passé.
+    monkeypatch.setenv("ALBERT_BASE_URL", "https://albert.env.test/v1")
+    monkeypatch.setenv("ALBERT_API_KEY", "albert-key")
+    monkeypatch.setenv("ALBERT_EMBED_MODEL", "bge-m3-custom")
+
+    assert embeddings_backfill.build_parser().parse_args(["--config", "x"]).albert_model is None
+    assert embeddings_backfill.AlbertEmbedClient(model_name=None).model_name == "bge-m3-custom"
+
+
 def test_albert_embed_client_defaults_base_url_when_env_absent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ALBERT_BASE_URL", raising=False)
     monkeypatch.setenv("ALBERT_API_KEY", "albert-key")

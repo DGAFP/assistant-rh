@@ -37,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bge-base-url", help="Base URL Scaleway pour embedding_bge_scw.")
     parser.add_argument("--bge-workers", type=int, default=2)
     parser.add_argument("--bge-batch-size", type=int, default=32)
-    parser.add_argument("--albert-model", default="openweight-embeddings", help="Modèle Albert pour embedding_m3 (BGE-M3, 1024 dims).")
+    parser.add_argument("--albert-model", default=None, help="Modèle Albert pour embedding_m3 (défaut: ALBERT_EMBED_MODEL ou openweight-embeddings).")
     parser.add_argument("--albert-base-url", help="Base URL Albert pour embedding_m3 (défaut: ALBERT_BASE_URL ou l'endpoint public).")
     parser.add_argument("--albert-workers", type=int, default=4)
     parser.add_argument("--albert-batch-size", type=int, default=32)
