@@ -34,7 +34,7 @@ scripts/                One-off tooling and historical notebooks/scripts
 
 ## Worktree and git rules
 
-This repository is normally used as a bare/worktree workspace under `/Users/luis/Code/alliance/assistant-rh`.
+This repository is normally used as a bare/worktree workspace under `~/Code/alliance/assistant-rh`.
 
 - Do not edit files from the workspace control-plane root. Work inside a real worktree such as `main/`, `chore-add-agents-md/`, or a new feature worktree.
 - For new work, create a dedicated worktree from up-to-date `main` using Worktrunk (`wt`), not raw `git worktree` commands.
