@@ -553,6 +553,9 @@ class _FakePiste:
         self.calls: list[tuple[str, int, str]] = []
         # Ownership getArticle : uid -> texte parent ; uid absent = API en échec.
         self.article_parents: dict[str, str] = {}
+        # Chronique de remplacement d'une ancienne version : uid -> cid chronique
+        # (défaut = l'uid lui-même, comportement historique).
+        self.article_chroniques: dict[str, str] = {}
         self.article_calls: list[str] = []
 
     def text_articles(self, text_uid: str, date_millis: int, *, kind: str = "code") -> list[CodeArticle]:
@@ -566,7 +569,8 @@ class _FakePiste:
         parent = self.article_parents.get(article_id)
         if parent is None:
             raise requests.ConnectionError("getArticle down")
-        return {"article": {"cid": article_id, "textTitles": [{"cid": parent}]}}
+        chronique = self.article_chroniques.get(article_id, article_id)
+        return {"article": {"cid": chronique, "textTitles": [{"cid": parent}]}}
 
 
 class _DeltaWriter:
@@ -847,6 +851,42 @@ def test_ingest_delta_getarticle_parent_not_followed_stays_flagged() -> None:
 
     assert writer.article_cascades == []  # jamais de suppression autoritaire
     assert summary["plan"]["flagged"]["sample"] == ["LEGIARTI_UNRELATED"]
+
+
+def test_ingest_delta_migrates_out_of_toc_twins_without_guard_deadlock() -> None:
+    # P2 bis revue #317, BOUT-EN-BOUT : 2 anciennes versions HORS TOC résolues via
+    # getArticle (parent suivi + chronique de remplacement article.cid),
+    # byte-identiques à leurs chroniques. Même sous un garde bas (max_auto_stale=1),
+    # ce sont des migrations d'identité -> reconnues, exclues du garde, migrées
+    # (cascade out-avant-in), sans deadlock uq_rag_documents_source_checksum.
+    grist = _RecordingGrist([_rec(1, **_texte(JORF_D1))])
+    piste = _FakePiste({JORF_D1: _arts(("LEGIARTI_NEW1", "VIGUEUR"), ("LEGIARTI_NEW2", "VIGUEUR"))})
+    for k in (1, 2):
+        piste.article_parents[f"LEGIARTI_OLD{k}"] = JORF_D1
+        piste.article_chroniques[f"LEGIARTI_OLD{k}"] = f"LEGIARTI_NEW{k}"  # chronique de remplacement
+    # corpus : 2 anciennes versions hors TOC, byte-identiques à leurs chroniques.
+    writer = _DeltaWriter(_corpus(LEGIARTI_OLD1=("hnew1", 1), LEGIARTI_OLD2=("hnew2", 1)))
+    documents = [
+        {"short_id": "LEGIARTI_NEW1", "doc_id": "dn1", "checksum": "hnew1"},
+        {"short_id": "LEGIARTI_NEW2", "doc_id": "dn2", "checksum": "hnew2"},
+    ]
+    sections = [
+        {"doc_id": "dn1", "section_index": 0, "section_id": "s1"},
+        {"doc_id": "dn2", "section_index": 0, "section_id": "s2"},
+    ]
+    chunks = [
+        {"cid": "LEGIARTI_NEW1", "chunk_id": "LEGIARTI_NEW1_0", "_targets": ["legacy"]},
+        {"cid": "LEGIARTI_NEW2", "chunk_id": "LEGIARTI_NEW2_0", "_targets": ["legacy"]},
+    ]
+
+    summary = legifrance_ingestion.ingest_delta(writer, grist, piste, documents, sections, chunks, max_auto_stale=1, toc_date_millis=1000)
+
+    assert summary["plan"]["mass_stale_guard"] is False  # migrations non gardées malgré le seuil bas
+    assert summary["applied"]["failed"] == 0  # pas de deadlock
+    assert summary["applied"]["identity_migrations"] == 2
+    # Les 2 anciennes versions cascadées ; leurs chroniques ingérées.
+    assert sorted(uid for cascade in writer.article_cascades for uid in cascade) == ["LEGIARTI_OLD1", "LEGIARTI_OLD2"]
+    assert sorted(writer.article_bundles) == ["LEGIARTI_NEW1", "LEGIARTI_NEW2"]
 
 
 def test_ingest_delta_incomplete_bundle_defers_stale_cascade() -> None:
