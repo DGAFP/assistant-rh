@@ -222,7 +222,7 @@
       "local_storage_capacity": 8192,
       "job_timeout": "14400s",
       "requires_embeddings": true,
-      "env_groups": ["postgres", "embeddings_api"],
+      "env_groups": ["postgres", "embeddings_api", "albert"],
       "args": [
         "embeddings",
         "legifrance",

@@ -10,6 +10,10 @@ class BronzeConfig:
     legifrance_code_id: str = "LEGITEXT000044416551"
     default_legacy_thematique: str = "legifrance"
     prefer_raw_xml: bool = True
+    # alias (id de version / cid API, en UPPER) -> cid chronique stable. Issu
+    # du follow-live PISTE (cache article_cids v3) : le XML du dump DILA ne
+    # porte pas le chronique, ce mapping rétablit l'identité stable en bronze.
+    article_cid_mapping: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

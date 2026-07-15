@@ -158,6 +158,8 @@ jobs:
       SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
       SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
       SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
+      ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
+      ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
       RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ingestion || false }}
       WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}
       EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && (inputs.source == 'matte' && 'matte' || inputs.embedding_source) || 'all' }}
