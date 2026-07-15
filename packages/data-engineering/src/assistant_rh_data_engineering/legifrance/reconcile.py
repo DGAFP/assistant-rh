@@ -301,6 +301,10 @@ def build_legifrance_plan(
     followed_articles: dict[str, set[str]] = {}
     # attribuable = ∪ (cids ∪ version_ids) des TOCs des textes suivis.
     attributable: set[str] = set()
+    # alias (version_id / alias_ids / cid) -> cid chronique de l'article : identité
+    # de remplacement d'un ancien alias, pour apparier PRÉCISÉMENT une migration
+    # (X est l'ancienne version de C) et non par simple collision de checksum.
+    alias_to_chronique: dict[str, str] = {}
     # Les lignes sans type_id sont explicitement hors du pipeline Legi. Quand
     # le matcher a déjà posé leur short_id, elles doivent rester hors du diff
     # stale au lieu d'être supprimées comme des orphelins du manifest.
@@ -337,6 +341,8 @@ def build_legifrance_plan(
                 aliases.add(version_id)
             arts.update(aliases)
             attributable.update(aliases)
+            for alias in aliases:
+                alias_to_chronique[alias] = cid
             if not _wanted(cid):
                 continue
             if row.limbo:
@@ -405,13 +411,21 @@ def build_legifrance_plan(
     # ne les cascade plus, et l'INSERT de la chronique re-collisionne sur
     # uq_rag_documents_source_checksum (bug cron : recodification > max_auto_stale).
     silver_by_uid = {str(u).strip().upper(): str(c or "").strip() for u, c in silver_checksums.items()}
-    to_ingest_checksums = {checksum for uid in (*plan.new, *plan.changed) if (checksum := silver_by_uid.get(str(uid).strip().upper(), ""))}
+    to_ingest = frozenset(plan.new) | frozenset(plan.changed)
 
     def _is_migration_twin(removal: Removal) -> bool:
+        # Jumeau de migration = ANCIENNE VERSION de sa chronique de remplacement
+        # (relation TOC alias→cid) ET à contenu identique (même checksum). Le seul
+        # match de checksum ne suffit PAS : deux articles NON liés au contenu
+        # identique contourneraient sinon le garde (P2 revue #317).
         if removal.reason != "stale" or removal.confidence is not Confidence.AUTHORITATIVE:
             return False
+        chronique = alias_to_chronique.get(removal.uid)
+        if chronique is None or chronique not in to_ingest:
+            return False
         entry = corpus_entries.get(removal.uid)
-        return bool(entry) and str(entry.content_hash or "").strip() in to_ingest_checksums
+        stale_checksum = str(entry.content_hash or "").strip() if entry else ""
+        return bool(stale_checksum) and stale_checksum == silver_by_uid.get(chronique, "")
 
     # Garde anti-suppression-massive : un volume anormal de stale (hors migration)
     # trahit un manifest partiel, pas une curation opérateur — on rétrograde ces

@@ -451,6 +451,28 @@ def test_mass_stale_guard_still_fires_on_real_stale_alongside_migration_twins(ca
     assert len(lf_plan.plan.flagged_removals) == 51
 
 
+def test_mass_stale_guard_not_bypassed_by_coincidental_checksum(capsys: Any) -> None:
+    # P2 revue #317 : un stale dont le checksum matche PAR HASARD un nouvel article
+    # auquel il n'est PAS lié (alias≠chronique) ne doit PAS être exempté du garde —
+    # sinon le seuil de 50 est contourné. L'appariement se fait via alias→chronique.
+    selection = _selection([_rec(1, **_code())])
+    # 51 recodifs à contenu CHANGÉ (alias version, checksum ≠ chronique) = vrais stale.
+    code_articles = [CodeArticle(cid=f"LEGIARTI1{i:03d}", etat="VIGUEUR", version_id=f"LEGIARTI2{i:03d}") for i in range(51)]
+    # + 1 NOUVEL article sans corpus dont le checksum matche par hasard le 51e stale.
+    code_articles.append(CodeArticle(cid="LEGIARTI900", etat="VIGUEUR"))
+    toc = {LEGITEXT: code_articles}
+    corpus = {f"LEGIARTI2{i:03d}": {"doc_id": f"d{i}", "checksum": f"old{i}", "nb_chunks": 1} for i in range(51)}
+    silver = {f"LEGIARTI1{i:03d}": f"new{i}" for i in range(51)}  # contenu changé
+    silver["LEGIARTI900"] = "old50"  # collision de checksum avec LEGIARTI2050 (non lié)
+
+    lf_plan = reconcile.build_legifrance_plan(selection, toc, silver, corpus, max_auto_stale=50)
+
+    # La collision n'exempte PAS le 51e : 51 vrais stale > 50 -> garde armé.
+    assert lf_plan.mass_stale_guard is True
+    assert len(lf_plan.plan.flagged_removals) == 51
+    assert not any(f"LEGIARTI2{i:03d}" in lf_plan.plan.auto_removals for i in range(51))
+
+
 def test_plan_summary_reports_buckets(capsys: Any) -> None:
     selection = _selection(
         [

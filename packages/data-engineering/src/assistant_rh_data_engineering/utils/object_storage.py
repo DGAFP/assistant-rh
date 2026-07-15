@@ -334,11 +334,14 @@ class ScalewayObjectStorageSync:
                 gold_prefix,
                 delete=delete,
             )
-        return {
+        # Ne reporter QUE les couches réellement synchronisées (P3 revue #317) :
+        # annoncer une destination bronze non synchronisée serait trompeur.
+        destinations = {
             "bronze": f"s3://{self.config.bucket_bronze}/{bronze_prefix}/",
             "silver": f"s3://{self.config.bucket_silver}/{silver_prefix}/",
             "gold": f"s3://{self.config.bucket_gold}/{gold_prefix}/",
         }
+        return {layer: uri for layer, uri in destinations.items() if layer in include_layers}
 
     def download_medallion_root(
         self,
