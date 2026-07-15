@@ -394,11 +394,22 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         GoldsetQuestion(id=1, question="q1", gold_answer="a1", gold_sources=["doc-a"]),
         GoldsetQuestion(id=2, question="q2", gold_answer="a2", gold_sources=["doc-b"]),
     ]
-    smoke = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="all")
-    full = argparse.Namespace(limit=None, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="all")
-    no_judge = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=True, judge_model="judge-a", ministry_scope="all")
-    no_ragas = argparse.Namespace(limit=1, skip_ragas=True, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="all")
-    unscoped = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="none")
+    base = dict(
+        skip_ragas=False,
+        ragas_model="ragas-a",
+        skip_judge=False,
+        judge_model="judge-a",
+        judge_provider="openrouter",
+        judge_base_url="https://openrouter.ai/api/v1",
+    )
+    smoke = argparse.Namespace(limit=1, ministry_scope="all", **base)
+    full = argparse.Namespace(limit=None, ministry_scope="all", **base)
+    no_judge = argparse.Namespace(limit=1, ministry_scope="all", **{**base, "skip_judge": True})
+    no_ragas = argparse.Namespace(limit=1, ministry_scope="all", **{**base, "skip_ragas": True})
+    unscoped = argparse.Namespace(limit=1, ministry_scope="none", **base)
+    # Endpoint différent -> eval_scope différent (revue #318: la comparabilité
+    # doit distinguer deux runs sur des base URL distinctes).
+    other_endpoint = argparse.Namespace(limit=1, ministry_scope="all", **{**base, "judge_base_url": "https://example.test/v1"})
 
     smoke_scope = build_eval_scope(smoke, questions[:1])
 
@@ -410,6 +421,7 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         "ragas_model": "ragas-a",
         "judge_enabled": True,
         "judge_provider": "openrouter",
+        "judge_base_url": "https://openrouter.ai/api/v1",
         "judge_model": "judge-a",
         "ministry_scope": "all",
     }
@@ -418,6 +430,30 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
     assert build_eval_scope(no_ragas, questions[:1]) != smoke_scope
     # Un run scopé « all ministries » n'est pas comparable à un run historique.
     assert build_eval_scope(unscoped, questions[:1]) != smoke_scope
+    # Ni un run sur un autre endpoint de juge.
+    assert build_eval_scope(other_endpoint, questions[:1]) != smoke_scope
+
+
+def test_resolve_judge_endpoint_drives_key_and_base_url(monkeypatch) -> None:
+    from src.goldset.eval import resolve_judge_endpoint
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
+    monkeypatch.setenv("SCALEWAY_API_KEY", "scw-key")
+    monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
+    monkeypatch.delenv("SCALEWAY_BASE_URL", raising=False)
+
+    # openrouter -> clé OpenRouter + base URL OpenRouter par défaut.
+    provider, base_url, api_key = resolve_judge_endpoint("openrouter")
+    assert (provider, api_key, base_url) == ("openrouter", "or-key", "https://openrouter.ai/api/v1")
+
+    # scaleway -> clé Scaleway + base URL Scaleway (le provider pilote vraiment
+    # la clé ET l'endpoint; #318: plus de scaleway inscrit avec la clé OpenRouter).
+    provider, base_url, api_key = resolve_judge_endpoint("scaleway")
+    assert (provider, api_key, base_url) == ("scaleway", "scw-key", "https://api.scaleway.ai/v1")
+
+    # L'override explicite prime sur la var d'env et le défaut.
+    _, base_url, _ = resolve_judge_endpoint("openrouter", "https://custom.test/v1")
+    assert base_url == "https://custom.test/v1"
 
 
 def test_baseline_comparison_passes_within_allowed_drop() -> None:
