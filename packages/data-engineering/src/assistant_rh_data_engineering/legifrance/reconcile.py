@@ -262,6 +262,7 @@ def build_legifrance_plan(
     guard_empty_manifest: bool = True,
     max_auto_stale: int | None = DEFAULT_MAX_AUTO_STALE,
     extra_attributions: Mapping[str, str] | None = None,
+    extra_chroniques: Mapping[str, str] | None = None,
 ) -> LegifrancePlan:
     """Adapte référentiel Grist + TOCs PISTE + état corpus au diff ``build_plan``.
 
@@ -301,6 +302,10 @@ def build_legifrance_plan(
     followed_articles: dict[str, set[str]] = {}
     # attribuable = ∪ (cids ∪ version_ids) des TOCs des textes suivis.
     attributable: set[str] = set()
+    # alias (version_id / alias_ids / cid) -> cid chronique de l'article : identité
+    # de remplacement d'un ancien alias, pour apparier PRÉCISÉMENT une migration
+    # (X est l'ancienne version de C) et non par simple collision de checksum.
+    alias_to_chronique: dict[str, str] = {}
     # Les lignes sans type_id sont explicitement hors du pipeline Legi. Quand
     # le matcher a déjà posé leur short_id, elles doivent rester hors du diff
     # stale au lieu d'être supprimées comme des orphelins du manifest.
@@ -337,6 +342,8 @@ def build_legifrance_plan(
                 aliases.add(version_id)
             arts.update(aliases)
             attributable.update(aliases)
+            for alias in aliases:
+                alias_to_chronique[alias] = cid
             if not _wanted(cid):
                 continue
             if row.limbo:
@@ -370,6 +377,14 @@ def build_legifrance_plan(
             continue
         manifest[uid] = ManifestEntry(uid, weak_removal=True)
 
+    # Anciennes versions HORS TOC rattachées via getArticle : le job a résolu leur
+    # chronique de remplacement (article.cid, validée dans la TOC du texte suivi).
+    # On l'enregistre pour que la migration soit reconnue par _is_migration_twin
+    # (sinon ces stale autoritaires seraient rétrogradés par le garde et l'INSERT
+    # de la chronique re-collisionnerait — P2 bis revue #317). La TOC prime.
+    for old_uid, chronique in (extra_chroniques or {}).items():
+        alias_to_chronique.setdefault(str(old_uid).strip().upper(), str(chronique).strip().upper())
+
     # Documents texte-level (table moderne) encore en base : protégés jusqu'à
     # la décommission (consolidation dgafp), jamais gérés par ce delta.
     legacy_text_docs = tuple(sorted(uid for uid in corpus_text_docs if uid not in protected))
@@ -397,15 +412,42 @@ def build_legifrance_plan(
         guard_empty_manifest=effective_guard,
     )
 
-    # Garde anti-suppression-massive : un volume anormal de stale trahit un état
-    # de migration ou un manifest partiel, pas une curation opérateur — on
-    # rétrograde TOUS les stale en flagged (WEAK).
+    # Jumeaux de MIGRATION D'IDENTITÉ : un stale dont le contenu est repris à
+    # l'identique par une chronique à ingérer (même checksum silver) N'EST PAS une
+    # purge — le contenu est préservé sous la nouvelle identité. Le garde
+    # anti-suppression-massive ne doit donc NI les compter NI les rétrograder :
+    # sinon ils quittent auto_removals, l'appairage out-avant-in de ingest_delta
+    # ne les cascade plus, et l'INSERT de la chronique re-collisionne sur
+    # uq_rag_documents_source_checksum (bug cron : recodification > max_auto_stale).
+    # Jumeaux de migration (pré-calculés en une passe) = ANCIENNE VERSION de leur
+    # chronique de remplacement (relation TOC alias→cid) ET contenu identique
+    # (même checksum). Le seul match de checksum ne suffit PAS : deux articles NON
+    # liés au contenu identique contourneraient sinon le garde (P2 revue #317).
+    silver_by_uid = {str(u).strip().upper(): str(c or "").strip() for u, c in silver_checksums.items()}
+    to_ingest = frozenset(plan.new) | frozenset(plan.changed)
+    migration_twin_uids: set[str] = set()
+    for removal in plan.removals:
+        if removal.reason != "stale" or removal.confidence is not Confidence.AUTHORITATIVE:
+            continue
+        chronique = alias_to_chronique.get(removal.uid)
+        if chronique is None or chronique not in to_ingest:
+            continue
+        entry = corpus_entries.get(removal.uid)
+        stale_checksum = str(entry.content_hash or "").strip() if entry else ""
+        if stale_checksum and stale_checksum == silver_by_uid.get(chronique, ""):
+            migration_twin_uids.add(removal.uid)
+
+    # Garde anti-suppression-massive : un volume anormal de stale (hors migration)
+    # trahit un manifest partiel, pas une curation opérateur — on rétrograde ces
+    # stale en flagged (WEAK). Les jumeaux de migration restent AUTHORITATIVE.
     mass_stale_guard = False
-    stale_auto = [r for r in plan.removals if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE]
+    stale_auto = [r for r in plan.removals if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE and r.uid not in migration_twin_uids]
     if max_auto_stale is not None and len(stale_auto) > max_auto_stale:
         mass_stale_guard = True
         downgraded = tuple(
-            Removal(r.uid, r.reason, Confidence.WEAK) if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE else r
+            Removal(r.uid, r.reason, Confidence.WEAK)
+            if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE and r.uid not in migration_twin_uids
+            else r
             for r in plan.removals
         )
         plan = ReconciliationPlan(

@@ -302,6 +302,10 @@ def ingest_delta(
     probe = build_legifrance_plan(selection, toc_by_text, silver_checksums, corpus, requested=requested, max_auto_stale=None)
     unresolved = sorted(probe.plan.flagged_removals)
     extra_attributions: dict[str, str] = {}
+    # Chronique de remplacement (article.cid) d'une ancienne version hors TOC :
+    # permet à la réconciliation de reconnaître la migration d'identité et de
+    # l'exclure du garde anti-purge (P2 bis revue #317).
+    extra_chroniques: dict[str, str] = {}
     if unresolved:
         if len(unresolved) > _RESOLVE_OWNERSHIP_CAP:
             print(
@@ -316,8 +320,16 @@ def ingest_delta(
                 print(f"[warn] résolution PISTE de {uid} en échec (reste flagged): {exc}")
                 continue
             parents = {parent for parent in _article_parent_text_uids(payload) if parent in followed_uids}
-            if len(parents) == 1:
-                extra_attributions[uid] = next(iter(parents))
+            if len(parents) != 1:
+                continue
+            owner = next(iter(parents))
+            extra_attributions[uid] = owner
+            # article.cid = chronique de remplacement. On ne l'apparie QUE si elle
+            # appartient bien à la TOC du texte suivi propriétaire (validation).
+            article_cid = str((payload.get("article") or payload or {}).get("cid") or "").strip().upper()
+            owner_toc_cids = {str(article.cid).strip().upper() for article in toc_by_text.get(owner, ())}
+            if article_cid and article_cid in owner_toc_cids:
+                extra_chroniques[uid] = article_cid
 
     lf_plan = build_legifrance_plan(
         selection,
@@ -327,6 +339,7 @@ def ingest_delta(
         requested=requested,
         max_auto_stale=effective_max_stale,
         extra_attributions=extra_attributions or None,
+        extra_chroniques=extra_chroniques or None,
     )
     plan = lf_plan.plan
 

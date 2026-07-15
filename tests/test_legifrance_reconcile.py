@@ -406,6 +406,101 @@ def test_plan_mass_stale_guard_downgrades_bulk_removals(capsys: Any) -> None:
     assert len(lf_plan_off.plan.auto_removals) == 61
 
 
+def test_mass_stale_guard_excludes_identity_migration_twins(capsys: Any) -> None:
+    # Fix cron BUG B : 60 articles recodifiés (chronique BYTE-IDENTIQUE au jumeau
+    # version, même checksum) > max_auto_stale=50. Ce sont des MIGRATIONS
+    # d'identité, pas une purge : le garde ne doit NI les compter NI les
+    # rétrograder -> ils restent AUTHORITATIVE (auto_removals) pour l'appairage
+    # out-avant-in de ingest_delta. Sinon l'INSERT de la chronique re-collisionne
+    # sur uq_rag_documents_source_checksum (deadlock #311 réintroduit).
+    selection = _selection([_rec(1, **_code())])
+    toc = {LEGITEXT: [CodeArticle(cid=f"LEGIARTI1{i:03d}", etat="VIGUEUR", version_id=f"LEGIARTI2{i:03d}") for i in range(60)]}
+    corpus = {f"LEGIARTI2{i:03d}": {"doc_id": f"d{i}", "checksum": f"h{i}", "nb_chunks": 1} for i in range(60)}
+    # Chaque chronique to_ingest a le MÊME checksum que son jumeau version en base.
+    silver = {f"LEGIARTI1{i:03d}": f"h{i}" for i in range(60)}
+
+    lf_plan = reconcile.build_legifrance_plan(selection, toc, silver, corpus, max_auto_stale=50)
+
+    assert lf_plan.mass_stale_guard is False  # migrations non comptées par le garde
+    assert len(lf_plan.plan.auto_removals) == 60  # les 60 jumeaux restent cascadables
+    assert len(lf_plan.plan.flagged_removals) == 0
+    assert len(lf_plan.plan.to_ingest) == 60  # les 60 chroniques ingérées
+    assert "max_auto_stale" not in capsys.readouterr().out  # pas de warn de purge
+
+
+def test_mass_stale_guard_still_fires_on_real_stale_alongside_migration_twins(capsys: Any) -> None:
+    # Les vrais stale restent gardés même quand des jumeaux de migration
+    # coexistent : 60 migrations byte-identiques (exclues du garde) + 51 recodifs
+    # à CONTENU CHANGÉ (alias version, checksum ≠ chronique) = vrais stale ->
+    # garde armé sur les 51, les 60 jumeaux préservés (AUTHORITATIVE).
+    selection = _selection([_rec(1, **_code())])
+    code_articles = [CodeArticle(cid=f"LEGIARTI1{i:03d}", etat="VIGUEUR", version_id=f"LEGIARTI2{i:03d}") for i in range(60)]
+    code_articles += [CodeArticle(cid=f"LEGIARTI3{j:03d}", etat="VIGUEUR", version_id=f"LEGIARTI4{j:03d}") for j in range(51)]
+    toc = {LEGITEXT: code_articles}
+    corpus = {f"LEGIARTI2{i:03d}": {"doc_id": f"d{i}", "checksum": f"h{i}", "nb_chunks": 1} for i in range(60)}
+    corpus.update({f"LEGIARTI4{j:03d}": {"doc_id": f"e{j}", "checksum": f"old{j}", "nb_chunks": 1} for j in range(51)})
+    silver = {f"LEGIARTI1{i:03d}": f"h{i}" for i in range(60)}  # twins : identiques
+    silver.update({f"LEGIARTI3{j:03d}": f"new{j}" for j in range(51)})  # changed : différents
+
+    lf_plan = reconcile.build_legifrance_plan(selection, toc, silver, corpus, max_auto_stale=50)
+
+    assert lf_plan.mass_stale_guard is True  # 51 vrais stale > 50 -> garde armé
+    # Les 60 jumeaux de migration restent AUTHORITATIVE malgré le garde.
+    assert all(f"LEGIARTI2{i:03d}" in lf_plan.plan.auto_removals for i in range(60))
+    # Les 51 vrais stale (contenu changé) sont rétrogradés en flagged.
+    assert len(lf_plan.plan.flagged_removals) == 51
+
+
+def test_mass_stale_guard_not_bypassed_by_coincidental_checksum(capsys: Any) -> None:
+    # P2 revue #317 : un stale dont le checksum matche PAR HASARD un nouvel article
+    # auquel il n'est PAS lié (alias≠chronique) ne doit PAS être exempté du garde —
+    # sinon le seuil de 50 est contourné. L'appariement se fait via alias→chronique.
+    selection = _selection([_rec(1, **_code())])
+    # 51 recodifs à contenu CHANGÉ (alias version, checksum ≠ chronique) = vrais stale.
+    code_articles = [CodeArticle(cid=f"LEGIARTI1{i:03d}", etat="VIGUEUR", version_id=f"LEGIARTI2{i:03d}") for i in range(51)]
+    # + 1 NOUVEL article sans corpus dont le checksum matche par hasard le 51e stale.
+    code_articles.append(CodeArticle(cid="LEGIARTI900", etat="VIGUEUR"))
+    toc = {LEGITEXT: code_articles}
+    corpus = {f"LEGIARTI2{i:03d}": {"doc_id": f"d{i}", "checksum": f"old{i}", "nb_chunks": 1} for i in range(51)}
+    silver = {f"LEGIARTI1{i:03d}": f"new{i}" for i in range(51)}  # contenu changé
+    silver["LEGIARTI900"] = "old50"  # collision de checksum avec LEGIARTI2050 (non lié)
+
+    lf_plan = reconcile.build_legifrance_plan(selection, toc, silver, corpus, max_auto_stale=50)
+
+    # La collision n'exempte PAS le 51e : 51 vrais stale > 50 -> garde armé.
+    assert lf_plan.mass_stale_guard is True
+    assert len(lf_plan.plan.flagged_removals) == 51
+    assert not any(f"LEGIARTI2{i:03d}" in lf_plan.plan.auto_removals for i in range(51))
+
+
+def test_mass_stale_guard_excludes_out_of_toc_migration_twins_via_getarticle(capsys: Any) -> None:
+    # P2 bis revue #317 : 60 ANCIENNES VERSIONS hors TOC rattachées par getArticle
+    # (extra_attributions -> stale autoritaire) et byte-identiques à 60 chroniques
+    # (extra_chroniques -> chronique de remplacement validée dans la TOC du texte
+    # suivi). Ce sont des migrations d'identité : le garde ne doit NI les compter
+    # NI les rétrograder, sinon l'INSERT de la chronique re-collisionne.
+    selection = _selection([_rec(1, **_code())])
+    toc = {LEGITEXT: [CodeArticle(cid=f"LEGIARTI6{i:03d}", etat="VIGUEUR") for i in range(60)]}
+    corpus = {f"LEGIARTI5{i:03d}": {"doc_id": f"d{i}", "checksum": f"h{i}", "nb_chunks": 1} for i in range(60)}
+    silver = {f"LEGIARTI6{i:03d}": f"h{i}" for i in range(60)}  # chronique byte-identique au jumeau hors TOC
+    extra_attr = {f"LEGIARTI5{i:03d}": LEGITEXT for i in range(60)}  # rattachées au code suivi
+    extra_chron = {f"LEGIARTI5{i:03d}": f"LEGIARTI6{i:03d}" for i in range(60)}  # chronique de remplacement
+
+    lf_plan = reconcile.build_legifrance_plan(
+        selection,
+        toc,
+        silver,
+        corpus,
+        max_auto_stale=50,
+        extra_attributions=extra_attr,
+        extra_chroniques=extra_chron,
+    )
+
+    assert lf_plan.mass_stale_guard is False  # migrations hors TOC non comptées par le garde
+    assert all(f"LEGIARTI5{i:03d}" in lf_plan.plan.auto_removals for i in range(60))
+    assert len(lf_plan.plan.auto_removals) == 60
+
+
 def test_plan_summary_reports_buckets(capsys: Any) -> None:
     selection = _selection(
         [
@@ -458,6 +553,9 @@ class _FakePiste:
         self.calls: list[tuple[str, int, str]] = []
         # Ownership getArticle : uid -> texte parent ; uid absent = API en échec.
         self.article_parents: dict[str, str] = {}
+        # Chronique de remplacement d'une ancienne version : uid -> cid chronique
+        # (défaut = l'uid lui-même, comportement historique).
+        self.article_chroniques: dict[str, str] = {}
         self.article_calls: list[str] = []
 
     def text_articles(self, text_uid: str, date_millis: int, *, kind: str = "code") -> list[CodeArticle]:
@@ -471,7 +569,8 @@ class _FakePiste:
         parent = self.article_parents.get(article_id)
         if parent is None:
             raise requests.ConnectionError("getArticle down")
-        return {"article": {"cid": article_id, "textTitles": [{"cid": parent}]}}
+        chronique = self.article_chroniques.get(article_id, article_id)
+        return {"article": {"cid": chronique, "textTitles": [{"cid": parent}]}}
 
 
 class _DeltaWriter:
@@ -752,6 +851,42 @@ def test_ingest_delta_getarticle_parent_not_followed_stays_flagged() -> None:
 
     assert writer.article_cascades == []  # jamais de suppression autoritaire
     assert summary["plan"]["flagged"]["sample"] == ["LEGIARTI_UNRELATED"]
+
+
+def test_ingest_delta_migrates_out_of_toc_twins_without_guard_deadlock() -> None:
+    # P2 bis revue #317, BOUT-EN-BOUT : 2 anciennes versions HORS TOC résolues via
+    # getArticle (parent suivi + chronique de remplacement article.cid),
+    # byte-identiques à leurs chroniques. Même sous un garde bas (max_auto_stale=1),
+    # ce sont des migrations d'identité -> reconnues, exclues du garde, migrées
+    # (cascade out-avant-in), sans deadlock uq_rag_documents_source_checksum.
+    grist = _RecordingGrist([_rec(1, **_texte(JORF_D1))])
+    piste = _FakePiste({JORF_D1: _arts(("LEGIARTI_NEW1", "VIGUEUR"), ("LEGIARTI_NEW2", "VIGUEUR"))})
+    for k in (1, 2):
+        piste.article_parents[f"LEGIARTI_OLD{k}"] = JORF_D1
+        piste.article_chroniques[f"LEGIARTI_OLD{k}"] = f"LEGIARTI_NEW{k}"  # chronique de remplacement
+    # corpus : 2 anciennes versions hors TOC, byte-identiques à leurs chroniques.
+    writer = _DeltaWriter(_corpus(LEGIARTI_OLD1=("hnew1", 1), LEGIARTI_OLD2=("hnew2", 1)))
+    documents = [
+        {"short_id": "LEGIARTI_NEW1", "doc_id": "dn1", "checksum": "hnew1"},
+        {"short_id": "LEGIARTI_NEW2", "doc_id": "dn2", "checksum": "hnew2"},
+    ]
+    sections = [
+        {"doc_id": "dn1", "section_index": 0, "section_id": "s1"},
+        {"doc_id": "dn2", "section_index": 0, "section_id": "s2"},
+    ]
+    chunks = [
+        {"cid": "LEGIARTI_NEW1", "chunk_id": "LEGIARTI_NEW1_0", "_targets": ["legacy"]},
+        {"cid": "LEGIARTI_NEW2", "chunk_id": "LEGIARTI_NEW2_0", "_targets": ["legacy"]},
+    ]
+
+    summary = legifrance_ingestion.ingest_delta(writer, grist, piste, documents, sections, chunks, max_auto_stale=1, toc_date_millis=1000)
+
+    assert summary["plan"]["mass_stale_guard"] is False  # migrations non gardées malgré le seuil bas
+    assert summary["applied"]["failed"] == 0  # pas de deadlock
+    assert summary["applied"]["identity_migrations"] == 2
+    # Les 2 anciennes versions cascadées ; leurs chroniques ingérées.
+    assert sorted(uid for cascade in writer.article_cascades for uid in cascade) == ["LEGIARTI_OLD1", "LEGIARTI_OLD2"]
+    assert sorted(writer.article_bundles) == ["LEGIARTI_NEW1", "LEGIARTI_NEW2"]
 
 
 def test_ingest_delta_incomplete_bundle_defers_stale_cascade() -> None:
