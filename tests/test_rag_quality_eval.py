@@ -409,6 +409,7 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         "ragas_enabled": True,
         "ragas_model": "ragas-a",
         "judge_enabled": True,
+        "judge_provider": "openrouter",
         "judge_model": "judge-a",
         "ministry_scope": "all",
     }

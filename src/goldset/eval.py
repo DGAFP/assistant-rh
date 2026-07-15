@@ -36,7 +36,14 @@ from psycopg.rows import dict_row
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
-DEFAULT_JUDGE_MODEL = "qwen3-235b-a22b-instruct-2507"
+# Juge LLM: OpenRouter/Claude (décision 2026-07-15, remplace Scaleway qwen3).
+# Le modèle est surchargeable au run (--judge-model / OPENROUTER_JUDGE_MODEL);
+# on garde un modèle Claude par défaut pour le discernement juridique FR.
+DEFAULT_JUDGE_PROVIDER = "openrouter"
+DEFAULT_JUDGE_MODEL = "anthropic/claude-sonnet-4.5"
+DEFAULT_JUDGE_BASE_URL = "https://openrouter.ai/api/v1"
+# RAGAS reste sur Scaleway/OpenAI-compat (le SDK ragas attend un endpoint
+# embeddings+LLM compatible; Claude via OpenRouter n'y est pas branché).
 DEFAULT_SCALEWAY_BASE_URL = "https://api.scaleway.ai/v1"
 # RAGAS makes many statement/NLI calls per question; a large reasoning-grade
 # model is overkill and slow there, so it defaults to a fast instruct model
@@ -534,6 +541,7 @@ def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion])
         "ragas_enabled": ragas_enabled,
         "ragas_model": args.ragas_model if ragas_enabled else "",
         "judge_enabled": judge_enabled,
+        "judge_provider": getattr(args, "judge_provider", DEFAULT_JUDGE_PROVIDER) if judge_enabled else "",
         "judge_model": args.judge_model if judge_enabled else "",
         # Partie de la clé de comparabilité: un run scopé « all ministries »
         # n'est pas comparable à un run historique sans scope.
@@ -550,6 +558,7 @@ def create_eval_run(
     config_hash: str,
     git_sha: str,
     run_label: str,
+    judge_provider: str,
     judge_model: str,
     ragas_status: str,
     metadata: dict[str, Any],
@@ -571,7 +580,7 @@ def create_eval_run(
             run_label,
             config_hash,
             json.dumps(config.to_dict(), ensure_ascii=False, default=str),
-            "scaleway" if judge_model else "",
+            judge_provider if judge_model else "",
             judge_model,
             ragas_status,
             json.dumps(metadata, ensure_ascii=False, default=str),
@@ -1239,7 +1248,7 @@ def judge_answer(
     api_key: str,
 ) -> dict[str, Any]:
     if not api_key:
-        return {"status": "skipped", "reason": "missing SCALEWAY_API_KEY"}
+        return {"status": "skipped", "reason": "missing judge API key (OPENROUTER_API_KEY)"}
     try:
         from openai import OpenAI
     except ImportError as exc:
@@ -1387,6 +1396,8 @@ def run_question(
     run_ragas: bool,
     run_judge: bool,
     judge_model: str,
+    judge_base_url: str,
+    judge_api_key: str,
     ragas_model: str,
     scaleway_base_url: str,
     scaleway_api_key: str,
@@ -1434,8 +1445,8 @@ def run_question(
                 contexts=context_texts,
                 deterministic_metrics=item.deterministic_metrics,
                 model=judge_model,
-                base_url=scaleway_base_url,
-                api_key=scaleway_api_key,
+                base_url=judge_base_url,
+                api_key=judge_api_key,
             )
         else:
             item.judge_result = {"status": "skipped", "reason": "disabled"}
@@ -1574,13 +1585,27 @@ def build_parser() -> argparse.ArgumentParser:
             "historique (v3_tables runtime seulement, mso/mi/masa invisibles)."
         ),
     )
-    parser.add_argument("--judge-model", default=os.getenv("SCALEWAY_JUDGE_MODEL", DEFAULT_JUDGE_MODEL), help="Scaleway judge model.")
+    parser.add_argument(
+        "--judge-provider",
+        default=os.getenv("JUDGE_PROVIDER", DEFAULT_JUDGE_PROVIDER),
+        help="LLM judge provider (traçabilité rag_quality_eval_runs.judge_provider).",
+    )
+    parser.add_argument(
+        "--judge-model",
+        default=os.getenv("OPENROUTER_JUDGE_MODEL", DEFAULT_JUDGE_MODEL),
+        help="Judge model (OpenRouter par défaut, ex. anthropic/claude-sonnet-4.5).",
+    )
+    parser.add_argument(
+        "--judge-base-url", default=os.getenv("OPENROUTER_BASE_URL", DEFAULT_JUDGE_BASE_URL), help="OpenAI-compatible base URL du juge (OpenRouter)."
+    )
     parser.add_argument(
         "--ragas-model",
         default=os.getenv("RAGAS_MODEL", DEFAULT_RAGAS_MODEL),
         help="Scaleway model for RAGAS metrics (fast instruct model; separate from the judge).",
     )
-    parser.add_argument("--scaleway-base-url", default=os.getenv("SCALEWAY_BASE_URL", DEFAULT_SCALEWAY_BASE_URL), help="OpenAI-compatible base URL.")
+    parser.add_argument(
+        "--scaleway-base-url", default=os.getenv("SCALEWAY_BASE_URL", DEFAULT_SCALEWAY_BASE_URL), help="OpenAI-compatible base URL (RAGAS/Scaleway)."
+    )
     parser.add_argument("--fail-fast", action="store_true", help="Stop on the first item failure.")
     parser.add_argument("--baseline-run-id", type=int, default=None, help="Recorded rag_quality_eval_runs.id to compare against.")
     parser.add_argument("--baseline-run-label", default="", help="Recorded rag_quality_eval_runs.run_label to compare against.")
@@ -1731,6 +1756,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                     config_hash=config_hash,
                     git_sha=git_sha,
                     run_label=run_label,
+                    judge_provider=args.judge_provider if not args.skip_judge else "",
                     judge_model=args.judge_model if not args.skip_judge else "",
                     ragas_status="skipped" if args.skip_ragas else "requested",
                     metadata={
@@ -1746,7 +1772,8 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 conn.commit()
 
     pipe = create_pipeline(config=pipeline_config, dsn=dsn)
-    api_key = os.getenv("SCALEWAY_API_KEY", "").strip()
+    api_key = os.getenv("SCALEWAY_API_KEY", "").strip()  # RAGAS (Scaleway)
+    judge_api_key = os.getenv("OPENROUTER_API_KEY", "").strip()  # juge (OpenRouter)
     items: list[EvalItem] = []
     status = "completed"
     error = ""
@@ -1763,6 +1790,8 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 run_ragas=not args.skip_ragas,
                 run_judge=not args.skip_judge,
                 judge_model=args.judge_model,
+                judge_base_url=args.judge_base_url,
+                judge_api_key=judge_api_key,
                 ragas_model=args.ragas_model,
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,
