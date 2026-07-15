@@ -219,3 +219,68 @@ def test_delta_rejects_ingest_flag(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(SystemExit, match="incompatible avec --delta"):
         legifrance_medallion.main()
+
+
+def test_delta_sync_excludes_bronze_when_reading_from_object_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Fix cron BUG A : le médaillon Legi LIT le bronze depuis l'Object Storage
+    # (--from-object-storage) et ne le POSSÈDE pas -> le sync final ne doit PAS
+    # toucher la couche bronze (sinon --delete-remote effacerait le bronze distant
+    # depuis un bronze local vide, fatal en chaîne delta standalone).
+    import assistant_rh_data_engineering.utils.object_storage as object_storage
+
+    sync_calls: list[dict[str, Any]] = []
+
+    class _FakeSyncer:
+        def __init__(self, config: Any) -> None:
+            pass
+
+        def download_medallion_root(
+            self, root: Any, target_env: str, source_name: str = "legifrance", include_layers: tuple[str, ...] = ()
+        ) -> dict[str, str]:
+            return {}
+
+        def sync_medallion_root(
+            self,
+            root: Any,
+            target_env: str,
+            source_name: str = "legifrance",
+            *,
+            delete: bool = False,
+            include_layers: tuple[str, ...] = ("bronze", "silver", "gold"),
+        ) -> dict[str, str]:
+            sync_calls.append({"delete": delete, "include_layers": tuple(include_layers)})
+            return {"silver": "s3://x/silver/", "gold": "s3://x/gold/"}
+
+    monkeypatch.setattr(object_storage, "ScalewayObjectStorageSync", _FakeSyncer)
+    monkeypatch.setattr(object_storage.ObjectStorageConfig, "from_env", classmethod(lambda cls: SimpleNamespace()))
+
+    lake_root = tmp_path / "lake"
+    _seed_silver(lake_root, "A1", "h1")
+    _seed_gold(lake_root, "A1", nb_chunks=1)
+    _seed_gold_fingerprint(lake_root, ["A1"])
+    _patch_pipeline(monkeypatch, ["A1"], {"A1": "h1"})
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "legi-medallion",
+            "--lake-root",
+            str(lake_root),
+            "--delta",
+            "--from-object-storage",
+            "--sync-object-storage",
+            "--delete-remote",
+            "--no-embed",
+            "--target-env",
+            "staging",
+        ],
+    )
+
+    assert legifrance_medallion.main() == 0
+
+    # Sync final : bronze EXCLU (lu depuis l'OS), delete appliqué à silver+gold seulement.
+    assert sync_calls == [{"delete": True, "include_layers": ("silver", "gold")}]

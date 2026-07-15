@@ -406,6 +406,51 @@ def test_plan_mass_stale_guard_downgrades_bulk_removals(capsys: Any) -> None:
     assert len(lf_plan_off.plan.auto_removals) == 61
 
 
+def test_mass_stale_guard_excludes_identity_migration_twins(capsys: Any) -> None:
+    # Fix cron BUG B : 60 articles recodifiés (chronique BYTE-IDENTIQUE au jumeau
+    # version, même checksum) > max_auto_stale=50. Ce sont des MIGRATIONS
+    # d'identité, pas une purge : le garde ne doit NI les compter NI les
+    # rétrograder -> ils restent AUTHORITATIVE (auto_removals) pour l'appairage
+    # out-avant-in de ingest_delta. Sinon l'INSERT de la chronique re-collisionne
+    # sur uq_rag_documents_source_checksum (deadlock #311 réintroduit).
+    selection = _selection([_rec(1, **_code())])
+    toc = {LEGITEXT: [CodeArticle(cid=f"LEGIARTI1{i:03d}", etat="VIGUEUR", version_id=f"LEGIARTI2{i:03d}") for i in range(60)]}
+    corpus = {f"LEGIARTI2{i:03d}": {"doc_id": f"d{i}", "checksum": f"h{i}", "nb_chunks": 1} for i in range(60)}
+    # Chaque chronique to_ingest a le MÊME checksum que son jumeau version en base.
+    silver = {f"LEGIARTI1{i:03d}": f"h{i}" for i in range(60)}
+
+    lf_plan = reconcile.build_legifrance_plan(selection, toc, silver, corpus, max_auto_stale=50)
+
+    assert lf_plan.mass_stale_guard is False  # migrations non comptées par le garde
+    assert len(lf_plan.plan.auto_removals) == 60  # les 60 jumeaux restent cascadables
+    assert len(lf_plan.plan.flagged_removals) == 0
+    assert len(lf_plan.plan.to_ingest) == 60  # les 60 chroniques ingérées
+    assert "max_auto_stale" not in capsys.readouterr().out  # pas de warn de purge
+
+
+def test_mass_stale_guard_still_fires_on_real_stale_alongside_migration_twins(capsys: Any) -> None:
+    # Les vrais stale restent gardés même quand des jumeaux de migration
+    # coexistent : 60 migrations byte-identiques (exclues du garde) + 51 recodifs
+    # à CONTENU CHANGÉ (alias version, checksum ≠ chronique) = vrais stale ->
+    # garde armé sur les 51, les 60 jumeaux préservés (AUTHORITATIVE).
+    selection = _selection([_rec(1, **_code())])
+    code_articles = [CodeArticle(cid=f"LEGIARTI1{i:03d}", etat="VIGUEUR", version_id=f"LEGIARTI2{i:03d}") for i in range(60)]
+    code_articles += [CodeArticle(cid=f"LEGIARTI3{j:03d}", etat="VIGUEUR", version_id=f"LEGIARTI4{j:03d}") for j in range(51)]
+    toc = {LEGITEXT: code_articles}
+    corpus = {f"LEGIARTI2{i:03d}": {"doc_id": f"d{i}", "checksum": f"h{i}", "nb_chunks": 1} for i in range(60)}
+    corpus.update({f"LEGIARTI4{j:03d}": {"doc_id": f"e{j}", "checksum": f"old{j}", "nb_chunks": 1} for j in range(51)})
+    silver = {f"LEGIARTI1{i:03d}": f"h{i}" for i in range(60)}  # twins : identiques
+    silver.update({f"LEGIARTI3{j:03d}": f"new{j}" for j in range(51)})  # changed : différents
+
+    lf_plan = reconcile.build_legifrance_plan(selection, toc, silver, corpus, max_auto_stale=50)
+
+    assert lf_plan.mass_stale_guard is True  # 51 vrais stale > 50 -> garde armé
+    # Les 60 jumeaux de migration restent AUTHORITATIVE malgré le garde.
+    assert all(f"LEGIARTI2{i:03d}" in lf_plan.plan.auto_removals for i in range(60))
+    # Les 51 vrais stale (contenu changé) sont rétrogradés en flagged.
+    assert len(lf_plan.plan.flagged_removals) == 51
+
+
 def test_plan_summary_reports_buckets(capsys: Any) -> None:
     selection = _selection(
         [

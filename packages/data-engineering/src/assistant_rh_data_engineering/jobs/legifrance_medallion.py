@@ -273,11 +273,17 @@ def main() -> int:
     if args.sync_object_storage:
         if syncer is None:
             syncer = ScalewayObjectStorageSync(ObjectStorageConfig.from_env())
+        # Le bronze vient de l'Object Storage (bulk dump) et n'est LU ici, jamais
+        # produit localement : on ne le synchronise pas (sinon --delete-remote
+        # effacerait le bronze distant à partir d'un bronze local vide — fatal en
+        # chaîne delta standalone où aucun bulk dump ne le repeuple ensuite).
+        sync_layers = ("silver", "gold") if args.from_object_storage else ("bronze", "silver", "gold")
         object_storage = syncer.sync_medallion_root(
             config.paths.root_dir,
             args.target_env,
             source_name="legifrance",
             delete=args.delete_remote,
+            include_layers=sync_layers,
         )
 
     print(

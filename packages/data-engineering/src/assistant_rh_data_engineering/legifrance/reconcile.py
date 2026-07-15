@@ -397,15 +397,33 @@ def build_legifrance_plan(
         guard_empty_manifest=effective_guard,
     )
 
-    # Garde anti-suppression-massive : un volume anormal de stale trahit un état
-    # de migration ou un manifest partiel, pas une curation opérateur — on
-    # rétrograde TOUS les stale en flagged (WEAK).
+    # Jumeaux de MIGRATION D'IDENTITÉ : un stale dont le contenu est repris à
+    # l'identique par une chronique à ingérer (même checksum silver) N'EST PAS une
+    # purge — le contenu est préservé sous la nouvelle identité. Le garde
+    # anti-suppression-massive ne doit donc NI les compter NI les rétrograder :
+    # sinon ils quittent auto_removals, l'appairage out-avant-in de ingest_delta
+    # ne les cascade plus, et l'INSERT de la chronique re-collisionne sur
+    # uq_rag_documents_source_checksum (bug cron : recodification > max_auto_stale).
+    silver_by_uid = {str(u).strip().upper(): str(c or "").strip() for u, c in silver_checksums.items()}
+    to_ingest_checksums = {checksum for uid in (*plan.new, *plan.changed) if (checksum := silver_by_uid.get(str(uid).strip().upper(), ""))}
+
+    def _is_migration_twin(removal: Removal) -> bool:
+        if removal.reason != "stale" or removal.confidence is not Confidence.AUTHORITATIVE:
+            return False
+        entry = corpus_entries.get(removal.uid)
+        return bool(entry) and str(entry.content_hash or "").strip() in to_ingest_checksums
+
+    # Garde anti-suppression-massive : un volume anormal de stale (hors migration)
+    # trahit un manifest partiel, pas une curation opérateur — on rétrograde ces
+    # stale en flagged (WEAK). Les jumeaux de migration restent AUTHORITATIVE.
     mass_stale_guard = False
-    stale_auto = [r for r in plan.removals if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE]
+    stale_auto = [r for r in plan.removals if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE and not _is_migration_twin(r)]
     if max_auto_stale is not None and len(stale_auto) > max_auto_stale:
         mass_stale_guard = True
         downgraded = tuple(
-            Removal(r.uid, r.reason, Confidence.WEAK) if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE else r
+            Removal(r.uid, r.reason, Confidence.WEAK)
+            if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE and not _is_migration_twin(r)
+            else r
             for r in plan.removals
         )
         plan = ReconciliationPlan(
