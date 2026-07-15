@@ -27,6 +27,7 @@ from ..utils.helpers import utc_now_iso
 from ..utils.image_annotation import AlbertImageAnnotator
 from ..utils.object_storage import ObjectStorageConfig, ScalewayObjectStorageSync
 from ..utils.ocr import build_ocr_provider
+from ..utils.page_vision import AlbertPageVisionReconstructor
 from ..utils.pdf_store import PdfSourceStore
 from .bronze import BronzeFetcher, BronzeRepository
 from .config import MinistryPipelineConfig
@@ -94,6 +95,7 @@ class MedallionPipeline:
         ocr_provider: Any = None,
         db_writer: Optional[RagDbWriter] = None,
         image_annotator: Any = None,
+        page_reconstructor: Any = None,
         schema: str = "public",
     ):
         self.identity = identity
@@ -108,6 +110,7 @@ class MedallionPipeline:
             include_images=self.config.images.enabled,
         )
         self._image_annotator = image_annotator
+        self._page_reconstructor = page_reconstructor
         self._db_writer = db_writer
         self.schema = schema
 
@@ -136,6 +139,17 @@ class MedallionPipeline:
         if self._image_annotator is None and self.config.images.enabled:
             self._image_annotator = AlbertImageAnnotator(model=self.config.images.vlm_model)
         return self._image_annotator
+
+    @property
+    def page_reconstructor(self) -> Any:
+        # Lazy comme image_annotator: dry-run et page_vision-off n'exigent pas
+        # ALBERT_API_KEY.
+        if self._page_reconstructor is None and self.config.page_vision.enabled:
+            self._page_reconstructor = AlbertPageVisionReconstructor(
+                model=self.config.page_vision.vlm_model,
+                dpi=self.config.page_vision.dpi,
+            )
+        return self._page_reconstructor
 
     def run(
         self,
@@ -199,6 +213,8 @@ class MedallionPipeline:
             force_reocr=force_reocr,
             image_annotator=self.image_annotator if not dry_run else None,
             max_images_per_doc=self.config.images.max_images_per_doc,
+            page_reconstructor=self.page_reconstructor if not dry_run else None,
+            page_vision_max_pages=self.config.page_vision.max_pages,
         )
 
         # Download + hash d'abord (lecture seule): le delta sha256 décide

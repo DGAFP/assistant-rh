@@ -9,6 +9,7 @@ from ..pdf_ministry.config import (
     ImageEnrichmentConfig,
     LakePaths,
     MinistryPipelineConfig,
+    PageVisionConfig,
     SilverConfig,
     lake_paths_for,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "MINISTERE",
     "MasaPipelineConfig",
     "OBJECT_STORAGE_SOURCE_NAME",
+    "PageVisionConfig",
     "PUBLISHER",
     "SilverConfig",
 ]
@@ -74,7 +76,11 @@ class MasaPipelineConfig(MinistryPipelineConfig):
     # - réconciliation: pas d\'exigence nb_chunks > 0 pour ignore_inchange —
     #   un doc légitimement à zéro chunk (image-only après filtre payload)
     #   converge au lieu d\'être retraité à chaque run.
+    # - page_vision: re-passe vision pleine page des slides à schémas (flèches,
+    #   tableaux 2 colonnes) que l'OCR aplatit — ex. mapping CONTRAT/AVENANT
+    #   perdu (constat 2026-07-15). Reconstruction VLM des pages à risque.
     paths: LakePaths = field(default_factory=lambda: lake_paths_for(MINISTERE))
     gold: GoldConfig = field(default_factory=lambda: GoldConfig(table_name=CHUNK_TABLE, min_chunk_payload_chars=MIN_CHUNK_PAYLOAD_CHARS))
     images: ImageEnrichmentConfig = field(default_factory=lambda: ImageEnrichmentConfig(enabled=True))
+    page_vision: PageVisionConfig = field(default_factory=lambda: PageVisionConfig(enabled=True))
     retry_zero_chunk: bool = False

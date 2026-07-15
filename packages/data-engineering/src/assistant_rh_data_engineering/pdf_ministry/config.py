@@ -81,12 +81,27 @@ class ImageEnrichmentConfig:
 
 
 @dataclass(kw_only=True)
+class PageVisionConfig:
+    # Re-passe vision pleine page: rend les pages dont l'OCR aplatit la
+    # structure (schémas à flèches, tableaux 2 colonnes, logigrammes) et les
+    # fait reconstruire en Markdown par un VLM (utils/page_vision.py). Ciblé sur
+    # les corpus « slides » (MASA) où l'OCR perd les associations gauche→droite
+    # — ex. mapping CONTRAT/AVENANT (constat 2026-07-15).
+    enabled: bool = False
+    vlm_model: str = field(default_factory=lambda: os.getenv("ALBERT_VISION_MODEL", "openweight-medium"))
+    dpi: int = 150
+    # Garde-fou coût: nombre max de pages reconstruites par document.
+    max_pages: int = 60
+
+
+@dataclass(kw_only=True)
 class MinistryPipelineConfig:
     paths: LakePaths
     gold: GoldConfig
     silver: SilverConfig = field(default_factory=SilverConfig)
     embeddings: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     images: ImageEnrichmentConfig = field(default_factory=ImageEnrichmentConfig)
+    page_vision: PageVisionConfig = field(default_factory=PageVisionConfig)
     target_env: str = "staging"
     ocr_provider_name: Optional[str] = None  # None => OCR_PROVIDER env ou albert
     # Règle de réconciliation « zéro chunk => retraiter » (leçon de l'audit

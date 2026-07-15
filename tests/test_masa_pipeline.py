@@ -72,6 +72,8 @@ def make_config(tmp_path: Path) -> MasaPipelineConfig:
     # L'enrichissement d'images est testé explicitement avec un fake annotator;
     # désactivé par défaut pour ne pas exiger ALBERT_API_KEY.
     config.images.enabled = False
+    # Idem re-passe vision pleine page: testée explicitement (fake reconstructor).
+    config.page_vision.enabled = False
     return config
 
 
@@ -1119,3 +1121,103 @@ def test_bronze_keeps_raw_markdown_for_silver(tmp_path: Path) -> None:
     assert "[Illustration — " not in asset.ocr_markdown_raw
     saved = (repository.ocr_dir / f"{row.short_id}.md").read_text(encoding="utf-8")
     assert saved == asset.ocr_markdown_raw
+
+
+# --- Re-passe vision pleine page (reconstruction de schémas OCR aplatis) ------
+
+
+class FakePageVisionStore(FakeStore):
+    def __init__(self, documents: dict[str, bytes]):
+        super().__init__(documents)
+        self.page_vision_cache: dict[str, dict[int, str]] = {}
+
+    def get_cached_page_reconstructions(self, target_env, ministere, name, version, sha256):
+        return self.page_vision_cache.get(sha256)
+
+    def put_page_reconstructions(self, target_env, ministere, name, version, sha256, reconstructions):
+        self.page_vision_cache[sha256] = reconstructions
+
+
+class FakePageReconstructor:
+    name = "albert-page-vision"
+    version = "fake-pv-d150"
+    dpi = 150
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def reconstruct(self, image_png: bytes) -> str:
+        self.calls += 1
+        return "- Changement de catégorie → CONTRAT\n- Changement d'indice → AVENANT"
+
+
+def make_ocr_with_risk_page() -> OcrResult:
+    # Slide 57 telle que l'OCR l'aplatit: liste à puces sous un titre « OU »,
+    # colonne droite CONTRAT/AVENANT perdue.
+    slide = "3 MODIFICATION D'UN CONTRAT OU AVENANT\n\n- Changement de catégorie\n- Changement d'indice\n- Modification du fondement juridique\n"
+    pages = [{"index": 0, "markdown": slide}]
+    return OcrResult(provider="albert", version="mistral-ocr-2512", markdown=slide, pages=pages)
+
+
+def test_bronze_page_vision_reconstructs_and_caches(tmp_path: Path, monkeypatch) -> None:
+    from assistant_rh_data_engineering.masa.bronze import MasaBronzeFetcher, MasaBronzeRepository
+    from assistant_rh_data_engineering.utils import page_vision as pv
+
+    # Rendu PDF monkeypatché: un vrai PDF n'est pas nécessaire pour ce test.
+    monkeypatch.setattr(pv, "render_pdf_pages", lambda pdf_bytes, indexes, *, dpi=150: {i: b"png" for i in indexes})
+
+    row = make_row()
+    store = FakePageVisionStore({row.cle_bucket: b"%PDF-doc1"})
+    sha = hashlib.sha256(b"%PDF-doc1").hexdigest()
+    store.ocr_cache[sha] = make_ocr_with_risk_page()
+    src = tmp_path / "src.pdf"
+    src.write_bytes(b"%PDF-doc1")
+    reconstructor = FakePageReconstructor()
+    fetcher = MasaBronzeFetcher(
+        store,
+        FakeOcrProvider(),
+        MasaBronzeRepository(tmp_path / "bronze"),
+        target_env="staging",
+        page_reconstructor=reconstructor,
+    )
+
+    asset = fetcher.fetch_asset(row, src, sha)
+
+    # La mapping CONTRAT/AVENANT est restaurée dans le markdown servi au silver.
+    assert "→ CONTRAT" in asset.ocr.markdown
+    assert asset.ocr.pages[0].get("page_vision") is True
+    assert reconstructor.calls == 1
+    assert "→ CONTRAT" in asset.page_reconstructions[0]
+    assert asset.page_vision_from_cache is False
+    # Cache écrit; le brut OCR reste intact (mapping absente, comme l'OCR d'origine).
+    assert sha in store.page_vision_cache
+    assert "→ CONTRAT" not in asset.ocr_markdown_raw
+
+
+def test_bronze_page_vision_uses_cache_without_recomputing(tmp_path: Path) -> None:
+    from assistant_rh_data_engineering.masa.bronze import MasaBronzeFetcher, MasaBronzeRepository
+
+    row = make_row()
+    store = FakePageVisionStore({row.cle_bucket: b"%PDF-doc1"})
+    sha = hashlib.sha256(b"%PDF-doc1").hexdigest()
+    store.ocr_cache[sha] = make_ocr_with_risk_page()
+    # Cache pré-rempli: la reconstruction ne doit pas être recalculée (ni rendu ni VLM).
+    store.page_vision_cache[sha] = {0: "- Changement de catégorie → CONTRAT"}
+
+    class ExplodingReconstructor(FakePageReconstructor):
+        def reconstruct(self, image_png: bytes) -> str:
+            raise AssertionError("le VLM ne doit pas être appelé sur un cache-hit")
+
+    fetcher = MasaBronzeFetcher(
+        store,
+        FakeOcrProvider(),
+        MasaBronzeRepository(tmp_path / "bronze"),
+        target_env="staging",
+        page_reconstructor=ExplodingReconstructor(),
+    )
+
+    asset = fetcher.fetch_asset(row, tmp_path / "src.pdf", sha)
+
+    assert asset.page_vision_from_cache is True
+    assert "→ CONTRAT" in asset.ocr.markdown
+    assert asset.ocr.pages[0].get("page_vision") is True
