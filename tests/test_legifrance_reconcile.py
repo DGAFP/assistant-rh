@@ -473,6 +473,34 @@ def test_mass_stale_guard_not_bypassed_by_coincidental_checksum(capsys: Any) -> 
     assert not any(f"LEGIARTI2{i:03d}" in lf_plan.plan.auto_removals for i in range(51))
 
 
+def test_mass_stale_guard_excludes_out_of_toc_migration_twins_via_getarticle(capsys: Any) -> None:
+    # P2 bis revue #317 : 60 ANCIENNES VERSIONS hors TOC rattachées par getArticle
+    # (extra_attributions -> stale autoritaire) et byte-identiques à 60 chroniques
+    # (extra_chroniques -> chronique de remplacement validée dans la TOC du texte
+    # suivi). Ce sont des migrations d'identité : le garde ne doit NI les compter
+    # NI les rétrograder, sinon l'INSERT de la chronique re-collisionne.
+    selection = _selection([_rec(1, **_code())])
+    toc = {LEGITEXT: [CodeArticle(cid=f"LEGIARTI6{i:03d}", etat="VIGUEUR") for i in range(60)]}
+    corpus = {f"LEGIARTI5{i:03d}": {"doc_id": f"d{i}", "checksum": f"h{i}", "nb_chunks": 1} for i in range(60)}
+    silver = {f"LEGIARTI6{i:03d}": f"h{i}" for i in range(60)}  # chronique byte-identique au jumeau hors TOC
+    extra_attr = {f"LEGIARTI5{i:03d}": LEGITEXT for i in range(60)}  # rattachées au code suivi
+    extra_chron = {f"LEGIARTI5{i:03d}": f"LEGIARTI6{i:03d}" for i in range(60)}  # chronique de remplacement
+
+    lf_plan = reconcile.build_legifrance_plan(
+        selection,
+        toc,
+        silver,
+        corpus,
+        max_auto_stale=50,
+        extra_attributions=extra_attr,
+        extra_chroniques=extra_chron,
+    )
+
+    assert lf_plan.mass_stale_guard is False  # migrations hors TOC non comptées par le garde
+    assert all(f"LEGIARTI5{i:03d}" in lf_plan.plan.auto_removals for i in range(60))
+    assert len(lf_plan.plan.auto_removals) == 60
+
+
 def test_plan_summary_reports_buckets(capsys: Any) -> None:
     selection = _selection(
         [

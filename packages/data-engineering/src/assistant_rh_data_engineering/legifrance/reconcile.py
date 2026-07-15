@@ -262,6 +262,7 @@ def build_legifrance_plan(
     guard_empty_manifest: bool = True,
     max_auto_stale: int | None = DEFAULT_MAX_AUTO_STALE,
     extra_attributions: Mapping[str, str] | None = None,
+    extra_chroniques: Mapping[str, str] | None = None,
 ) -> LegifrancePlan:
     """Adapte référentiel Grist + TOCs PISTE + état corpus au diff ``build_plan``.
 
@@ -375,6 +376,14 @@ def build_legifrance_plan(
             followed_articles[owner].add(uid)
             continue
         manifest[uid] = ManifestEntry(uid, weak_removal=True)
+
+    # Anciennes versions HORS TOC rattachées via getArticle : le job a résolu leur
+    # chronique de remplacement (article.cid, validée dans la TOC du texte suivi).
+    # On l'enregistre pour que la migration soit reconnue par _is_migration_twin
+    # (sinon ces stale autoritaires seraient rétrogradés par le garde et l'INSERT
+    # de la chronique re-collisionnerait — P2 bis revue #317). La TOC prime.
+    for old_uid, chronique in (extra_chroniques or {}).items():
+        alias_to_chronique.setdefault(str(old_uid).strip().upper(), str(chronique).strip().upper())
 
     # Documents texte-level (table moderne) encore en base : protégés jusqu'à
     # la décommission (consolidation dgafp), jamais gérés par ce delta.
