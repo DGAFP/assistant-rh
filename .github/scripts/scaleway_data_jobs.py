@@ -47,6 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
     # comportement historique. Le gating prod (apply prod = confirmation
     # explicite) est câblé avec le workflow en PR-3.
     parser.add_argument("--mode", choices=("plan", "apply"), default="apply")
+    # Chaîne delta quotidienne (#250) : ajoute --delta aux jobs medallion+ingest
+    # SP/Legi (et --from-grist au medallion SP) pour ne (re)traiter que le
+    # new/changed. Le chemin legacy (upsert-all) reste le défaut.
+    parser.add_argument("--delta", type=parse_bool, default=False)
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser
@@ -152,6 +156,43 @@ def extract_run(payload: Any) -> dict[str, Any]:
 
 def render_args(values: list[str], context: dict[str, str]) -> list[str]:
     return [value.format(**context) for value in values]
+
+
+# Jobs medallion+ingest SP/Legi éligibles au delta (les autres — bulk-dump,
+# embeddings, PDF — gardent leur comportement legacy).
+_DELTA_JOB_KEYS = frozenset({"service-public-medallion", "service-public-ingestion", "legifrance-medallion", "legifrance-ingestion"})
+
+
+def delta_args_for(key: str) -> list[str]:
+    """Flags à ajouter à un job en chaîne delta (#250).
+
+    ``--delta`` pour les medallion+ingest SP/Legi ; ``--from-grist`` en plus pour
+    le medallion SP (piloté par le référentiel Grist — le medallion Legi reste
+    cache-driven via ``article_cids``).
+    """
+    extra: list[str] = []
+    if key in _DELTA_JOB_KEYS:
+        extra.append("--delta")
+    if key == "service-public-medallion":
+        extra.append("--from-grist")
+    return extra
+
+
+def delta_env_groups_for(key: str) -> list[str]:
+    """Env groups SUPPLÉMENTAIRES requis par un job en mode delta (#250).
+
+    Ajoutés UNIQUEMENT quand --delta est actif, pour ne pas casser le chemin
+    legacy (dont les workflows ne fournissent pas GRIST_*/LEGIFRANCE_*) :
+    - medallion SP (--from-grist) et ingest SP (--delta) lisent le référentiel
+      Grist -> ``grist`` ;
+    - ingest Legi (--delta) lit Grist ET la TOC PISTE (follow-live) -> ``grist`` + ``piste`` ;
+    - medallion Legi (--delta) reste cache-driven (article_cids) -> aucun ajout.
+    """
+    if key in {"service-public-medallion", "service-public-ingestion"}:
+        return ["grist"]
+    if key == "legifrance-ingestion":
+        return ["grist", "piste"]
+    return []
 
 
 def indexed_args(prefix: str, values: list[str]) -> list[str]:
@@ -288,6 +329,11 @@ def plan_mode_overrides(mode: str, run_ingestion: bool, run_embeddings: bool) ->
 
 def should_run(spec: dict[str, Any], args: argparse.Namespace) -> bool:
     domain = spec["domain"]
+    if getattr(args, "delta", False) and str(spec.get("key") or "") == "legifrance-bulk-dump":
+        # Chaîne delta quotidienne (#250) = medallion->ingest->embeddings. Le bulk
+        # dump (raw DILA, job legacy ~4h) refresh le contenu à une cadence séparée,
+        # il n'est jamais démarré par le cron delta.
+        return False
     if domain == "service_public" and not args.service_public:
         return False
     if domain == "legifrance" and not args.legifrance:
@@ -461,6 +507,8 @@ def upsert_and_start_jobs(args: argparse.Namespace) -> int:
             job_id = create_definition(spec, name, image, project_id, region, secrets=secrets, dry_run=args.dry_run)
 
         command_args = render_args(spec["args"], context)
+        if getattr(args, "delta", False):
+            command_args.extend(delta_args_for(str(spec.get("key") or "")))
         if spec.get("key") == "service-public-ingestion" and getattr(args, "wipe_existing_chunks", False):
             command_args.append("--wipe-existing-chunks")
         embedding_only_column = str(getattr(args, "embedding_only_column", "") or "").strip()
@@ -468,7 +516,12 @@ def upsert_and_start_jobs(args: argparse.Namespace) -> int:
             command_args.extend(["--only-column", embedding_only_column])
         if args.target_env == "prod":
             command_args.extend(render_args(spec.get("prod_args") or [], context))
-        environment = job_environment(spec, args.target_env, region)
+        environment_spec = spec
+        if getattr(args, "delta", False):
+            extra_groups = delta_env_groups_for(str(spec.get("key") or ""))
+            if extra_groups:
+                environment_spec = {**spec, "env_groups": list(spec.get("env_groups") or []) + extra_groups}
+        environment = job_environment(environment_spec, args.target_env, region)
         print(f"Starting Scaleway job {name}: data-ingestion {' '.join(command_args)}")
         start_definition(
             job_id,
