@@ -419,33 +419,34 @@ def build_legifrance_plan(
     # sinon ils quittent auto_removals, l'appairage out-avant-in de ingest_delta
     # ne les cascade plus, et l'INSERT de la chronique re-collisionne sur
     # uq_rag_documents_source_checksum (bug cron : recodification > max_auto_stale).
+    # Jumeaux de migration (pré-calculés en une passe) = ANCIENNE VERSION de leur
+    # chronique de remplacement (relation TOC alias→cid) ET contenu identique
+    # (même checksum). Le seul match de checksum ne suffit PAS : deux articles NON
+    # liés au contenu identique contourneraient sinon le garde (P2 revue #317).
     silver_by_uid = {str(u).strip().upper(): str(c or "").strip() for u, c in silver_checksums.items()}
     to_ingest = frozenset(plan.new) | frozenset(plan.changed)
-
-    def _is_migration_twin(removal: Removal) -> bool:
-        # Jumeau de migration = ANCIENNE VERSION de sa chronique de remplacement
-        # (relation TOC alias→cid) ET à contenu identique (même checksum). Le seul
-        # match de checksum ne suffit PAS : deux articles NON liés au contenu
-        # identique contourneraient sinon le garde (P2 revue #317).
+    migration_twin_uids: set[str] = set()
+    for removal in plan.removals:
         if removal.reason != "stale" or removal.confidence is not Confidence.AUTHORITATIVE:
-            return False
+            continue
         chronique = alias_to_chronique.get(removal.uid)
         if chronique is None or chronique not in to_ingest:
-            return False
+            continue
         entry = corpus_entries.get(removal.uid)
         stale_checksum = str(entry.content_hash or "").strip() if entry else ""
-        return bool(stale_checksum) and stale_checksum == silver_by_uid.get(chronique, "")
+        if stale_checksum and stale_checksum == silver_by_uid.get(chronique, ""):
+            migration_twin_uids.add(removal.uid)
 
     # Garde anti-suppression-massive : un volume anormal de stale (hors migration)
     # trahit un manifest partiel, pas une curation opérateur — on rétrograde ces
     # stale en flagged (WEAK). Les jumeaux de migration restent AUTHORITATIVE.
     mass_stale_guard = False
-    stale_auto = [r for r in plan.removals if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE and not _is_migration_twin(r)]
+    stale_auto = [r for r in plan.removals if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE and r.uid not in migration_twin_uids]
     if max_auto_stale is not None and len(stale_auto) > max_auto_stale:
         mass_stale_guard = True
         downgraded = tuple(
             Removal(r.uid, r.reason, Confidence.WEAK)
-            if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE and not _is_migration_twin(r)
+            if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE and r.uid not in migration_twin_uids
             else r
             for r in plan.removals
         )
