@@ -364,3 +364,26 @@ Par corpus : **manual 0.48→0.57 (+0.09)**, **MATTE 0.58→0.67 (+0.09)**, **Se
 **Caveats** : +0.040 modeste (proche variance juge single-shot ±0.02) ; le signal PAR CORPUS (SP −0.14 vs manual/MATTE +0.09) est plus robuste que le global.
 
 **Prochain** : soit min_kept par corpus (capture les gains sans la régression SP), soit le levier reranker (remonter la section-réponse au lieu de forcer la largeur — plus principiel).
+
+---
+
+## Run 116 — `baseline_v1_qwen37max_20260716` (16/07) — bascule de juge Claude → Qwen 3.7 Max + baseline J3 propre
+
+**Contexte** : spot-check de 99 réponses (run #113) re-jugées par 4 modèles OpenRouter. `claude-sonnet-4.5` (juge en place depuis #318) s'est révélé **over-strict** : il recale des réponses correctes en `incomplete`/`retrieval_gap`/`gold_answer_alignment`, parfois **en contredisant sa propre rationale** (#200, #204, #225). `glm-5.2` rend des verdicts **incohérents** (quality_gate_failed à rationale vide) → inutilisable. `muse-spark-1.1` géo-bloqué US (403). **`qwen/qwen3.7-max`** : verdicts cohérents avec la rationale, corrige les faux négatifs de Claude (15 corrections / 1 durcissement), **provider zéro-rétention** (exigence DINUM, filtre `data_collection: deny` ajouté), **~71 % moins cher** ($4.42 vs $15 /M out). Adopté comme juge par défaut (PR #324).
+
+**Résultats** (baseline_v1, 99 Q, juge Qwen 3.7 Max, `per-question`, `--skip-ragas`) :
+| | Run #113 (Claude, biaisé) | **Run #116 (Qwen)** |
+|---|---|---|
+| judge_pass_rate | 0.556 | **0.670** (+0.114) |
+| hit / recall / gap | 0.747 / 0.598 / 0.253 | identiques (déterministe) |
+
+Taxonomie des échecs (32/99 sous Qwen) : **`retrieval_gap` 16** (INCHANGÉ vs Claude), `wrong_law` 7, `incomplete` **6** (vs 18 chez Claude), `quality_gate_failed` 3.
+
+Par corpus (Qwen) : MATTE 0.92, synthetic 0.82, Service-Public 0.64, **manual 0.61** (56 Q, le plus faible), MSO 0.50 (n=4), DGAFP 0.00 (n=2).
+
+**Lecture** :
+1. **Claude sous-estimait la qualité de 11 points** (0.556 → 0.670). Les 12 « incomplete » en trop étaient du **bruit de juge** (Claude recalait des réponses correctes) — confirmé par les métriques déterministes identiques.
+2. Sous un juge fiable, **le seul bloc d'échec dominant est le `retrieval_gap` (16)** — les deux juges sont d'accord dessus = c'est le VRAI problème. Cela **valide et resserre** le diagnostic J3 (retrieval de granularité : le bon doc trouvé, la section-réponse pas servie).
+3. **Nouvelle baseline J3 = 0.670** (juge Qwen). Tous les A/B suivants s'y comparent. L'A/B min_kept=4 (#115, +0.040) avait été mesuré sous Claude → à re-juger sous Qwen (re-jugement des réponses stockées, gratuit).
+
+**Caveat** : Qwen conserve 1 cas trop strict (#19). Grok 4.5 ($6/M) est un backup viable (comportement proche, ZDR). GLM 5.2 rejeté malgré son prix ($2.87) pour incohérence des verdicts.
