@@ -170,6 +170,10 @@ class HeadingSilverBuilder:
                 "source_format": (row.cle_bucket.rsplit(".", 1)[-1].lower() if "." in row.cle_bucket else "pdf"),
                 "ocr_provider": asset.ocr.provider,
                 "ocr_from_cache": asset.ocr_from_cache,
+                # False si une panne transitoire a laissé des pages à risque
+                # non reconstruites -> la réconciliation re-traitera le doc au
+                # prochain run (revue #320 finding 1).
+                "page_vision_complete": asset.page_vision_complete,
             },
             "doc_markdown": doc_markdown,
             # Contrat de la colonne: la sortie OCR AVANT les transformations

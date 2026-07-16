@@ -99,9 +99,22 @@ class FakeReconstructor:
     def __init__(self) -> None:
         self.calls = 0
 
-    def reconstruct(self, image_png: bytes) -> str:
+    def reconstruct(self, image_png: bytes) -> tuple[str, bool]:
         self.calls += 1
-        return f"RECONSTRUCTED::{image_png.decode()}"
+        # Reconstruction fidèle: reprend les libellés OCR (colonne gauche) et
+        # ajoute la colonne CONTRAT/AVENANT récupérée -> recouvrement élevé.
+        return FAITHFUL_RECON, False
+
+
+# Reconstruction plausible de FLATTENED_SLIDE (reprend ses libellés + la colonne
+# droite) : passe le garde-fou de fidélité (recouvrement de tokens élevé).
+FAITHFUL_RECON = (
+    "- Changement d'affectation ou de fonction → CONTRAT\n"
+    "- Modification du statut (CDD / CDI) de l'agent contractuel → CONTRAT\n"
+    "- Changement de catégorie → CONTRAT\n"
+    "- Changement d'indice → AVENANT\n"
+    "- Modification du fondement juridique → CONTRAT\n"
+)
 
 
 def test_reconstruct_pages_renders_and_reconstructs_risk_pages(monkeypatch) -> None:
@@ -120,7 +133,7 @@ def test_reconstruct_pages_renders_and_reconstructs_risk_pages(monkeypatch) -> N
     reconstructions, failed = pv.reconstruct_pages(b"%PDF", pages, reconstructor)
 
     assert failed == []
-    assert reconstructions == {1: "RECONSTRUCTED::png-1"}
+    assert reconstructions == {1: FAITHFUL_RECON}
     assert reconstructor.calls == 1  # la page de prose n'est pas reconstruite
 
 
@@ -129,13 +142,86 @@ def test_reconstruct_pages_tolerates_vlm_failure(monkeypatch) -> None:
     monkeypatch.setattr(pv, "render_pdf_pages", lambda *a, **k: {0: b"png"})
 
     class FailingReconstructor(FakeReconstructor):
-        def reconstruct(self, image_png: bytes) -> str:
+        def reconstruct(self, image_png: bytes) -> tuple[str, bool]:
             raise pv.PageVisionError("VLM down")
 
     reconstructions, failed = pv.reconstruct_pages(b"%PDF", pages, FailingReconstructor())
 
     assert reconstructions == {}
-    assert failed == [0]  # échec toléré, position remontée (pas de cache d'un lot partiel)
+    assert failed == [0]  # panne transitoire: position remontée (lot non caché, retry)
+
+
+def test_reconstruct_pages_rejects_unfaithful_reconstruction(monkeypatch) -> None:
+    # Le VLM hallucine une page sans rapport avec l'OCR: reconstruction REJETÉE
+    # (page conservée en OCR), mais PAS dans `failed` (déterministe, pas de retry
+    # en boucle) -> le lot reste cachable.
+    pages = [{"index": 0, "markdown": FLATTENED_SLIDE}]
+    monkeypatch.setattr(pv, "render_pdf_pages", lambda *a, **k: {0: b"png"})
+
+    class HallucinatingReconstructor(FakeReconstructor):
+        def reconstruct(self, image_png: bytes) -> tuple[str, bool]:
+            self.calls += 1
+            return "Compte rendu de réunion budgétaire trimestrielle sans aucun rapport.", False
+
+    reconstructions, failed = pv.reconstruct_pages(b"%PDF", pages, HallucinatingReconstructor())
+
+    assert reconstructions == {}
+    assert failed == []
+
+
+def test_reconstruct_pages_guard_uses_raw_ocr_not_annotated(monkeypatch) -> None:
+    # Le garde-fou doit comparer la reconstruction à l'OCR BRUT (guard_pages),
+    # pas à l'OCR annoté : sinon les descriptions d'images synthétiques gonflent
+    # le vocabulaire OCR et font chuter le rappel -> rejet à tort (revue #320 #2).
+    annotated = FLATTENED_SLIDE + "\n\n[Illustration — " + " ".join(f"synthetique{i}zzz" for i in range(60)) + "]"
+    pages = [{"index": 0, "markdown": annotated}]  # OCR annoté (transmis au rendu)
+    raw = [{"index": 0, "markdown": FLATTENED_SLIDE}]  # OCR brut (référence garde-fou)
+    monkeypatch.setattr(pv, "render_pdf_pages", lambda *a, **k: {0: b"png"})
+
+    # Sans guard_pages: comparé à l'annoté -> rappel effondré -> rejeté.
+    rejected, _ = pv.reconstruct_pages(b"%PDF", pages, FakeReconstructor(), positions=[0])
+    assert rejected == {}
+
+    # Avec guard_pages=brut: la reconstruction fidèle passe.
+    accepted, failed = pv.reconstruct_pages(b"%PDF", pages, FakeReconstructor(), positions=[0], guard_pages=raw)
+    assert failed == []
+    assert accepted == {0: FAITHFUL_RECON}
+
+
+def test_reconstruct_pages_rejects_truncated_reconstruction(monkeypatch) -> None:
+    # Reconstruction fidèle mais tronquée (finish_reason=length): rejetée aussi
+    # (mapping potentiellement incomplet) -> page conservée en OCR, pas de retry.
+    pages = [{"index": 0, "markdown": FLATTENED_SLIDE}]
+    monkeypatch.setattr(pv, "render_pdf_pages", lambda *a, **k: {0: b"png"})
+
+    class TruncatedReconstructor(FakeReconstructor):
+        def reconstruct(self, image_png: bytes) -> tuple[str, bool]:
+            self.calls += 1
+            return FAITHFUL_RECON, True
+
+    reconstructions, failed = pv.reconstruct_pages(b"%PDF", pages, TruncatedReconstructor())
+
+    assert reconstructions == {}
+    assert failed == []
+
+
+def test_is_faithful_reconstruction() -> None:
+    # Recouvrement élevé (colonne gauche préservée), croissance raisonnable -> fidèle.
+    assert pv.is_faithful_reconstruction(FAITHFUL_RECON, FLATTENED_SLIDE) is True
+    # Contenu sans rapport -> non fidèle (rappel OCR insuffisant).
+    assert pv.is_faithful_reconstruction("Texte totalement différent, réunion budgétaire.", FLATTENED_SLIDE) is False
+    # Vide -> non fidèle.
+    assert pv.is_faithful_reconstruction("", FLATTENED_SLIDE) is False
+    # OCR trop maigre (< min_ocr_tokens) -> non vérifiable -> rejeté (garder OCR).
+    assert pv.is_faithful_reconstruction("n'importe quoi", "## Titre") is False
+    # Rappel OK mais contenu massivement AJOUTÉ (OCR + 100 tokens inventés
+    # distincts) -> rejeté par la borne de croissance (revue #320 H2).
+    padded = FLATTENED_SLIDE + " " + " ".join(f"motinvente{i}xyz" for i in range(100))
+    assert pv.is_faithful_reconstruction(padded, FLATTENED_SLIDE) is False
+    # Règle inventée RÉPÉTÉE (peu de vocabulaire, mais longue) -> rejetée par la
+    # borne de LONGUEUR en occurrences (revue #320 finding 1: pas un set).
+    repeated = FLATTENED_SLIDE + " " + " ".join(["changement de categorie donne un avenant faux"] * 60)
+    assert pv.is_faithful_reconstruction(repeated, FLATTENED_SLIDE) is False
 
 
 def test_reconstructor_version_depends_on_prompt_and_dpi(monkeypatch) -> None:

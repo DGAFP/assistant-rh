@@ -20,6 +20,7 @@ from ..utils.helpers import ensure_dir, sha256_file, utc_now_iso, write_json
 from ..utils.image_annotation import AlbertImageAnnotator, annotate_ocr_images, apply_image_annotations
 from ..utils.ocr import OcrProvider, OcrResult
 from ..utils.page_vision import (
+    PAGE_VISION_LOGIC_VERSION,
     AlbertPageVisionReconstructor,
     apply_page_reconstructions,
     reconstruct_pages,
@@ -49,6 +50,11 @@ class BronzeAsset:
     annotations_from_cache: bool = False
     page_reconstructions: dict[int, str] = field(default_factory=dict)
     page_vision_from_cache: bool = False
+    # False si une panne TRANSITOIRE (VLM/rendu) a empêché de reconstruire
+    # certaines pages à risque : le doc est servi en OCR mais la réconciliation
+    # doit le re-traiter au prochain run (revue #320 finding 1). True si complet
+    # (aucune page à risque, ou toutes ok/rejetées, ou servi depuis le cache).
+    page_vision_complete: bool = True
 
 
 class BronzeRepository:
@@ -79,6 +85,7 @@ class BronzeFetcher:
         *,
         target_env: str,
         force_reocr: bool = False,
+        force_reprocess: bool = False,
         image_annotator: Optional[AlbertImageAnnotator] = None,
         max_images_per_doc: int = 150,
         page_reconstructor: Optional[AlbertPageVisionReconstructor] = None,
@@ -90,6 +97,11 @@ class BronzeFetcher:
         self.repository = repository
         self.target_env = target_env
         self.force_reocr = force_reocr
+        # force_reprocess: retraite silver/gold/page-vision en réutilisant le
+        # cache OCR, mais IGNORE les caches d'enrichissement (annotations +
+        # page-vision) pour ré-appliquer un changement de traitement (revue #320
+        # finding 4a). force_reocr l'implique.
+        self.force_reprocess = force_reocr or force_reprocess
         self.image_annotator = image_annotator
         self.max_images_per_doc = max_images_per_doc
         self.page_reconstructor = page_reconstructor
@@ -125,6 +137,22 @@ class BronzeFetcher:
             from_cache = False
 
         raw_markdown = ocr_result.markdown
+        # Pages OCR BRUTES (avant annotation): servent à la détection des pages à
+        # risque ET au garde-fou de fidélité (revue #320 finding 2) — comparer la
+        # reconstruction à l'OCR enrichi de descriptions d'images synthétiques
+        # rejetterait à tort des reconstructions fidèles.
+        raw_ocr_pages = ocr_result.pages
+
+        # Détection des pages à risque sur l'OCR PUR (revue #319 M5): AVANT toute
+        # transformation (les descriptions d'images fausseraient les seuils de
+        # taille/structure).
+        risk_positions = select_risk_positions(raw_ocr_pages)
+
+        # Annotation d'images sur l'OCR COMPLET (revue #320 finding 3): le cache
+        # d'annotations doit couvrir TOUTES les images du doc, indépendamment de
+        # la page vision — sinon un cache partiel (images des pages reconstruites
+        # omises) laisserait ces images non annotées si la page vision est plus
+        # tard désactivée/rejetée.
         annotations, annotations_from_cache = self._annotate_images(ocr_result, sha256)
         if annotations:
             ocr_result = OcrResult(
@@ -135,11 +163,15 @@ class BronzeFetcher:
                 raw=ocr_result.raw,
             )
 
-        # Re-passe vision pleine page: dernier mot sur les pages dont l'OCR a
-        # aplati la structure (schémas à flèches, tableaux 2 colonnes). Substitue
-        # le markdown de ces pages par une reconstruction VLM fidèle aux
-        # associations gauche→droite (ex. CONTRAT/AVENANT MASA).
-        reconstructions, page_vision_from_cache = self._reconstruct_pages(ocr_result, source_path, sha256)
+        # Re-passe vision pleine page en DERNIER: remplace le markdown des pages
+        # à schéma aplati (positions détectées sur l'OCR pur) par une
+        # reconstruction VLM fidèle aux associations gauche→droite (ex.
+        # CONTRAT/AVENANT MASA). page_vision_complete=False si une panne
+        # transitoire a empêché de reconstruire certaines pages -> re-traitement
+        # au prochain run (revue #320 finding 1).
+        reconstructions, page_vision_from_cache, page_vision_complete = self._reconstruct_pages(
+            ocr_result, source_path, sha256, positions=risk_positions, guard_pages=raw_ocr_pages
+        )
         if reconstructions:
             ocr_result = apply_page_reconstructions(ocr_result, reconstructions)
 
@@ -157,6 +189,7 @@ class BronzeFetcher:
             annotations_from_cache=annotations_from_cache,
             page_reconstructions=reconstructions,
             page_vision_from_cache=page_vision_from_cache,
+            page_vision_complete=page_vision_complete,
         )
 
     def _annotate_images(self, ocr_result: OcrResult, sha256: str) -> tuple[dict[str, dict[str, str]], bool]:
@@ -170,7 +203,9 @@ class BronzeFetcher:
         if self.image_annotator is None:
             return {}, False
 
-        if not self.force_reocr:
+        # force_reprocess (⊇ force_reocr) ré-annote pour propager un changement
+        # de traitement et garder le cache d'annotations complet (revue #320).
+        if not self.force_reprocess:
             cached = self.store.get_cached_image_annotations(
                 self.target_env,
                 self.identity.ministere,
@@ -199,61 +234,73 @@ class BronzeFetcher:
             )
         return annotations, False
 
-    def _reconstruct_pages(self, ocr_result: OcrResult, source_path: Path, sha256: str) -> tuple[dict[int, str], bool]:
-        """Re-passe vision des pages à risque: cache bronze d'abord, rendu+VLM sinon.
+    def _reconstruct_pages(
+        self, ocr_result: OcrResult, source_path: Path, sha256: str, *, positions: list[int], guard_pages: list[dict[str, Any]] | None = None
+    ) -> tuple[dict[int, str], bool, bool]:
+        """Re-passe vision des pages à risque: ({position: markdown}, from_cache, complete).
 
-        La détection des pages à risque précède le rendu: un document sans page
-        structurée n'entraîne aucune conversion PDF (LibreOffice) ni appel VLM.
-        force_reocr contourne le cache. Un lot avec échec n'est jamais mis en
-        cache (retentative au prochain run), comme l'annotation d'images."""
+        ``positions`` (détectées sur l'OCR pur en amont) évitent tout rendu si le
+        doc n'a pas de page structurée. ``complete`` vaut False si une panne
+        TRANSITOIRE (VLM/rendu/conversion) a empêché de reconstruire des pages :
+        le doc est servi en OCR mais la réconciliation le re-traitera (finding 1).
+        Un lot avec panne n'est jamais mis en cache (retenté au prochain run)."""
         if self.page_reconstructor is None:
-            return {}, False
+            return {}, False, True
 
-        if not self.force_reocr:
+        # Clé de cache: version reconstructeur (modèle+prompt+dpi) + version OCR
+        # (les positions sont relatives à la liste de pages OCR) + version de la
+        # LOGIQUE (détecteur/garde-fou) + max_pages (revue #319 M2 / #320 M4b) —
+        # tout changement de ces règles change l'ensemble reconstruit.
+        cache_version = (
+            f"{self.page_reconstructor.version}+ocr-{self.ocr_provider.version}+{PAGE_VISION_LOGIC_VERSION}+max{self.page_vision_max_pages}"
+        )
+
+        # force_reprocess (⊇ force_reocr) ré-applique la page vision (cache ignoré).
+        if not self.force_reprocess:
             cached = self.store.get_cached_page_reconstructions(
                 self.target_env,
                 self.identity.ministere,
                 self.page_reconstructor.name,
-                self.page_reconstructor.version,
+                cache_version,
                 sha256,
             )
             if cached is not None:
-                return cached, True
+                return cached, True, True
 
-        positions = select_risk_positions(ocr_result.pages)
         if not positions:
             # Cache l'absence de page à risque: un re-run court-circuite la
             # re-sélection (aucun rendu/VLM n'a lieu de toute façon).
-            self.store.put_page_reconstructions(
-                self.target_env,
-                self.identity.ministere,
-                self.page_reconstructor.name,
-                self.page_reconstructor.version,
-                sha256,
-                {},
-            )
-            return {}, False
+            self.store.put_page_reconstructions(self.target_env, self.identity.ministere, self.page_reconstructor.name, cache_version, sha256, {})
+            return {}, False, True
 
-        pdf_path = ensure_pdf(source_path, source_path.parent / "converted")
-        reconstructions, failed = reconstruct_pages(
-            pdf_path.read_bytes(),
-            ocr_result.pages,
-            self.page_reconstructor,
-            positions=positions,
-            max_pages=self.page_vision_max_pages,
-        )
-        if failed:
-            print(f"[warn] re-passe vision incomplète ({len(failed)} page(s) en échec) — lot non mis en cache, retentative au prochain run")
-        else:
-            self.store.put_page_reconstructions(
-                self.target_env,
-                self.identity.ministere,
-                self.page_reconstructor.name,
-                self.page_reconstructor.version,
-                sha256,
-                reconstructions,
+        # La page vision est un ENRICHISSEMENT: obtenir le PDF (conversion
+        # LibreOffice pour les .xlsx/.pptx) et rendre les pages ne doit JAMAIS
+        # faire échouer l'ingestion d'un doc dont l'OCR est déjà valide (cache).
+        # Panne de conversion/rendu -> on saute (page en OCR), non cachée et
+        # marquée incomplète (re-traitement au prochain run).
+        try:
+            pdf_path = ensure_pdf(source_path, source_path.parent / "converted")
+            reconstructions, failed = reconstruct_pages(
+                pdf_path.read_bytes(),
+                ocr_result.pages,
+                self.page_reconstructor,
+                positions=positions,
+                guard_pages=guard_pages,
+                max_pages=self.page_vision_max_pages,
             )
-        return reconstructions, False
+        except Exception as exc:  # noqa: BLE001 — enrichissement best-effort, l'ingestion continue en OCR
+            print(f"[warn] re-passe vision indisponible (rendu/conversion PDF) — doc conservé en OCR: {exc}")
+            return {}, False, False
+        if failed:
+            # Panne TRANSITOIRE (VLM/rendu par page): lot non caché, doc marqué
+            # incomplet -> la réconciliation le re-traitera (pas seulement au
+            # prochain --force-reprocess manuel).
+            print(f"[warn] re-passe vision incomplète ({len(failed)} page(s) en panne) — doc conservé en OCR, re-traité au prochain run")
+            return reconstructions, False, False
+        self.store.put_page_reconstructions(
+            self.target_env, self.identity.ministere, self.page_reconstructor.name, cache_version, sha256, reconstructions
+        )
+        return reconstructions, False, True
 
     def snapshot_manifest(self, run_id: str, rows: list[ManifestRow]) -> Path:
         return self.repository.save_manifest_snapshot(

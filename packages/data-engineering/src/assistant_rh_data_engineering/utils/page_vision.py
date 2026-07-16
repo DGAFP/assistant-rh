@@ -34,6 +34,17 @@ from .ocr import OcrResult, _sanitize_version
 # l'annotation d'images.
 MAX_PAGE_VISION_WORKERS = 4
 
+# Version de la LOGIQUE page-vision (détecteur is_risk_page + garde-fou
+# is_faithful_reconstruction + politique de cap). Elle entre dans la clé de
+# cache bronze (revue #320 M4b) : changer l'heuristique de détection ou le
+# garde-fou change l'ensemble des pages reconstruites -> le cache doit être
+# invalidé. À incrémenter à CHAQUE évolution de ces règles.
+# pvlogic3 (revue #320 round 4): borne de croissance en occurrences +
+# garde-fou comparé à l'OCR brut (pré-annotation) — invalide les caches
+# pvlogic2 qui pourraient contenir un faux rejet ou une reconstruction que le
+# nouveau garde rejetterait.
+PAGE_VISION_LOGIC_VERSION = "pvlogic3"
+
 RECONSTRUCT_PROMPT = (
     "Tu reconstruis fidèlement le contenu d'une page d'un document de formation RH"
     " (souvent une diapositive) pour un moteur de recherche. Rends UNIQUEMENT le"
@@ -152,12 +163,17 @@ class AlbertPageVisionReconstructor:
         self.timeout = timeout
         self._session = requests.Session()
 
-    def reconstruct(self, image_png: bytes) -> str:
+    def reconstruct(self, image_png: bytes) -> tuple[str, bool]:
+        """Reconstruit une page rendue: (markdown, tronquée).
+
+        ``tronquée`` = la génération a atteint ``max_tokens`` (finish_reason
+        "length") : la reconstruction est incomplète (ex. tableau coupé) et ne
+        doit PAS remplacer l'OCR (revue #319 H2)."""
         data_url = "data:image/png;base64," + base64.b64encode(image_png).decode("ascii")
         body = {
             "model": self.model,
             "temperature": 0.0,
-            "max_tokens": 2000,
+            "max_tokens": 3000,
             "messages": [
                 {
                     "role": "user",
@@ -181,10 +197,12 @@ class AlbertPageVisionReconstructor:
         if response.status_code >= 400:
             raise PageVisionError(f"POST {url} -> HTTP {response.status_code}: {response.text[:300]}")
         try:
-            content = response.json()["choices"][0]["message"]["content"]
+            choice = response.json()["choices"][0]
+            content = choice["message"]["content"]
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             raise PageVisionError(f"Réponse vision inattendue (modèle {self.model})") from exc
-        return _strip_markdown_fence(str(content or "")).strip()
+        truncated = str(choice.get("finish_reason") or "").lower() == "length"
+        return _strip_markdown_fence(str(content or "")).strip(), truncated
 
 
 _FENCE_RE = re.compile(r"^```(?:markdown|md)?\s*(.*?)\s*```$", re.DOTALL)
@@ -197,50 +215,129 @@ def _strip_markdown_fence(text: str) -> str:
     return match.group(1) if match else text
 
 
+_TOKEN_RE = re.compile(r"[0-9A-Za-zÀ-ÿ]{3,}")
+
+
+def _token_list(text: str) -> list[str]:
+    """Liste (avec répétitions) des tokens significatifs — l'ordre/les doublons
+    comptent pour la borne de LONGUEUR ; le vocabulaire (set) pour le rappel."""
+    return [t.lower() for t in _TOKEN_RE.findall(text)]
+
+
+def is_faithful_reconstruction(
+    reconstruction: str,
+    ocr_markdown: str,
+    *,
+    min_ocr_tokens: int = 8,
+    min_overlap: float = 0.5,
+    max_growth: float = 3.0,
+) -> bool:
+    """Garde-fou anti-hallucination (revue #319/#320). La reconstruction remplace
+    TOUT le markdown de la page ; elle doit :
+    - **préserver** l'essentiel du VOCABULAIRE OCR (rappel des tokens uniques
+      >= min_overlap) — sinon le VLM a halluciné une autre page / dérivé ;
+    - ne pas **rallonger** massivement : sa LONGUEUR en tokens (occurrences, pas
+      vocabulaire) est bornée à ``max_growth`` × celle de l'OCR. Compter les
+      occurrences et non le set attrape une règle inventée répétée N fois, qui
+      n'ajoute presque pas de vocabulaire (revue #320 finding 1).
+
+    Une page OCR trop maigre (< min_ocr_tokens vocabulaire) est **non
+    vérifiable** : on garde l'OCR plutôt qu'une sortie non contrôlable.
+
+    N.B. ne détecte PAS une inversion fine (flèche CONTRAT lue AVENANT) : les
+    tokens de gauche restent présents. Filet contre le faux contenu grossier,
+    pas une vérification sémantique."""
+    ocr_list = _token_list(_clean_page_text(ocr_markdown))
+    ocr_vocab = set(ocr_list)
+    if len(ocr_vocab) < min_ocr_tokens:
+        return False  # non vérifiable -> ne pas remplacer l'OCR
+    recon_list = _token_list(reconstruction)
+    if not recon_list:
+        return False
+    overlap = len(ocr_vocab & set(recon_list)) / len(ocr_vocab)
+    if overlap < min_overlap:
+        return False  # rappel OCR insuffisant (mauvaise page / dérive)
+    if len(recon_list) > len(ocr_list) * max_growth:
+        return False  # trop rallongé (contenu inventé, même répété)
+    return True
+
+
 def reconstruct_pages(
     pdf_bytes: bytes,
     pages: list[dict[str, Any]],
     reconstructor: AlbertPageVisionReconstructor,
     *,
     positions: list[int] | None = None,
+    guard_pages: list[dict[str, Any]] | None = None,
     max_pages: int = 60,
     max_workers: int = MAX_PAGE_VISION_WORKERS,
 ) -> tuple[dict[int, str], list[int]]:
     """Reconstruit les pages à risque d'un document: ({position: markdown}, [échecs]).
 
-    ``positions`` force la liste (sinon détection heuristique). Erreur par page
-    tolérée (la page reste en OCR): une page illisible ne doit pas faire échouer
-    l'ingestion. Les positions en échec sont retournées pour que l'appelant
-    décide de la mise en cache (un lot partiel ne doit pas être gelé complet)."""
+    ``guard_pages`` (défaut: ``pages``) porte l'OCR de RÉFÉRENCE pour le garde-fou
+    de fidélité : l'appelant fournit l'OCR BRUT (pré-annotation), pas l'OCR enrichi
+    de descriptions d'images synthétiques, sinon un rappel calculé contre du texte
+    synthétique rejetterait à tort des reconstructions fidèles (revue #320 finding 2).
+
+    ``positions`` force la liste (sinon détection heuristique). Trois issues par
+    page :
+    - **ok** -> reconstruction retenue.
+    - **rejet** (troncature max_tokens, ou recouvrement OCR insuffisant =
+      hallucination probable, ou sortie vide) -> la page reste en OCR, la
+      position N'EST PAS dans ``failed`` : c'est déterministe, inutile de
+      retenter en boucle, et le reste du document peut être mis en cache.
+    - **panne** (rendu manquant, erreur/rate-limit VLM) -> position dans
+      ``failed`` : transitoire, l'appelant ne met pas le lot en cache et
+      retentera au prochain run.
+
+    Ne fait donc jamais échouer l'ingestion (une page illisible reste en OCR)."""
     targets = positions if positions is not None else select_risk_positions(pages)
+    if len(targets) > max_pages:
+        # Perte silencieuse évitée (revue #319 M1): on trace les pages à risque
+        # non reconstruites (conservées en OCR). Relever max_pages + --force-reocr
+        # les reprend.
+        dropped = len(targets) - max_pages
+        print(f"[warn] {len(targets)} pages à risque > max_pages={max_pages} : {dropped} page(s) non reconstruite(s), conservées en OCR")
     targets = targets[:max_pages]
     if not targets:
         return {}, []
 
+    guard = guard_pages if guard_pages is not None else pages
     pos_to_pdf = {pos: _pdf_index(pages[pos], pos) for pos in targets if 0 <= pos < len(pages)}
     images = render_pdf_pages(pdf_bytes, sorted(set(pos_to_pdf.values())), dpi=reconstructor.dpi)
 
     results: dict[int, str] = {}
     failed: list[int] = []
 
-    def _one(pos: int) -> tuple[int, str | None]:
+    def _one(pos: int) -> tuple[int, str | None, str]:
         image = images.get(pos_to_pdf.get(pos, -1))
         if image is None:
-            return pos, None
+            return pos, None, "failed"  # rendu manquant (ex. index hors PDF) -> retry
         try:
-            markdown = reconstructor.reconstruct(image)
-            return pos, (markdown or None)
+            markdown, truncated = reconstructor.reconstruct(image)
         except PageVisionError as exc:
-            print(f"[warn] reconstruction page {pos} échouée: {exc}")
-            return pos, None
+            print(f"[warn] reconstruction page {pos} échouée (VLM): {exc}")
+            return pos, None, "failed"  # transitoire -> retry
+        if not markdown:
+            print(f"[warn] reconstruction page {pos} vide — page conservée en OCR")
+            return pos, None, "rejected"
+        if truncated:
+            print(f"[warn] reconstruction page {pos} tronquée (max_tokens) — page conservée en OCR")
+            return pos, None, "rejected"
+        guard_md = str(guard[pos].get("markdown") or "") if 0 <= pos < len(guard) else ""
+        if not is_faithful_reconstruction(markdown, guard_md):
+            print(f"[warn] reconstruction page {pos} rejetée (recouvrement OCR insuffisant) — page conservée en OCR")
+            return pos, None, "rejected"
+        return pos, markdown, "ok"
 
     ordered = [pos for pos in targets if pos in pos_to_pdf]
     with ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(ordered)))) as pool:
-        for pos, markdown in pool.map(_one, ordered):
-            if markdown:
+        for pos, markdown, status in pool.map(_one, ordered):
+            if status == "ok" and markdown:
                 results[pos] = markdown
-            else:
+            elif status == "failed":
                 failed.append(pos)
+            # rejet: page conservée en OCR, n'empêche pas la mise en cache du lot
     return results, failed
 
 

@@ -57,6 +57,11 @@ def plan_reconciliation(
     retraités à chaque run sans jamais converger (divergence MASA).
     `protected` (uids dont le téléchargement a échoué) n'est JAMAIS classé en
     delete: un incident S3 transitoire ne doit pas supprimer un document sain.
+
+    Un doc dont la page vision est incomplète (page_vision_complete=False, panne
+    transitoire d'un run précédent) est re-classé en ingest pour retenter la
+    reconstruction — sinon une panne VLM transitoire laisserait un schéma aplati
+    jusqu'au prochain --force-reprocess manuel (revue #320 finding 1).
     """
     to_ingest: list[str] = []
     unchanged: list[str] = []
@@ -69,6 +74,7 @@ def plan_reconciliation(
             and checksum is not None
             and state.get("checksum") == checksum
             and (not retry_zero_chunk or int(state.get("nb_chunks") or 0) > 0)
+            and state.get("page_vision_complete", True)
         ):
             unchanged.append(short_id)
         else:
@@ -157,9 +163,14 @@ class MedallionPipeline:
         doc_ids: Optional[list[str]] = None,
         dry_run: bool = False,
         force_reocr: bool = False,
+        force_reprocess: bool = False,
         skip_grist_writeback: bool = False,
         ingest: bool = True,
     ) -> dict[str, Any]:
+        # force_reprocess: force le retraitement (silver/gold/page-vision) en
+        # RÉUTILISANT le cache OCR — propage un changement de traitement aux docs
+        # inchangés sans re-payer l'OCR. force_reocr l'implique (re-OCR = retraiter).
+        force_reingest = force_reocr or force_reprocess
         identity = self.identity
         run_id = f"{identity.ministere}-{utc_now_iso().replace(':', '').replace('.', '')}-{uuid.uuid4().hex[:8]}"
         started_at = utc_now_iso()
@@ -211,6 +222,7 @@ class MedallionPipeline:
             self.bronze_repo,
             target_env=self.config.target_env,
             force_reocr=force_reocr,
+            force_reprocess=force_reprocess,
             image_annotator=self.image_annotator if not dry_run else None,
             max_images_per_doc=self.config.images.max_images_per_doc,
             page_reconstructor=self.page_reconstructor if not dry_run else None,
@@ -234,7 +246,9 @@ class MedallionPipeline:
             {uid: row for uid, row in expected.items() if uid not in failures},
             current,
             checksums,
-            force_reocr=force_reocr,
+            # force_reingest (= reocr OU reprocess) force le classement en ingest;
+            # le BronzeFetcher, lui, ne re-OCRise que si force_reocr.
+            force_reocr=force_reingest,
             protected=set(failures) | rejected_uids,
             retry_zero_chunk=self.config.retry_zero_chunk,
         )
