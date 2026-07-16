@@ -125,6 +125,19 @@ class BronzeFetcher:
             from_cache = False
 
         raw_markdown = ocr_result.markdown
+
+        # Re-passe vision pleine page AVANT l'annotation d'images (revue #319 M5):
+        # la détection des pages à risque doit porter sur le texte OCR PUR, pas
+        # sur un markdown déjà enrichi de descriptions d'images (qui fausserait
+        # les seuils de taille/structure). Elle remplace tout le markdown des
+        # pages à schéma aplati par une reconstruction VLM fidèle aux
+        # associations gauche→droite (ex. CONTRAT/AVENANT MASA).
+        reconstructions, page_vision_from_cache = self._reconstruct_pages(ocr_result, source_path, sha256)
+        if reconstructions:
+            ocr_result = apply_page_reconstructions(ocr_result, reconstructions)
+
+        # Annotation d'images ensuite: no-op sur les pages reconstruites (leurs
+        # refs ![img] et crops ont été retirés), active sur les autres pages.
         annotations, annotations_from_cache = self._annotate_images(ocr_result, sha256)
         if annotations:
             ocr_result = OcrResult(
@@ -134,14 +147,6 @@ class BronzeFetcher:
                 pages=[{**page, "markdown": apply_image_annotations(str(page.get("markdown") or ""), annotations)} for page in ocr_result.pages],
                 raw=ocr_result.raw,
             )
-
-        # Re-passe vision pleine page: dernier mot sur les pages dont l'OCR a
-        # aplati la structure (schémas à flèches, tableaux 2 colonnes). Substitue
-        # le markdown de ces pages par une reconstruction VLM fidèle aux
-        # associations gauche→droite (ex. CONTRAT/AVENANT MASA).
-        reconstructions, page_vision_from_cache = self._reconstruct_pages(ocr_result, source_path, sha256)
-        if reconstructions:
-            ocr_result = apply_page_reconstructions(ocr_result, reconstructions)
 
         # L'artefact bronze reste la sortie du provider: l'enrichi vit en
         # silver (doc_markdown), le brut reste diffable/déboguable.
@@ -209,12 +214,18 @@ class BronzeFetcher:
         if self.page_reconstructor is None:
             return {}, False
 
+        # La clé de cache inclut la version OCR (revue #319 M2): les
+        # reconstructions sont indexées par POSITION dans la liste de pages OCR ;
+        # un changement de modèle/config OCR peut réordonner/renuméroter les
+        # pages -> des positions périmées seraient appliquées à la mauvaise page.
+        cache_version = f"{self.page_reconstructor.version}+ocr-{self.ocr_provider.version}"
+
         if not self.force_reocr:
             cached = self.store.get_cached_page_reconstructions(
                 self.target_env,
                 self.identity.ministere,
                 self.page_reconstructor.name,
-                self.page_reconstructor.version,
+                cache_version,
                 sha256,
             )
             if cached is not None:
@@ -228,7 +239,7 @@ class BronzeFetcher:
                 self.target_env,
                 self.identity.ministere,
                 self.page_reconstructor.name,
-                self.page_reconstructor.version,
+                cache_version,
                 sha256,
                 {},
             )
@@ -249,7 +260,7 @@ class BronzeFetcher:
                 self.target_env,
                 self.identity.ministere,
                 self.page_reconstructor.name,
-                self.page_reconstructor.version,
+                cache_version,
                 sha256,
                 reconstructions,
             )

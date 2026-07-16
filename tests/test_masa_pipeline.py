@@ -1146,9 +1146,14 @@ class FakePageReconstructor:
     def __init__(self) -> None:
         self.calls = 0
 
-    def reconstruct(self, image_png: bytes) -> str:
+    def reconstruct(self, image_png: bytes) -> tuple[str, bool]:
         self.calls += 1
-        return "- Changement de catégorie → CONTRAT\n- Changement d'indice → AVENANT"
+        # Reconstruction fidèle (reprend les 3 libellés OCR + la colonne
+        # CONTRAT/AVENANT) -> passe le garde-fou de recouvrement.
+        return (
+            "- Changement de catégorie → CONTRAT\n- Changement d'indice → AVENANT\n- Modification du fondement juridique → CONTRAT",
+            False,
+        )
 
 
 def make_ocr_with_risk_page() -> OcrResult:
