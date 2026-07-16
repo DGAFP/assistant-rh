@@ -87,7 +87,11 @@ jobs:
       ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || secrets.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
       SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
       SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || secrets.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
-      SCALEWAY_JUDGE_MODEL: ${{ vars.SCALEWAY_JUDGE_MODEL || 'qwen3-235b-a22b-instruct-2507' }}
+      # Juge LLM = OpenRouter/Claude (remplace Scaleway qwen3 depuis 2026-07-15).
+      # RAGAS reste sur Scaleway (SCALEWAY_API_KEY ci-dessus).
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_BASE_URL: ${{ vars.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1' }}
+      OPENROUTER_JUDGE_MODEL: ${{ vars.OPENROUTER_JUDGE_MODEL || 'anthropic/claude-sonnet-4.5' }}
       DEFAULT_BASELINE_RUN_ID: ${{ vars.RAG_QUALITY_BASELINE_RUN_ID || '' }}
       DEFAULT_BASELINE_RUN_LABEL: ${{ vars.RAG_QUALITY_BASELINE_RUN_LABEL || '' }}
       PR_FULL_REQUESTED: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'rag-quality-full') }}
