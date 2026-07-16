@@ -113,6 +113,7 @@ def capture_judge(labels: list[dict], cache_path: Path) -> list[dict]:
             model=model,
             base_url=base_url,
             api_key=api_key,
+            provider=provider,
         )
         captured.append(
             {

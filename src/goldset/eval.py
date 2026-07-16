@@ -60,7 +60,7 @@ DEFAULT_RAGAS_MAX_TOKENS = 16384
 JUDGE_PROVIDERS: dict[str, dict[str, str]] = {
     "openrouter": {"key_env": "OPENROUTER_API_KEY", "url_env": "OPENROUTER_BASE_URL", "default_base_url": DEFAULT_JUDGE_BASE_URL},
     "scaleway": {"key_env": "SCALEWAY_API_KEY", "url_env": "SCALEWAY_BASE_URL", "default_base_url": DEFAULT_SCALEWAY_BASE_URL},
-    "openai": {"key_env": "OPENAI_API_KEY", "url_env": "OPENAI_BASE_URL", "default_base_url": ""},
+    "openai": {"key_env": "OPENAI_API_KEY", "url_env": "OPENAI_BASE_URL", "default_base_url": "https://api.openai.com/v1"},
 }
 
 
@@ -1275,9 +1275,11 @@ def judge_answer(
     model: str,
     base_url: str,
     api_key: str,
+    provider: str = DEFAULT_JUDGE_PROVIDER,
 ) -> dict[str, Any]:
     if not api_key:
-        return {"status": "skipped", "reason": "missing judge API key (OPENROUTER_API_KEY)"}
+        key_env = JUDGE_PROVIDERS.get(provider, {}).get("key_env", "OPENROUTER_API_KEY")
+        return {"status": "skipped", "reason": f"missing judge API key ({key_env}) for provider '{provider}'"}
     try:
         from openai import OpenAI
     except ImportError as exc:
@@ -1351,7 +1353,9 @@ def judge_answer(
         "dimensions, missing_required_points, contradictions, rationale, source_support."
     )
     try:
-        client = OpenAI(api_key=api_key, base_url=base_url)
+        # base_url vide (ex. provider openai sans OPENAI_BASE_URL) -> ne pas la
+        # passer, sinon OpenAI(base_url="") lève UnsupportedProtocol (revue #318).
+        client = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
         response = client.chat.completions.create(
             model=model,
             temperature=0,
@@ -1427,6 +1431,7 @@ def run_question(
     judge_model: str,
     judge_base_url: str,
     judge_api_key: str,
+    judge_provider: str = DEFAULT_JUDGE_PROVIDER,
     ragas_model: str,
     scaleway_base_url: str,
     scaleway_api_key: str,
@@ -1476,6 +1481,7 @@ def run_question(
                 model=judge_model,
                 base_url=judge_base_url,
                 api_key=judge_api_key,
+                provider=judge_provider,
             )
         else:
             item.judge_result = {"status": "skipped", "reason": "disabled"}
@@ -1808,7 +1814,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     # Le provider pilote réellement la clé ET la base URL du juge (revue #318):
     # --judge-provider scaleway utilise la clé/endpoint Scaleway, openrouter les
     # siens — jamais un provider inscrit avec la clé d'un autre.
-    _, judge_base_url, judge_api_key = resolve_judge_endpoint(args.judge_provider, args.judge_base_url)
+    judge_provider, judge_base_url, judge_api_key = resolve_judge_endpoint(args.judge_provider, args.judge_base_url)
     items: list[EvalItem] = []
     status = "completed"
     error = ""
@@ -1827,6 +1833,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 judge_model=args.judge_model,
                 judge_base_url=judge_base_url,
                 judge_api_key=judge_api_key,
+                judge_provider=judge_provider,
                 ragas_model=args.ragas_model,
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,

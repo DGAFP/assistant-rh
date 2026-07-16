@@ -455,6 +455,33 @@ def test_resolve_judge_endpoint_drives_key_and_base_url(monkeypatch) -> None:
     _, base_url, _ = resolve_judge_endpoint("openrouter", "https://custom.test/v1")
     assert base_url == "https://custom.test/v1"
 
+    # openai -> base URL par défaut VALIDE (revue #318: une URL vide levait
+    # UnsupportedProtocol côté client OpenAI).
+    monkeypatch.setenv("OPENAI_API_KEY", "oa-key")
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    provider, base_url, api_key = resolve_judge_endpoint("openai")
+    assert (provider, api_key, base_url) == ("openai", "oa-key", "https://api.openai.com/v1")
+
+
+def test_judge_answer_missing_key_message_names_provider() -> None:
+    from src.goldset.eval import judge_answer
+
+    result = judge_answer(
+        question="q",
+        gold_answer="a",
+        answer="b",
+        contexts=[],
+        deterministic_metrics={},
+        model="m",
+        base_url="https://api.scaleway.ai/v1",
+        api_key="",
+        provider="scaleway",
+    )
+    # Le diagnostic nomme la var d'env du provider effectif, pas OpenRouter en dur.
+    assert result["status"] == "skipped"
+    assert "SCALEWAY_API_KEY" in result["reason"]
+    assert "scaleway" in result["reason"]
+
 
 def test_baseline_comparison_passes_within_allowed_drop() -> None:
     eval_scope = {"question_ids": [1, 2], "judge_enabled": True, "ragas_enabled": False}
