@@ -157,9 +157,14 @@ class MedallionPipeline:
         doc_ids: Optional[list[str]] = None,
         dry_run: bool = False,
         force_reocr: bool = False,
+        force_reprocess: bool = False,
         skip_grist_writeback: bool = False,
         ingest: bool = True,
     ) -> dict[str, Any]:
+        # force_reprocess: force le retraitement (silver/gold/page-vision) en
+        # RÉUTILISANT le cache OCR — propage un changement de traitement aux docs
+        # inchangés sans re-payer l'OCR. force_reocr l'implique (re-OCR = retraiter).
+        force_reingest = force_reocr or force_reprocess
         identity = self.identity
         run_id = f"{identity.ministere}-{utc_now_iso().replace(':', '').replace('.', '')}-{uuid.uuid4().hex[:8]}"
         started_at = utc_now_iso()
@@ -234,7 +239,9 @@ class MedallionPipeline:
             {uid: row for uid, row in expected.items() if uid not in failures},
             current,
             checksums,
-            force_reocr=force_reocr,
+            # force_reingest (= reocr OU reprocess) force le classement en ingest;
+            # le BronzeFetcher, lui, ne re-OCRise que si force_reocr.
+            force_reocr=force_reingest,
             protected=set(failures) | rejected_uids,
             retry_zero_chunk=self.config.retry_zero_chunk,
         )

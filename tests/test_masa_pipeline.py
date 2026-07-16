@@ -591,6 +591,43 @@ def test_rerun_is_idempotent_all_ignore_inchange(tmp_path: Path) -> None:
     assert grist.status_for(11) == ["ok", "ok"]  # statut consolidé (détail dans la trace de run)
 
 
+def test_force_reprocess_reingests_without_reocr(tmp_path: Path) -> None:
+    # Rollout d'un changement de traitement (ex. re-passe vision) sur un doc
+    # inchangé: force_reprocess re-classe en ingest MAIS réutilise le cache OCR
+    # (pas de re-paiement Mistral, robuste aux 503).
+    records = [grist_record("MASA-0001", record_id=11)]
+    documents = {"masa/masa-0001_circulaire.pdf": b"%PDF-doc1"}
+    pipeline, grist, store, ocr, writer = build_pipeline(tmp_path, records=records, documents=documents)
+
+    pipeline.run(ingest=True)
+    assert ocr.calls == 1
+
+    pipeline2 = MasaPipeline(
+        make_config(tmp_path),
+        grist_client=grist,
+        store=store,
+        ocr_provider=ocr,
+        db_writer=writer,
+    )
+    summary = pipeline2.run(ingest=True, force_reprocess=True)
+
+    assert summary["ingested_count"] == 1  # retraité malgré sha256 inchangé
+    assert summary["skipped_count"] == 0
+    assert ocr.calls == 1  # OCR réutilisé depuis le cache: aucun re-paiement
+
+    # force_reocr, lui, re-paye l'OCR (contraste).
+    pipeline3 = MasaPipeline(
+        make_config(tmp_path),
+        grist_client=grist,
+        store=store,
+        ocr_provider=ocr,
+        db_writer=writer,
+    )
+    summary = pipeline3.run(ingest=True, force_reocr=True)
+    assert summary["ingested_count"] == 1
+    assert ocr.calls == 2  # re-OCRisé
+
+
 def test_removed_manifest_row_triggers_cascade_delete(tmp_path: Path) -> None:
     state = {"MASA-0009": {"doc_id": "d9", "checksum": "z" * 64, "nb_chunks": 3}}
     records = [grist_record("MASA-0001", record_id=11)]
