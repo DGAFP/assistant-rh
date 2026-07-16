@@ -335,3 +335,32 @@ Métriques déterministes (hit/recall/gap) **identiques** entre A et B (même pa
 3. **Baseline J3 (Claude) = 0.556**. Deux leviers dominent les échecs : **génération incomplète (18)** et **trou de retrieval (16)** — le corpus `manual` (56 Q, hit=0.63) porte l'essentiel des trous. Cohérent avec le constat #67 (le générateur refuse/incomplet malgré un contexte parfois correct). MASA non couvert par ce goldset (sonde `contrat-avenant-schemas` 5/6 en parallèle).
 
 **Caveats** : juge single-shot (variance ±1 dimension par question) ; DGAFP n=2 et MSO n=4 non significatifs ; RAGAS sauté (judge + déterministe seulement).
+
+---
+
+## Run 115 — `baseline_v1_claude_minkept4_20260716` (16/07) — A/B P1 : largeur de contexte (min_kept_sections 0→4)
+
+**Hypothèse** (deep-dive J3, scratchpad `j3-diagnostic-retrieval-granularite`) : le levier dominant est le **retrieval de granularité** — le bon DOC est retrouvé (hit=1.0) mais la SECTION-réponse n'est pas servie (selector élague à 1-2 contextes, min_kept=0). Servir ≥4 sections devrait inclure la section-réponse borderline (cf. #67 : schéma rang 19, frontière rerank_top_k=20).
+
+**Setup** : panel `baseline_v1` (99 Q), juge Claude, `--ministry-scope per-question`, `--skip-ragas`, **seul changement vs #113** : `min_kept_sections` 0 → 4.
+
+**Résultats** (vs baseline #113) :
+| | #113 (min_kept=0) | #115 (min_kept=4) |
+|---|---|---|
+| judge_pass_rate | 0.556 | **0.596** (+0.040) |
+| échecs retrieval_gap | 16 | **12** (−4) |
+| échecs incomplete | 18 | 17 |
+| hit / recall / gap | 0.747 / 0.598 / 0.253 | **identiques** (déterministe) |
+
+Flips : 8 gagnées (fail→pass), 4 perdues (pass→fail) → net +4 Q.
+
+Par corpus : **manual 0.48→0.57 (+0.09)**, **MATTE 0.58→0.67 (+0.09)**, **Service-Public 0.71→0.57 (−0.14)** ; MSO/synthetic/DGAFP inchangés.
+
+**Lecture** :
+1. Le diagnostic est **confirmé** : plus de largeur de contexte réduit les `retrieval_gap` (16→12) et remonte les corpus **sous-servis** (manual, MATTE) — la section-réponse borderline est incluse.
+2. Mais **Service-Public régresse (−0.14)** : déjà bien servi (hit=1.0), forcer 4 sections y ajoute du bruit → détails non étayés / mauvaise section. **Réplique la tension du 06/07** (min_kept 4→0 réduit pour ça).
+3. Un `min_kept` **uniforme est sous-optimal** → **plancher PAR CORPUS/ministère** (élevé manual/MATTE/ministères, 0 pour SP). Valide le levier « min_kept par ministère » du plan.
+
+**Caveats** : +0.040 modeste (proche variance juge single-shot ±0.02) ; le signal PAR CORPUS (SP −0.14 vs manual/MATTE +0.09) est plus robuste que le global.
+
+**Prochain** : soit min_kept par corpus (capture les gains sans la régression SP), soit le levier reranker (remonter la section-réponse au lieu de forcer la largeur — plus principiel).
