@@ -36,11 +36,15 @@ from psycopg.rows import dict_row
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
-# Juge LLM: OpenRouter/Claude (décision 2026-07-15, remplace Scaleway qwen3).
-# Le modèle est surchargeable au run (--judge-model / OPENROUTER_JUDGE_MODEL);
-# on garde un modèle Claude par défaut pour le discernement juridique FR.
+# Juge LLM: OpenRouter/Qwen 3.7 Max (décision 2026-07-16). Un spot-check des
+# désaccords (99 réponses re-jugées) a montré que claude-sonnet-4.5 était
+# over-strict (faux négatifs : recale des réponses correctes en incomplete/
+# retrieval_gap, parfois en se contredisant) et que glm-5.2 rend des verdicts
+# incohérents avec sa propre rationale. qwen3.7-max : verdicts cohérents,
+# corrige les faux négatifs de Claude, ~71% moins cher, provider zéro-rétention.
+# Surchargeable au run (--judge-model / OPENROUTER_JUDGE_MODEL).
 DEFAULT_JUDGE_PROVIDER = "openrouter"
-DEFAULT_JUDGE_MODEL = "anthropic/claude-sonnet-4.5"
+DEFAULT_JUDGE_MODEL = "qwen/qwen3.7-max"
 DEFAULT_JUDGE_BASE_URL = "https://openrouter.ai/api/v1"
 # RAGAS reste sur Scaleway/OpenAI-compat (le SDK ragas attend un endpoint
 # embeddings+LLM compatible; Claude via OpenRouter n'y est pas branché).
@@ -1356,15 +1360,21 @@ def judge_answer(
         # base_url vide (ex. provider openai sans OPENAI_BASE_URL) -> ne pas la
         # passer, sinon OpenAI(base_url="") lève UnsupportedProtocol (revue #318).
         client = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model=model,
-            temperature=0,
-            response_format={"type": "json_object"},
-            messages=[
+        create_kwargs: dict[str, Any] = {
+            "model": model,
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+            "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
             ],
-        )
+        }
+        # DINUM (données réglementaires): sur OpenRouter, n'acheminer QU'AUX
+        # providers sans rétention/entraînement sur les données (data_collection
+        # "deny"). Un modèle sans provider zéro-rétention échoue -> inutilisable.
+        if provider == "openrouter":
+            create_kwargs["extra_body"] = {"provider": {"data_collection": "deny"}}
+        response = client.chat.completions.create(**create_kwargs)
         content = response.choices[0].message.content or "{}"
         parsed = _extract_json_object(content)
         parsed["status"] = "completed"
