@@ -19,6 +19,12 @@ from ..utils.grist import ManifestRow
 from ..utils.helpers import ensure_dir, sha256_file, utc_now_iso, write_json
 from ..utils.image_annotation import AlbertImageAnnotator, annotate_ocr_images, apply_image_annotations
 from ..utils.ocr import OcrProvider, OcrResult
+from ..utils.page_vision import (
+    AlbertPageVisionReconstructor,
+    apply_page_reconstructions,
+    reconstruct_pages,
+    select_risk_positions,
+)
 from ..utils.pdf_store import PdfSourceStore
 from .identity import MinistryIdentity
 
@@ -41,6 +47,8 @@ class BronzeAsset:
     ocr_markdown_raw: str = ""
     image_annotations: dict[str, dict[str, str]] = field(default_factory=dict)
     annotations_from_cache: bool = False
+    page_reconstructions: dict[int, str] = field(default_factory=dict)
+    page_vision_from_cache: bool = False
 
 
 class BronzeRepository:
@@ -73,6 +81,8 @@ class BronzeFetcher:
         force_reocr: bool = False,
         image_annotator: Optional[AlbertImageAnnotator] = None,
         max_images_per_doc: int = 150,
+        page_reconstructor: Optional[AlbertPageVisionReconstructor] = None,
+        page_vision_max_pages: int = 60,
     ):
         self.identity = identity
         self.store = store
@@ -82,6 +92,8 @@ class BronzeFetcher:
         self.force_reocr = force_reocr
         self.image_annotator = image_annotator
         self.max_images_per_doc = max_images_per_doc
+        self.page_reconstructor = page_reconstructor
+        self.page_vision_max_pages = page_vision_max_pages
 
     def download_and_hash(self, row: ManifestRow) -> tuple[Path, str]:
         """Télécharge le fichier dropzone et retourne (chemin local, sha256)."""
@@ -123,6 +135,14 @@ class BronzeFetcher:
                 raw=ocr_result.raw,
             )
 
+        # Re-passe vision pleine page: dernier mot sur les pages dont l'OCR a
+        # aplati la structure (schémas à flèches, tableaux 2 colonnes). Substitue
+        # le markdown de ces pages par une reconstruction VLM fidèle aux
+        # associations gauche→droite (ex. CONTRAT/AVENANT MASA).
+        reconstructions, page_vision_from_cache = self._reconstruct_pages(ocr_result, source_path, sha256)
+        if reconstructions:
+            ocr_result = apply_page_reconstructions(ocr_result, reconstructions)
+
         # L'artefact bronze reste la sortie du provider: l'enrichi vit en
         # silver (doc_markdown), le brut reste diffable/déboguable.
         self.repository.save_ocr_markdown(row.short_id, raw_markdown)
@@ -135,6 +155,8 @@ class BronzeFetcher:
             ocr_markdown_raw=raw_markdown,
             image_annotations=annotations,
             annotations_from_cache=annotations_from_cache,
+            page_reconstructions=reconstructions,
+            page_vision_from_cache=page_vision_from_cache,
         )
 
     def _annotate_images(self, ocr_result: OcrResult, sha256: str) -> tuple[dict[str, dict[str, str]], bool]:
@@ -176,6 +198,62 @@ class BronzeFetcher:
                 annotations,
             )
         return annotations, False
+
+    def _reconstruct_pages(self, ocr_result: OcrResult, source_path: Path, sha256: str) -> tuple[dict[int, str], bool]:
+        """Re-passe vision des pages à risque: cache bronze d'abord, rendu+VLM sinon.
+
+        La détection des pages à risque précède le rendu: un document sans page
+        structurée n'entraîne aucune conversion PDF (LibreOffice) ni appel VLM.
+        force_reocr contourne le cache. Un lot avec échec n'est jamais mis en
+        cache (retentative au prochain run), comme l'annotation d'images."""
+        if self.page_reconstructor is None:
+            return {}, False
+
+        if not self.force_reocr:
+            cached = self.store.get_cached_page_reconstructions(
+                self.target_env,
+                self.identity.ministere,
+                self.page_reconstructor.name,
+                self.page_reconstructor.version,
+                sha256,
+            )
+            if cached is not None:
+                return cached, True
+
+        positions = select_risk_positions(ocr_result.pages)
+        if not positions:
+            # Cache l'absence de page à risque: un re-run court-circuite la
+            # re-sélection (aucun rendu/VLM n'a lieu de toute façon).
+            self.store.put_page_reconstructions(
+                self.target_env,
+                self.identity.ministere,
+                self.page_reconstructor.name,
+                self.page_reconstructor.version,
+                sha256,
+                {},
+            )
+            return {}, False
+
+        pdf_path = ensure_pdf(source_path, source_path.parent / "converted")
+        reconstructions, failed = reconstruct_pages(
+            pdf_path.read_bytes(),
+            ocr_result.pages,
+            self.page_reconstructor,
+            positions=positions,
+            max_pages=self.page_vision_max_pages,
+        )
+        if failed:
+            print(f"[warn] re-passe vision incomplète ({len(failed)} page(s) en échec) — lot non mis en cache, retentative au prochain run")
+        else:
+            self.store.put_page_reconstructions(
+                self.target_env,
+                self.identity.ministere,
+                self.page_reconstructor.name,
+                self.page_reconstructor.version,
+                sha256,
+                reconstructions,
+            )
+        return reconstructions, False
 
     def snapshot_manifest(self, run_id: str, rows: list[ManifestRow]) -> Path:
         return self.repository.save_manifest_snapshot(
