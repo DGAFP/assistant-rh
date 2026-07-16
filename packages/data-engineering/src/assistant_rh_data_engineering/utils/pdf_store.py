@@ -259,3 +259,80 @@ class PdfSourceStore:
             json_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
             self.sync.upload_object(json_path, obj.bucket, obj.key)
         return obj
+
+    # --- Cache de la re-passe vision pleine page (reconstruction de schémas) --
+
+    def page_vision_cache_key(
+        self,
+        target_env: str,
+        ministere: str,
+        reconstructor_name: str,
+        reconstructor_version: str,
+        sha256: str,
+    ) -> ObjectStorageObject:
+        bucket, prefix = self._bronze_prefix(
+            target_env,
+            ministere,
+            f"page_vision/{reconstructor_name}/{reconstructor_version}",
+        )
+        return ObjectStorageObject(bucket=bucket, key=f"{prefix}/{sha256}.json")
+
+    def get_cached_page_reconstructions(
+        self,
+        target_env: str,
+        ministere: str,
+        reconstructor_name: str,
+        reconstructor_version: str,
+        sha256: str,
+    ) -> dict[int, str] | None:
+        """Reconstructions de pages en cache ({position: markdown}), ou None (miss).
+
+        Auto-guérison: un cache illisible ou mal formé est traité comme un miss
+        (re-reconstruction), jamais comme une erreur collante qui mettrait le
+        document en échec à chaque run."""
+        obj = self.page_vision_cache_key(target_env, ministere, reconstructor_name, reconstructor_version, sha256)
+        try:
+            payload = json.loads(self.sync.read_text_object(obj))
+        except subprocess.CalledProcessError:
+            return None
+        except json.JSONDecodeError:
+            print(f"[warn] cache page_vision corrompu, reconstruction: {obj.uri}")
+            return None
+        if not isinstance(payload, dict) or not isinstance(payload.get("pages"), dict):
+            print(f"[warn] cache page_vision corrompu (forme inattendue), reconstruction: {obj.uri}")
+            return None
+        result: dict[int, str] = {}
+        for position, markdown in payload["pages"].items():
+            try:
+                pos = int(position)
+            except (TypeError, ValueError):
+                print(f"[warn] cache page_vision corrompu (position {position!r}), reconstruction: {obj.uri}")
+                return None
+            if not isinstance(markdown, str):
+                print(f"[warn] cache page_vision corrompu (page {position!r} non-str), reconstruction: {obj.uri}")
+                return None
+            result[pos] = markdown
+        return result
+
+    def put_page_reconstructions(
+        self,
+        target_env: str,
+        ministere: str,
+        reconstructor_name: str,
+        reconstructor_version: str,
+        sha256: str,
+        reconstructions: dict[int, str],
+    ) -> ObjectStorageObject:
+        """Archive les reconstructions de pages d'un document (idempotence VLM)."""
+        obj = self.page_vision_cache_key(target_env, ministere, reconstructor_name, reconstructor_version, sha256)
+        payload = {
+            "reconstructor": reconstructor_name,
+            "version": reconstructor_version,
+            "sha256": sha256,
+            "pages": {str(position): markdown for position, markdown in reconstructions.items()},
+        }
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            json_path = Path(tmp_dir) / "page_vision.json"
+            json_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            self.sync.upload_object(json_path, obj.bucket, obj.key)
+        return obj

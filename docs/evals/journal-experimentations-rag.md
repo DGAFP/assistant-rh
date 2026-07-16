@@ -291,3 +291,47 @@ doc_entire=9000 inchangés) — 20 cas appariés vs run 70 :
 5. Goldset : 7 questions sur articles abrogés ; régénérer les golds synthetic sur
    le nouveau corpus ; valider la question MI n°9 (formulée par l'assistant, cellule vide).
 6. Contextual retrieval (préfixer titre doc + chemin de section avant embedding — re-embed).
+
+---
+
+## Runs 112 (qwen3) + 113 (Claude) — `baseline_v1_*_20260716` (16/07) — protocole 2 runs : dérive + bascule de juge
+
+**Objet** : établir la référence propre du Jalon 3 sur le vrai goldset (tag `baseline_v1`, **99 Q réelles résolues** : manual 56, Service-Public 14, MATTE 12, synthetic 11, MSO 4, DGAFP 2), et pouvoir se fier au run Claude comme nouvelle baseline en isolant deux effets.
+
+**Protocole — deux runs, MÊME panel (99 Q), MÊME config `rag_config`, `--ministry-scope per-question`, `--skip-ragas`** :
+- **Run A — juge Scaleway `qwen3-235b`** (identique à Run 70) : *contrôle de dérive*. Si `hit_rate`/`doc_recall` PAR CORPUS ≈ Run 70, le système (retrieval/génération sur la DB staging courante) n'a pas dérivé depuis le 05-06/07.
+- **Run B — juge OpenRouter `anthropic/claude-sonnet-4.5`** (PR #318) : *nouvelle baseline*. À panel + système identiques à A, seul le juge change ⇒ B − A = effet pur de la bascule de juge.
+
+**Changements depuis Run 70** : juge migré qwen3 → Claude (#318) ; corpus MASA re-traité par la re-passe vision (#319 + durcissement #320) — mais **`baseline_v1` sans question MASA**, donc ces runs ne mesurent pas le fix OCR (sonde dédiée `contrat-avenant-schemas`, 5/6). Panel 99 vs 115 au Run 70 (union plus large) → comparaison per-corpus, pas 1:1.
+
+**Réf Run 70** (juge qwen3, n=115) : pass=0.643, hit_rate=0.791, doc_recall=0.591.
+
+**Résultats** (99 Q, `--skip-ragas`, `--ministry-scope per-question`) :
+
+| | Run A #112 (qwen3) | Run B #113 (Claude) |
+|---|---|---|
+| judge_pass_rate | **0.657** | **0.556** |
+| hit_rate_avg | 0.747 | 0.747 |
+| doc_recall_avg | 0.598 | 0.598 |
+| retrieval_gap_rate | 0.253 | 0.253 |
+
+Métriques déterministes (hit/recall/gap) **identiques** entre A et B (même panel + même système, seul le juge change) ⇒ l'écart de pass est l'effet PUR du juge.
+
+`judge_pass` par corpus (qwen3 → Claude) :
+| source | n | qwen3 | Claude | hit |
+|---|---|---|---|---|
+| manual | 56 | 0.57 | 0.48 | 0.63 |
+| Service-Public | 14 | 0.79 | 0.71 | 1.00 |
+| MATTE | 12 | 0.75 | 0.58 | 0.92 |
+| synthetic | 11 | 0.64 | 0.73 | 0.91 |
+| MSO | 4 | 1.00 | 0.75 | 0.75 |
+| DGAFP | 2 | 1.00 | 0.00 | 0.50 |
+
+Échecs Claude (44/99) par catégorie : **incomplete 18, retrieval_gap 16**, wrong_law 5, quality_gate_failed 3, gold_answer_alignment 1, refusal 1.
+
+**Lecture** :
+1. **Dérive (A #112 vs Run 70, même juge qwen3)** : `doc_recall` 0.598 ≈ 0.591, `pass` 0.657 ≈ 0.643 → **aucune dérive** ; le système sur la DB staging est stable depuis le 05-06/07. Le run Claude est donc une baseline fiable. (L'écart de `hit_rate` global 0.747 vs 0.791 vient de la composition du panel : 99 vs 115 questions, non d'une régression.)
+2. **Bascule de juge (B − A = −0.101)** : **Claude ~10 pts plus sévère** que qwen3 à réponses identiques (temp 0). Plus marqué sur MATTE (−0.17) et MSO/DGAFP (petits n, bruit) ; Claude est même un peu plus indulgent sur synthetic (+0.09).
+3. **Baseline J3 (Claude) = 0.556**. Deux leviers dominent les échecs : **génération incomplète (18)** et **trou de retrieval (16)** — le corpus `manual` (56 Q, hit=0.63) porte l'essentiel des trous. Cohérent avec le constat #67 (le générateur refuse/incomplet malgré un contexte parfois correct). MASA non couvert par ce goldset (sonde `contrat-avenant-schemas` 5/6 en parallèle).
+
+**Caveats** : juge single-shot (variance ±1 dimension par question) ; DGAFP n=2 et MSO n=4 non significatifs ; RAGAS sauté (judge + déterministe seulement).

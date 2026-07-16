@@ -11,6 +11,7 @@ Environment variables (at least one pair required):
   ALBERT_API_KEY  + ALBERT_BASE_URL
   SCALEWAY_API_KEY + SCALEWAY_BASE_URL
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 _PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
     "albert": {"key_env": "ALBERT_API_KEY", "url_env": "ALBERT_BASE_URL"},
     "scaleway": {"key_env": "SCALEWAY_API_KEY", "url_env": "SCALEWAY_BASE_URL"},
+    "openrouter": {"key_env": "OPENROUTER_API_KEY", "url_env": "OPENROUTER_BASE_URL"},
     "openai": {"key_env": "OPENAI_API_KEY", "url_env": ""},
 }
 
