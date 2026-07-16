@@ -169,6 +169,25 @@ def test_reconstruct_pages_rejects_unfaithful_reconstruction(monkeypatch) -> Non
     assert failed == []
 
 
+def test_reconstruct_pages_guard_uses_raw_ocr_not_annotated(monkeypatch) -> None:
+    # Le garde-fou doit comparer la reconstruction à l'OCR BRUT (guard_pages),
+    # pas à l'OCR annoté : sinon les descriptions d'images synthétiques gonflent
+    # le vocabulaire OCR et font chuter le rappel -> rejet à tort (revue #320 #2).
+    annotated = FLATTENED_SLIDE + "\n\n[Illustration — " + " ".join(f"synthetique{i}zzz" for i in range(60)) + "]"
+    pages = [{"index": 0, "markdown": annotated}]  # OCR annoté (transmis au rendu)
+    raw = [{"index": 0, "markdown": FLATTENED_SLIDE}]  # OCR brut (référence garde-fou)
+    monkeypatch.setattr(pv, "render_pdf_pages", lambda *a, **k: {0: b"png"})
+
+    # Sans guard_pages: comparé à l'annoté -> rappel effondré -> rejeté.
+    rejected, _ = pv.reconstruct_pages(b"%PDF", pages, FakeReconstructor(), positions=[0])
+    assert rejected == {}
+
+    # Avec guard_pages=brut: la reconstruction fidèle passe.
+    accepted, failed = pv.reconstruct_pages(b"%PDF", pages, FakeReconstructor(), positions=[0], guard_pages=raw)
+    assert failed == []
+    assert accepted == {0: FAITHFUL_RECON}
+
+
 def test_reconstruct_pages_rejects_truncated_reconstruction(monkeypatch) -> None:
     # Reconstruction fidèle mais tronquée (finish_reason=length): rejetée aussi
     # (mapping potentiellement incomplet) -> page conservée en OCR, pas de retry.
@@ -199,6 +218,10 @@ def test_is_faithful_reconstruction() -> None:
     # distincts) -> rejeté par la borne de croissance (revue #320 H2).
     padded = FLATTENED_SLIDE + " " + " ".join(f"motinvente{i}xyz" for i in range(100))
     assert pv.is_faithful_reconstruction(padded, FLATTENED_SLIDE) is False
+    # Règle inventée RÉPÉTÉE (peu de vocabulaire, mais longue) -> rejetée par la
+    # borne de LONGUEUR en occurrences (revue #320 finding 1: pas un set).
+    repeated = FLATTENED_SLIDE + " " + " ".join(["changement de categorie donne un avenant faux"] * 60)
+    assert pv.is_faithful_reconstruction(repeated, FLATTENED_SLIDE) is False
 
 
 def test_reconstructor_version_depends_on_prompt_and_dpi(monkeypatch) -> None:

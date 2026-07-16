@@ -214,8 +214,10 @@ def _strip_markdown_fence(text: str) -> str:
 _TOKEN_RE = re.compile(r"[0-9A-Za-zÀ-ÿ]{3,}")
 
 
-def _significant_tokens(text: str) -> set[str]:
-    return {t.lower() for t in _TOKEN_RE.findall(text)}
+def _token_list(text: str) -> list[str]:
+    """Liste (avec répétitions) des tokens significatifs — l'ordre/les doublons
+    comptent pour la borne de LONGUEUR ; le vocabulaire (set) pour le rappel."""
+    return [t.lower() for t in _TOKEN_RE.findall(text)]
 
 
 def is_faithful_reconstruction(
@@ -228,29 +230,31 @@ def is_faithful_reconstruction(
 ) -> bool:
     """Garde-fou anti-hallucination (revue #319/#320). La reconstruction remplace
     TOUT le markdown de la page ; elle doit :
-    - **préserver** l'essentiel de ce que l'OCR avait lu (rappel des tokens OCR
+    - **préserver** l'essentiel du VOCABULAIRE OCR (rappel des tokens uniques
       >= min_overlap) — sinon le VLM a halluciné une autre page / dérivé ;
-    - ne pas **ajouter** massivement du contenu inventé : sa taille en tokens est
-      bornée à ``max_growth`` × celle de l'OCR (la page vision récupère la colonne
-      droite d'un schéma, pas vingt phrases réglementaires — revue #320 H2).
+    - ne pas **rallonger** massivement : sa LONGUEUR en tokens (occurrences, pas
+      vocabulaire) est bornée à ``max_growth`` × celle de l'OCR. Compter les
+      occurrences et non le set attrape une règle inventée répétée N fois, qui
+      n'ajoute presque pas de vocabulaire (revue #320 finding 1).
 
-    Une page OCR trop maigre (< min_ocr_tokens) est **non vérifiable** : on garde
-    l'OCR plutôt que d'accepter une sortie non contrôlable.
+    Une page OCR trop maigre (< min_ocr_tokens vocabulaire) est **non
+    vérifiable** : on garde l'OCR plutôt qu'une sortie non contrôlable.
 
     N.B. ne détecte PAS une inversion fine (flèche CONTRAT lue AVENANT) : les
     tokens de gauche restent présents. Filet contre le faux contenu grossier,
     pas une vérification sémantique."""
-    ocr_tokens = _significant_tokens(_clean_page_text(ocr_markdown))
-    if len(ocr_tokens) < min_ocr_tokens:
+    ocr_list = _token_list(_clean_page_text(ocr_markdown))
+    ocr_vocab = set(ocr_list)
+    if len(ocr_vocab) < min_ocr_tokens:
         return False  # non vérifiable -> ne pas remplacer l'OCR
-    recon_tokens = _significant_tokens(reconstruction)
-    if not recon_tokens:
+    recon_list = _token_list(reconstruction)
+    if not recon_list:
         return False
-    overlap = len(ocr_tokens & recon_tokens) / len(ocr_tokens)
+    overlap = len(ocr_vocab & set(recon_list)) / len(ocr_vocab)
     if overlap < min_overlap:
         return False  # rappel OCR insuffisant (mauvaise page / dérive)
-    if len(recon_tokens) > len(ocr_tokens) * max_growth:
-        return False  # trop de contenu ajouté (hallucination probable)
+    if len(recon_list) > len(ocr_list) * max_growth:
+        return False  # trop rallongé (contenu inventé, même répété)
     return True
 
 
@@ -260,10 +264,16 @@ def reconstruct_pages(
     reconstructor: AlbertPageVisionReconstructor,
     *,
     positions: list[int] | None = None,
+    guard_pages: list[dict[str, Any]] | None = None,
     max_pages: int = 60,
     max_workers: int = MAX_PAGE_VISION_WORKERS,
 ) -> tuple[dict[int, str], list[int]]:
     """Reconstruit les pages à risque d'un document: ({position: markdown}, [échecs]).
+
+    ``guard_pages`` (défaut: ``pages``) porte l'OCR de RÉFÉRENCE pour le garde-fou
+    de fidélité : l'appelant fournit l'OCR BRUT (pré-annotation), pas l'OCR enrichi
+    de descriptions d'images synthétiques, sinon un rappel calculé contre du texte
+    synthétique rejetterait à tort des reconstructions fidèles (revue #320 finding 2).
 
     ``positions`` force la liste (sinon détection heuristique). Trois issues par
     page :
@@ -288,6 +298,7 @@ def reconstruct_pages(
     if not targets:
         return {}, []
 
+    guard = guard_pages if guard_pages is not None else pages
     pos_to_pdf = {pos: _pdf_index(pages[pos], pos) for pos in targets if 0 <= pos < len(pages)}
     images = render_pdf_pages(pdf_bytes, sorted(set(pos_to_pdf.values())), dpi=reconstructor.dpi)
 
@@ -309,7 +320,8 @@ def reconstruct_pages(
         if truncated:
             print(f"[warn] reconstruction page {pos} tronquée (max_tokens) — page conservée en OCR")
             return pos, None, "rejected"
-        if not is_faithful_reconstruction(markdown, str(pages[pos].get("markdown") or "")):
+        guard_md = str(guard[pos].get("markdown") or "") if 0 <= pos < len(guard) else ""
+        if not is_faithful_reconstruction(markdown, guard_md):
             print(f"[warn] reconstruction page {pos} rejetée (recouvrement OCR insuffisant) — page conservée en OCR")
             return pos, None, "rejected"
         return pos, markdown, "ok"

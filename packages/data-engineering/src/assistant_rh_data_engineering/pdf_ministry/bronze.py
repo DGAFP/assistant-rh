@@ -137,11 +137,16 @@ class BronzeFetcher:
             from_cache = False
 
         raw_markdown = ocr_result.markdown
+        # Pages OCR BRUTES (avant annotation): servent à la détection des pages à
+        # risque ET au garde-fou de fidélité (revue #320 finding 2) — comparer la
+        # reconstruction à l'OCR enrichi de descriptions d'images synthétiques
+        # rejetterait à tort des reconstructions fidèles.
+        raw_ocr_pages = ocr_result.pages
 
         # Détection des pages à risque sur l'OCR PUR (revue #319 M5): AVANT toute
         # transformation (les descriptions d'images fausseraient les seuils de
         # taille/structure).
-        risk_positions = select_risk_positions(ocr_result.pages)
+        risk_positions = select_risk_positions(raw_ocr_pages)
 
         # Annotation d'images sur l'OCR COMPLET (revue #320 finding 3): le cache
         # d'annotations doit couvrir TOUTES les images du doc, indépendamment de
@@ -165,7 +170,7 @@ class BronzeFetcher:
         # transitoire a empêché de reconstruire certaines pages -> re-traitement
         # au prochain run (revue #320 finding 1).
         reconstructions, page_vision_from_cache, page_vision_complete = self._reconstruct_pages(
-            ocr_result, source_path, sha256, positions=risk_positions
+            ocr_result, source_path, sha256, positions=risk_positions, guard_pages=raw_ocr_pages
         )
         if reconstructions:
             ocr_result = apply_page_reconstructions(ocr_result, reconstructions)
@@ -229,7 +234,9 @@ class BronzeFetcher:
             )
         return annotations, False
 
-    def _reconstruct_pages(self, ocr_result: OcrResult, source_path: Path, sha256: str, *, positions: list[int]) -> tuple[dict[int, str], bool, bool]:
+    def _reconstruct_pages(
+        self, ocr_result: OcrResult, source_path: Path, sha256: str, *, positions: list[int], guard_pages: list[dict[str, Any]] | None = None
+    ) -> tuple[dict[int, str], bool, bool]:
         """Re-passe vision des pages à risque: ({position: markdown}, from_cache, complete).
 
         ``positions`` (détectées sur l'OCR pur en amont) évitent tout rendu si le
@@ -278,6 +285,7 @@ class BronzeFetcher:
                 ocr_result.pages,
                 self.page_reconstructor,
                 positions=positions,
+                guard_pages=guard_pages,
                 max_pages=self.page_vision_max_pages,
             )
         except Exception as exc:  # noqa: BLE001 — enrichissement best-effort, l'ingestion continue en OCR
