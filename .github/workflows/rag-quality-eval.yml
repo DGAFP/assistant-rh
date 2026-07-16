@@ -91,7 +91,7 @@ jobs:
       # RAGAS reste sur Scaleway (SCALEWAY_API_KEY ci-dessus).
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       OPENROUTER_BASE_URL: ${{ vars.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1' }}
-      OPENROUTER_JUDGE_MODEL: ${{ vars.OPENROUTER_JUDGE_MODEL || 'anthropic/claude-sonnet-4.5' }}
+      OPENROUTER_JUDGE_MODEL: ${{ vars.OPENROUTER_JUDGE_MODEL || 'qwen/qwen3.7-max' }}
       DEFAULT_BASELINE_RUN_ID: ${{ vars.RAG_QUALITY_BASELINE_RUN_ID || '' }}
       DEFAULT_BASELINE_RUN_LABEL: ${{ vars.RAG_QUALITY_BASELINE_RUN_LABEL || '' }}
       PR_FULL_REQUESTED: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'rag-quality-full') }}
