@@ -245,14 +245,24 @@ class BronzeFetcher:
             )
             return {}, False
 
-        pdf_path = ensure_pdf(source_path, source_path.parent / "converted")
-        reconstructions, failed = reconstruct_pages(
-            pdf_path.read_bytes(),
-            ocr_result.pages,
-            self.page_reconstructor,
-            positions=positions,
-            max_pages=self.page_vision_max_pages,
-        )
+        # La page vision est un ENRICHISSEMENT: obtenir le PDF (conversion
+        # LibreOffice pour les .xlsx/.pptx) et rendre les pages ne doit JAMAIS
+        # faire échouer l'ingestion d'un doc dont l'OCR est déjà valide (cache).
+        # Toute panne de conversion/rendu -> on saute la re-passe (page en OCR),
+        # sans cache (retentative au prochain run). Le rendu par page est déjà
+        # tolérant en interne (reconstruct_pages); ici on couvre le PDF lui-même.
+        try:
+            pdf_path = ensure_pdf(source_path, source_path.parent / "converted")
+            reconstructions, failed = reconstruct_pages(
+                pdf_path.read_bytes(),
+                ocr_result.pages,
+                self.page_reconstructor,
+                positions=positions,
+                max_pages=self.page_vision_max_pages,
+            )
+        except Exception as exc:  # noqa: BLE001 — enrichissement best-effort, l'ingestion continue en OCR
+            print(f"[warn] re-passe vision indisponible (rendu/conversion PDF) — doc conservé en OCR: {exc}")
+            return {}, False
         if failed:
             print(f"[warn] re-passe vision incomplète ({len(failed)} page(s) en échec) — lot non mis en cache, retentative au prochain run")
         else:

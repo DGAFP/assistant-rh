@@ -1263,3 +1263,36 @@ def test_bronze_page_vision_uses_cache_without_recomputing(tmp_path: Path) -> No
     assert asset.page_vision_from_cache is True
     assert "→ CONTRAT" in asset.ocr.markdown
     assert asset.ocr.pages[0].get("page_vision") is True
+
+
+def test_bronze_page_vision_degrades_gracefully_on_render_failure(tmp_path: Path, monkeypatch) -> None:
+    # La page vision est un enrichissement best-effort: une panne de rendu/
+    # conversion PDF (ex. LibreOffice absent pour un .xlsx) ne doit PAS faire
+    # échouer l'ingestion — le doc reste servi en OCR.
+    from assistant_rh_data_engineering.masa.bronze import MasaBronzeFetcher, MasaBronzeRepository
+    from assistant_rh_data_engineering.utils import page_vision as pv
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("LibreOffice indisponible / rendu impossible")
+
+    monkeypatch.setattr(pv, "render_pdf_pages", boom)
+
+    row = make_row()
+    store = FakePageVisionStore({row.cle_bucket: b"%PDF-doc1"})
+    sha = hashlib.sha256(b"%PDF-doc1").hexdigest()
+    store.ocr_cache[sha] = make_ocr_with_risk_page()
+    src = tmp_path / "src.pdf"
+    src.write_bytes(b"%PDF-doc1")
+    fetcher = MasaBronzeFetcher(
+        store,
+        FakeOcrProvider(),
+        MasaBronzeRepository(tmp_path / "bronze"),
+        target_env="staging",
+        page_reconstructor=FakePageReconstructor(),
+    )
+
+    asset = fetcher.fetch_asset(row, src, sha)  # ne lève pas
+
+    assert asset.page_reconstructions == {}
+    assert asset.ocr.pages[0].get("page_vision") is None  # page conservée en OCR
+    assert sha not in store.page_vision_cache  # panne non cachée (retry au prochain run)
