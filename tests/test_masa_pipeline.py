@@ -1184,11 +1184,14 @@ class FakePageVisionStore(FakeStore):
     def __init__(self, documents: dict[str, bytes]):
         super().__init__(documents)
         self.page_vision_cache: dict[str, dict[int, str]] = {}
+        self.page_vision_versions: list[str] = []  # versions de cache vues (get/put)
 
     def get_cached_page_reconstructions(self, target_env, ministere, name, version, sha256):
+        self.page_vision_versions.append(version)
         return self.page_vision_cache.get(sha256)
 
     def put_page_reconstructions(self, target_env, ministere, name, version, sha256, reconstructions):
+        self.page_vision_versions.append(version)
         self.page_vision_cache[sha256] = reconstructions
 
 
@@ -1347,3 +1350,36 @@ def test_bronze_page_vision_force_reprocess_bypasses_cache(tmp_path: Path, monke
     assert asset.page_vision_from_cache is False
     assert "→ CONTRAT" in asset.ocr.markdown  # fraîche, pas le cache périmé
     assert "cache périmé" not in asset.ocr.markdown
+
+
+def test_bronze_page_vision_cache_key_carries_logic_version_and_max_pages(tmp_path: Path, monkeypatch) -> None:
+    # La clé de cache page-vision inclut la version de LOGIQUE (garde/détecteur)
+    # et max_pages : bumper PAGE_VISION_LOGIC_VERSION invalide les caches produits
+    # sous l'ancien garde (revue #320 round 4).
+    from assistant_rh_data_engineering.masa.bronze import MasaBronzeFetcher, MasaBronzeRepository
+    from assistant_rh_data_engineering.utils import page_vision as pv
+
+    monkeypatch.setattr(pv, "render_pdf_pages", lambda pdf_bytes, indexes, *, dpi=150: {i: b"png" for i in indexes})
+
+    row = make_row()
+    store = FakePageVisionStore({row.cle_bucket: b"%PDF-doc1"})
+    sha = hashlib.sha256(b"%PDF-doc1").hexdigest()
+    store.ocr_cache[sha] = make_ocr_with_risk_page()
+    src = tmp_path / "src.pdf"
+    src.write_bytes(b"%PDF-doc1")
+    fetcher = MasaBronzeFetcher(
+        store,
+        FakeOcrProvider(),
+        MasaBronzeRepository(tmp_path / "bronze"),
+        target_env="staging",
+        page_reconstructor=FakePageReconstructor(),
+        page_vision_max_pages=42,
+    )
+
+    fetcher.fetch_asset(row, src, sha)
+
+    assert store.page_vision_versions, "aucune interrogation du cache page-vision"
+    key = store.page_vision_versions[-1]
+    assert pv.PAGE_VISION_LOGIC_VERSION in key  # bump -> cache invalidé
+    assert "max42" in key  # max_pages dans la clé
+    assert "ocr-" in key  # version OCR dans la clé

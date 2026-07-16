@@ -38,8 +38,12 @@ MAX_PAGE_VISION_WORKERS = 4
 # is_faithful_reconstruction + politique de cap). Elle entre dans la clé de
 # cache bronze (revue #320 M4b) : changer l'heuristique de détection ou le
 # garde-fou change l'ensemble des pages reconstruites -> le cache doit être
-# invalidé. À incrémenter à chaque évolution de ces règles.
-PAGE_VISION_LOGIC_VERSION = "pvlogic2"
+# invalidé. À incrémenter à CHAQUE évolution de ces règles.
+# pvlogic3 (revue #320 round 4): borne de croissance en occurrences +
+# garde-fou comparé à l'OCR brut (pré-annotation) — invalide les caches
+# pvlogic2 qui pourraient contenir un faux rejet ou une reconstruction que le
+# nouveau garde rejetterait.
+PAGE_VISION_LOGIC_VERSION = "pvlogic3"
 
 RECONSTRUCT_PROMPT = (
     "Tu reconstruis fidèlement le contenu d'une page d'un document de formation RH"
