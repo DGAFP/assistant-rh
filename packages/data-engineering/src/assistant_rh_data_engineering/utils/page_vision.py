@@ -34,6 +34,13 @@ from .ocr import OcrResult, _sanitize_version
 # l'annotation d'images.
 MAX_PAGE_VISION_WORKERS = 4
 
+# Version de la LOGIQUE page-vision (détecteur is_risk_page + garde-fou
+# is_faithful_reconstruction + politique de cap). Elle entre dans la clé de
+# cache bronze (revue #320 M4b) : changer l'heuristique de détection ou le
+# garde-fou change l'ensemble des pages reconstruites -> le cache doit être
+# invalidé. À incrémenter à chaque évolution de ces règles.
+PAGE_VISION_LOGIC_VERSION = "pvlogic2"
+
 RECONSTRUCT_PROMPT = (
     "Tu reconstruis fidèlement le contenu d'une page d'un document de formation RH"
     " (souvent une diapositive) pour un moteur de recherche. Rends UNIQUEMENT le"
@@ -217,24 +224,34 @@ def is_faithful_reconstruction(
     *,
     min_ocr_tokens: int = 8,
     min_overlap: float = 0.5,
+    max_growth: float = 3.0,
 ) -> bool:
-    """Garde-fou anti-hallucination (revue #319 H1): la reconstruction remplace
-    TOUT le markdown de la page, donc elle doit préserver l'essentiel de ce que
-    l'OCR avait déjà lu (titres + colonne gauche du schéma). Un recouvrement de
-    tokens trop faible = le VLM a halluciné une autre page ou dérivé -> on garde
-    l'OCR d'origine plutôt que de servir du faux contenu réglementaire.
+    """Garde-fou anti-hallucination (revue #319/#320). La reconstruction remplace
+    TOUT le markdown de la page ; elle doit :
+    - **préserver** l'essentiel de ce que l'OCR avait lu (rappel des tokens OCR
+      >= min_overlap) — sinon le VLM a halluciné une autre page / dérivé ;
+    - ne pas **ajouter** massivement du contenu inventé : sa taille en tokens est
+      bornée à ``max_growth`` × celle de l'OCR (la page vision récupère la colonne
+      droite d'un schéma, pas vingt phrases réglementaires — revue #320 H2).
 
-    N.B. ce garde-fou ne détecte PAS une inversion fine (ex. flèche CONTRAT lue
-    AVENANT) : les tokens de gauche restent présents. C'est un filet contre le
-    faux contenu grossier, pas une vérification sémantique."""
+    Une page OCR trop maigre (< min_ocr_tokens) est **non vérifiable** : on garde
+    l'OCR plutôt que d'accepter une sortie non contrôlable.
+
+    N.B. ne détecte PAS une inversion fine (flèche CONTRAT lue AVENANT) : les
+    tokens de gauche restent présents. Filet contre le faux contenu grossier,
+    pas une vérification sémantique."""
     ocr_tokens = _significant_tokens(_clean_page_text(ocr_markdown))
     if len(ocr_tokens) < min_ocr_tokens:
-        return True  # page OCR trop maigre pour un test de recouvrement fiable
+        return False  # non vérifiable -> ne pas remplacer l'OCR
     recon_tokens = _significant_tokens(reconstruction)
     if not recon_tokens:
         return False
     overlap = len(ocr_tokens & recon_tokens) / len(ocr_tokens)
-    return overlap >= min_overlap
+    if overlap < min_overlap:
+        return False  # rappel OCR insuffisant (mauvaise page / dérive)
+    if len(recon_tokens) > len(ocr_tokens) * max_growth:
+        return False  # trop de contenu ajouté (hallucination probable)
+    return True
 
 
 def reconstruct_pages(
@@ -318,10 +335,7 @@ def apply_page_reconstructions(ocr_result: OcrResult, reconstructions: dict[int,
     new_pages: list[dict[str, Any]] = []
     for pos, page in enumerate(ocr_result.pages):
         if pos in reconstructions:
-            # La reconstruction couvre toute la page: on vide ``images`` pour que
-            # l'annotation d'images ultérieure ne re-VLMise pas des crops déjà
-            # décrits par la reconstruction pleine page.
-            new_pages.append({**page, "markdown": reconstructions[pos], "images": [], "page_vision": True})
+            new_pages.append({**page, "markdown": reconstructions[pos], "page_vision": True})
         else:
             new_pages.append(page)
     markdown = "\n\n".join(str(page.get("markdown") or "").strip() for page in new_pages if str(page.get("markdown") or "").strip())

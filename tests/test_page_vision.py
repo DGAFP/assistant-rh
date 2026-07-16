@@ -187,14 +187,18 @@ def test_reconstruct_pages_rejects_truncated_reconstruction(monkeypatch) -> None
 
 
 def test_is_faithful_reconstruction() -> None:
-    # Recouvrement élevé (colonne gauche préservée) -> fidèle.
+    # Recouvrement élevé (colonne gauche préservée), croissance raisonnable -> fidèle.
     assert pv.is_faithful_reconstruction(FAITHFUL_RECON, FLATTENED_SLIDE) is True
-    # Contenu sans rapport -> non fidèle.
+    # Contenu sans rapport -> non fidèle (rappel OCR insuffisant).
     assert pv.is_faithful_reconstruction("Texte totalement différent, réunion budgétaire.", FLATTENED_SLIDE) is False
     # Vide -> non fidèle.
     assert pv.is_faithful_reconstruction("", FLATTENED_SLIDE) is False
-    # OCR trop maigre (< min_ocr_tokens) -> accepté (test de recouvrement non fiable).
-    assert pv.is_faithful_reconstruction("n'importe quoi", "## Titre") is True
+    # OCR trop maigre (< min_ocr_tokens) -> non vérifiable -> rejeté (garder OCR).
+    assert pv.is_faithful_reconstruction("n'importe quoi", "## Titre") is False
+    # Rappel OK mais contenu massivement AJOUTÉ (OCR + 100 tokens inventés
+    # distincts) -> rejeté par la borne de croissance (revue #320 H2).
+    padded = FLATTENED_SLIDE + " " + " ".join(f"motinvente{i}xyz" for i in range(100))
+    assert pv.is_faithful_reconstruction(padded, FLATTENED_SLIDE) is False
 
 
 def test_reconstructor_version_depends_on_prompt_and_dpi(monkeypatch) -> None:

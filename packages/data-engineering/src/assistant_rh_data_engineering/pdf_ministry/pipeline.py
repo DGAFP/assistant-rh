@@ -57,6 +57,11 @@ def plan_reconciliation(
     retraités à chaque run sans jamais converger (divergence MASA).
     `protected` (uids dont le téléchargement a échoué) n'est JAMAIS classé en
     delete: un incident S3 transitoire ne doit pas supprimer un document sain.
+
+    Un doc dont la page vision est incomplète (page_vision_complete=False, panne
+    transitoire d'un run précédent) est re-classé en ingest pour retenter la
+    reconstruction — sinon une panne VLM transitoire laisserait un schéma aplati
+    jusqu'au prochain --force-reprocess manuel (revue #320 finding 1).
     """
     to_ingest: list[str] = []
     unchanged: list[str] = []
@@ -69,6 +74,7 @@ def plan_reconciliation(
             and checksum is not None
             and state.get("checksum") == checksum
             and (not retry_zero_chunk or int(state.get("nb_chunks") or 0) > 0)
+            and state.get("page_vision_complete", True)
         ):
             unchanged.append(short_id)
         else:
@@ -216,6 +222,7 @@ class MedallionPipeline:
             self.bronze_repo,
             target_env=self.config.target_env,
             force_reocr=force_reocr,
+            force_reprocess=force_reprocess,
             image_annotator=self.image_annotator if not dry_run else None,
             max_images_per_doc=self.config.images.max_images_per_doc,
             page_reconstructor=self.page_reconstructor if not dry_run else None,

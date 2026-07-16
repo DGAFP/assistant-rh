@@ -125,6 +125,23 @@ def test_plan_force_reocr_reingests_everything() -> None:
     assert plan["ignore_inchange"] == []
 
 
+def test_plan_reingests_doc_with_incomplete_page_vision() -> None:
+    # Panne page-vision transitoire d'un run précédent (page_vision_complete=False):
+    # le doc est re-classé en ingest malgré un checksum inchangé, pour retenter la
+    # reconstruction sans --force-reprocess manuel (revue #320 finding 1).
+    expected = {"MASA-0001": make_row("MASA-0001"), "MASA-0002": make_row("MASA-0002")}
+    current = {
+        "MASA-0001": {"doc_id": "d1", "checksum": "a" * 64, "nb_chunks": 4, "page_vision_complete": False},
+        "MASA-0002": {"doc_id": "d2", "checksum": "b" * 64, "nb_chunks": 4, "page_vision_complete": True},
+    }
+    checksums = {"MASA-0001": "a" * 64, "MASA-0002": "b" * 64}
+
+    plan = plan_reconciliation(expected, current, checksums)
+
+    assert plan["ingest"] == ["MASA-0001"]  # page vision incomplète -> re-traité
+    assert plan["ignore_inchange"] == ["MASA-0002"]  # complet -> ignoré
+
+
 # --- Silver -------------------------------------------------------------------
 
 
@@ -1296,3 +1313,37 @@ def test_bronze_page_vision_degrades_gracefully_on_render_failure(tmp_path: Path
     assert asset.page_reconstructions == {}
     assert asset.ocr.pages[0].get("page_vision") is None  # page conservée en OCR
     assert sha not in store.page_vision_cache  # panne non cachée (retry au prochain run)
+
+
+def test_bronze_page_vision_force_reprocess_bypasses_cache(tmp_path: Path, monkeypatch) -> None:
+    # --force-reprocess ré-applique la page vision même si le cache existe
+    # (revue #320 finding 4a): re-rend et re-VLMise pour propager un changement
+    # de logique/garde-fou.
+    from assistant_rh_data_engineering.masa.bronze import MasaBronzeFetcher, MasaBronzeRepository
+    from assistant_rh_data_engineering.utils import page_vision as pv
+
+    monkeypatch.setattr(pv, "render_pdf_pages", lambda pdf_bytes, indexes, *, dpi=150: {i: b"png" for i in indexes})
+
+    row = make_row()
+    store = FakePageVisionStore({row.cle_bucket: b"%PDF-doc1"})
+    sha = hashlib.sha256(b"%PDF-doc1").hexdigest()
+    store.ocr_cache[sha] = make_ocr_with_risk_page()
+    store.page_vision_cache[sha] = {0: "cache périmé qui ne doit pas être servi"}
+    src = tmp_path / "src.pdf"
+    src.write_bytes(b"%PDF-doc1")
+    reconstructor = FakePageReconstructor()
+    fetcher = MasaBronzeFetcher(
+        store,
+        FakeOcrProvider(),
+        MasaBronzeRepository(tmp_path / "bronze"),
+        target_env="staging",
+        force_reprocess=True,
+        page_reconstructor=reconstructor,
+    )
+
+    asset = fetcher.fetch_asset(row, src, sha)
+
+    assert reconstructor.calls == 1  # cache ignoré: reconstruction recalculée
+    assert asset.page_vision_from_cache is False
+    assert "→ CONTRAT" in asset.ocr.markdown  # fraîche, pas le cache périmé
+    assert "cache périmé" not in asset.ocr.markdown

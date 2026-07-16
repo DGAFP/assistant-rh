@@ -108,19 +108,20 @@ def test_list_short_ids_with_checksum_reads_checksum_when_column_exists(monkeypa
         [
             {
                 "rows": [
-                    (" mi-0001 ", "doc-uuid-1", "sha-1", 12),
-                    ("MI-0002", "doc-uuid-2", None, 0),
+                    # 5e colonne: page_vision_complete (quality_flags->>...): 'true' / 'false' / None.
+                    (" mi-0001 ", "doc-uuid-1", "sha-1", 12, "true"),
+                    ("MI-0002", "doc-uuid-2", None, 0, "false"),
                 ]
             }
         ]
     )
-    monkeypatch.setattr(writer, "_column_types", lambda conn, table: {"checksum": ("text", None)})
+    monkeypatch.setattr(writer, "_column_types", lambda conn, table: {"checksum": ("text", None), "quality_flags": ("jsonb", None)})
 
     current = writer.list_short_ids_with_checksum("MI")
 
     assert current == {
-        "MI-0001": {"doc_id": "doc-uuid-1", "checksum": "sha-1", "nb_chunks": 12},
-        "MI-0002": {"doc_id": "doc-uuid-2", "checksum": None, "nb_chunks": 0},
+        "MI-0001": {"doc_id": "doc-uuid-1", "checksum": "sha-1", "nb_chunks": 12, "page_vision_complete": True},
+        "MI-0002": {"doc_id": "doc-uuid-2", "checksum": None, "nb_chunks": 0, "page_vision_complete": False},
     }
     assert calls[0]["params"] == ("mi",)
     assert "rag_chunks_mi" in calls[0]["query"]
@@ -128,12 +129,14 @@ def test_list_short_ids_with_checksum_reads_checksum_when_column_exists(monkeypa
 
 
 def test_list_short_ids_with_checksum_tolerates_missing_checksum_column(monkeypatch: pytest.MonkeyPatch) -> None:
-    writer, calls, _ = make_writer([{"rows": [("MI-0001", "doc-uuid-1", None, 3)]}])
+    # Ni checksum ni quality_flags: la 5e colonne vaut NULL -> page_vision_complete True.
+    writer, calls, _ = make_writer([{"rows": [("MI-0001", "doc-uuid-1", None, 3, None)]}])
     monkeypatch.setattr(writer, "_column_types", lambda conn, table: {"short_id": ("varchar", 64)})
 
     current = writer.list_short_ids_with_checksum("mi")
 
     assert current["MI-0001"]["checksum"] is None
+    assert current["MI-0001"]["page_vision_complete"] is True  # absent -> considéré complet
     assert "SQL('NULL')" in calls[0]["query"]
 
 

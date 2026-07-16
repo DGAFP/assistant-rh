@@ -479,6 +479,11 @@ class RagDbWriter:
             document_columns = self._column_types(conn, "rag_documents")
             has_checksum = "checksum" in document_columns
             checksum_expr = sql.Identifier("documents", "checksum") if has_checksum else sql.SQL("NULL")
+            # page_vision_complete (quality_flags JSONB): 'false' force le
+            # re-traitement (revue #320 finding 1). Absent/NULL -> traité comme
+            # complet (ne pas re-traiter en masse les docs legacy sans le drapeau).
+            has_quality_flags = "quality_flags" in document_columns
+            pv_expr = sql.SQL("documents.quality_flags->>'page_vision_complete'") if has_quality_flags else sql.SQL("NULL")
 
             query = sql.SQL(
                 """
@@ -486,7 +491,8 @@ class RagDbWriter:
                     documents.short_id,
                     documents.doc_id,
                     {} AS checksum,
-                    COALESCE(chunk_counts.nb_chunks, 0) AS nb_chunks
+                    COALESCE(chunk_counts.nb_chunks, 0) AS nb_chunks,
+                    {} AS page_vision_complete
                 FROM {}.{} AS documents
                 LEFT JOIN (
                     SELECT short_id, COUNT(*) AS nb_chunks
@@ -499,6 +505,7 @@ class RagDbWriter:
                 """
             ).format(
                 checksum_expr,
+                pv_expr,
                 sql.Identifier(self.schema),
                 sql.Identifier("rag_documents"),
                 sql.Identifier(self.schema),
@@ -510,6 +517,8 @@ class RagDbWriter:
                     "doc_id": str(row[1]),
                     "checksum": (str(row[2]) if row[2] is not None else None),
                     "nb_chunks": int(row[3] or 0),
+                    # False uniquement si explicitement 'false' en base.
+                    "page_vision_complete": (str(row[4]).lower() != "false") if row[4] is not None else True,
                 }
                 for row in cur.fetchall()
             }
