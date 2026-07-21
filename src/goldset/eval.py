@@ -1869,6 +1869,11 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
             if item_conn is not None and run_id is not None:
                 for attempt in range(1, 4):
                     try:
+                        # Reconnexion DANS le try : un « connection refused »
+                        # pendant la reprise consomme une tentative au lieu de
+                        # s'échapper de la boucle.
+                        if item_conn.closed:
+                            item_conn = psycopg.connect(dsn, row_factory=dict_row, connect_timeout=10)
                         if attempt > 1:
                             # Un COMMIT peut être appliqué côté serveur sans
                             # acquittement (connexion morte entre les deux) :
@@ -1894,7 +1899,6 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                         except Exception:
                             pass
                         time.sleep(5 * attempt)
-                        item_conn = psycopg.connect(dsn, row_factory=dict_row, connect_timeout=10)
             if item.error and args.fail_fast:
                 raise RuntimeError(item.error)
         status, status_error = derive_completion_status(items, judge_enabled=not args.skip_judge, ragas_enabled=not args.skip_ragas)
