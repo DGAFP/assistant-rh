@@ -83,7 +83,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: rag-quality-eval-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: rag-quality-eval-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.run_label_suffix || '' }}
   cancel-in-progress: true
 
 jobs:
