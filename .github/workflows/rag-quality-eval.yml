@@ -67,6 +67,16 @@ on:
         required: false
         type: string
         default: ""
+      any_goldset:
+        description: "Select questions by tag across all goldsets (--any-goldset)"
+        required: false
+        type: boolean
+        default: false
+      run_label_suffix:
+        description: "Optional suffix appended to the run label (distinct runs on the same sha)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -130,9 +140,11 @@ jobs:
             fi
             echo "SKIP_RAGAS=${{ inputs.skip_ragas }}" >> "$GITHUB_ENV"
             echo "SKIP_JUDGE=${{ inputs.skip_judge }}" >> "$GITHUB_ENV"
+            echo "ANY_GOLDSET=${{ inputs.any_goldset }}" >> "$GITHUB_ENV"
             echo "BASELINE_RUN_ID=${{ inputs.baseline_run_id || vars.RAG_QUALITY_BASELINE_RUN_ID || '' }}" >> "$GITHUB_ENV"
             echo "BASELINE_RUN_LABEL=${{ inputs.baseline_run_label || vars.RAG_QUALITY_BASELINE_RUN_LABEL || '' }}" >> "$GITHUB_ENV"
-            echo "RUN_LABEL=${{ inputs.target_environment }}-$eval_mode-${{ github.sha }}" >> "$GITHUB_ENV"
+            label_suffix="${{ inputs.run_label_suffix }}"
+            echo "RUN_LABEL=${{ inputs.target_environment }}-$eval_mode-${{ github.sha }}${label_suffix:+-$label_suffix}" >> "$GITHUB_ENV"
           else
             echo "GOLDSET_NAME=iteration2_V1" >> "$GITHUB_ENV"
             echo "GOLDSET_TAG=iteration2" >> "$GITHUB_ENV"
@@ -177,6 +189,10 @@ jobs:
               baseline_args+=(--baseline-run-label "$BASELINE_RUN_LABEL")
             fi
           fi
+          any_goldset_args=()
+          if [[ "${ANY_GOLDSET:-false}" == "true" ]]; then
+            any_goldset_args+=(--any-goldset)
+          fi
           dedupe_args=()
           if [[ "$EVAL_MODE" == "smoke" ]]; then
             dedupe_args+=(--skip-if-started)
@@ -185,6 +201,7 @@ jobs:
           uv run --no-sync python scripts/run_rag_quality_eval.py \
             --goldset-name "$GOLDSET_NAME" \
             --tag "$GOLDSET_TAG" \
+            "${any_goldset_args[@]}" \
             "${limit_args[@]}" \
             "${ragas_args[@]}" \
             "${judge_args[@]}" \
