@@ -33,6 +33,12 @@ LEGACY_TARGET_COLUMNS: dict[str, str] = {
     "lien_concordes_count": "INTEGER",
     "comporte_liens_sp": "BOOLEAN",
     "chunk_number": "INTEGER",
+    # Marqueur des lignes d'index ADDITIVES (R2, résumés d'article) : NULL =
+    # chunk normal ; "r2_summary/{version}/{sha16}" = ligne dont l'embedding
+    # encode le résumé métier mais dont chunk_text reste le texte authentique
+    # (cf. legifrance/summary_rows.py). Colonne ajoutée par _ensure_table au
+    # premier run (mécanisme de migration natif de cette table).
+    "index_variant": "TEXT",
     "start_date": "DATE",
     "end_date": "DATE",
     "created_at": "TIMESTAMPTZ",
@@ -170,6 +176,7 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                 lien_concordes_count INTEGER,
                 comporte_liens_sp BOOLEAN,
                 chunk_number INTEGER,
+                index_variant TEXT,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 chunk_text_tsv tsvector GENERATED ALWAYS AS (
