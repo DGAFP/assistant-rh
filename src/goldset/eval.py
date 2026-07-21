@@ -1834,25 +1834,52 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
         if run_id is not None:
             item_conn = psycopg.connect(dsn, row_factory=dict_row)
         for question in questions:
-            item = run_question(
-                pipe=pipe,
-                question=question,
-                identifier_aliases=identifier_aliases,
-                run_ragas=not args.skip_ragas,
-                run_judge=not args.skip_judge,
-                judge_model=args.judge_model,
-                judge_base_url=judge_base_url,
-                judge_api_key=judge_api_key,
-                judge_provider=judge_provider,
-                ragas_model=args.ragas_model,
-                scaleway_base_url=args.scaleway_base_url,
-                scaleway_api_key=api_key,
-                retrieval_scope=resolve_question_scope(question, args.ministry_scope),
-            )
+            # Un run complet tient ~1 h : le serveur staging peut couper les
+            # connexions en cours de route (backends tués — runs 119/120 du
+            # 21/07 morts à 3 et 9 items). On rejoue la question sur un
+            # pipeline reconstruit plutôt que de perdre le run entier.
+            for attempt in range(1, 4):
+                try:
+                    item = run_question(
+                        pipe=pipe,
+                        question=question,
+                        identifier_aliases=identifier_aliases,
+                        run_ragas=not args.skip_ragas,
+                        run_judge=not args.skip_judge,
+                        judge_model=args.judge_model,
+                        judge_base_url=judge_base_url,
+                        judge_api_key=judge_api_key,
+                        judge_provider=judge_provider,
+                        ragas_model=args.ragas_model,
+                        scaleway_base_url=args.scaleway_base_url,
+                        scaleway_api_key=api_key,
+                        retrieval_scope=resolve_question_scope(question, args.ministry_scope),
+                    )
+                    break
+                except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
+                    if attempt == 3:
+                        raise
+                    print(
+                        f"[resilience] connexion DB perdue sur la question {question.id} "
+                        f"(tentative {attempt}/3) : {exc} — reconstruction du pipeline",
+                        flush=True,
+                    )
+                    time.sleep(5 * attempt)
+                    pipe = create_pipeline(config=pipeline_config, dsn=dsn)
             items.append(item)
             if item_conn is not None and run_id is not None:
-                insert_eval_item(item_conn, run_id, item)
-                item_conn.commit()
+                try:
+                    insert_eval_item(item_conn, run_id, item)
+                    item_conn.commit()
+                except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
+                    print(f"[resilience] connexion d'insertion perdue : {exc} — reconnexion", flush=True)
+                    try:
+                        item_conn.close()
+                    except Exception:
+                        pass
+                    item_conn = psycopg.connect(dsn, row_factory=dict_row)
+                    insert_eval_item(item_conn, run_id, item)
+                    item_conn.commit()
             if item.error and args.fail_fast:
                 raise RuntimeError(item.error)
         status, status_error = derive_completion_status(items, judge_enabled=not args.skip_judge, ragas_enabled=not args.skip_ragas)
