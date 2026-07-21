@@ -21,6 +21,19 @@ _ALL_IDS = ["matte", "mso", "mi", "masa"]
 _TOKENS = ("{ministere_label}", "{ministere_sigle}")
 
 
+@pytest.mark.parametrize(
+    ("ministry_id", "expected_label"),
+    [
+        ("matte", "MATTE"),
+        ("mso", "MSO"),
+        ("mi", "MI"),
+        ("masa", "MASA"),
+    ],
+)
+def test_catalog_uses_official_short_labels(ministry_id: str, expected_label: str) -> None:
+    assert MINISTRY_CATALOG[ministry_id].label == expected_label
+
+
 # ── render_ministry_prompt ────────────────────────────────────────────────
 
 
