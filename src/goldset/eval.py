@@ -1832,12 +1832,12 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     item_conn: psycopg.Connection[Any] | None = None
     try:
         if run_id is not None:
-            item_conn = psycopg.connect(dsn, row_factory=dict_row)
+            item_conn = psycopg.connect(dsn, row_factory=dict_row, connect_timeout=10)
         for question in questions:
             # Un run complet tient ~1 h : le serveur staging peut couper les
             # connexions en cours de route (backends tués — runs 119/120 du
-            # 21/07 morts à 3 et 9 items). On rejoue la question sur un
-            # pipeline reconstruit plutôt que de perdre le run entier.
+            # 21/07 morts à 3 et 9 items). Les composants du pipeline ouvrent
+            # une connexion par requête : rejouer la question suffit.
             for attempt in range(1, 4):
                 try:
                     item = run_question(
@@ -1861,25 +1861,40 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                         raise
                     print(
                         f"[resilience] connexion DB perdue sur la question {question.id} "
-                        f"(tentative {attempt}/3) : {exc} — reconstruction du pipeline",
+                        f"(tentative {attempt}/3) : {exc}",
                         flush=True,
                     )
                     time.sleep(5 * attempt)
-                    pipe = create_pipeline(config=pipeline_config, dsn=dsn)
             items.append(item)
             if item_conn is not None and run_id is not None:
-                try:
-                    insert_eval_item(item_conn, run_id, item)
-                    item_conn.commit()
-                except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
-                    print(f"[resilience] connexion d'insertion perdue : {exc} — reconnexion", flush=True)
+                for attempt in range(1, 4):
                     try:
-                        item_conn.close()
-                    except Exception:
-                        pass
-                    item_conn = psycopg.connect(dsn, row_factory=dict_row)
-                    insert_eval_item(item_conn, run_id, item)
-                    item_conn.commit()
+                        if attempt > 1:
+                            # Un COMMIT peut être appliqué côté serveur sans
+                            # acquittement (connexion morte entre les deux) :
+                            # purge préalable, dans la même transaction que la
+                            # réinsertion, pour ne jamais dupliquer l'item —
+                            # la table n'a pas d'UNIQUE (run_id, question_id).
+                            item_conn.execute(
+                                "DELETE FROM public.rag_quality_eval_items WHERE run_id = %s AND question_id = %s",
+                                (run_id, question.id),
+                            )
+                        insert_eval_item(item_conn, run_id, item)
+                        item_conn.commit()
+                        break
+                    except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
+                        if attempt == 3:
+                            raise
+                        print(
+                            f"[resilience] connexion d'insertion perdue (tentative {attempt}/3) : {exc} — reconnexion",
+                            flush=True,
+                        )
+                        try:
+                            item_conn.close()
+                        except Exception:
+                            pass
+                        time.sleep(5 * attempt)
+                        item_conn = psycopg.connect(dsn, row_factory=dict_row, connect_timeout=10)
             if item.error and args.fail_fast:
                 raise RuntimeError(item.error)
         status, status_error = derive_completion_status(items, judge_enabled=not args.skip_judge, ragas_enabled=not args.skip_ragas)
