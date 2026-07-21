@@ -99,8 +99,8 @@ Constat moteur : le corpus Service-Public (structuré en Q&A) surperforme ; le c
 | Stratégie | Statut | Preuve / décision |
 |---|---|---|
 | Consignes de prompt (« n'invente pas », « appuie-toi sur les sources ») | 🔴 (comme garantie) | Déjà en place (`generator.py`) et démontrées insuffisantes : le near-miss topiquement adjacent n'est pas reconnu comme « sources insuffisantes » (cas #200 : délai de 4 jours et prud'hommes inventés depuis un contexte hors-sujet). Principe retenu : **aucune garantie par prompt**. |
-| **Multi-turn génération vérifiée** (draft → citation de spans exacts → révision) | 🔵 sonde en cours | Prototype du « Programme B ». Sur les 8 échecs génération + 10 contrôles, verdicts appariés (réponse stockée / re-gen single-shot / boucle) ; métrique clé : **taux de spans inventés** (citations fabriquées détectées par string-matching = mesure directe du biais de complaisance dans l'auto-vérification). Critères GO : ≥4/8 conversions réelles, 0 contrôle cassé, spans inventés ~0. |
-| Vérification mécanique de citations en prod (chaque affirmation normative ancrée à un span servi, checker externe par string-matching) | 🟡 programme B | La seule garantie « tout est sourcé » **prouvable**. Design conditionné aux résultats de la sonde ci-dessus. |
+| **Multi-turn génération AUTO-vérifiée** (draft → auto-citation de spans → révision, même modèle) | 🔴 (sonde 21/07) | **0/8 conversions réelles** (les 3 échecs qui passent après boucle passaient déjà en baseline-regen single-shot = variance) ; **1 régression induite** (q28 : regen PASS 0.85 → finale fail 0.7) ; 0/10 contrôles cassés mais 0 gain ; coût +10,4 s médiane, ×3 appels générateur. **Complaisance totale de l'auto-vérification : 117/117 affirmations auto-déclarées « soutenues », 0 supprimée ; 13/117 spans « copiés mot à mot » INVENTÉS (11,1 %)** — paraphrases reconstruites, détectées par le string-matching mécanique. Cause structurelle : les 4 échecs persistants (q11/q19/q183/q191) ont un draft déjà ancré (source_support 0.8-1.0) — le vrai mode d'échec est la **sélection de substance** (règles de calcul servies mais ratées, 6/12 mois confondus, catégories principales omises), orthogonal à « chaque affirmation a-t-elle un span ». |
+| Vérification de citations en prod par checker **EXTERNE** | 🟡 programme B (re-spécifié par la sonde) | Ce qui survit : (a) le **span-checking mécanique comme instrument de mesure** (avec fuzzy matching — 11 % des « citations exactes » du modèle sont des paraphrases) ; (b) une vérification contre la **QUESTION** (checklist d'éléments requis) par un vérificateur **externe au générateur** — jamais d'auto-vérification contre le draft (complaisance 117/117 mesurée). |
 | A/B du modèle générateur (gpt-oss-120b vs alternatives Albert / qwen ZDR) | 🟡 décision politique | Les 8 échecs génération incluent 4 mésinterprétations juridiques pures = plafond du modèle actuel. L'A/B est techniquement prêt ; l'arbitrage souveraineté (Albert par défaut) est un choix produit, pas technique. Biais à gérer : ne pas juger qwen par qwen. |
 
 ### 2.7 Côté mesure (le socle de tout le reste)
@@ -127,7 +127,7 @@ Constat moteur : le corpus Service-Public (structuré en Q&A) surperforme ; le c
 | 17/07 | **Rebaseline** (run 118) | Config idem 116, goldset curé | Curation validée (hit=1.0) ; **σ ±0,05-0,06 démontré** (12 flips à config identique) |
 | 17/07 | **Sonde graphe de renvois** | Extraction PISTE∪regex, expansion 1 saut bidirectionnelle sur les top-30 des 34 échecs | 🟢 GO (6/34 plafonné, 9/34 max) |
 | 17/07 | **Sonde couche de représentation** | 174 enrichissements Albert (aveugles aux questions), 6 variantes, rangs simulés, contrôle différentiel | 🟢 GO ciblé R2 (5/7 misses profonds) ; V1/V3/V4 NO-GO ; R5 réserve |
-| 21/07 | **Sonde multi-turn génération vérifiée** | Draft→spans→révision sur les 8 échecs génération + 10 contrôles, verdicts appariés, spans contrôlés par string-matching | 🔵 en cours |
+| 21/07 | **Sonde multi-turn génération auto-vérifiée** | Draft→spans→révision sur les 8 échecs génération + 10 contrôles, verdicts appariés (stockée/regen/boucle), spans contrôlés par string-matching | 🔴 NO-GO (0/8 réels, 1 régression ; auto-vérif complaisante 117/117, 11 % de spans inventés) |
 
 ---
 
@@ -137,7 +137,7 @@ Constat moteur : le corpus Service-Public (structuré en Q&A) surperforme ; le c
 2. **Vague 1 — mécanique runtime** : `v3_rerank_input_k=40` + fix intent gating (derrière flag) ; hygiène selector en A/B séparé.
 3. **Vague 2 — anti-hallucination** : gate d'abstention t=0,20 (+ conditions) + min_kept=4 borné, par ministère.
 4. **Vague 3 — enrichissement** *(chantier principal)* : pipeline R2 résumés-articles (dgafp d'abord) + `rag_renvois_edges` + dédup chunking SP. Impact combiné projeté ≈ +0,09 (recouvrement limité à q194/q229).
-5. **Programme B — génération vérifiée** : selon verdict de la sonde en cours ; sinon A/B générateur (décision souveraineté).
+5. **Programme B — génération vérifiée** *(re-spécifié 21/07)* : l'auto-révision multi-turn est morte (sonde 🔴) ; la voie restante = **A/B du modèle générateur** (décision souveraineté — les 4 mésinterprétations persistantes ont un draft déjà ancré, c'est le plafond du modèle) + vérificateur **externe** (span-checking fuzzy comme mesure, checklist d'éléments requis contre la question).
 6. **Programme C — mesure à l'échelle** : goldset 300-500 + juge continu sur trafic réel.
 
 **Trajectoire** : 0,670 (116) → mesure assainie ~0,70-0,73 → vagues 1-2 ~0,75-0,78 → vague 3 ~0,82-0,85 → programmes B/C : **0,85-0,90** + zéro réponse fausse confiante (gate + citations vérifiées).
@@ -145,7 +145,7 @@ Constat moteur : le corpus Service-Public (structuré en Q&A) surperforme ; le c
 ## 5. Principes actés (à ne pas re-débattre sans donnée nouvelle)
 
 1. **Toute stratégie se sonde offline sur les échecs réels avant d'être implémentée** (les sondes ont tué en quelques heures 6 chantiers qui auraient coûté des semaines).
-2. **Aucune garantie par prompt** — le biais de complaisance est mesuré (`found=true` sur 7/7 échecs) ; seules comptent les garanties mécaniques (hit rate, seuils, gates, string-matching).
+2. **Aucune garantie par prompt, aucune AUTO-vérification** — le biais de complaisance est mesuré deux fois : `found=true` sur 7/7 échecs (sonde agentique) ; auto-vérification 117/117 « soutenues », 0 suppression, **11 % de citations « mot à mot » inventées** (sonde multi-turn). Seules comptent les garanties mécaniques (hit rate, seuils, gates, string-matching) et les vérificateurs EXTERNES au générateur.
 3. **Les enrichissements trouvent, ils ne disent jamais** — tout texte généré (résumés, questions synthétiques) est une clé d'index ; le générateur ne reçoit que le texte source authentique.
 4. **Un chiffre d'éval sans protocole apparié est du bruit** (σ ±0,05 single-shot).
 5. **Zéro-rétention obligatoire** pour tout LLM externe (OpenRouter `data_collection=deny`) ; Albert souverain par défaut en prod.
