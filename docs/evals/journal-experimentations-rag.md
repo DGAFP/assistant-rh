@@ -387,3 +387,32 @@ Par corpus (Qwen) : MATTE 0.92, synthetic 0.82, Service-Public 0.64, **manual 0.
 3. **Nouvelle baseline J3 = 0.670** (juge Qwen). Tous les A/B suivants s'y comparent. L'A/B min_kept=4 (#115, +0.040) avait été mesuré sous Claude → à re-juger sous Qwen (re-jugement des réponses stockées, gratuit).
 
 **Caveat** : Qwen conserve 1 cas trop strict (#19). Grok 4.5 ($6/M) est un backup viable (comportement proche, ZDR). GLM 5.2 rejeté malgré son prix ($2.87) pour incohérence des verdicts.
+
+---
+
+## Run 118 — `rebaseline_v2_goldsetfix_qwen37max_20260717` (17/07) — rebaseline post-curation goldset + découverte du σ single-shot
+
+**Changements vs run 116** (pipeline et config STRICTEMENT identiques — seuls le goldset et la comptabilité changent) — curation en 3 volets, **36 questions** :
+1. **5 sources fausses re-résolues** (gold answer non dérivable du doc pointé, vérifié à la main) : q198→CGFP L215-1 (au lieu de R214-1 hygiène/sécurité) ; q210→+fiche SP F537 (durées adoption) ; q216→fiche SP F34670 ; q220/q223→+Décret 84-972 art. 3.
+2. **82 refs LEGIARTI de version re-keyées → cids chroniques sur 28 questions** (q1, q2, q173-194, q199, q200, q229, q660) — dette de la migration d'identité #289 ; résolution via `config/legifrance_article_cids.json`, 0 échec.
+3. **3 questions d'articles 86-83 ABROGÉS 2025 requalifiées CGFP** (codification — vérif PISTE : 92 VIGUEUR + 37 ABROGE, exclusion par design) : q201→R331-7+R331-6 ; q226→L121-6+L121-7 ; q227→R331-2.
+
+Re-juge offline des 2 items 429 du run 116 : **q228 = PASS** (pur artefact rate-limit), **q660 = FAIL réel** (`incomplete`).
+
+**Résultats** (99 Q, juge Qwen, `per-question`, `--skip-ragas`) :
+| | Run 116 | **Run 118** |
+|---|---|---|
+| judge_pass_rate | 0.670 | **0.646** |
+| retrieval_gap_rate | ~0.30 | **0.232** |
+| hit SP / MATTE | — | **1.00 / 0.92** |
+
+Flips vs 116 : 8 gagnées (q28, 194, 197, 221, 223, 226, 228, 926), 9 perdues (q3, 4, 18, 20, 33, 199, 211, 215, 676).
+
+**Lecture** :
+1. **La curation a marché** : hit=1.0 sur les questions curées (q198/201/210/220/223/226/227/660), +5 conversions attribuables (q194/221/223/226/228). Les curées encore en échec ont basculé d'« ingagnables par construction » à échecs standard de pipeline (cibles des vagues suivantes).
+2. **Le 0.646 n'est PAS une régression — c'est le bruit** : les 9 perdues ont hit=1.0 dans les DEUX runs à config identique (même retrieval, même contexte servi) ; seule la génération (gpt-oss non déterministe à temp 0) + le juge single-shot ont flippé. Avec les 3 gagnées par le même hasard : **~12 flips aléatoires = σ ≈ ±0.05-0.06 par run**.
+3. **Conséquence méthodologique majeure** : un run unique ne peut PAS mesurer un effet +0.02-0.05. Éclaire rétroactivement la « régression min_kept » du 06/07 et le « SP −0.14 » du run 115 (bruit). **Protocole désormais requis** : référence = verdict majoritaire à 3 runs par question ; A/B en diff apparié par question + re-run des flips ; `--dedupe-scope config-and-git` pour les changements code-only ; goldset gelé pendant tout run.
+
+**Caveats** : curation appliquée en DB staging uniquement (à versionner au repo) ; les backups fichiers de pré-curation ont été perdus avec le scratchpad de session (les anciennes valeurs restent documentées ci-dessus et dans `revue-strategies-qualite-rag.md`).
+
+**Prochain** : 2 runs de stabilisation (référence majoritaire-à-3), puis vague 1 (`v3_rerank_input_k=40` + fix intent gating). Voir la revue stratégique complète : `docs/evals/revue-strategies-qualite-rag.md`.
