@@ -101,7 +101,7 @@ jobs:
       # RAGAS reste sur Scaleway (SCALEWAY_API_KEY ci-dessus).
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       OPENROUTER_BASE_URL: ${{ vars.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1' }}
-      OPENROUTER_JUDGE_MODEL: ${{ vars.OPENROUTER_JUDGE_MODEL || 'qwen/qwen3.7-max' }}
+      OPENROUTER_JUDGE_MODEL: ${{ vars.OPENROUTER_JUDGE_MODEL || 'x-ai/grok-4.5' }}
       DEFAULT_BASELINE_RUN_ID: ${{ vars.RAG_QUALITY_BASELINE_RUN_ID || '' }}
       DEFAULT_BASELINE_RUN_LABEL: ${{ vars.RAG_QUALITY_BASELINE_RUN_LABEL || '' }}
       PR_FULL_REQUESTED: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'rag-quality-full') }}
@@ -122,6 +122,10 @@ jobs:
         run: uv sync --group dev --frozen
 
       - name: Resolve eval parameters
+        env:
+          # Entrée non fiable interpolée nulle part dans le script : passée par
+          # variable d'environnement puis validée (guidance GitHub secure-use).
+          RUN_LABEL_SUFFIX: ${{ inputs.run_label_suffix }}
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
@@ -143,7 +147,11 @@ jobs:
             echo "ANY_GOLDSET=${{ inputs.any_goldset }}" >> "$GITHUB_ENV"
             echo "BASELINE_RUN_ID=${{ inputs.baseline_run_id || vars.RAG_QUALITY_BASELINE_RUN_ID || '' }}" >> "$GITHUB_ENV"
             echo "BASELINE_RUN_LABEL=${{ inputs.baseline_run_label || vars.RAG_QUALITY_BASELINE_RUN_LABEL || '' }}" >> "$GITHUB_ENV"
-            label_suffix="${{ inputs.run_label_suffix }}"
+            label_suffix="${RUN_LABEL_SUFFIX:-}"
+            if [[ ! "$label_suffix" =~ ^[A-Za-z0-9._-]*$ ]]; then
+              echo "run_label_suffix invalide (autorisé: [A-Za-z0-9._-])" >&2
+              exit 1
+            fi
             echo "RUN_LABEL=${{ inputs.target_environment }}-$eval_mode-${{ github.sha }}${label_suffix:+-$label_suffix}" >> "$GITHUB_ENV"
           else
             echo "GOLDSET_NAME=iteration2_V1" >> "$GITHUB_ENV"
