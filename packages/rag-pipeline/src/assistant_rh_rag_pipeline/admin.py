@@ -105,6 +105,8 @@ class RuntimeRAGConfig:
     v3_initial_top_k: int = 30
     v3_enable_reranker: bool = True
     v3_rerank_top_k: int = 20
+    # Entrée du reranker (candidats vus), découplée de la sortie top_k.
+    v3_rerank_input_k: int = 20
     v3_alpha: float = 0.5
     v3_selector_model: str = "openweight-large"
     v3_selector_prompt_name: str = "v3_selector_business.md"
@@ -249,6 +251,7 @@ def runtime_config_to_rag_config(runtime_config: RuntimeRAGConfig | None = None)
 
     config.aggregation.enable_section_reranker = runtime_config.v3_enable_reranker
     config.aggregation.section_rerank_top_k = runtime_config.v3_rerank_top_k
+    config.aggregation.rerank_input_k = runtime_config.v3_rerank_input_k
 
     config.generation.model = runtime_config.v3_generator_model
     config.generation.temperature = runtime_config.v3_temperature

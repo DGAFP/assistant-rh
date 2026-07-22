@@ -1646,6 +1646,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override du nombre de sections offertes au sélecteur (v3_rerank_top_k runtime sinon).",
     )
+    parser.add_argument(
+        "--rerank-input-k",
+        type=int,
+        default=None,
+        help="Override de l'ENTRÉE du reranker (candidats vus ; v3_rerank_input_k runtime sinon). A/B vague 1 : 40.",
+    )
     parser.add_argument("--initial-top-k", type=int, default=None, help="Override retrieval.initial_top_k (ablation).")
     parser.add_argument("--ivfflat-probes", type=int, default=None, help="Override retrieval.ivfflat_probes (ablation; 0=défaut serveur).")
     parser.add_argument("--min-kept-sections", type=int, default=None, help="Override selector.min_kept_sections (ablation; 0=désactivé).")
@@ -1748,6 +1754,9 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.section_rerank_top_k is not None:
         pipeline_config.aggregation.section_rerank_top_k = args.section_rerank_top_k
         config_adjustments.append(f"section_rerank_top_k={args.section_rerank_top_k}")
+    if args.rerank_input_k is not None:
+        pipeline_config.aggregation.rerank_input_k = args.rerank_input_k
+        config_adjustments.append(f"rerank_input_k={args.rerank_input_k}")
     if args.initial_top_k is not None:
         pipeline_config.retrieval.initial_top_k = args.initial_top_k
         config_adjustments.append(f"initial_top_k={args.initial_top_k}")

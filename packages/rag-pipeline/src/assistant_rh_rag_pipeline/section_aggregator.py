@@ -213,9 +213,6 @@ class SectionAggregator:
     # Reranking
     # ------------------------------------------------------------------
 
-    # Max sections to send to the reranker API (avoids 413 payload errors)
-    _MAX_RERANK_INPUT = 20
-
     def _rerank(self, query: str, sections: List[AggregatedSection]) -> tuple[List[AggregatedSection], str, str]:
         if not sections:
             return sections, "skipped_no_sections", ""
@@ -223,8 +220,13 @@ class SectionAggregator:
             if self._reranker is None:
                 self._reranker = AlbertReranker()
 
-            # Pre-filter to avoid oversized payloads to the reranker API
-            candidates = sections[: self._MAX_RERANK_INPUT]
+            # Entrée du reranker pilotée par config (v3_rerank_input_k),
+            # jamais inférieure à sa sortie. Les payloads volumineux sont
+            # gérés par le batching du reranker (anti-413), plus par ce
+            # pré-filtre — qui coupait la section-réponse de 3 échecs mesurés
+            # (q17/q192/q218, funnel 17/07).
+            input_k = max(self.config.rerank_input_k, self.config.section_rerank_top_k)
+            candidates = sections[:input_k]
 
             texts = [f"# {s.heading}\n\n{s.markdown[:1500]}" for s in candidates]
             t0 = time.time()
