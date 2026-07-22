@@ -175,6 +175,14 @@ class SectionAggregationConfig:
     # rag_config partagée doit être alignée à 20 pour que la prod serve la
     # config validée (sinon l'entonnoir reste étranglé à 10).
     section_rerank_top_k: int = 20
+    # ENTRÉE du reranker, découplée de sa sortie (funnel 17/07 : le pré-filtre
+    # à 20 = cause directe de 3 échecs — q17/q192/q218, sections-réponse aux
+    # pré-rangs 32-45 jamais VUES par le reranker ; contrefactuel Albert :
+    # q17 → rangs 2-4 à 0.9996, q192 → rang 1). Défaut 20 = comportement prod
+    # historique ; la cible A/B (vague 1) est 40 via v3_rerank_input_k.
+    # Prérequis plomberie de R2 : un article remonté par résumé au rang ~25
+    # doit pouvoir franchir cette entrée.
+    rerank_input_k: int = 20
 
     def to_dict(self) -> dict:
         return asdict(self)
