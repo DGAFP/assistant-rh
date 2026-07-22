@@ -85,8 +85,10 @@ Lot : 8 golds des misses profonds (q194×2, q212, q213, q217, q221, q229, q657) 
 
 - **Clé de fraîcheur** : le modèle d'embedding entre dans `index_variant` — changer d'espace vectoriel invalide toutes les lignes R2 au prochain plan.
 - **Apply** : revalidation existence+checksum `FOR UPDATE` dans la transaction d'upsert (une ingestion concurrente bloque derrière le verrou ; article supprimé/modifié → ignoré + rapporté `stale_skipped`). Testé en interleaving PostgreSQL réel (tests/test_r2_pg_interleaving.py, gated R2_PG_TEST_DSN).
-- **Dédup précoce** : le retriever sur-échantillonne (x2) la table dgafp et fusionne la paire `{cid}_0`/`{cid}_r2s` AVANT troncature à top_k (la fusion de l'aggregator reste en filet). 
+- **Dédup précoce** : le retriever sur-échantillonne (x2) la table dgafp et fusionne la paire `{cid}_0`/`{cid}_r2s` AVANT troncature à top_k (la fusion de l'aggregator reste en filet). ⚠️ Le sur-échantillonnage s'applique dès le merge (même avant insertion des lignes R2) : les changements runtime sont donc DEUX — retriever (sur-échantillon+fusion dgafp) et aggregator (fusion de paire) — et non « aggregator seul » comme énoncé plus haut. 
 - **Backfill/audit embeddings** : les lignes R2 (`index_variant` renseigné) sont exclues des deux côtés — jamais de vecteur calculé depuis `chunk_text` pour une ligne R2 ; `embedding_bge_scw` y reste NULL par design.
 - **Comptage corpus** : `list_legifrance_corpus` exclut les lignes R2 de `nb_chunks` (sinon double comptage et delta faussé).
 - **Mode plan sans clé** : `ALBERT_API_KEY` n'est exigée qu'à la génération.
 - Annexes pilote complètes : `r2-pilote/pilot_summaries.jsonl` (101 sorties brutes, tokens/statuts) + `pilot_stats.json`.
+
+- **Round 3** : 2e passe de purge à snapshot frais côté ingestion (`_ingest_bundle_tx`) + vérification post-commit verrouillante (FOR UPDATE) — aucune ligne R2 périmée ne survit à AUCUN interleaving (test PG réel sans join prématuré) ; lignes R2 construites depuis la ligne COURANTE (métadonnées fraîches même à checksum texte égal).

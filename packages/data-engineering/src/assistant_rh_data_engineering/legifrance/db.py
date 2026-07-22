@@ -512,6 +512,25 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                         )
                         cur.execute(query, (short_id,))
                     deleted = int(cur.rowcount or 0)
+                    # 2e PASSE À SNAPSHOT FRAIS (revue #332 round 3) : en READ
+                    # COMMITTED, une ligne-résumé R2 insérée PENDANT l'attente
+                    # de verrou du DELETE ci-dessus lui est invisible
+                    # (EvalPlanQual) et survivrait orpheline avec l'ancien
+                    # texte. Chaque statement ayant son propre snapshot, ce
+                    # DELETE séparé la voit et purge toute ligne R2 du cid —
+                    # le plan R2 la régénérera depuis le nouveau texte.
+                    if "index_variant" in self._column_types(conn, table):
+                        cur.execute(
+                            sql.SQL(
+                                "DELETE FROM {}.{} WHERE UPPER(TRIM({})) = %s AND index_variant IS NOT NULL"
+                            ).format(
+                                sql.Identifier(self.schema),
+                                sql.Identifier(table),
+                                sql.Identifier(chunk_join_column),
+                            ),
+                            (short_id,),
+                        )
+                        deleted += int(cur.rowcount or 0)
             inserted = 0
             for batch in self._batched_rows(projected_chunks, 1000):
                 inserted += self._upsert(

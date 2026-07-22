@@ -195,12 +195,16 @@ def remove_orphaned_summaries(
     le prochain plan si l'article revit).
 
     Sélection minimale (cid + chunk_text) : la compensation ne dépend pas des
-    colonnes métier de la table (testable sur une table réduite)."""
+    colonnes métier de la table (testable sur une table réduite). FOR UPDATE
+    (revue #332 round 3) : si le DELETE d'une ingestion concurrente est encore
+    en cours, la vérification BLOQUE derrière ses verrous et ne lit qu'après
+    son commit — jamais un snapshot d'avant-suppression qui conclurait à tort
+    « article présent »."""
     conditions = [sql.SQL("UPPER(TRIM(cid)) = ANY(%s)"), sql.SQL("chunk_id NOT LIKE %s")]
     params: list[Any] = [[str(c).strip().upper() for c in cids], f"%{SUMMARY_CHUNK_SUFFIX}"]
     if has_index_variant:
         conditions.append(sql.SQL("index_variant IS NULL"))
-    query = sql.SQL("SELECT cid, chunk_text FROM {}.{} WHERE {}").format(
+    query = sql.SQL("SELECT cid, chunk_text FROM {}.{} WHERE {} FOR UPDATE").format(
         sql.Identifier(schema), sql.Identifier(table), sql.SQL(" AND ").join(conditions)
     )
     current = conn.execute(query, params).fetchall()
@@ -345,9 +349,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
             fresh_set = set(fresh_cids)
             fresh_pairs = [(item, vector) for item, vector in zip(accepted, vectors, strict=True) if item.uid in fresh_set]
+            # Lignes R2 construites depuis la ligne COURANTE (revue #332
+            # round 3) : une modification métadonnées-seules (statut, dates,
+            # titre) passe le checksum texte — copier depuis le snapshot de
+            # génération persisterait des métadonnées périmées.
+            current_by_cid = {str(r["cid"]).strip(): r for r in current_rows}
             chunk_rows = [
                 build_summary_chunk_row(
-                    rows_by_cid[item.uid],
+                    current_by_cid[item.uid],
                     item.summary,
                     vector,
                     summarizer_version=summarizer.version,
