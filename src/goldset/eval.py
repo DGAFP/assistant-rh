@@ -577,6 +577,10 @@ def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion])
         if judge_enabled
         else "",
         "judge_model": args.judge_model if judge_enabled else "",
+        # Vote majoritaire du juge : un run jugé en maj-3 (protocole officiel
+        # d'adoption, juge souverain) n'est PAS comparable à un run single-shot
+        # (screening intermédiaire grok) — la clé de scope les sépare.
+        "judge_votes": int(getattr(args, "judge_votes", 1) or 1) if judge_enabled else 0,
         # Partie de la clé de comparabilité: un run scopé « all ministries »
         # n'est pas comparable à un run historique sans scope.
         "ministry_scope": getattr(args, "ministry_scope", "none"),
@@ -1386,6 +1390,33 @@ def judge_answer(
         return {"status": "failed", "reason": str(exc)}
 
 
+def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
+    """Vote majoritaire du juge : ``votes`` appels indépendants, verdict = majorité.
+
+    Écrase mécaniquement le bruit propre du juge (single-shot mesuré le
+    21-22/07 : scaleway/qwen3-235b 5,1 %, grok-4.5 6,1 % -> ~0,8-1,1 % en
+    maj-3). Réservé au protocole OFFICIEL d'adoption ; le screening
+    intermédiaire reste en single-shot. Les votes individuels sont archivés
+    dans ``judge_result["votes"]`` (audit), le payload de base (rationale,
+    catégorie) vient d'un vote MAJORITAIRE pour rester cohérent."""
+    if votes <= 1:
+        return judge_answer(**kwargs)
+    results = [judge_answer(**kwargs) for _ in range(votes)]
+    completed = [r for r in results if r.get("status") == "completed"]
+    if not completed:
+        return results[0]
+    n_pass = sum(1 for r in completed if r.get("pass"))
+    verdict = n_pass * 2 > len(completed)
+    base = dict(next(r for r in completed if bool(r.get("pass")) == verdict))
+    base["pass"] = verdict
+    base["votes"] = [
+        {"pass": r.get("pass"), "score": r.get("score"), "failure_category": r.get("failure_category"), "status": r.get("status")}
+        for r in results
+    ]
+    base["vote_agreement"] = f"{max(n_pass, len(completed) - n_pass)}/{len(completed)}"
+    return base
+
+
 def build_full_ministry_scope() -> Any:
     """Scope « utilisateur pleinement granté »: tous les ministères du catalog
     + les tables partagées.
@@ -1445,6 +1476,7 @@ def run_question(
     judge_base_url: str,
     judge_api_key: str,
     judge_provider: str = DEFAULT_JUDGE_PROVIDER,
+    judge_votes: int = 1,
     ragas_model: str,
     scaleway_base_url: str,
     scaleway_api_key: str,
@@ -1485,7 +1517,8 @@ def run_question(
             item.ragas_metrics = {"status": "skipped", "reason": "disabled"}
 
         if run_judge:
-            item.judge_result = judge_answer(
+            item.judge_result = judge_answer_with_votes(
+                votes=judge_votes,
                 question=question.question,
                 gold_answer=question.gold_answer,
                 answer=result.answer,
@@ -1678,6 +1711,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--judge-base-url",
         default=None,
         help="Override de la base URL du juge (sinon dérivée du provider: var d'env puis défaut).",
+    )
+    parser.add_argument(
+        "--judge-votes",
+        type=int,
+        default=int(os.getenv("JUDGE_VOTES", "1") or 1),
+        help=(
+            "Vote majoritaire du juge : N appels par réponse, verdict = majorité. "
+            "Protocole OFFICIEL d'adoption (gates staging/prod) : 3 votes sur le juge "
+            "souverain Scaleway (bruit propre 5,1%% single-shot -> ~0,8%% en maj-3). "
+            "Screening intermédiaire : 1 (défaut)."
+        ),
     )
     parser.add_argument(
         "--ragas-model",
@@ -1882,6 +1926,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 judge_base_url=judge_base_url,
                 judge_api_key=judge_api_key,
                 judge_provider=judge_provider,
+                judge_votes=max(1, int(args.judge_votes or 1)),
                 ragas_model=args.ragas_model,
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,

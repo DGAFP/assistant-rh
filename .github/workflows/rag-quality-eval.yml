@@ -77,6 +77,24 @@ on:
         required: false
         type: string
         default: ""
+      judge_provider:
+        description: "Juge: openrouter = screening intermédiaire, scaleway = protocole OFFICIEL souverain (gates d'adoption)"
+        required: false
+        type: choice
+        options:
+          - openrouter
+          - scaleway
+        default: openrouter
+      judge_model:
+        description: "Override du modèle juge (vide = défaut du provider)"
+        required: false
+        type: string
+        default: ""
+      judge_votes:
+        description: "Votes majoritaires du juge (3 = protocole officiel d'adoption)"
+        required: false
+        type: string
+        default: "1"
 
 permissions:
   contents: read
@@ -123,9 +141,11 @@ jobs:
 
       - name: Resolve eval parameters
         env:
-          # Entrée non fiable interpolée nulle part dans le script : passée par
-          # variable d'environnement puis validée (guidance GitHub secure-use).
+          # Entrées non fiables interpolées nulle part dans le script : passées
+          # par variable d'environnement puis validées (guidance GitHub secure-use).
           RUN_LABEL_SUFFIX: ${{ inputs.run_label_suffix }}
+          JUDGE_MODEL_INPUT: ${{ inputs.judge_model }}
+          JUDGE_VOTES_INPUT: ${{ inputs.judge_votes }}
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
@@ -145,6 +165,25 @@ jobs:
             echo "SKIP_RAGAS=${{ inputs.skip_ragas }}" >> "$GITHUB_ENV"
             echo "SKIP_JUDGE=${{ inputs.skip_judge }}" >> "$GITHUB_ENV"
             echo "ANY_GOLDSET=${{ inputs.any_goldset }}" >> "$GITHUB_ENV"
+            judge_model="${JUDGE_MODEL_INPUT:-}"
+            if [[ ! "$judge_model" =~ ^[A-Za-z0-9._/-]*$ ]]; then
+              echo "judge_model invalide" >&2
+              exit 1
+            fi
+            judge_votes="${JUDGE_VOTES_INPUT:-1}"
+            if [[ ! "$judge_votes" =~ ^[0-9]+$ ]]; then
+              echo "judge_votes invalide (entier requis)" >&2
+              exit 1
+            fi
+            judge_provider="${{ inputs.judge_provider }}"
+            # Protocole officiel souverain : provider scaleway sans override ->
+            # modèle juge historique qwen3-235b.
+            if [[ "$judge_provider" == "scaleway" && -z "$judge_model" ]]; then
+              judge_model="${{ vars.SCALEWAY_JUDGE_MODEL || 'qwen3-235b-a22b-instruct-2507' }}"
+            fi
+            echo "JUDGE_PROVIDER=$judge_provider" >> "$GITHUB_ENV"
+            echo "JUDGE_MODEL_OVERRIDE=$judge_model" >> "$GITHUB_ENV"
+            echo "JUDGE_VOTES=$judge_votes" >> "$GITHUB_ENV"
             echo "BASELINE_RUN_ID=${{ inputs.baseline_run_id || vars.RAG_QUALITY_BASELINE_RUN_ID || '' }}" >> "$GITHUB_ENV"
             echo "BASELINE_RUN_LABEL=${{ inputs.baseline_run_label || vars.RAG_QUALITY_BASELINE_RUN_LABEL || '' }}" >> "$GITHUB_ENV"
             label_suffix="${RUN_LABEL_SUFFIX:-}"
@@ -186,6 +225,12 @@ jobs:
           fi
           if [[ "$SKIP_JUDGE" == "true" ]]; then
             judge_args+=(--skip-judge)
+          else
+            judge_args+=(--judge-provider "${JUDGE_PROVIDER:-openrouter}")
+            judge_args+=(--judge-votes "${JUDGE_VOTES:-1}")
+            if [[ -n "${JUDGE_MODEL_OVERRIDE:-}" ]]; then
+              judge_args+=(--judge-model "$JUDGE_MODEL_OVERRIDE")
+            fi
           fi
           baseline_args=()
           if [[ "$COMPARE_BASELINE" == "true" ]]; then

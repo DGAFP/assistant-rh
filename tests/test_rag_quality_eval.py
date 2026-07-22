@@ -423,6 +423,7 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         "judge_provider": "openrouter",
         "judge_base_url": "https://openrouter.ai/api/v1",
         "judge_model": "judge-a",
+        "judge_votes": 1,
         "ministry_scope": "all",
     }
     assert build_eval_scope(full, questions) != smoke_scope
@@ -1051,3 +1052,57 @@ def test_run_question_absorbs_query_canceled_without_retry() -> None:
     )
     assert calls["n"] == 1  # pas de retry : l'annulation n'est pas une coupure
     assert item.error is not None and "timeout" in item.error
+
+
+def test_judge_answer_with_votes_majority(monkeypatch) -> None:
+    """Vote majoritaire : 2 pass / 1 fail -> PASS, votes archivés, accord 2/3."""
+    from src.goldset import eval as eval_module
+
+    seq = iter(
+        [
+            {"status": "completed", "pass": True, "score": 0.9, "failure_category": None},
+            {"status": "completed", "pass": False, "score": 0.4, "failure_category": "incomplete"},
+            {"status": "completed", "pass": True, "score": 0.8, "failure_category": None},
+        ]
+    )
+    monkeypatch.setattr(eval_module, "judge_answer", lambda **kwargs: next(seq))
+    result = eval_module.judge_answer_with_votes(votes=3, question="q")
+    assert result["pass"] is True
+    assert len(result["votes"]) == 3
+    assert result["vote_agreement"] == "2/3"
+    # payload de base cohérent avec le verdict (un vote majoritaire)
+    assert result["failure_category"] is None
+
+
+def test_judge_answer_with_votes_tolerates_a_failed_vote(monkeypatch) -> None:
+    """Un vote en erreur (ex. 429) n'invalide pas le verdict : majorité des complétés."""
+    from src.goldset import eval as eval_module
+
+    seq = iter(
+        [
+            {"status": "failed", "reason": "429"},
+            {"status": "completed", "pass": False, "score": 0.3, "failure_category": "wrong_law"},
+            {"status": "completed", "pass": False, "score": 0.2, "failure_category": "wrong_law"},
+        ]
+    )
+    monkeypatch.setattr(eval_module, "judge_answer", lambda **kwargs: next(seq))
+    result = eval_module.judge_answer_with_votes(votes=3, question="q")
+    assert result["pass"] is False
+    assert result["vote_agreement"] == "2/2"
+    assert result["status"] == "completed"
+
+
+def test_judge_answer_with_votes_single_is_passthrough(monkeypatch) -> None:
+    """votes=1 = single-shot exact (screening intermédiaire) : ni votes ni agrément."""
+    from src.goldset import eval as eval_module
+
+    calls = {"n": 0}
+
+    def one(**kwargs):
+        calls["n"] += 1
+        return {"status": "completed", "pass": True, "score": 1.0}
+
+    monkeypatch.setattr(eval_module, "judge_answer", one)
+    result = eval_module.judge_answer_with_votes(votes=1, question="q")
+    assert calls["n"] == 1
+    assert "votes" not in result and "vote_agreement" not in result
