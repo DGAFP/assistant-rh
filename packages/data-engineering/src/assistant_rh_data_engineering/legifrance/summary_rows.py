@@ -77,16 +77,48 @@ def summary_chunk_id(cid: str) -> str:
     return f"{str(cid).strip()}{SUMMARY_CHUNK_SUFFIX}"
 
 
-def build_index_variant(summarizer_version: str, source_text: str) -> str:
+def source_sha(source_text: str) -> str:
+    """sha16 du texte source — partagé par la clé de fraîcheur et la
+    revalidation pré-upsert (``split_stale_sources``)."""
+    return hashlib.sha256((source_text or "").encode("utf-8")).hexdigest()[:16]
+
+
+def build_index_variant(summarizer_version: str, source_text: str, *, embed_model: str) -> str:
     """Marqueur + clé de fraîcheur d'une ligne R2.
 
-    ``r2_summary/{version du summarizer}/{sha16 du texte source}`` : un
-    changement de logique (R2_LOGIC_VERSION), de modèle, de prompt OU du texte
-    de l'article produit une valeur différente -> la ligne stockée est
-    détectée périmée par ``plan_missing_summaries``.
+    ``r2_summary/{version du summarizer}+embed-{modèle d'embedding}/{sha16 du
+    texte source}`` : un changement de logique (R2_LOGIC_VERSION), de modèle
+    de résumé, de prompt, de MODÈLE D'EMBEDDING (revue #332 — sinon un
+    changement d'espace vectoriel laisserait des vecteurs incompatibles
+    considérés « à jour ») OU du texte de l'article produit une valeur
+    différente -> la ligne stockée est détectée périmée par
+    ``plan_missing_summaries``.
     """
-    digest = hashlib.sha256((source_text or "").encode("utf-8")).hexdigest()[:16]
-    return f"{INDEX_VARIANT_PREFIX}/{summarizer_version}/{digest}"
+    if not str(embed_model or "").strip():
+        raise ValueError("embed_model requis dans la clé de fraîcheur R2")
+    return f"{INDEX_VARIANT_PREFIX}/{summarizer_version}+embed-{embed_model}/{source_sha(source_text)}"
+
+
+def split_stale_sources(
+    source_sha_by_cid: dict[str, str],
+    current_text_by_cid: dict[str, str],
+) -> tuple[list[str], dict[str, str]]:
+    """Revalidation juste avant l'upsert (revue #332) : sépare les cids dont
+    l'article est toujours présent ET inchangé (frais -> upsert) de ceux
+    supprimés ou modifiés par une ingestion concurrente pendant la génération
+    (périmés -> ignorés + rapportés, jamais réinsérés avec l'ancien texte).
+    """
+    fresh: list[str] = []
+    stale: dict[str, str] = {}
+    for cid, expected_sha in source_sha_by_cid.items():
+        current = current_text_by_cid.get(cid)
+        if current is None or not str(current).strip():
+            stale[cid] = "supprimé pendant la génération"
+        elif source_sha(str(current)) != expected_sha:
+            stale[cid] = "modifié pendant la génération"
+        else:
+            fresh.append(cid)
+    return fresh, stale
 
 
 def is_summary_variant(index_variant: Any) -> bool:
@@ -97,6 +129,8 @@ def plan_missing_summaries(
     article_rows: list[dict[str, Any]],
     existing_variants: dict[str, str],
     summarizer_version: str,
+    *,
+    embed_model: str,
 ) -> list[dict[str, Any]]:
     """Articles dont la ligne R2 est absente OU périmée (delta par checksum).
 
@@ -114,7 +148,7 @@ def plan_missing_summaries(
         source_text = str(row.get("chunk_text") or "")
         if not cid or not source_text.strip():
             continue
-        expected = build_index_variant(summarizer_version, source_text)
+        expected = build_index_variant(summarizer_version, source_text, embed_model=embed_model)
         if existing_variants.get(cid) == expected:
             continue
         todo.append(row)
@@ -127,6 +161,7 @@ def build_summary_chunk_row(
     embedding_m3: list[float],
     *,
     summarizer_version: str,
+    embed_model: str,
 ) -> dict[str, Any]:
     """Ligne additive R2 prête pour ``LegifranceDbWriter.upsert_legacy_chunks``.
 
@@ -151,7 +186,7 @@ def build_summary_chunk_row(
             # Le résumé est la matière BRUTE de l'index (ce que le vecteur
             # encode) ; chunk_text (copié ci-dessus) reste le texte servi.
             "text": str(summary).strip(),
-            "index_variant": build_index_variant(summarizer_version, source_text),
+            "index_variant": build_index_variant(summarizer_version, source_text, embed_model=embed_model),
             # Pas une position dans le découpage de l'article.
             "chunk_number": None,
             "embedding_m3": embedding_m3,

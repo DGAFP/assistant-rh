@@ -311,17 +311,29 @@ class LegifranceDbWriter(ServicePublicDbWriter):
     def project_modern_chunks(cls, chunks: list[dict]) -> list[dict]:
         return [cls.project_modern_chunk(chunk) for chunk in chunks if "modern" in (chunk.get("_targets") or ["legacy", "modern"])]
 
-    def upsert_legacy_chunks(self, chunks: list[dict]) -> int:
-        with self._connect() as conn:
+    def upsert_legacy_chunks(self, chunks: list[dict], conn=None) -> int:
+        # ``conn`` fourni = le caller porte la transaction (revalidation de
+        # fraîcheur + upsert atomiques, cf. jobs/r2_article_summaries) et
+        # committe lui-même.
+        if conn is not None:
             self.ensure_legacy_target_table()
-            count = self._upsert(
+            return self._upsert(
                 conn,
                 self.legacy_table_name,
                 self.project_legacy_chunks(chunks),
                 ["chunk_id"],
                 preserve_on_null_cols=["embedding_m3", "embedding_bge_scw", "embedding_qwen3"],
             )
-            conn.commit()
+        with self._connect() as own_conn:
+            self.ensure_legacy_target_table()
+            count = self._upsert(
+                own_conn,
+                self.legacy_table_name,
+                self.project_legacy_chunks(chunks),
+                ["chunk_id"],
+                preserve_on_null_cols=["embedding_m3", "embedding_bge_scw", "embedding_qwen3"],
+            )
+            own_conn.commit()
             return count
 
     def upsert_modern_chunks(self, chunks: list[dict]) -> int:

@@ -1,0 +1,131 @@
+====================================================================================================
+[q194] LEGIARTI000044421768 — L326-1 — Code général de la fonction publique
+---------------------------------------- TEXTE SOURCE ----------------------------------------
+Code général de la fonction publique
+PARTIE LÉGISLATIVE > Livre III : RECRUTEMENT > Titre II : RECRUTEMENT DES FONCTIONNAIRES > Chapitre VI : Autres modalités d'accès aux fonctions publiques > Section 1 : Recrutement sans concours
+Article L326-1
+
+Par dérogation à l'article L. 320-1, les fonctionnaires peuvent être recrutés sans concours :1° Pour l'accès à des emplois réservés aux catégories de personnes mentionnées au chapitre Ier du titre IV du livre II du code des pensions militaires d'invalidité et des victimes de guerre, dans les conditions définies au chapitre II du titre IV du livre II du même code ;2° Lors de la constitution initiale d'un corps, cadre d'emplois ou emploi ;3° Pour l'accès aux corps de catégorie C, lorsque le grade de début est doté de l'échelle de rémunération la moins élevée de la fonction publique, le cas échéant, selon des conditions d'aptitude prévues par les statuts particuliers.
+---------------------------------------- RÉSUMÉ R2 -------------------------------------------
+Cet article prévoit les cas de recrutement sans concours pour les fonctionnaires, notamment pour les emplois réservés aux anciens militaires invalides ou victimes de guerre, lors de la création d'un nouveau corps ou cadre d'emplois, et pour les corps de catégorie C avec l'échelle de rémunération la moins élevée. Il s'applique aux fonctionnaires titulaires et concerne les modalités d'accès aux fonctions publiques sans passer par un concours. Les mots-clés incluent "recrutement sans concours", "emplois réservés", "anciens militaires invalides", "création de corps", "catégorie C", et "conditions d'aptitude".
+
+====================================================================================================
+[q194] LEGIARTI000044421574 — L321-1 — Code général de la fonction publique
+---------------------------------------- TEXTE SOURCE ----------------------------------------
+Code général de la fonction publique
+PARTIE LÉGISLATIVE > Livre III : RECRUTEMENT > Titre II : RECRUTEMENT DES FONCTIONNAIRES > Chapitre Ier : Contrôle préalable des conditions d'accès au statut de fonctionnaire
+Article L321-1
+
+Sous réserve des dispositions des articles L. 321-2 et L. 321-3, nul ne peut avoir la qualité de fonctionnaire :1° S'il ne possède pas la nationalité française ;2° S'il ne jouit pas de ses droits civiques ;3° Le cas échéant, si les mentions portées au bulletin n° 2 de son casier judiciaire sont incompatibles avec l'exercice des fonctions ;4° S'il ne se trouve pas en position régulière au regard du code du service national ;5° Le cas échéant, s'il ne remplit pas, compte tenu des possibilités de compensation du handicap, les conditions de santé particulières exigées pour l'exercice de certaines fonctions relevant du corps ou du cadre d'emplois auquel il a accès, en raison des risques particuliers que ces fonctions comportent pour les agents ou pour les tiers et des sujétions que celles-ci impliquent. Les statuts particuliers fixent la liste de ces fonctions ainsi que les règles générales suivant lesquelles les conditions de santé particulières sont appréciées.
+---------------------------------------- RÉSUMÉ R2 -------------------------------------------
+Cet article définit les conditions préalables pour devenir fonctionnaire titulaire dans la fonction publique française. Il s'applique aux candidats à un recrutement par concours ou par promotion interne. Pour être éligible, le candidat doit être de nationalité française, jouir de ses droits civiques, avoir un casier judiciaire compatible avec les fonctions, être en règle avec le service national, et remplir les conditions de santé spécifiques si nécessaire. Les statuts particuliers précisent les fonctions concernées par ces conditions de santé. Les mots-clés incluent "recrutement fonctionnaire", "conditions d'accès", "nationalité", "droits civiques", "casier judiciaire", "service national", "conditions de santé", "handicap", "compensation".
+
+====================================================================================================
+[q212] LEGIARTI000006486524 — 14 — Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agen
+---------------------------------------- TEXTE SOURCE ----------------------------------------
+Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat
+Titre IV : Congés pour raison de santé > Titre IV : Temps partiel pour raison thérapeutique et congés pour raison de santé
+Article 14
+
+L'agent contractuel en activité bénéficie, en cas d'accident du travail ou de maladie professionnelle, d'un congé pendant toute la période d'incapacité de travail précédant soit la guérison complète, soit la consolidation de la blessure, soit le décès.
+
+Dans cette situation, nonobstant les dispositions de l'article L. 433-2 du livre IV du code de la sécurité sociale, les indemnités journalières sont portées par l'administration au montant du plein traitement :
+
+-pendant un mois dès leur entrée en fonctions ;
+
+-pendant deux mois après deux ans de services ;
+
+-pendant trois mois après trois ans de services.
+
+A l'expiration de la période de rémunération à plein traitement, l'intéressé bénéficie des indemnités journalières prévues dans le code susvisé qui sont servies :
+
+-soit par l'administration pour les agents recrutés ou employés à temps complet ou sur des contrats d'une durée supérieure à un an ;
+
+-soit par la caisse primaire de sécurité sociale dans les autres cas.
+---------------------------------------- RÉSUMÉ R2 -------------------------------------------
+Ce texte concerne les agents contractuels de l'État en cas d'accident du travail ou de maladie professionnelle. Il prévoit un congé pendant toute la période d'incapacité de travail, avec une rémunération à plein traitement pendant une durée variable selon l'ancienneté de l'agent (1 mois, 2 mois ou 3 mois). Après cette période, les indemnités journalières sont servies par l'administration ou par la caisse primaire de sécurité sociale selon la nature du contrat. Les mots-clés incluent "accident du travail", "maladie professionnelle", "congé pour raison de santé", "rémunération", "indemnités journalières", "ancienneté", "temps complet", "contrat de longue durée".
+
+====================================================================================================
+[q213] LEGIARTI000006486522 — 13 — Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agen
+---------------------------------------- TEXTE SOURCE ----------------------------------------
+Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat
+Titre IV : Congés pour raison de santé > Titre IV : Temps partiel pour raison thérapeutique et congés pour raison de santé
+Article 13
+
+L'agent contractuel en activité et comptant au moins quatre mois de service, atteint d'une affection dûment constatée, le mettant dans l'impossibilité d'exercer son activité, nécessitant un traitement et des soins prolongés et présentant un caractère invalidant et de gravité confirmée bénéficie d'un congé de grave maladie pendant une période maximale de trois ans.
+
+L'agent contractuel perçoit pendant son congé de grave maladie la totalité de son traitement la première année puis 60 % de celui-ci les deux années suivantes.
+
+La décision d'octroi est prise par le chef de service sur avis émis par le conseil médical saisi du dossier.
+
+La composition du conseil médical et la procédure suivie sont celles prévues par la réglementation en vigueur pour les fonctionnaires titulaires.
+
+Le congé pour grave maladie peut être accordé par période de trois à six mois. L'agent qui a épuisé un congé de grave maladie ne peut bénéficier d'un autre congé de cette nature s'il n'a repris auparavant l'exercice de ses fonctions pendant un an.
+---------------------------------------- RÉSUMÉ R2 -------------------------------------------
+Ce texte concerne les agents contractuels de l'État en activité avec au moins quatre mois de service, atteints d'une affection grave et invalidante nécessitant des soins prolongés. Il définit les conditions d'octroi d'un congé de grave maladie, d'une durée maximale de trois ans, avec maintien intégral du traitement la première année puis à 60 % les deux années suivantes. La décision est prise par le chef de service sur avis du conseil médical, selon la procédure applicable aux fonctionnaires titulaires. Le congé est accordé par périodes de trois à six mois, avec une reprise d'activité d'un an requise avant un éventuel nouveau congé. Mots-clés : congé grave maladie, affection invalidante, traitement, conseil médical, durée congé, reprise activité.
+
+====================================================================================================
+[q217] LEGIARTI000006486520 — 12 — Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agen
+---------------------------------------- TEXTE SOURCE ----------------------------------------
+Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat
+Titre IV : Congés pour raison de santé > Titre IV : Temps partiel pour raison thérapeutique et congés pour raison de santé
+Article 12
+
+L'agent contractuel en activité bénéficie, après quatre mois de services, de congés de maladie sur présentation d'un certificat médical. La durée de ces congés peut s'étendre pendant une période de douze mois consécutifs si son utilisation est continue ou au cours d'une période comprenant trois cents jours de services effectifs si son utilisation est discontinue. L'agent contractuel en congé de maladie perçoit : 1° Au cours des trois premiers mois, 90 % de son traitement ; 2° Au cours des neuf mois suivants, la moitié de celui-ci.
+---------------------------------------- RÉSUMÉ R2 -------------------------------------------
+Ce texte définit les conditions d'attribution et les modalités de rémunération des congés de maladie pour les agents contractuels de l'État. Il précise que les agents contractuels, sous condition d'ancienneté, peuvent bénéficier de congés de maladie sur présentation d'un certificat médical, avec une durée maximale selon un plafond réglementaire. La rémunération pendant ces congés est calculée selon un barème progressif, avec un taux plein au début puis réduit par la suite. Les mots-clés pour retrouver ce texte incluent : congé maladie, agent contractuel, certificat médical, durée maximale, rémunération, traitement, conditions d'attribution.
+
+====================================================================================================
+[q221] LEGIARTI000006486515 — 10 — Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agen
+---------------------------------------- TEXTE SOURCE ----------------------------------------
+Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat
+Titre III : Congé annuel, congé pour formation syndicale, pour formation de cadres et d'animateurs pour la jeunesse, congé pour formation professionnelle et congé de représentation > Titre III : Congé annuel, congé pour formation syndicale, pour formation de cadres et d'animateurs pour la jeunesse, congés pour formation professionnelle et congé de représentation
+Article 10
+
+L'agent contractuel en activité a droit, compte tenu de la durée de service effectué, à un congé annuel dont la durée et les conditions d'attribution sont identiques à celles du congé annuel des fonctionnaires titulaires prévu par le décret n° 84-972 du 26 octobre 1984 susvisé.
+---------------------------------------- RÉSUMÉ R2 -------------------------------------------
+Ce texte définit les droits aux congés annuels des agents contractuels de l'État, en précisant que ces droits sont identiques à ceux des fonctionnaires titulaires. Il s'applique aux agents contractuels en activité, qu'ils soient en CDD ou CDI, et concerne les conditions d'attribution et la durée du congé annuel. Les mots-clés à retenir sont : congé annuel, agent contractuel, durée de service, conditions d'attribution, fonctionnaire titulaire. Les gestionnaires RH pourront y trouver des réponses sur les droits à congé des agents contractuels, les comparaisons avec les titulaires, et les modalités d'obtention de ce congé.
+
+====================================================================================================
+[q229] LEGIARTI000044420769 — L123-2 — Code général de la fonction publique
+---------------------------------------- TEXTE SOURCE ----------------------------------------
+Code général de la fonction publique
+PARTIE LÉGISLATIVE > Livre Ier : DROITS, OBLIGATIONS ET PROTECTIONS > Titre II : OBLIGATIONS > Chapitre III : Règles de cumul > Section 1 : Dispositions communes
+Article L123-2
+
+La production des œuvres de l'esprit par un agent public, au sens des articles L. 112-1, L. 112-2 et L. 112-3 du code de la propriété intellectuelle, s'exerce librement, dans le respect des dispositions relatives au droit d'auteur des agents publics et sous réserve des articles L. 121-6 et L. 121-7 du présent code.
+---------------------------------------- RÉSUMÉ R2 -------------------------------------------
+Fonctionnaires titulaires, stagiaires et agents contractuels de la fonction publique peuvent produire des œuvres de l'esprit librement, sous réserve du respect des règles de propriété intellectuelle et des obligations liées à leur statut. Ce droit s'exerce dans le cadre des dispositions relatives au droit d'auteur des agents publics, avec des restrictions possibles en cas de conflit avec les obligations de service. Les gestionnaires RH doivent vérifier les conditions spécifiques de cumul d'activités pour les agents concernés, notamment en matière de temps de travail et d'autorisation préalable. Les mots-clés pertinents incluent "cumul d'activités", "œuvres de l'esprit", "droit d'auteur", "autorisation", "obligations de service", et "propriété intellectuelle".
+
+====================================================================================================
+[q657] LEGIARTI000041438060 — 33-2-1 — Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agen
+---------------------------------------- TEXTE SOURCE ----------------------------------------
+Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat pris pour l'application de l'article 7 de la loi n° 84-16 du 11 janvier 1984 portant dispositions statutaires relatives à la fonction publique de l'Etat
+Titre VIII bis : Mise à disposition et mobilité. > Titre VIII bis : Mobilité
+Article 33-2-1
+
+Lorsque l'agent contractuel est recruté pour pourvoir l'un des emplois prévus par le décret n° 2019-1594 du 31 décembre 2019 relatif aux emplois de direction de l'Etat, il bénéficie de plein droit d'un congé de mobilité. A l'issue de ce congé ou s'il cesse pour des motifs autres que disciplinaires, l'agent en ayant bénéficié est réemployé pour exercer les fonctions dont il était précédemment chargé ou, à défaut, sur un poste équivalent de son administration d'origine. Pour les agents recrutés par contrat à durée déterminée, ce réemploi s'applique pour la durée de l'engagement restant à courir.
+---------------------------------------- RÉSUMÉ R2 -------------------------------------------
+Ce texte concerne les agents contractuels de l'État recrutés pour des emplois de direction. Il prévoit un congé de mobilité de plein droit pour ces agents. À l'issue de ce congé ou en cas de cessation de contrat pour des motifs non disciplinaires, l'agent a droit à un réemploi dans ses fonctions précédentes ou sur un poste équivalent dans son administration d'origine. Pour les agents en CDD, ce réemploi s'applique pour la durée restante du contrat. Les mots-clés incluent "congé de mobilité", "réemploi", "emplois de direction", "agent contractuel", "cession de contrat", "poste équivalent".
+
+====================================================================================================
+[voisin] LEGIARTI000006486518 — 11 — Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agen
+---------------------------------------- TEXTE SOURCE ----------------------------------------
+Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat
+Titre III : Congé annuel, congé pour formation syndicale, pour formation de cadres et d'animateurs pour la jeunesse, congé pour formation professionnelle et congé de représentation > Titre III : Congé annuel, congé pour formation syndicale, pour formation de cadres et d'animateurs pour la jeunesse, congés pour formation professionnelle et congé de représentation
+Article 11
+
+L'agent contractuel en activité peut bénéficier : 1° Du congé pour formation syndicale, dans les conditions fixées par les articles R. 215-1 et suivants du code général de la fonction publique ; 2° D'un congé pour formation dans les conditions fixées par l'article 94 du décret n° 2020-1427 du 20 novembre 2020 relatif aux comités sociaux d'administration dans les administrations et les établissements publics de l'Etat ; 3° D'un congé d'une durée annuelle maximale de six jours ouvrables dans les conditions fixées par le décret 20 mai 1963 susvisé ; 4° D'un congé d'une durée annuelle maximale de six jours ouvrables, dans les conditions fixées par l'article L. 641-1 du code général de la fonction publique, pour siéger à titre bénévole au sein de l'organe d'administration ou de direction d'une association régie par la loi du 1er juillet 1901 relative au contrat d'association ou inscrite au registre des associations en application du code civil local applicable dans les départements du Bas-Rhin, du Haut-Rhin et de la Moselle, dans un conseil citoyen dont la composition a été reconnue par le représentant de l'Etat dans le département dans les conditions prévues à l'article 7 de la loi n° 2014-173 du 21 février 2014 de programmation pour la ville et la cohésion urbaine, ou dans une mutuelle, union ou fédération, dans le cadre d'un mandat pour lequel l'agent a été statutairement désigné ou élu à titre personnel et bénévole ; 5° D'un congé de représentation d'une durée maximale de neuf jours ouvrables par an dans les conditions fixées pour les fonctionnaires par les articles L. 642-1 et L. 642-2 du code général de la fonction publique et les articles 1er et 2 du décret n° 2005-1237 du 28 septembre 2005 relatif aux modalités d'attribution aux fonctionnaires et aux agents non titulaires du congé de représentation. Ce congé ne peut se cumuler avec ceux prévus aux 1° et 3° du présent article qu'à concurrence de douze jours ouvrables pour une même année ; 6° D'un congé pour formation professionnelle dans les conditions fixées par le décret n° 2007-1942 du 26 décembre 2007 relatif à la formation professionnelle des agents non titulaires de l'Etat et de ses établissements publics et des ouvriers affiliés au régime des pensions résultant du décret n° 2004-1056 du 5 octobre 2004 ; 7° D'une période de professionnalisation dans les conditions définies à l'article 5 du décret du 26 décembre 2007 mentionné ci-dessus ; 8° D'un congé pour validation des acquis de l'expérience dans les conditions définies au chapitre VI du décret n° 2007-1470 du 15 octobre 2007 relatif à la formation professionnelle tout au long de la vie des fonctionnaires de l'Etat ; 9° D'un congé pour bilan de compétences, dans les conditions définies au chapitre VI du décret du 15 octobre 2007 mentionné ci-dessus.
+---------------------------------------- RÉSUMÉ R2 -------------------------------------------
+Ce texte détaille les différents types de congés auxquels peuvent prétendre les agents contractuels de l'État, incluant les congés pour formation syndicale, formation professionnelle, représentation, et autres congés spécifiques comme le congé pour siéger dans des associations ou conseils citoyens. Il précise les conditions d'attribution et les durées maximales pour chaque type de congé, ainsi que les éventuelles restrictions de cumul. Les agents contractuels peuvent également bénéficier de périodes de professionnalisation, de validation des acquis de l'expérience, et de bilan de compétences. Les gestionnaires RH trouveront ici les règles applicables pour accorder ces congés et les modalités à respecter.
+
+====================================================================================================
+[voisin] LEGIARTI000006486527 — 15 — Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agen
+---------------------------------------- TEXTE SOURCE ----------------------------------------
+Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat
+Titre IV : Congés pour raison de santé > Titre IV : Temps partiel pour raison thérapeutique et congés pour raison de santé
+Article 15
+
+L'agent contractuel a droit au congé de maternité, au congé de naissance, au congé pour l'arrivée d'un enfant placé en vue de son adoption, au congé d'adoption, au congé de paternité et d'accueil de l'enfant ou au congé supplémentaire de naissance prévus aux articles L. 631-3 à L. 631-9 du code général de la fonction publique pour des durées et selon des conditions déterminées par ces mêmes articles ainsi que par les dispositions du chapitre Ier du décret n° 2021-871 du 30 juin 2021 relatif aux congés de maternité et liés aux charges parentales dans la fonction publique de l'Etat. Durant ces congés, l'agent contractuel conserve l'intégralité de son traitement, à l'exception du congé supplémentaire de naissance durant lequel il perçoit 70 % de ce traitement le premier mois, puis 60 % le second mois.
+---------------------------------------- RÉSUMÉ R2 -------------------------------------------
+Les agents contractuels de l'État bénéficient des congés pour raisons familiales (maternité, naissance, adoption, paternité) selon les mêmes durées et conditions que les fonctionnaires titulaires, avec maintien intégral de leur traitement, sauf pour le congé supplémentaire de naissance où le salaire est réduit à 70 % puis 60 %. Ce texte précise les modalités de rémunération pendant ces congés, en se référant aux articles du code général de la fonction publique et au décret de 2021. Les gestionnaires RH y trouveront les règles applicables aux agents contractuels en CDD ou CDI pour ces congés spécifiques.

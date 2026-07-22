@@ -42,6 +42,8 @@ from assistant_rh_data_engineering.legifrance.summary_rows import (
     build_index_variant,
     build_summary_chunk_row,
     plan_missing_summaries,
+    source_sha,
+    split_stale_sources,
 )
 from assistant_rh_data_engineering.utils.article_summary import (
     MAX_SUMMARY_WORKERS,
@@ -198,6 +200,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     summarizer = AlbertArticleSummarizer(model=args.model)
     cache = ArticleSummaryCache(args.cache_dir, summarizer.name, summarizer.version)
+    # Le modèle d'embedding fait partie de la clé de fraîcheur (revue #332) :
+    # résolu AVANT le plan, pas seulement à l'apply.
+    embed_model = os.getenv("ALBERT_EMBED_MODEL", "openweight-embeddings")
 
     uids = _load_uids(args)
     with psycopg.connect(dsn) as conn:
@@ -206,16 +211,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         article_rows = fetch_article_rows(conn, args.schema, args.table, uids=uids or None, has_index_variant=has_variant_col)
         existing = fetch_existing_variants(conn, args.schema, args.table, has_index_variant=has_variant_col)
 
-    todo = plan_missing_summaries(article_rows, existing, summarizer.version)
-    if args.limit:
-        todo = todo[: max(0, int(args.limit))]
+    missing = plan_missing_summaries(article_rows, existing, summarizer.version, embed_model=embed_model)
+    missing_total = len(missing)
+    todo = missing[: max(0, int(args.limit))] if args.limit else missing
 
     report: dict[str, Any] = {
         "summarizer": summarizer.name,
         "version": summarizer.version,
         "model": summarizer.model,
+        "embed_model": embed_model,
         "articles_in_scope": len(article_rows),
-        "summaries_up_to_date": len(article_rows) - len(todo),
+        # « à jour » = hors manquants TOTAUX — jamais tronqué par --limit
+        # (revue #332 : le rapport annonçait 4 107 à jour avec --limit 100).
+        "summaries_up_to_date": len(article_rows) - missing_total,
+        "summaries_missing": missing_total,
+        "selected_for_run": len(todo),
         "to_generate": len(todo),
         "generated": 0,
         "cached": 0,
@@ -248,7 +258,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 payload = _item_payload(item)
                 if item.summary:
                     source_text = str(rows_by_cid.get(item.uid, {}).get("chunk_text") or "")
-                    payload["index_variant"] = build_index_variant(summarizer.version, source_text)
+                    payload["index_variant"] = build_index_variant(summarizer.version, source_text, embed_model=embed_model)
                 out_handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
         summarize_articles(articles, summarizer, cache, max_workers=args.max_workers, on_result=_on_result)
@@ -260,22 +270,46 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.apply and accepted:
         from assistant_rh_data_engineering.utils.gold import AlbertApiEmbedder
 
-        embed_model = os.getenv("ALBERT_EMBED_MODEL", "openweight-embeddings")
         embedder = AlbertApiEmbedder(model_name=embed_model, column_name="embedding_m3")
         # ⚠️ L'embedding encode le RÉSUMÉ (jamais chunk_text) et est toujours
         # fourni à l'insert — cf. piège backfill (summary_rows.py).
         vectors = embedder.embed_texts([item.summary for item in accepted])
-        chunk_rows = [
-            build_summary_chunk_row(
-                rows_by_cid[item.uid],
-                item.summary,
-                vector,
-                summarizer_version=summarizer.version,
+        # Revalidation SOUS TRANSACTION juste avant l'upsert (revue #332) :
+        # la génération a duré — une ingestion concurrente a pu supprimer ou
+        # modifier l'article ; réinsérer depuis le snapshot recréerait un
+        # texte périmé APRÈS la purge delta. Les lignes obsolètes sont
+        # ignorées et rapportées, jamais upsertées.
+        source_shas = {cid: source_sha(str(row.get("chunk_text") or "")) for cid, row in rows_by_cid.items()}
+        with psycopg.connect(dsn) as apply_conn:
+            current_rows = fetch_article_rows(
+                apply_conn,
+                args.schema,
+                args.table,
+                uids=[item.uid for item in accepted],
+                has_index_variant=has_variant_col,
             )
-            for item, vector in zip(accepted, vectors, strict=True)
-        ]
-        writer = LegifranceDbWriter(schema=args.schema, dsn=dsn, legacy_table_name=args.table)
-        report["applied"] = writer.upsert_legacy_chunks(chunk_rows)
+            current_texts = {str(r["cid"]).strip(): str(r.get("chunk_text") or "") for r in current_rows}
+            fresh_cids, stale = split_stale_sources(
+                {item.uid: source_shas[item.uid] for item in accepted}, current_texts
+            )
+            fresh_set = set(fresh_cids)
+            fresh_pairs = [(item, vector) for item, vector in zip(accepted, vectors, strict=True) if item.uid in fresh_set]
+            chunk_rows = [
+                build_summary_chunk_row(
+                    rows_by_cid[item.uid],
+                    item.summary,
+                    vector,
+                    summarizer_version=summarizer.version,
+                    embed_model=embed_model,
+                )
+                for item, vector in fresh_pairs
+            ]
+            writer = LegifranceDbWriter(schema=args.schema, dsn=dsn, legacy_table_name=args.table)
+            report["applied"] = writer.upsert_legacy_chunks(chunk_rows, conn=apply_conn) if chunk_rows else 0
+            apply_conn.commit()
+        report["stale_skipped"] = len(stale)
+        if stale:
+            report["stale_detail"] = stale
         report["mode"] = "apply"
 
     print(json.dumps(report, ensure_ascii=False, indent=2))
