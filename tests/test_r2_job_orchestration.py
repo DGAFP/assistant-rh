@@ -34,9 +34,11 @@ def test_run_limit_report_and_stale_skip(monkeypatch, tmp_path, capsys) -> None:
     # concurrente pendant la génération, C1 intact.
     current_after = {"C1": "texte un", "C2": "texte deux MODIFIÉ ENTRETEMPS"}
 
+    lock_calls = {"n": 0}
+
     def fake_fetch(conn, schema, table, *, uids=None, has_index_variant, for_update=False):
-        if uids is not None:
-            assert for_update, "la revalidation pré-upsert doit verrouiller (FOR UPDATE)"
+        if uids is not None and for_update:
+            lock_calls["n"] += 1
         if uids is None:
             return [dict(r) for r in articles]
         return [{"cid": c, "chunk_text": current_after[c]} for c in uids if c in current_after]
@@ -96,3 +98,7 @@ def test_run_limit_report_and_stale_skip(monkeypatch, tmp_path, capsys) -> None:
     assert "modifié" in report["stale_detail"]["C2"]
     assert [r["chunk_id"] for r in upserted] == ["C1_r2s"]
     assert "+embed-emb-test/" in upserted[0]["index_variant"]
+    # La revalidation pré-upsert a bien verrouillé (FOR UPDATE), et la
+    # vérification post-commit n'a trouvé aucun orphelin (C1 intact).
+    assert lock_calls["n"] == 1
+    assert report["orphans_removed"] == 0

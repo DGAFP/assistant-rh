@@ -50,13 +50,31 @@ def test_for_update_blocks_concurrent_delete_until_commit() -> None:
         t.join(timeout=15)
         assert not t.is_alive()
 
-        # Le DELETE (débloqué APRÈS le commit) emporte l'article ET la ligne R2
-        # fraîche : état final cohérent, aucune ligne périmée orpheline.
+        # CONSTAT PROUVÉ ICI (EvalPlanQual, READ COMMITTED) : le DELETE de B,
+        # débloqué après le commit de A, NE VOIT PAS la ligne R2 insérée
+        # pendant son attente — elle survit orpheline avec l'ancien texte.
+        with psycopg.connect(DSN, autocommit=True) as check:
+            rows = check.execute(f"SELECT chunk_id FROM {TABLE}").fetchall()
+        assert rows == [("C1_r2s",)], "hypothèse EvalPlanQual non reproduite — revoir la compensation"
+        ordre = [name for name, _ in sorted(events, key=lambda e: e[1])]
+        assert ordre.index("a_commit") < ordre.index("b_delete_done")
+
+        # La compensation post-commit du job (remove_orphaned_summaries) doit
+        # détecter l'article disparu et retirer la ligne R2 orpheline.
+        from assistant_rh_data_engineering.jobs.r2_article_summaries import remove_orphaned_summaries
+        from assistant_rh_data_engineering.legifrance.summary_rows import source_sha
+
+        with psycopg.connect(DSN) as verify_conn:
+            orphaned = remove_orphaned_summaries(
+                verify_conn, "public", TABLE,
+                cids=["C1"],
+                source_shas={"C1": source_sha("texte source")},
+                has_index_variant=True,
+            )
+        assert set(orphaned) == {"C1"}
         with psycopg.connect(DSN, autocommit=True) as check:
             rows = check.execute(f"SELECT chunk_id FROM {TABLE}").fetchall()
         assert rows == []
-        ordre = [name for name, _ in sorted(events, key=lambda e: e[1])]
-        assert ordre.index("a_commit") < ordre.index("b_delete_done")
     finally:
         if conn_a is not None and not conn_a.closed:
             conn_a.close()

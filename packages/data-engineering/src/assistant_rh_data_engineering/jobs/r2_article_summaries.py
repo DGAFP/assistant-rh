@@ -44,6 +44,7 @@ from assistant_rh_data_engineering.legifrance.summary_rows import (
     plan_missing_summaries,
     source_sha,
     split_stale_sources,
+    summary_chunk_id,
 )
 from assistant_rh_data_engineering.utils.article_summary import (
     MAX_SUMMARY_WORKERS,
@@ -174,6 +175,34 @@ def fetch_existing_variants(
         sql.Identifier(table),
     )
     return {str(cid).strip(): str(variant) for cid, variant in conn.execute(query, (f"{INDEX_VARIANT_PREFIX}/%",)).fetchall() if cid}
+
+
+def remove_orphaned_summaries(
+    conn: psycopg.Connection,
+    schema: str,
+    table: str,
+    *,
+    cids: list[str],
+    source_shas: dict[str, str],
+    has_index_variant: bool,
+) -> dict[str, str]:
+    """Compensation POST-commit de l'apply (interleaving EvalPlanQual prouvé
+    sur staging par tests/test_r2_pg_interleaving.py) : un DELETE d'ingestion
+    resté bloqué derrière notre verrou FOR UPDATE ne voit PAS la ligne R2
+    insérée pendant son attente — elle survivrait orpheline avec l'ancien
+    texte. Sous un snapshot FRAIS : si l'article a disparu/changé depuis le
+    commit, la ligne R2 correspondante est supprimée (elle sera régénérée par
+    le prochain plan si l'article revit)."""
+    current = fetch_article_rows(conn, schema, table, uids=cids, has_index_variant=has_index_variant)
+    texts = {str(r["cid"]).strip(): str(r.get("chunk_text") or "") for r in current}
+    _, orphaned = split_stale_sources({cid: source_shas[cid] for cid in cids}, texts)
+    if orphaned:
+        conn.execute(
+            sql.SQL("DELETE FROM {}.{} WHERE chunk_id = ANY(%s)").format(sql.Identifier(schema), sql.Identifier(table)),
+            ([summary_chunk_id(cid) for cid in orphaned],),
+        )
+        conn.commit()
+    return orphaned
 
 
 def _load_uids(args: argparse.Namespace) -> list[str]:
@@ -322,6 +351,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         report["stale_skipped"] = len(stale)
         if stale:
             report["stale_detail"] = stale
+        if chunk_rows:
+            with psycopg.connect(dsn) as verify_conn:
+                orphaned = remove_orphaned_summaries(
+                    verify_conn,
+                    args.schema,
+                    args.table,
+                    cids=[item.uid for item, _ in fresh_pairs],
+                    source_shas=source_shas,
+                    has_index_variant=has_variant_col,
+                )
+            report["orphans_removed"] = len(orphaned)
+            if orphaned:
+                report["orphans_detail"] = orphaned
         report["mode"] = "apply"
 
     print(json.dumps(report, ensure_ascii=False, indent=2))
