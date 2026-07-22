@@ -221,10 +221,11 @@ class SectionAggregator:
                 self._reranker = AlbertReranker()
 
             # Entrée du reranker pilotée par config (v3_rerank_input_k),
-            # jamais inférieure à sa sortie. Les payloads volumineux sont
-            # gérés par le batching du reranker (anti-413), plus par ce
-            # pré-filtre — qui coupait la section-réponse de 3 échecs mesurés
-            # (q17/q192/q218, funnel 17/07).
+            # jamais inférieure à sa sortie. Jusqu'à 40 candidats = UNE
+            # requête /rerank (pas de dérive inter-requêtes) ; au-delà, le
+            # batching du reranker prend le relais (approximatif, cf.
+            # reranker._BATCH_SIZE). L'ancien pré-filtre en dur coupait la
+            # section-réponse de 3 échecs mesurés (q17/q192/q218, funnel 17/07).
             input_k = max(self.config.rerank_input_k, self.config.section_rerank_top_k)
             candidates = sections[:input_k]
 

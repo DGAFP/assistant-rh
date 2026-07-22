@@ -35,11 +35,14 @@ class AlbertReranker:
         self.model = model or os.getenv("ALBERT_RERANK_MODEL", "openweight-rerank")
         self.timeout = timeout
 
-    # Taille de lot par requête /rerank : borne le payload (anti-413) quand
-    # l'entrée dépasse 20 documents (v3_rerank_input_k=40). Les scores d'un
-    # cross-encoder sont indépendants par (query, doc) : le découpage en lots
-    # est EXACT — la fusion est un simple tri global des scores.
-    _BATCH_SIZE = 20
+    # Taille de lot par requête /rerank. 40 couvre la config standard
+    # (v3_rerank_input_k=40) en UNE SEULE requête — validé empiriquement
+    # contre l'API Albert (revue #335 : un appel à 40 documents passe sans
+    # 413). Au-delà, le découpage en lots est APPROXIMATIF : les scores
+    # Albert dérivent entre requêtes (jusqu'à ~6e-4 mesuré, revue #335), ce
+    # qui peut changer l'appartenance au top-k à la frontière — acceptable
+    # uniquement pour des configs exploratoires > 40.
+    _BATCH_SIZE = 40
 
     def rerank(self, query: str, texts: List[str], top_k: int | None = None) -> List[Tuple[int, float]]:
         """Return ``(original_index, score)`` pairs sorted by descending score."""
@@ -56,8 +59,9 @@ class AlbertReranker:
                     "query": query,
                     "documents": batch,
                     # top_n = tout le lot : la troncature top_k ne peut se
-                    # faire qu'APRÈS la fusion globale, sinon des candidats
-                    # inter-lots seraient perdus.
+                    # faire qu'APRÈS la fusion (sinon des candidats inter-lots
+                    # seraient perdus). NB fusion multi-lots = approximative
+                    # (dérive inter-requêtes, cf. _BATCH_SIZE).
                     "top_n": len(batch),
                 },
                 timeout=self.timeout,
