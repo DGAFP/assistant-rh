@@ -474,3 +474,20 @@ Flips vs 116 : 8 gagnées (q28, 194, 197, 221, 223, 226, 228, 926), 9 perdues (q
 **Incidents d'infra consignés** (journée du 21-22/07, tous de la famille « réseau silencieux ») : sockets à moitié mortes gelant les workers (fix : timeout HTTP client 45 s obligatoire sur tout script de juge — à porter dans `judge_answer`), pièges pgrep auto-matchants (3 occurrences), venv nu des worktrees. Runs locaux 119-121 = statuts orphelins à nettoyer.
 
 **Prochain** : vague 1 — P1 `rerank_input_k=40` (prérequis plomberie de R2 : un article remonté par R2 au rang ~25 doit franchir l'entrée du rerank, coupée à 20), screening grok, puis R2 (#332), puis gate d'adoption Scaleway maj-3 sur le paquet.
+
+---
+
+## Run 145 — `candidate_w1_rerankinput40_20260722` (22/07) — screening vague 1 : P1 `rerank_input_k=40`
+
+**Changements vs baseline** : dev @10ee6e3 (#335 mergée) + `--rerank-input-k 40` (entrée du reranker 20→40, sortie inchangée). Juge : **grok single-shot (étage screening)** — lecture contre la **référence grok** des runs 118/123/124 (0,707 ; 16 échecs stables-grok), jamais contre la référence officielle Scaleway (juges non comparables).
+
+**Résultats** :
+| Lecture | Valeur |
+|---|---|
+| Global (ininterprétable en single-shot, σ-grok 6,1 %) | 0,677 vs réf 0,707 |
+| Flips sur questions STABLES-grok | +3 (q175, q223, q657) / −6 (q6, q16, q200, q204, q212, q4534) — **dans la bande de bruit grok (~5 attendus)** |
+| **Cibles nommées P1** | **q17 : FAIL→PASS ✓** ; **q218 : FAIL→PASS ✓** (bonus — le contrefactuel le donnait non réparé) ; q192 : déjà PASS-stable sous grok (c'est sous le juge officiel qu'elle est une cible) |
+
+**Lecture** : le mécanisme fait ce que le funnel prédisait — les sections-réponse aux pré-rangs 21-40 atteignent désormais le reranker et convertissent (q17, q218). Le net −3 sur les stables est indistinguable du bruit du juge de screening : c'est PRÉCISÉMENT pourquoi l'adoption passe par le gate Scaleway maj-3, seul étage capable de trancher.
+
+**Prochain** : P1 qualifié pour le **gate d'adoption** — un seul gate Scaleway maj-3 pour le paquet P1+R2 dès que #332 est mergée et le corpus R2 appliqué (économie de runs).
