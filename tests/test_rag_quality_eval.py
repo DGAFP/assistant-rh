@@ -1018,3 +1018,36 @@ def test_run_question_with_retry_three_attempts(monkeypatch) -> None:
     with pytest.raises(psycopg.InterfaceError):
         eval_module.run_question_with_retry(backoff_s=0, question=q)
     assert calls["n"] == 3
+
+
+def test_run_question_absorbs_query_canceled_without_retry() -> None:
+    """Revue #331 : QueryCanceled (sous-classe d'OperationalError) est une
+    erreur de REQUÊTE, pas de connexion — absorbée en item.error, jamais
+    rejouée, le run continue."""
+    import psycopg
+
+    from src.goldset.eval import GoldsetQuestion, run_question_with_retry
+
+    calls = {"n": 0}
+
+    class _TimeoutPipe:
+        def run_with_trace(self, *args, **kwargs):
+            calls["n"] += 1
+            raise psycopg.errors.QueryCanceled("canceling statement due to statement timeout")
+
+    q = GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[])
+    item = run_question_with_retry(
+        backoff_s=0,
+        pipe=_TimeoutPipe(),
+        question=q,
+        run_ragas=False,
+        run_judge=False,
+        judge_model="",
+        judge_base_url="",
+        judge_api_key="",
+        ragas_model="",
+        scaleway_base_url="",
+        scaleway_api_key="",
+    )
+    assert calls["n"] == 1  # pas de retry : l'annulation n'est pas une coupure
+    assert item.error is not None and "timeout" in item.error

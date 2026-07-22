@@ -1498,6 +1498,12 @@ def run_question(
             )
         else:
             item.judge_result = {"status": "skipped", "reason": "disabled"}
+    except psycopg.errors.QueryCanceled as exc:
+        # Sous-classe d'OperationalError MAIS annulation/timeout d'une requête
+        # = propre à la question, pas une coupure de connexion : absorbée dans
+        # item.error pour que le run continue (revue #331 — sinon le retry la
+        # rejouait 3x puis tuait le run entier).
+        item.error = str(exc)
     except (psycopg.OperationalError, psycopg.InterfaceError):
         # Coupure de connexion DB = transitoire : doit remonter à la boucle de
         # retry du runner au lieu d'être absorbée dans item.error (revue #329 —
