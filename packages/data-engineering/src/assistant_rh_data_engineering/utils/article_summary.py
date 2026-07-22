@@ -208,9 +208,10 @@ class AlbertArticleSummarizer:
         timeout: int = 120,
     ):
         self.base_url = (base_url or os.getenv("ALBERT_BASE_URL") or "https://albert.api.etalab.gouv.fr/v1").rstrip("/")
+        # La clé n'est exigée qu'à la GÉNÉRATION (summarize) : le mode plan du
+        # job — lecture seule, name/version suffisent pour la clé de fraîcheur —
+        # doit fonctionner sans ALBERT_API_KEY (revue #332, round 2).
         self.api_key = api_key or os.getenv("ALBERT_API_KEY", "")
-        if not self.api_key:
-            raise ArticleSummaryError("ALBERT_API_KEY manquant pour la génération de résumés R2.")
         self.model = model or os.getenv("ALBERT_R2_SUMMARY_MODEL") or "openweight-medium"
         self.max_tokens = max_tokens
         prompt_hash = hashlib.sha1(SUMMARY_PROMPT.encode("utf-8")).hexdigest()[:8]
@@ -239,6 +240,8 @@ class AlbertArticleSummarizer:
         température 0 rend un simple re-appel inutile ; il faut changer
         l'entrée).
         """
+        if not self.api_key:
+            raise ArticleSummaryError("ALBERT_API_KEY manquant pour la génération de résumés R2.")
         messages: list[dict[str, str]] = [
             {"role": "system", "content": SUMMARY_PROMPT},
             {"role": "user", "content": source_text},

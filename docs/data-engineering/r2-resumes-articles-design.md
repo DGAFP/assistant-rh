@@ -24,7 +24,7 @@ Une ligne par article : `chunk_id = {cid}_r2s` (24 chars, tient dans VARCHAR(64)
 - `embedding_m3` = **embedding du RÉSUMÉ** (Albert `openweight-embeddings`) ;
 - `chunk_text` = **texte AUTHENTIQUE** de l'article (identique à `{cid}_0`) → le pipeline sert le texte source, *aucune modification runtime du serving* ;
 - `text` = le résumé lui-même (trace/audit de ce que le vecteur encode — même convention que la paire text/chunk_text des chunks normaux : `text` = matière brute, `chunk_text` = ce qui est servi) ;
-- `index_variant` (colonne **nouvelle**, TEXT, NULL pour les lignes normales) = `r2_summary/{version-génération}/{sha16(texte source)}` → marqueur + clé de fraîcheur ;
+- `index_variant` (colonne **nouvelle**, TEXT, NULL pour les lignes normales) = `r2_summary/{version-génération}+embed-{modèle d'embedding}/{sha16(texte source)}` → marqueur + clé de fraîcheur ;
 - méta copiées de la ligne `{cid}_0` (title, number, url, cid…) → pills sources identiques.
 
 **Pourquoi elle gagne** :
@@ -58,7 +58,7 @@ Module `utils/article_summary.py` (corpus-agnostique — v1 dgafp, réutilisable
 - **Throttle** : `MAX_SUMMARY_WORKERS = 2` (contrainte API partagée), échec transitoire (réseau/429/5xx) → `failed` (retenté au run suivant), rejet du garde → `rejected` (pas de retry en boucle).
 
 Intégration gold `legifrance/summary_rows.py` :
-- `plan_missing_summaries(rows, version)` : compare `index_variant` attendu (`r2_summary/{version}/{sha16(chunk_text)}`) vs stocké → liste des articles à (re)générer. Idempotent, delta par checksum.
+- `plan_missing_summaries(rows, version)` : compare `index_variant` attendu (`r2_summary/{version}+embed-{modèle}/{sha16(chunk_text)}`) vs stocké → liste des articles à (re)générer. Idempotent, delta par checksum.
 - `build_summary_chunk_row(article_row, summary, embedding)` : ligne additive complète (`_targets=["legacy"]`, embedding_m3 **toujours renseigné** — cf. piège backfill).
 - Job CLI `jobs/r2_article_summaries.py` : `--dry-run` par défaut (plan JSON), `--out` JSONL (lot pilote), `--apply` requis pour écrire en base via `upsert_legacy_chunks` (upsert sur chunk_id = idempotent). **Non exécuté avec --apply dans cette phase** (gate revue humaine).
 
@@ -79,3 +79,14 @@ Lot : 8 golds des misses profonds (q194×2, q212, q213, q217, q221, q229, q657) 
 3. Insertion staging via `--apply` (gate humaine) + `ANALYZE`/vérif index ivfflat.
 4. Run éval goldset vs baseline 118 (`run-rag-eval`), journalisation obligatoire.
 5. Décision : étendre aux PDF ministères / calibrer (R5 en réserve).
+
+
+## Amendements revue #332
+
+- **Clé de fraîcheur** : le modèle d'embedding entre dans `index_variant` — changer d'espace vectoriel invalide toutes les lignes R2 au prochain plan.
+- **Apply** : revalidation existence+checksum `FOR UPDATE` dans la transaction d'upsert (une ingestion concurrente bloque derrière le verrou ; article supprimé/modifié → ignoré + rapporté `stale_skipped`). Testé en interleaving PostgreSQL réel (tests/test_r2_pg_interleaving.py, gated R2_PG_TEST_DSN).
+- **Dédup précoce** : le retriever sur-échantillonne (x2) la table dgafp et fusionne la paire `{cid}_0`/`{cid}_r2s` AVANT troncature à top_k (la fusion de l'aggregator reste en filet). 
+- **Backfill/audit embeddings** : les lignes R2 (`index_variant` renseigné) sont exclues des deux côtés — jamais de vecteur calculé depuis `chunk_text` pour une ligne R2 ; `embedding_bge_scw` y reste NULL par design.
+- **Comptage corpus** : `list_legifrance_corpus` exclut les lignes R2 de `nb_chunks` (sinon double comptage et delta faussé).
+- **Mode plan sans clé** : `ALBERT_API_KEY` n'est exigée qu'à la génération.
+- Annexes pilote complètes : `r2-pilote/pilot_summaries.jsonl` (101 sorties brutes, tokens/statuts) + `pilot_stats.json`.

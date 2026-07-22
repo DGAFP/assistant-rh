@@ -125,11 +125,17 @@ def fetch_article_rows(
     *,
     uids: list[str] | None = None,
     has_index_variant: bool,
+    for_update: bool = False,
 ) -> list[dict[str, Any]]:
     """Lignes ARTICLE (jamais les lignes-résumé) de la table legacy.
 
     Double garde : ``index_variant IS NULL`` quand la colonne existe, et
     exclusion par suffixe de chunk_id sinon (base pas encore migrée).
+
+    ``for_update`` : verrouille les lignes lues jusqu'au commit de ``conn`` —
+    requis par la revalidation pré-upsert de l'apply R2 (revue #332, round 2 :
+    sans verrou, une ingestion concurrente peut supprimer/modifier l'article
+    ENTRE le SELECT de revalidation et l'upsert).
     """
     columns = sql.SQL(", ").join(sql.Identifier(c) for c in _ARTICLE_SELECT_COLUMNS)
     conditions = [sql.SQL("cid IS NOT NULL"), sql.SQL("COALESCE(chunk_text, '') <> ''")]
@@ -141,11 +147,12 @@ def fetch_article_rows(
     if uids:
         conditions.append(sql.SQL("UPPER(TRIM(cid)) = ANY(%s)"))
         params.append([str(uid).strip().upper() for uid in uids])
-    query = sql.SQL("SELECT {} FROM {}.{} WHERE {} ORDER BY cid, chunk_id").format(
+    query = sql.SQL("SELECT {} FROM {}.{} WHERE {} ORDER BY cid, chunk_id{}").format(
         columns,
         sql.Identifier(schema),
         sql.Identifier(table),
         sql.SQL(" AND ").join(conditions),
+        sql.SQL(" FOR UPDATE") if for_update else sql.SQL(""),
     )
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(query, params)
@@ -281,12 +288,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # ignorées et rapportées, jamais upsertées.
         source_shas = {cid: source_sha(str(row.get("chunk_text") or "")) for cid, row in rows_by_cid.items()}
         with psycopg.connect(dsn) as apply_conn:
+            # FOR UPDATE : les lignes-article restent verrouillées jusqu'au
+            # commit — une ingestion concurrente (DELETE/UPDATE par cid) bloque
+            # derrière le verrou au lieu de s'intercaler entre la revalidation
+            # et l'upsert (revue #332, round 2).
             current_rows = fetch_article_rows(
                 apply_conn,
                 args.schema,
                 args.table,
                 uids=[item.uid for item in accepted],
                 has_index_variant=has_variant_col,
+                for_update=True,
             )
             current_texts = {str(r["cid"]).strip(): str(r.get("chunk_text") or "") for r in current_rows}
             fresh_cids, stale = split_stale_sources(

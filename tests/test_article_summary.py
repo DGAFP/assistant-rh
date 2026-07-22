@@ -251,3 +251,14 @@ def test_truncated_summary_is_rejected(tmp_path) -> None:
     summarizer = _StubSummarizer({ARTICLE_TEXT: r2.ArticleSummary(summary=GOOD_SUMMARY, truncated=True)})
     items = r2.summarize_articles([{"uid": "A", "source_text": ARTICLE_TEXT}], summarizer, None)  # type: ignore[arg-type]
     assert items[0].status == "rejected"
+
+
+def test_summarizer_keyless_init_for_plan_mode(monkeypatch) -> None:
+    """Revue #332, round 2 : le mode plan (name/version pour la clé de
+    fraîcheur) doit fonctionner sans ALBERT_API_KEY — la clé n'est exigée
+    qu'à la génération."""
+    monkeypatch.delenv("ALBERT_API_KEY", raising=False)
+    s = r2.AlbertArticleSummarizer(model="m-test")
+    assert s.version
+    with pytest.raises(r2.ArticleSummaryError):
+        s.summarize("texte quelconque")

@@ -404,12 +404,18 @@ class LegifranceDbWriter(ServicePublicDbWriter):
             for table, join_column in ((self.legacy_table_name, "cid"), (self.modern_table_name, "short_id")):
                 if not table_exists(table):
                     continue
+                # Les lignes-résumé R2 (index_variant renseigné) partagent le
+                # cid de leur article : les compter doublerait nb_chunks et
+                # fausserait la réconciliation delta (revue #332, round 2).
+                summary_filter = sql.SQL("")
+                if table == self.legacy_table_name and "index_variant" in self._column_types(conn, table):
+                    summary_filter = sql.SQL(" AND index_variant IS NULL")
                 cur.execute(
                     sql.SQL(
                         """
                         SELECT UPPER(TRIM({})), COUNT(*)
                         FROM {}.{}
-                        WHERE {} IS NOT NULL
+                        WHERE {} IS NOT NULL{}
                         GROUP BY 1
                         """
                     ).format(
@@ -417,6 +423,7 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                         sql.Identifier(self.schema),
                         sql.Identifier(table),
                         sql.Identifier(join_column),
+                        summary_filter,
                     )
                 )
                 for uid, count in cur.fetchall():
