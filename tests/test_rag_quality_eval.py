@@ -913,3 +913,141 @@ def test_merge_gold_doc_ids_keeps_raw_labels_when_nothing_resolves() -> None:
     merged = merge_gold_doc_ids(["F3", "F4"], ["F3", "F4"], maps)
 
     assert set(merged) == {"F3", "F4"}
+
+
+def test_judge_answer_openrouter_enforces_zdr(monkeypatch) -> None:
+    """Revue #329 : data_collection=deny n'exclut que les providers qui
+    collectent/entraînent — la ZDR est un attribut distinct chez OpenRouter,
+    le payload doit donc exiger LES DEUX."""
+    from src.goldset import eval as eval_module
+
+    captured: dict = {}
+
+    class _FakeCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+
+            class _Msg:
+                content = '{"pass": true, "score": 1.0, "rationale": "ok"}'
+
+            class _Choice:
+                message = _Msg()
+
+            class _Resp:
+                choices = [_Choice()]
+
+            return _Resp()
+
+    class _FakeChat:
+        completions = _FakeCompletions()
+
+    class _FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.chat = _FakeChat()
+
+    monkeypatch.setattr("openai.OpenAI", _FakeOpenAI)
+    result = eval_module.judge_answer(
+        question="q",
+        gold_answer="a",
+        answer="b",
+        contexts=[],
+        deterministic_metrics={},
+        model="m",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="k",
+        provider="openrouter",
+    )
+    assert result["status"] == "completed"
+    assert captured["extra_body"] == {"provider": {"data_collection": "deny", "zdr": True}}
+
+
+def test_run_question_reraises_db_connection_errors() -> None:
+    """Revue #329 : les coupures de connexion doivent REMONTER au retry du
+    runner au lieu d'être absorbées dans item.error."""
+    import psycopg
+
+    from src.goldset.eval import GoldsetQuestion, run_question
+
+    class _DeadPipe:
+        def run_with_trace(self, *args, **kwargs):
+            raise psycopg.OperationalError("server closed the connection unexpectedly")
+
+    q = GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[])
+    with pytest.raises(psycopg.OperationalError):
+        run_question(
+            pipe=_DeadPipe(),
+            question=q,
+            run_ragas=False,
+            run_judge=False,
+            judge_model="",
+            judge_base_url="",
+            judge_api_key="",
+            ragas_model="",
+            scaleway_base_url="",
+            scaleway_api_key="",
+        )
+
+
+def test_run_question_with_retry_three_attempts(monkeypatch) -> None:
+    """Revue #329 : preuve que 3 tentatives ont bien lieu, puis propagation."""
+    import psycopg
+
+    from src.goldset import eval as eval_module
+
+    q = eval_module.GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[])
+    sentinel = eval_module.EvalItem(question_id=1, question="q", gold_answer="a", gold_sources=[])
+    calls = {"n": 0}
+
+    def flaky(**kwargs):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise psycopg.OperationalError("boom")
+        return sentinel
+
+    monkeypatch.setattr(eval_module, "run_question", flaky)
+    assert eval_module.run_question_with_retry(backoff_s=0, question=q) is sentinel
+    assert calls["n"] == 3
+
+    calls["n"] = 0
+
+    def always_dead(**kwargs):
+        calls["n"] += 1
+        raise psycopg.InterfaceError("dead")
+
+    monkeypatch.setattr(eval_module, "run_question", always_dead)
+    with pytest.raises(psycopg.InterfaceError):
+        eval_module.run_question_with_retry(backoff_s=0, question=q)
+    assert calls["n"] == 3
+
+
+def test_run_question_absorbs_query_canceled_without_retry() -> None:
+    """Revue #331 : QueryCanceled (sous-classe d'OperationalError) est une
+    erreur de REQUÊTE, pas de connexion — absorbée en item.error, jamais
+    rejouée, le run continue."""
+    import psycopg
+
+    from src.goldset.eval import GoldsetQuestion, run_question_with_retry
+
+    calls = {"n": 0}
+
+    class _TimeoutPipe:
+        def run_with_trace(self, *args, **kwargs):
+            calls["n"] += 1
+            raise psycopg.errors.QueryCanceled("canceling statement due to statement timeout")
+
+    q = GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[])
+    item = run_question_with_retry(
+        backoff_s=0,
+        pipe=_TimeoutPipe(),
+        question=q,
+        run_ragas=False,
+        run_judge=False,
+        judge_model="",
+        judge_base_url="",
+        judge_api_key="",
+        ragas_model="",
+        scaleway_base_url="",
+        scaleway_api_key="",
+    )
+    assert calls["n"] == 1  # pas de retry : l'annulation n'est pas une coupure
+    assert item.error is not None and "timeout" in item.error

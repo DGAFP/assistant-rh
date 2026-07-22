@@ -36,15 +36,16 @@ from psycopg.rows import dict_row
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
-# Juge LLM: OpenRouter/Qwen 3.7 Max (décision 2026-07-16). Un spot-check des
-# désaccords (99 réponses re-jugées) a montré que claude-sonnet-4.5 était
-# over-strict (faux négatifs : recale des réponses correctes en incomplete/
-# retrieval_gap, parfois en se contredisant) et que glm-5.2 rend des verdicts
-# incohérents avec sa propre rationale. qwen3.7-max : verdicts cohérents,
-# corrige les faux négatifs de Claude, ~71% moins cher, provider zéro-rétention.
+# Juge LLM: OpenRouter/Grok 4.5 (décision 2026-07-21, revue #329). L'exigence
+# ZDR stricte (`zdr: true`, distincte de data_collection=deny) est non
+# négociable pour des données réglementaires DINUM — or qwen3.7-max (juge
+# depuis le 16/07, spot-check favorable) n'a AUCUN endpoint ZDR. grok-4.5
+# était le backup validé du même spot-check (« comportement proche ») et
+# dispose d'un endpoint ZDR (xAI). claude-sonnet-4.5 (ZDR Bedrock) reste
+# écarté : over-strict ; glm-5.2 (ZDR AtlasCloud) : verdicts incohérents.
 # Surchargeable au run (--judge-model / OPENROUTER_JUDGE_MODEL).
 DEFAULT_JUDGE_PROVIDER = "openrouter"
-DEFAULT_JUDGE_MODEL = "qwen/qwen3.7-max"
+DEFAULT_JUDGE_MODEL = "x-ai/grok-4.5"
 DEFAULT_JUDGE_BASE_URL = "https://openrouter.ai/api/v1"
 # RAGAS reste sur Scaleway/OpenAI-compat (le SDK ragas attend un endpoint
 # embeddings+LLM compatible; Claude via OpenRouter n'y est pas branché).
@@ -1370,10 +1371,12 @@ def judge_answer(
             ],
         }
         # DINUM (données réglementaires): sur OpenRouter, n'acheminer QU'AUX
-        # providers sans rétention/entraînement sur les données (data_collection
-        # "deny"). Un modèle sans provider zéro-rétention échoue -> inutilisable.
+        # endpoints Zero Data Retention. `data_collection: deny` exclut les
+        # providers qui collectent/entraînent, mais la ZDR est un attribut
+        # distinct chez OpenRouter -> `zdr: true` est requis en plus (revue
+        # #329). Un modèle sans endpoint ZDR échoue -> inutilisable, voulu.
         if provider == "openrouter":
-            create_kwargs["extra_body"] = {"provider": {"data_collection": "deny"}}
+            create_kwargs["extra_body"] = {"provider": {"data_collection": "deny", "zdr": True}}
         response = client.chat.completions.create(**create_kwargs)
         content = response.choices[0].message.content or "{}"
         parsed = _extract_json_object(content)
@@ -1495,9 +1498,39 @@ def run_question(
             )
         else:
             item.judge_result = {"status": "skipped", "reason": "disabled"}
+    except psycopg.errors.QueryCanceled as exc:
+        # Sous-classe d'OperationalError MAIS annulation/timeout d'une requête
+        # = propre à la question, pas une coupure de connexion : absorbée dans
+        # item.error pour que le run continue (revue #331 — sinon le retry la
+        # rejouait 3x puis tuait le run entier).
+        item.error = str(exc)
+    except (psycopg.OperationalError, psycopg.InterfaceError):
+        # Coupure de connexion DB = transitoire : doit remonter à la boucle de
+        # retry du runner au lieu d'être absorbée dans item.error (revue #329 —
+        # sinon le retry ne voit jamais l'exception et la question est perdue).
+        raise
     except Exception as exc:
         item.error = str(exc)
     return item
+
+
+def run_question_with_retry(*, attempts: int = 3, backoff_s: float = 5.0, **kwargs: Any) -> EvalItem:
+    """Rejoue la question sur coupure de connexion DB. Les composants du
+    pipeline ouvrent une connexion par requête : rejouer suffit, rien à
+    reconstruire."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return run_question(**kwargs)
+        except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
+            if attempt == attempts:
+                raise
+            print(
+                f"[resilience] connexion DB perdue sur la question {kwargs['question'].id} "
+                f"(tentative {attempt}/{attempts}) : {exc}",
+                flush=True,
+            )
+            time.sleep(backoff_s * attempt)
+    raise AssertionError("unreachable")
 
 
 def artifact_paths(output_dir: Path, run_label: str) -> tuple[Path, Path]:
@@ -1836,35 +1869,24 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
         for question in questions:
             # Un run complet tient ~1 h : le serveur staging peut couper les
             # connexions en cours de route (backends tués — runs 119/120 du
-            # 21/07 morts à 3 et 9 items). Les composants du pipeline ouvrent
-            # une connexion par requête : rejouer la question suffit.
-            for attempt in range(1, 4):
-                try:
-                    item = run_question(
-                        pipe=pipe,
-                        question=question,
-                        identifier_aliases=identifier_aliases,
-                        run_ragas=not args.skip_ragas,
-                        run_judge=not args.skip_judge,
-                        judge_model=args.judge_model,
-                        judge_base_url=judge_base_url,
-                        judge_api_key=judge_api_key,
-                        judge_provider=judge_provider,
-                        ragas_model=args.ragas_model,
-                        scaleway_base_url=args.scaleway_base_url,
-                        scaleway_api_key=api_key,
-                        retrieval_scope=resolve_question_scope(question, args.ministry_scope),
-                    )
-                    break
-                except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
-                    if attempt == 3:
-                        raise
-                    print(
-                        f"[resilience] connexion DB perdue sur la question {question.id} "
-                        f"(tentative {attempt}/3) : {exc}",
-                        flush=True,
-                    )
-                    time.sleep(5 * attempt)
+            # 21/07 morts à 3 et 9 items). run_question RE-LÈVE les erreurs de
+            # connexion psycopg (au lieu de les absorber dans item.error) pour
+            # que ce retry les voie.
+            item = run_question_with_retry(
+                pipe=pipe,
+                question=question,
+                identifier_aliases=identifier_aliases,
+                run_ragas=not args.skip_ragas,
+                run_judge=not args.skip_judge,
+                judge_model=args.judge_model,
+                judge_base_url=judge_base_url,
+                judge_api_key=judge_api_key,
+                judge_provider=judge_provider,
+                ragas_model=args.ragas_model,
+                scaleway_base_url=args.scaleway_base_url,
+                scaleway_api_key=api_key,
+                retrieval_scope=resolve_question_scope(question, args.ministry_scope),
+            )
             items.append(item)
             if item_conn is not None and run_id is not None:
                 for attempt in range(1, 4):
