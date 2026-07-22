@@ -416,3 +416,27 @@ Flips vs 116 : 8 gagnées (q28, 194, 197, 221, 223, 226, 228, 926), 9 perdues (q
 **Caveats** : curation appliquée en DB staging uniquement (à versionner au repo) ; les backups fichiers de pré-curation ont été perdus avec le scratchpad de session (les anciennes valeurs restent documentées ci-dessus et dans `revue-strategies-qualite-rag.md`).
 
 **Prochain** : 2 runs de stabilisation (référence majoritaire-à-3), puis vague 1 (`v3_rerank_input_k=40` + fix intent gating). Voir la revue stratégique complète : `docs/evals/revue-strategies-qualite-rag.md`.
+
+---
+
+## Runs 123-124 — stabilisation vague 0 : référence majoritaire-à-3 + σ mesuré (21/07)
+
+**Protocole** : 2 runs supplémentaires à config STRICTEMENT identique au run 118 (goldset curé gelé, juge Qwen ZDR), lancés sur **GitHub Actions** (le réseau du poste local bloque les ports DB et a tué les runs 119-121 — orphelins `running` à nettoyer). Workflow enrichi (`any_goldset`, `run_label_suffix`, concurrency par suffixe — branche #327). Incident : 32 (run 124) + 22 (run 123) appels juge en erreur `401 Provider returned error` (provider ZDR intermittent côté OpenRouter) → **re-jugés offline 54/54** depuis la VM pont (verdicts flaggés `rejudged_offline` en base).
+
+**Résultats bruts (3 runs, config identique)** : run 118 = 0.646, run 123 = 0.667, run 124 = 0.697.
+
+**RÉFÉRENCE MAJORITAIRE (verdict 2/3 par question) = 67/99 = 0.677.**
+
+| Mesure | Valeur |
+|---|---|
+| Questions instables (≥1 flip sur 3 runs) | **18/99 (18 %)** |
+| Flips par paire de runs | 11-13 (±0.11-0.13 de churn par question) |
+| Par corpus (réf. majoritaire) | manual 0.64, SP 0.71, MATTE 0.75, synthetic 0.82 |
+| **Échecs STABLES (3/3 fail) = les vraies cibles** | **24** : q3, 11, 16, 17, 23, 30, 181, 183, 191, 192, 198, 201, 205, 210, 212, 213, 216, 217, 220, 227, 229, 676, 4531, 4535 |
+
+**Lecture** :
+1. Le churn par question (11-13 flips/paire) est **plus grand encore** que le σ agrégé (±0.05) — les flips se compensent partiellement dans le global. **Aucun A/B ne doit plus jamais être lu autrement qu'en verdicts appariés contre la référence majoritaire, cibles nommées parmi les 24 échecs stables.**
+2. Les cibles des leviers validés sont bien des échecs STABLES : q17/q192 (rerank_input_k=40), q220/q229/q191 (renvois), q212/q213/q217/q229/q30 (R2), q4535 (intent gating). Caveat : q194/q221/q657 (misses profonds) sont INSTABLES — ils passent parfois par chance ; les compter en cible ferme surestimerait le gain.
+3. Instables notables : q19/q28/q926 (complétude borderline, déjà repérées), q223/q226 (curées, désormais à cheval), q660 (FFP).
+
+**Prochain** : vague 1 (P1 `rerank_input_k=40` + P2 intent gating derrière flag, PR #327 à merger d'abord) mesurée en apparié vs la référence majoritaire. Voir `revue-strategies-qualite-rag.md`.
