@@ -440,3 +440,37 @@ Flips vs 116 : 8 gagnées (q28, 194, 197, 221, 223, 226, 228, 926), 9 perdues (q
 3. Instables notables : q19/q28/q926 (complétude borderline, déjà repérées), q223/q226 (curées, désormais à cheval), q660 (FFP).
 
 **Prochain** : vague 1 (P1 `rerank_input_k=40` + P2 intent gating derrière flag, PR #327 à merger d'abord) mesurée en apparié vs la référence majoritaire. Voir `revue-strategies-qualite-rag.md`.
+
+---
+
+## Sélection du juge par la mesure + référence officielle souveraine (21-22/07)
+
+**Contexte** : l'exigence ZDR stricte (revue #329/#331 : `data_collection: deny` ≠ Zero Data Retention chez OpenRouter) a révélé que **qwen3.7-max, juge depuis le 16/07, n'a aucun endpoint ZDR**. Qualification systématique de 6 juges par leur **bruit propre** (les 99 réponses FIGÉES du run 118 re-jugées 2x — tout flip = bruit du juge, le générateur étant hors de cause) :
+
+| Juge | Bruit propre | Accord qwen | Sévérité | Conformité |
+|---|---|---|---|---|
+| qwen3.7-max (OpenRouter) | 2,0 % | — | 0,65 | ❌ deny-only, pas de ZDR |
+| **scaleway qwen3-235b** | **5,1 %** | **86,9 %** | 0,60 | ✅ **souverain EU** |
+| grok-4.5 | 6,1 % | 78,8 % | 0,68 | ✅ ZDR xAI |
+| gemini-2.5-pro | 7,1 % | 73,7 % | 0,59 | ✅ ZDR |
+| gpt-5.2 | 9,1 % | 68,7 % | **0,35 (sur-strict)** | ✅ ZDR |
+
+**Décision (utilisateur, 22/07) — protocole à DEUX étages** :
+- **OFFICIEL (gates d'adoption staging/prod uniquement)** : juge souverain **Scaleway qwen3-235b en vote majoritaire à 3 appels** (`--judge-votes 3`, PR #333) — bruit effectif ~0,8 %, posture DINUM la plus défendable, sortie de la dépendance OpenRouter pour les décisions.
+- **SCREENING intermédiaire** : grok-4.5 single-shot (coût minimal ; sa référence des 3 runs existe déjà en cache).
+
+**RÉFÉRENCE OFFICIELLE** (runs 118/123/124 re-jugés offline en Scaleway maj-3, 891 votes, verdicts qwen préservés en base) :
+
+| Mesure | Valeur |
+|---|---|
+| **Référence majoritaire officielle** | **67/99 = 0,677** (continuité parfaite avec la référence qwen : même chiffre) |
+| Par run (maj-3) | 0,616 / 0,646 / 0,667 |
+| Votes partagés (bruit juge résiduel) | **10/297 (3,4 %)** — le maj-3 écrase le bruit juge |
+| Questions instables inter-runs | 22 (= variance du GÉNÉRATEUR, désormais isolée du bruit juge) |
+| **Échecs STABLES = cibles officielles des A/B** | **26** : q3, 11, 16, 17, 23, 30, 174, 181, 183, 191, 192, 198, 203, 205, 210, 211, 213, 215, 216, 217, 221, 222, 223, 676, 4531, 4535 |
+
+**Cibles des leviers validées sous la référence officielle** : P1 `rerank_input_k=40` → **q17, q192** (stables ✓) ; R2 résumés-articles → **q213, q217, q221, q30** stables (+ q212/q229 instables = bonus) ; intent gating → **q4535** ✓ ; renvois → **q191** ✓ (q220/q229 instables).
+
+**Incidents d'infra consignés** (journée du 21-22/07, tous de la famille « réseau silencieux ») : sockets à moitié mortes gelant les workers (fix : timeout HTTP client 45 s obligatoire sur tout script de juge — à porter dans `judge_answer`), pièges pgrep auto-matchants (3 occurrences), venv nu des worktrees. Runs locaux 119-121 = statuts orphelins à nettoyer.
+
+**Prochain** : vague 1 — P1 `rerank_input_k=40` (prérequis plomberie de R2 : un article remonté par R2 au rang ~25 doit franchir l'entrée du rerank, coupée à 20), screening grok, puis R2 (#332), puis gate d'adoption Scaleway maj-3 sur le paquet.
