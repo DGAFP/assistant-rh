@@ -335,3 +335,108 @@ Métriques déterministes (hit/recall/gap) **identiques** entre A et B (même pa
 3. **Baseline J3 (Claude) = 0.556**. Deux leviers dominent les échecs : **génération incomplète (18)** et **trou de retrieval (16)** — le corpus `manual` (56 Q, hit=0.63) porte l'essentiel des trous. Cohérent avec le constat #67 (le générateur refuse/incomplet malgré un contexte parfois correct). MASA non couvert par ce goldset (sonde `contrat-avenant-schemas` 5/6 en parallèle).
 
 **Caveats** : juge single-shot (variance ±1 dimension par question) ; DGAFP n=2 et MSO n=4 non significatifs ; RAGAS sauté (judge + déterministe seulement).
+
+---
+
+## Run 115 — `baseline_v1_claude_minkept4_20260716` (16/07) — A/B P1 : largeur de contexte (min_kept_sections 0→4)
+
+**Hypothèse** (deep-dive J3, scratchpad `j3-diagnostic-retrieval-granularite`) : le levier dominant est le **retrieval de granularité** — le bon DOC est retrouvé (hit=1.0) mais la SECTION-réponse n'est pas servie (selector élague à 1-2 contextes, min_kept=0). Servir ≥4 sections devrait inclure la section-réponse borderline (cf. #67 : schéma rang 19, frontière rerank_top_k=20).
+
+**Setup** : panel `baseline_v1` (99 Q), juge Claude, `--ministry-scope per-question`, `--skip-ragas`, **seul changement vs #113** : `min_kept_sections` 0 → 4.
+
+**Résultats** (vs baseline #113) :
+| | #113 (min_kept=0) | #115 (min_kept=4) |
+|---|---|---|
+| judge_pass_rate | 0.556 | **0.596** (+0.040) |
+| échecs retrieval_gap | 16 | **12** (−4) |
+| échecs incomplete | 18 | 17 |
+| hit / recall / gap | 0.747 / 0.598 / 0.253 | **identiques** (déterministe) |
+
+Flips : 8 gagnées (fail→pass), 4 perdues (pass→fail) → net +4 Q.
+
+Par corpus : **manual 0.48→0.57 (+0.09)**, **MATTE 0.58→0.67 (+0.09)**, **Service-Public 0.71→0.57 (−0.14)** ; MSO/synthetic/DGAFP inchangés.
+
+**Lecture** :
+1. Le diagnostic est **confirmé** : plus de largeur de contexte réduit les `retrieval_gap` (16→12) et remonte les corpus **sous-servis** (manual, MATTE) — la section-réponse borderline est incluse.
+2. Mais **Service-Public régresse (−0.14)** : déjà bien servi (hit=1.0), forcer 4 sections y ajoute du bruit → détails non étayés / mauvaise section. **Réplique la tension du 06/07** (min_kept 4→0 réduit pour ça).
+3. Un `min_kept` **uniforme est sous-optimal** → **plancher PAR CORPUS/ministère** (élevé manual/MATTE/ministères, 0 pour SP). Valide le levier « min_kept par ministère » du plan.
+
+**Caveats** : +0.040 modeste (proche variance juge single-shot ±0.02) ; le signal PAR CORPUS (SP −0.14 vs manual/MATTE +0.09) est plus robuste que le global.
+
+**Prochain** : soit min_kept par corpus (capture les gains sans la régression SP), soit le levier reranker (remonter la section-réponse au lieu de forcer la largeur — plus principiel).
+
+---
+
+## Run 116 — `baseline_v1_qwen37max_20260716` (16/07) — bascule de juge Claude → Qwen 3.7 Max + baseline J3 propre
+
+**Contexte** : spot-check de 99 réponses (run #113) re-jugées par 4 modèles OpenRouter. `claude-sonnet-4.5` (juge en place depuis #318) s'est révélé **over-strict** : il recale des réponses correctes en `incomplete`/`retrieval_gap`/`gold_answer_alignment`, parfois **en contredisant sa propre rationale** (#200, #204, #225). `glm-5.2` rend des verdicts **incohérents** (quality_gate_failed à rationale vide) → inutilisable. `muse-spark-1.1` géo-bloqué US (403). **`qwen/qwen3.7-max`** : verdicts cohérents avec la rationale, corrige les faux négatifs de Claude (15 corrections / 1 durcissement), **provider zéro-rétention** (exigence DINUM, filtre `data_collection: deny` ajouté), **~71 % moins cher** ($4.42 vs $15 /M out). Adopté comme juge par défaut (PR #324).
+
+**Résultats** (baseline_v1, 99 Q, juge Qwen 3.7 Max, `per-question`, `--skip-ragas`) :
+| | Run #113 (Claude, biaisé) | **Run #116 (Qwen)** |
+|---|---|---|
+| judge_pass_rate | 0.556 | **0.670** (+0.114) |
+| hit / recall / gap | 0.747 / 0.598 / 0.253 | identiques (déterministe) |
+
+Taxonomie des échecs (32/99 sous Qwen) : **`retrieval_gap` 16** (INCHANGÉ vs Claude), `wrong_law` 7, `incomplete` **6** (vs 18 chez Claude), `quality_gate_failed` 3.
+
+Par corpus (Qwen) : MATTE 0.92, synthetic 0.82, Service-Public 0.64, **manual 0.61** (56 Q, le plus faible), MSO 0.50 (n=4), DGAFP 0.00 (n=2).
+
+**Lecture** :
+1. **Claude sous-estimait la qualité de 11 points** (0.556 → 0.670). Les 12 « incomplete » en trop étaient du **bruit de juge** (Claude recalait des réponses correctes) — confirmé par les métriques déterministes identiques.
+2. Sous un juge fiable, **le seul bloc d'échec dominant est le `retrieval_gap` (16)** — les deux juges sont d'accord dessus = c'est le VRAI problème. Cela **valide et resserre** le diagnostic J3 (retrieval de granularité : le bon doc trouvé, la section-réponse pas servie).
+3. **Nouvelle baseline J3 = 0.670** (juge Qwen). Tous les A/B suivants s'y comparent. L'A/B min_kept=4 (#115, +0.040) avait été mesuré sous Claude → à re-juger sous Qwen (re-jugement des réponses stockées, gratuit).
+
+**Caveat** : Qwen conserve 1 cas trop strict (#19). Grok 4.5 ($6/M) est un backup viable (comportement proche, ZDR). GLM 5.2 rejeté malgré son prix ($2.87) pour incohérence des verdicts.
+
+---
+
+## Run 118 — `rebaseline_v2_goldsetfix_qwen37max_20260717` (17/07) — rebaseline post-curation goldset + découverte du σ single-shot
+
+**Changements vs run 116** (pipeline et config STRICTEMENT identiques — seuls le goldset et la comptabilité changent) — curation en 3 volets, **36 questions** :
+1. **5 sources fausses re-résolues** (gold answer non dérivable du doc pointé, vérifié à la main) : q198→CGFP L215-1 (au lieu de R214-1 hygiène/sécurité) ; q210→+fiche SP F537 (durées adoption) ; q216→fiche SP F34670 ; q220/q223→+Décret 84-972 art. 3.
+2. **82 refs LEGIARTI de version re-keyées → cids chroniques sur 28 questions** (q1, q2, q173-194, q199, q200, q229, q660) — dette de la migration d'identité #289 ; résolution via `config/legifrance_article_cids.json`, 0 échec.
+3. **3 questions d'articles 86-83 ABROGÉS 2025 requalifiées CGFP** (codification — vérif PISTE : 92 VIGUEUR + 37 ABROGE, exclusion par design) : q201→R331-7+R331-6 ; q226→L121-6+L121-7 ; q227→R331-2.
+
+Re-juge offline des 2 items 429 du run 116 : **q228 = PASS** (pur artefact rate-limit), **q660 = FAIL réel** (`incomplete`).
+
+**Résultats** (99 Q, juge Qwen, `per-question`, `--skip-ragas`) :
+| | Run 116 | **Run 118** |
+|---|---|---|
+| judge_pass_rate | 0.670 | **0.646** |
+| retrieval_gap_rate | ~0.30 | **0.232** |
+| hit SP / MATTE | — | **1.00 / 0.92** |
+
+Flips vs 116 : 8 gagnées (q28, 194, 197, 221, 223, 226, 228, 926), 9 perdues (q3, 4, 18, 20, 33, 199, 211, 215, 676).
+
+**Lecture** :
+1. **La curation a marché** : hit=1.0 sur les questions curées (q198/201/210/220/223/226/227/660), +5 conversions attribuables (q194/221/223/226/228). Les curées encore en échec ont basculé d'« ingagnables par construction » à échecs standard de pipeline (cibles des vagues suivantes).
+2. **Le 0.646 n'est PAS une régression — c'est le bruit** : les 9 perdues ont hit=1.0 dans les DEUX runs à config identique (même retrieval, même contexte servi) ; seule la génération (gpt-oss non déterministe à temp 0) + le juge single-shot ont flippé. Avec les 3 gagnées par le même hasard : **~12 flips aléatoires = σ ≈ ±0.05-0.06 par run**.
+3. **Conséquence méthodologique majeure** : un run unique ne peut PAS mesurer un effet +0.02-0.05. Éclaire rétroactivement la « régression min_kept » du 06/07 et le « SP −0.14 » du run 115 (bruit). **Protocole désormais requis** : référence = verdict majoritaire à 3 runs par question ; A/B en diff apparié par question + re-run des flips ; `--dedupe-scope config-and-git` pour les changements code-only ; goldset gelé pendant tout run.
+
+**Caveats** : curation appliquée en DB staging uniquement (à versionner au repo) ; les backups fichiers de pré-curation ont été perdus avec le scratchpad de session (les anciennes valeurs restent documentées ci-dessus et dans `revue-strategies-qualite-rag.md`).
+
+**Prochain** : 2 runs de stabilisation (référence majoritaire-à-3), puis vague 1 (`v3_rerank_input_k=40` + fix intent gating). Voir la revue stratégique complète : `docs/evals/revue-strategies-qualite-rag.md`.
+
+---
+
+## Runs 123-124 — stabilisation vague 0 : référence majoritaire-à-3 + σ mesuré (21/07)
+
+**Protocole** : 2 runs supplémentaires à config STRICTEMENT identique au run 118 (goldset curé gelé, juge Qwen ZDR), lancés sur **GitHub Actions** (le réseau du poste local bloque les ports DB et a tué les runs 119-121 — orphelins `running` à nettoyer). Workflow enrichi (`any_goldset`, `run_label_suffix`, concurrency par suffixe — branche #327). Incident : 32 (run 124) + 22 (run 123) appels juge en erreur `401 Provider returned error` (provider ZDR intermittent côté OpenRouter) → **re-jugés offline 54/54** depuis la VM pont (verdicts flaggés `rejudged_offline` en base).
+
+**Résultats bruts (3 runs, config identique)** : run 118 = 0.646, run 123 = 0.667, run 124 = 0.697.
+
+**RÉFÉRENCE MAJORITAIRE (verdict 2/3 par question) = 67/99 = 0.677.**
+
+| Mesure | Valeur |
+|---|---|
+| Questions instables (≥1 flip sur 3 runs) | **18/99 (18 %)** |
+| Flips par paire de runs | 11-13 (±0.11-0.13 de churn par question) |
+| Par corpus (réf. majoritaire) | manual 0.64, SP 0.71, MATTE 0.75, synthetic 0.82 |
+| **Échecs STABLES (3/3 fail) = les vraies cibles** | **24** : q3, 11, 16, 17, 23, 30, 181, 183, 191, 192, 198, 201, 205, 210, 212, 213, 216, 217, 220, 227, 229, 676, 4531, 4535 |
+
+**Lecture** :
+1. Le churn par question (11-13 flips/paire) est **plus grand encore** que le σ agrégé (±0.05) — les flips se compensent partiellement dans le global. **Aucun A/B ne doit plus jamais être lu autrement qu'en verdicts appariés contre la référence majoritaire, cibles nommées parmi les 24 échecs stables.**
+2. Les cibles des leviers validés sont bien des échecs STABLES : q17/q192 (rerank_input_k=40), q220/q229/q191 (renvois), q212/q213/q217/q229/q30 (R2), q4535 (intent gating). Caveat : q194/q221/q657 (misses profonds) sont INSTABLES — ils passent parfois par chance ; les compter en cible ferme surestimerait le gain.
+3. Instables notables : q19/q28/q926 (complétude borderline, déjà repérées), q223/q226 (curées, désormais à cheval), q660 (FFP).
+
+**Prochain** : vague 1 (P1 `rerank_input_k=40` + P2 intent gating derrière flag, PR #327 à merger d'abord) mesurée en apparié vs la référence majoritaire. Voir `revue-strategies-qualite-rag.md`.

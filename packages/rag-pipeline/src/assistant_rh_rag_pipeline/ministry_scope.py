@@ -47,7 +47,7 @@ class RetrievalScope:
 MINISTRY_CATALOG: dict[str, MinistrySource] = {
     "matte": MinistrySource(
         id="matte",
-        label="Aménagement du territoire et Transition écologique",
+        label="MATTE",
         table_key="matte",
         chunk_table="rag_chunks_matte",
         publisher="MATTE",
@@ -61,14 +61,14 @@ MINISTRY_CATALOG: dict[str, MinistrySource] = {
     ),
     "mi": MinistrySource(
         id="mi",
-        label="Intérieur",
+        label="MI",
         table_key="mi",
         chunk_table="rag_chunks_mi",
         publisher="MI",
     ),
     "masa": MinistrySource(
         id="masa",
-        label="Agriculture et Souveraineté alimentaire",
+        label="MASA",
         table_key="masa",
         chunk_table="rag_chunks_masa",
         publisher="MASA",
