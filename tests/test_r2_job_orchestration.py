@@ -23,6 +23,16 @@ class _FakeConn:
     def commit(self) -> None:
         pass
 
+    def execute(self, query: Any, params: Any = None) -> Any:
+        # Seul remove_orphaned_summaries exécute du SQL direct dans ce test :
+        # l'article C1 est toujours présent et intact au snapshot post-commit.
+        class _Res:
+            @staticmethod
+            def fetchall() -> list[tuple[str, str]]:
+                return [("C1", "texte un")]
+
+        return _Res()
+
 
 def test_run_limit_report_and_stale_skip(monkeypatch, tmp_path, capsys) -> None:
     articles = [

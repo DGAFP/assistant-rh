@@ -192,9 +192,19 @@ def remove_orphaned_summaries(
     insérée pendant son attente — elle survivrait orpheline avec l'ancien
     texte. Sous un snapshot FRAIS : si l'article a disparu/changé depuis le
     commit, la ligne R2 correspondante est supprimée (elle sera régénérée par
-    le prochain plan si l'article revit)."""
-    current = fetch_article_rows(conn, schema, table, uids=cids, has_index_variant=has_index_variant)
-    texts = {str(r["cid"]).strip(): str(r.get("chunk_text") or "") for r in current}
+    le prochain plan si l'article revit).
+
+    Sélection minimale (cid + chunk_text) : la compensation ne dépend pas des
+    colonnes métier de la table (testable sur une table réduite)."""
+    conditions = [sql.SQL("UPPER(TRIM(cid)) = ANY(%s)"), sql.SQL("chunk_id NOT LIKE %s")]
+    params: list[Any] = [[str(c).strip().upper() for c in cids], f"%{SUMMARY_CHUNK_SUFFIX}"]
+    if has_index_variant:
+        conditions.append(sql.SQL("index_variant IS NULL"))
+    query = sql.SQL("SELECT cid, chunk_text FROM {}.{} WHERE {}").format(
+        sql.Identifier(schema), sql.Identifier(table), sql.SQL(" AND ").join(conditions)
+    )
+    current = conn.execute(query, params).fetchall()
+    texts = {str(cid).strip(): str(chunk_text or "") for cid, chunk_text in current}
     _, orphaned = split_stale_sources({cid: source_shas[cid] for cid in cids}, texts)
     if orphaned:
         conn.execute(
