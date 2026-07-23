@@ -47,6 +47,8 @@ DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
 DEFAULT_JUDGE_PROVIDER = "openrouter"
 DEFAULT_JUDGE_MODEL = "x-ai/grok-4.5"
 DEFAULT_JUDGE_BASE_URL = "https://openrouter.ai/api/v1"
+DEFAULT_SCALEWAY_JUDGE_MODEL = "qwen3-235b-a22b-instruct-2507"
+ALLOWED_JUDGE_VOTES = frozenset({1, 3})
 # RAGAS reste sur Scaleway/OpenAI-compat (le SDK ragas attend un endpoint
 # embeddings+LLM compatible; Claude via OpenRouter n'y est pas branché).
 DEFAULT_SCALEWAY_BASE_URL = "https://api.scaleway.ai/v1"
@@ -63,9 +65,27 @@ DEFAULT_RAGAS_MAX_TOKENS = 16384
 # mais utilisait la clé/endpoint OpenRouter). ``default_base_url`` sert de secours
 # quand ni --judge-base-url ni la var d'env n'est fournie.
 JUDGE_PROVIDERS: dict[str, dict[str, str]] = {
-    "openrouter": {"key_env": "OPENROUTER_API_KEY", "url_env": "OPENROUTER_BASE_URL", "default_base_url": DEFAULT_JUDGE_BASE_URL},
-    "scaleway": {"key_env": "SCALEWAY_API_KEY", "url_env": "SCALEWAY_BASE_URL", "default_base_url": DEFAULT_SCALEWAY_BASE_URL},
-    "openai": {"key_env": "OPENAI_API_KEY", "url_env": "OPENAI_BASE_URL", "default_base_url": "https://api.openai.com/v1"},
+    "openrouter": {
+        "key_env": "OPENROUTER_API_KEY",
+        "url_env": "OPENROUTER_BASE_URL",
+        "default_base_url": DEFAULT_JUDGE_BASE_URL,
+        "model_env": "OPENROUTER_JUDGE_MODEL",
+        "default_model": DEFAULT_JUDGE_MODEL,
+    },
+    "scaleway": {
+        "key_env": "SCALEWAY_API_KEY",
+        "url_env": "SCALEWAY_BASE_URL",
+        "default_base_url": DEFAULT_SCALEWAY_BASE_URL,
+        "model_env": "SCALEWAY_JUDGE_MODEL",
+        "default_model": DEFAULT_SCALEWAY_JUDGE_MODEL,
+    },
+    "openai": {
+        "key_env": "OPENAI_API_KEY",
+        "url_env": "OPENAI_BASE_URL",
+        "default_base_url": "https://api.openai.com/v1",
+        "model_env": "OPENAI_JUDGE_MODEL",
+        "default_model": "",
+    },
 }
 
 
@@ -80,6 +100,30 @@ def resolve_judge_endpoint(provider: str | None, explicit_base_url: str | None =
     base_url = (explicit_base_url or "").strip() or os.getenv(defaults["url_env"], "").strip() or defaults["default_base_url"]
     api_key = os.getenv(defaults["key_env"], "").strip()
     return resolved, base_url, api_key
+
+
+def resolve_judge_model(provider: str | None, explicit_model: str | None = None) -> str:
+    """Resolve the judge model from the selected provider, never from another provider's defaults."""
+    resolved = (provider or DEFAULT_JUDGE_PROVIDER).strip().lower()
+    defaults = JUDGE_PROVIDERS.get(resolved)
+    if defaults is None:
+        raise ValueError(f"Unsupported judge provider: {resolved!r}")
+    model = (explicit_model or "").strip() or os.getenv(defaults["model_env"], "").strip() or defaults["default_model"]
+    if not model:
+        raise ValueError(f"No judge model configured for provider {resolved!r}; pass --judge-model or set {defaults['model_env']}.")
+    return model
+
+
+def normalize_judge_votes(value: Any) -> int:
+    """Return a supported vote count shared by scoping and execution."""
+    try:
+        votes = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("judge_votes must be 1 (screening) or 3 (official adoption gate)") from exc
+    if votes not in ALLOWED_JUDGE_VOTES:
+        allowed = ", ".join(str(item) for item in sorted(ALLOWED_JUDGE_VOTES))
+        raise ValueError(f"judge_votes must be one of: {allowed}")
+    return votes
 
 
 @dataclass
@@ -321,6 +365,21 @@ def ensure_eval_schema(conn: psycopg.Connection[Any]) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_rag_quality_eval_items_question_id ON public.rag_quality_eval_items (question_id)")
 
 
+def _eval_scope_variants(eval_scope: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the current scope plus semantically equivalent legacy encodings."""
+    optional_legacy_keys: list[str] = []
+    if eval_scope.get("ministry_scope") == "none":
+        optional_legacy_keys.append("ministry_scope")
+    legacy_votes = 1 if eval_scope.get("judge_enabled") else 0
+    if eval_scope.get("judge_votes") == legacy_votes:
+        optional_legacy_keys.append("judge_votes")
+
+    variants = [dict(eval_scope)]
+    for key in optional_legacy_keys:
+        variants.extend({item_key: item_value for item_key, item_value in variant.items() if item_key != key} for variant in list(variants))
+    return variants
+
+
 def find_existing_run(
     conn: psycopg.Connection[Any],
     *,
@@ -332,7 +391,13 @@ def find_existing_run(
     eval_scope: dict[str, Any],
 ) -> dict[str, Any] | None:
     git_sql = "AND git_sha = %s" if dedupe_scope == "config-and-git" else ""
-    params: list[Any] = [goldset_name, config_hash, tags, json.dumps(eval_scope, sort_keys=True, ensure_ascii=False, default=str)]
+    scope_variants = _eval_scope_variants(eval_scope)
+    params: list[Any] = [
+        goldset_name,
+        config_hash,
+        tags,
+        [json.dumps(variant, sort_keys=True, ensure_ascii=False, default=str) for variant in scope_variants],
+    ]
     if dedupe_scope == "config-and-git":
         params.append(git_sha)
     rows = conn.execute(
@@ -342,7 +407,7 @@ def find_existing_run(
         WHERE goldset_name = %s
           AND config_fingerprint = %s
           AND tag_filter = %s::text[]
-          AND metadata -> 'eval_scope' = %s::jsonb
+          AND metadata -> 'eval_scope' = ANY(%s::jsonb[])
           {git_sql}
           AND status IN ('started', 'running', 'completed')
         ORDER BY created_at DESC
@@ -403,13 +468,9 @@ def _load_eval_run(
     else:
         if not goldset_name or tags is None or eval_scope is None:
             return None
-        # Un candidat ministry_scope="none" est comparable aux runs historiques
-        # enregistrés AVANT l'introduction de la clé (aucun scope appliqué =
-        # même comportement): accepter aussi la variante legacy sans la clé,
-        # sinon le lookup auto ne trouve jamais de baseline pré-06/07/2026.
-        scope_variants = [eval_scope]
-        if eval_scope.get("ministry_scope") == "none":
-            scope_variants.append({key: value for key, value in eval_scope.items() if key != "ministry_scope"})
+        # Accept legacy encodings for fields whose missing value had the same
+        # runtime semantics (ministry_scope=none and judge_votes=1/0).
+        scope_variants = _eval_scope_variants(eval_scope)
         rows = conn.execute(
             """
             SELECT id, status, created_at, completed_at, goldset_name, tag_filter,
@@ -444,6 +505,9 @@ def _baseline_is_comparable(
     # identique (le gate CI COMPARE_BASELINE échouait jusqu'à re-baseline).
     if "ministry_scope" in eval_scope and "ministry_scope" not in baseline_scope:
         baseline_scope = {**baseline_scope, "ministry_scope": "none"}
+    legacy_votes = 1 if eval_scope.get("judge_enabled") else 0
+    if eval_scope.get("judge_votes") == legacy_votes and "judge_votes" not in baseline_scope:
+        baseline_scope = {**baseline_scope, "judge_votes": legacy_votes}
     if baseline_run.get("status") != "completed":
         reasons.append(f"baseline status is {baseline_run.get('status')!r}, expected 'completed'")
     if str(baseline_run.get("goldset_name") or "") != goldset_name:
@@ -562,6 +626,7 @@ def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion])
     """Return the question and evaluator options that make a run reusable."""
     judge_enabled = not args.skip_judge
     ragas_enabled = not args.skip_ragas
+    judge_votes = normalize_judge_votes(getattr(args, "judge_votes", 1)) if judge_enabled else 0
     return {
         "limit": args.limit,
         "question_count": len(questions),
@@ -580,7 +645,7 @@ def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion])
         # Vote majoritaire du juge : un run jugé en maj-3 (protocole officiel
         # d'adoption, juge souverain) n'est PAS comparable à un run single-shot
         # (screening intermédiaire grok) — la clé de scope les sépare.
-        "judge_votes": int(getattr(args, "judge_votes", 1) or 1) if judge_enabled else 0,
+        "judge_votes": judge_votes,
         # Partie de la clé de comparabilité: un run scopé « all ministries »
         # n'est pas comparable à un run historique sans scope.
         "ministry_scope": getattr(args, "ministry_scope", "none"),
@@ -1399,21 +1464,36 @@ def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
     intermédiaire reste en single-shot. Les votes individuels sont archivés
     dans ``judge_result["votes"]`` (audit), le payload de base (rationale,
     catégorie) vient d'un vote MAJORITAIRE pour rester cohérent."""
-    if votes <= 1:
+    votes = normalize_judge_votes(votes)
+    if votes == 1:
         return judge_answer(**kwargs)
     results = [judge_answer(**kwargs) for _ in range(votes)]
     completed = [r for r in results if r.get("status") == "completed"]
-    if not completed:
-        return results[0]
     n_pass = sum(1 for r in completed if r.get("pass"))
-    verdict = n_pass * 2 > len(completed)
-    base = dict(next(r for r in completed if bool(r.get("pass")) == verdict))
-    base["pass"] = verdict
-    base["votes"] = [
-        {"pass": r.get("pass"), "score": r.get("score"), "failure_category": r.get("failure_category"), "status": r.get("status")}
+    n_fail = len(completed) - n_pass
+    quorum = votes // 2 + 1
+    vote_audit = [
+        {
+            "pass": r.get("pass"),
+            "score": r.get("score"),
+            "failure_category": r.get("failure_category"),
+            "status": r.get("status"),
+            "reason": r.get("reason"),
+        }
         for r in results
     ]
-    base["vote_agreement"] = f"{max(n_pass, len(completed) - n_pass)}/{len(completed)}"
+    if max(n_pass, n_fail) < quorum:
+        return {
+            "status": "failed",
+            "reason": f"judge vote quorum not reached: required={quorum}, pass={n_pass}, fail={n_fail}, completed={len(completed)}/{votes}",
+            "votes": vote_audit,
+            "vote_agreement": f"{max(n_pass, n_fail)}/{len(completed)}",
+        }
+    verdict = n_pass >= quorum
+    base = dict(next(r for r in completed if bool(r.get("pass")) == verdict))
+    base["pass"] = verdict
+    base["votes"] = vote_audit
+    base["vote_agreement"] = f"{max(n_pass, n_fail)}/{len(completed)}"
     return base
 
 
@@ -1558,8 +1638,7 @@ def run_question_with_retry(*, attempts: int = 3, backoff_s: float = 5.0, **kwar
             if attempt == attempts:
                 raise
             print(
-                f"[resilience] connexion DB perdue sur la question {kwargs['question'].id} "
-                f"(tentative {attempt}/{attempts}) : {exc}",
+                f"[resilience] connexion DB perdue sur la question {kwargs['question'].id} (tentative {attempt}/{attempts}) : {exc}",
                 flush=True,
             )
             time.sleep(backoff_s * attempt)
@@ -1704,8 +1783,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--judge-model",
-        default=os.getenv("OPENROUTER_JUDGE_MODEL", DEFAULT_JUDGE_MODEL),
-        help="Judge model (OpenRouter par défaut, ex. anthropic/claude-sonnet-4.5).",
+        default="",
+        help="Judge model override. Empty selects the configured default for --judge-provider.",
     )
     parser.add_argument(
         "--judge-base-url",
@@ -1715,7 +1794,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--judge-votes",
         type=int,
-        default=int(os.getenv("JUDGE_VOTES", "1") or 1),
+        default=os.getenv("JUDGE_VOTES", "1") or "1",
         help=(
             "Vote majoritaire du juge : N appels par réponse, verdict = majorité. "
             "Protocole OFFICIEL d'adoption (gates staging/prod) : 3 votes sur le juge "
@@ -1741,7 +1820,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def derive_completion_status(items: list[EvalItem], *, judge_enabled: bool, ragas_enabled: bool) -> tuple[str, str]:
+def derive_completion_status(items: list[EvalItem], *, judge_enabled: bool, ragas_enabled: bool, judge_votes: int = 1) -> tuple[str, str]:
     """Derive the run status from executed items (before any baseline gating).
 
     Returns ``(status, error)``. Rules, strictest last:
@@ -1757,6 +1836,10 @@ def derive_completion_status(items: list[EvalItem], *, judge_enabled: bool, raga
         status = "completed_with_errors"
     if items and all(item.error for item in items):
         return "failed", f"all {len(items)} questions failed to execute"
+    if judge_enabled and judge_votes > 1:
+        completed_judgments = sum(1 for item in items if not item.error and item.judge_result.get("status") == "completed")
+        if completed_judgments != len(items):
+            return "failed", f"official judge protocol completed {completed_judgments}/{len(items)} judgments"
     for label, enabled, attr in (
         ("judge", judge_enabled, "judge_result"),
         ("ragas", ragas_enabled, "ragas_metrics"),
@@ -1773,6 +1856,9 @@ def derive_completion_status(items: list[EvalItem], *, judge_enabled: bool, raga
 def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.any_goldset and not args.tag:
         raise ValueError("At least one --tag is required with --any-goldset.")
+    if not args.skip_judge:
+        args.judge_votes = normalize_judge_votes(args.judge_votes)
+        args.judge_model = resolve_judge_model(args.judge_provider, args.judge_model)
 
     dsn = resolve_dsn(args.dsn, args.dsn_env)
     # The pipeline and prompt/config helpers read the canonical runtime DSN.
@@ -1926,7 +2012,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 judge_base_url=judge_base_url,
                 judge_api_key=judge_api_key,
                 judge_provider=judge_provider,
-                judge_votes=max(1, int(args.judge_votes or 1)),
+                judge_votes=args.judge_votes,
                 ragas_model=args.ragas_model,
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,
@@ -1968,7 +2054,12 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                         time.sleep(5 * attempt)
             if item.error and args.fail_fast:
                 raise RuntimeError(item.error)
-        status, status_error = derive_completion_status(items, judge_enabled=not args.skip_judge, ragas_enabled=not args.skip_ragas)
+        status, status_error = derive_completion_status(
+            items,
+            judge_enabled=not args.skip_judge,
+            ragas_enabled=not args.skip_ragas,
+            judge_votes=args.judge_votes if not args.skip_judge else 0,
+        )
         error = error or status_error
     except Exception as exc:
         status = "failed"
