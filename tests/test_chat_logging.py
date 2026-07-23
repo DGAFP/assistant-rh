@@ -358,6 +358,18 @@ class TestBuildLogRow:
         row = self._build_row()
         assert row["v3_doc_entire_count"] == 1
 
+    def test_selected_ministry_persisted_from_metadata(self):
+        row = self._build_row(metadata_overrides={"selected_ministry": "matte"})
+        assert row["selected_ministry"] == "matte"
+
+    def test_selected_ministry_null_when_scope_unknown(self):
+        row = self._build_row()
+        assert row["selected_ministry"] is None
+
+    def test_selected_ministry_null_when_empty_string(self):
+        row = self._build_row(metadata_overrides={"selected_ministry": ""})
+        assert row["selected_ministry"] is None
+
     def test_legal_refs_from_resolved(self):
         row = self._build_row()
         assert row["v3_legal_refs_from_dgafp"] == 1
@@ -538,7 +550,7 @@ class TestBuildLogRow:
 
 
 class TestBuildNonRagRow:
-    def _build_row(self):
+    def _build_row(self, retrieval_scope=None):
         pipeline = _MockPipeline(_MockResult())
         pipeline._timing = {"query_processing_ms": 120}
         qr = _MockQR(
@@ -556,6 +568,7 @@ class TestBuildNonRagRow:
             pipeline=pipeline,
             session_state={"session_id": "s1", "conversation_id": "c1", "turns": []},
             trace_id="trace-non-rag",
+            retrieval_scope=retrieval_scope,
         )
 
     def test_backend_is_intent_gating(self):
@@ -569,6 +582,16 @@ class TestBuildNonRagRow:
     def test_intent_value(self):
         row = self._build_row()
         assert row["v3_intent"] == "chit_chat"
+
+    def test_selected_ministry_from_retrieval_scope(self):
+        from assistant_rh_rag_pipeline.ministry_scope import build_retrieval_scope
+
+        row = self._build_row(retrieval_scope=build_retrieval_scope("matte"))
+        assert row["selected_ministry"] == "matte"
+
+    def test_selected_ministry_null_without_scope(self):
+        row = self._build_row()
+        assert row["selected_ministry"] is None
 
     def test_required_fields_present(self):
         row = self._build_row()

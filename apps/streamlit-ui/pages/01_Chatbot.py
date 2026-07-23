@@ -1359,6 +1359,7 @@ if query:
                         dict(st.session_state),
                         runtime_config=rag_config,
                         trace_id=trace_id,
+                        retrieval_scope=retrieval_scope,
                     )
                     log_run_row(row)
                 except Exception as e:
