@@ -236,7 +236,7 @@ score = 0.5 × max(chunk_scores) + 0.3 × mean(chunk_scores) + 0.2 × normalized
 
 **Architecture LLM** : `FallbackLLMClient` — si le provider primaire (Albert) échoue **avant le premier token**, le fallback (Scaleway Llama) prend le relais. Si l'erreur survient **pendant le streaming**, la réponse partielle est conservée.
 
-**Prompt système** : `system_prompt_V6_optimized.md` (DB `system_prompts` > fichier local)
+**Prompt système** : `system_prompt_V7_gestionnaires_rh.md` (DB `system_prompts` > fichier local), destiné aux gestionnaires RH en SGCD et templatisé par ministère.
 **Prompt utilisateur** : template fixe avec `{context}` et `{question}`
 
 **Latence** : ~1-5s (TTFT ~500-2000ms selon le modèle et la taille du contexte)
@@ -355,7 +355,7 @@ RAGConfig(
     ),
     generation=GenerationConfig(
         model="openweight-large",
-        system_prompt_name="system_prompt_V6_optimized.md",
+        system_prompt_name="system_prompt_V7_gestionnaires_rh.md",
         fallback_model="llama-3.1-70b-instruct",
     ),
     query_processor=QueryProcessorConfig(

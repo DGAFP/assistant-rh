@@ -51,6 +51,7 @@ from assistant_rh_rag_pipeline.chat_logger import build_log_row, build_non_rag_r
 from assistant_rh_rag_pipeline.chat_logger import log_run as _log_run_v3
 from assistant_rh_rag_pipeline.chat_logger import log_trace_events as _log_trace_events_v3
 from assistant_rh_rag_pipeline.config import (
+    DEFAULT_GENERATOR_PROMPT_NAME,
     DEFAULT_SYSTEM_PROMPT,
     get_prompt_content,
     today_fr,
@@ -830,7 +831,7 @@ v3_enable_selector = getattr(rag_config, "v3_enable_selector", True)
 v3_selector_model = getattr(rag_config, "v3_selector_model", "openweight-large")  # 🔄 Depuis Admin Config
 v3_generator_model = getattr(rag_config, "v3_generator_model", "openweight-large")  # 🔄 Depuis Admin Config
 v3_temperature = getattr(rag_config, "v3_temperature", 0.0)  # 🔄 Depuis Admin Config
-v3_system_prompt_name = getattr(rag_config, "v3_system_prompt_name", "system_prompt_V6_optimized.md")  # 🔄 Depuis Admin Config
+v3_system_prompt_name = getattr(rag_config, "v3_system_prompt_name", DEFAULT_GENERATOR_PROMPT_NAME)  # 🔄 Depuis Admin Config
 
 # ═══════════════════════════════════════════════════════════════════════════
 # V3 RETRIEVAL PARAMETERS (paramètres dédiés, indépendants de V2)

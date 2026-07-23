@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from assistant_rh_rag_pipeline.config import DEFAULT_GENERATOR_PROMPT_NAME
 from assistant_rh_rag_pipeline.generator import StreamingGenerator
 from assistant_rh_rag_pipeline.ministry_scope import (
     MINISTRY_CATALOG,
@@ -98,7 +99,9 @@ def test_generator_system_prompt_is_ministry_specific() -> None:
     gen = StreamingGenerator(SimpleNamespace(system_prompt_name="__missing__.md"))
     # Inject the on-disk template directly so the test needs no DB/DSN.
     repo_root = Path(__file__).resolve().parents[1]
-    gen._base_prompt = (repo_root / "packages/rag-pipeline/src/assistant_rh_rag_pipeline/prompts/generator.md").read_text(encoding="utf-8")
+    gen._base_prompt = (repo_root / "packages/rag-pipeline/src/assistant_rh_rag_pipeline/prompts" / DEFAULT_GENERATOR_PROMPT_NAME).read_text(
+        encoding="utf-8"
+    )
 
     matte_sp = gen._system_prompt_for(get_ministry("matte"))
     masa_sp = gen._system_prompt_for(get_ministry("masa"))
@@ -110,6 +113,7 @@ def test_generator_system_prompt_is_ministry_specific() -> None:
     assert "MASA" in masa_sp
     assert "MATTE" not in masa_sp
     assert "votre ministère" in generic_sp
+    assert "gestionnaire RH" in generic_sp
 
 
 # ── migration transform ───────────────────────────────────────────────────

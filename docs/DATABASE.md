@@ -199,7 +199,7 @@ Prompts système éditables utilisés par le pipeline (générateur, selector, i
 
 | Colonne | Type | Description |
 |---------|------|-------------|
-| `name` | `VARCHAR(100)` PK | Nom du prompt (ex: `system_prompt_V6_optimized.md`) |
+| `name` | `VARCHAR(100)` PK | Nom du prompt (ex: `system_prompt_V7_gestionnaires_rh.md`) |
 | `content` | `TEXT` | Contenu du prompt (supporte le placeholder `{today}`) |
 | `description` | `VARCHAR(500)` | Description du prompt |
 | `prompt_type` | `VARCHAR(50)` | Type : `generator`, `llm_selector`, `intent_gating` |

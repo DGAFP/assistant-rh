@@ -12,6 +12,8 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Dict, List
 
+DEFAULT_GENERATOR_PROMPT_NAME = "system_prompt_V7_gestionnaires_rh.md"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Enums
 # ─────────────────────────────────────────────────────────────────────────────
@@ -265,7 +267,7 @@ class GenerationConfig:
     provider: LLMProvider = LLMProvider.ALBERT
     model: str = "openweight-large"
     temperature: float = 0.0
-    system_prompt_name: str = "system_prompt_V6_optimized.md"
+    system_prompt_name: str = DEFAULT_GENERATOR_PROMPT_NAME
     fallback_provider: LLMProvider = LLMProvider.SCALEWAY
     fallback_model: str = "llama-3.1-70b-instruct"
 

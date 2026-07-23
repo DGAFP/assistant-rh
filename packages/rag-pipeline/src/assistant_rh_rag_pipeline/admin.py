@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 
 import psycopg
 
-from .config import ContextMode, RAGConfig, SearchMode, get_default_config
+from .config import DEFAULT_GENERATOR_PROMPT_NAME, ContextMode, RAGConfig, SearchMode, get_default_config
 from .db_helpers import (
     _db_conn,
     get_prompt_content,
@@ -113,7 +113,7 @@ class RuntimeRAGConfig:
     v3_intent_prompt_name: str = "intent_unified.md"
     v3_generator_model: str = "openweight-large"
     v3_temperature: float = 0.0
-    v3_system_prompt_name: str = "system_prompt_V6_optimized.md"
+    v3_system_prompt_name: str = DEFAULT_GENERATOR_PROMPT_NAME
     verbose_mode: bool = False
     enable_cache: bool = True
     llm_provider: str = "albert"

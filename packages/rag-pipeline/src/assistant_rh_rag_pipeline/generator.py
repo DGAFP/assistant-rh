@@ -106,7 +106,11 @@ class StreamingGenerator:
     def _base_system_prompt(self) -> str:
         """Load the (unrendered) system prompt template, cached per instance."""
         if self._base_prompt is None:
-            _DEFAULT = "Tu es un assistant RH expert pour {ministere_label}. Reponds aux questions des agents publics sur les ressources humaines."
+            _DEFAULT = (
+                "Tu assistes les gestionnaires RH en SGCD pour {ministere_label}. "
+                "Reformule les sources pour le gestionnaire, nomme explicitement l'acteur de chaque action "
+                "et ne t'adresse jamais à l'agent à la deuxième personne."
+            )
             self._base_prompt = load_prompt(self.config.system_prompt_name, "generator.md", default=_DEFAULT)
         return self._base_prompt
 
