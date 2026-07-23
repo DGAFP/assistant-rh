@@ -61,11 +61,13 @@ class ContextSelector:
         self._last_decisions: dict = {}
         self._last_raw_response: str = ""
         self._last_reasoning: str = ""
+        self._last_prompt_chars: int = 0
 
     def _reset(self) -> None:
         self._last_decisions = {}
         self._last_raw_response = ""
         self._last_reasoning = ""
+        self._last_prompt_chars = 0
 
     # ── Public properties ──────────────────────────────────────────────
 
@@ -88,6 +90,11 @@ class ContextSelector:
     def last_reasoning(self) -> str:
         """Extracted reasoning from the last ``select()`` call."""
         return self._last_reasoning
+
+    @property
+    def last_prompt_chars(self) -> int:
+        """Character count of the exact user prompt sent to the selector LLM."""
+        return self._last_prompt_chars
 
     @property
     def all_rejected(self) -> bool:
@@ -143,6 +150,7 @@ class ContextSelector:
             except Exception:
                 prompt = prompt_template.replace("{query}", query).replace("{context}", "\n\n---\n\n".join(numbered)).replace("{theme}", "")
 
+            self._last_prompt_chars = len(prompt)
             raw = llm.chat(prompt, system_prompt="")
             self._last_raw_response = raw
             parsed = _parse_response(raw, len(sections))

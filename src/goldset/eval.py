@@ -1195,8 +1195,8 @@ def _aggregate_token_usage(items: list["EvalItem"]) -> dict[str, Any]:
     # réellement envoyés (sortie = compteur réel; input ~ chars/4).
     gen_out = sum(int((item.timing or {}).get("response_length_tokens") or 0) for item in items)
     gen_in_est = sum(int((item.metadata or {}).get("generator_prompt_chars") or 0) for item in items) // 4
-    sel_in_est = sum(len(str((item.metadata or {}).get("context_before_selector") or "")) for item in items) // 4
-    sel_out_est = sum(len(str((item.metadata or {}).get("selector_raw_response") or "")) for item in items) // 4
+    sel_in_est = sum(int((item.metadata or {}).get("selector_prompt_chars") or 0) for item in items) // 4
+    sel_out_est = sum(int((item.metadata or {}).get("selector_response_chars") or 0) for item in items) // 4
     active_billable = [part for part in (judge, ragas) if part["active_items"]]
     billable = (
         round(sum(float(part["cost_eur"]) for part in active_billable), 4) if all(part["cost_eur"] is not None for part in active_billable) else None

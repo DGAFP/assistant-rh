@@ -29,6 +29,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from src.goldset.eval import (  # noqa: E402
     DEFAULT_RAGAS_MODEL,
     DEFAULT_SCALEWAY_BASE_URL,
+    EvalItem,
     aggregate_items,
     compute_ragas_metrics,
     resolve_dsn,
@@ -61,6 +62,38 @@ def summarize_ragas_status(rows: list[dict]) -> tuple[str, dict[str, int]]:
     if counts["completed"] == 0 and counts["skipped"] == total:
         return "skipped", counts
     return "partial", counts
+
+
+def build_run_aggregate_updates(rows: list[dict]) -> tuple[dict, str]:
+    """Recompute every aggregate field affected by a RAGAS backfill."""
+    items = [
+        EvalItem(
+            question_id=0,
+            question="",
+            gold_answer="",
+            gold_sources=[],
+            deterministic_metrics=row.get("deterministic_metrics") or {},
+            ragas_metrics=row.get("ragas_metrics") or {},
+            judge_result=row.get("judge_result") or {},
+            timing=row.get("timing") or {},
+            metadata=row.get("metadata") or {},
+            error=row.get("error") or "",
+        )
+        for row in rows
+    ]
+    aggregate = aggregate_items(items)
+    updates = {
+        key: aggregate[key]
+        for key in (
+            "ragas_faithfulness_avg",
+            "ragas_context_precision_avg",
+            "ragas_context_recall_avg",
+            "token_usage",
+        )
+    }
+    ragas_status, status_counts = summarize_ragas_status(rows)
+    updates["ragas_status_counts"] = status_counts
+    return updates, ragas_status
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -120,34 +153,22 @@ def main(argv: list[str] | None = None) -> int:
             done += 1 if metrics.get("status") == "completed" else 0
             print(f"  [{i}/{len(todo)}] {metrics.get('status')} {item['question'][:55]}", file=sys.stderr)
 
-        # Refresh the run aggregate's RAGAS averages from all items.
+        # Refresh RAGAS averages and the complete run-level usage from all items.
         rows = conn.execute(
-            "SELECT answer, deterministic_metrics, ragas_metrics, judge_result, error FROM public.rag_quality_eval_items WHERE run_id = %s",
+            """
+            SELECT answer, deterministic_metrics, ragas_metrics, judge_result,
+                   timing, metadata, error
+            FROM public.rag_quality_eval_items
+            WHERE run_id = %s
+            """,
             (run_id,),
         ).fetchall()
-        from src.goldset.eval import EvalItem  # noqa: E402
-
-        items = [
-            EvalItem(
-                question_id=0,
-                question="",
-                gold_answer="",
-                gold_sources=[],
-                deterministic_metrics=r["deterministic_metrics"] or {},
-                ragas_metrics=r["ragas_metrics"] or {},
-                judge_result=r["judge_result"] or {},
-                error=r["error"] or "",
-            )
-            for r in rows
-        ]
-        agg = aggregate_items(items)
-        ragas_keys = {k: agg[k] for k in ("ragas_faithfulness_avg", "ragas_context_precision_avg", "ragas_context_recall_avg")}
-        ragas_status, status_counts = summarize_ragas_status(rows)
-        ragas_keys["ragas_status_counts"] = status_counts
+        aggregate_updates, ragas_status = build_run_aggregate_updates(rows)
         conn.execute(
             "UPDATE public.rag_quality_eval_runs SET aggregate = aggregate || %s::jsonb, ragas_status = %s WHERE id = %s",
-            (json.dumps(ragas_keys), ragas_status, run_id),
+            (json.dumps(aggregate_updates), ragas_status, run_id),
         )
+        status_counts = aggregate_updates["ragas_status_counts"]
         print(f"completed RAGAS on {done}/{len(todo)} new items; status={ragas_status} counts={status_counts}", file=sys.stderr)
     return 1 if ragas_status == "failed" else 0
 

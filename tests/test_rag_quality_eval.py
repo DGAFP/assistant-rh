@@ -1029,8 +1029,8 @@ def test_aggregate_token_usage_exact_billable_plus_free_estimate() -> None:
     item.contexts = [{"content": "x" * 40_000, "metadata_not_sent": "n" * 40_000}]
     item.metadata = {
         "generator_prompt_chars": 400,
-        "context_before_selector": "y" * 800,
-        "selector_raw_response": "z" * 40,
+        "selector_prompt_chars": 800,
+        "selector_response_chars": 40,
     }
 
     out = _aggregate_token_usage([item])
@@ -1042,6 +1042,8 @@ def test_aggregate_token_usage_exact_billable_plus_free_estimate() -> None:
     assert out["generator_albert_est"]["prompt_tokens"] == 100
     assert out["generator_albert_est"]["completion_tokens"] == 300
     assert out["generator_albert_est"]["cost_eur"] == 0.0
+    assert out["selector_albert_est"]["prompt_tokens"] == 200
+    assert out["selector_albert_est"]["completion_tokens"] == 10
 
 
 def test_aggregate_token_usage_fails_closed_for_unknown_eur_cost() -> None:
