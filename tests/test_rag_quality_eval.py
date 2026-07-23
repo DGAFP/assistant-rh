@@ -1196,6 +1196,51 @@ def test_aggregate_token_usage_fails_closed_for_unknown_eur_cost() -> None:
     assert out["judge"]["coverage_complete"] is True
 
 
+def test_aggregate_token_usage_fails_closed_for_partial_reported_cost() -> None:
+    from src.goldset.eval import EvalItem, _aggregate_token_usage
+
+    captured = EvalItem(question_id=1, question="q", gold_answer="g", gold_sources=[])
+    captured.judge_result = {
+        "status": "completed",
+        "usage": {
+            "prompt_tokens": 100,
+            "completion_tokens": 10,
+            "calls": 1,
+            "model": "x-ai/grok-4.5",
+            "provider": "openrouter",
+            "cost_eur": None,
+            "reported_cost": 0.0042,
+            "reported_cost_unit": "openrouter_credit",
+            "capture_complete": True,
+        },
+    }
+    captured.ragas_metrics = {"status": "skipped", "reason": "disabled"}
+
+    incomplete = EvalItem(question_id=2, question="q", gold_answer="g", gold_sources=[])
+    incomplete.judge_result = {
+        "status": "failed",
+        "reason": "provider timeout",
+        "usage": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "calls": 0,
+            "model": "x-ai/grok-4.5",
+            "provider": "openrouter",
+            "cost_eur": None,
+            "reported_cost": None,
+            "reported_cost_unit": None,
+            "capture_complete": False,
+        },
+    }
+    incomplete.ragas_metrics = {"status": "skipped", "reason": "disabled"}
+
+    out = _aggregate_token_usage([captured, incomplete])
+
+    assert out["judge"]["coverage_complete"] is False
+    assert out["judge"]["reported_cost"] is None
+    assert out["judge"]["reported_cost_unit"] is None
+
+
 def test_aggregate_token_usage_fails_closed_when_capture_is_missing() -> None:
     from src.goldset.eval import EvalItem, _aggregate_token_usage
 

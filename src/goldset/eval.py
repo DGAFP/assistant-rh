@@ -1214,6 +1214,7 @@ def _aggregate_token_usage(items: list["EvalItem"]) -> dict[str, Any]:
         providers: set[str] = set()
         models: set[str] = set()
         reported_by_unit: dict[str, float] = {}
+        reported_items = 0
         for item in items:
             result = getter(item)
             if not isinstance(result, dict) or result.get("status") == "skipped":
@@ -1243,7 +1244,9 @@ def _aggregate_token_usage(items: list["EvalItem"]) -> dict[str, Any]:
             reported_unit = str(usage.get("reported_cost_unit") or "")
             if reported_cost is not None and reported_unit:
                 reported_by_unit[reported_unit] = reported_by_unit.get(reported_unit, 0.0) + reported_cost
-        single_reported_unit = next(iter(reported_by_unit)) if len(reported_by_unit) == 1 else None
+                reported_items += 1
+        reported_complete = active > 0 and tracked == active and reported_items == active and len(reported_by_unit) == 1
+        single_reported_unit = next(iter(reported_by_unit)) if reported_complete else None
         return {
             "prompt_tokens": prompt,
             "completion_tokens": completion,
