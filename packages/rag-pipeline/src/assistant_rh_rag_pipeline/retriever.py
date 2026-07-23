@@ -625,6 +625,31 @@ class Retriever:
 
         return chunks
 
+    # Tables portant des lignes-résumé R2 additives ({cid}_0 et {cid}_r2s au
+    # même chunk_text) : on sur-échantillonne (x2) puis on fusionne la paire
+    # AVANT de tronquer à top_k — sinon elle consomme deux places du top_k du
+    # retriever et la couverture juridique unique diminue (revue #332, round 2).
+    _R2_SUMMARY_TABLES = frozenset({"rag_chunks_dgafp"})
+    _R2_SUFFIX = "_r2s"
+
+    @classmethod
+    def _merge_r2_pairs(cls, chunks: List[RetrievedChunk], top_k: int) -> List[RetrievedChunk]:
+        """Garde le mieux classé de chaque paire {cid}_0/{cid}_r2s, tronque à top_k."""
+        merged: List[RetrievedChunk] = []
+        seen_pairs: set[str] = set()
+        for chunk in chunks:
+            cid = str((chunk.metadata or {}).get("cid") or "").strip()
+            chunk_id = str(chunk.chunk_id or "")
+            if cid and chunk_id in (f"{cid}_0", f"{cid}{cls._R2_SUFFIX}"):
+                pair_key = f"{chunk.table_source}:{cid}"
+                if pair_key in seen_pairs:
+                    continue
+                seen_pairs.add(pair_key)
+            merged.append(chunk)
+            if len(merged) >= top_k:
+                break
+        return merged
+
     def _search_table_semantic(
         self,
         table: ChunkTable,
@@ -637,6 +662,8 @@ class Retriever:
         """Pure semantic (cosine) search on a DE table."""
         embed_col = table.embed_col_albert if model_used == "albert" else table.embed_col_bge
         effective_top_k = top_k or self.config.initial_top_k
+        r2_dedup = table.name in self._R2_SUMMARY_TABLES
+        fetch_k = effective_top_k * 2 if r2_dedup else effective_top_k
 
         extra_cols = self._select_existing_meta_cols(table)
         extra_sql = "".join(f", t.{c}" for c in extra_cols)
@@ -656,8 +683,11 @@ class Retriever:
             ORDER BY t.{embed_col} <=> %s::vector, t.{table.id_col}
             LIMIT %s
         """
-        params: Tuple = (embedding, embedding, effective_top_k)
-        return self._exec_de_table(table, sql, params, model_used, strict_errors=strict_errors)
+        params: Tuple = (embedding, embedding, fetch_k)
+        results = self._exec_de_table(table, sql, params, model_used, strict_errors=strict_errors)
+        if r2_dedup:
+            results = self._merge_r2_pairs(results, effective_top_k)
+        return results
 
     def _search_table_hybrid(
         self,
@@ -676,6 +706,8 @@ class Retriever:
         alpha = self.config.alpha
         rrf_k = 60
         top_k = top_k or self.config.initial_top_k
+        r2_dedup = table.name in self._R2_SUMMARY_TABLES
+        fetch_k = top_k * 2 if r2_dedup else top_k
         effective_search_mode = search_mode or self.config.search_mode
         is_lexical_only = effective_search_mode == SearchMode.LEXICAL
 
@@ -703,8 +735,11 @@ class Retriever:
                 ORDER BY ts_rank_cd(t.{tsv}, pq.q) DESC, t.{table.id_col}
                 LIMIT %s
             """
-            params: Tuple = (query, query, query, top_k)
-            return self._exec_de_table(table, sql, params, "lexical", strict_errors=strict_errors)
+            params: Tuple = (query, query, query, fetch_k)
+            lex_results = self._exec_de_table(table, sql, params, "lexical", strict_errors=strict_errors)
+            if r2_dedup:
+                lex_results = self._merge_r2_pairs(lex_results, top_k)
+            return lex_results
 
         # Full hybrid: RRF of semantic + lexical
         sql = f"""
@@ -753,17 +788,20 @@ class Retriever:
             query,  # parsed_query
             embedding,
             embedding,
-            top_k,  # semantic_ranked
-            top_k,  # lexical_ranked
+            fetch_k,  # semantic_ranked
+            fetch_k,  # lexical_ranked
             alpha,
             rrf_k,
-            top_k,  # rrf semantic part
+            fetch_k,  # rrf semantic part (rang-pénalité des absents)
             alpha,
             rrf_k,
-            top_k,  # rrf lexical part
-            top_k,  # final limit
+            fetch_k,  # rrf lexical part (rang-pénalité des absents)
+            fetch_k,  # final limit
         )
-        return self._exec_de_table(table, sql, params, model_used, strict_errors=strict_errors)
+        results = self._exec_de_table(table, sql, params, model_used, strict_errors=strict_errors)
+        if r2_dedup:
+            results = self._merge_r2_pairs(results, top_k)
+        return results
 
     def _exec_de_table(
         self,

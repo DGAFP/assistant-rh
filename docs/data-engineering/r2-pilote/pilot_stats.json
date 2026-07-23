@@ -1,0 +1,16 @@
+{
+  "items": 101,
+  "by_status": {
+    "cached": 95,
+    "ok": 6
+  },
+  "tokens_in_total": 63878,
+  "tokens_out_total": 14351,
+  "tokens_in_per_article": 632.5,
+  "tokens_out_per_article": 142.1,
+  "extrapolation_corpus": {
+    "articles": 4207,
+    "tokens_in": 2660740,
+    "tokens_out": 597769
+  }
+}

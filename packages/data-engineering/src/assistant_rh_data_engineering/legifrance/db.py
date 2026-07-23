@@ -33,6 +33,12 @@ LEGACY_TARGET_COLUMNS: dict[str, str] = {
     "lien_concordes_count": "INTEGER",
     "comporte_liens_sp": "BOOLEAN",
     "chunk_number": "INTEGER",
+    # Marqueur des lignes d'index ADDITIVES (R2, résumés d'article) : NULL =
+    # chunk normal ; "r2_summary/{version}/{sha16}" = ligne dont l'embedding
+    # encode le résumé métier mais dont chunk_text reste le texte authentique
+    # (cf. legifrance/summary_rows.py). Colonne ajoutée par _ensure_table au
+    # premier run (mécanisme de migration natif de cette table).
+    "index_variant": "TEXT",
     "start_date": "DATE",
     "end_date": "DATE",
     "created_at": "TIMESTAMPTZ",
@@ -170,6 +176,7 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                 lien_concordes_count INTEGER,
                 comporte_liens_sp BOOLEAN,
                 chunk_number INTEGER,
+                index_variant TEXT,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 chunk_text_tsv tsvector GENERATED ALWAYS AS (
@@ -304,17 +311,29 @@ class LegifranceDbWriter(ServicePublicDbWriter):
     def project_modern_chunks(cls, chunks: list[dict]) -> list[dict]:
         return [cls.project_modern_chunk(chunk) for chunk in chunks if "modern" in (chunk.get("_targets") or ["legacy", "modern"])]
 
-    def upsert_legacy_chunks(self, chunks: list[dict]) -> int:
-        with self._connect() as conn:
+    def upsert_legacy_chunks(self, chunks: list[dict], conn=None) -> int:
+        # ``conn`` fourni = le caller porte la transaction (revalidation de
+        # fraîcheur + upsert atomiques, cf. jobs/r2_article_summaries) et
+        # committe lui-même.
+        if conn is not None:
             self.ensure_legacy_target_table()
-            count = self._upsert(
+            return self._upsert(
                 conn,
                 self.legacy_table_name,
                 self.project_legacy_chunks(chunks),
                 ["chunk_id"],
                 preserve_on_null_cols=["embedding_m3", "embedding_bge_scw", "embedding_qwen3"],
             )
-            conn.commit()
+        with self._connect() as own_conn:
+            self.ensure_legacy_target_table()
+            count = self._upsert(
+                own_conn,
+                self.legacy_table_name,
+                self.project_legacy_chunks(chunks),
+                ["chunk_id"],
+                preserve_on_null_cols=["embedding_m3", "embedding_bge_scw", "embedding_qwen3"],
+            )
+            own_conn.commit()
             return count
 
     def upsert_modern_chunks(self, chunks: list[dict]) -> int:
@@ -385,12 +404,18 @@ class LegifranceDbWriter(ServicePublicDbWriter):
             for table, join_column in ((self.legacy_table_name, "cid"), (self.modern_table_name, "short_id")):
                 if not table_exists(table):
                     continue
+                # Les lignes-résumé R2 (index_variant renseigné) partagent le
+                # cid de leur article : les compter doublerait nb_chunks et
+                # fausserait la réconciliation delta (revue #332, round 2).
+                summary_filter = sql.SQL("")
+                if table == self.legacy_table_name and "index_variant" in self._column_types(conn, table):
+                    summary_filter = sql.SQL(" AND index_variant IS NULL")
                 cur.execute(
                     sql.SQL(
                         """
                         SELECT UPPER(TRIM({})), COUNT(*)
                         FROM {}.{}
-                        WHERE {} IS NOT NULL
+                        WHERE {} IS NOT NULL{}
                         GROUP BY 1
                         """
                     ).format(
@@ -398,6 +423,7 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                         sql.Identifier(self.schema),
                         sql.Identifier(table),
                         sql.Identifier(join_column),
+                        summary_filter,
                     )
                 )
                 for uid, count in cur.fetchall():
@@ -486,6 +512,7 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                         )
                         cur.execute(query, (short_id,))
                     deleted = int(cur.rowcount or 0)
+                deleted += self._purge_summary_rows_fresh_snapshot(conn, table=table, join_column=chunk_join_column, uids=[short_id])
             inserted = 0
             for batch in self._batched_rows(projected_chunks, 1000):
                 inserted += self._upsert(
@@ -573,6 +600,36 @@ class LegifranceDbWriter(ServicePublicDbWriter):
             conn.commit()
             return counts
 
+    def _purge_summary_rows_fresh_snapshot(self, conn: Any, *, table: str, join_column: str, uids: list[str]) -> int:
+        """2e passe de purge des lignes-résumé R2, à SNAPSHOT FRAIS.
+
+        Appliquée à TOUS les chemins de suppression legacy par cid (revue
+        #332 rounds 3-4 : ``_ingest_bundle_tx`` ET ``_cascade_articles_ops``) :
+        en READ COMMITTED, une ligne R2 insérée PENDANT l'attente de verrou du
+        DELETE principal lui est invisible (EvalPlanQual) et survivrait
+        orpheline avec l'ancien texte ; chaque statement ayant son propre
+        snapshot, ce DELETE séparé la voit. No-op hors table legacy (seule
+        porteuse de lignes R2 — le probe est inutile sur la table moderne) et
+        sur les bases sans colonne ``index_variant``."""
+        if table != self.legacy_table_name or not uids:
+            return 0
+        # Pas de rattrapage silencieux (revue #332 round 5) : les chemins
+        # publics legacy passent par ensure_legacy_target_table, donc la
+        # colonne index_variant existe — une erreur de schéma/DB ici doit
+        # FAIRE ÉCHOUER la transaction, jamais désactiver le garde
+        # d'intégrité en retournant 0. Seule l'absence de la colonne (base
+        # pas encore migrée, cas légitime) est un no-op.
+        if "index_variant" not in self._column_types(conn, table):
+            return 0
+        with conn.cursor() as cur:
+            cur.execute(
+                sql.SQL("DELETE FROM {}.{} WHERE UPPER(TRIM({})) = ANY(%s) AND index_variant IS NOT NULL").format(
+                    sql.Identifier(self.schema), sql.Identifier(table), sql.Identifier(join_column)
+                ),
+                (uids,),
+            )
+            return int(cur.rowcount or 0)
+
     def _cascade_articles_ops(self, conn: Any, normalized: list[str], source: str) -> dict[str, int]:
         """Cascade chunks legacy (par cid) + sections + documents sur une connexion
         DONNÉE, SANS commit — réutilisable dans une transaction partagée (ex. la
@@ -596,6 +653,10 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                 (normalized,),
             )
             deleted_chunks = int(cur.rowcount or 0)
+        deleted_chunks += self._purge_summary_rows_fresh_snapshot(
+            conn, table=self.legacy_table_name, join_column="cid", uids=normalized
+        )
+        with conn.cursor() as cur:
 
             deleted_sections = 0
             deleted_documents = 0
