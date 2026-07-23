@@ -839,8 +839,15 @@ else:
     }
     feedback_display_df = display_df[display_cols].sort_values("ts", ascending=False).copy()
     if "ts" in feedback_display_df.columns:
-        feedback_display_df["ts"] = feedback_display_df["ts"].dt.strftime("%d/%m/%Y %H:%M")
-    feedback_export_df = feedback_display_df.rename(columns={col: export_labels[col] for col in feedback_display_df.columns if col in export_labels})
+        # Garder de vrais datetimes pour la grille : une chaîne "17/07/2026 …"
+        # serait re-parsée mois/jour par le DataFrame (10/07 affiché 7 octobre).
+        # Le format d'affichage vient de col_config (DatetimeColumn) ; le tz est
+        # retiré après conversion Paris pour afficher l'heure locale telle quelle.
+        feedback_display_df["ts"] = feedback_display_df["ts"].dt.tz_localize(None)
+    feedback_export_df = feedback_display_df.copy()
+    if "ts" in feedback_export_df.columns:
+        feedback_export_df["ts"] = feedback_export_df["ts"].dt.strftime("%d/%m/%Y %H:%M")
+    feedback_export_df = feedback_export_df.rename(columns={col: export_labels[col] for col in feedback_export_df.columns if col in export_labels})
 
     st.dataframe(feedback_display_df, width="stretch", hide_index=True, column_config=col_config, height=500)
 

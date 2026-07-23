@@ -153,3 +153,12 @@ class TestDashboardSource:
         assert "resolve_period(" in source
         assert "period_caption(" in source
         assert "fb_period_mode" in source
+
+    def test_grid_receives_datetimes_not_preformatted_strings(self):
+        # Une chaîne "17/07/2026 …" passée à une DatetimeColumn est re-parsée
+        # mois/jour par la grille (10/07 affiché 7 octobre) : la grille doit
+        # recevoir des datetimes ; le strftime est réservé à l'export Excel.
+        source = _dashboard_source()
+        assert 'feedback_display_df["ts"].dt.tz_localize(None)' in source
+        assert 'feedback_display_df["ts"].dt.strftime' not in source
+        assert 'feedback_export_df["ts"].dt.strftime' in source
