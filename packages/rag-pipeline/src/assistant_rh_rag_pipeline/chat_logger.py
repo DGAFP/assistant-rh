@@ -223,6 +223,20 @@ def _enum_value(value: Any) -> Any:
     return getattr(value, "value", value)
 
 
+def _selected_ministry_value(scope: Any) -> str | None:
+    """Raw ministry id for ``chat_runs.selected_ministry`` (NULL when unknown).
+
+    Accepts a ``RetrievalScope``, a plain ministry id string, or *None*.
+    Never guesses from retrieved sources: shared sources (Service-Public,
+    DGAFP) cannot identify the active ministry.
+    """
+    if scope is None:
+        return None
+    raw = getattr(scope, "selected_ministry", scope)
+    text = str(raw or "").strip()
+    return text or None
+
+
 def _table_name(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
@@ -526,6 +540,7 @@ def build_log_row(
         "conversation_id": session_state.get("conversation_id", ""),
         "turn_index": len(session_state.get("turns", [])),
         "user_group": session_state.get("user_group", "default"),
+        "selected_ministry": _selected_ministry_value(v3_metadata.get("selected_ministry")),
         "total_time_ms": total_time_ms,
         "pipeline_latency_ms": total_time_ms,
     }
@@ -704,6 +719,7 @@ def build_non_rag_row(
     session_state: dict,
     runtime_config: Any = None,
     trace_id: str | None = None,
+    retrieval_scope: Any = None,
 ) -> dict:
     """Build a minimal log row for non-RAG turns (chit-chat, out-of-scope)."""
     _intent_val = qr.intent.value if qr.intent else "unknown"
@@ -770,6 +786,7 @@ def build_non_rag_row(
         "cascade_source": "",
         "expanded_refs_count": 0,
         "user_group": session_state.get("user_group", "default"),
+        "selected_ministry": _selected_ministry_value(retrieval_scope),
         "llm_selector_model": "",
         "llm_selector_prompt_name": "",
         "llm_selector_reasoning": "",
