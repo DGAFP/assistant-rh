@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -423,6 +425,7 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         "judge_provider": "openrouter",
         "judge_base_url": "https://openrouter.ai/api/v1",
         "judge_model": "judge-a",
+        "judge_votes": 1,
         "ministry_scope": "all",
     }
     assert build_eval_scope(full, questions) != smoke_scope
@@ -435,7 +438,7 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
 
 
 def test_resolve_judge_endpoint_drives_key_and_base_url(monkeypatch) -> None:
-    from src.goldset.eval import resolve_judge_endpoint
+    from src.goldset.eval import DEFAULT_SCALEWAY_JUDGE_MODEL, resolve_judge_endpoint, resolve_judge_model
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
     monkeypatch.setenv("SCALEWAY_API_KEY", "scw-key")
@@ -461,6 +464,40 @@ def test_resolve_judge_endpoint_drives_key_and_base_url(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     provider, base_url, api_key = resolve_judge_endpoint("openai")
     assert (provider, api_key, base_url) == ("openai", "oa-key", "https://api.openai.com/v1")
+
+    # Le modèle suit lui aussi le provider: Scaleway ne doit jamais hériter du
+    # défaut OpenRouter x-ai/grok-4.5.
+    monkeypatch.delenv("OPENROUTER_JUDGE_MODEL", raising=False)
+    monkeypatch.delenv("SCALEWAY_JUDGE_MODEL", raising=False)
+    assert resolve_judge_model("openrouter") == "x-ai/grok-4.5"
+    assert resolve_judge_model("scaleway") == DEFAULT_SCALEWAY_JUDGE_MODEL
+    assert resolve_judge_model("scaleway", "custom-scaleway-model") == "custom-scaleway-model"
+    with pytest.raises(ValueError, match="OPENAI_JUDGE_MODEL"):
+        resolve_judge_model("openai")
+
+
+def test_judge_vote_count_is_bounded_and_shared_with_eval_scope() -> None:
+    from src.goldset.eval import normalize_judge_votes
+
+    assert normalize_judge_votes(1) == 1
+    assert normalize_judge_votes("3") == 3
+    for invalid in (-1, 0, 2, 4, 100_000):
+        with pytest.raises(ValueError, match="one of: 1, 3"):
+            normalize_judge_votes(invalid)
+
+    args = argparse.Namespace(
+        limit=1,
+        skip_ragas=True,
+        ragas_model="",
+        skip_judge=False,
+        judge_model="judge-a",
+        judge_provider="openrouter",
+        judge_base_url="https://openrouter.ai/api/v1",
+        judge_votes=-1,
+        ministry_scope="all",
+    )
+    with pytest.raises(ValueError, match="one of: 1, 3"):
+        build_eval_scope(args, [GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[])])
 
 
 def test_judge_answer_missing_key_message_names_provider() -> None:
@@ -562,6 +599,55 @@ def test_baseline_comparison_requires_comparable_scope() -> None:
     assert comparison["comparability_failures"] == ["baseline eval_scope does not match candidate"]
 
 
+@pytest.mark.parametrize(
+    ("judge_enabled", "legacy_votes"),
+    [
+        (True, 1),
+        (False, 0),
+    ],
+)
+def test_baseline_comparison_backfills_legacy_judge_votes(judge_enabled: bool, legacy_votes: int) -> None:
+    candidate_scope = {
+        "question_ids": [1],
+        "judge_enabled": judge_enabled,
+        "judge_votes": legacy_votes,
+        "ragas_enabled": False,
+    }
+    legacy_scope = {key: value for key, value in candidate_scope.items() if key != "judge_votes"}
+    baseline = {
+        "id": 10,
+        "status": "completed",
+        "goldset_name": "iteration2_V1",
+        "tag_filter": ["iteration2"],
+        "aggregate": {"judge_pass_rate": 0.9 if judge_enabled else None, "doc_recall_avg": 0.8},
+        "metadata": {"eval_scope": legacy_scope},
+    }
+
+    comparison = compare_with_baseline(
+        candidate_aggregate={"judge_pass_rate": 0.9 if judge_enabled else None, "doc_recall_avg": 0.8},
+        baseline_run=baseline,
+        goldset_name="iteration2_V1",
+        tags=["iteration2"],
+        eval_scope=candidate_scope,
+        max_judge_pass_rate_drop=0.05,
+        max_doc_recall_drop=0.05,
+    )
+
+    assert comparison["comparable"] is True
+
+
+def test_eval_scope_variants_cover_combined_legacy_keys() -> None:
+    from src.goldset.eval import _eval_scope_variants
+
+    scope = {"judge_enabled": True, "judge_votes": 1, "ministry_scope": "none", "question_ids": [1]}
+    variants = _eval_scope_variants(scope)
+
+    assert scope in variants
+    assert {"judge_enabled": True, "ministry_scope": "none", "question_ids": [1]} in variants
+    assert {"judge_enabled": True, "judge_votes": 1, "question_ids": [1]} in variants
+    assert {"judge_enabled": True, "question_ids": [1]} in variants
+
+
 def test_baseline_comparison_reports_missing_baseline() -> None:
     comparison = compare_with_baseline(
         candidate_aggregate={"judge_pass_rate": 0.9, "doc_recall_avg": 0.8},
@@ -610,6 +696,30 @@ def test_calibrate_load_labels_requires_question(tmp_path) -> None:
 
     assert len(usable) == 1
     assert usable[0]["question"] == "question"
+
+
+def test_calibrate_judge_uses_provider_specific_default_model(tmp_path, monkeypatch) -> None:
+    from scripts import calibrate_judge
+    from src.goldset.eval import DEFAULT_SCALEWAY_JUDGE_MODEL
+
+    seen: dict[str, str] = {}
+
+    def fake_judge_answer(**kwargs):
+        seen["model"] = kwargs["model"]
+        seen["provider"] = kwargs["provider"]
+        return {"status": "completed", "dimensions": {}, "raw_model_score": 1.0}
+
+    monkeypatch.setenv("JUDGE_PROVIDER", "scaleway")
+    monkeypatch.setenv("SCALEWAY_API_KEY", "scw-key")
+    monkeypatch.delenv("SCALEWAY_JUDGE_MODEL", raising=False)
+    monkeypatch.setattr(calibrate_judge, "judge_answer", fake_judge_answer)
+    rows = calibrate_judge.capture_judge(
+        [{"question": "q", "answer": "a", "gold_answer": "g", "verdict": "PASS"}],
+        tmp_path / "cache.json",
+    )
+
+    assert len(rows) == 1
+    assert seen == {"model": DEFAULT_SCALEWAY_JUDGE_MODEL, "provider": "scaleway"}
 
 
 def test_resolve_goldset_doc_ids_dry_run_does_not_mutate(monkeypatch) -> None:
@@ -699,6 +809,18 @@ def test_derive_status_judge_failed_on_every_executed_item_is_failure() -> None:
     )
     assert status == "failed"
     assert "judge requested but failed" in error
+
+
+def test_derive_status_official_protocol_rejects_partial_judge_results() -> None:
+    status, error = derive_completion_status(
+        [_item(judge_status="completed"), _item(judge_status="failed")],
+        judge_enabled=True,
+        ragas_enabled=False,
+        judge_votes=3,
+    )
+
+    assert status == "failed"
+    assert "completed 1/2 judgments" in error
 
 
 def test_derive_status_ignores_disabled_subtask() -> None:
@@ -1258,3 +1380,160 @@ def test_run_question_absorbs_query_canceled_without_retry() -> None:
     )
     assert calls["n"] == 1  # pas de retry : l'annulation n'est pas une coupure
     assert item.error is not None and "timeout" in item.error
+
+
+def test_judge_answer_with_votes_majority(monkeypatch) -> None:
+    """Vote majoritaire : 2 pass / 1 fail -> PASS, votes archivés, accord 2/3."""
+    from src.goldset import eval as eval_module
+
+    seq = iter(
+        [
+            {"status": "completed", "pass": True, "score": 0.9, "failure_category": None},
+            {"status": "completed", "pass": False, "score": 0.4, "failure_category": "incomplete"},
+            {"status": "completed", "pass": True, "score": 0.8, "failure_category": None},
+        ]
+    )
+    monkeypatch.setattr(eval_module, "judge_answer", lambda **kwargs: next(seq))
+    result = eval_module.judge_answer_with_votes(votes=3, question="q")
+    assert result["pass"] is True
+    assert len(result["votes"]) == 3
+    assert result["vote_agreement"] == "2/3"
+    # payload de base cohérent avec le verdict (un vote majoritaire)
+    assert result["failure_category"] is None
+
+
+def test_judge_answer_with_votes_tolerates_a_failed_vote(monkeypatch) -> None:
+    """Un vote en erreur (ex. 429) n'invalide pas le verdict : majorité des complétés."""
+    from src.goldset import eval as eval_module
+
+    seq = iter(
+        [
+            {"status": "failed", "reason": "429"},
+            {"status": "completed", "pass": False, "score": 0.3, "failure_category": "wrong_law"},
+            {"status": "completed", "pass": False, "score": 0.2, "failure_category": "wrong_law"},
+        ]
+    )
+    monkeypatch.setattr(eval_module, "judge_answer", lambda **kwargs: next(seq))
+    result = eval_module.judge_answer_with_votes(votes=3, question="q")
+    assert result["pass"] is False
+    assert result["vote_agreement"] == "2/2"
+    assert result["status"] == "completed"
+
+
+def test_judge_answer_with_votes_requires_original_majority_quorum(monkeypatch) -> None:
+    """Deux erreurs ne doivent jamais transformer un maj-3 en single-shot."""
+    from src.goldset import eval as eval_module
+
+    seq = iter(
+        [
+            {"status": "failed", "reason": "429"},
+            {"status": "failed", "reason": "timeout"},
+            {"status": "completed", "pass": True, "score": 0.9},
+        ]
+    )
+    monkeypatch.setattr(eval_module, "judge_answer", lambda **kwargs: next(seq))
+
+    result = eval_module.judge_answer_with_votes(votes=3, question="q")
+
+    assert result["status"] == "failed"
+    assert "required=2" in result["reason"]
+    assert result["vote_agreement"] == "1/1"
+    assert [vote["reason"] for vote in result["votes"]] == ["429", "timeout", None]
+
+
+def test_judge_answer_with_votes_rejects_tie_after_failed_vote(monkeypatch) -> None:
+    """Un split 1-1 après une erreur n'est pas une majorité et doit échouer."""
+    from src.goldset import eval as eval_module
+
+    seq = iter(
+        [
+            {"status": "failed", "reason": "429"},
+            {"status": "completed", "pass": True, "score": 0.9},
+            {"status": "completed", "pass": False, "score": 0.2},
+        ]
+    )
+    monkeypatch.setattr(eval_module, "judge_answer", lambda **kwargs: next(seq))
+
+    result = eval_module.judge_answer_with_votes(votes=3, question="q")
+
+    assert result["status"] == "failed"
+    assert "pass=1, fail=1" in result["reason"]
+    assert result["vote_agreement"] == "1/2"
+
+
+def test_judge_answer_with_votes_single_is_passthrough(monkeypatch) -> None:
+    """votes=1 = single-shot exact (screening intermédiaire) : ni votes ni agrément."""
+    from src.goldset import eval as eval_module
+
+    calls = {"n": 0}
+
+    def one(**kwargs):
+        calls["n"] += 1
+        return {"status": "completed", "pass": True, "score": 1.0}
+
+    monkeypatch.setattr(eval_module, "judge_answer", one)
+    result = eval_module.judge_answer_with_votes(votes=1, question="q")
+    assert calls["n"] == 1
+    assert "votes" not in result and "vote_agreement" not in result
+
+
+def _load_rag_quality_protocol_module():
+    script_path = Path(__file__).parents[1] / ".github/scripts/rag_quality_protocol.py"
+    spec = importlib.util.spec_from_file_location("rag_quality_protocol", script_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        (
+            {"event_name": "pull_request", "pr_full_requested": False},
+            ("openrouter", "", 1, False),
+        ),
+        (
+            {"event_name": "pull_request", "pr_full_requested": True},
+            ("scaleway", "qwen3-235b-a22b-instruct-2507", 3, True),
+        ),
+        (
+            {"event_name": "workflow_dispatch", "eval_mode": "smoke", "target_environment": "staging"},
+            ("openrouter", "", 1, False),
+        ),
+        (
+            {"event_name": "workflow_dispatch", "eval_mode": "full", "target_environment": "staging"},
+            ("scaleway", "qwen3-235b-a22b-instruct-2507", 3, True),
+        ),
+        (
+            {"event_name": "workflow_dispatch", "eval_mode": "smoke", "target_environment": "production"},
+            ("scaleway", "qwen3-235b-a22b-instruct-2507", 3, True),
+        ),
+    ],
+)
+def test_rag_quality_protocol_event_matrix(kwargs, expected) -> None:
+    protocol_module = _load_rag_quality_protocol_module()
+
+    protocol = protocol_module.resolve_protocol(**kwargs)
+
+    assert (protocol.provider, protocol.model, protocol.votes, protocol.official) == expected
+
+
+@pytest.mark.parametrize(
+    "forbidden",
+    [
+        {"skip_judge": True},
+        {"requested_model": "another-model"},
+    ],
+)
+def test_rag_quality_official_protocol_rejects_overrides(forbidden) -> None:
+    protocol_module = _load_rag_quality_protocol_module()
+
+    with pytest.raises(ValueError, match="official adoption gate"):
+        protocol_module.resolve_protocol(
+            event_name="workflow_dispatch",
+            eval_mode="full",
+            target_environment="staging",
+            **forbidden,
+        )
