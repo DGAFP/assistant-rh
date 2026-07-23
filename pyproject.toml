@@ -89,6 +89,8 @@ assistant-rh-shared-config = { workspace = true }
 assistant-rh-data-ingestion-cli = { workspace = true }
 [tool.ruff]
 line-length = 150
+# Pages Streamlit archivées (hors navigation) : conservées pour référence, non maintenues.
+extend-exclude = ["apps/streamlit-ui/archive"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
@@ -100,11 +102,9 @@ select = ["E", "F", "I"]
 "apps/streamlit-ui/pages/03_Feedback_Dashboard.py" = ["E501", "E722"]
 "apps/streamlit-ui/pages/04_Admin_Config.py" = ["E402", "E501", "E722"]
 "apps/streamlit-ui/pages/05_DB_Explorer.py" = ["E501"]
-"apps/streamlit-ui/pages/07_Eval_Comparison.py" = ["E501"]
 "apps/streamlit-ui/pages/08_Chunking_Evaluation.py" = ["E501", "E741"]
 "apps/streamlit-ui/pages/09_Pipeline_Evaluation.py" = ["E501", "F841"]
 "apps/streamlit-ui/pages/10_Intent_Gater_Evaluation.py" = ["E501"]
-"apps/streamlit-ui/pages/11_Golden_Beta_Analysis.py" = ["E501"]
 "apps/streamlit-ui/pages/12_Pipeline_Timeline.py" = ["E501"]
 "apps/streamlit-ui/pages/15_Import_Sources.py" = ["E402"]
 "apps/streamlit-ui/pages/_PDF_Viewer.py" = ["E402", "E501"]
