@@ -456,7 +456,7 @@ Flips vs 116 : 8 gagnées (q28, 194, 197, 221, 223, 226, 228, 926), 9 perdues (q
 | gpt-5.2 | 9,1 % | 68,7 % | **0,35 (sur-strict)** | ✅ ZDR |
 
 **Décision (utilisateur, 22/07) — protocole à DEUX étages** :
-- **OFFICIEL (gates d'adoption staging/prod uniquement)** : juge souverain **Scaleway qwen3-235b en vote majoritaire à 3 appels** (`--judge-votes 3`, PR #333) — bruit effectif ~0,8 %, posture DINUM la plus défendable, sortie de la dépendance OpenRouter pour les décisions.
+- **OFFICIEL CIBLE (gates d'adoption staging/prod uniquement)** : juge souverain **Scaleway qwen3-235b en vote majoritaire à 3 appels** — bruit effectif ~0,8 %, posture DINUM la plus défendable, sortie de la dépendance OpenRouter pour les décisions. Le support d'exécution `--judge-votes 3` est porté par la PR #333, encore ouverte au 23/07 : tant qu'elle n'est pas corrigée et mergée, le workflow courant ne constitue pas un gate officiel maj-3.
 - **SCREENING intermédiaire** : grok-4.5 single-shot (coût minimal ; sa référence des 3 runs existe déjà en cache).
 
 **RÉFÉRENCE OFFICIELLE** (runs 118/123/124 re-jugés offline en Scaleway maj-3, 891 votes, verdicts qwen préservés en base) :
@@ -473,7 +473,7 @@ Flips vs 116 : 8 gagnées (q28, 194, 197, 221, 223, 226, 228, 926), 9 perdues (q
 
 **Incidents d'infra consignés** (journée du 21-22/07, tous de la famille « réseau silencieux ») : sockets à moitié mortes gelant les workers (fix : timeout HTTP client 45 s obligatoire sur tout script de juge — à porter dans `judge_answer`), pièges pgrep auto-matchants (3 occurrences), venv nu des worktrees. Runs locaux 119-121 = statuts orphelins à nettoyer.
 
-**Prochain** : vague 1 — P1 `rerank_input_k=40` (prérequis plomberie de R2 : un article remonté par R2 au rang ~25 doit franchir l'entrée du rerank, coupée à 20), screening grok, puis R2 (#332), puis gate d'adoption Scaleway maj-3 sur le paquet.
+**Prochain au 22/07 avant le run 145 (historique)** : vague 1 — P1 `rerank_input_k=40` (prérequis plomberie de R2 : un article remonté par R2 au rang ~25 doit franchir l'entrée du rerank, coupée à 20), screening grok, puis R2 (#332), puis gate d'adoption Scaleway maj-3 sur le paquet.
 
 ---
 
@@ -486,8 +486,8 @@ Flips vs 116 : 8 gagnées (q28, 194, 197, 221, 223, 226, 228, 926), 9 perdues (q
 |---|---|
 | Global (ininterprétable en single-shot, σ-grok 6,1 %) | 0,677 vs réf 0,707 |
 | Flips sur questions STABLES-grok | +3 (q175, q223, q657) / −6 (q6, q16, q200, q204, q212, q4534) — **dans la bande de bruit grok (~5 attendus)** |
-| **Cibles nommées P1** | **q17 : FAIL→PASS ✓** ; **q218 : FAIL→PASS ✓** (bonus — le contrefactuel le donnait non réparé) ; q192 : déjà PASS-stable sous grok (c'est sous le juge officiel qu'elle est une cible) |
+| **Cibles nommées P1** | **q17 : FAIL→PASS ✓** ; q192 : déjà PASS-stable sous grok (c'est sous le juge officiel qu'elle est une cible) ; q218 : FAIL→PASS observé, mais non attribuable à P1 — le contrefactuel la classe rang 25 après rerank, hors du top-20 servi |
 
-**Lecture** : le mécanisme fait ce que le funnel prédisait — les sections-réponse aux pré-rangs 21-40 atteignent désormais le reranker et convertissent (q17, q218). Le net −3 sur les stables est indistinguable du bruit du juge de screening : c'est PRÉCISÉMENT pourquoi l'adoption passe par le gate Scaleway maj-3, seul étage capable de trancher.
+**Lecture** : le mécanisme produit le signal attendu sur q17 : sa section-réponse, auparavant coupée avant le reranker, atteint désormais le top-20 servi et convertit. Le PASS de q218 n'est pas une preuve du mécanisme sans trace montrant que la section-réponse a rejoint le contexte final ; il reste compatible avec le bruit du screening. Le net −3 sur les stables est lui aussi indistinguable du bruit du juge : c'est PRÉCISÉMENT pourquoi l'adoption doit passer par le gate Scaleway maj-3, seul étage capable de trancher.
 
-**Prochain** : P1 qualifié pour le **gate d'adoption** — un seul gate Scaleway maj-3 pour le paquet P1+R2 dès que #332 est mergée et le corpus R2 appliqué (économie de runs).
+**Prochain au 23/07** : #332 est mergée. Générer, revoir humainement puis appliquer le corpus R2, puis soumettre le paquet P1+R2 à un seul **gate d'adoption Scaleway maj-3** après correction et merge de #333 (économie de runs).
