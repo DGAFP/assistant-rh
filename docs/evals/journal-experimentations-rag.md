@@ -459,7 +459,7 @@ Flips vs 116 : 8 gagnées (q28, 194, 197, 221, 223, 226, 228, 926), 9 perdues (q
 - **OFFICIEL CIBLE (gates d'adoption staging/prod uniquement)** : juge souverain **Scaleway qwen3-235b en vote majoritaire à 3 appels** — bruit effectif ~0,8 %, posture DINUM la plus défendable, sortie de la dépendance OpenRouter pour les décisions. Le support d'exécution `--judge-votes 3` est porté par la PR #333, encore ouverte au 23/07 : tant qu'elle n'est pas corrigée et mergée, le workflow courant ne constitue pas un gate officiel maj-3.
 - **SCREENING intermédiaire** : grok-4.5 single-shot (coût minimal ; sa référence des 3 runs existe déjà en cache).
 
-**RÉFÉRENCE OFFICIELLE** (runs 118/123/124 re-jugés offline en Scaleway maj-3, 891 votes, verdicts qwen préservés en base) :
+**RÉFÉRENCE OFFICIELLE** (runs 118/123/124 re-jugés offline en Scaleway maj-3, 891 votes, verdicts qwen préservés en base ; verdicts par question versionnés dans `docs/evals/verdicts-officiels/official_scw_maj3_{118,123,124}.json`) :
 
 | Mesure | Valeur |
 |---|---|
