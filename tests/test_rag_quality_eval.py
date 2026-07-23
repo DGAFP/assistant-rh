@@ -1037,6 +1037,258 @@ def test_merge_gold_doc_ids_keeps_raw_labels_when_nothing_resolves() -> None:
     assert set(merged) == {"F3", "F4"}
 
 
+def test_usage_cost_eur_is_provider_aware() -> None:
+    from src.goldset.eval import _usage_cost_eur
+
+    # qwen3-235b: 0.75 € / 2.25 € par M tokens (in / out)
+    assert _usage_cost_eur("scaleway", "qwen3-235b-a22b-instruct-2507", 1_000_000, 1_000_000) == 3.0
+    # Même modèle chez un autre provider: aucune conversion EUR inventée.
+    assert _usage_cost_eur("openrouter", "qwen3-235b-a22b-instruct-2507", 1_000_000, 1_000_000) is None
+    assert _usage_cost_eur("scaleway", "modele-inconnu", 1000, 1000) is None
+
+
+def test_instrument_usage_tallies_every_create_call() -> None:
+    # RAGAS fait N appels internes: l'instrumentation doit tous les capter.
+    from src.goldset.eval import _instrument_usage, _TokenUsage
+
+    class _Usage:
+        def __init__(self, p: int, c: int) -> None:
+            self.prompt_tokens = p
+            self.completion_tokens = c
+            self.cost = 0.001
+
+    class _Resp:
+        def __init__(self, p: int, c: int) -> None:
+            self.usage = _Usage(p, c)
+
+    class _Completions:
+        def create(self, **kwargs: object) -> _Resp:
+            return _Resp(10, 3)
+
+    class _Chat:
+        completions = _Completions()
+
+    class _Client:
+        chat = _Chat()
+
+    client = _Client()
+    tracker = _TokenUsage()
+    assert _instrument_usage(client, tracker) is True
+    client.chat.completions.create(model="x")
+    client.chat.completions.create(model="x")
+
+    assert (tracker.prompt_tokens, tracker.completion_tokens, tracker.calls, tracker.attempted_calls) == (20, 6, 2, 2)
+    usage = tracker.as_dict("llama-3.3-70b-instruct", "scaleway", capture_complete=True)
+    assert usage["cost_eur"] == round(20 / 1e6 * 0.9 + 6 / 1e6 * 0.9, 6)
+    assert usage["reported_cost"] == 0.002
+
+
+def test_instrument_usage_distinguishes_missing_usage_payload() -> None:
+    from src.goldset.eval import _instrument_usage, _TokenUsage
+
+    class _Completions:
+        def create(self, **kwargs: object) -> object:
+            return object()
+
+    class _Client:
+        chat = type("_Chat", (), {"completions": _Completions()})()
+
+    tracker = _TokenUsage()
+    client = _Client()
+    assert _instrument_usage(client, tracker) is True
+    client.chat.completions.create(model="x")
+
+    assert tracker.attempted_calls == 1
+    assert tracker.calls == 0
+
+
+def test_token_usage_keeps_openrouter_credits_separate_from_eur() -> None:
+    from src.goldset.eval import _TokenUsage
+
+    class _Usage:
+        prompt_tokens = 100
+        completion_tokens = 10
+        cost = 0.0035
+
+    tracker = _TokenUsage()
+    assert tracker.record(_Usage()) is True
+
+    usage = tracker.as_dict("x-ai/grok-4.5", "openrouter", capture_complete=True)
+    assert usage["cost_eur"] is None
+    assert usage["reported_cost"] == 0.0035
+    assert usage["reported_cost_unit"] == "openrouter_credit"
+
+
+def test_aggregate_token_usage_exact_billable_plus_free_estimate() -> None:
+    from src.goldset.eval import EvalItem, _aggregate_token_usage
+
+    item = EvalItem(question_id=1, question="q", gold_answer="g", gold_sources=[])
+    item.judge_result = {
+        "status": "completed",
+        "usage": {
+            "prompt_tokens": 1000,
+            "completion_tokens": 200,
+            "calls": 1,
+            "model": "qwen3-235b-a22b-instruct-2507",
+            "provider": "scaleway",
+            "cost_eur": 0.0012,
+            "capture_complete": True,
+        },
+    }
+    item.ragas_metrics = {
+        "status": "completed",
+        "usage": {
+            "prompt_tokens": 5000,
+            "completion_tokens": 500,
+            "calls": 8,
+            "model": "llama-3.3-70b-instruct",
+            "provider": "scaleway",
+            "cost_eur": 0.00495,
+            "capture_complete": True,
+        },
+    }
+    item.timing = {"response_length_tokens": 300}
+    item.contexts = [{"content": "x" * 40_000, "metadata_not_sent": "n" * 40_000}]
+    item.metadata = {
+        "generator_prompt_chars": 400,
+        "selector_prompt_chars": 800,
+        "selector_response_chars": 40,
+    }
+
+    out = _aggregate_token_usage([item])
+
+    assert out["judge"]["prompt_tokens"] == 1000
+    assert out["ragas"]["calls"] == 8
+    assert out["billable_cost_eur"] == round(0.0012 + 0.00495, 4)
+    # générateur Albert (gratuit): sortie = compteur réel, coût nul
+    assert out["generator_albert_est"]["prompt_tokens"] == 100
+    assert out["generator_albert_est"]["completion_tokens"] == 300
+    assert out["generator_albert_est"]["cost_eur"] == 0.0
+    assert out["selector_albert_est"]["prompt_tokens"] == 200
+    assert out["selector_albert_est"]["completion_tokens"] == 10
+
+
+def test_aggregate_token_usage_fails_closed_for_unknown_eur_cost() -> None:
+    from src.goldset.eval import EvalItem, _aggregate_token_usage
+
+    item = EvalItem(question_id=1, question="q", gold_answer="g", gold_sources=[])
+    item.judge_result = {
+        "status": "completed",
+        "usage": {
+            "prompt_tokens": 100,
+            "completion_tokens": 10,
+            "calls": 1,
+            "model": "x-ai/grok-4.5",
+            "provider": "openrouter",
+            "cost_eur": None,
+            "reported_cost": 0.0042,
+            "reported_cost_unit": "openrouter_credit",
+            "capture_complete": True,
+        },
+    }
+    item.ragas_metrics = {"status": "skipped", "reason": "disabled"}
+
+    out = _aggregate_token_usage([item])
+
+    assert out["billable_cost_eur"] is None
+    assert out["judge"]["reported_cost"] == 0.0042
+    assert out["judge"]["reported_cost_unit"] == "openrouter_credit"
+    assert out["judge"]["coverage_complete"] is True
+
+
+def test_aggregate_token_usage_fails_closed_for_partial_reported_cost() -> None:
+    from src.goldset.eval import EvalItem, _aggregate_token_usage
+
+    captured = EvalItem(question_id=1, question="q", gold_answer="g", gold_sources=[])
+    captured.judge_result = {
+        "status": "completed",
+        "usage": {
+            "prompt_tokens": 100,
+            "completion_tokens": 10,
+            "calls": 1,
+            "model": "x-ai/grok-4.5",
+            "provider": "openrouter",
+            "cost_eur": None,
+            "reported_cost": 0.0042,
+            "reported_cost_unit": "openrouter_credit",
+            "capture_complete": True,
+        },
+    }
+    captured.ragas_metrics = {"status": "skipped", "reason": "disabled"}
+
+    incomplete = EvalItem(question_id=2, question="q", gold_answer="g", gold_sources=[])
+    incomplete.judge_result = {
+        "status": "failed",
+        "reason": "provider timeout",
+        "usage": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "calls": 0,
+            "model": "x-ai/grok-4.5",
+            "provider": "openrouter",
+            "cost_eur": None,
+            "reported_cost": None,
+            "reported_cost_unit": None,
+            "capture_complete": False,
+        },
+    }
+    incomplete.ragas_metrics = {"status": "skipped", "reason": "disabled"}
+
+    out = _aggregate_token_usage([captured, incomplete])
+
+    assert out["judge"]["coverage_complete"] is False
+    assert out["judge"]["reported_cost"] is None
+    assert out["judge"]["reported_cost_unit"] is None
+
+
+def test_aggregate_token_usage_fails_closed_when_capture_is_missing() -> None:
+    from src.goldset.eval import EvalItem, _aggregate_token_usage
+
+    item = EvalItem(question_id=1, question="q", gold_answer="g", gold_sources=[])
+    item.judge_result = {"status": "failed", "reason": "provider timeout"}
+    item.ragas_metrics = {"status": "skipped", "reason": "disabled"}
+
+    out = _aggregate_token_usage([item])
+
+    assert out["billable_cost_eur"] is None
+    assert out["judge"]["coverage_complete"] is False
+
+
+def test_run_question_records_exact_generator_prompt_size() -> None:
+    from types import SimpleNamespace
+
+    from src.goldset.eval import GoldsetQuestion, run_question
+
+    class _Pipe:
+        last_full_prompt = "user prompt"
+        last_system_prompt = "system"
+
+        def run_with_trace(self, *args, **kwargs):
+            return SimpleNamespace(
+                answer="answer",
+                context_items=[],
+                sources=[],
+                timing={"response_length_tokens": 2},
+                metadata={"existing": True},
+            )
+
+    item = run_question(
+        pipe=_Pipe(),
+        question=GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[]),
+        run_ragas=False,
+        run_judge=False,
+        judge_model="",
+        judge_base_url="",
+        judge_api_key="",
+        ragas_model="",
+        scaleway_base_url="",
+        scaleway_api_key="",
+    )
+
+    assert item.metadata["generator_prompt_chars"] == len("user promptsystem")
+    assert item.metadata["existing"] is True
+
+
 def test_judge_answer_openrouter_enforces_zdr(monkeypatch) -> None:
     """Revue #329 : data_collection=deny n'exclut que les providers qui
     collectent/entraînent — la ZDR est un attribut distinct chez OpenRouter,
@@ -1193,6 +1445,47 @@ def test_judge_answer_with_votes_majority(monkeypatch) -> None:
     assert result["vote_agreement"] == "2/3"
     # payload de base cohérent avec le verdict (un vote majoritaire)
     assert result["failure_category"] is None
+
+
+def test_judge_answer_with_votes_sums_usage_from_every_paid_call(monkeypatch) -> None:
+    from src.goldset import eval as eval_module
+
+    def usage(prompt: int, completion: int, cost: float) -> dict:
+        return {
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+            "calls": 1,
+            "model": "qwen3-235b-a22b-instruct-2507",
+            "provider": "scaleway",
+            "cost_eur": cost,
+            "reported_cost": None,
+            "reported_cost_unit": None,
+            "capture_complete": True,
+        }
+
+    seq = iter(
+        [
+            {"status": "completed", "pass": True, "score": 0.9, "usage": usage(100, 10, 0.000097)},
+            {"status": "completed", "pass": False, "score": 0.4, "usage": usage(110, 11, 0.000107)},
+            {"status": "completed", "pass": True, "score": 0.8, "usage": usage(120, 12, 0.000117)},
+        ]
+    )
+    monkeypatch.setattr(eval_module, "judge_answer", lambda **kwargs: next(seq))
+
+    result = eval_module.judge_answer_with_votes(
+        votes=3,
+        question="q",
+        provider="scaleway",
+        model="qwen3-235b-a22b-instruct-2507",
+    )
+
+    assert result["pass"] is True
+    assert result["usage"]["prompt_tokens"] == 330
+    assert result["usage"]["completion_tokens"] == 33
+    assert result["usage"]["calls"] == 3
+    assert result["usage"]["cost_eur"] == 0.000321
+    assert result["usage"]["capture_complete"] is True
+    assert [vote["usage"]["prompt_tokens"] for vote in result["votes"]] == [100, 110, 120]
 
 
 def test_judge_answer_with_votes_tolerates_a_failed_vote(monkeypatch) -> None:

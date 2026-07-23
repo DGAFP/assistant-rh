@@ -73,6 +73,8 @@ class _RetrievalAttempt:
     selector_decisions: dict[str, Any] = field(default_factory=dict)
     selector_reasoning: str = ""
     selector_raw_response: str = ""
+    selector_prompt_chars: int = 0
+    selector_response_chars: int = 0
     selector_items_before: int = 0
     selector_items_after: int = 0
     selector_all_rejected: bool = False
@@ -99,6 +101,8 @@ class _RetrievalAttempt:
                 "decisions": self.selector_decisions,
                 "reason": self.selector_reasoning,
                 "raw_response": self.selector_raw_response,
+                "prompt_chars": self.selector_prompt_chars,
+                "response_chars": self.selector_response_chars,
                 "items_before": self.selector_items_before,
                 "items_after": self.selector_items_after,
                 "all_rejected": self.selector_all_rejected,
@@ -601,6 +605,9 @@ class Pipeline:
             attempt.selector_decisions = selector.last_decisions
             attempt.selector_reasoning = selector.last_reasoning
             attempt.selector_raw_response = selector.last_raw_response
+            selector_prompt_chars = selector.last_prompt_chars
+            attempt.selector_prompt_chars = selector_prompt_chars if isinstance(selector_prompt_chars, int) else 0
+            attempt.selector_response_chars = len(selector.last_raw_response)
             attempt.selector_items_before = sections_before
             attempt.selector_items_after = len(sections)
             attempt.selector_all_rejected = selector.all_rejected
@@ -699,6 +706,8 @@ class Pipeline:
         state.stage_refs["selector_decisions"] = latest.selector_decisions
         state.stage_refs["selector_reasoning"] = latest.selector_reasoning
         state.stage_refs["selector_raw_response"] = latest.selector_raw_response
+        state.stage_refs["selector_prompt_chars"] = sum(attempt.selector_prompt_chars for attempt in attempts)
+        state.stage_refs["selector_response_chars"] = sum(attempt.selector_response_chars for attempt in attempts)
         state.stage_refs["selector_items_before"] = latest.selector_items_before
         state.stage_refs["selector_items_after"] = latest.selector_items_after
         state.stage_refs["selector_all_rejected"] = latest.selector_all_rejected
@@ -777,6 +786,8 @@ class Pipeline:
             "selector_reasoning": state.stage_refs.get("selector_reasoning", ""),
             "selector_rejection_reason": state.stage_refs.get("selector_rejection_reason", ""),
             "selector_raw_response": state.stage_refs.get("selector_raw_response", ""),
+            "selector_prompt_chars": state.stage_refs.get("selector_prompt_chars", 0),
+            "selector_response_chars": state.stage_refs.get("selector_response_chars", 0),
             "selector_items_before": state.stage_refs.get("selector_items_before", 0),
             "selector_items_after": state.stage_refs.get("selector_items_after", 0),
             "sections_before_rerank": _sections_before_rerank(state),

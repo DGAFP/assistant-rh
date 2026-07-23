@@ -1113,6 +1113,176 @@ def aggregate_items(items: list[EvalItem]) -> dict[str, Any]:
         "ragas_faithfulness_avg": _metric_average(items, "faithfulness", "ragas_metrics"),
         "ragas_context_precision_avg": _metric_average(items, "context_precision", "ragas_metrics"),
         "ragas_context_recall_avg": _metric_average(items, "context_recall", "ragas_metrics"),
+        "token_usage": _aggregate_token_usage(items),
+    }
+
+
+# Prix Scaleway Generative APIs (EUR / 1M tokens, input/output). La clé inclut
+# le provider: un même nom de modèle peut avoir un tarif différent ailleurs.
+# Albert est traité séparément comme gratuit dans l'agrégat.
+_LLM_PRICE_EUR_PER_MTOK: dict[tuple[str, str], tuple[float, float]] = {
+    ("scaleway", "qwen3-235b-a22b-instruct-2507"): (0.75, 2.25),
+    ("scaleway", "llama-3.3-70b-instruct"): (0.90, 0.90),
+    ("scaleway", "gpt-oss-120b"): (0.15, 0.60),
+}
+
+
+def _usage_cost_eur(provider: str, model: str, prompt_tokens: int, completion_tokens: int) -> float | None:
+    """Coût EUR d'un usage, ou None sans tarif vérifié pour ce provider."""
+    price = _LLM_PRICE_EUR_PER_MTOK.get(((provider or "").lower(), model or ""))
+    if price is None:
+        return None
+    return round(prompt_tokens / 1_000_000 * price[0] + completion_tokens / 1_000_000 * price[1], 6)
+
+
+class _TokenUsage:
+    """Cumule les tokens facturables sur un client OpenAI-compatible.
+
+    Le juge fait 1 appel; RAGAS en fait N (extraction de statements, NLI de
+    faithfulness, context precision/recall) qui ré-envoient le contexte. On
+    instrumente ``chat.completions.create`` pour tout capter sans dépendre des
+    internes de RAGAS."""
+
+    def __init__(self) -> None:
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.calls = 0
+        self.attempted_calls = 0
+        self.reported_cost = 0.0
+        self.reported_cost_calls = 0
+
+    def record(self, usage: Any) -> bool:
+        if not usage:
+            return False
+        self.prompt_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
+        self.completion_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
+        self.calls += 1
+        reported_cost = _safe_float(getattr(usage, "cost", None))
+        if reported_cost is not None:
+            self.reported_cost += reported_cost
+            self.reported_cost_calls += 1
+        return True
+
+    def as_dict(self, model: str, provider: str, *, capture_complete: bool) -> dict[str, Any]:
+        return {
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "calls": self.calls,
+            "model": model,
+            "provider": provider,
+            "cost_eur": _usage_cost_eur(provider, model, self.prompt_tokens, self.completion_tokens),
+            # OpenRouter reports this value in credits, not in EUR. Keep it
+            # explicit and separate so it is never silently added to EUR.
+            "reported_cost": round(self.reported_cost, 8) if self.reported_cost_calls else None,
+            "reported_cost_unit": "openrouter_credit" if provider == "openrouter" and self.reported_cost_calls else None,
+            "capture_complete": capture_complete,
+        }
+
+
+def _instrument_usage(client: Any, tracker: _TokenUsage) -> bool:
+    """Instrumente ``client.chat.completions.create`` pour cumuler l'usage.
+
+    On surcharge la méthode sur l'instance (``chat``/``completions`` sont des
+    cached_property stables en openai v1) plutôt que d'envelopper le client:
+    ``llm_factory`` de RAGAS vérifie le type, il faut garder l'instance réelle."""
+    try:
+        completions = client.chat.completions
+        original = completions.create
+
+        def wrapped(*args: Any, **kwargs: Any) -> Any:
+            tracker.attempted_calls += 1
+            response = original(*args, **kwargs)
+            try:
+                tracker.record(getattr(response, "usage", None))
+            except Exception:  # noqa: BLE001 — le tally ne doit jamais casser l'appel LLM
+                pass
+            return response
+
+        completions.create = wrapped
+        return True
+    except Exception:  # noqa: BLE001 — si l'API change, on dégrade sans usage plutôt que crasher
+        return False
+
+
+def _aggregate_token_usage(items: list["EvalItem"]) -> dict[str, Any]:
+    """Agrège l'usage LLM sans convertir un coût inconnu en faux zéro."""
+
+    def _sum(getter: Any) -> dict[str, Any]:
+        prompt = completion = calls = tracked = active = 0
+        eur_total = 0.0
+        eur_complete = True
+        providers: set[str] = set()
+        models: set[str] = set()
+        reported_by_unit: dict[str, float] = {}
+        reported_items = 0
+        for item in items:
+            result = getter(item)
+            if not isinstance(result, dict) or result.get("status") == "skipped":
+                continue
+            active += 1
+            usage = result.get("usage")
+            if not isinstance(usage, dict):
+                eur_complete = False
+                continue
+            prompt += int(usage.get("prompt_tokens") or 0)
+            completion += int(usage.get("completion_tokens") or 0)
+            calls += int(usage.get("calls") or 0)
+            if usage.get("capture_complete") is True:
+                tracked += 1
+            else:
+                eur_complete = False
+            if usage.get("provider"):
+                providers.add(str(usage["provider"]))
+            if usage.get("model"):
+                models.add(str(usage["model"]))
+            item_cost = _safe_float(usage.get("cost_eur"))
+            if item_cost is None:
+                eur_complete = False
+            else:
+                eur_total += item_cost
+            reported_cost = _safe_float(usage.get("reported_cost"))
+            reported_unit = str(usage.get("reported_cost_unit") or "")
+            if reported_cost is not None and reported_unit:
+                reported_by_unit[reported_unit] = reported_by_unit.get(reported_unit, 0.0) + reported_cost
+                reported_items += 1
+        reported_complete = active > 0 and tracked == active and reported_items == active and len(reported_by_unit) == 1
+        single_reported_unit = next(iter(reported_by_unit)) if reported_complete else None
+        return {
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+            "calls": calls,
+            "items": tracked,
+            "active_items": active,
+            "coverage_complete": tracked == active,
+            "provider": next(iter(providers)) if len(providers) == 1 else "mixed" if providers else "",
+            "model": next(iter(models)) if len(models) == 1 else "mixed" if models else "",
+            "cost_eur": round(eur_total, 6) if active and eur_complete else 0.0 if not active else None,
+            "reported_cost": round(reported_by_unit[single_reported_unit], 8) if single_reported_unit else None,
+            "reported_cost_unit": single_reported_unit,
+        }
+
+    judge = _sum(lambda it: it.judge_result)
+    ragas = _sum(lambda it: it.ragas_metrics)
+    # Générateur/sélecteur = Albert (gratuit): estimation depuis les volumes stockés
+    # réellement envoyés (sortie = compteur réel; input ~ chars/4).
+    gen_out = sum(int((item.timing or {}).get("response_length_tokens") or 0) for item in items)
+    gen_in_est = sum(int((item.metadata or {}).get("generator_prompt_chars") or 0) for item in items) // 4
+    sel_in_est = sum(int((item.metadata or {}).get("selector_prompt_chars") or 0) for item in items) // 4
+    sel_out_est = sum(int((item.metadata or {}).get("selector_response_chars") or 0) for item in items) // 4
+    active_billable = [part for part in (judge, ragas) if part["active_items"]]
+    billable = (
+        round(sum(float(part["cost_eur"]) for part in active_billable), 4) if all(part["cost_eur"] is not None for part in active_billable) else None
+    )
+    return {
+        "judge": judge,
+        "ragas": ragas,
+        "generator_albert_est": {"prompt_tokens": gen_in_est, "completion_tokens": gen_out, "cost_eur": 0.0},
+        "selector_albert_est": {"prompt_tokens": sel_in_est, "completion_tokens": sel_out_est, "cost_eur": 0.0},
+        "billable_cost_eur": billable,
+        "note": (
+            "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. "
+            "Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+        ),
     }
 
 
@@ -1137,6 +1307,8 @@ def compute_ragas_metrics(
     except ImportError as exc:
         return {"status": "skipped", "reason": f"missing dependency: {exc.name}"}
 
+    usage = _TokenUsage()
+    instrumented = False
     try:
         dataset = Dataset.from_list(
             [
@@ -1149,6 +1321,7 @@ def compute_ragas_metrics(
             ]
         )
         client = OpenAI(api_key=api_key, base_url=base_url)
+        instrumented = _instrument_usage(client, usage)  # capte tous les sous-appels RAGAS
         llm = llm_factory(
             model=model,
             provider="openai",
@@ -1164,9 +1337,20 @@ def compute_ragas_metrics(
             "faithfulness": _safe_float(row.get("faithfulness")),
             "context_precision": _safe_float(row.get("context_precision")),
             "context_recall": _safe_float(row.get("context_recall")),
+            "usage": usage.as_dict(
+                model,
+                "scaleway",
+                capture_complete=instrumented and usage.attempted_calls > 0 and usage.calls == usage.attempted_calls,
+            ),
         }
     except Exception as exc:
-        return {"status": "failed", "reason": str(exc)}
+        return {
+            "status": "failed",
+            "reason": str(exc),
+            # Les appels déjà terminés restent visibles, mais un run RAGAS
+            # interrompu ne permet pas de garantir que tout usage est revenu.
+            "usage": usage.as_dict(model, "scaleway", capture_complete=False),
+        }
 
 
 def _safe_float(value: Any) -> float | None:
@@ -1426,6 +1610,8 @@ def judge_answer(
         "Return only valid JSON with keys: score, pass, failure_category, material_contradiction, "
         "dimensions, missing_required_points, contradictions, rationale, source_support."
     )
+    usage = _TokenUsage()
+    usage_captured = False
     try:
         # base_url vide (ex. provider openai sans OPENAI_BASE_URL) -> ne pas la
         # passer, sinon OpenAI(base_url="") lève UnsupportedProtocol (revue #318).
@@ -1447,12 +1633,50 @@ def judge_answer(
         if provider == "openrouter":
             create_kwargs["extra_body"] = {"provider": {"data_collection": "deny", "zdr": True}}
         response = client.chat.completions.create(**create_kwargs)
+        usage_captured = usage.record(getattr(response, "usage", None))
         content = response.choices[0].message.content or "{}"
         parsed = _extract_json_object(content)
         parsed["status"] = "completed"
-        return calibrate_judge_result(parsed, deterministic_metrics)
+        calibrated = calibrate_judge_result(parsed, deterministic_metrics)
+        calibrated["usage"] = usage.as_dict(model, provider, capture_complete=usage_captured)
+        return calibrated
     except Exception as exc:
-        return {"status": "failed", "reason": str(exc)}
+        return {
+            "status": "failed",
+            "reason": str(exc),
+            "usage": usage.as_dict(model, provider, capture_complete=usage_captured),
+        }
+
+
+def _combine_usage_payloads(results: list[dict[str, Any]], *, provider: str, model: str) -> dict[str, Any]:
+    """Combine usage from every judge vote without hiding incomplete capture."""
+    usages = [result.get("usage") for result in results]
+    valid = [usage for usage in usages if isinstance(usage, dict)]
+    providers = {str(usage.get("provider") or "") for usage in valid if usage.get("provider")}
+    models = {str(usage.get("model") or "") for usage in valid if usage.get("model")}
+    costs_eur = [_safe_float(usage.get("cost_eur")) for usage in valid]
+    capture_complete = len(valid) == len(results) and all(usage.get("capture_complete") is True for usage in valid)
+
+    reported = [
+        (_safe_float(usage.get("reported_cost")), str(usage.get("reported_cost_unit") or ""))
+        for usage in valid
+        if usage.get("reported_cost") is not None
+    ]
+    reported_units = {unit for _, unit in reported if unit}
+    reported_complete = len(reported) == len(valid) and len(reported_units) == 1 and all(cost is not None for cost, _ in reported)
+    reported_unit = next(iter(reported_units)) if reported_complete else None
+
+    return {
+        "prompt_tokens": sum(int(usage.get("prompt_tokens") or 0) for usage in valid),
+        "completion_tokens": sum(int(usage.get("completion_tokens") or 0) for usage in valid),
+        "calls": sum(int(usage.get("calls") or 0) for usage in valid),
+        "model": next(iter(models)) if len(models) == 1 else "mixed" if models else model,
+        "provider": next(iter(providers)) if len(providers) == 1 else "mixed" if providers else provider,
+        "cost_eur": round(sum(cost for cost in costs_eur if cost is not None), 6) if valid and all(cost is not None for cost in costs_eur) else None,
+        "reported_cost": (round(sum(cost for cost, _ in reported if cost is not None), 8) if reported_complete else None),
+        "reported_cost_unit": reported_unit,
+        "capture_complete": capture_complete,
+    }
 
 
 def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
@@ -1468,6 +1692,11 @@ def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
     if votes == 1:
         return judge_answer(**kwargs)
     results = [judge_answer(**kwargs) for _ in range(votes)]
+    combined_usage = _combine_usage_payloads(
+        results,
+        provider=str(kwargs.get("provider") or DEFAULT_JUDGE_PROVIDER),
+        model=str(kwargs.get("model") or ""),
+    )
     completed = [r for r in results if r.get("status") == "completed"]
     n_pass = sum(1 for r in completed if r.get("pass"))
     n_fail = len(completed) - n_pass
@@ -1479,6 +1708,7 @@ def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
             "failure_category": r.get("failure_category"),
             "status": r.get("status"),
             "reason": r.get("reason"),
+            "usage": r.get("usage"),
         }
         for r in results
     ]
@@ -1488,12 +1718,14 @@ def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
             "reason": f"judge vote quorum not reached: required={quorum}, pass={n_pass}, fail={n_fail}, completed={len(completed)}/{votes}",
             "votes": vote_audit,
             "vote_agreement": f"{max(n_pass, n_fail)}/{len(completed)}",
+            "usage": combined_usage,
         }
     verdict = n_pass >= quorum
     base = dict(next(r for r in completed if bool(r.get("pass")) == verdict))
     base["pass"] = verdict
     base["votes"] = vote_audit
     base["vote_agreement"] = f"{max(n_pass, n_fail)}/{len(completed)}"
+    base["usage"] = combined_usage
     return base
 
 
@@ -1579,7 +1811,14 @@ def run_question(
         item.contexts = contexts
         item.sources = result.sources
         item.timing = {**result.timing, "eval_total_ms": elapsed_ms}
-        item.metadata = result.metadata
+        metadata = dict(result.metadata) if isinstance(result.metadata, dict) else {}
+        # Les prompts exposés par Pipeline sont exactement les deux messages
+        # envoyés au générateur. Conserver uniquement leurs tailles évite
+        # d'écrire le contenu sensible tout en donnant une estimation fidèle.
+        generator_user_prompt = str(getattr(pipe, "last_full_prompt", "") or "")
+        generator_system_prompt = str(getattr(pipe, "last_system_prompt", "") or "")
+        metadata["generator_prompt_chars"] = len(generator_user_prompt) + len(generator_system_prompt)
+        item.metadata = metadata
         item.deterministic_metrics = deterministic_metrics(question.retrieval_gold, doc_ids, aliases=identifier_aliases)
 
         context_texts = [str(context.get("content") or "") for context in contexts if str(context.get("content") or "").strip()]
