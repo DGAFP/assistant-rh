@@ -45,10 +45,12 @@ def test_run_limit_report_and_stale_skip(monkeypatch, tmp_path, capsys) -> None:
     current_after = {"C1": "texte un", "C2": "texte deux MODIFIÉ ENTRETEMPS"}
 
     lock_calls = {"n": 0}
+    events: list[str] = []
 
     def fake_fetch(conn, schema, table, *, uids=None, has_index_variant, for_update=False):
         if uids is not None and for_update:
             lock_calls["n"] += 1
+            events.append("fetch_for_update")
         if uids is None:
             return [dict(r) for r in articles]
         return [{"cid": c, "chunk_text": current_after[c]} for c in uids if c in current_after]
@@ -84,6 +86,9 @@ def test_run_limit_report_and_stale_skip(monkeypatch, tmp_path, capsys) -> None:
         def __init__(self, **kwargs: Any) -> None:
             pass
 
+        def ensure_legacy_target_table(self) -> None:
+            events.append("ensure_ddl")
+
         def upsert_legacy_chunks(self, rows: list[dict], conn: Any = None) -> int:
             upserted.extend(rows)
             return len(rows)
@@ -91,9 +96,19 @@ def test_run_limit_report_and_stale_skip(monkeypatch, tmp_path, capsys) -> None:
     monkeypatch.setattr(job, "LegifranceDbWriter", _FakeWriter)
 
     args = argparse.Namespace(
-        dsn_env="TEST_R2_DSN", env_file=str(tmp_path / "absent.env"), model="m-test", cache_dir=str(tmp_path / "cache"),
-        uid=[], uids_file=None, schema="public", table="rag_chunks_dgafp",
-        limit=2, generate=True, apply=True, out=None, max_workers=1,
+        dsn_env="TEST_R2_DSN",
+        env_file=str(tmp_path / "absent.env"),
+        model="m-test",
+        cache_dir=str(tmp_path / "cache"),
+        uid=[],
+        uids_file=None,
+        schema="public",
+        table="rag_chunks_dgafp",
+        limit=2,
+        generate=True,
+        apply=True,
+        out=None,
+        max_workers=1,
     )
     report = job.run(args)
 
@@ -112,3 +127,7 @@ def test_run_limit_report_and_stale_skip(monkeypatch, tmp_path, capsys) -> None:
     # vérification post-commit n'a trouvé aucun orphelin (C1 intact).
     assert lock_calls["n"] == 1
     assert report["orphans_removed"] == 0
+    # Le DDL (ensure) passe par sa propre connexion : il DOIT précéder la
+    # transaction FOR UPDATE, sinon son ALTER attend derrière les verrous du
+    # job lui-même (auto-deadlock du 23/07 qui a gelé le retrieval staging).
+    assert events == ["ensure_ddl", "fetch_for_update"]
