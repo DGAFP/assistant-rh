@@ -158,6 +158,9 @@ def test_ingest_article_bundle_cascades_twin_in_same_transaction(monkeypatch: py
         ]
     )
     monkeypatch.setattr(writer, "ensure_legacy_target_table", lambda: None)
+    # Purge R2 neutralisée ici (pas de colonne index_variant dans ce scénario) :
+    # la 2e passe a son test dédié (test_cascade_articles_purges_r2_rows...).
+    monkeypatch.setattr(writer, "_column_types", lambda conn, table: {})
     monkeypatch.setattr(writer, "_upsert_documents", lambda conn, documents: 1)
     monkeypatch.setattr(writer, "_canonical_doc_id", lambda conn, short_id: None)
     monkeypatch.setattr(writer, "_upsert_sections", lambda conn, sections: len(sections))
@@ -175,3 +178,45 @@ def test_ingest_article_bundle_cascades_twin_in_same_transaction(monkeypatch: py
     # La cascade du jumeau (SELECT doc_id puis DELETE par cid) précède l'upsert.
     assert "SELECT doc_id" in calls[0]["query"] and "rag_documents" in calls[0]["query"]
     assert "DELETE" in calls[1]["query"] and "rag_chunks_dgafp" in calls[1]["query"]
+
+
+def test_cascade_articles_purges_r2_rows_in_fresh_statement(monkeypatch) -> None:
+    """Revue #332 round 4 : la 2e passe de purge des lignes R2 couvre AUSSI le
+    chemin _cascade_articles_ops (suppressions normales et cascade_cids), pas
+    seulement _ingest_bundle_tx."""
+    from assistant_rh_data_engineering.legifrance.db import LegifranceDbWriter
+
+    executed: list[str] = []
+
+    class _Cur:
+        rowcount = 1
+
+        def execute(self, query, params=None):
+            executed.append(str(query))
+
+        def fetchall(self):
+            return []  # aucun doc_id : seuls les DELETE chunks nous intéressent
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+    class _Conn:
+        def cursor(self):
+            return _Cur()
+
+    writer = LegifranceDbWriter(schema="public", dsn="postgresql://fake", legacy_table_name="rag_chunks_dgafp")
+    monkeypatch.setattr(writer, "_column_types", lambda conn, table: {"index_variant": "text"})
+    counts = writer._cascade_articles_ops(_Conn(), ["C1"], "legifrance")
+
+    purge = [q for q in executed if "index_variant IS NOT NULL" in q]
+    assert len(purge) == 1, executed  # 2e passe présente, en statement séparé
+    assert counts["chunks"] == 2  # DELETE principal + purge
+
+    # Hors table legacy : aucun probe, aucune purge (le probe est inutile sur
+    # la table moderne, revue #332 round 4).
+    executed.clear()
+    monkeypatch.setattr(writer, "_column_types", lambda conn, table: (_ for _ in ()).throw(AssertionError("probe interdit hors legacy")))
+    assert writer._purge_summary_rows_fresh_snapshot(_Conn(), table="rag_chunks_legifrance", join_column="short_id", uids=["X"]) == 0

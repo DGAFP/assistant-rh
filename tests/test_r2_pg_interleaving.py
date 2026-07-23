@@ -23,6 +23,7 @@ DSN = os.getenv("R2_PG_TEST_DSN", "")
 pytestmark = pytest.mark.skipif(not DSN, reason="R2_PG_TEST_DSN non défini (intégration PG réelle)")
 
 TABLE = "r2_race_interleaving_test"
+CID = "R2RACETESTC1"
 
 
 def test_no_stale_summary_survives_any_interleaving() -> None:
@@ -32,32 +33,36 @@ def test_no_stale_summary_survives_any_interleaving() -> None:
     with psycopg.connect(DSN, autocommit=True) as setup:
         setup.execute(f"DROP TABLE IF EXISTS {TABLE}")
         setup.execute(f"CREATE TABLE {TABLE} (chunk_id text PRIMARY KEY, cid text, chunk_text text, index_variant text)")
-        setup.execute(f"INSERT INTO {TABLE} VALUES ('C1_0', 'C1', 'texte source', NULL)")
+        setup.execute(f"INSERT INTO {TABLE} VALUES ('{CID}_0', '{CID}', 'texte source', NULL)")
     conn_a = None
     try:
         events: list[tuple[str, float]] = []
         # A = apply R2 : revalidation VERROUILLANTE puis upsert.
         conn_a = psycopg.connect(DSN)
-        cur = conn_a.execute(f"SELECT chunk_id, chunk_text FROM {TABLE} WHERE cid='C1' AND index_variant IS NULL FOR UPDATE")
+        cur = conn_a.execute(f"SELECT chunk_id, chunk_text FROM {TABLE} WHERE cid='{CID}' AND index_variant IS NULL FOR UPDATE")
         assert cur.fetchall()
 
         def ingestion_concurrente() -> None:
-            # Réplique _ingest_bundle_tx post-round-3 : purge par cid PUIS
-            # 2e passe ciblant les lignes R2 (statement séparé = snapshot
-            # frais qui VOIT une ligne insérée pendant l'attente du premier).
-            with psycopg.connect(DSN) as conn_b:
-                events.append(("b_start", time.monotonic()))
-                conn_b.execute(f"DELETE FROM {TABLE} WHERE cid='C1'")
-                conn_b.execute(f"DELETE FROM {TABLE} WHERE cid='C1' AND index_variant IS NOT NULL")
-                conn_b.commit()
-                events.append(("b_done", time.monotonic()))
+            # CHEMIN RÉEL (revue #332 round 4) : delete_articles_cascade du
+            # writer, pointé sur la table de test — exerce _cascade_articles_ops
+            # ET sa 2e passe factorisée (_purge_summary_rows_fresh_snapshot).
+            # ensure_legacy_target_table est neutralisé : son ALTER (ACCESS
+            # EXCLUSIVE) bloquerait AVANT le premier DELETE et détruirait la
+            # fenêtre EvalPlanQual que ce test doit précisément exercer.
+            from assistant_rh_data_engineering.legifrance.db import LegifranceDbWriter
+
+            writer = LegifranceDbWriter(schema="public", dsn=DSN, legacy_table_name=TABLE)
+            writer.ensure_legacy_target_table = lambda: None  # type: ignore[method-assign]
+            events.append(("b_start", time.monotonic()))
+            writer.delete_articles_cascade([CID])
+            events.append(("b_done", time.monotonic()))
 
         t = threading.Thread(target=ingestion_concurrente)
         t.start()
         time.sleep(1.0)
         assert not any(name == "b_done" for name, _ in events)  # bloqué derrière le verrou de A
 
-        conn_a.execute(f"INSERT INTO {TABLE} VALUES ('C1_r2s', 'C1', 'texte source', 'r2_summary/v+embed-m/x')")
+        conn_a.execute(f"INSERT INTO {TABLE} VALUES ('{CID}_r2s', '{CID}', 'texte source', 'r2_summary/v+embed-m/x')")
         events.append(("a_commit", time.monotonic()))
         conn_a.commit()
 
@@ -68,8 +73,8 @@ def test_no_stale_summary_survives_any_interleaving() -> None:
         with psycopg.connect(DSN) as verify_conn:
             orphaned = remove_orphaned_summaries(
                 verify_conn, "public", TABLE,
-                cids=["C1"],
-                source_shas={"C1": source_sha("texte source")},
+                cids=[CID],
+                source_shas={CID: source_sha("texte source")},
                 has_index_variant=True,
             )
         t.join(timeout=20)
@@ -81,7 +86,7 @@ def test_no_stale_summary_survives_any_interleaving() -> None:
         with psycopg.connect(DSN, autocommit=True) as check:
             rows = check.execute(f"SELECT chunk_id FROM {TABLE}").fetchall()
         assert rows == []
-        assert orphaned == {} or set(orphaned) == {"C1"}
+        assert orphaned == {} or set(orphaned) == {CID}
         ordre = [name for name, _ in sorted(events, key=lambda e: e[1])]
         assert ordre.index("a_commit") < ordre.index("b_done")
     finally:

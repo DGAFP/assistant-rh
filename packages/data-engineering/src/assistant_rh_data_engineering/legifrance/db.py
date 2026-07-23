@@ -512,25 +512,7 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                         )
                         cur.execute(query, (short_id,))
                     deleted = int(cur.rowcount or 0)
-                    # 2e PASSE À SNAPSHOT FRAIS (revue #332 round 3) : en READ
-                    # COMMITTED, une ligne-résumé R2 insérée PENDANT l'attente
-                    # de verrou du DELETE ci-dessus lui est invisible
-                    # (EvalPlanQual) et survivrait orpheline avec l'ancien
-                    # texte. Chaque statement ayant son propre snapshot, ce
-                    # DELETE séparé la voit et purge toute ligne R2 du cid —
-                    # le plan R2 la régénérera depuis le nouveau texte.
-                    if "index_variant" in self._column_types(conn, table):
-                        cur.execute(
-                            sql.SQL(
-                                "DELETE FROM {}.{} WHERE UPPER(TRIM({})) = %s AND index_variant IS NOT NULL"
-                            ).format(
-                                sql.Identifier(self.schema),
-                                sql.Identifier(table),
-                                sql.Identifier(chunk_join_column),
-                            ),
-                            (short_id,),
-                        )
-                        deleted += int(cur.rowcount or 0)
+                deleted += self._purge_summary_rows_fresh_snapshot(conn, table=table, join_column=chunk_join_column, uids=[short_id])
             inserted = 0
             for batch in self._batched_rows(projected_chunks, 1000):
                 inserted += self._upsert(
@@ -618,6 +600,35 @@ class LegifranceDbWriter(ServicePublicDbWriter):
             conn.commit()
             return counts
 
+    def _purge_summary_rows_fresh_snapshot(self, conn: Any, *, table: str, join_column: str, uids: list[str]) -> int:
+        """2e passe de purge des lignes-résumé R2, à SNAPSHOT FRAIS.
+
+        Appliquée à TOUS les chemins de suppression legacy par cid (revue
+        #332 rounds 3-4 : ``_ingest_bundle_tx`` ET ``_cascade_articles_ops``) :
+        en READ COMMITTED, une ligne R2 insérée PENDANT l'attente de verrou du
+        DELETE principal lui est invisible (EvalPlanQual) et survivrait
+        orpheline avec l'ancien texte ; chaque statement ayant son propre
+        snapshot, ce DELETE séparé la voit. No-op hors table legacy (seule
+        porteuse de lignes R2 — le probe est inutile sur la table moderne) et
+        sur les bases sans colonne ``index_variant``."""
+        if table != self.legacy_table_name or not uids:
+            return 0
+        try:
+            if "index_variant" not in self._column_types(conn, table):
+                return 0
+        except Exception:
+            # Table absente/minimale (doubles de test, base non migrée) :
+            # aucune ligne R2 possible, rien à purger.
+            return 0
+        with conn.cursor() as cur:
+            cur.execute(
+                sql.SQL("DELETE FROM {}.{} WHERE UPPER(TRIM({})) = ANY(%s) AND index_variant IS NOT NULL").format(
+                    sql.Identifier(self.schema), sql.Identifier(table), sql.Identifier(join_column)
+                ),
+                (uids,),
+            )
+            return int(cur.rowcount or 0)
+
     def _cascade_articles_ops(self, conn: Any, normalized: list[str], source: str) -> dict[str, int]:
         """Cascade chunks legacy (par cid) + sections + documents sur une connexion
         DONNÉE, SANS commit — réutilisable dans une transaction partagée (ex. la
@@ -641,6 +652,10 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                 (normalized,),
             )
             deleted_chunks = int(cur.rowcount or 0)
+        deleted_chunks += self._purge_summary_rows_fresh_snapshot(
+            conn, table=self.legacy_table_name, join_column="cid", uids=normalized
+        )
+        with conn.cursor() as cur:
 
             deleted_sections = 0
             deleted_documents = 0
