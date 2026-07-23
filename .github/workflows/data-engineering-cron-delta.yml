@@ -1,0 +1,84 @@
+name: Data Engineering — cron delta (staging)
+
+# Chaîne delta quotidienne (#250) sur STAGING uniquement : pour Service-Public
+# et Légifrance, enchaîne medallion --delta -> ingest --delta -> backfill
+# embeddings, en ne (re)traitant que le new/changed. La prod reste en promotion
+# manuelle (aucun apply prod automatisé). Le dispatcher démarre les jobs
+# Scaleway sélectionnés DANS L'ORDRE du config (medallion < ingest < embeddings)
+# et attend la fin de chacun (--wait) : la chaîne est donc séquentielle.
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # tous les jours 02:00 UTC
+  workflow_dispatch: {} # lancement manuel (test/rattrapage)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: data-engineering-cron-delta
+  cancel-in-progress: false
+
+jobs:
+  cron-delta-staging:
+    runs-on: ubuntu-latest
+    environment: scaleway-staging
+    timeout-minutes: 240
+    env:
+      SCW_DEFAULT_REGION: fr-par
+      SCW_DEFAULT_PROJECT_ID: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+      SCW_DEFAULT_ORGANIZATION_ID: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+      SCW_CONTAINER_REGISTRY_NAMESPACE: ${{ vars.SCW_CONTAINER_REGISTRY_NAMESPACE }}
+      SCW_BUCKET_BRONZE: assistant-rh-bronze
+      SCW_BUCKET_SILVER: assistant-rh-silver
+      SCW_BUCKET_GOLD: assistant-rh-gold
+      SCW_BUCKET_SOURCES_PDF: assistant-rh-sources-pdf
+      SCW_PREFIX_STAGING: staging
+      SCW_PREFIX_PROD: prod
+      SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
+      SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+      SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
+      SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
+      SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
+      GRIST_API_BASE_URL: ${{ vars.GRIST_API_BASE_URL }}
+      GRIST_API_KEY: ${{ secrets.GRIST_API_KEY }}
+      GRIST_DOC_ID: ${{ vars.GRIST_DOC_ID }}
+      GRIST_TABLE_ID: ${{ vars.GRIST_TABLE_ID }}
+      ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
+      ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
+      # Follow-live PISTE (ingest Legi --delta) : activation delta = étape #250.
+      LEGIFRANCE_CLIENT_ID: ${{ secrets.LEGIFRANCE_CLIENT_ID }}
+      LEGIFRANCE_CLIENT_SECRET: ${{ secrets.LEGIFRANCE_CLIENT_SECRET }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install Scaleway CLI
+        uses: scaleway/action-scw@v0.0.3
+        with:
+          version: v2.54.0
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+      - name: Run SP + Legi delta chain on staging
+        # Un seul appel : le dispatcher démarre medallion -> ingest -> embeddings
+        # (ordre du config) avec --wait, donc séquentiellement. --delta ajoute
+        # --delta aux jobs medallion+ingest SP/Legi (+ --from-grist au medallion
+        # SP). Images = tag stable staging-latest (maintenu à chaque build staging).
+        run: |
+          python3 .github/scripts/scaleway_data_jobs.py \
+            --target-env staging \
+            --image-tag staging-latest \
+            --mode apply \
+            --delta true \
+            --service-public true \
+            --legifrance true \
+            --embeddings true \
+            --run-ingestion true \
+            --run-embeddings true \
+            --wait

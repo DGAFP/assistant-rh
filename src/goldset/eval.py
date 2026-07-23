@@ -36,7 +36,19 @@ from psycopg.rows import dict_row
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
-DEFAULT_JUDGE_MODEL = "qwen3-235b-a22b-instruct-2507"
+# Juge LLM: OpenRouter/Grok 4.5 (décision 2026-07-21, revue #329). L'exigence
+# ZDR stricte (`zdr: true`, distincte de data_collection=deny) est non
+# négociable pour des données réglementaires DINUM — or qwen3.7-max (juge
+# depuis le 16/07, spot-check favorable) n'a AUCUN endpoint ZDR. grok-4.5
+# était le backup validé du même spot-check (« comportement proche ») et
+# dispose d'un endpoint ZDR (xAI). claude-sonnet-4.5 (ZDR Bedrock) reste
+# écarté : over-strict ; glm-5.2 (ZDR AtlasCloud) : verdicts incohérents.
+# Surchargeable au run (--judge-model / OPENROUTER_JUDGE_MODEL).
+DEFAULT_JUDGE_PROVIDER = "openrouter"
+DEFAULT_JUDGE_MODEL = "x-ai/grok-4.5"
+DEFAULT_JUDGE_BASE_URL = "https://openrouter.ai/api/v1"
+# RAGAS reste sur Scaleway/OpenAI-compat (le SDK ragas attend un endpoint
+# embeddings+LLM compatible; Claude via OpenRouter n'y est pas branché).
 DEFAULT_SCALEWAY_BASE_URL = "https://api.scaleway.ai/v1"
 # RAGAS makes many statement/NLI calls per question; a large reasoning-grade
 # model is overkill and slow there, so it defaults to a fast instruct model
@@ -45,6 +57,29 @@ DEFAULT_SCALEWAY_BASE_URL = "https://api.scaleway.ai/v1"
 # RAGAS then retries on every truncation, stalling the run.
 DEFAULT_RAGAS_MODEL = "llama-3.3-70b-instruct"
 DEFAULT_RAGAS_MAX_TOKENS = 16384
+
+# Endpoint du juge par provider: le provider pilote RÉELLEMENT la clé ET la base
+# URL (revue #318: sinon --judge-provider scaleway inscrivait "scaleway" en base
+# mais utilisait la clé/endpoint OpenRouter). ``default_base_url`` sert de secours
+# quand ni --judge-base-url ni la var d'env n'est fournie.
+JUDGE_PROVIDERS: dict[str, dict[str, str]] = {
+    "openrouter": {"key_env": "OPENROUTER_API_KEY", "url_env": "OPENROUTER_BASE_URL", "default_base_url": DEFAULT_JUDGE_BASE_URL},
+    "scaleway": {"key_env": "SCALEWAY_API_KEY", "url_env": "SCALEWAY_BASE_URL", "default_base_url": DEFAULT_SCALEWAY_BASE_URL},
+    "openai": {"key_env": "OPENAI_API_KEY", "url_env": "OPENAI_BASE_URL", "default_base_url": "https://api.openai.com/v1"},
+}
+
+
+def resolve_judge_endpoint(provider: str | None, explicit_base_url: str | None = None) -> tuple[str, str, str]:
+    """Résout (provider, base_url, api_key) du juge à partir du provider.
+
+    Le base_url explicite (--judge-base-url) prime, sinon la var d'env du
+    provider, sinon son default. La clé vient TOUJOURS de la var d'env du
+    provider — jamais d'un provider inscrit sans clé correspondante."""
+    resolved = (provider or DEFAULT_JUDGE_PROVIDER).strip().lower()
+    defaults = JUDGE_PROVIDERS.get(resolved) or JUDGE_PROVIDERS[DEFAULT_JUDGE_PROVIDER]
+    base_url = (explicit_base_url or "").strip() or os.getenv(defaults["url_env"], "").strip() or defaults["default_base_url"]
+    api_key = os.getenv(defaults["key_env"], "").strip()
+    return resolved, base_url, api_key
 
 
 @dataclass
@@ -534,6 +569,13 @@ def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion])
         "ragas_enabled": ragas_enabled,
         "ragas_model": args.ragas_model if ragas_enabled else "",
         "judge_enabled": judge_enabled,
+        "judge_provider": getattr(args, "judge_provider", DEFAULT_JUDGE_PROVIDER) if judge_enabled else "",
+        # base URL résolue (pas seulement le provider/modèle): deux runs sur des
+        # endpoints différents ne sont PAS comparables (revue #318). Sans elle,
+        # un smoke run pouvait réutiliser un résultat produit ailleurs.
+        "judge_base_url": resolve_judge_endpoint(getattr(args, "judge_provider", DEFAULT_JUDGE_PROVIDER), getattr(args, "judge_base_url", None))[1]
+        if judge_enabled
+        else "",
         "judge_model": args.judge_model if judge_enabled else "",
         # Partie de la clé de comparabilité: un run scopé « all ministries »
         # n'est pas comparable à un run historique sans scope.
@@ -550,6 +592,7 @@ def create_eval_run(
     config_hash: str,
     git_sha: str,
     run_label: str,
+    judge_provider: str,
     judge_model: str,
     ragas_status: str,
     metadata: dict[str, Any],
@@ -571,7 +614,7 @@ def create_eval_run(
             run_label,
             config_hash,
             json.dumps(config.to_dict(), ensure_ascii=False, default=str),
-            "scaleway" if judge_model else "",
+            judge_provider if judge_model else "",
             judge_model,
             ragas_status,
             json.dumps(metadata, ensure_ascii=False, default=str),
@@ -1005,21 +1048,19 @@ def aggregate_items(items: list[EvalItem]) -> dict[str, Any]:
     }
 
 
-# Prix Scaleway Generative APIs (EUR / 1M tokens, input/output) — modèles juge &
-# RAGAS. Albert (API Etalab, générateur/sélecteur/embeddings) est GRATUIT pour le
-# projet gouvernemental, d'où (0, 0). Source: scaleway.com/en/pricing/model-as-a-service.
-_LLM_PRICE_EUR_PER_MTOK: dict[str, tuple[float, float]] = {
-    "qwen3-235b-a22b-instruct-2507": (0.75, 2.25),
-    "llama-3.3-70b-instruct": (0.90, 0.90),
-    "llama-3.1-70b-instruct": (0.90, 0.90),  # non listé publiquement; aligné sur llama-3.3-70b
-    "openweight-large": (0.0, 0.0),  # Albert (gpt-oss-120b) — gratuit
-    "gpt-oss-120b": (0.0, 0.0),  # Albert — gratuit
+# Prix Scaleway Generative APIs (EUR / 1M tokens, input/output). La clé inclut
+# le provider: un même nom de modèle peut avoir un tarif différent ailleurs.
+# Albert est traité séparément comme gratuit dans l'agrégat.
+_LLM_PRICE_EUR_PER_MTOK: dict[tuple[str, str], tuple[float, float]] = {
+    ("scaleway", "qwen3-235b-a22b-instruct-2507"): (0.75, 2.25),
+    ("scaleway", "llama-3.3-70b-instruct"): (0.90, 0.90),
+    ("scaleway", "gpt-oss-120b"): (0.15, 0.60),
 }
 
 
-def _usage_cost_eur(model: str, prompt_tokens: int, completion_tokens: int) -> float | None:
-    """Coût € d'un usage donné, ou None si le modèle n'a pas de tarif connu."""
-    price = _LLM_PRICE_EUR_PER_MTOK.get(model or "")
+def _usage_cost_eur(provider: str, model: str, prompt_tokens: int, completion_tokens: int) -> float | None:
+    """Coût EUR d'un usage, ou None sans tarif vérifié pour ce provider."""
+    price = _LLM_PRICE_EUR_PER_MTOK.get(((provider or "").lower(), model or ""))
     if price is None:
         return None
     return round(prompt_tokens / 1_000_000 * price[0] + completion_tokens / 1_000_000 * price[1], 6)
@@ -1037,25 +1078,38 @@ class _TokenUsage:
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.calls = 0
+        self.reported_cost = 0.0
+        self.reported_cost_calls = 0
 
-    def record(self, usage: Any) -> None:
+    def record(self, usage: Any) -> bool:
         if not usage:
-            return
+            return False
         self.prompt_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
         self.completion_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
         self.calls += 1
+        reported_cost = _safe_float(getattr(usage, "cost", None))
+        if reported_cost is not None:
+            self.reported_cost += reported_cost
+            self.reported_cost_calls += 1
+        return True
 
-    def as_dict(self, model: str) -> dict[str, Any]:
+    def as_dict(self, model: str, provider: str, *, capture_complete: bool) -> dict[str, Any]:
         return {
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
             "calls": self.calls,
             "model": model,
-            "cost_eur": _usage_cost_eur(model, self.prompt_tokens, self.completion_tokens),
+            "provider": provider,
+            "cost_eur": _usage_cost_eur(provider, model, self.prompt_tokens, self.completion_tokens),
+            # OpenRouter reports this value in credits, not in EUR. Keep it
+            # explicit and separate so it is never silently added to EUR.
+            "reported_cost": round(self.reported_cost, 8) if self.reported_cost_calls else None,
+            "reported_cost_unit": "openrouter_credit" if provider == "openrouter" and self.reported_cost_calls else None,
+            "capture_complete": capture_complete,
         }
 
 
-def _instrument_usage(client: Any, tracker: _TokenUsage) -> None:
+def _instrument_usage(client: Any, tracker: _TokenUsage) -> bool:
     """Instrumente ``client.chat.completions.create`` pour cumuler l'usage.
 
     On surcharge la méthode sur l'instance (``chat``/``completions`` sont des
@@ -1074,50 +1128,87 @@ def _instrument_usage(client: Any, tracker: _TokenUsage) -> None:
             return response
 
         completions.create = wrapped
+        return True
     except Exception:  # noqa: BLE001 — si l'API change, on dégrade sans usage plutôt que crasher
-        pass
+        return False
 
 
 def _aggregate_token_usage(items: list["EvalItem"]) -> dict[str, Any]:
-    """Agrège l'usage LLM d'un run: exact pour juge+RAGAS (Scaleway, facturé),
-    estimé pour générateur+sélecteur (Albert, gratuit)."""
+    """Agrège l'usage LLM sans convertir un coût inconnu en faux zéro."""
 
     def _sum(getter: Any) -> dict[str, Any]:
-        prompt = completion = calls = counted = 0
-        model = ""
+        prompt = completion = calls = tracked = active = 0
+        eur_total = 0.0
+        eur_complete = True
+        providers: set[str] = set()
+        models: set[str] = set()
+        reported_by_unit: dict[str, float] = {}
         for item in items:
-            usage = getter(item)
-            if isinstance(usage, dict) and (usage.get("prompt_tokens") or usage.get("completion_tokens")):
-                prompt += int(usage.get("prompt_tokens") or 0)
-                completion += int(usage.get("completion_tokens") or 0)
-                calls += int(usage.get("calls") or 0)
-                counted += 1
-                model = usage.get("model") or model
+            result = getter(item)
+            if not isinstance(result, dict) or result.get("status") == "skipped":
+                continue
+            active += 1
+            usage = result.get("usage")
+            if not isinstance(usage, dict):
+                eur_complete = False
+                continue
+            prompt += int(usage.get("prompt_tokens") or 0)
+            completion += int(usage.get("completion_tokens") or 0)
+            calls += int(usage.get("calls") or 0)
+            if usage.get("capture_complete") is True:
+                tracked += 1
+            else:
+                eur_complete = False
+            if usage.get("provider"):
+                providers.add(str(usage["provider"]))
+            if usage.get("model"):
+                models.add(str(usage["model"]))
+            item_cost = _safe_float(usage.get("cost_eur"))
+            if item_cost is None:
+                eur_complete = False
+            else:
+                eur_total += item_cost
+            reported_cost = _safe_float(usage.get("reported_cost"))
+            reported_unit = str(usage.get("reported_cost_unit") or "")
+            if reported_cost is not None and reported_unit:
+                reported_by_unit[reported_unit] = reported_by_unit.get(reported_unit, 0.0) + reported_cost
+        single_reported_unit = next(iter(reported_by_unit)) if len(reported_by_unit) == 1 else None
         return {
             "prompt_tokens": prompt,
             "completion_tokens": completion,
             "calls": calls,
-            "items": counted,
-            "model": model,
-            "cost_eur": _usage_cost_eur(model, prompt, completion),
+            "items": tracked,
+            "active_items": active,
+            "coverage_complete": tracked == active,
+            "provider": next(iter(providers)) if len(providers) == 1 else "mixed" if providers else "",
+            "model": next(iter(models)) if len(models) == 1 else "mixed" if models else "",
+            "cost_eur": round(eur_total, 6) if active and eur_complete else 0.0 if not active else None,
+            "reported_cost": round(reported_by_unit[single_reported_unit], 8) if single_reported_unit else None,
+            "reported_cost_unit": single_reported_unit,
         }
 
-    judge = _sum(lambda it: it.judge_result.get("usage"))
-    ragas = _sum(lambda it: it.ragas_metrics.get("usage"))
+    judge = _sum(lambda it: it.judge_result)
+    ragas = _sum(lambda it: it.ragas_metrics)
     # Générateur/sélecteur = Albert (gratuit): estimation depuis les volumes stockés
-    # (sortie générateur = compteur réel response_length_tokens; input ~ chars/4).
+    # réellement envoyés (sortie = compteur réel; input ~ chars/4).
     gen_out = sum(int((item.timing or {}).get("response_length_tokens") or 0) for item in items)
-    gen_in_est = sum(len(json.dumps(item.contexts, ensure_ascii=False, default=str)) for item in items) // 4
+    gen_in_est = sum(int((item.metadata or {}).get("generator_prompt_chars") or 0) for item in items) // 4
     sel_in_est = sum(len(str((item.metadata or {}).get("context_before_selector") or "")) for item in items) // 4
     sel_out_est = sum(len(str((item.metadata or {}).get("selector_raw_response") or "")) for item in items) // 4
-    billable = round(sum(part["cost_eur"] or 0.0 for part in (judge, ragas)), 4)
+    active_billable = [part for part in (judge, ragas) if part["active_items"]]
+    billable = (
+        round(sum(float(part["cost_eur"]) for part in active_billable), 4) if all(part["cost_eur"] is not None for part in active_billable) else None
+    )
     return {
         "judge": judge,
         "ragas": ragas,
         "generator_albert_est": {"prompt_tokens": gen_in_est, "completion_tokens": gen_out, "cost_eur": 0.0},
         "selector_albert_est": {"prompt_tokens": sel_in_est, "completion_tokens": sel_out_est, "cost_eur": 0.0},
         "billable_cost_eur": billable,
-        "note": "Coût exact juge+RAGAS (usage API Scaleway); Albert gratuit, tokens estimés (~4 chars/tok).",
+        "note": (
+            "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. "
+            "Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+        ),
     }
 
 
@@ -1142,6 +1233,8 @@ def compute_ragas_metrics(
     except ImportError as exc:
         return {"status": "skipped", "reason": f"missing dependency: {exc.name}"}
 
+    usage = _TokenUsage()
+    instrumented = False
     try:
         dataset = Dataset.from_list(
             [
@@ -1154,8 +1247,7 @@ def compute_ragas_metrics(
             ]
         )
         client = OpenAI(api_key=api_key, base_url=base_url)
-        usage = _TokenUsage()
-        _instrument_usage(client, usage)  # capte tous les sous-appels RAGAS
+        instrumented = _instrument_usage(client, usage)  # capte tous les sous-appels RAGAS
         llm = llm_factory(
             model=model,
             provider="openai",
@@ -1171,10 +1263,16 @@ def compute_ragas_metrics(
             "faithfulness": _safe_float(row.get("faithfulness")),
             "context_precision": _safe_float(row.get("context_precision")),
             "context_recall": _safe_float(row.get("context_recall")),
-            "usage": usage.as_dict(model),
+            "usage": usage.as_dict(model, "scaleway", capture_complete=instrumented),
         }
     except Exception as exc:
-        return {"status": "failed", "reason": str(exc)}
+        return {
+            "status": "failed",
+            "reason": str(exc),
+            # Les appels déjà terminés restent visibles, mais un run RAGAS
+            # interrompu ne permet pas de garantir que tout usage est revenu.
+            "usage": usage.as_dict(model, "scaleway", capture_complete=False),
+        }
 
 
 def _safe_float(value: Any) -> float | None:
@@ -1357,9 +1455,11 @@ def judge_answer(
     model: str,
     base_url: str,
     api_key: str,
+    provider: str = DEFAULT_JUDGE_PROVIDER,
 ) -> dict[str, Any]:
     if not api_key:
-        return {"status": "skipped", "reason": "missing SCALEWAY_API_KEY"}
+        key_env = JUDGE_PROVIDERS.get(provider, {}).get("key_env", "OPENROUTER_API_KEY")
+        return {"status": "skipped", "reason": f"missing judge API key ({key_env}) for provider '{provider}'"}
     try:
         from openai import OpenAI
     except ImportError as exc:
@@ -1432,27 +1532,42 @@ def judge_answer(
         "Return only valid JSON with keys: score, pass, failure_category, material_contradiction, "
         "dimensions, missing_required_points, contradictions, rationale, source_support."
     )
+    usage = _TokenUsage()
+    usage_captured = False
     try:
-        client = OpenAI(api_key=api_key, base_url=base_url)
-        response = client.chat.completions.create(
-            model=model,
-            temperature=0,
-            response_format={"type": "json_object"},
-            messages=[
+        # base_url vide (ex. provider openai sans OPENAI_BASE_URL) -> ne pas la
+        # passer, sinon OpenAI(base_url="") lève UnsupportedProtocol (revue #318).
+        client = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
+        create_kwargs: dict[str, Any] = {
+            "model": model,
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+            "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
             ],
-        )
+        }
+        # DINUM (données réglementaires): sur OpenRouter, n'acheminer QU'AUX
+        # endpoints Zero Data Retention. `data_collection: deny` exclut les
+        # providers qui collectent/entraînent, mais la ZDR est un attribut
+        # distinct chez OpenRouter -> `zdr: true` est requis en plus (revue
+        # #329). Un modèle sans endpoint ZDR échoue -> inutilisable, voulu.
+        if provider == "openrouter":
+            create_kwargs["extra_body"] = {"provider": {"data_collection": "deny", "zdr": True}}
+        response = client.chat.completions.create(**create_kwargs)
+        usage_captured = usage.record(getattr(response, "usage", None))
         content = response.choices[0].message.content or "{}"
         parsed = _extract_json_object(content)
         parsed["status"] = "completed"
         calibrated = calibrate_judge_result(parsed, deterministic_metrics)
-        usage = _TokenUsage()
-        usage.record(getattr(response, "usage", None))
-        calibrated["usage"] = usage.as_dict(model)
+        calibrated["usage"] = usage.as_dict(model, provider, capture_complete=usage_captured)
         return calibrated
     except Exception as exc:
-        return {"status": "failed", "reason": str(exc)}
+        return {
+            "status": "failed",
+            "reason": str(exc),
+            "usage": usage.as_dict(model, provider, capture_complete=usage_captured),
+        }
 
 
 def build_full_ministry_scope() -> Any:
@@ -1511,6 +1626,9 @@ def run_question(
     run_ragas: bool,
     run_judge: bool,
     judge_model: str,
+    judge_base_url: str,
+    judge_api_key: str,
+    judge_provider: str = DEFAULT_JUDGE_PROVIDER,
     ragas_model: str,
     scaleway_base_url: str,
     scaleway_api_key: str,
@@ -1533,7 +1651,14 @@ def run_question(
         item.contexts = contexts
         item.sources = result.sources
         item.timing = {**result.timing, "eval_total_ms": elapsed_ms}
-        item.metadata = result.metadata
+        metadata = dict(result.metadata) if isinstance(result.metadata, dict) else {}
+        # Les prompts exposés par Pipeline sont exactement les deux messages
+        # envoyés au générateur. Conserver uniquement leurs tailles évite
+        # d'écrire le contenu sensible tout en donnant une estimation fidèle.
+        generator_user_prompt = str(getattr(pipe, "last_full_prompt", "") or "")
+        generator_system_prompt = str(getattr(pipe, "last_system_prompt", "") or "")
+        metadata["generator_prompt_chars"] = len(generator_user_prompt) + len(generator_system_prompt)
+        item.metadata = metadata
         item.deterministic_metrics = deterministic_metrics(question.retrieval_gold, doc_ids, aliases=identifier_aliases)
 
         context_texts = [str(context.get("content") or "") for context in contexts if str(context.get("content") or "").strip()]
@@ -1558,14 +1683,44 @@ def run_question(
                 contexts=context_texts,
                 deterministic_metrics=item.deterministic_metrics,
                 model=judge_model,
-                base_url=scaleway_base_url,
-                api_key=scaleway_api_key,
+                base_url=judge_base_url,
+                api_key=judge_api_key,
+                provider=judge_provider,
             )
         else:
             item.judge_result = {"status": "skipped", "reason": "disabled"}
+    except psycopg.errors.QueryCanceled as exc:
+        # Sous-classe d'OperationalError MAIS annulation/timeout d'une requête
+        # = propre à la question, pas une coupure de connexion : absorbée dans
+        # item.error pour que le run continue (revue #331 — sinon le retry la
+        # rejouait 3x puis tuait le run entier).
+        item.error = str(exc)
+    except (psycopg.OperationalError, psycopg.InterfaceError):
+        # Coupure de connexion DB = transitoire : doit remonter à la boucle de
+        # retry du runner au lieu d'être absorbée dans item.error (revue #329 —
+        # sinon le retry ne voit jamais l'exception et la question est perdue).
+        raise
     except Exception as exc:
         item.error = str(exc)
     return item
+
+
+def run_question_with_retry(*, attempts: int = 3, backoff_s: float = 5.0, **kwargs: Any) -> EvalItem:
+    """Rejoue la question sur coupure de connexion DB. Les composants du
+    pipeline ouvrent une connexion par requête : rejouer suffit, rien à
+    reconstruire."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return run_question(**kwargs)
+        except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
+            if attempt == attempts:
+                raise
+            print(
+                f"[resilience] connexion DB perdue sur la question {kwargs['question'].id} (tentative {attempt}/{attempts}) : {exc}",
+                flush=True,
+            )
+            time.sleep(backoff_s * attempt)
+    raise AssertionError("unreachable")
 
 
 def artifact_paths(output_dir: Path, run_label: str) -> tuple[Path, Path]:
@@ -1681,6 +1836,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override du nombre de sections offertes au sélecteur (v3_rerank_top_k runtime sinon).",
     )
+    parser.add_argument(
+        "--rerank-input-k",
+        type=int,
+        default=None,
+        help="Override de l'ENTRÉE du reranker (candidats vus ; v3_rerank_input_k runtime sinon). A/B vague 1 : 40.",
+    )
     parser.add_argument("--initial-top-k", type=int, default=None, help="Override retrieval.initial_top_k (ablation).")
     parser.add_argument("--ivfflat-probes", type=int, default=None, help="Override retrieval.ivfflat_probes (ablation; 0=défaut serveur).")
     parser.add_argument("--min-kept-sections", type=int, default=None, help="Override selector.min_kept_sections (ablation; 0=désactivé).")
@@ -1698,13 +1859,30 @@ def build_parser() -> argparse.ArgumentParser:
             "historique (v3_tables runtime seulement, mso/mi/masa invisibles)."
         ),
     )
-    parser.add_argument("--judge-model", default=os.getenv("SCALEWAY_JUDGE_MODEL", DEFAULT_JUDGE_MODEL), help="Scaleway judge model.")
+    parser.add_argument(
+        "--judge-provider",
+        default=os.getenv("JUDGE_PROVIDER", DEFAULT_JUDGE_PROVIDER),
+        choices=sorted(JUDGE_PROVIDERS),
+        help="LLM judge provider (pilote la clé ET la base URL; tracé en base).",
+    )
+    parser.add_argument(
+        "--judge-model",
+        default=os.getenv("OPENROUTER_JUDGE_MODEL", DEFAULT_JUDGE_MODEL),
+        help="Judge model (OpenRouter par défaut, ex. anthropic/claude-sonnet-4.5).",
+    )
+    parser.add_argument(
+        "--judge-base-url",
+        default=None,
+        help="Override de la base URL du juge (sinon dérivée du provider: var d'env puis défaut).",
+    )
     parser.add_argument(
         "--ragas-model",
         default=os.getenv("RAGAS_MODEL", DEFAULT_RAGAS_MODEL),
         help="Scaleway model for RAGAS metrics (fast instruct model; separate from the judge).",
     )
-    parser.add_argument("--scaleway-base-url", default=os.getenv("SCALEWAY_BASE_URL", DEFAULT_SCALEWAY_BASE_URL), help="OpenAI-compatible base URL.")
+    parser.add_argument(
+        "--scaleway-base-url", default=os.getenv("SCALEWAY_BASE_URL", DEFAULT_SCALEWAY_BASE_URL), help="OpenAI-compatible base URL (RAGAS/Scaleway)."
+    )
     parser.add_argument("--fail-fast", action="store_true", help="Stop on the first item failure.")
     parser.add_argument("--baseline-run-id", type=int, default=None, help="Recorded rag_quality_eval_runs.id to compare against.")
     parser.add_argument("--baseline-run-label", default="", help="Recorded rag_quality_eval_runs.run_label to compare against.")
@@ -1766,6 +1944,9 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.section_rerank_top_k is not None:
         pipeline_config.aggregation.section_rerank_top_k = args.section_rerank_top_k
         config_adjustments.append(f"section_rerank_top_k={args.section_rerank_top_k}")
+    if args.rerank_input_k is not None:
+        pipeline_config.aggregation.rerank_input_k = args.rerank_input_k
+        config_adjustments.append(f"rerank_input_k={args.rerank_input_k}")
     if args.initial_top_k is not None:
         pipeline_config.retrieval.initial_top_k = args.initial_top_k
         config_adjustments.append(f"initial_top_k={args.initial_top_k}")
@@ -1855,6 +2036,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                     config_hash=config_hash,
                     git_sha=git_sha,
                     run_label=run_label,
+                    judge_provider=args.judge_provider if not args.skip_judge else "",
                     judge_model=args.judge_model if not args.skip_judge else "",
                     ragas_status="skipped" if args.skip_ragas else "requested",
                     metadata={
@@ -1870,7 +2052,11 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 conn.commit()
 
     pipe = create_pipeline(config=pipeline_config, dsn=dsn)
-    api_key = os.getenv("SCALEWAY_API_KEY", "").strip()
+    api_key = os.getenv("SCALEWAY_API_KEY", "").strip()  # RAGAS (Scaleway)
+    # Le provider pilote réellement la clé ET la base URL du juge (revue #318):
+    # --judge-provider scaleway utilise la clé/endpoint Scaleway, openrouter les
+    # siens — jamais un provider inscrit avec la clé d'un autre.
+    judge_provider, judge_base_url, judge_api_key = resolve_judge_endpoint(args.judge_provider, args.judge_base_url)
     items: list[EvalItem] = []
     status = "completed"
     error = ""
@@ -1878,15 +2064,23 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     item_conn: psycopg.Connection[Any] | None = None
     try:
         if run_id is not None:
-            item_conn = psycopg.connect(dsn, row_factory=dict_row)
+            item_conn = psycopg.connect(dsn, row_factory=dict_row, connect_timeout=10)
         for question in questions:
-            item = run_question(
+            # Un run complet tient ~1 h : le serveur staging peut couper les
+            # connexions en cours de route (backends tués — runs 119/120 du
+            # 21/07 morts à 3 et 9 items). run_question RE-LÈVE les erreurs de
+            # connexion psycopg (au lieu de les absorber dans item.error) pour
+            # que ce retry les voie.
+            item = run_question_with_retry(
                 pipe=pipe,
                 question=question,
                 identifier_aliases=identifier_aliases,
                 run_ragas=not args.skip_ragas,
                 run_judge=not args.skip_judge,
                 judge_model=args.judge_model,
+                judge_base_url=judge_base_url,
+                judge_api_key=judge_api_key,
+                judge_provider=judge_provider,
                 ragas_model=args.ragas_model,
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,
@@ -1894,8 +2088,38 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
             )
             items.append(item)
             if item_conn is not None and run_id is not None:
-                insert_eval_item(item_conn, run_id, item)
-                item_conn.commit()
+                for attempt in range(1, 4):
+                    try:
+                        # Reconnexion DANS le try : un « connection refused »
+                        # pendant la reprise consomme une tentative au lieu de
+                        # s'échapper de la boucle.
+                        if item_conn.closed:
+                            item_conn = psycopg.connect(dsn, row_factory=dict_row, connect_timeout=10)
+                        if attempt > 1:
+                            # Un COMMIT peut être appliqué côté serveur sans
+                            # acquittement (connexion morte entre les deux) :
+                            # purge préalable, dans la même transaction que la
+                            # réinsertion, pour ne jamais dupliquer l'item —
+                            # la table n'a pas d'UNIQUE (run_id, question_id).
+                            item_conn.execute(
+                                "DELETE FROM public.rag_quality_eval_items WHERE run_id = %s AND question_id = %s",
+                                (run_id, question.id),
+                            )
+                        insert_eval_item(item_conn, run_id, item)
+                        item_conn.commit()
+                        break
+                    except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
+                        if attempt == 3:
+                            raise
+                        print(
+                            f"[resilience] connexion d'insertion perdue (tentative {attempt}/3) : {exc} — reconnexion",
+                            flush=True,
+                        )
+                        try:
+                            item_conn.close()
+                        except Exception:
+                            pass
+                        time.sleep(5 * attempt)
             if item.error and args.fail_fast:
                 raise RuntimeError(item.error)
         status, status_error = derive_completion_status(items, judge_enabled=not args.skip_judge, ragas_enabled=not args.skip_ragas)

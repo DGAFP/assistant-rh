@@ -302,35 +302,46 @@ class ScalewayObjectStorageSync:
         source_name: str = "service_public",
         *,
         delete: bool = False,
+        include_layers: tuple[str, ...] = ("bronze", "silver", "gold"),
     ) -> dict[str, str]:
         env_prefix = self.config.prefix_for_env(target_env)
         bronze_prefix = f"{env_prefix}/bronze/{source_name}".strip("/")
         silver_prefix = f"{env_prefix}/silver/{source_name}".strip("/")
         gold_prefix = f"{env_prefix}/gold/{source_name}".strip("/")
 
-        self._sync_dir(
-            lake_root / "bronze",
-            self.config.bucket_bronze,
-            bronze_prefix,
-            delete=delete,
-        )
-        self._sync_dir(
-            lake_root / "silver",
-            self.config.bucket_silver,
-            silver_prefix,
-            delete=delete,
-        )
-        self._sync_dir(
-            lake_root / "gold",
-            self.config.bucket_gold,
-            gold_prefix,
-            delete=delete,
-        )
-        return {
+        # ``include_layers`` restreint la synchro : un médaillon qui LIT le bronze
+        # depuis l'Object Storage (``--from-object-storage``) ne le POSSÈDE pas —
+        # le synchroniser (surtout avec ``delete``) écraserait/supprimerait le
+        # bronze distant (produit par le bulk dump) à partir d'un bronze local vide.
+        if "bronze" in include_layers:
+            self._sync_dir(
+                lake_root / "bronze",
+                self.config.bucket_bronze,
+                bronze_prefix,
+                delete=delete,
+            )
+        if "silver" in include_layers:
+            self._sync_dir(
+                lake_root / "silver",
+                self.config.bucket_silver,
+                silver_prefix,
+                delete=delete,
+            )
+        if "gold" in include_layers:
+            self._sync_dir(
+                lake_root / "gold",
+                self.config.bucket_gold,
+                gold_prefix,
+                delete=delete,
+            )
+        # Ne reporter QUE les couches réellement synchronisées (P3 revue #317) :
+        # annoncer une destination bronze non synchronisée serait trompeur.
+        destinations = {
             "bronze": f"s3://{self.config.bucket_bronze}/{bronze_prefix}/",
             "silver": f"s3://{self.config.bucket_silver}/{silver_prefix}/",
             "gold": f"s3://{self.config.bucket_gold}/{gold_prefix}/",
         }
+        return {layer: uri for layer, uri in destinations.items() if layer in include_layers}
 
     def download_medallion_root(
         self,

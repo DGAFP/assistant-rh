@@ -47,7 +47,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--force-reocr",
         action="store_true",
-        help="Ignore le cache OCR bronze et le delta sha256: tout est retraité.",
+        help="Ignore le cache OCR bronze et le delta sha256: tout est re-OCRisé et retraité.",
+    )
+    parser.add_argument(
+        "--force-reprocess",
+        action="store_true",
+        help=(
+            "Force le retraitement (silver/gold/page-vision) en RÉUTILISANT les caches OCR "
+            "et annotations d'images: ne re-paye pas l'OCR. Utile pour propager un changement "
+            "de traitement (ex. re-passe vision) aux docs inchangés sans re-payer Mistral OCR."
+        ),
     )
     parser.add_argument(
         "--skip-grist-writeback",
@@ -135,6 +144,7 @@ def main() -> int:
         doc_ids=args.doc_ids,
         dry_run=args.dry_run,
         force_reocr=args.force_reocr,
+        force_reprocess=args.force_reprocess,
         skip_grist_writeback=args.skip_grist_writeback,
         ingest=args.ingest,
     )

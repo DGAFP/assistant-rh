@@ -40,11 +40,12 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from src.goldset.eval import (  # noqa: E402
     DEFAULT_JUDGE_MODEL,
+    DEFAULT_JUDGE_PROVIDER,
     DEFAULT_JUDGE_RUBRIC,
-    DEFAULT_SCALEWAY_BASE_URL,
     JudgeRubric,
     calibrate_judge_result,
     judge_answer,
+    resolve_judge_endpoint,
 )
 
 
@@ -62,15 +63,18 @@ def load_labels(path: Path) -> list[dict]:
     return usable
 
 
-def _cache_fingerprint(labels: list[dict], model: str) -> str:
+def _cache_fingerprint(labels: list[dict], provider: str, model: str, base_url: str) -> str:
     """Fingerprint the calibration inputs so a stale cache is not reused.
 
-    Keyed on the judge model and the label fields that drive the judge
-    (question/answer/gold_answer/verdict). Editing labels.csv or switching
-    SCALEWAY_JUDGE_MODEL changes the fingerprint, forcing a re-run instead of
-    silently reporting a confusion matrix computed against different inputs.
+    Keyed on the judge provider/endpoint/model and the label fields that drive
+    the judge (question/answer/gold_answer/verdict). Editing labels.csv or
+    switching provider/base URL/model changes the fingerprint, forcing a re-run
+    instead of silently reporting a confusion matrix computed against different
+    inputs (revue #318: le provider et l'endpoint entrent dans l'empreinte).
     """
     payload = {
+        "provider": provider,
+        "base_url": base_url,
         "model": model,
         "labels": [{key: (row.get(key) or "") for key in ("question", "answer", "gold_answer", "verdict")} for row in labels],
     }
@@ -80,21 +84,23 @@ def _cache_fingerprint(labels: list[dict], model: str) -> str:
 
 def capture_judge(labels: list[dict], cache_path: Path) -> list[dict]:
     """Run the judge once per labelled answer and cache the raw dimensions."""
-    model = os.getenv("SCALEWAY_JUDGE_MODEL", DEFAULT_JUDGE_MODEL).strip()
-    fingerprint = _cache_fingerprint(labels, model)
+    # Même juge que le harnais d'éval: provider (défaut OpenRouter) pilote la
+    # clé ET la base URL; le modèle vient de OPENROUTER_JUDGE_MODEL sinon défaut.
+    provider = os.getenv("JUDGE_PROVIDER", DEFAULT_JUDGE_PROVIDER).strip()
+    model = os.getenv("OPENROUTER_JUDGE_MODEL", DEFAULT_JUDGE_MODEL).strip()
+    provider, base_url, api_key = resolve_judge_endpoint(provider)
+    fingerprint = _cache_fingerprint(labels, provider, model, base_url)
     if cache_path.exists():
         cached = json.loads(cache_path.read_text(encoding="utf-8"))
         if isinstance(cached, dict) and cached.get("fingerprint") == fingerprint:
             rows = cached.get("rows", [])
             print(f"using cached judge outputs: {cache_path} ({len(rows)} rows)", file=sys.stderr)
             return rows
-        print(f"cache {cache_path} is stale (labels or model changed) — re-running judge", file=sys.stderr)
+        print(f"cache {cache_path} is stale (labels, provider or model changed) — re-running judge", file=sys.stderr)
 
-    api_key = os.getenv("SCALEWAY_API_KEY", "").strip()
     if not api_key:
-        raise SystemExit("SCALEWAY_API_KEY is required to run the judge (set it in .env).")
-    base_url = os.getenv("SCALEWAY_BASE_URL", DEFAULT_SCALEWAY_BASE_URL).strip()
-    print(f"judge: {model} @ {base_url} — {len(labels)} examples", file=sys.stderr)
+        raise SystemExit(f"clé API du juge requise pour le provider '{provider}' (définis-la dans .env).")
+    print(f"judge: {provider}/{model} @ {base_url} — {len(labels)} examples", file=sys.stderr)
 
     captured = []
     for i, row in enumerate(labels, start=1):
@@ -107,6 +113,7 @@ def capture_judge(labels: list[dict], cache_path: Path) -> list[dict]:
             model=model,
             base_url=base_url,
             api_key=api_key,
+            provider=provider,
         )
         captured.append(
             {

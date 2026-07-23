@@ -232,10 +232,7 @@ class LegifranceGoldBuilder:
         thematique = metadata.get("category") or metadata.get("thematique") or ""
         article_id = str(metadata.get("cid") or metadata.get("article_id") or short_id)
         full_sections_title = str(
-            metadata.get("full_sections_title")
-            or metadata.get("subtitles")
-            or metadata.get("section_parent_titre")
-            or ""
+            metadata.get("full_sections_title") or metadata.get("subtitles") or metadata.get("section_parent_titre") or ""
         ).strip()
         created_at = utc_now_iso()
         chunks: list[dict[str, Any]] = []
@@ -244,9 +241,7 @@ class LegifranceGoldBuilder:
             for index, body in enumerate(self._build_article_chunk_bodies(section)):
                 chunk_text = self._build_article_chunk_text(document, metadata, body)
                 chunk_id = self._build_article_chunk_id(article_id, index)
-                qa_id = hashlib.sha1(
-                    f"{short_id}|{section.get('heading_path') or section.get('heading') or ''}|{index}".encode("utf-8")
-                ).hexdigest()
+                qa_id = hashlib.sha1(f"{short_id}|{section.get('heading_path') or section.get('heading') or ''}|{index}".encode("utf-8")).hexdigest()
                 link_citations = self._normalize_legacy_links(metadata.get("lien_citations"))
                 link_modifications = self._normalize_legacy_links(metadata.get("lien_modifications"))
                 link_concordes = self._normalize_legacy_links(metadata.get("lien_concordes"))

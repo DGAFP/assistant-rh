@@ -1338,7 +1338,7 @@ if query:
             t_v3_start = time.time()
 
             # Étape 1 : traitement de la requête (intent + acronymes)
-            qr_v3 = pipeline_v3.process_query(query, conversation_history_v3)
+            qr_v3 = pipeline_v3.process_query(query, conversation_history_v3, retrieval_scope=retrieval_scope)
 
             # Si hors-scope (chit-chat, etc.), répondre directement
             if not qr_v3.should_proceed:

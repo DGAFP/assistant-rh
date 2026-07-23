@@ -93,17 +93,22 @@ class LegifranceBronzeBuilder:
         full_sections_title = clean_nullable(payload.get("full_sections_title")) or subtitles
         category = str(clean_nullable(payload.get("category")) or "CODE").upper()
         status = str(clean_nullable(payload.get("status")) or "VIGUEUR").upper()
-        source_url = build_legifrance_article_url(article_id, category)
-        short_id = (
-            clean_nullable(payload.get("cid"))
-            or clean_nullable(payload.get("article_id"))
-            or article_id
-        )
+        # Identité stable (revue #307) : le XML du dump DILA ne porte pas le
+        # cid chronique — le parseur retombe sur l'ID de version. Le mapping
+        # alias→chronique (follow-live PISTE) rétablit l'identité AVANT
+        # short_id et source_url : le doc_id silver (dérivé de cid+url) devient
+        # stable à travers les versions, l'URL pointe le chronique.
+        raw_cid = clean_nullable(payload.get("cid")) or article_id
+        mapping = self.config.article_cid_mapping or {}
+        chronical_id = mapping.get(str(raw_cid).strip().upper()) or mapping.get(str(article_id).strip().upper()) or raw_cid
+        source_url = build_legifrance_article_url(chronical_id, category)
+        short_id = chronical_id
 
         normalized = {
             "asset_type": "article",
             "article_id": article_id,
-            "cid": clean_nullable(payload.get("cid")) or article_id,
+            "version_id": clean_nullable(payload.get("version_id")) or article_id,
+            "cid": chronical_id,
             "num_article": str(num_article).strip(),
             "num_norm": normalize_article_number(str(num_article)),
             "title": title,
@@ -241,13 +246,17 @@ class LegifranceBronzeBuilder:
                 object_key,
             )
             current_key = (
-                "",
-                "",
-                "",
-            ) if current is None else (
-                Path(str(getattr(current, "key", "") or "")).parent.name,
-                str(getattr(current, "last_modified", "") or ""),
-                str(getattr(current, "key", "") or ""),
+                (
+                    "",
+                    "",
+                    "",
+                )
+                if current is None
+                else (
+                    Path(str(getattr(current, "key", "") or "")).parent.name,
+                    str(getattr(current, "last_modified", "") or ""),
+                    str(getattr(current, "key", "") or ""),
+                )
             )
             if candidate_key >= current_key:
                 latest_by_article[article_id] = obj
@@ -271,17 +280,11 @@ class LegifranceBronzeBuilder:
 
         with tempfile.TemporaryDirectory(prefix="legifrance_remote_xml_") as temp_dir:
             temp_root = Path(temp_dir)
-            downloaded_by_name = {
-                path.name: path
-                for path in object_storage.download_objects(list(latest_objects.values()), temp_root)
-            }
+            downloaded_by_name = {path.name: path for path in object_storage.download_objects(list(latest_objects.values()), temp_root)}
             for article_id, obj in sorted(latest_objects.items()):
                 temp_path = downloaded_by_name.get(Path(str(getattr(obj, "key", "") or "")).name)
                 if temp_path is None:
-                    raise RuntimeError(
-                        "Téléchargement incomplet depuis l'Object Storage pour "
-                        f"l'article {article_id}."
-                    )
+                    raise RuntimeError(f"Téléchargement incomplet depuis l'Object Storage pour l'article {article_id}.")
                 payload = self._normalize_article_payload(
                     {
                         **parse_article_xml(temp_path),
@@ -370,9 +373,7 @@ class LegifranceBronzeBuilder:
         )
 
         if not article_payloads and not legacy_text_payloads:
-            raise RuntimeError(
-                "Aucun artefact exploitable trouvé dans l'Object Storage bronze Légifrance."
-            )
+            raise RuntimeError("Aucun artefact exploitable trouvé dans l'Object Storage bronze Légifrance.")
 
         assets: list[BronzeAsset] = []
         for payload in article_payloads:

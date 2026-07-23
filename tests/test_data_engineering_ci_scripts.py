@@ -247,11 +247,29 @@ def test_preview_staging_push_runs_complete_preview_with_wipe_disabled() -> None
 
     assert "github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_preview_jobs)" in workflow
     assert (
-        "RUN_INGESTION: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_ingestion) || false }}"
+        "RUN_INGESTION: ${{ github.event_name == 'push' || "
+        "(github.event_name == 'workflow_dispatch' && inputs.run_ingestion && inputs.mode == 'apply') || false }}"
     ) in workflow
     assert "WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}" in workflow
     assert "RUN_EMBEDDINGS: ${{ (github.event_name == 'push' && needs.plan.outputs.run_embeddings == 'true')" in workflow
     assert "EMBEDDING_SOURCE: ${{ (github.event_name == 'push' && needs.plan.outputs.embedding_source)" in workflow
+
+
+def test_preview_staging_threads_plan_apply_mode() -> None:
+    # Socle #288 : l'axe mode est câblé de bout en bout (input -> plan -> dispatch).
+    # Défaut apply (comportement inchangé) ; plan neutralise ingestion + embeddings.
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-preview-staging.yml").read_text(encoding="utf-8")
+
+    inputs_block = workflow.split("workflow_dispatch:", 1)[1].split("jobs:", 1)[0]
+    assert "mode:" in inputs_block
+    assert 'default: "apply"' in inputs_block
+
+    assert "INPUT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'apply' }}" in workflow
+    assert "mode: ${{ steps.plan.outputs.mode }}" in workflow
+    assert '--mode "${{ needs.plan.outputs.mode }}"' in workflow
+    # mode=plan neutralise la mutation côté env (ingestion PDF + embeddings).
+    assert "inputs.run_ingestion && inputs.mode == 'apply'" in workflow
+    assert "inputs.mode == 'apply' && (inputs.run_embeddings" in workflow
 
 
 def test_preview_staging_exposes_matte_embedding_dispatch() -> None:
@@ -293,6 +311,16 @@ def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:
     assert '--wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}"' in start_step
     assert '--embedding-source "${EMBEDDING_SOURCE}"' in start_step
     assert '--embedding-only-column "${EMBEDDING_ONLY_COLUMN}"' in start_step
+
+
+def test_job_starting_workflows_provide_albert_credentials() -> None:
+    # Le job embeddings-legifrance a l'env group `albert` (embedding_m3 via API
+    # Albert) : tout workflow qui DÉMARRE des jobs Scaleway doit fournir
+    # ALBERT_API_KEY, sinon job_environment lève "ALBERT_API_KEY manquant".
+    for name in ("data-engineering-preview-staging.yml", "data-engineering-promote-prod.yml"):
+        workflow = (REPO_ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+        assert "ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}" in workflow, name
+        assert "ALBERT_BASE_URL:" in workflow, name
 
 
 def test_prod_ingestion_workflow_does_not_run_embedding_backfill_on_github_runner() -> None:
@@ -359,6 +387,126 @@ def test_scaleway_job_environment_fails_on_missing_required_secret(monkeypatch: 
 
     with pytest.raises(RuntimeError, match="SCW_ACCESS_KEY"):
         scaleway_data_jobs.job_environment({"env_groups": ["object_storage"]}, "prod", "fr-par")
+
+
+def test_delta_args_for_targets_medallion_and_ingest_only() -> None:
+    # --delta sur medallion+ingest SP/Legi ; --from-grist EN PLUS pour le medallion SP.
+    assert scaleway_data_jobs.delta_args_for("service-public-medallion") == ["--delta", "--from-grist"]
+    assert scaleway_data_jobs.delta_args_for("service-public-ingestion") == ["--delta"]
+    assert scaleway_data_jobs.delta_args_for("legifrance-medallion") == ["--delta"]  # cache-driven, pas --from-grist
+    assert scaleway_data_jobs.delta_args_for("legifrance-ingestion") == ["--delta"]
+    # Hors périmètre delta -> aucun flag (comportement legacy).
+    assert scaleway_data_jobs.delta_args_for("legifrance-bulk-dump") == []
+    assert scaleway_data_jobs.delta_args_for("embeddings-service-public") == []
+    assert scaleway_data_jobs.delta_args_for("pdf-sources-mi-medallion") == []
+
+
+def test_scaleway_data_jobs_parses_delta_flag() -> None:
+    args = scaleway_data_jobs.build_parser().parse_args(["--target-env", "staging", "--image-tag", "t", "--delta", "true"])
+    assert args.delta is True
+    default = scaleway_data_jobs.build_parser().parse_args(["--target-env", "staging", "--image-tag", "t"])
+    assert default.delta is False
+
+
+def test_cron_delta_workflow_chains_delta_on_staging() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-cron-delta.yml").read_text(encoding="utf-8")
+    assert "schedule:" in workflow and "cron:" in workflow  # planifié
+    assert "environment: scaleway-staging" in workflow  # staging uniquement
+    assert "--target-env staging" in workflow
+    assert "--delta true" in workflow
+    assert "--image-tag staging-latest" in workflow  # tag stable, pas de rebuild
+    assert "--wait" in workflow  # chaîne séquentielle medallion->ingest->embeddings
+    assert "--service-public true" in workflow and "--legifrance true" in workflow
+    assert "--run-ingestion true" in workflow and "--run-embeddings true" in workflow
+    # Le cron fournit les creds Grist ET Légifrance/PISTE (jobs delta).
+    assert "GRIST_API_KEY:" in workflow
+    assert "LEGIFRANCE_CLIENT_ID:" in workflow and "LEGIFRANCE_CLIENT_SECRET:" in workflow
+    # Le cron ne touche jamais la prod.
+    assert "scaleway-production" not in workflow and "--target-env prod" not in workflow
+
+
+def test_delta_env_groups_for_adds_grist_and_piste_where_needed() -> None:
+    assert scaleway_data_jobs.delta_env_groups_for("service-public-medallion") == ["grist"]
+    assert scaleway_data_jobs.delta_env_groups_for("service-public-ingestion") == ["grist"]
+    assert scaleway_data_jobs.delta_env_groups_for("legifrance-ingestion") == ["grist", "piste"]
+    assert scaleway_data_jobs.delta_env_groups_for("legifrance-medallion") == []  # cache-driven
+    assert scaleway_data_jobs.delta_env_groups_for("legifrance-bulk-dump") == []
+
+
+def test_delta_chain_selects_medallion_ingest_embeddings_without_bulk_dump() -> None:
+    # Valide les jobs RÉELLEMENT sélectionnés (pas juste les flags) : la chaîne
+    # est medallion->ingest->embeddings dans l'ordre, SANS le bulk dump legacy.
+    args = scaleway_data_jobs.build_parser().parse_args(
+        [
+            "--target-env",
+            "staging",
+            "--image-tag",
+            "t",
+            "--delta",
+            "true",
+            "--service-public",
+            "true",
+            "--legifrance",
+            "true",
+            "--embeddings",
+            "true",
+            "--run-ingestion",
+            "true",
+            "--run-embeddings",
+            "true",
+        ]
+    )
+    config = scaleway_data_jobs.load_config(scaleway_data_jobs.DEFAULT_CONFIG)
+    selected = [job["key"] for job in config["jobs"] if scaleway_data_jobs.should_run(job, args)]
+    assert selected == [
+        "service-public-medallion",
+        "service-public-ingestion",
+        "legifrance-medallion",
+        "legifrance-ingestion",
+        "embeddings-service-public",
+        "embeddings-legifrance",
+    ]
+    assert "legifrance-bulk-dump" not in selected
+
+
+def test_delta_job_environment_injects_grist_and_piste_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Valide les ENV propagés : un ingest Legi delta reçoit bien GRIST_* + LEGIFRANCE_*.
+    required = (
+        "SCW_ACCESS_KEY",
+        "SCW_SECRET_KEY",
+        "SCW_POSTGRES_DSN",
+        "GRIST_API_BASE_URL",
+        "GRIST_API_KEY",
+        "GRIST_DOC_ID",
+        "LEGIFRANCE_CLIENT_ID",
+        "LEGIFRANCE_CLIENT_SECRET",
+    )
+    for name in required:
+        monkeypatch.setenv(name, f"val-{name}")
+    base_groups = ["object_storage", "postgres"]
+    augmented = base_groups + scaleway_data_jobs.delta_env_groups_for("legifrance-ingestion")
+    env = scaleway_data_jobs.job_environment({"env_groups": augmented}, "staging", "fr-par")
+    assert env["GRIST_API_KEY"] == "val-GRIST_API_KEY"
+    assert env["LEGIFRANCE_CLIENT_ID"] == "val-LEGIFRANCE_CLIENT_ID"
+    assert env["LEGIFRANCE_CLIENT_SECRET"] == "val-LEGIFRANCE_CLIENT_SECRET"
+
+
+def test_scaleway_job_environment_albert_group_injects_albert_creds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALBERT_API_KEY", "albert-key")
+    monkeypatch.delenv("ALBERT_BASE_URL", raising=False)
+
+    environment = scaleway_data_jobs.job_environment({"env_groups": ["albert"]}, "staging", "fr-par")
+
+    assert environment["ALBERT_API_KEY"] == "albert-key"
+    assert environment["ALBERT_BASE_URL"] == "https://albert.api.etalab.gouv.fr/v1"
+
+
+def test_embeddings_legifrance_declares_albert_env_group() -> None:
+    # Le backfill m3 Legi passe par l'API Albert (embedding_m3=albert) : sans le
+    # groupe `albert`, ALBERT_API_KEY ne serait pas injecté et le job crasherait.
+    config = scaleway_data_jobs.load_config(scaleway_data_jobs.DEFAULT_CONFIG)
+    spec = next(job for job in config["jobs"] if job["key"] == "embeddings-legifrance")
+    assert "albert" in spec["env_groups"]
 
 
 def test_redacted_handles_overlapping_secrets_longest_first() -> None:
@@ -1362,6 +1510,58 @@ def test_should_run_gates_pdf_sources_domain() -> None:
 
     args_off = scaleway_data_jobs.build_parser().parse_args(["--target-env", "staging", "--image-tag", "staging-x"])
     assert scaleway_data_jobs.should_run(spec, args_off) is False
+
+
+def test_resolve_mode_defaults_to_apply_and_validates() -> None:
+    # Socle #288 : défaut apply (comportement historique), valeur inconnue -> apply.
+    assert data_engineering_plan.resolve_mode(None) == "apply"
+    assert data_engineering_plan.resolve_mode("") == "apply"
+    assert data_engineering_plan.resolve_mode("bogus") == "apply"
+    assert data_engineering_plan.resolve_mode("PLAN") == "plan"
+    assert data_engineering_plan.resolve_mode(" apply ") == "apply"
+
+
+def test_plan_mode_overrides_disable_all_mutation() -> None:
+    # plan = détection seule : ni ingestion Postgres, ni backfill embeddings.
+    assert scaleway_data_jobs.plan_mode_overrides("plan", True, True) == (False, False)
+    # apply = comportement historique, inchangé.
+    assert scaleway_data_jobs.plan_mode_overrides("apply", True, False) == (True, False)
+    assert scaleway_data_jobs.plan_mode_overrides("apply", False, True) == (False, True)
+
+
+def test_should_run_plan_mode_skips_ingestion_and_embeddings() -> None:
+    # En mode plan, les specs mutantes (requires_ingestion / requires_embeddings)
+    # ne sont pas retenues une fois plan_mode_overrides appliqué.
+    ingestion_spec = {"key": "service-public-ingestion", "domain": "service_public", "requires_ingestion": True}
+    backfill_spec = {"key": "embeddings-service-public", "domain": "embeddings", "requires_embeddings": True}
+    base = [
+        "--target-env",
+        "staging",
+        "--image-tag",
+        "x",
+        "--service-public",
+        "true",
+        "--embeddings",
+        "true",
+        "--run-ingestion",
+        "true",
+        "--run-embeddings",
+        "true",
+    ]
+
+    apply_args = scaleway_data_jobs.build_parser().parse_args([*base, "--mode", "apply"])
+    apply_args.run_ingestion, apply_args.run_embeddings = scaleway_data_jobs.plan_mode_overrides(
+        apply_args.mode, apply_args.run_ingestion, apply_args.run_embeddings
+    )
+    assert scaleway_data_jobs.should_run(ingestion_spec, apply_args) is True
+    assert scaleway_data_jobs.should_run(backfill_spec, apply_args) is True
+
+    plan_args = scaleway_data_jobs.build_parser().parse_args([*base, "--mode", "plan"])
+    plan_args.run_ingestion, plan_args.run_embeddings = scaleway_data_jobs.plan_mode_overrides(
+        plan_args.mode, plan_args.run_ingestion, plan_args.run_embeddings
+    )
+    assert scaleway_data_jobs.should_run(ingestion_spec, plan_args) is False
+    assert scaleway_data_jobs.should_run(backfill_spec, plan_args) is False
 
 
 def test_pdf_sources_job_skipped_on_push(monkeypatch: pytest.MonkeyPatch) -> None:

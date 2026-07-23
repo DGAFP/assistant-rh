@@ -394,11 +394,22 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         GoldsetQuestion(id=1, question="q1", gold_answer="a1", gold_sources=["doc-a"]),
         GoldsetQuestion(id=2, question="q2", gold_answer="a2", gold_sources=["doc-b"]),
     ]
-    smoke = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="all")
-    full = argparse.Namespace(limit=None, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="all")
-    no_judge = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=True, judge_model="judge-a", ministry_scope="all")
-    no_ragas = argparse.Namespace(limit=1, skip_ragas=True, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="all")
-    unscoped = argparse.Namespace(limit=1, skip_ragas=False, ragas_model="ragas-a", skip_judge=False, judge_model="judge-a", ministry_scope="none")
+    base = dict(
+        skip_ragas=False,
+        ragas_model="ragas-a",
+        skip_judge=False,
+        judge_model="judge-a",
+        judge_provider="openrouter",
+        judge_base_url="https://openrouter.ai/api/v1",
+    )
+    smoke = argparse.Namespace(limit=1, ministry_scope="all", **base)
+    full = argparse.Namespace(limit=None, ministry_scope="all", **base)
+    no_judge = argparse.Namespace(limit=1, ministry_scope="all", **{**base, "skip_judge": True})
+    no_ragas = argparse.Namespace(limit=1, ministry_scope="all", **{**base, "skip_ragas": True})
+    unscoped = argparse.Namespace(limit=1, ministry_scope="none", **base)
+    # Endpoint différent -> eval_scope différent (revue #318: la comparabilité
+    # doit distinguer deux runs sur des base URL distinctes).
+    other_endpoint = argparse.Namespace(limit=1, ministry_scope="all", **{**base, "judge_base_url": "https://example.test/v1"})
 
     smoke_scope = build_eval_scope(smoke, questions[:1])
 
@@ -409,6 +420,8 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         "ragas_enabled": True,
         "ragas_model": "ragas-a",
         "judge_enabled": True,
+        "judge_provider": "openrouter",
+        "judge_base_url": "https://openrouter.ai/api/v1",
         "judge_model": "judge-a",
         "ministry_scope": "all",
     }
@@ -417,6 +430,57 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
     assert build_eval_scope(no_ragas, questions[:1]) != smoke_scope
     # Un run scopé « all ministries » n'est pas comparable à un run historique.
     assert build_eval_scope(unscoped, questions[:1]) != smoke_scope
+    # Ni un run sur un autre endpoint de juge.
+    assert build_eval_scope(other_endpoint, questions[:1]) != smoke_scope
+
+
+def test_resolve_judge_endpoint_drives_key_and_base_url(monkeypatch) -> None:
+    from src.goldset.eval import resolve_judge_endpoint
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
+    monkeypatch.setenv("SCALEWAY_API_KEY", "scw-key")
+    monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
+    monkeypatch.delenv("SCALEWAY_BASE_URL", raising=False)
+
+    # openrouter -> clé OpenRouter + base URL OpenRouter par défaut.
+    provider, base_url, api_key = resolve_judge_endpoint("openrouter")
+    assert (provider, api_key, base_url) == ("openrouter", "or-key", "https://openrouter.ai/api/v1")
+
+    # scaleway -> clé Scaleway + base URL Scaleway (le provider pilote vraiment
+    # la clé ET l'endpoint; #318: plus de scaleway inscrit avec la clé OpenRouter).
+    provider, base_url, api_key = resolve_judge_endpoint("scaleway")
+    assert (provider, api_key, base_url) == ("scaleway", "scw-key", "https://api.scaleway.ai/v1")
+
+    # L'override explicite prime sur la var d'env et le défaut.
+    _, base_url, _ = resolve_judge_endpoint("openrouter", "https://custom.test/v1")
+    assert base_url == "https://custom.test/v1"
+
+    # openai -> base URL par défaut VALIDE (revue #318: une URL vide levait
+    # UnsupportedProtocol côté client OpenAI).
+    monkeypatch.setenv("OPENAI_API_KEY", "oa-key")
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    provider, base_url, api_key = resolve_judge_endpoint("openai")
+    assert (provider, api_key, base_url) == ("openai", "oa-key", "https://api.openai.com/v1")
+
+
+def test_judge_answer_missing_key_message_names_provider() -> None:
+    from src.goldset.eval import judge_answer
+
+    result = judge_answer(
+        question="q",
+        gold_answer="a",
+        answer="b",
+        contexts=[],
+        deterministic_metrics={},
+        model="m",
+        base_url="https://api.scaleway.ai/v1",
+        api_key="",
+        provider="scaleway",
+    )
+    # Le diagnostic nomme la var d'env du provider effectif, pas OpenRouter en dur.
+    assert result["status"] == "skipped"
+    assert "SCALEWAY_API_KEY" in result["reason"]
+    assert "scaleway" in result["reason"]
 
 
 def test_baseline_comparison_passes_within_allowed_drop() -> None:
@@ -851,15 +915,14 @@ def test_merge_gold_doc_ids_keeps_raw_labels_when_nothing_resolves() -> None:
     assert set(merged) == {"F3", "F4"}
 
 
-def test_usage_cost_eur_scaleway_and_free_and_unknown() -> None:
+def test_usage_cost_eur_is_provider_aware() -> None:
     from src.goldset.eval import _usage_cost_eur
 
     # qwen3-235b: 0.75 € / 2.25 € par M tokens (in / out)
-    assert _usage_cost_eur("qwen3-235b-a22b-instruct-2507", 1_000_000, 1_000_000) == 3.0
-    # Albert (gpt-oss-120b via openweight-large) = gratuit
-    assert _usage_cost_eur("openweight-large", 5_000_000, 5_000_000) == 0.0
-    # modèle inconnu -> pas de tarif
-    assert _usage_cost_eur("modele-inconnu", 1000, 1000) is None
+    assert _usage_cost_eur("scaleway", "qwen3-235b-a22b-instruct-2507", 1_000_000, 1_000_000) == 3.0
+    # Même modèle chez un autre provider: aucune conversion EUR inventée.
+    assert _usage_cost_eur("openrouter", "qwen3-235b-a22b-instruct-2507", 1_000_000, 1_000_000) is None
+    assert _usage_cost_eur("scaleway", "modele-inconnu", 1000, 1000) is None
 
 
 def test_instrument_usage_tallies_every_create_call() -> None:
@@ -870,6 +933,7 @@ def test_instrument_usage_tallies_every_create_call() -> None:
         def __init__(self, p: int, c: int) -> None:
             self.prompt_tokens = p
             self.completion_tokens = c
+            self.cost = 0.001
 
     class _Resp:
         def __init__(self, p: int, c: int) -> None:
@@ -887,12 +951,31 @@ def test_instrument_usage_tallies_every_create_call() -> None:
 
     client = _Client()
     tracker = _TokenUsage()
-    _instrument_usage(client, tracker)
+    assert _instrument_usage(client, tracker) is True
     client.chat.completions.create(model="x")
     client.chat.completions.create(model="x")
 
     assert (tracker.prompt_tokens, tracker.completion_tokens, tracker.calls) == (20, 6, 2)
-    assert tracker.as_dict("llama-3.3-70b-instruct")["cost_eur"] == round(20 / 1e6 * 0.9 + 6 / 1e6 * 0.9, 6)
+    usage = tracker.as_dict("llama-3.3-70b-instruct", "scaleway", capture_complete=True)
+    assert usage["cost_eur"] == round(20 / 1e6 * 0.9 + 6 / 1e6 * 0.9, 6)
+    assert usage["reported_cost"] == 0.002
+
+
+def test_token_usage_keeps_openrouter_credits_separate_from_eur() -> None:
+    from src.goldset.eval import _TokenUsage
+
+    class _Usage:
+        prompt_tokens = 100
+        completion_tokens = 10
+        cost = 0.0035
+
+    tracker = _TokenUsage()
+    assert tracker.record(_Usage()) is True
+
+    usage = tracker.as_dict("x-ai/grok-4.5", "openrouter", capture_complete=True)
+    assert usage["cost_eur"] is None
+    assert usage["reported_cost"] == 0.0035
+    assert usage["reported_cost_unit"] == "openrouter_credit"
 
 
 def test_aggregate_token_usage_exact_billable_plus_free_estimate() -> None:
@@ -901,22 +984,256 @@ def test_aggregate_token_usage_exact_billable_plus_free_estimate() -> None:
     item = EvalItem(question_id=1, question="q", gold_answer="g", gold_sources=[])
     item.judge_result = {
         "status": "completed",
-        "usage": {"prompt_tokens": 1000, "completion_tokens": 200, "calls": 1, "model": "qwen3-235b-a22b-instruct-2507"},
+        "usage": {
+            "prompt_tokens": 1000,
+            "completion_tokens": 200,
+            "calls": 1,
+            "model": "qwen3-235b-a22b-instruct-2507",
+            "provider": "scaleway",
+            "cost_eur": 0.0012,
+            "capture_complete": True,
+        },
     }
     item.ragas_metrics = {
         "status": "completed",
-        "usage": {"prompt_tokens": 5000, "completion_tokens": 500, "calls": 8, "model": "llama-3.3-70b-instruct"},
+        "usage": {
+            "prompt_tokens": 5000,
+            "completion_tokens": 500,
+            "calls": 8,
+            "model": "llama-3.3-70b-instruct",
+            "provider": "scaleway",
+            "cost_eur": 0.00495,
+            "capture_complete": True,
+        },
     }
     item.timing = {"response_length_tokens": 300}
-    item.contexts = [{"content": "x" * 400}]
-    item.metadata = {"context_before_selector": "y" * 800, "selector_raw_response": "z" * 40}
+    item.contexts = [{"content": "x" * 40_000, "metadata_not_sent": "n" * 40_000}]
+    item.metadata = {
+        "generator_prompt_chars": 400,
+        "context_before_selector": "y" * 800,
+        "selector_raw_response": "z" * 40,
+    }
 
     out = _aggregate_token_usage([item])
 
     assert out["judge"]["prompt_tokens"] == 1000
     assert out["ragas"]["calls"] == 8
-    expected = round((1000 / 1e6 * 0.75 + 200 / 1e6 * 2.25) + (5000 / 1e6 * 0.9 + 500 / 1e6 * 0.9), 4)
-    assert out["billable_cost_eur"] == expected
+    assert out["billable_cost_eur"] == round(0.0012 + 0.00495, 4)
     # générateur Albert (gratuit): sortie = compteur réel, coût nul
+    assert out["generator_albert_est"]["prompt_tokens"] == 100
     assert out["generator_albert_est"]["completion_tokens"] == 300
     assert out["generator_albert_est"]["cost_eur"] == 0.0
+
+
+def test_aggregate_token_usage_fails_closed_for_unknown_eur_cost() -> None:
+    from src.goldset.eval import EvalItem, _aggregate_token_usage
+
+    item = EvalItem(question_id=1, question="q", gold_answer="g", gold_sources=[])
+    item.judge_result = {
+        "status": "completed",
+        "usage": {
+            "prompt_tokens": 100,
+            "completion_tokens": 10,
+            "calls": 1,
+            "model": "x-ai/grok-4.5",
+            "provider": "openrouter",
+            "cost_eur": None,
+            "reported_cost": 0.0042,
+            "reported_cost_unit": "openrouter_credit",
+            "capture_complete": True,
+        },
+    }
+    item.ragas_metrics = {"status": "skipped", "reason": "disabled"}
+
+    out = _aggregate_token_usage([item])
+
+    assert out["billable_cost_eur"] is None
+    assert out["judge"]["reported_cost"] == 0.0042
+    assert out["judge"]["reported_cost_unit"] == "openrouter_credit"
+    assert out["judge"]["coverage_complete"] is True
+
+
+def test_aggregate_token_usage_fails_closed_when_capture_is_missing() -> None:
+    from src.goldset.eval import EvalItem, _aggregate_token_usage
+
+    item = EvalItem(question_id=1, question="q", gold_answer="g", gold_sources=[])
+    item.judge_result = {"status": "failed", "reason": "provider timeout"}
+    item.ragas_metrics = {"status": "skipped", "reason": "disabled"}
+
+    out = _aggregate_token_usage([item])
+
+    assert out["billable_cost_eur"] is None
+    assert out["judge"]["coverage_complete"] is False
+
+
+def test_run_question_records_exact_generator_prompt_size() -> None:
+    from types import SimpleNamespace
+
+    from src.goldset.eval import GoldsetQuestion, run_question
+
+    class _Pipe:
+        last_full_prompt = "user prompt"
+        last_system_prompt = "system"
+
+        def run_with_trace(self, *args, **kwargs):
+            return SimpleNamespace(
+                answer="answer",
+                context_items=[],
+                sources=[],
+                timing={"response_length_tokens": 2},
+                metadata={"existing": True},
+            )
+
+    item = run_question(
+        pipe=_Pipe(),
+        question=GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[]),
+        run_ragas=False,
+        run_judge=False,
+        judge_model="",
+        judge_base_url="",
+        judge_api_key="",
+        ragas_model="",
+        scaleway_base_url="",
+        scaleway_api_key="",
+    )
+
+    assert item.metadata["generator_prompt_chars"] == len("user promptsystem")
+    assert item.metadata["existing"] is True
+
+
+def test_judge_answer_openrouter_enforces_zdr(monkeypatch) -> None:
+    """Revue #329 : data_collection=deny n'exclut que les providers qui
+    collectent/entraînent — la ZDR est un attribut distinct chez OpenRouter,
+    le payload doit donc exiger LES DEUX."""
+    from src.goldset import eval as eval_module
+
+    captured: dict = {}
+
+    class _FakeCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+
+            class _Msg:
+                content = '{"pass": true, "score": 1.0, "rationale": "ok"}'
+
+            class _Choice:
+                message = _Msg()
+
+            class _Resp:
+                choices = [_Choice()]
+
+            return _Resp()
+
+    class _FakeChat:
+        completions = _FakeCompletions()
+
+    class _FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.chat = _FakeChat()
+
+    monkeypatch.setattr("openai.OpenAI", _FakeOpenAI)
+    result = eval_module.judge_answer(
+        question="q",
+        gold_answer="a",
+        answer="b",
+        contexts=[],
+        deterministic_metrics={},
+        model="m",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="k",
+        provider="openrouter",
+    )
+    assert result["status"] == "completed"
+    assert captured["extra_body"] == {"provider": {"data_collection": "deny", "zdr": True}}
+
+
+def test_run_question_reraises_db_connection_errors() -> None:
+    """Revue #329 : les coupures de connexion doivent REMONTER au retry du
+    runner au lieu d'être absorbées dans item.error."""
+    import psycopg
+
+    from src.goldset.eval import GoldsetQuestion, run_question
+
+    class _DeadPipe:
+        def run_with_trace(self, *args, **kwargs):
+            raise psycopg.OperationalError("server closed the connection unexpectedly")
+
+    q = GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[])
+    with pytest.raises(psycopg.OperationalError):
+        run_question(
+            pipe=_DeadPipe(),
+            question=q,
+            run_ragas=False,
+            run_judge=False,
+            judge_model="",
+            judge_base_url="",
+            judge_api_key="",
+            ragas_model="",
+            scaleway_base_url="",
+            scaleway_api_key="",
+        )
+
+
+def test_run_question_with_retry_three_attempts(monkeypatch) -> None:
+    """Revue #329 : preuve que 3 tentatives ont bien lieu, puis propagation."""
+    import psycopg
+
+    from src.goldset import eval as eval_module
+
+    q = eval_module.GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[])
+    sentinel = eval_module.EvalItem(question_id=1, question="q", gold_answer="a", gold_sources=[])
+    calls = {"n": 0}
+
+    def flaky(**kwargs):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise psycopg.OperationalError("boom")
+        return sentinel
+
+    monkeypatch.setattr(eval_module, "run_question", flaky)
+    assert eval_module.run_question_with_retry(backoff_s=0, question=q) is sentinel
+    assert calls["n"] == 3
+
+    calls["n"] = 0
+
+    def always_dead(**kwargs):
+        calls["n"] += 1
+        raise psycopg.InterfaceError("dead")
+
+    monkeypatch.setattr(eval_module, "run_question", always_dead)
+    with pytest.raises(psycopg.InterfaceError):
+        eval_module.run_question_with_retry(backoff_s=0, question=q)
+    assert calls["n"] == 3
+
+
+def test_run_question_absorbs_query_canceled_without_retry() -> None:
+    """Revue #331 : QueryCanceled (sous-classe d'OperationalError) est une
+    erreur de REQUÊTE, pas de connexion — absorbée en item.error, jamais
+    rejouée, le run continue."""
+    import psycopg
+
+    from src.goldset.eval import GoldsetQuestion, run_question_with_retry
+
+    calls = {"n": 0}
+
+    class _TimeoutPipe:
+        def run_with_trace(self, *args, **kwargs):
+            calls["n"] += 1
+            raise psycopg.errors.QueryCanceled("canceling statement due to statement timeout")
+
+    q = GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[])
+    item = run_question_with_retry(
+        backoff_s=0,
+        pipe=_TimeoutPipe(),
+        question=q,
+        run_ragas=False,
+        run_judge=False,
+        judge_model="",
+        judge_base_url="",
+        judge_api_key="",
+        ragas_model="",
+        scaleway_base_url="",
+        scaleway_api_key="",
+    )
+    assert calls["n"] == 1  # pas de retry : l'annulation n'est pas une coupure
+    assert item.error is not None and "timeout" in item.error

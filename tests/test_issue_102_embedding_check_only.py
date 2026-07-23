@@ -14,17 +14,16 @@ class FakeCursor:
 
     def execute(self, query, params=None):
         # TODO: query-kind classification is heuristic (substring matching).
-        # It works today because the table_exists query is the only one that
-        # hits information_schema. Extending this fake to test write paths
-        # (update_embeddings touches information_schema.columns) or refactoring
-        # the audit SQL will misclassify silently — replace with explicit
-        # query routing (sentinel marker, per-method fake, or real psycopg
-        # in-memory substitute) before reusing.
+        # Routage explicite ajouté pour information_schema.columns (probe
+        # d'exclusion des lignes R2) ; toute nouvelle requête doit recevoir sa
+        # branche ici sous peine de désynchronisation silencieuse (revue #332).
         text = str(query)
         self.conn.queries.append(text)
         self.conn.params.append(params)
         if "information_schema.tables" in text:
             self._next_kind = "table_exists"
+        elif "information_schema.columns" in text:
+            self._next_kind = "columns_probe"
         elif "FROM" in text.upper():
             self._next_kind = "coverage"
         else:
@@ -33,6 +32,10 @@ class FakeCursor:
     def fetchone(self):
         if self._next_kind == "table_exists":
             return self.conn.table_exists_results.pop(0)
+        if self._next_kind == "columns_probe":
+            # (1,) si la table porte la colonne index_variant (lignes R2
+            # possibles -> exclusion attendue dans le SQL), None sinon.
+            return self.conn.columns_probe_result
         if self._next_kind == "coverage":
             return self.conn.coverage_results.pop(0)
         raise AssertionError(f"FakeCursor.fetchone(): unexpected query kind {self._next_kind!r}")
@@ -50,9 +53,12 @@ class FakeConnection:
         *,
         table_exists_results: list[tuple | None] | None = None,
         coverage_results: list[tuple] | None = None,
+        columns_probe_result: tuple | None = None,
     ) -> None:
         self.table_exists_results = list(table_exists_results or [])
         self.coverage_results = list(coverage_results or [])
+        # None = pas de colonne index_variant (défaut : tables sans lignes R2)
+        self.columns_probe_result = columns_probe_result
         self.queries: list[str] = []
         self.params: list[object] = []
         self.committed = False
@@ -316,3 +322,23 @@ def test_dry_run_alias_triggers_check_only_path(monkeypatch, tmp_path, capsys) -
     payload = json.loads(capsys.readouterr().out)
     assert payload["check_only"] is True
     assert conn.autocommit is True
+
+
+def test_audit_and_backfill_exclude_r2_rows_when_column_exists() -> None:
+    """Revue #332 : quand la table porte index_variant, l'audit ET le backfill
+    excluent les lignes-résumé R2 (jamais de vecteur calculé depuis chunk_text
+    pour une ligne R2 ; les deux prédicats restent alignés)."""
+    conn = FakeConnection(
+        table_exists_results=[(1,)],
+        coverage_results=[(10, 7, 2, 1)],
+        columns_probe_result=(1,),
+    )
+    embeddings_backfill.audit_embedding_coverage(conn, "public", SPEC_ONE_COLUMN)
+    audit_sql = [q for q in conn.queries if "COUNT" in q.upper()]
+    assert audit_sql and "index_variant IS NULL" in audit_sql[-1]
+
+    clause = embeddings_backfill._summary_rows_exclusion(conn, "public", "rag_chunks_dgafp")
+    assert clause == " AND index_variant IS NULL"
+
+    conn_sans = FakeConnection(columns_probe_result=None)
+    assert embeddings_backfill._summary_rows_exclusion(conn_sans, "public", "rag_chunks_matte") == ""
