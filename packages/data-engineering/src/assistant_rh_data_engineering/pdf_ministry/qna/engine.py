@@ -125,8 +125,24 @@ def split_on_paragraphs(text: str, max_chars: int = 1200, overlap: int = 200) ->
 # Tables des matières et headings (notebook MSO)
 # ---------------------------------------------------------------------------
 
-TOC_START_PAT = re.compile(r"^table des matieres$", re.IGNORECASE)
-TOC_ENTRY_PAT = re.compile(r"^(?:[IVXLC]+-|[A-Z]\.|\d+\.)?.{3,}\.{5,}\s*\d+\s*$", re.IGNORECASE)
+# Marqueur de structure émis par flatten_ocr_to_text pour les headings
+# markdown de l'OCR. Le mode guide les consomme via HEADING_PATTERNS; tous
+# les autres parseurs/détecteurs les retirent ligne à ligne pour voir le même
+# texte que l'aplatissement legacy.
+STRUCTURE_MARKER_RE = re.compile(r"^\((?:Titre|Intertitre)\)\s*", re.IGNORECASE)
+
+
+def strip_structure_marker(line: str) -> str:
+    return STRUCTURE_MARKER_RE.sub("", line)
+
+
+# « Table des matières » / « Sommaire », avec ou sans accents (l'ancien
+# pattern sans accent ne matchait jamais la sortie mistral-ocr: le sommaire
+# de l'instruction MATTE 2011 partait entier dans les chunks — issue #302).
+TOC_START_TITLES = {"table des matieres", "sommaire"}
+# Entrée de sommaire: pointillés (3+ suffisent: mistral-ocr émet « …19 » avec
+# 3 points) ou ellipse, suivis d'un numéro de page.
+TOC_ENTRY_PAT = re.compile(r"^(?:[IVXLC]+-|[A-Z]\.|\d+\.)?.{3,}(?:\.{3,}|…)\s*\d+\s*$", re.IGNORECASE)
 HEADING_PATTERNS: list[tuple[int, re.Pattern[str]]] = [
     (1, re.compile(r"^\((?P<label>Titre)\)\s*(?P<title>.+)$", re.IGNORECASE)),
     (2, re.compile(r"^\((?P<label>Intertitre)\)\s*(?P<title>.+)$", re.IGNORECASE)),
@@ -147,7 +163,7 @@ def strip_table_of_contents(text: str) -> str:
     toc_hits = 0
     for raw in lines:
         stripped = raw.strip()
-        if TOC_START_PAT.match(stripped):
+        if normalize_token_text(strip_structure_marker(stripped)) in TOC_START_TITLES:
             in_toc = True
             toc_hits = 0
             continue
@@ -178,7 +194,7 @@ def detect_heading(
     extra_patterns: tuple[tuple[int, str], ...] = (),
 ):
     clean = re.sub(r"\s+", " ", line).strip()
-    clean = re.sub(r"\.{4,}\s*\d+$", "", clean).strip()
+    clean = re.sub(r"(?:\.{3,}|…)\s*\d+$", "", clean).strip()
     if not clean or clean.startswith("[PAGE ") or clean.startswith("[SLIDE "):
         return None
     for level, pattern in HEADING_PATTERNS:
@@ -186,7 +202,16 @@ def detect_heading(
         if m:
             title = m.group("title").strip(" -:\t")
             if title:
-                return level, m.group("label"), title
+                label = m.group("label")
+                if label in ("Titre", "Intertitre"):
+                    # Le niveau des marqueurs # de l'OCR est peu fiable
+                    # (mistral-ocr émet « # 1. » puis « ## 2. » pour des
+                    # sections sœurs). Quand le titre porte une numérotation,
+                    # elle fait foi: « 2.1 » est un niveau 2, « 3. » un niveau 1.
+                    numbering = re.match(r"^(\d+(?:\.\d+)*)[\s.)\-–:]", title)
+                    if numbering:
+                        level = min(4, numbering.group(1).count(".") + 1)
+                return level, label, title
     for level, raw_pattern in extra_patterns:
         m = re.match(raw_pattern, clean, re.IGNORECASE)
         if m:
@@ -204,6 +229,9 @@ def detect_heading(
         and clean[0].isupper()
         and not clean.startswith("-")
         and clean[-1] not in ".;,"
+        # Une ligne majoritairement numérique (rangée de tableau aplatie
+        # « A 80 % 20 % 60 % 40 % ») n'est jamais un titre de section.
+        and sum(1 for token in clean.split() if any(c.isalpha() for c in token)) * 2 >= len(clean.split())
     ):
         return 2, "H.", clean.strip()
     return None
@@ -289,6 +317,9 @@ def strip_faq_leading_toc(text: str) -> str:
 
 
 def iter_faq_logical_lines(text: str) -> list[str]:
+    # Les marqueurs de structure ne concernent que le mode guide: le chemin
+    # FAQ voit le même texte que l'aplatissement legacy.
+    text = "\n".join(strip_structure_marker(line) for line in text.split("\n"))
     cleaned = strip_faq_leading_toc(strip_table_of_contents(text))
     raw_lines = [line.strip() for line in cleaned.split("\n")]
     logical: list[str] = []
@@ -611,7 +642,7 @@ def looks_like_qna_markers_text(text: str) -> bool:
     sens MATTE (Q_PAT) — parité avec le notebook legacy, qui retenait
     parse_qna_blocks dès qu'il produisait un bloc. Le garde-fou de couverture
     de parse_document protège des routages faméliques."""
-    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    lines = [strip_structure_marker(line.strip()) for line in text.split("\n") if line.strip()]
     return any(MATTE_Q_PAT.match(line) for line in lines)
 
 
@@ -662,7 +693,7 @@ def parse_qna_markers_blocks(text: str, source_name: str, thematique: str) -> li
         current_q, current_ans = None, []
 
     for raw in lines:
-        line = raw.strip()
+        line = strip_structure_marker(raw.strip())
         if not line:
             if current_q is not None:
                 current_ans.append("")
@@ -743,7 +774,7 @@ def parse_guide_blocks(
         heading = detect_heading(line, synthetic_heading_mode=synthetic_heading_mode, extra_patterns=extra_heading_patterns)
         if heading:
             flush_current()
-            level, _, title = heading
+            level, label, title = heading
             while stack and stack[-1]["level"] >= level:
                 stack.pop()
             parent_qa_id = stack[-1]["qa_id"] if stack else None
@@ -758,6 +789,7 @@ def parse_guide_blocks(
                 "parent_qa_id": parent_qa_id,
                 "parent_section_path": parent_section_path,
                 "level": level,
+                "label": label,
                 "title": title,
                 "section_path": section_path,
                 "section_index": section_counter,
@@ -768,7 +800,11 @@ def parse_guide_blocks(
             continue
         if current is None:
             continue
-        if not current["body"] and looks_like_heading_continuation(line):
+        # Un heading issu d'un marqueur de structure est déjà un titre complet
+        # (ligne markdown de l'OCR): rien à recoller — le recollage transformait
+        # « RÉPUBLIQUE FRANÇAISE » + « le congé de formation syndicale. » en un
+        # seul titre mensonger.
+        if not current["body"] and current["label"] not in ("Titre", "Intertitre") and looks_like_heading_continuation(line):
             current["title"] = normalize_text(f"{current['title']} {line.strip(' -')}")
             if stack and stack[-1]["qa_id"] == current["qa_id"]:
                 stack[-1]["title"] = current["title"]
@@ -780,7 +816,9 @@ def parse_guide_blocks(
         current["body"].append(line)
 
     flush_current()
-    return blocks
+    # Un sommaire qui aurait échappé à strip_table_of_contents ne doit jamais
+    # devenir une section indexée (chunks-sommaires de l'issue #302).
+    return [block for block in blocks if normalize_token_text(block.section_title) not in TOC_START_TITLES]
 
 
 def parse_faq_blocks(text: str, source_name: str, thematique: str) -> list[SectionBlock]:
@@ -846,7 +884,7 @@ def parse_faq_blocks(text: str, source_name: str, thematique: str) -> list[Secti
 
 def parse_process_blocks(text: str, source_name: str, thematique: str) -> list[SectionBlock]:
     cleaned = strip_table_of_contents(text)
-    raw_lines = list(cleaned.split("\n"))
+    raw_lines = [strip_structure_marker(line) for line in cleaned.split("\n")]
     lines = [line for line in merge_process_fragments(raw_lines) if line.strip()]
     blocks: list[SectionBlock] = []
     section_counter = 0
@@ -935,7 +973,11 @@ def parse_process_blocks(text: str, source_name: str, thematique: str) -> list[S
 
 def parse_table_matrix_blocks(text: str, source_name: str, thematique: str) -> list[SectionBlock]:
     cleaned = strip_table_of_contents(text)
-    lines = [line.strip() for line in cleaned.split("\n") if line.strip() and not line.startswith("[PAGE ") and not line.startswith("[SLIDE ")]
+    lines = [
+        strip_structure_marker(line.strip())
+        for line in cleaned.split("\n")
+        if line.strip() and not line.startswith("[PAGE ") and not line.startswith("[SLIDE ")
+    ]
     blocks: list[SectionBlock] = []
     section_counter = 0
     current_heading: str | None = None
