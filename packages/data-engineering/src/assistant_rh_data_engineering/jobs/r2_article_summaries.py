@@ -330,6 +330,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # texte périmé APRÈS la purge delta. Les lignes obsolètes sont
         # ignorées et rapportées, jamais upsertées.
         source_shas = {cid: source_sha(str(row.get("chunk_text") or "")) for cid, row in rows_by_cid.items()}
+        writer = LegifranceDbWriter(schema=args.schema, dsn=dsn, legacy_table_name=args.table)
+        # DDL AVANT d'ouvrir la transaction apply : ensure passe par sa propre
+        # connexion, et son ALTER (ACCESS EXCLUSIVE) se mettrait en file
+        # derrière les verrous FOR UPDATE d'apply_conn — auto-deadlock qui a
+        # gelé le retrieval staging le 23/07.
+        writer.ensure_legacy_target_table()
+        has_variant_col = True
         with psycopg.connect(dsn) as apply_conn:
             # FOR UPDATE : les lignes-article restent verrouillées jusqu'au
             # commit — une ingestion concurrente (DELETE/UPDATE par cid) bloque
@@ -344,9 +351,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 for_update=True,
             )
             current_texts = {str(r["cid"]).strip(): str(r.get("chunk_text") or "") for r in current_rows}
-            fresh_cids, stale = split_stale_sources(
-                {item.uid: source_shas[item.uid] for item in accepted}, current_texts
-            )
+            fresh_cids, stale = split_stale_sources({item.uid: source_shas[item.uid] for item in accepted}, current_texts)
             fresh_set = set(fresh_cids)
             fresh_pairs = [(item, vector) for item, vector in zip(accepted, vectors, strict=True) if item.uid in fresh_set]
             # Lignes R2 construites depuis la ligne COURANTE (revue #332
@@ -364,7 +369,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 )
                 for item, vector in fresh_pairs
             ]
-            writer = LegifranceDbWriter(schema=args.schema, dsn=dsn, legacy_table_name=args.table)
             report["applied"] = writer.upsert_legacy_chunks(chunk_rows, conn=apply_conn) if chunk_rows else 0
             apply_conn.commit()
         report["stale_skipped"] = len(stale)

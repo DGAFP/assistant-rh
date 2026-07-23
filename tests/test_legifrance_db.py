@@ -236,3 +236,29 @@ def test_purge_summary_rows_propagates_db_errors(monkeypatch) -> None:
     monkeypatch.setattr(writer, "_column_types", boom)
     with pytest.raises(RuntimeError, match="n'existe pas"):
         writer._purge_summary_rows_fresh_snapshot(object(), table="rag_chunks_dgafp", join_column="cid", uids=["C1"])
+
+
+def test_upsert_legacy_chunks_with_caller_conn_never_runs_ddl(monkeypatch: pytest.MonkeyPatch) -> None:
+    """La branche conn-fourni ne fait JAMAIS de DDL : ensure passe par une
+    seconde connexion dont l'ALTER (ACCESS EXCLUSIVE) se met en file derrière
+    les verrous de la transaction du caller — auto-deadlock de l'apply R2 du
+    23/07 (retrieval staging gelé). Le DDL incombe au caller, AVANT sa
+    transaction."""
+    writer = LegifranceDbWriter(schema="staging", dsn="postgresql://unused")
+    monkeypatch.setattr(writer, "ensure_legacy_target_table", lambda: pytest.fail("caller-conn branch attempted DDL"))
+    seen: dict[str, Any] = {}
+
+    def fake_upsert(conn: Any, table: str, rows: list[dict], conflict_cols: list[str], **kwargs: Any) -> int:
+        seen["conn"] = conn
+        seen["table"] = table
+        return len(rows)
+
+    monkeypatch.setattr(writer, "_upsert", fake_upsert)
+    monkeypatch.setattr(writer, "project_legacy_chunks", lambda chunks: chunks)
+    caller_conn = object()
+
+    count = writer.upsert_legacy_chunks([{"chunk_id": "C1_r2s", "cid": "C1"}], conn=caller_conn)
+
+    assert count == 1
+    assert seen["conn"] is caller_conn
+    assert seen["table"] == "rag_chunks_dgafp"

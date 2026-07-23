@@ -314,9 +314,12 @@ class LegifranceDbWriter(ServicePublicDbWriter):
     def upsert_legacy_chunks(self, chunks: list[dict], conn=None) -> int:
         # ``conn`` fourni = le caller porte la transaction (revalidation de
         # fraîcheur + upsert atomiques, cf. jobs/r2_article_summaries) et
-        # committe lui-même.
+        # committe lui-même. Le caller DOIT avoir appelé
+        # ensure_legacy_target_table() AVANT d'ouvrir sa transaction : le DDL
+        # passe par une seconde connexion et son ACCESS EXCLUSIVE se met en
+        # file derrière les verrous de ``conn`` — auto-deadlock qui a gelé le
+        # retrieval staging le 23/07 (apply R2 bloqué sur l'ADD COLUMN).
         if conn is not None:
-            self.ensure_legacy_target_table()
             return self._upsert(
                 conn,
                 self.legacy_table_name,
@@ -653,11 +656,8 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                 (normalized,),
             )
             deleted_chunks = int(cur.rowcount or 0)
-        deleted_chunks += self._purge_summary_rows_fresh_snapshot(
-            conn, table=self.legacy_table_name, join_column="cid", uids=normalized
-        )
+        deleted_chunks += self._purge_summary_rows_fresh_snapshot(conn, table=self.legacy_table_name, join_column="cid", uids=normalized)
         with conn.cursor() as cur:
-
             deleted_sections = 0
             deleted_documents = 0
             if doc_ids:
