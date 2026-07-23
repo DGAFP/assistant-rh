@@ -606,3 +606,34 @@ def test_faq_routing_and_parsing_ignore_structure_markers() -> None:
     mode, blocks, _ = parse_document(marked, "PSC_FAQ Santé.pdf", "", config)
     assert mode == "faq"
     assert any("garantie numéro 3" in b.section_title for b in blocks)
+
+
+def test_table_cells_strip_image_refs_like_legacy_flatten() -> None:
+    # Parité legacy: les refs d'images non annotées étaient strippées sur la
+    # ligne entière AVANT le dé-pipage — le chemin tableau ne doit pas les
+    # laisser fuir dans les chunks.
+    ocr = OcrResult(
+        provider="albert",
+        version="v",
+        markdown="",
+        pages=[{"index": 0, "markdown": "| Colonne A | Colonne B |\n| --- | --- |\n| Voir schéma ![img-3.jpeg](img-3.jpeg) | Valeur |"}],
+    )
+
+    flat = flatten_ocr_to_text(ocr)
+
+    assert "img-3.jpeg" not in flat
+    assert "Voir schéma Valeur" in flat
+
+
+def test_sommaire_without_dot_leaders_does_not_swallow_blank_lines() -> None:
+    # Un « Sommaire » de FAQ numéroté (sans pointillés) ne doit pas laisser le
+    # mode TOC actif jusqu'à la fin du document — sinon toutes les lignes
+    # vides sont avalées et les paragraphes du corps se collent.
+    from assistant_rh_data_engineering.pdf_ministry.qna.engine import strip_table_of_contents
+
+    text = "Sommaire\n1. Comment ça marche ? 4\n2. Qui contacter ? 5\n\nCorps du document.\n\nParagraphe deux.\n\nParagraphe trois."
+
+    out = strip_table_of_contents(text)
+
+    assert "Corps du document.\n\nParagraphe deux." in out
+    assert "Paragraphe deux.\n\nParagraphe trois." in out

@@ -132,7 +132,11 @@ def _parse_table_cells(rows: list[str]) -> list[list[str]]:
     for row in rows:
         if _TABLE_SEPARATOR_ROW_RE.match(row):
             continue
-        parsed.append([_BOLD_RE.sub(r"\1", cell).strip() for cell in row.strip().strip("|").split("|")])
+        # Parité avec l'aplatissement legacy, qui strippait gras et refs
+        # d'images sur la ligne entière AVANT le dé-pipage.
+        row = _BOLD_RE.sub(r"\1", row)
+        row = IMAGE_REF_RE.sub("", row)
+        parsed.append([cell.strip() for cell in row.strip().strip("|").split("|")])
     return parsed
 
 

@@ -161,19 +161,33 @@ def strip_table_of_contents(text: str) -> str:
     out: list[str] = []
     in_toc = False
     toc_hits = 0
+    toc_misses = 0
     for raw in lines:
         stripped = raw.strip()
         if normalize_token_text(strip_structure_marker(stripped)) in TOC_START_TITLES:
             in_toc = True
             toc_hits = 0
+            toc_misses = 0
             continue
         if in_toc:
-            if TOC_ENTRY_PAT.match(stripped) or stripped in {"", "[PAGE 2]", "[PAGE 3]"}:
-                toc_hits += 1 if TOC_ENTRY_PAT.match(stripped) else 0
+            if TOC_ENTRY_PAT.match(stripped):
+                toc_hits += 1
+                continue
+            # Les lignes vides/marqueurs de page ne sont avalés qu'à
+            # l'INTÉRIEUR d'un vrai sommaire (au moins une entrée vue).
+            if toc_hits > 0 and stripped in {"", "[PAGE 2]", "[PAGE 3]"}:
                 continue
             if toc_hits >= 3:
                 in_toc = False
             else:
+                # TOC non confirmé (« Sommaire » de FAQ numéroté sans
+                # pointillés, simple intertitre): sortir du mode TOC après
+                # quelques lignes de contenu au lieu d'y rester jusqu'à la
+                # fin du document — sinon toutes ses lignes vides sont
+                # avalées et les paragraphes se collent.
+                toc_misses += 1
+                if toc_misses >= 3:
+                    in_toc = False
                 out.append(raw)
                 continue
         out.append(raw)
