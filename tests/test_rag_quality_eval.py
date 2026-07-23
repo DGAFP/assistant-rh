@@ -955,10 +955,29 @@ def test_instrument_usage_tallies_every_create_call() -> None:
     client.chat.completions.create(model="x")
     client.chat.completions.create(model="x")
 
-    assert (tracker.prompt_tokens, tracker.completion_tokens, tracker.calls) == (20, 6, 2)
+    assert (tracker.prompt_tokens, tracker.completion_tokens, tracker.calls, tracker.attempted_calls) == (20, 6, 2, 2)
     usage = tracker.as_dict("llama-3.3-70b-instruct", "scaleway", capture_complete=True)
     assert usage["cost_eur"] == round(20 / 1e6 * 0.9 + 6 / 1e6 * 0.9, 6)
     assert usage["reported_cost"] == 0.002
+
+
+def test_instrument_usage_distinguishes_missing_usage_payload() -> None:
+    from src.goldset.eval import _instrument_usage, _TokenUsage
+
+    class _Completions:
+        def create(self, **kwargs: object) -> object:
+            return object()
+
+    class _Client:
+        chat = type("_Chat", (), {"completions": _Completions()})()
+
+    tracker = _TokenUsage()
+    client = _Client()
+    assert _instrument_usage(client, tracker) is True
+    client.chat.completions.create(model="x")
+
+    assert tracker.attempted_calls == 1
+    assert tracker.calls == 0
 
 
 def test_token_usage_keeps_openrouter_credits_separate_from_eur() -> None:

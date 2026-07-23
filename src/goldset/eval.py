@@ -1078,6 +1078,7 @@ class _TokenUsage:
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.calls = 0
+        self.attempted_calls = 0
         self.reported_cost = 0.0
         self.reported_cost_calls = 0
 
@@ -1120,6 +1121,7 @@ def _instrument_usage(client: Any, tracker: _TokenUsage) -> bool:
         original = completions.create
 
         def wrapped(*args: Any, **kwargs: Any) -> Any:
+            tracker.attempted_calls += 1
             response = original(*args, **kwargs)
             try:
                 tracker.record(getattr(response, "usage", None))
@@ -1263,7 +1265,11 @@ def compute_ragas_metrics(
             "faithfulness": _safe_float(row.get("faithfulness")),
             "context_precision": _safe_float(row.get("context_precision")),
             "context_recall": _safe_float(row.get("context_recall")),
-            "usage": usage.as_dict(model, "scaleway", capture_complete=instrumented),
+            "usage": usage.as_dict(
+                model,
+                "scaleway",
+                capture_complete=instrumented and usage.attempted_calls > 0 and usage.calls == usage.attempted_calls,
+            ),
         }
     except Exception as exc:
         return {
