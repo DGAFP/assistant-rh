@@ -362,7 +362,12 @@ with st.sidebar:
             st.session_state["fb_custom_range"] = (data_min or BETA_START, data_max or date.today())
         custom_range = st.date_input("Période d'analyse", key="fb_custom_range")
 
-    date_range = resolve_period(period_mode, custom_range)
+    date_range = resolve_period(period_mode, custom_range, st.session_state.get("fb_custom_range_applied"))
+    if period_mode == PERIOD_CUSTOM:
+        if date_range is not None:
+            st.session_state["fb_custom_range_applied"] = date_range
+        if custom_range is not None and len(custom_range) != 2:
+            st.warning("Sélection de période incomplète : choisissez une date de fin.")
     applied_period_caption = period_caption(period_mode, date_range, data_min, data_max)
     st.caption(f"Période appliquée : {applied_period_caption}")
 

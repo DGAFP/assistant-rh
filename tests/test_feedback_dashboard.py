@@ -58,8 +58,20 @@ class TestResolvePeriod:
         second = resolve_period(PERIOD_CUSTOM, chosen)
         assert first == second == chosen
 
-    def test_custom_incomplete_selection_applies_no_bound(self):
-        # st.date_input renvoie un tuple à 1 élément en cours de sélection.
+    def test_custom_incomplete_selection_keeps_last_applied_range(self):
+        # st.date_input renvoie un tuple à 1 élément en cours de sélection :
+        # la dernière plage complète reste appliquée, la vue ne s'élargit pas
+        # silencieusement à « Tout ».
+        last = (date(2026, 6, 1), date(2026, 6, 30))
+        assert resolve_period(PERIOD_CUSTOM, (date(2026, 7, 1),), last) == last
+        assert resolve_period(PERIOD_CUSTOM, None, last) == last
+
+    def test_custom_complete_selection_overrides_last_applied(self):
+        last = (date(2026, 6, 1), date(2026, 6, 30))
+        chosen = (date(2026, 7, 1), date(2026, 7, 15))
+        assert resolve_period(PERIOD_CUSTOM, chosen, last) == chosen
+
+    def test_custom_incomplete_without_history_applies_no_bound(self):
         assert resolve_period(PERIOD_CUSTOM, (date(2026, 6, 1),)) is None
         assert resolve_period(PERIOD_CUSTOM, None) is None
 
@@ -86,6 +98,11 @@ class TestPeriodCaption:
     def test_beta_mode_labelled(self):
         caption = period_caption(PERIOD_BETA, (BETA_START, BETA_END))
         assert "Beta-test" in caption
+
+    def test_custom_incomplete_is_not_announced_as_tout(self):
+        caption = period_caption(PERIOD_CUSTOM, None, date(2026, 1, 8), date(2026, 7, 23))
+        assert "Tout" not in caption
+        assert "Personnalisée" in caption
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

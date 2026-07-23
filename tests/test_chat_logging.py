@@ -677,6 +677,44 @@ class TestLogRun:
         log_run(row, engine=None, csv_path=csv_path, csv_fields=["turn_id", "question"])
         assert csv_path.exists()
 
+    def test_csv_fallback_persists_selected_ministry_with_runs_fields(self, tmp_path):
+        # Issue #341: a PostgreSQL outage must not lose the ministry — the CSV
+        # fallback filters the row to RUNS_FIELDS, which must carry the column.
+        import csv as csv_module
+
+        from src.ui.chatbot_logging import RUNS_FIELDS
+
+        assert "selected_ministry" in RUNS_FIELDS
+
+        pipeline, qr, config, runtime, items, v1_chunks = _build_mock_objects()
+        pipeline.last_result.metadata["selected_ministry"] = "mso"
+        row = build_log_row(
+            turn_id="csv-ministry",
+            query="Question RTT",
+            response="Réponse",
+            pipeline=pipeline,
+            qr=qr,
+            config=config,
+            runtime_config=runtime,
+            session_state={"session_id": "s1", "conversation_id": "c1", "turns": []},
+            total_time_ms=100.0,
+            context_items=items,
+            v1_chunks_for_display=v1_chunks,
+            legal_refs_v3=[],
+        )
+        csv_path = tmp_path / "chat_runs.csv"
+        log_run(row, engine=None, csv_path=csv_path, csv_fields=RUNS_FIELDS)
+
+        with csv_path.open(encoding="utf-8") as f:
+            rows = list(csv_module.DictReader(f))
+        assert rows[0]["selected_ministry"] == "mso"
+
+    def test_chatbot_page_runs_fields_include_selected_ministry(self):
+        # The Streamlit page defines its own RUNS_FIELDS copy (not importable
+        # without a Streamlit session) — keep it in sync via its source.
+        page = Path(__file__).resolve().parent.parent / "apps" / "streamlit-ui" / "pages" / "01_Chatbot.py"
+        assert '"selected_ministry",' in page.read_text(encoding="utf-8")
+
 
 class TestTraceEvents:
     def test_trace_event_sql_uses_jsonb_casts(self):

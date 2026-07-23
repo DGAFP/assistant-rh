@@ -412,6 +412,8 @@ RUNS_FIELDS = [
     "expanded_refs_count",
     # A/B Testing
     "user_group",
+    # Ministry routing (issue #341)
+    "selected_ministry",
     # ═══════════════════════════════════════════════════════════════════════════
     # V3 OBSERVABILITY COLUMNS (42 new columns for detailed V3 pipeline tracking)
     # ═══════════════════════════════════════════════════════════════════════════

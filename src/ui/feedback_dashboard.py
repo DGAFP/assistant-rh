@@ -28,20 +28,31 @@ PERIOD_MODE_LABELS = {
 MINISTRY_NOT_SET_LABEL = "Non renseigné"
 
 
-def resolve_period(mode: str, custom_range: tuple | None = None) -> tuple[date, date] | None:
+def _complete_range(candidate: tuple | None) -> tuple[date, date] | None:
+    """Return (start, end) when *candidate* holds two dates, else ``None``."""
+    if candidate is not None and len(candidate) == 2 and candidate[0] and candidate[1]:
+        return (candidate[0], candidate[1])
+    return None
+
+
+def resolve_period(
+    mode: str,
+    custom_range: tuple | None = None,
+    last_applied: tuple | None = None,
+) -> tuple[date, date] | None:
     """Return the (start, end) bounds to apply, or ``None`` for no bound.
 
     Mode « Tout » returns ``None``: no frozen end date, so data added after the
     view was first opened stays visible on every rerun. The beta-test preset is
-    a fixed window; a custom range is only kept when it is complete (2 dates —
-    ``st.date_input`` returns a 1-tuple mid-selection).
+    a fixed window. A custom range applies when complete (2 dates —
+    ``st.date_input`` returns a 1-tuple mid-selection); while incomplete, the
+    last complete custom range (*last_applied*) keeps applying so the view
+    never silently widens to « Tout ».
     """
     if mode == PERIOD_BETA:
         return (BETA_START, BETA_END)
-    if mode == PERIOD_CUSTOM and custom_range is not None and len(custom_range) == 2:
-        start, end = custom_range
-        if start and end:
-            return (start, end)
+    if mode == PERIOD_CUSTOM:
+        return _complete_range(custom_range) or _complete_range(last_applied)
     return None
 
 
@@ -51,6 +62,8 @@ def period_caption(mode: str, period: tuple[date, date] | None, data_min: date |
     def _fmt(d: date) -> str:
         return d.strftime("%d/%m/%Y")
 
+    if mode == PERIOD_CUSTOM and period is None:
+        return "Personnalisée — sélection en cours, aucune borne appliquée"
     if period is None:
         if data_min is not None and data_max is not None:
             return f"Tout — du {_fmt(data_min)} au {_fmt(data_max)} (suit les nouvelles données)"
