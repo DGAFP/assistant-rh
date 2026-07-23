@@ -1645,6 +1645,37 @@ def judge_answer(
         }
 
 
+def _combine_usage_payloads(results: list[dict[str, Any]], *, provider: str, model: str) -> dict[str, Any]:
+    """Combine usage from every judge vote without hiding incomplete capture."""
+    usages = [result.get("usage") for result in results]
+    valid = [usage for usage in usages if isinstance(usage, dict)]
+    providers = {str(usage.get("provider") or "") for usage in valid if usage.get("provider")}
+    models = {str(usage.get("model") or "") for usage in valid if usage.get("model")}
+    costs_eur = [_safe_float(usage.get("cost_eur")) for usage in valid]
+    capture_complete = len(valid) == len(results) and all(usage.get("capture_complete") is True for usage in valid)
+
+    reported = [
+        (_safe_float(usage.get("reported_cost")), str(usage.get("reported_cost_unit") or ""))
+        for usage in valid
+        if usage.get("reported_cost") is not None
+    ]
+    reported_units = {unit for _, unit in reported if unit}
+    reported_complete = len(reported) == len(valid) and len(reported_units) == 1 and all(cost is not None for cost, _ in reported)
+    reported_unit = next(iter(reported_units)) if reported_complete else None
+
+    return {
+        "prompt_tokens": sum(int(usage.get("prompt_tokens") or 0) for usage in valid),
+        "completion_tokens": sum(int(usage.get("completion_tokens") or 0) for usage in valid),
+        "calls": sum(int(usage.get("calls") or 0) for usage in valid),
+        "model": next(iter(models)) if len(models) == 1 else "mixed" if models else model,
+        "provider": next(iter(providers)) if len(providers) == 1 else "mixed" if providers else provider,
+        "cost_eur": round(sum(cost for cost in costs_eur if cost is not None), 6) if valid and all(cost is not None for cost in costs_eur) else None,
+        "reported_cost": (round(sum(cost for cost, _ in reported if cost is not None), 8) if reported_complete else None),
+        "reported_cost_unit": reported_unit,
+        "capture_complete": capture_complete,
+    }
+
+
 def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
     """Vote majoritaire du juge : ``votes`` appels indépendants, verdict = majorité.
 
@@ -1658,6 +1689,11 @@ def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
     if votes == 1:
         return judge_answer(**kwargs)
     results = [judge_answer(**kwargs) for _ in range(votes)]
+    combined_usage = _combine_usage_payloads(
+        results,
+        provider=str(kwargs.get("provider") or DEFAULT_JUDGE_PROVIDER),
+        model=str(kwargs.get("model") or ""),
+    )
     completed = [r for r in results if r.get("status") == "completed"]
     n_pass = sum(1 for r in completed if r.get("pass"))
     n_fail = len(completed) - n_pass
@@ -1669,6 +1705,7 @@ def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
             "failure_category": r.get("failure_category"),
             "status": r.get("status"),
             "reason": r.get("reason"),
+            "usage": r.get("usage"),
         }
         for r in results
     ]
@@ -1678,12 +1715,14 @@ def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
             "reason": f"judge vote quorum not reached: required={quorum}, pass={n_pass}, fail={n_fail}, completed={len(completed)}/{votes}",
             "votes": vote_audit,
             "vote_agreement": f"{max(n_pass, n_fail)}/{len(completed)}",
+            "usage": combined_usage,
         }
     verdict = n_pass >= quorum
     base = dict(next(r for r in completed if bool(r.get("pass")) == verdict))
     base["pass"] = verdict
     base["votes"] = vote_audit
     base["vote_agreement"] = f"{max(n_pass, n_fail)}/{len(completed)}"
+    base["usage"] = combined_usage
     return base
 
 

@@ -1402,6 +1402,47 @@ def test_judge_answer_with_votes_majority(monkeypatch) -> None:
     assert result["failure_category"] is None
 
 
+def test_judge_answer_with_votes_sums_usage_from_every_paid_call(monkeypatch) -> None:
+    from src.goldset import eval as eval_module
+
+    def usage(prompt: int, completion: int, cost: float) -> dict:
+        return {
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+            "calls": 1,
+            "model": "qwen3-235b-a22b-instruct-2507",
+            "provider": "scaleway",
+            "cost_eur": cost,
+            "reported_cost": None,
+            "reported_cost_unit": None,
+            "capture_complete": True,
+        }
+
+    seq = iter(
+        [
+            {"status": "completed", "pass": True, "score": 0.9, "usage": usage(100, 10, 0.000097)},
+            {"status": "completed", "pass": False, "score": 0.4, "usage": usage(110, 11, 0.000107)},
+            {"status": "completed", "pass": True, "score": 0.8, "usage": usage(120, 12, 0.000117)},
+        ]
+    )
+    monkeypatch.setattr(eval_module, "judge_answer", lambda **kwargs: next(seq))
+
+    result = eval_module.judge_answer_with_votes(
+        votes=3,
+        question="q",
+        provider="scaleway",
+        model="qwen3-235b-a22b-instruct-2507",
+    )
+
+    assert result["pass"] is True
+    assert result["usage"]["prompt_tokens"] == 330
+    assert result["usage"]["completion_tokens"] == 33
+    assert result["usage"]["calls"] == 3
+    assert result["usage"]["cost_eur"] == 0.000321
+    assert result["usage"]["capture_complete"] is True
+    assert [vote["usage"]["prompt_tokens"] for vote in result["votes"]] == [100, 110, 120]
+
+
 def test_judge_answer_with_votes_tolerates_a_failed_vote(monkeypatch) -> None:
     """Un vote en erreur (ex. 429) n'invalide pas le verdict : majorité des complétés."""
     from src.goldset import eval as eval_module
