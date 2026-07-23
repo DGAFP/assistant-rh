@@ -625,7 +625,7 @@ def load_goldset_questions(
 
     cur.execute(f"""
         SELECT id, question, gold_answer, gold_sources, theme, tags, difficulty,
-               goldset_name, embedding_albert
+               goldset_name
         FROM goldset_questions_v2
         WHERE {where_sql}
         ORDER BY id
