@@ -412,6 +412,8 @@ RUNS_FIELDS = [
     "expanded_refs_count",
     # A/B Testing
     "user_group",
+    # Ministry routing (issue #341)
+    "selected_ministry",
     # ═══════════════════════════════════════════════════════════════════════════
     # V3 OBSERVABILITY COLUMNS (42 new columns for detailed V3 pipeline tracking)
     # ═══════════════════════════════════════════════════════════════════════════
@@ -1359,6 +1361,7 @@ if query:
                         dict(st.session_state),
                         runtime_config=rag_config,
                         trace_id=trace_id,
+                        retrieval_scope=retrieval_scope,
                     )
                     log_run_row(row)
                 except Exception as e:
