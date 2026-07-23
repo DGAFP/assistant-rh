@@ -613,12 +613,13 @@ class LegifranceDbWriter(ServicePublicDbWriter):
         sur les bases sans colonne ``index_variant``."""
         if table != self.legacy_table_name or not uids:
             return 0
-        try:
-            if "index_variant" not in self._column_types(conn, table):
-                return 0
-        except Exception:
-            # Table absente/minimale (doubles de test, base non migrée) :
-            # aucune ligne R2 possible, rien à purger.
+        # Pas de rattrapage silencieux (revue #332 round 5) : les chemins
+        # publics legacy passent par ensure_legacy_target_table, donc la
+        # colonne index_variant existe — une erreur de schéma/DB ici doit
+        # FAIRE ÉCHOUER la transaction, jamais désactiver le garde
+        # d'intégrité en retournant 0. Seule l'absence de la colonne (base
+        # pas encore migrée, cas légitime) est un no-op.
+        if "index_variant" not in self._column_types(conn, table):
             return 0
         with conn.cursor() as cur:
             cur.execute(

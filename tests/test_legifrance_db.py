@@ -220,3 +220,19 @@ def test_cascade_articles_purges_r2_rows_in_fresh_statement(monkeypatch) -> None
     executed.clear()
     monkeypatch.setattr(writer, "_column_types", lambda conn, table: (_ for _ in ()).throw(AssertionError("probe interdit hors legacy")))
     assert writer._purge_summary_rows_fresh_snapshot(_Conn(), table="rag_chunks_legifrance", join_column="short_id", uids=["X"]) == 0
+
+
+def test_purge_summary_rows_propagates_db_errors(monkeypatch) -> None:
+    """Revue #332 round 5 : le garde d'intégrité ne se désactive JAMAIS en
+    silence — une erreur de schéma/DB pendant le probe fait échouer la
+    transaction au lieu de retourner 0."""
+    from assistant_rh_data_engineering.legifrance.db import LegifranceDbWriter
+
+    writer = LegifranceDbWriter(schema="public", dsn="postgresql://fake", legacy_table_name="rag_chunks_dgafp")
+
+    def boom(conn, table):
+        raise RuntimeError("La table public.rag_chunks_dgafp n'existe pas ou n'a aucune colonne.")
+
+    monkeypatch.setattr(writer, "_column_types", boom)
+    with pytest.raises(RuntimeError, match="n'existe pas"):
+        writer._purge_summary_rows_fresh_snapshot(object(), table="rag_chunks_dgafp", join_column="cid", uids=["C1"])

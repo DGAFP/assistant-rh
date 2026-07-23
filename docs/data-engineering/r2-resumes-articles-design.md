@@ -45,7 +45,7 @@ Une ligne par article : `chunk_id = {cid}_r2s` (24 chars, tient dans VARCHAR(64)
 Rejetée : exige de brancher une table dans `CHUNK_TABLES` + la liste `tables` de la config runtime (v3), crée une **source RRF supplémentaire** dans `_merge_cross_source_ranks` (le résumé et l'article ne fusionnent jamais par clé `(table_source, chunk_id)` → biais de rang cross-source, publisher/pills à dupliquer), et le delta ingestion ne cascade pas (la purge par cid ne touche que la table legacy). Plus de surface runtime, plus de drift, pour zéro bénéfice fonctionnel.
 
 ### Option C — colonne `embedding_summary vector(1024)` sur la ligne existante
-Rejetée : modification du **hot path** SQL du retriever (UNION ou double ORDER BY par table), nouvel index ivfflat obligatoire, logique par-table à conditionner (seule dgafp l'aurait), et A/B impossible sans déploiement de code. Élégant sur le papier (dédup gratuite), mais casse la propriété « additif = zéro changement runtime » qui a justifié R2 contre R5.
+Rejetée : modification du **hot path** SQL du retriever (UNION ou double ORDER BY par table), nouvel index ivfflat obligatoire, logique par-table à conditionner (seule dgafp l'aurait), et A/B impossible sans déploiement de code. Élégant sur le papier (dédup gratuite), mais casse la propriété « additif = changements runtime bornés (retriever : sur-échantillon+fusion dgafp ; aggregator : fusion de paire) » qui a justifié R2 contre R5.
 
 ## 3. Pipeline de génération (pattern `page_vision.py`)
 
