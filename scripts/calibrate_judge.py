@@ -39,13 +39,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.goldset.eval import (  # noqa: E402
-    DEFAULT_JUDGE_MODEL,
     DEFAULT_JUDGE_PROVIDER,
     DEFAULT_JUDGE_RUBRIC,
     JudgeRubric,
     calibrate_judge_result,
     judge_answer,
     resolve_judge_endpoint,
+    resolve_judge_model,
 )
 
 
@@ -84,10 +84,10 @@ def _cache_fingerprint(labels: list[dict], provider: str, model: str, base_url: 
 
 def capture_judge(labels: list[dict], cache_path: Path) -> list[dict]:
     """Run the judge once per labelled answer and cache the raw dimensions."""
-    # Même juge que le harnais d'éval: provider (défaut OpenRouter) pilote la
-    # clé ET la base URL; le modèle vient de OPENROUTER_JUDGE_MODEL sinon défaut.
+    # Même juge que le harnais d'éval: le provider pilote la clé, la base URL
+    # ET le modèle par défaut.
     provider = os.getenv("JUDGE_PROVIDER", DEFAULT_JUDGE_PROVIDER).strip()
-    model = os.getenv("OPENROUTER_JUDGE_MODEL", DEFAULT_JUDGE_MODEL).strip()
+    model = resolve_judge_model(provider)
     provider, base_url, api_key = resolve_judge_endpoint(provider)
     fingerprint = _cache_fingerprint(labels, provider, model, base_url)
     if cache_path.exists():
