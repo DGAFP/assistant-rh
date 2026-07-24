@@ -222,6 +222,7 @@ GROUP_COLORS, GROUP_LABELS = group_chart_maps()
 # Labels pour les catégories d'erreur (identifiées par LLM)
 ERROR_CATEGORY_LABELS = {
     "retrieval_issue": "🔍 Retrieval: mauvais chunks",
+    "candidate_cut": "📉 Agrégation: coupé avant sélection",
     "selector_misunderstanding": "🟡 Selector: mauvaise compréhension",
     "selector_wrong_priority": "🟡 Selector: mauvaise priorité",
     "generator_hallucination": "🔴 Generator: hallucination",
@@ -234,6 +235,7 @@ ERROR_CATEGORY_LABELS = {
 
 ERROR_CATEGORY_COLORS = {
     "retrieval_issue": "#00CC96",  # Vert (retrieval)
+    "candidate_cut": "#19D3F3",  # Cyan (agrégation / coupe des candidats)
     "selector_misunderstanding": "#FECB52",  # Jaune
     "selector_wrong_priority": "#FFA15A",  # Orange
     "generator_hallucination": "#EF553B",  # Rouge

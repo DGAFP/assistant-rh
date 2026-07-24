@@ -1,16 +1,18 @@
 """
 Async feedback analyzer for the RAG V3 Clean pipeline.
 
-Analyses negative feedback (≤3 stars) using Albert ``openweight-large``
-with **full, untruncated** RAG pipeline context (131k context window).
+Analyses negative feedback (≤3 stars) in two stages:
 
-A single LLM call receives:
-  - The user question & RAG answer (complete)
-  - The user's feedback (stars, reasons, comment)
-  - All retrieved chunks (complete text)
-  - All context items sent to the generator (complete)
-  - The full prompt sent to the generator (complete)
-  - Pipeline config flags (selector ON/OFF, etc.)
+1. **Attribution mécanique d'étage** — un premier appel LLM léger extrait des
+   *marqueurs* (chaînes distinctives de l'information attendue), puis leur
+   présence est vérifiée mécaniquement à chaque étage du pipeline : corpus
+   (tables de chunks) → pool de retrieval (``v3_chunks_raw``) → entrée du
+   selector → contexte du générateur (``v3_full_prompt``). L'étage de mort
+   détermine la catégorie sans jugement LLM (``missing_document``,
+   ``retrieval_issue``, ``candidate_cut``, ``selector_wrong_priority``).
+2. **Jugement LLM plein contexte** — uniquement quand l'information était bien
+   dans le contexte du générateur (familles ``generator_*`` /
+   ``chunk_quality``), ou en secours si aucun marqueur exploitable.
 
 The system prompt dynamically adapts error categories based on which
 pipeline stages were active for each run (e.g. no selector → no
@@ -21,13 +23,15 @@ Results are written to ``chat_feedbacks``:
   * ``ai_reason``       – short human-readable explanation
   * ``ai_analyzed_at``  – timestamp
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from sqlalchemy import text
@@ -35,9 +39,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
-ALBERT_API_URL = os.getenv(
-    "ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1"
-).rstrip("/")
+ALBERT_API_URL = os.getenv("ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1").rstrip("/")
 ANALYSIS_MODEL = "openweight-large"
 NEGATIVE_THRESHOLD = 2  # 0-based: 0→1★ … 4→5★ ; ≤2 → 1-3★
 
@@ -46,6 +48,9 @@ NEGATIVE_THRESHOLD = 2  # 0-based: 0→1★ … 4→5★ ; ≤2 → 1-3★
 # ---------------------------------------------------------------------------
 _BASE_CATEGORIES = {
     "retrieval_issue": "les bons chunks n'ont pas été trouvés par la recherche sémantique",
+    "candidate_cut": (
+        "les bons chunks ont été retrouvés par le retrieval mais éliminés avant la génération (agrégation, coupe des candidats ou budget de contexte)"
+    ),
     "generator_hallucination": "le LLM générateur a inventé des informations absentes du contexte",
     "generator_incomplete": "la réponse est incomplète malgré un contexte suffisant",
     "generator_wrong_interpretation": "le LLM a mal interprété ou mal synthétisé le contexte",
@@ -62,7 +67,7 @@ _SELECTOR_CATEGORIES = {
 ALL_VALID_CATEGORIES = list(_BASE_CATEGORIES.keys()) + list(_SELECTOR_CATEGORIES.keys())
 
 
-def _build_system_prompt(selector_active: bool) -> str:
+def _build_system_prompt(selector_active: bool, stage_hint: str = "") -> str:
     """Build the system prompt with categories adapted to the pipeline config."""
     categories = dict(_BASE_CATEGORIES)
     if selector_active:
@@ -111,7 +116,13 @@ Réponds UNIQUEMENT en JSON valide :
 - Compare les CHUNKS au CONTEXTE FINAL : les bonnes sections ont-elles été conservées ?
 - Compare le CONTEXTE FINAL à la RÉPONSE : le générateur a-t-il bien exploité le contexte ?
 - Si l'information n'apparaît dans AUCUN chunk, c'est probablement "missing_document"
-- Sois PRÉCIS : cite les sources (MATTE, Service-Public…) et les passages concernés"""
+- Sois PRÉCIS : cite les sources (MATTE, Service-Public…) et les passages concernés{_format_stage_hint(stage_hint)}"""
+
+
+def _format_stage_hint(stage_hint: str) -> str:
+    if not stage_hint:
+        return ""
+    return f"\n\n## Attribution d'étage (calculée mécaniquement — fais-lui confiance)\n\n{stage_hint}"
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +130,7 @@ Réponds UNIQUEMENT en JSON valide :
 # ---------------------------------------------------------------------------
 def _get_engine():
     from .db_helpers import create_engine_from_env
+
     return create_engine_from_env()
 
 
@@ -145,7 +157,10 @@ def _get_unanalyzed_feedbacks(engine, limit: int = 50) -> List[Dict[str, Any]]:
             r.v3_selector_confidence,
             r.v3_selector_selected_count,
             r.v3_selector_decisions,
-            r.llm_selector_model
+            r.llm_selector_model,
+            r.selected_ministry,
+            r.v3_chunks_raw,
+            r.retrieved              AS served_sources
         FROM chat_feedbacks f
         LEFT JOIN chat_runs r ON r.turn_id = f.turn_id
         WHERE f.stars IS NOT NULL
@@ -170,12 +185,15 @@ def _save_analysis(engine, feedback_id: int, category: str, reason: str) -> bool
     """)
     try:
         with engine.connect() as conn:
-            conn.execute(query, {
-                "cat": category,
-                "reason": reason,
-                "ts": datetime.now(timezone.utc),
-                "fid": feedback_id,
-            })
+            conn.execute(
+                query,
+                {
+                    "cat": category,
+                    "reason": reason,
+                    "ts": datetime.now(timezone.utc),
+                    "fid": feedback_id,
+                },
+            )
             conn.commit()
         return True
     except SQLAlchemyError as exc:
@@ -396,65 +414,271 @@ def _build_user_prompt(feedback: Dict[str, Any], engine=None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# LLM call
+# LLM call – robust JSON handling
 # ---------------------------------------------------------------------------
-def _call_albert(system_prompt: str, user_prompt: str) -> Tuple[str, str]:
-    """Single Albert call with full context. Returns (category, reason)."""
+def _extract_json(raw: str) -> Dict[str, Any]:
+    """Extract a JSON object from an LLM response, repairing truncation.
+
+    Handles code fences, prose around the object, an odd number of quotes
+    (string cut mid-flight by ``max_tokens``) and unclosed braces.
+    """
+    if "```json" in raw:
+        raw = raw.split("```json", 1)[1].split("```", 1)[0]
+    elif "```" in raw:
+        raw = raw.split("```", 1)[1].split("```", 1)[0]
+    raw = raw.strip()
+    start = raw.find("{")
+    if start == -1:
+        raise ValueError("aucun objet JSON dans la réponse")
+    raw = raw[start:]
+    end = raw.rfind("}")
+    if end != -1:
+        try:
+            return json.loads(raw[: end + 1])
+        except json.JSONDecodeError:
+            pass
+    repaired = raw.rstrip()
+    if repaired.count('"') % 2 == 1:
+        repaired += '"'
+    repaired = re.sub(r",\s*$", "", repaired)
+    repaired += "}" * max(0, repaired.count("{") - repaired.count("}"))
+    return json.loads(repaired)
+
+
+def _call_albert_json(
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int = 1500,
+    retries: int = 1,
+) -> Dict[str, Any]:
+    """Albert call that must return a JSON object. Retries once on failure.
+
+    Falls back to ``reasoning_content`` when the model spends its budget in
+    reasoning and returns ``content: null``.
+    """
     api_key = os.getenv("ALBERT_API_KEY")
     if not api_key:
-        return "other", "ALBERT_API_KEY non configurée"
+        raise RuntimeError("ALBERT_API_KEY non configurée")
 
+    last_exc: Exception = RuntimeError("appel non tenté")
+    for attempt in range(retries + 1):
+        try:
+            resp = requests.post(
+                f"{ALBERT_API_URL}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": ANALYSIS_MODEL,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "max_tokens": max_tokens,
+                    "temperature": 0,
+                },
+                timeout=90,
+            )
+            resp.raise_for_status()
+            msg = resp.json()["choices"][0]["message"]
+            raw = msg.get("content") or msg.get("reasoning_content") or ""
+            if not raw.strip():
+                raise ValueError("réponse vide du modèle (content=null)")
+            return _extract_json(raw)
+        except Exception as exc:  # noqa: BLE001 – on retente puis on remonte
+            last_exc = exc
+            logger.warning(
+                "Albert JSON call failed (tentative %d/%d): %s",
+                attempt + 1,
+                retries + 1,
+                exc,
+            )
+    raise RuntimeError(str(last_exc))
+
+
+def _call_albert(system_prompt: str, user_prompt: str) -> Tuple[str, str]:
+    """Single Albert call with full context. Returns (category, reason)."""
     try:
-        resp = requests.post(
-            f"{ALBERT_API_URL}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": ANALYSIS_MODEL,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "max_tokens": 500,
-                "temperature": 0,
-            },
-            timeout=60,
-        )
-        resp.raise_for_status()
-        raw = resp.json()["choices"][0]["message"]["content"].strip()
-
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0].strip()
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0].strip()
-
-        data = json.loads(raw)
-        category = data.get("error_category", "other")
-        if category not in ALL_VALID_CATEGORIES:
-            category = "other"
-        return category, data.get("short_reason", "Analyse effectuée")
-
+        data = _call_albert_json(system_prompt, user_prompt)
     except Exception as exc:
-        logger.warning("Albert analysis call failed: %s", exc)
         return "other", f"Erreur analyse: {exc}"
+    category = data.get("error_category", "other")
+    if category not in ALL_VALID_CATEGORIES:
+        category = "other"
+    return category, data.get("short_reason", "Analyse effectuée")
+
+
+# ---------------------------------------------------------------------------
+# Mechanical stage attribution
+# ---------------------------------------------------------------------------
+_MARKER_SYSTEM_PROMPT = """\
+Tu es un expert RH de la fonction publique française. On te donne une question posée
+à un assistant documentaire, la réponse produite et le feedback négatif d'un testeur.
+
+Ta mission : identifier l'information qui manquait (ou était fausse) et produire des
+MARQUEURS de recherche — de courtes chaînes qui apparaîtraient telles quelles dans un
+document source contenant cette information.
+
+Règles pour les marqueurs :
+- 2 à 6 marqueurs, chacun de 4 à 40 caractères
+- très spécifiques : valeur chiffrée (« 159,20 »), terme technique (« plafond d'emploi »), référence (« annexe 3 »), intitulé précis
+- en français, avec les accents, sans guillemets ni ponctuation d'encadrement
+- PAS de mots génériques (« contrat », « agent », « ministère »)
+
+Réponds UNIQUEMENT en JSON valide :
+{"missing_info": "<1 phrase : l'information attendue>", "markers": ["...", "..."]}"""
+
+_MINISTRY_CHUNK_TABLES = {
+    "matte": "rag_chunks_matte",
+    "mso": "rag_chunks_mso",
+    "masa": "rag_chunks_masa",
+    "mi": "rag_chunks_mi",
+}
+_SHARED_CHUNK_TABLES = ["rag_chunks_service_public", "rag_chunks_dgafp"]
+
+
+def _normalize(s: str) -> str:
+    return (s or "").lower().replace("’", "'").replace("\u00a0", " ")
+
+
+def _extract_markers(feedback: Dict[str, Any]) -> Tuple[str, List[str]]:
+    """LLM stage 1: what information was expected, and how to search for it."""
+    stars = int(feedback.get("stars") or 0)
+    user = (
+        f"## Question\n{feedback.get('question', '')}\n\n"
+        f"## Réponse de l'assistant\n{feedback.get('answer', '')}\n\n"
+        f"## Feedback du testeur\nNote: {stars + 1}/5\n"
+        f"Raisons: {feedback.get('reasons_negative') or '—'}\n"
+        f"Commentaire: {feedback.get('comment') or '—'}"
+    )
+    data = _call_albert_json(_MARKER_SYSTEM_PROMPT, user, max_tokens=400)
+    markers = [m.strip() for m in data.get("markers", []) if isinstance(m, str)]
+    markers = [m for m in markers if 4 <= len(m) <= 60][:6]
+    return str(data.get("missing_info", "")), markers
+
+
+def _search_corpus(engine, ministry: Optional[str], markers: List[str]) -> Optional[bool]:
+    """True/False: is any marker present in the corpus tables of this scope?
+
+    Returns ``None`` when the check could not run (DB error) — callers must
+    then avoid concluding ``missing_document``.
+    """
+    tables = []
+    ministry_table = _MINISTRY_CHUNK_TABLES.get((ministry or "").strip().lower())
+    if ministry_table:
+        tables.append(ministry_table)
+    tables += _SHARED_CHUNK_TABLES
+    try:
+        with engine.connect() as conn:
+            for marker in markers:
+                variants = {marker, marker.replace("'", "’"), marker.replace("’", "'")}
+                for tbl in tables:
+                    for v in variants:
+                        q = text(f"SELECT 1 FROM {tbl} WHERE chunk_text ILIKE :p OR text ILIKE :p LIMIT 1")
+                        if conn.execute(q, {"p": f"%{v}%"}).first():
+                            return True
+        return False
+    except SQLAlchemyError as exc:
+        logger.warning("Corpus marker search failed: %s", exc)
+        return None
+
+
+def _stage_flags(feedback: Dict[str, Any], markers: List[str]) -> Dict[str, bool]:
+    """Marker presence at each pipeline stage (ANY-marker semantics)."""
+    selector_input = feedback.get("retrieved_chunks")
+    if not isinstance(selector_input, str):
+        try:
+            selector_input = json.dumps(selector_input, ensure_ascii=False)
+        except (TypeError, ValueError):
+            selector_input = str(selector_input)
+    stages = {
+        "pool": str(feedback.get("v3_chunks_raw") or ""),
+        "selector_input": selector_input or "",
+        "served": str(feedback.get("served_sources") or ""),
+        "generator_context": str(feedback.get("rag_prompt") or ""),
+    }
+    norm_markers = [_normalize(m) for m in markers]
+    return {stage: any(m in _normalize(content) for m in norm_markers) for stage, content in stages.items()}
+
+
+def _classify_from_flags(
+    in_corpus: bool,
+    flags: Dict[str, bool],
+    selector_active: bool,
+    markers: List[str],
+    missing_info: str,
+) -> Tuple[Optional[str], str]:
+    """Decision tree on mechanical flags. ``None`` → generator family, LLM juge.
+
+    The decision only uses text-bearing stages (pool, selector input,
+    generator prompt) — ``served`` stores metadata and would create false
+    positives on document titles.
+    """
+    prefix = f"Attribution mécanique (marqueurs : {', '.join(markers)}) : "
+    suffix = f" Information attendue : {missing_info}" if missing_info else ""
+    if not in_corpus:
+        return "missing_document", (prefix + "aucun marqueur trouvé dans le corpus (table ministère + service_public + dgafp)." + suffix)
+    if not flags["pool"]:
+        return "retrieval_issue", (prefix + "présents dans le corpus mais absents du pool de retrieval." + suffix)
+    if not flags["generator_context"]:
+        if selector_active and flags["selector_input"]:
+            return "selector_wrong_priority", (prefix + "retrouvés et transmis au selector, mais écartés du contexte de génération." + suffix)
+        return "candidate_cut", (prefix + "retrouvés par le retrieval mais éliminés avant la sélection (agrégation / coupe des candidats)." + suffix)
+    return None, ""
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 def analyze_single(feedback: Dict[str, Any], engine=None) -> Tuple[str, str]:
-    """Analyze a single feedback with full untruncated context.
+    """Analyze a single feedback: mechanical stage attribution first, LLM after.
 
-    If *engine* is provided it is used both for resolving lightweight
-    chunk/section refs and for persisting the analysis result.
+    If *engine* is provided it is used to resolve lightweight chunk refs,
+    search the corpus for markers and persist the analysis result.
     """
-    selector_active = bool(feedback.get("llm_selector_model"))
-    system_prompt = _build_system_prompt(selector_active)
-    user_prompt = _build_user_prompt(feedback, engine=engine)
+    feedback = dict(feedback)
 
-    category, reason = _call_albert(system_prompt, user_prompt)
+    # Resolve selector-input chunk refs once (shared by flags + LLM prompt)
+    raw_chunks = _json_field(feedback.get("retrieved_chunks"))
+    if engine and isinstance(raw_chunks, list) and raw_chunks:
+        first = raw_chunks[0]
+        if isinstance(first, dict) and "chunk_id" in first and "text" not in first:
+            raw_chunks = _resolve_chunk_content(engine, raw_chunks)
+    if isinstance(raw_chunks, list):
+        feedback["retrieved_chunks"] = raw_chunks
+
+    selector_active = bool(feedback.get("llm_selector_model"))
+    category: Optional[str] = None
+    reason = ""
+    stage_hint = ""
+
+    # Étage 1 : attribution mécanique guidée par marqueurs
+    try:
+        missing_info, markers = _extract_markers(feedback)
+    except Exception as exc:  # noqa: BLE001 – fallback sur l'analyse LLM seule
+        logger.warning("Marker extraction failed: %s", exc)
+        missing_info, markers = "", []
+
+    if markers:
+        flags = _stage_flags(feedback, markers)
+        in_corpus = True
+        if engine:
+            found = _search_corpus(engine, feedback.get("selected_ministry"), markers)
+            in_corpus = True if found is None else found
+        category, reason = _classify_from_flags(in_corpus, flags, selector_active, markers, missing_info)
+        if category is None:
+            stage_hint = (
+                f"Les marqueurs de l'information attendue ({', '.join(markers)}) sont "
+                "PRÉSENTS dans le contexte envoyé au générateur. La cause est donc en "
+                "aval : choisis une catégorie generator_* ou chunk_quality."
+            )
+
+    # Étage 2 : LLM plein contexte (famille générateur, ou secours sans marqueurs)
+    if category is None:
+        system_prompt = _build_system_prompt(selector_active, stage_hint=stage_hint)
+        user_prompt = _build_user_prompt(feedback, engine=engine)
+        category, reason = _call_albert(system_prompt, user_prompt)
 
     if engine and feedback.get("id"):
         _save_analysis(engine, feedback["id"], category, reason)
