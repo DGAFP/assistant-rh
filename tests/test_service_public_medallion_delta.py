@@ -27,6 +27,7 @@ def _seed_gold_fingerprint(lake_root: Path, uids: list[str], *, enable_m3: bool 
     différents simule un changement de config gold/embeddings (invalide la réutilisation).
     """
     fp = gold_reuse_fingerprint(
+        source_name="service_public",
         single_chunk_per_article=False,  # SP GoldConfig n'a pas ce champ (getattr -> False)
         embeddings=EmbeddingConfig(enable_m3=enable_m3, enable_bge_scaleway=enable_bge),
     )

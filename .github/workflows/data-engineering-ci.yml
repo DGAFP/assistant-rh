@@ -109,6 +109,7 @@ jobs:
           uv run --no-sync data-ingestion legifrance bulk-dump --help > /dev/null
           uv run --no-sync data-ingestion legifrance medallion --help > /dev/null
           uv run --no-sync data-ingestion legifrance ingest --help > /dev/null
+          uv run --no-sync data-ingestion legifrance url-backfill --help > /dev/null
           uv run --no-sync data-ingestion mi medallion --help > /dev/null
           uv run --no-sync data-ingestion embeddings service-public --help > /dev/null
           uv run --no-sync data-ingestion embeddings legifrance --help > /dev/null

@@ -225,7 +225,11 @@ def main() -> int:
                 syncer = ScalewayObjectStorageSync(ObjectStorageConfig.from_env())
             hydrated_from_object_storage = hydrate_silver_gold(syncer, config.paths.root_dir, args.target_env, "legifrance")
         previous_checksums = capture_previous_checksums(config.paths.silver_dir / "documents")
-        gold_fingerprint = gold_reuse_fingerprint(single_chunk_per_article=config.gold.single_chunk_per_article, embeddings=config.embeddings)
+        gold_fingerprint = gold_reuse_fingerprint(
+            source_name="legifrance",
+            single_chunk_per_article=config.gold.single_chunk_per_article,
+            embeddings=config.embeddings,
+        )
         previous_fingerprints = read_gold_fingerprints(config.paths.gold_dir)
 
     silver_bundles = []
