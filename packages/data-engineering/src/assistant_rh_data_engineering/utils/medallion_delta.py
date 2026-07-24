@@ -26,9 +26,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-# Bumper si la logique gold/chunking change de façon incompatible avec les
-# artefacts déjà écrits (force la reconstruction de tous les golds au run suivant).
-GOLD_DELTA_VERSION = "2"  # #350 : url des chunks articles reconstruite sur l'id de version
+# Bumper uniquement la source dont la logique gold/chunking change. Une version
+# globale invaliderait aussi les autres corpus qui partagent ces helpers.
+GOLD_DELTA_VERSIONS = {
+    "service_public": "1",
+    "legifrance": "2",  # #350 : url des chunks articles reconstruite sur l'id de version
+}
 
 # Empreinte de config persistée à la racine du gold (round-trip via l'Object
 # Storage avec la couche gold). Préfixe point : ignoré par les globs *.chunks.jsonl.
@@ -106,15 +109,22 @@ def reusable_gold_chunk_count(
     return count_valid_gold_chunks(chunks_path)
 
 
-def gold_reuse_fingerprint(*, single_chunk_per_article: bool, embeddings: Any) -> str:
+def gold_reuse_fingerprint(*, source_name: str, single_chunk_per_article: bool, embeddings: Any) -> str:
     """Empreinte de la config qui détermine la SORTIE gold+embeddings.
 
     Deux runs au même checksum silver mais à config différente (chunking ou
     embeddings) ne doivent PAS réutiliser leurs golds : cette empreinte, comparée
     à celle du run précédent, invalide toute réutilisation en cas de changement.
+
+    La version est scopée par source afin qu'une évolution Légifrance ne force
+    jamais une reconstruction Service-Public (et réciproquement).
     """
+    try:
+        version = GOLD_DELTA_VERSIONS[source_name]
+    except KeyError as exc:
+        raise ValueError(f"Source médaillon inconnue pour l'empreinte gold: {source_name!r}") from exc
     payload = {
-        "version": GOLD_DELTA_VERSION,
+        "version": version,
         "single_chunk_per_article": bool(single_chunk_per_article),
         "enable_m3": bool(getattr(embeddings, "enable_m3", False)),
         "m3_backend": str(getattr(embeddings, "m3_backend", "")),

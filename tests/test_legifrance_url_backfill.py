@@ -2,13 +2,28 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import sys
 from pathlib import Path
 
 from assistant_rh_data_engineering.jobs.legifrance_url_backfill import load_expected_urls
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+CLI_MAIN_PATH = REPO_ROOT / "apps" / "data-ingestion-cli" / "src" / "assistant_rh_data_ingestion_cli" / "main.py"
 VERSION_ID = "LEGIARTI000046874572"
 CHRONIQUE = "LEGIARTI000044423597"
+
+
+def _load_cli_main():
+    if "data_ingestion_cli_main" in sys.modules:
+        return sys.modules["data_ingestion_cli_main"]
+    spec = importlib.util.spec_from_file_location("data_ingestion_cli_main", CLI_MAIN_PATH)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["data_ingestion_cli_main"] = module
+    assert spec and spec.loader
+    spec.loader.exec_module(module)
+    return module
 
 
 def _write_document(documents_dir: Path, short_id: str, payload: dict) -> None:
@@ -63,3 +78,14 @@ def test_load_expected_urls_respects_loda_route(tmp_path: Path) -> None:
     expected, _ = load_expected_urls(tmp_path)
 
     assert expected["LEGIARTI000006486629"] == "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000045662481"
+
+
+def test_cli_resolves_legifrance_url_backfill_and_preserves_args() -> None:
+    cli = _load_cli_main()
+
+    resolved = cli._resolve_command(["legifrance", "url-backfill", "--target-env", "staging", "--from-object-storage", "--check-only"])
+
+    assert resolved is not None
+    spec, job_args = resolved
+    assert spec.module == "assistant_rh_data_engineering.jobs.legifrance_url_backfill"
+    assert job_args == ["--target-env", "staging", "--from-object-storage", "--check-only"]

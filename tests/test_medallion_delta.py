@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 from assistant_rh_data_engineering.utils import medallion_delta
 
 
@@ -87,18 +88,32 @@ def test_gold_reuse_fingerprint_depends_on_config() -> None:
     from types import SimpleNamespace
 
     base = SimpleNamespace(enable_m3=False, enable_bge_scaleway=False, m3_model_name="BAAI/bge-m3", scaleway_model_name="bge", normalize=True)
-    fp = medallion_delta.gold_reuse_fingerprint(single_chunk_per_article=True, embeddings=base)
+    fp = medallion_delta.gold_reuse_fingerprint(source_name="service_public", single_chunk_per_article=True, embeddings=base)
 
     # Déterministe et stable.
-    assert fp == medallion_delta.gold_reuse_fingerprint(single_chunk_per_article=True, embeddings=base)
+    assert fp == medallion_delta.gold_reuse_fingerprint(source_name="service_public", single_chunk_per_article=True, embeddings=base)
+    # Une évolution Légifrance n'invalide pas l'empreinte Service-Public.
+    legifrance_fp = medallion_delta.gold_reuse_fingerprint(source_name="legifrance", single_chunk_per_article=True, embeddings=base)
+    assert legifrance_fp != fp
     # Chunking différent -> empreinte différente.
-    assert fp != medallion_delta.gold_reuse_fingerprint(single_chunk_per_article=False, embeddings=base)
+    assert fp != medallion_delta.gold_reuse_fingerprint(source_name="service_public", single_chunk_per_article=False, embeddings=base)
     # Embeddings activés -> empreinte différente.
     changed = SimpleNamespace(enable_m3=True, enable_bge_scaleway=False, m3_model_name="BAAI/bge-m3", scaleway_model_name="bge", normalize=True)
-    assert fp != medallion_delta.gold_reuse_fingerprint(single_chunk_per_article=True, embeddings=changed)
+    assert fp != medallion_delta.gold_reuse_fingerprint(source_name="service_public", single_chunk_per_article=True, embeddings=changed)
     # Modèle m3 différent -> empreinte différente.
     other_model = SimpleNamespace(enable_m3=False, enable_bge_scaleway=False, m3_model_name="autre", scaleway_model_name="bge", normalize=True)
-    assert fp != medallion_delta.gold_reuse_fingerprint(single_chunk_per_article=True, embeddings=other_model)
+    assert fp != medallion_delta.gold_reuse_fingerprint(source_name="service_public", single_chunk_per_article=True, embeddings=other_model)
+
+
+def test_gold_reuse_fingerprint_rejects_unknown_source() -> None:
+    from types import SimpleNamespace
+
+    with pytest.raises(ValueError, match="Source médaillon inconnue"):
+        medallion_delta.gold_reuse_fingerprint(
+            source_name="unknown",
+            single_chunk_per_article=True,
+            embeddings=SimpleNamespace(),
+        )
 
 
 def test_gold_fingerprints_roundtrip_missing_and_corrupt(tmp_path: Path) -> None:
