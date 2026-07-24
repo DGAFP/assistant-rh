@@ -26,18 +26,28 @@ from .models import ContextItem
 
 logger = logging.getLogger(__name__)
 
-USER_PROMPT_TEMPLATE = """Voici le contexte documentaire pour repondre a la question :
+# Dernière instruction lue par le modèle : elle doit porter la même voix que le
+# prompt système V7 (persona gestionnaire RH), sinon elle le contredit par
+# récence. Rendue par ministère via render_ministry_prompt AVANT .format()
+# ({ministere_sigle} est remplacé par str.replace, {context}/{question} restent
+# pour .format()).
+USER_PROMPT_TEMPLATE = """Voici le contexte documentaire pour répondre à la question :
 
 {context}
 
 ---
 
-**Question de l'utilisateur :** {question}
+**Question du gestionnaire RH :** {question}
 
 ---
 
-En vous appuyant uniquement sur les sources ci-dessus, repondez de maniere claire et operationnelle.
-Si les sources ne permettent pas de repondre, dites-le explicitement et n'inventez pas."""
+En vous appuyant uniquement sur les sources ci-dessus, répondez au gestionnaire RH de {ministere_sigle} de manière opérationnelle :
+- nommez explicitement l'acteur de chaque action (le gestionnaire, le service RH, l'autorité compétente, l'agent)
+  et ne vous adressez jamais à l'agent à la deuxième personne ;
+- conservez le détail utile à l'instruction du dossier : conditions, étapes, délais, montants,
+  contrôles et exceptions présents dans les sources ;
+- écartez les cas particuliers de corps spécifiques (enseignants, Police nationale…) sauf si la question les vise.
+Si les sources ne permettent pas de répondre, dites-le explicitement et n'inventez pas."""
 
 
 class StreamingGenerator:
@@ -82,8 +92,7 @@ class StreamingGenerator:
         ministry: MinistrySource | None = None,
     ) -> Generator[str, None, None]:
         """Yield tokens one by one."""
-        context_text = ContextBuilder.format_for_prompt(context_items)
-        user_prompt = USER_PROMPT_TEMPLATE.format(context=context_text, question=query)
+        user_prompt = self._user_prompt_for(query, context_items, ministry)
         self.last_full_prompt = user_prompt
         system_prompt = self._system_prompt_for(ministry)
         self.last_system_prompt = system_prompt
@@ -96,12 +105,22 @@ class StreamingGenerator:
         ministry: MinistrySource | None = None,
     ) -> str:
         """Non-streaming variant (useful for evaluation)."""
-        context_text = ContextBuilder.format_for_prompt(context_items)
-        user_prompt = USER_PROMPT_TEMPLATE.format(context=context_text, question=query)
+        user_prompt = self._user_prompt_for(query, context_items, ministry)
         self.last_full_prompt = user_prompt
         system_prompt = self._system_prompt_for(ministry)
         self.last_system_prompt = system_prompt
         return self.llm.chat(user_prompt, system_prompt=system_prompt)
+
+    def _user_prompt_for(
+        self,
+        query: str,
+        context_items: List[ContextItem],
+        ministry: MinistrySource | None,
+    ) -> str:
+        """Assemble the per-request prompt, ministry-rendered like the system prompt."""
+        context_text = ContextBuilder.format_for_prompt(context_items)
+        template = render_ministry_prompt(USER_PROMPT_TEMPLATE, ministry)
+        return template.format(context=context_text, question=query)
 
     def _base_system_prompt(self) -> str:
         """Load the (unrendered) system prompt template, cached per instance."""

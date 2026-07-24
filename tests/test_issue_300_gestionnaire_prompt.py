@@ -68,3 +68,26 @@ def test_migration_seeds_exact_versioned_prompt_and_preserves_v6_rollback() -> N
     assert "system_prompt_V7_gestionnaires_rh.md" in sql
     assert "COALESCE(config ->> 'v3_system_prompt_name', 'system_prompt_V6_optimized.md')" in sql
     assert "DELETE FROM system_prompts" not in sql
+
+
+def test_user_prompt_speaks_to_gestionnaire_and_renders_ministry() -> None:
+    """Le prompt par requête (dernière instruction lue) porte la voix
+    gestionnaire et le sigle du ministère — sinon il contredit le système V7
+    par récence (« Question de l'utilisateur », réponse voix agent)."""
+    from assistant_rh_rag_pipeline.generator import StreamingGenerator
+    from assistant_rh_rag_pipeline.models import ContextItem
+
+    gen = StreamingGenerator(GenerationConfig())
+    items = [ContextItem(section_id=None, heading="CET", content="Texte source.", score=1.0)]
+
+    rendered = gen._user_prompt_for("Comment alimenter un CET ?", items, get_ministry("matte"))
+    assert "gestionnaire RH de MATTE" in rendered
+    assert "Question du gestionnaire RH" in rendered
+    assert "Question de l'utilisateur" not in rendered
+    assert "deuxième personne" in rendered
+    assert "{ministere" not in rendered and "{context}" not in rendered and "{question}" not in rendered
+    assert "Comment alimenter un CET ?" in rendered and "Texte source." in rendered
+
+    generic = gen._user_prompt_for("Question ?", items, None)
+    assert "gestionnaire RH de votre ministère" in generic
+    assert "{ministere" not in generic
