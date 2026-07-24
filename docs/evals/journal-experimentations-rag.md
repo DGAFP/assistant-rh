@@ -523,3 +523,15 @@ Flips vs 116 : 8 gagnées (q28, 194, 197, 221, 223, 226, 228, 926), 9 perdues (q
 **Décision (utilisateur, 23/07)** : **ADOPTION** malgré le critère cibles à 3/6 — motifs : global = référence sous le juge le plus strict, net stables +3, 5 bonus hors cibles, casses expliquées par la variance, latence améliorée, et les 3 cibles restantes (q192, q213, q221) sont précisément les cibles des leviers suivants (vague 2 #244, renvois). `update_rag_config` staging appliqué le 23/07 à 16:10 (`v3_rerank_input_k=40`, hors fenêtre de run, orphelins #339 vérifiés inactifs). Rollback R2 disponible en 1 DELETE.
 
 **À surveiller post-adoption** : retrieval_gap_rate (+3 questions vs baseline), feedbacks testeurs sur typologie_contrats, et les orphelins `running` (14 en base → #339).
+
+---
+
+## Run 161 — `candidate_input64_20260723` (23/07 soir) — screening `rerank_input_k=64`
+
+**Changements vs run 156** : dev @f8811de inchangé, override CLI `--rerank-input-k 64` (config partagée restée à 40). Juge : **grok single-shot (étage screening)** — lecture appariée contre la référence grok (0,707), jamais contre la référence officielle.
+
+**Résultats** : global **0,717** (+1 pt vs 0,707) ; 4 conversions d'échecs stables-grok (q175, q220, q657, q660), 6 casses (q2, q16*, q200, q204, q214, q4534 — majoritairement les fragiles connues) → net **−2**, dans la bande de bruit. Cibles nommées : q192 **convertie**, q16/q191 toujours FAIL malgré leur gold servi (rangs 15/6) — le selector les jette. Risques surveillés q185/q186 : **tous deux PASS**. Latence retrieval p95 : 1 810 ms (vs 2 105 ms au run 156).
+
+**Lecture** : input64 fait exactement ce que le contrefactuel prédisait au containment, mais les conversions sont plafonnées par le selector (goulot aval mesuré). Décision : input64 **non adopté** — l'élargissement du pool passera par l'architecture 3-pipelines (design cible, cf. `revue-experimentations-sondes-20260723.md`), en paquet avec le selector v2 (#306) + union top-8, un seul screening + gate.
+
+**Post-run** : curation goldset du 24/07 (7 questions re-annotées, backup versionné sur VM) → funnel final des 18 échecs stables réattribué : 4 génération / 4 selector / 4 coupe-candidats / 4 hors-pool / 2 goldset à re-sourcer.
