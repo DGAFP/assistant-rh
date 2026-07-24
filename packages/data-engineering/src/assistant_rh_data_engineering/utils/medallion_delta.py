@@ -28,7 +28,7 @@ from typing import Any
 
 # Bumper si la logique gold/chunking change de façon incompatible avec les
 # artefacts déjà écrits (force la reconstruction de tous les golds au run suivant).
-GOLD_DELTA_VERSION = "1"
+GOLD_DELTA_VERSION = "2"  # #350 : url des chunks articles reconstruite sur l'id de version
 
 # Empreinte de config persistée à la racine du gold (round-trip via l'Object
 # Storage avec la couche gold). Préfixe point : ignoré par les globs *.chunks.jsonl.
