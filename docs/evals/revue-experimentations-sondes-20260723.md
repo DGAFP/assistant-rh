@@ -48,6 +48,14 @@ verdicts appariés uniquement (le global masque tout) ; config partagée jamais
 mutée pendant un run ; goldset gelé pendant les runs ; un run lancé = une
 entrée au journal.
 
+**Mise à jour du protocole (24/07) — ablation stricte** : un changement par
+screening, jamais de paquet groupé au screening (décision utilisateur : le gate
+groupé P1+R2 a laissé des ambiguïtés d'attribution que les sondes ont dû
+démêler après coup). Les overrides CLI d'ablation de l'éval
+(`--system-prompt-name`, `--rerank-input-k`, `--min-kept-sections`…) rendent
+chaque screening isolable sans mutation de la config partagée. Le gate maj-3
+officiel peut ensuite couvrir l'ensemble des changements screenés.
+
 ---
 
 ## 2. Hypothèses testées et résultats
@@ -96,6 +104,215 @@ d'auto-vérification).
    résiduels étaient immesurables pour cause d'annotations mortes. La
    curation a réattribué 4 questions et renforcé le dossier des leviers
    restants.
+
+### 2.3 Détail par hypothèse — pourquoi (rationnel) et comment (méthode)
+
+#### H1 — `rerank_input_k` 20→40
+
+- **Pourquoi** : l'autopsie du funnel (17/07) a montré que le pré-filtre en dur
+  à 20 candidats coupait la section-réponse de 3 échecs mesurés (q17, q192,
+  q218) **avant** que le reranker ne puisse la voir — alors que le
+  contrefactuel full-pool prouvait que le reranker, lui, la classait 1ᵉʳ-4ᵉ
+  (q17 : scores 0,9996+ ; q192 : rang 1). Le coupable était la plomberie, pas
+  le modèle.
+- **Comment** : sonde = rejeu du vrai reranker Albert sur les pools complets
+  (validation du mécanisme) ; #335 a livré la clé `v3_rerank_input_k`
+  découplée de la sortie, avec une probe live 40 docs / 73 k chars en une
+  requête ; screening run 145 (grok, apparié réf. grok) ; gate run 156.
+
+#### H2 — R2, résumés d'articles en langage métier
+
+- **Pourquoi** : le fossé lexical questions RH ↔ texte juridique est LE motif
+  d'échec du corpus dgafp (campagne Suivi-Tests, thème `typologie_contrats` à
+  48 % de feedbacks négatifs) : les articles existent en base mais leurs
+  embeddings ne matchent pas les formulations métier.
+- **Comment** : principe structurel « le résumé TROUVE, il ne DIT jamais »
+  (embedding = résumé métier, `chunk_text` servi = texte juridique authentique,
+  ligne additive `{cid}_r2s` fusionnée à l'agrégation) ; pilote 101 articles
+  générés **à l'aveugle des questions** avec garde anti-invention (rejet si
+  valeur chiffrée absente de la source) et rang simulé par insertion de
+  similarité ; corpus complet 4 201/4 207 (rejets 0,14 %) ; inspection humaine
+  15 paires ; apply gaté ; gate run 156.
+
+#### H3 — Gate mécanique d'abstention (seuil 0,20)
+
+- **Pourquoi** : le 17/07, les scores du reranker séparaient nettement les
+  pools vides (méd. ~0,20) des pools sains (~0,97) — un seuil bas devait
+  convertir « générer sur du bruit » en « introuvable » honnête
+  (anti-hallucination), à coût quasi nul (6/12 pools pauvres abstenus pour
+  1 passer cassé).
+- **Comment** : balayage de seuils t ∈ {0,15…0,60} sur les scores post-rerank
+  RÉELS du run 156 (97 questions exploitables), croisés avec les verdicts —
+  pour chaque t : abstentions correctes (FAIL sous le seuil) vs passers cassés
+  (PASS sous le seuil).
+- **Pourquoi c'est tombé** : la vague 1 a réparé les pools vides — la médiane
+  des max-scores des ÉCHECS est montée à 0,973, identique à celle des passers.
+  Le signal bimodal qui justifiait le seuil n'existe plus ; à tout seuil le
+  troc est défavorable (0,20 : 1 correcte / 2 cassés, dont q217 fraîchement
+  convertie par R2). Leçon : re-mesurer les distributions après chaque
+  adoption — un levier validé sur l'ancienne distribution peut être réfuté par
+  la nouvelle.
+
+#### H4 — Texte de rerank (heading + best-chunk)
+
+- **Pourquoi** : le reranker juge chaque section sur `# heading +
+  markdown[:1500]` — pour les longues sections PDF, la réponse vit souvent
+  au-delà des 1 500 premiers caractères ; les revues de code attribuaient à
+  cette troncature les rangs 9-13 de q30.
+- **Comment** : reconstruction fidèle des sections candidates depuis les
+  artefacts du run 156 (fusion des paires `_0`/`_r2s` comme l'aggregator,
+  `section_markdown` relu en base, standalone = premier chunk), **fidélité de
+  replay auto-mesurée (méd. 0,91)** — la v1 de la sonde, infidèle (0,25-0,5),
+  a été jetée ; puis rejeu du vrai reranker sur 3 variantes de texte
+  (baseline / best-chunk / hybride), 18 échecs stables + 10 passers, golds
+  localisés via `gold_doc_ids`.
+- **Pourquoi c'est tombé** : troc +1/-1 (q183 entre dans le servi, q4531 en
+  sort), l'hybride protège les passers mais perd le gain ; et surtout 10/16
+  échecs ont leur gold **hors du pool de 40** — aucun texte de rerank ne peut
+  classer une section absente.
+
+#### H5 — Graphe de renvois juridiques (1 saut)
+
+- **Pourquoi** : les réponses paraphrasent de mémoire les articles cités mais
+  non servis (« l'article L. 332-4 prévoit… ») — servir le texte cité devait
+  à la fois convertir (cible historique q191) et réduire l'hallucination.
+- **Comment** : parsing des `lien_citations` (JSON Légifrance, `articleId` de
+  type CITATION) des articles servis et du top-20 du run 156 ; mesure
+  d'atteignabilité du gold à 1 saut + coût d'expansion (articles ajoutés).
+- **Pourquoi c'est tombé** : depuis le servi, seule q192 est atteignable — et
+  H9/H11 la récupèrent déjà par le classement. q191 n'est PAS à 1 saut de ce
+  qui est servi. Rendement de conversion ≈ 0 ; la valeur anti-hallucination
+  reste réelle mais n'est plus prioritaire.
+
+#### H6 — Budget du context_builder trié par score
+
+- **Pourquoi** : le cas q28 (17/07) documentait une 2ᵉ section-réponse jetée
+  par le budget de tokens pendant que du bruit passait.
+- **Comment** : attribution funnel sur le run 156 — pour chaque échec, à quel
+  étage meurt le gold (pool 40 → top-20 → servi final), via `chunks_raw`,
+  `chunks_after_rerank`, `sources`/`context_items_ref`.
+- **Pourquoi c'est tombé** : zéro échec ne meurt au budget. La coupe fatale
+  est le **selector** (garde 2-3 sections sur 20). q28 avait déjà converti.
+  Le levier est réorienté : plancher mécanique de sélection, pas tri de budget.
+
+#### H7 — Meilleur modèle d'embedding
+
+- **Pourquoi** : intuition naturelle (« le retrieval rate → un modèle plus
+  gros trouverait ») ; `embedding_bge_scw` (bge-multilingual-gemma2, 3 584 d)
+  était déjà peuplé sur 100 % du corpus — comparaison gratuite.
+- **Comment** : rang sémantique de chaque gold raté sous m3 ET sous bge, avec
+  les requêtes réelles du run 156 (embedder de requête de chaque modèle),
+  contrôles passers.
+- **Pourquoi c'est tombé** : bge est PIRE sur 4/6 golds (q192 : rang 2 → 65).
+  Et le diagnostic s'inverse : les golds « ratés » sont déjà aux rangs 1-18
+  sous m3 — l'embedding les trouve, c'est l'aval (agrégation, selector) qui
+  les perd. Les 2 vrais fossés (q181, q213) le restent sous les deux modèles.
+
+#### H8 — Repondération du score d'agrégation
+
+- **Pourquoi** : découverte du biais anti-article — `agg = 0,5×max + 0,3×mean
+  + 0,2×(n/max_n)` : un article = 1 chunk (max mesuré = 1 après fusion R2),
+  une section PDF = jusqu'à 30 → le terme de comptage vaut jusqu'à 0,2 (≈ 2
+  crans de similarité) contre l'article. Des golds rangs sémantiques 2 finissent
+  positions 41-61. Biais historiquement daté : poids réglés quand dgafp était
+  derrière le gate `needs_legal` (passage en always-on : commit `49ec508`).
+- **Comment** : recalcul offline de l'ordre d'agrégation (97 questions,
+  fidélité V0 = 1,00) sous 4 jeux de poids (baseline / count réduit / sans
+  count / count plafonné), métriques : positions des golds cibles + fraction
+  des sections réellement servies restant candidates.
+- **Pourquoi c'est tombé** : même sans terme de comptage, q192 reste position
+  50 (les similarités inter-tables ne sont pas calibrées — le vrai problème
+  est la compétition inter-corpus, pas les poids) ; et les variantes déplacent
+  14-20 % des sections servies (risque passers). Remède dominé par H11.
+
+#### H9 — `rerank_input_k` 40→64
+
+- **Pourquoi** : l'investigation « hors pool » a montré que les golds de q16,
+  q191, q192 étaient RETROUVÉS par le retrieval mais relégués aux positions
+  41-61 par le score d'agrégation — juste derrière la coupe des 40 candidats
+  (q191 : à UNE place).
+- **Comment** : contrefactuel avec le vrai reranker en batching de prod
+  (40+24) : mêmes pools, 40 vs 64 candidats, 3 cibles + 6 contrôles ; puis
+  full-goldset (99 questions) ; screening run 161 (grok, apparié).
+- **Résultat** : sonde 3/3 (rangs 15/6/4, contrôles stables) ; full-goldset
+  +2 gains / −2 passers limites (q185, q186 — délogés par la COMPÉTITION du
+  pool élargi, pas par le mécanisme) ; screening : global +1 pt, net
+  stables-grok −2 (bruit), q192 convertie, q16/q191 toujours bloquées par le
+  selector, latence p95 améliorée. Verdict : levier réel mais plafonné par le
+  selector, et contournement dominé par H11 — non adopté.
+
+#### H10 / H11 — Pipelines par corpus (2 puis 3)
+
+- **Pourquoi** : H7/H8 ont établi que les scores de similarité ne sont **pas
+  comparables entre corpus** (q192 : rang 2 dans dgafp, ~50ᵉ du pool mélangé).
+  Idée (utilisateur) : classer chaque corpus chez lui, donner un quota de
+  candidats à chacun, laisser le reranker — qui juge le TEXTE — arbitrer.
+  First principles : supprime la cause (compétition non calibrée) au lieu de
+  la contourner (H9), quotas explicites et auditables, robuste à l'arrivée de
+  nouveaux corpus (R2 phase 2).
+- **Comment** : candidats reconstruits par corpus depuis les pools du run 156
+  (dgafp = clés cid, SP = standalone, ministériel = sections uuid) ; H10 :
+  fusion 2 listes (RRF interleave et quota fixe 26+14) ; H11 : top-20 par
+  corpus → 60 candidats → vrai reranker ; mini-panel (5 cibles + 5 contrôles)
+  puis full-goldset 99 questions (gains/pertes gold servi, churn du top-20,
+  mix corpus).
+- **Résultat** : H10 = 2/3 (q16 reste victime de la compétition interne SP) ;
+  H11 = **3/3** (12/6/4), full-goldset : gains/pertes identiques à H9
+  (+q191/q192, −q185/q186) mais churn moindre (méd. 0,90 vs 0,86) et mix servi
+  équilibré (6/8/6). La perte q185/q186 est intrinsèque à TOUT élargissement
+  (leurs golds restent candidats ; c'est le reranker qui préfère les nouveaux
+  arrivants). Retenu comme design cible.
+
+#### H12 — Hybride lexical par pipeline
+
+- **Pourquoi** : dernier espoir pour les fossés d'embedding (q181, q213) — si
+  la sémantique ne fait pas le pont, peut-être que les tokens le font
+  (tsvector/BM25 français, colonnes `*_tsv` déjà en place partout).
+- **Comment** : par pipeline, RRF(classement sémantique stocké, classement
+  lexical live `websearch_to_tsquery`) → top-20 par corpus → vrai reranker ;
+  mêmes cibles et contrôles que H11.
+- **Pourquoi c'est tombé** : zéro gain — et le point décisif : le lexical ne
+  retrouve **pas non plus** les golds hors pool dans son propre top-30
+  (« accident de service / rémunération » vs « congé / plein traitement » :
+  vocabulaires disjoints des deux côtés). 2ᵉ réfutation de l'hybride, cette
+  fois dans l'architecture cible. Par élimination, q181/q213 relèvent de la
+  QUALITÉ des résumés R2 (itération de prompt), pas de la plomberie.
+
+#### H13 — Selector prompt v2 (PR #306)
+
+- **Pourquoi** : H6 a désigné le selector comme goulot (2-3 gardées sur 20,
+  golds servis aux rangs 3-15 jetés) ; la PR #306, dormante depuis le 10/07,
+  portait déjà le remède supposé : dé-parcimonie (« 4-10 sections, écarter la
+  bonne source est l'erreur la plus coûteuse »), anti-redondance corrigée
+  (garder la version ministérielle ET la générale), périmètre FPE.
+- **Comment** : rejeu de l'appel LLM réel du selector (openweight-large,
+  temp 0) sur les 20 sections servies STOCKÉES des runs 156/161, prompt v1
+  (ligne DB active) vs v2 (fichier PR), 2 répétitions par prompt (variance),
+  5 cas cibles + 3 contrôles.
+- **Résultat** : v2 améliore les contrôles (q7 : gold pris 2/2 contre 0/2) et
+  élargit un peu (1-6 sections vs 1-3)… mais **ne convertit aucune cible** —
+  le LLM continue de jeter les articles gold même au rang 3, et n'atteint
+  jamais les « 4-10 sections » demandées. Leçon : un plancher porté par le
+  prompt ne se fait pas obéir ; la garantie doit être mécanique (servir
+  l'union {choix du selector} ∪ {top-K du reranker}). Le prompt v2 reste utile
+  et sera screené SEUL (protocole d'ablation), la garantie mécanique
+  séparément.
+
+#### H14 — Curation goldset
+
+- **Pourquoi** : 8 des 18 échecs stables étaient immesurables — leurs
+  `gold_doc_ids` (UUID v5) n'existaient nulle part en base, et une recherche
+  dans TOUT l'historique des runs a prouvé qu'ils n'avaient JAMAIS été
+  valides : ids de l'ancien schéma de dérivation pré-#289.
+- **Comment** : pas d'archéologie d'uuid — **re-résolution depuis les libellés
+  humains** (« Decret 86-83, Article 13 » → requête number+full_title dgafp ;
+  fiches SP par short_id), vérification d'existence + embeddings, backup des
+  valeurs remplacées, UPDATE `text[]` hors fenêtre de run.
+- **Résultat** : 7/9 réparées automatiquement ; q203 (article 3 du 86-83
+  abrogé — la réponse vit désormais dans le CGFP) et q4535 (réf. « A5 »
+  introuvable) à re-sourcer manuellement. Effet immédiat : 4 questions
+  réattribuées dans le funnel (2 génération, 1 selector, 1 coupe-candidats) —
+  la curation a RENFORCÉ le dossier des leviers restants.
 
 ---
 
