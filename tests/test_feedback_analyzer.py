@@ -186,9 +186,12 @@ class TestResolveChunkContent:
         assert resolved[0]["_content_resolved"] is False
         assert fa._chunk_refs_complete(resolved) is False
 
-    @pytest.mark.parametrize("malformed", [None, "not-json", {"chunk_id": "c1"}, [42]])
+    @pytest.mark.parametrize("malformed", [None, "not-json", {"chunk_id": "c1"}, [42], [{}], [{"chunk_id": "c1"}]])
     def test_malformed_trace_is_incomplete(self, malformed):
         assert fa._chunk_refs_complete(malformed) is False
+
+    def test_text_only_ref_is_complete(self):
+        assert fa._chunk_refs_complete([{"text": "texte complet"}]) is True
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +225,47 @@ class TestStageFlags:
         }
         assert fa._stage_flags(feedback, ["plafond d'emploi"])["pool"] is True
 
+    def test_question_is_not_treated_as_generator_context(self):
+        feedback = {
+            "rag_prompt": (
+                "Voici le contexte documentaire pour repondre a la question :\n\n"
+                "Le contexte ne contient pas le terme attendu.\n\n"
+                "---\n\n"
+                "**Question de l'utilisateur :** Quel est le montant du RIFSEEP ?"
+            )
+        }
+
+        assert fa._stage_flags(feedback, ["RIFSEEP"])["generator_context"] is False
+
+    def test_marker_in_documentary_context_is_detected(self):
+        feedback = {
+            "rag_prompt": (
+                "Voici le contexte documentaire pour repondre a la question :\n\n"
+                "Le RIFSEEP comprend deux parts.\n\n"
+                "---\n\n"
+                "**Question de l'utilisateur :** Comment fonctionne le régime indemnitaire ?"
+            )
+        }
+
+        assert fa._stage_flags(feedback, ["RIFSEEP"])["generator_context"] is True
+
+    def test_unparseable_generator_prompt_is_incomplete(self):
+        assert fa._generator_context_from_prompt("ancien format sans délimiteur") is None
+
+    def test_question_cannot_inject_a_second_context_delimiter(self):
+        feedback = {
+            "rag_prompt": (
+                "Voici le contexte documentaire pour repondre a la question :\n\n"
+                "Le contexte ne contient pas le terme attendu.\n\n"
+                "---\n\n"
+                "**Question de l'utilisateur :** Que signifie "
+                "**Question de l'utilisateur :** RIFSEEP ?"
+            )
+        }
+
+        assert fa._generator_context_from_prompt(feedback["rag_prompt"]) is None
+        assert fa._stage_flags(feedback, ["RIFSEEP"])["generator_context"] is False
+
     def test_normalize_typographic_dashes(self):
         # Cas réel : marqueur « Cas‑de‑dispense_v3 » (U+2011) vs corpus ASCII
         assert fa._normalize("Cas‑de‑dispense_v3") == "cas-de-dispense_v3"
@@ -250,6 +294,30 @@ class TestFilterHallucinatedMarkers:
         markers = ["plafond d'emploi", "annexe 3"]
         assert fa._filter_hallucinated_markers(markers, self.FEEDBACK) == markers
 
+    def test_extract_markers_deduplicates_normalized_values(self, monkeypatch):
+        monkeypatch.setattr(
+            fa,
+            "_call_albert_json",
+            lambda *args, **kwargs: {
+                "missing_info": "régime indemnitaire",
+                "markers": ["RIFSEEP", " rifseep ", "plafond d’emploi", "plafond d'emploi"],
+            },
+        )
+
+        _missing_info, markers = fa._extract_markers(self.FEEDBACK)
+
+        assert markers == ["RIFSEEP", "plafond d’emploi"]
+
+
+class TestSearchCorpus:
+    def test_unknown_ministry_returns_unknown_without_querying(self):
+        class _NoQueryEngine:
+            def connect(self):
+                raise AssertionError("the database must not be queried without a complete scope")
+
+        assert fa._search_corpus(_NoQueryEngine(), None, ["RIFSEEP"]) is None
+        assert fa._search_corpus(_NoQueryEngine(), "unknown", ["RIFSEEP"]) is None
+
 
 # ---------------------------------------------------------------------------
 # _classify_from_flags – arbre de décision
@@ -268,6 +336,11 @@ class TestClassifyFromFlags:
         cat, reason = fa._classify_from_flags(False, self._flags(False, False, False), True, ["annexe 3", "159,20"], "montants DDI")
         assert cat == "missing_document"
         assert "corpus" in reason
+
+    def test_unknown_corpus_scope_defers_to_llm(self):
+        cat, hint = fa._classify_from_flags(None, self._flags(False, False, False), True, ["annexe 3", "159,20"], "montants DDI")
+        assert cat is None
+        assert "périmètre corpus" in hint
 
     def test_single_marker_not_in_corpus_defers_to_llm(self):
         # Un seul marqueur introuvable ne suffit pas à conclure missing_document
@@ -340,6 +413,33 @@ class TestClassifyFromFlags:
 # analyze_single – les erreurs techniques restent rejouables
 # ---------------------------------------------------------------------------
 class TestAnalyzeSingleFailureHandling:
+    def test_unknown_corpus_scope_uses_llm_fallback(self, monkeypatch):
+        captured_system_prompts = []
+        monkeypatch.setattr(fa, "_extract_markers", lambda feedback: ("information absente", ["marqueur un", "marqueur deux"]))
+        monkeypatch.setattr(
+            fa,
+            "_call_albert",
+            lambda system_prompt, _user_prompt: captured_system_prompts.append(system_prompt) or ("generator_incomplete", "analyse de secours"),
+        )
+        monkeypatch.setattr(fa, "_save_analysis", lambda *args: True)
+
+        category, reason = fa.analyze_single(
+            {
+                "id": 41,
+                "question": "Q",
+                "answer": "R",
+                "selected_ministry": None,
+                "v3_chunks_raw": None,
+                "retrieved_chunks": None,
+                "rag_prompt": None,
+            },
+            engine=object(),
+        )
+
+        assert category == "generator_incomplete"
+        assert reason == "analyse de secours"
+        assert "périmètre corpus" in captured_system_prompts[0]
+
     def test_llm_failure_is_not_persisted(self, monkeypatch):
         saved = []
         monkeypatch.setattr(fa, "_extract_markers", lambda feedback: ("", []))

@@ -291,11 +291,7 @@ def _chunk_refs_complete(refs: Any) -> bool:
     parsed = _json_field(refs)
     if not isinstance(parsed, list):
         return False
-    return all(
-        isinstance(ref, dict)
-        and (not (ref.get("chunk_id") or ref.get("id")) or ref.get("_content_resolved") is True or bool(ref.get("text") or ref.get("chunk_text")))
-        for ref in parsed
-    )
+    return all(isinstance(ref, dict) and (ref.get("_content_resolved") is True or bool(ref.get("text") or ref.get("chunk_text"))) for ref in parsed)
 
 
 def _resolve_section_content(engine, section_ids: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -611,22 +607,30 @@ def _extract_markers(feedback: Dict[str, Any]) -> Tuple[str, List[str]]:
     )
     data = _call_albert_json(_MARKER_SYSTEM_PROMPT, user, max_tokens=900)
     markers = [m.strip() for m in data.get("markers", []) if isinstance(m, str)]
-    markers = [m for m in markers if 4 <= len(m) <= 60][:6]
+    markers = [m for m in markers if 4 <= len(m) <= 60]
     markers = _filter_hallucinated_markers(markers, feedback)
-    return str(data.get("missing_info", "")), markers
+    unique_markers = []
+    seen = set()
+    for marker in markers:
+        normalized = _normalize(marker)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            unique_markers.append(marker)
+        if len(unique_markers) == 6:
+            break
+    return str(data.get("missing_info", "")), unique_markers
 
 
 def _search_corpus(engine, ministry: Optional[str], markers: List[str]) -> Optional[bool]:
     """True/False: is any marker present in the corpus tables of this scope?
 
-    Returns ``None`` when the check could not run (DB error) — callers must
-    then avoid concluding ``missing_document``.
+    Returns ``None`` when the ministry scope is unknown or the check could not
+    run (DB error) — callers must then avoid any mechanical corpus conclusion.
     """
-    tables = []
     ministry_table = _MINISTRY_CHUNK_TABLES.get((ministry or "").strip().lower())
-    if ministry_table:
-        tables.append(ministry_table)
-    tables += _SHARED_CHUNK_TABLES
+    if not ministry_table:
+        return None
+    tables = [ministry_table, *_SHARED_CHUNK_TABLES]
     try:
         with engine.connect() as conn:
             for marker in markers:
@@ -651,6 +655,21 @@ def _search_corpus(engine, ministry: Optional[str], markers: List[str]) -> Optio
         return None
 
 
+_GENERATOR_QUESTION_HEADING = "**Question de l'utilisateur :**"
+
+
+def _generator_context_from_prompt(prompt: Any) -> Optional[str]:
+    """Extract only the documentary context from a logged generator prompt."""
+    if not isinstance(prompt, str):
+        return None
+    if prompt.count(_GENERATOR_QUESTION_HEADING) != 1:
+        return None
+    context, _question = prompt.split(_GENERATOR_QUESTION_HEADING, 1)
+    if not context.strip():
+        return None
+    return context
+
+
 def _stage_flags(feedback: Dict[str, Any], markers: List[str]) -> Dict[str, bool]:
     """Marker presence at each pipeline stage (ANY-marker semantics)."""
     selector_input = feedback.get("retrieved_chunks")
@@ -663,14 +682,14 @@ def _stage_flags(feedback: Dict[str, Any], markers: List[str]) -> Dict[str, bool
         "pool": str(feedback.get("v3_chunks_raw") or ""),
         "selector_input": selector_input or "",
         "served": str(feedback.get("served_sources") or ""),
-        "generator_context": str(feedback.get("rag_prompt") or ""),
+        "generator_context": _generator_context_from_prompt(feedback.get("rag_prompt")) or "",
     }
     norm_markers = [_normalize(m) for m in markers]
     return {stage: any(m in _normalize(content) for m in norm_markers) for stage, content in stages.items()}
 
 
 def _classify_from_flags(
-    in_corpus: bool,
+    in_corpus: Optional[bool],
     flags: Dict[str, bool],
     selector_active: bool,
     markers: List[str],
@@ -688,6 +707,10 @@ def _classify_from_flags(
     """
     prefix = f"Attribution mécanique (marqueurs : {', '.join(markers)}) : "
     suffix = f" Information attendue : {missing_info}" if missing_info else ""
+    if in_corpus is None:
+        return None, (
+            "Le périmètre corpus n'a pas pu être vérifié intégralement ; ne conclus pas mécaniquement à missing_document ou retrieval_issue."
+        )
     if not in_corpus:
         if len(markers) < 2:
             # Conclusion d'absence trop fragile sur un marqueur unique :
@@ -749,7 +772,7 @@ def analyze_single(feedback: Dict[str, Any], engine=None) -> Tuple[str, str]:
     pool_complete = _chunk_refs_complete(feedback.get("v3_chunks_raw"))
     selector_input_complete = _chunk_refs_complete(feedback.get("retrieved_chunks"))
     rag_prompt = feedback.get("rag_prompt")
-    generator_context_complete = isinstance(rag_prompt, str) and bool(rag_prompt.strip())
+    generator_context_complete = _generator_context_from_prompt(rag_prompt) is not None
 
     selector_active = bool(feedback.get("llm_selector_model"))
     category: Optional[str] = None
@@ -765,10 +788,9 @@ def analyze_single(feedback: Dict[str, Any], engine=None) -> Tuple[str, str]:
 
     if markers:
         flags = _stage_flags(feedback, markers)
-        in_corpus = True
+        in_corpus = None
         if engine:
-            found = _search_corpus(engine, feedback.get("selected_ministry"), markers)
-            in_corpus = True if found is None else found
+            in_corpus = _search_corpus(engine, feedback.get("selected_ministry"), markers)
         category, reason = _classify_from_flags(
             in_corpus,
             flags,
