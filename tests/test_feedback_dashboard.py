@@ -162,3 +162,8 @@ class TestDashboardSource:
         assert 'feedback_display_df["ts"].dt.tz_localize(None)' in source
         assert 'feedback_display_df["ts"].dt.strftime' not in source
         assert 'feedback_export_df["ts"].dt.strftime' in source
+
+    def test_candidate_cut_has_its_own_aggregate_bucket(self):
+        source = _dashboard_source()
+        assert 'elif cat == "candidate_cut":' in source
+        assert '"📉 Agrégation (coupe candidats)": "#19D3F3"' in source

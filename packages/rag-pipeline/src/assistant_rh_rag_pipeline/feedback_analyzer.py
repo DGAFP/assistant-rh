@@ -37,6 +37,8 @@ import requests
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from .config import CHUNK_TABLES
+
 logger = logging.getLogger(__name__)
 
 ALBERT_API_URL = os.getenv("ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1").rstrip("/")
@@ -205,21 +207,40 @@ def _save_analysis(engine, feedback_id: int, category: str, reason: str) -> bool
 # On-demand content resolution from lightweight IDs
 # ---------------------------------------------------------------------------
 
-_TABLE_ID_COL = {
-    "rag_chunks_matte": "hash_id",
-    "rag_chunks_service_public": "hash_id",
-    "rag_chunks_dgafp": "chunk_id",
-    "rag_chunks_rgrh": "hash_id",
-}
+_TABLE_ID_COL = {table.name: table.id_col for table in CHUNK_TABLES.values()}
 
 _ALLOWED_TABLES = set(_TABLE_ID_COL.keys())
+_TABLE_BY_ALIAS = {alias.lower(): table.name for key, table in CHUNK_TABLES.items() for alias in (key, table.name, table.publisher) if alias}
+_MINISTRY_CHUNK_TABLES = {key: CHUNK_TABLES[key].name for key in ("matte", "mso", "mi", "masa")}
 
 
-def _resolve_chunk_content(engine, chunk_refs) -> List[Dict[str, Any]]:
+def _chunk_table_for_ref(ref: Dict[str, Any], selected_ministry: Optional[str]) -> str:
+    """Resolve a logged chunk ref to a code-owned, allow-listed table name.
+
+    Current traces store shared sources as canonical table names, but ministry
+    sources may be stored under their full publisher label. In the latter case,
+    the request's ``selected_ministry`` is the authoritative table scope.
+    """
+    raw_source = next(
+        (ref.get(key) for key in ("table", "doc_publisher", "publisher", "table_source", "source") if ref.get(key)),
+        "",
+    )
+    source = str(raw_source).strip()
+    table = _TABLE_BY_ALIAS.get(source.lower())
+    if table:
+        return table
+
+    ministry_table = _MINISTRY_CHUNK_TABLES.get((selected_ministry or "").strip().lower())
+    if source and ministry_table:
+        return ministry_table
+    return ""
+
+
+def _resolve_chunk_content(engine, chunk_refs, selected_ministry: Optional[str] = None) -> List[Dict[str, Any]]:
     """Resolve lightweight chunk refs to full text by querying the source tables.
 
     *chunk_refs* is a list of ``{"chunk_id": ..., "table": ..., "score": ..., "section_id": ...}``.
-    Returns enriched dicts with a ``"text"`` key added.
+    Returns enriched dicts with ``"text"`` and ``"_content_resolved"`` added.
     """
     refs = _json_field(chunk_refs)
     if not refs or not isinstance(refs, list):
@@ -227,11 +248,14 @@ def _resolve_chunk_content(engine, chunk_refs) -> List[Dict[str, Any]]:
 
     by_table: Dict[str, List[str]] = {}
     for r in refs:
-        tbl = r.get("table", "")
-        if tbl in _ALLOWED_TABLES:
-            by_table.setdefault(tbl, []).append(str(r["chunk_id"]))
+        if not isinstance(r, dict):
+            continue
+        chunk_id = r.get("chunk_id") or r.get("id")
+        tbl = _chunk_table_for_ref(r, selected_ministry)
+        if chunk_id and tbl in _ALLOWED_TABLES:
+            by_table.setdefault(tbl, []).append(str(chunk_id))
 
-    resolved: Dict[str, str] = {}
+    resolved: Dict[Tuple[str, str], str] = {}
     try:
         with engine.connect() as conn:
             for tbl, ids in by_table.items():
@@ -239,16 +263,39 @@ def _resolve_chunk_content(engine, chunk_refs) -> List[Dict[str, Any]]:
                 q = text(f"SELECT {id_col} AS cid, chunk_text FROM {tbl} WHERE {id_col} = ANY(:ids)")
                 rows = conn.execute(q, {"ids": ids})
                 for row in rows:
-                    resolved[str(row.cid)] = row.chunk_text or ""
+                    resolved[(tbl, str(row.cid))] = row.chunk_text or ""
     except SQLAlchemyError as exc:
         logger.warning("Chunk content resolution failed: %s", exc)
 
     enriched = []
     for r in refs:
+        if not isinstance(r, dict):
+            continue
         entry = dict(r)
-        entry["text"] = resolved.get(str(r["chunk_id"]), "")
+        chunk_id = str(r.get("chunk_id") or r.get("id") or "")
+        tbl = _chunk_table_for_ref(r, selected_ministry)
+        key = (tbl, chunk_id)
+        existing_text = entry.get("text") or entry.get("chunk_text")
+        if existing_text:
+            entry["text"] = existing_text
+            entry["_content_resolved"] = True
+        else:
+            entry["text"] = resolved.get(key, "")
+            entry["_content_resolved"] = key in resolved
         enriched.append(entry)
     return enriched
+
+
+def _chunk_refs_complete(refs: Any) -> bool:
+    """Whether every logged ref contains full text rather than a preview."""
+    parsed = _json_field(refs)
+    if not isinstance(parsed, list):
+        return False
+    return all(
+        isinstance(ref, dict)
+        and (not (ref.get("chunk_id") or ref.get("id")) or ref.get("_content_resolved") is True or bool(ref.get("text") or ref.get("chunk_text")))
+        for ref in parsed
+    )
 
 
 def _resolve_section_content(engine, section_ids: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -393,7 +440,7 @@ def _build_user_prompt(feedback: Dict[str, Any], engine=None) -> str:
     if engine and raw_chunks and isinstance(raw_chunks, list):
         first = raw_chunks[0] if raw_chunks else {}
         if isinstance(first, dict) and "chunk_id" in first and "text" not in first:
-            raw_chunks = _resolve_chunk_content(engine, raw_chunks)
+            raw_chunks = _resolve_chunk_content(engine, raw_chunks, feedback.get("selected_ministry"))
     chunks_text = _format_chunks(raw_chunks if isinstance(raw_chunks, list) else [])
     sections.append(f"## 5. TOUS les chunks retrieved (complets)\n{chunks_text}")
 
@@ -499,13 +546,10 @@ def _call_albert_json(
 
 def _call_albert(system_prompt: str, user_prompt: str) -> Tuple[str, str]:
     """Single Albert call with full context. Returns (category, reason)."""
-    try:
-        data = _call_albert_json(system_prompt, user_prompt)
-    except Exception as exc:
-        return "other", f"Erreur analyse: {exc}"
+    data = _call_albert_json(system_prompt, user_prompt)
     category = data.get("error_category", "other")
     if category not in ALL_VALID_CATEGORIES:
-        category = "other"
+        raise ValueError(f"catégorie Albert invalide: {category!r}")
     return category, data.get("short_reason", "Analyse effectuée")
 
 
@@ -531,12 +575,6 @@ Règles pour les marqueurs :
 Réponds UNIQUEMENT en JSON valide :
 {"missing_info": "<1 phrase : l'information attendue>", "markers": ["...", "..."]}"""
 
-_MINISTRY_CHUNK_TABLES = {
-    "matte": "rag_chunks_matte",
-    "mso": "rag_chunks_mso",
-    "masa": "rag_chunks_masa",
-    "mi": "rag_chunks_mi",
-}
 _SHARED_CHUNK_TABLES = ["rag_chunks_service_public", "rag_chunks_dgafp"]
 
 
@@ -637,6 +675,10 @@ def _classify_from_flags(
     selector_active: bool,
     markers: List[str],
     missing_info: str,
+    *,
+    pool_complete: bool = True,
+    selector_input_complete: bool = True,
+    generator_context_complete: bool = True,
 ) -> Tuple[Optional[str], str]:
     """Decision tree on mechanical flags. ``None`` → generator family, LLM juge.
 
@@ -657,10 +699,21 @@ def _classify_from_flags(
             )
         return "missing_document", (prefix + "aucun marqueur trouvé dans le corpus (table ministère + service_public + dgafp)." + suffix)
     if not flags["pool"]:
+        if not pool_complete:
+            return None, ("Le pool de retrieval n'a pas pu être résolu intégralement ; ne conclus pas mécaniquement à retrieval_issue.")
         return "retrieval_issue", (prefix + "présents dans le corpus mais absents du pool de retrieval." + suffix)
     if not flags["generator_context"]:
+        if not generator_context_complete:
+            return None, (
+                "Le prompt du générateur n'est pas disponible dans la trace ; ne conclus pas mécaniquement sur l'étage ayant éliminé l'information."
+            )
         if selector_active and flags["selector_input"]:
             return "selector_wrong_priority", (prefix + "retrouvés et transmis au selector, mais écartés du contexte de génération." + suffix)
+        if selector_active and not selector_input_complete:
+            return None, (
+                "L'entrée du selector n'a pas pu être résolue intégralement ; "
+                "ne tranche pas mécaniquement entre candidate_cut et selector_wrong_priority."
+            )
         return "candidate_cut", (prefix + "retrouvés par le retrieval mais éliminés avant la sélection (agrégation / coupe des candidats)." + suffix)
     return None, ""
 
@@ -676,14 +729,27 @@ def analyze_single(feedback: Dict[str, Any], engine=None) -> Tuple[str, str]:
     """
     feedback = dict(feedback)
 
+    selected_ministry = feedback.get("selected_ministry")
+
     # Resolve selector-input chunk refs once (shared by flags + LLM prompt)
     raw_chunks = _json_field(feedback.get("retrieved_chunks"))
     if engine and isinstance(raw_chunks, list) and raw_chunks:
-        first = raw_chunks[0]
-        if isinstance(first, dict) and "chunk_id" in first and "text" not in first:
-            raw_chunks = _resolve_chunk_content(engine, raw_chunks)
+        raw_chunks = _resolve_chunk_content(engine, raw_chunks, selected_ministry)
     if isinstance(raw_chunks, list):
         feedback["retrieved_chunks"] = raw_chunks
+
+    # ``v3_chunks_raw`` only logs 300-character previews. Resolve the IDs to
+    # full chunk text before using absence as mechanical evidence.
+    raw_pool = _json_field(feedback.get("v3_chunks_raw"))
+    if engine and isinstance(raw_pool, list) and raw_pool:
+        raw_pool = _resolve_chunk_content(engine, raw_pool, selected_ministry)
+    if isinstance(raw_pool, list):
+        feedback["v3_chunks_raw"] = raw_pool
+
+    pool_complete = _chunk_refs_complete(feedback.get("v3_chunks_raw"))
+    selector_input_complete = _chunk_refs_complete(feedback.get("retrieved_chunks"))
+    rag_prompt = feedback.get("rag_prompt")
+    generator_context_complete = isinstance(rag_prompt, str) and bool(rag_prompt.strip())
 
     selector_active = bool(feedback.get("llm_selector_model"))
     category: Optional[str] = None
@@ -703,7 +769,16 @@ def analyze_single(feedback: Dict[str, Any], engine=None) -> Tuple[str, str]:
         if engine:
             found = _search_corpus(engine, feedback.get("selected_ministry"), markers)
             in_corpus = True if found is None else found
-        category, reason = _classify_from_flags(in_corpus, flags, selector_active, markers, missing_info)
+        category, reason = _classify_from_flags(
+            in_corpus,
+            flags,
+            selector_active,
+            markers,
+            missing_info,
+            pool_complete=pool_complete,
+            selector_input_complete=selector_input_complete,
+            generator_context_complete=generator_context_complete,
+        )
         if category is None:
             if reason:
                 stage_hint = reason
@@ -721,7 +796,8 @@ def analyze_single(feedback: Dict[str, Any], engine=None) -> Tuple[str, str]:
         category, reason = _call_albert(system_prompt, user_prompt)
 
     if engine and feedback.get("id"):
-        _save_analysis(engine, feedback["id"], category, reason)
+        if not _save_analysis(engine, feedback["id"], category, reason):
+            raise RuntimeError(f"échec de persistance de l'analyse du feedback {feedback['id']}")
 
     return category, reason
 
@@ -746,6 +822,7 @@ def run_batch_analysis(limit: int = 50) -> Dict[str, int]:
             else:
                 stats["failed"] += 1
         except Exception:
+            logger.exception("Feedback analysis failed for feedback %s", fb.get("id"))
             stats["failed"] += 1
 
     logger.info("Batch analysis complete: %s", stats)

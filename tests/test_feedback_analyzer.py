@@ -8,6 +8,7 @@ verdicts attribués au mauvais étage faute de visibilité sur le pool brut.
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -92,18 +93,102 @@ class TestCallAlbertJson:
         with pytest.raises(RuntimeError):
             fa._call_albert_json("s", "u")
 
-    def test_call_albert_returns_other_on_failure(self, monkeypatch):
+    def test_call_albert_propagates_failure(self, monkeypatch):
         monkeypatch.delenv("ALBERT_API_KEY", raising=False)
-        category, reason = fa._call_albert("s", "u")
-        assert category == "other"
-        assert reason.startswith("Erreur analyse:")
+        with pytest.raises(RuntimeError, match="ALBERT_API_KEY"):
+            fa._call_albert("s", "u")
 
     def test_call_albert_rejects_unknown_category(self, monkeypatch):
         monkeypatch.setenv("ALBERT_API_KEY", "test-key")
         payload = json.dumps({"error_category": "pas_une_categorie", "short_reason": "z"})
         monkeypatch.setattr(fa.requests, "post", lambda *a, **k: _FakeResp({"content": payload}))
-        category, _ = fa._call_albert("s", "u")
-        assert category == "other"
+        with pytest.raises(ValueError, match="catégorie Albert invalide"):
+            fa._call_albert("s", "u")
+
+
+# ---------------------------------------------------------------------------
+# _resolve_chunk_content – traces réelles et texte complet
+# ---------------------------------------------------------------------------
+class _FakeConnection:
+    def __init__(self, rows_by_table):
+        self.rows_by_table = rows_by_table
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return None
+
+    def execute(self, query, params):
+        sql = str(query)
+        table = next(table for table in self.rows_by_table if f"FROM {table} " in sql)
+        rows = self.rows_by_table[table]
+        return [SimpleNamespace(cid=chunk_id, chunk_text=rows[chunk_id]) for chunk_id in params["ids"] if chunk_id in rows]
+
+
+class _FakeEngine:
+    def __init__(self, rows_by_table):
+        self.rows_by_table = rows_by_table
+
+    def connect(self):
+        return _FakeConnection(self.rows_by_table)
+
+
+class TestResolveChunkContent:
+    @pytest.mark.parametrize(
+        ("ministry", "publisher", "table"),
+        [
+            ("matte", "Ministère de l'Aménagement du territoire et de la Transition écologique", "rag_chunks_matte"),
+            ("mso", "Ministères sociaux", "rag_chunks_mso"),
+            ("mi", "Ministère de l'Intérieur", "rag_chunks_mi"),
+            ("masa", "Ministère de l'Agriculture et de la Souveraineté alimentaire", "rag_chunks_masa"),
+        ],
+    )
+    def test_resolves_live_ministry_publisher_labels(self, ministry, publisher, table):
+        engine = _FakeEngine({table: {"c1": "texte complet du chunk"}})
+
+        resolved = fa._resolve_chunk_content(
+            engine,
+            [{"chunk_id": "c1", "table": publisher, "chunk_markdown": "preview"}],
+            selected_ministry=ministry,
+        )
+
+        assert resolved[0]["text"] == "texte complet du chunk"
+        assert resolved[0]["_content_resolved"] is True
+        assert fa._chunk_refs_complete(resolved) is True
+
+    def test_resolves_raw_pool_beyond_300_character_preview(self):
+        marker = "159,20"
+        full_text = ("x" * 350) + marker
+        engine = _FakeEngine({"rag_chunks_mso": {"c1": full_text}})
+        raw_pool = [
+            {
+                "chunk_id": "c1",
+                "doc_publisher": "Ministères sociaux",
+                "chunk_markdown": full_text[:300],
+            }
+        ]
+
+        resolved = fa._resolve_chunk_content(engine, raw_pool, selected_ministry="mso")
+        flags = fa._stage_flags({"v3_chunks_raw": resolved}, [marker])
+
+        assert flags["pool"] is True
+
+    def test_unresolved_ref_is_marked_incomplete(self):
+        engine = _FakeEngine({"rag_chunks_mi": {}})
+        resolved = fa._resolve_chunk_content(
+            engine,
+            [{"chunk_id": "missing", "table": "Ministère de l'Intérieur"}],
+            selected_ministry="mi",
+        )
+
+        assert resolved[0]["text"] == ""
+        assert resolved[0]["_content_resolved"] is False
+        assert fa._chunk_refs_complete(resolved) is False
+
+    @pytest.mark.parametrize("malformed", [None, "not-json", {"chunk_id": "c1"}, [42]])
+    def test_malformed_trace_is_incomplete(self, malformed):
+        assert fa._chunk_refs_complete(malformed) is False
 
 
 # ---------------------------------------------------------------------------
@@ -194,9 +279,45 @@ class TestClassifyFromFlags:
         cat, _ = fa._classify_from_flags(True, self._flags(False, False, False), True, ["m"], "")
         assert cat == "retrieval_issue"
 
+    def test_incomplete_pool_defers_instead_of_false_retrieval_issue(self):
+        cat, hint = fa._classify_from_flags(
+            True,
+            self._flags(False, False, False),
+            True,
+            ["m"],
+            "",
+            pool_complete=False,
+        )
+        assert cat is None
+        assert "pool" in hint
+
     def test_candidate_cut_when_lost_between_pool_and_selector(self):
         cat, _ = fa._classify_from_flags(True, self._flags(True, False, False), True, ["m"], "")
         assert cat == "candidate_cut"
+
+    def test_incomplete_selector_input_defers_candidate_cut(self):
+        cat, hint = fa._classify_from_flags(
+            True,
+            self._flags(True, False, False),
+            True,
+            ["m"],
+            "",
+            selector_input_complete=False,
+        )
+        assert cat is None
+        assert "selector" in hint
+
+    def test_missing_generator_prompt_defers_stage_attribution(self):
+        cat, hint = fa._classify_from_flags(
+            True,
+            self._flags(True, True, False),
+            True,
+            ["m"],
+            "",
+            generator_context_complete=False,
+        )
+        assert cat is None
+        assert "prompt du générateur" in hint
 
     def test_selector_wrong_priority_when_selector_dropped_it(self):
         cat, _ = fa._classify_from_flags(True, self._flags(True, True, False), True, ["m"], "")
@@ -213,3 +334,27 @@ class TestClassifyFromFlags:
 
     def test_candidate_cut_is_a_valid_category(self):
         assert "candidate_cut" in fa.ALL_VALID_CATEGORIES
+
+
+# ---------------------------------------------------------------------------
+# analyze_single – les erreurs techniques restent rejouables
+# ---------------------------------------------------------------------------
+class TestAnalyzeSingleFailureHandling:
+    def test_llm_failure_is_not_persisted(self, monkeypatch):
+        saved = []
+        monkeypatch.setattr(fa, "_extract_markers", lambda feedback: ("", []))
+        monkeypatch.setattr(fa, "_call_albert", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("Albert indisponible")))
+        monkeypatch.setattr(fa, "_save_analysis", lambda *args: saved.append(args) or True)
+
+        with pytest.raises(RuntimeError, match="Albert indisponible"):
+            fa.analyze_single({"id": 42, "question": "Q", "answer": "R"}, engine=object())
+
+        assert saved == []
+
+    def test_persistence_failure_is_reported(self, monkeypatch):
+        monkeypatch.setattr(fa, "_extract_markers", lambda feedback: ("information absente", ["marqueur un", "marqueur deux"]))
+        monkeypatch.setattr(fa, "_search_corpus", lambda *args: False)
+        monkeypatch.setattr(fa, "_save_analysis", lambda *args: False)
+
+        with pytest.raises(RuntimeError, match="échec de persistance"):
+            fa.analyze_single({"id": 43, "question": "Q", "answer": "R"}, engine=object())
