@@ -369,7 +369,7 @@ Par corpus : **manual 0.48→0.57 (+0.09)**, **MATTE 0.58→0.67 (+0.09)**, **Se
 
 ## Run 116 — `baseline_v1_qwen37max_20260716` (16/07) — bascule de juge Claude → Qwen 3.7 Max + baseline J3 propre
 
-**Contexte** : spot-check de 99 réponses (run #113) re-jugées par 4 modèles OpenRouter. `claude-sonnet-4.5` (juge en place depuis #318) s'est révélé **over-strict** : il recale des réponses correctes en `incomplete`/`retrieval_gap`/`gold_answer_alignment`, parfois **en contredisant sa propre rationale** (#200, #204, #225). `glm-5.2` rend des verdicts **incohérents** (quality_gate_failed à rationale vide) → inutilisable. `muse-spark-1.1` géo-bloqué US (403). **`qwen/qwen3.7-max`** : verdicts cohérents avec la rationale, corrige les faux négatifs de Claude (15 corrections / 1 durcissement), **provider zéro-rétention** (exigence DINUM, filtre `data_collection: deny` ajouté), **~71 % moins cher** ($4.42 vs $15 /M out). Adopté comme juge par défaut (PR #324).
+**Contexte** : spot-check de 99 réponses (run #113) re-jugées par 4 modèles OpenRouter. `claude-sonnet-4.5` (juge en place depuis #318) s'est révélé **over-strict** : il recale des réponses correctes en `incomplete`/`retrieval_gap`/`gold_answer_alignment`, parfois **en contredisant sa propre rationale** (#200, #204, #225). `glm-5.2` rend des verdicts **incohérents** (quality_gate_failed à rationale vide) → inutilisable. `muse-spark-1.1` géo-bloqué US (403). **`qwen/qwen3.7-max`** : verdicts cohérents avec la rationale, corrige les faux négatifs de Claude (15 corrections / 1 durcissement), **~71 % moins cher** ($4.42 vs $15 /M out). Adopté comme juge par défaut (PR #324) sous l'hypothèse, invalidée le 21/07 par #329/#331, que `data_collection: deny` garantissait la ZDR.
 
 **Résultats** (baseline_v1, 99 Q, juge Qwen 3.7 Max, `per-question`, `--skip-ragas`) :
 | | Run #113 (Claude, biaisé) | **Run #116 (Qwen)** |
@@ -419,24 +419,119 @@ Flips vs 116 : 8 gagnées (q28, 194, 197, 221, 223, 226, 228, 926), 9 perdues (q
 
 ---
 
-## Runs 123-124 — stabilisation vague 0 : référence majoritaire-à-3 + σ mesuré (21/07)
+## Runs 123-124 — stabilisation vague 0 : référence majoritaire-à-3 Qwen + σ mesuré (21/07, historique)
 
-**Protocole** : 2 runs supplémentaires à config STRICTEMENT identique au run 118 (goldset curé gelé, juge Qwen ZDR), lancés sur **GitHub Actions** (le réseau du poste local bloque les ports DB et a tué les runs 119-121 — orphelins `running` à nettoyer). Workflow enrichi (`any_goldset`, `run_label_suffix`, concurrency par suffixe — branche #327). Incident : 32 (run 124) + 22 (run 123) appels juge en erreur `401 Provider returned error` (provider ZDR intermittent côté OpenRouter) → **re-jugés offline 54/54** depuis la VM pont (verdicts flaggés `rejudged_offline` en base).
+**Protocole historique** : 2 runs supplémentaires à config STRICTEMENT identique au run 118 (goldset curé gelé, juge Qwen alors considéré ZDR — hypothèse invalidée le 21/07), lancés sur **GitHub Actions** (le réseau du poste local bloque les ports DB et a tué les runs 119-121 — orphelins `running` à nettoyer). Workflow enrichi (`any_goldset`, `run_label_suffix`, concurrency par suffixe — branche #327). Incident : 32 (run 124) + 22 (run 123) appels juge en erreur `401 Provider returned error` → **re-jugés offline 54/54** depuis la VM pont (verdicts flaggés `rejudged_offline` en base).
 
 **Résultats bruts (3 runs, config identique)** : run 118 = 0.646, run 123 = 0.667, run 124 = 0.697.
 
-**RÉFÉRENCE MAJORITAIRE (verdict 2/3 par question) = 67/99 = 0.677.**
+**RÉFÉRENCE MAJORITAIRE HISTORIQUE QWEN (verdict 2/3 par question) = 67/99 = 0.677.** Elle est remplacée comme référence officielle par le re-jugement Scaleway maj-3 du 22/07 ci-dessous.
 
 | Mesure | Valeur |
 |---|---|
 | Questions instables (≥1 flip sur 3 runs) | **18/99 (18 %)** |
 | Flips par paire de runs | 11-13 (±0.11-0.13 de churn par question) |
 | Par corpus (réf. majoritaire) | manual 0.64, SP 0.71, MATTE 0.75, synthetic 0.82 |
-| **Échecs STABLES (3/3 fail) = les vraies cibles** | **24** : q3, 11, 16, 17, 23, 30, 181, 183, 191, 192, 198, 201, 205, 210, 212, 213, 216, 217, 220, 227, 229, 676, 4531, 4535 |
+| **Échecs stables historiques sous Qwen (3/3 fail)** | **24** : q3, 11, 16, 17, 23, 30, 181, 183, 191, 192, 198, 201, 205, 210, 212, 213, 216, 217, 220, 227, 229, 676, 4531, 4535 |
 
 **Lecture** :
-1. Le churn par question (11-13 flips/paire) est **plus grand encore** que le σ agrégé (±0.05) — les flips se compensent partiellement dans le global. **Aucun A/B ne doit plus jamais être lu autrement qu'en verdicts appariés contre la référence majoritaire, cibles nommées parmi les 24 échecs stables.**
-2. Les cibles des leviers validés sont bien des échecs STABLES : q17/q192 (rerank_input_k=40), q220/q229/q191 (renvois), q212/q213/q217/q229/q30 (R2), q4535 (intent gating). Caveat : q194/q221/q657 (misses profonds) sont INSTABLES — ils passent parfois par chance ; les compter en cible ferme surestimerait le gain.
+1. Le churn par question (11-13 flips/paire) est **plus grand encore** que le σ agrégé (±0.05) — les flips se compensent partiellement dans le global. Enseignement durable : aucun A/B ne doit être lu autrement qu'en verdicts appariés contre une référence construite avec le même juge. Les 24 échecs ci-dessus restent la photographie historique Qwen, pas les cibles officielles actuelles.
+2. Sous cette référence historique Qwen, les cibles des leviers étaient q17/q192 (rerank_input_k=40), q220/q229/q191 (renvois), q212/q213/q217/q229/q30 (R2), q4535 (intent gating). Le re-jugement officiel Scaleway maj-3 ci-dessous reclasse notamment q220/q229 comme instables.
 3. Instables notables : q19/q28/q926 (complétude borderline, déjà repérées), q223/q226 (curées, désormais à cheval), q660 (FFP).
 
-**Prochain** : vague 1 (P1 `rerank_input_k=40` + P2 intent gating derrière flag, PR #327 à merger d'abord) mesurée en apparié vs la référence majoritaire. Voir `revue-strategies-qualite-rag.md`.
+**Prochain au 21/07 (historique)** : vague 1 (P1 `rerank_input_k=40` + P2 intent gating derrière flag, PR #327 à merger d'abord) mesurée en apparié. Le protocole et les cibles ont été remplacés le 22/07 par la référence officielle ci-dessous.
+
+---
+
+## Sélection du juge par la mesure + référence officielle souveraine (21-22/07)
+
+**Contexte** : l'exigence ZDR stricte (revue #329/#331 : `data_collection: deny` ≠ Zero Data Retention chez OpenRouter) a révélé que **qwen3.7-max, juge depuis le 16/07, n'a aucun endpoint ZDR**. Qualification systématique de 5 juges par leur **bruit propre** (les 99 réponses FIGÉES du run 118 re-jugées 2x — tout flip = bruit du juge, le générateur étant hors de cause) :
+
+| Juge | Bruit propre | Accord qwen | Sévérité | Conformité |
+|---|---|---|---|---|
+| qwen3.7-max (OpenRouter) | 2,0 % | — | 0,65 | ❌ deny-only, pas de ZDR |
+| **scaleway qwen3-235b** | **5,1 %** | **86,9 %** | 0,60 | ✅ **souverain EU** |
+| grok-4.5 | 6,1 % | 78,8 % | 0,68 | ✅ ZDR xAI |
+| gemini-2.5-pro | 7,1 % | 73,7 % | 0,59 | ✅ ZDR |
+| gpt-5.2 | 9,1 % | 68,7 % | **0,35 (sur-strict)** | ✅ ZDR |
+
+**Décision (utilisateur, 22/07) — protocole à DEUX étages** :
+- **OFFICIEL (gates d'adoption staging/prod uniquement)** : juge souverain **Scaleway qwen3-235b en vote majoritaire à 3 appels** — bruit effectif ~0,8 %, posture DINUM la plus défendable, sortie de la dépendance OpenRouter pour les décisions. Le support d'exécution `--judge-votes 3` est livré par la PR #333 ; les modes `full`/`production` forcent ce protocole et refusent les overrides incompatibles.
+- **SCREENING intermédiaire** : grok-4.5 single-shot (coût minimal ; sa référence des 3 runs existe déjà en cache).
+
+**RÉFÉRENCE OFFICIELLE** (runs 118/123/124 re-jugés offline en Scaleway maj-3, 891 votes, verdicts qwen préservés en base ; verdicts par question versionnés dans `docs/evals/verdicts-officiels/official_scw_maj3_{118,123,124}.json`) :
+
+| Mesure | Valeur |
+|---|---|
+| **Référence majoritaire officielle** | **67/99 = 0,677** (continuité parfaite avec la référence qwen : même chiffre) |
+| Par run (maj-3) | 0,616 / 0,646 / 0,667 |
+| Votes partagés (bruit juge résiduel) | **10/297 (3,4 %)** — le maj-3 écrase le bruit juge |
+| Questions instables inter-runs | 22 (= variance du GÉNÉRATEUR, désormais isolée du bruit juge) |
+| **Échecs STABLES = cibles officielles des A/B** | **26** : q3, 11, 16, 17, 23, 30, 174, 181, 183, 191, 192, 198, 203, 205, 210, 211, 213, 215, 216, 217, 221, 222, 223, 676, 4531, 4535 |
+
+**Cibles des leviers validées sous la référence officielle** : P1 `rerank_input_k=40` → **q17, q192** (stables ✓) ; R2 résumés-articles → **q213, q217, q221, q30** stables (+ q212/q229 instables = bonus) ; intent gating → **q4535** ✓ ; renvois → **q191** ✓ (q220/q229 instables).
+
+**Incidents d'infra consignés** (journée du 21-22/07, tous de la famille « réseau silencieux ») : sockets à moitié mortes gelant les workers (fix : timeout HTTP client 45 s obligatoire sur tout script de juge — à porter dans `judge_answer`), pièges pgrep auto-matchants (3 occurrences), venv nu des worktrees. Runs locaux 119-121 = statuts orphelins à nettoyer.
+
+**Prochain au 22/07 avant le run 145 (historique)** : vague 1 — P1 `rerank_input_k=40` (prérequis plomberie de R2 : un article remonté par R2 au rang ~25 doit franchir l'entrée du rerank, coupée à 20), screening grok, puis R2 (#332), puis gate d'adoption Scaleway maj-3 sur le paquet.
+
+---
+
+## Run 145 — `candidate_w1_rerankinput40_20260722` (22/07) — screening vague 1 : P1 `rerank_input_k=40`
+
+**Changements vs baseline** : dev @10ee6e3 (#335 mergée) + `--rerank-input-k 40` (entrée du reranker 20→40, sortie inchangée). Juge : **grok single-shot (étage screening)** — lecture contre la **référence grok** des runs 118/123/124 (0,707 ; 16 échecs stables-grok), jamais contre la référence officielle Scaleway (juges non comparables).
+
+**Résultats** :
+| Lecture | Valeur |
+|---|---|
+| Global (ininterprétable en single-shot, σ-grok 6,1 %) | 0,677 vs réf 0,707 |
+| Flips sur questions STABLES-grok | +3 (q175, q223, q657) / −6 (q6, q16, q200, q204, q212, q4534) — **dans la bande de bruit grok (~5 attendus)** |
+| **Cibles nommées P1** | **q17 : FAIL→PASS ✓** ; q192 : déjà PASS-stable sous grok (c'est sous le juge officiel qu'elle est une cible) ; q218 : FAIL→PASS observé, mais non attribuable à P1 — le contrefactuel la classe rang 25 après rerank, hors du top-20 servi |
+
+**Lecture** : le mécanisme produit le signal attendu sur q17 : sa section-réponse, auparavant coupée avant le reranker, atteint désormais le top-20 servi et convertit. Le PASS de q218 n'est pas une preuve du mécanisme sans trace montrant que la section-réponse a rejoint le contexte final ; il reste compatible avec le bruit du screening. Le net −3 sur les stables est lui aussi indistinguable du bruit du juge : c'est PRÉCISÉMENT pourquoi l'adoption doit passer par le gate Scaleway maj-3, seul étage capable de trancher.
+
+**Prochain au 23/07** : #332 et #333 sont mergées. Générer, revoir humainement puis appliquer le corpus R2, puis soumettre le paquet P1+R2 à un seul **gate d'adoption Scaleway maj-3** (économie de runs).
+
+---
+
+## Run 156 — `gate_adoption_p1r2_20260723` (23/07) — GATE OFFICIEL du paquet P1+R2 → **ADOPTÉ**
+
+**Changements vs référence (runs 118/123/124)** : dev @f8811de. Paquet complet vague 1 :
+- **P1** : `--rerank-input-k 40` (entrée du reranker 20→40, sortie 20 inchangée — #335) ;
+- **R2** : 4 203 lignes-résumé en base staging (`index_variant r2_summary/r2s1-openweight-medium-pfc72d953+embed-openweight-embeddings/…`), embedding = résumé métier, `chunk_text` = texte juridique authentique (#332). Vérifs post-apply : 4 203 lignes = 4 203 vecteurs, zéro divergence de texte, zéro orpheline.
+- **Juge** : protocole OFFICIEL — Scaleway `qwen3-235b-a22b-instruct-2507`, **vote majoritaire à 3** (#333), lecture appariée contre les verdicts versionnés (`docs/evals/verdicts-officiels/`).
+
+**Incident d'infra (résolu avant le run)** : le premier `--apply` R2 s'est auto-deadlocké — transaction lectrice FOR UPDATE du job bloquant l'`ALTER TABLE ADD COLUMN index_variant` de sa propre connexion sœur, retrieval staging gelé ~40 min derrière l'ACCESS EXCLUSIVE. Kill sans dégâts (0 ligne écrite), fix #343 (DDL avant la transaction apply, contrat « jamais de DDL dans la branche caller-conn »), re-apply propre (`applied=4203`, 1 seul appel LLM — cache).
+
+**Résultats** :
+
+| Mesure | Run 156 | Référence |
+|---|---|---|
+| judge_pass global | **0,677** (67/99) | 0,677 |
+| Conversions (échecs stables) | **8** : q3, q17*, q23, q30*, q198, q215, q217*, q223 (* = cibles nommées) | — |
+| Casses (passers stables) | 5 : q2, q20, q194, q202, q4534 | chaque run de réf. : 0,616-0,667 vs majorité |
+| **Net stables** | **+3** | — |
+| Cibles nommées | 3/6 (q17 P1 ; q30, q217 R2) — q192/q213/q221 restent FAIL, non dégradées | critère #336 : ≥4 |
+| wrong_law | 5 | 10 (run 118, juge d'origine — caveat) |
+| Latence retrieval p50/p95 | **1,56 s / 2,11 s** | 1,64-3,61 s / 2,57-4,55 s |
+| retrieval_gap_rate | 0,263 | 0,232 |
+
+**Analyse des 5 casses — aucune signature P1/R2** : q2/q194/q202 avaient déjà `hit_rate=0` en baseline (le gold n'a jamais été retrouvé ; leurs PASS étaient de la chance de génération) ; q20/q4534 gardent `hit_rate=1` avec des réponses « factuellement correctes » recalées sur un point manquant. C'est la variance générateur/juge, dans la bande des runs de référence eux-mêmes.
+
+**Mécanisme R2 observé** : dès les premiers items, des lignes `_r2s` dans le pool de retrieval de 11/11 questions (ex. q1 : 23 chunks `_r2s` — CGFP, décret 86-83, décret 2022-662). Le pont lexical question-métier → article fonctionne en conditions réelles.
+
+**Décision (utilisateur, 23/07)** : **ADOPTION** malgré le critère cibles à 3/6 — motifs : global = référence sous le juge le plus strict, net stables +3, 5 bonus hors cibles, casses expliquées par la variance, latence améliorée, et les 3 cibles restantes (q192, q213, q221) sont précisément les cibles des leviers suivants (vague 2 #244, renvois). `update_rag_config` staging appliqué le 23/07 à 16:10 (`v3_rerank_input_k=40`, hors fenêtre de run, orphelins #339 vérifiés inactifs). Rollback R2 disponible en 1 DELETE.
+
+**À surveiller post-adoption** : retrieval_gap_rate (+3 questions vs baseline), feedbacks testeurs sur typologie_contrats, et les orphelins `running` (14 en base → #339).
+
+---
+
+## Run 161 — `candidate_input64_20260723` (23/07 soir) — screening `rerank_input_k=64`
+
+**Changements vs run 156** : dev @f8811de inchangé, override CLI `--rerank-input-k 64` (config partagée restée à 40). Juge : **grok single-shot (étage screening)** — lecture appariée contre la référence grok (0,707), jamais contre la référence officielle.
+
+**Résultats** : global **0,717** (+1 pt vs 0,707) ; 4 conversions d'échecs stables-grok (q175, q220, q657, q660), 6 casses (q2, q16*, q200, q204, q214, q4534 — majoritairement les fragiles connues) → net **−2**, dans la bande de bruit. Cibles nommées : q192 **convertie**, q16/q191 toujours FAIL malgré leur gold servi (rangs 15/6) — le selector les jette. Risques surveillés q185/q186 : **tous deux PASS**. Latence retrieval p95 : 1 810 ms (vs 2 105 ms au run 156).
+
+**Lecture** : input64 fait exactement ce que le contrefactuel prédisait au containment, mais les conversions sont plafonnées par le selector (goulot aval mesuré). Décision : input64 **non adopté** — l'élargissement du pool passera par l'architecture 3-pipelines (design cible, cf. `revue-experimentations-sondes-20260723.md`), en paquet avec le selector v2 (#306) + union top-8, un seul screening + gate.
+
+**Post-run** : curation goldset du 24/07 (7 questions re-annotées, backup versionné sur VM) → funnel final des 18 échecs stables réattribué : 4 génération / 4 selector / 4 coupe-candidats / 4 hors-pool / 2 goldset à re-sourcer.

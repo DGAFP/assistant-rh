@@ -1,10 +1,10 @@
 # Revue des stratégies d'amélioration de la qualité RAG — état des connaissances
 
-**Période couverte** : 2026-07-15 → 2026-07-21.
-**Référentiel de mesure** : goldset `baseline_v1` (99 questions réelles résolues), juge LLM `qwen/qwen3.7-max` via OpenRouter **zéro-rétention** (`provider.data_collection=deny`, exigence DINUM), runs consignés dans `rag_quality_eval_runs`/`rag_quality_eval_items` (staging). Runs de référence : **116** (baseline juge Qwen, 0.670) et **118** (rebaseline goldset curé, cf. journal).
+**Période couverte** : 2026-07-15 → 2026-07-23.
+**Référentiel de mesure** : goldset `baseline_v1` (99 questions réelles résolues), protocole à deux étages : **screening** par `x-ai/grok-4.5` via OpenRouter avec ZDR stricte (`provider.data_collection=deny` **et** `provider.zdr=true`) ; **gates d'adoption** par Scaleway `qwen3-235b` souverain en vote majoritaire à 3. Le support opérationnel maj-3 est livré par la PR #333 : les modes `full`/`production` forcent le juge, le modèle et les 3 votes officiels. Référence officielle construite offline : runs 118/123/124 re-jugés sous Scaleway maj-3 (**0,677**, 26 échecs stables) ; détail dans le journal.
 **Méthode** : investigation multi-agents du 17/07 (autopsie empirique des 34 échecs du run 116, variantes de retrieval rejouées hors-ligne, revues de code, synthèse contradictoire par panel adversarial à 3 lentilles), puis **sondes ciblées** — chaque stratégie est éprouvée offline sur les échecs réels *avant* toute implémentation. Ce document est la source de vérité stratégique ; le détail run-par-run vit dans `journal-experimentations-rag.md`.
 
-> ⚠️ Les rapports bruts des sondes (fichiers de travail de session) ont été purgés avec le scratchpad temporaire le 21/07 ; les chiffres ci-dessous sont la trace consolidée. Les données d'éval restent intégralement en base (runs 112-118).
+> ⚠️ Les rapports bruts des sondes (fichiers de travail de session) ont été purgés avec le scratchpad temporaire le 21/07 ; les chiffres ci-dessous sont la trace consolidée. Les données d'éval citées restent en base (runs 112-145).
 
 ---
 
@@ -107,9 +107,10 @@ Constat moteur : le corpus Service-Public (structuré en Q&A) surperforme ; le c
 
 | Stratégie | Statut | Preuve / décision |
 |---|---|---|
-| **Bascule de juge Claude → Qwen 3.7 Max ZDR** | ✅ | Claude sur-strict (faux négatifs contredisant sa propre rationale) ; GLM 5.2 incohérent ; Muse Spark géo-bloqué. Qwen : fiable, zéro-rétention, −71 % de coût (PR #324). |
+| **Sélection du juge par la mesure (21-22/07)** | ✅ | Qualification de 5 juges par bruit propre (réponses figées jugées 2x). Verdict : **protocole à 2 étages** — OFFICIEL (gates d'adoption) = **Scaleway qwen3-235b souverain en vote majoritaire à 3** (5,1 % single-shot → ~0,8 % maj-3, accord 86,9 % avec l'historique) ; SCREENING = grok-4.5 single-shot (ZDR, 6,1 %). Écartés : qwen3.7-max (aucun endpoint ZDR), gemini-2.5-pro (7,1 %), gpt-5.2 (9,1 % + sur-strict 0,35). **Référence officielle offline = 0,677**, 26 échecs stables = cibles officielles. Automatisation `--judge-votes 3` livrée par #333 ; les modes `full`/`production` forcent le protocole officiel. |
+| Bascule de juge Claude → Qwen 3.7 Max (16/07, dépassée le 22/07) | ✅ historique | Claude sur-strict (faux négatifs contredisant sa propre rationale) ; GLM 5.2 incohérent ; Muse Spark géo-bloqué. Qwen : fiable sur les rationales et −71 % de coût, mais adopté sous l'hypothèse désormais invalidée que `data_collection=deny` garantissait la ZDR (PR #324). |
 | **Curation goldset** (36 questions) | ✅ | 5 sources fausses re-résolues ; **82 refs LEGIARTI de version re-keyées en cids chroniques sur 28 questions** (dette migration #289) ; 3 questions d'articles abrogés requalifiées CGFP (R331-7/R331-6, L121-6/L121-7, R331-2). Vérifié au run 118 : hit=1.0 sur les curées, +5 conversions. ⚠️ Appliquée en DB staging — à versionner au repo (seed/script). |
-| **Protocole de variance** | ✅ vague 0 SOLDÉE (21/07) | Découverte majeure du run 118 : **σ single-shot ≈ ±0,05-0,06** (12 flips aléatoires entre deux runs à config identique, hit_rate=1.0 des deux côtés). Un run unique ne peut PAS mesurer +0,02-0,05 — éclaire rétroactivement la « régression min_kept » du 06/07 et le « SP −0,14 » du run 115 (bruit). Protocole : référence = verdict **majoritaire à 3 runs** par question ; A/B en **diff apparié par question** ; goldset gelé pendant tout run. **Mesuré (runs 118/123/124, config identique : 0.646/0.667/0.697)** : **référence majoritaire = 0.677** ; **18 % de questions instables** ; 11-13 flips/paire de runs ; **24 échecs STABLES = les cibles officielles** (dont q17/q192/q220/q229/q212/q213/q217/q30/q4535 — cibles des leviers validés). Caveat : q194/q221/q657 instables (passent parfois par chance). Détail au journal. |
+| **Protocole de variance — référence historique Qwen** | ✅ historique, dépassé le 22/07 | Découverte majeure du run 118 : **σ single-shot ≈ ±0,05-0,06** (12 flips aléatoires entre deux runs à config identique, hit_rate=1.0 des deux côtés). Un run unique ne peut PAS mesurer +0,02-0,05 — éclaire rétroactivement la « régression min_kept » du 06/07 et le « SP −0,14 » du run 115 (bruit). Protocole durable : verdict majoritaire par question, A/B en **diff apparié par question**, goldset gelé. Sous l'ancien juge Qwen, les runs 118/123/124 donnaient 24 échecs stables historiques, dont q220/q229 ; **ils ne constituent plus les cibles officielles**. La référence officielle Scaleway maj-3 du 22/07 compte 26 échecs stables et reclasse notamment q220/q229 comme instables (ligne ci-dessus, détail au journal). |
 | Goldset 300-500 questions (miné des 775 feedbacks testeurs + Grist Suivi-Tests) + juge continu sur trafic réel | 🟡 programme C | 99 questions à ±0,05 de bruit ne peuvent pas piloter une amélioration fine. Les thèmes douloureux réels (typologie_contrats : 48 % négatif) doivent entrer dans la mesure. |
 
 ---
@@ -128,19 +129,21 @@ Constat moteur : le corpus Service-Public (structuré en Q&A) surperforme ; le c
 | 17/07 | **Sonde graphe de renvois** | Extraction PISTE∪regex, expansion 1 saut bidirectionnelle sur les top-30 des 34 échecs | 🟢 GO (6/34 plafonné, 9/34 max) |
 | 17/07 | **Sonde couche de représentation** | 174 enrichissements Albert (aveugles aux questions), 6 variantes, rangs simulés, contrôle différentiel | 🟢 GO ciblé R2 (5/7 misses profonds) ; V1/V3/V4 NO-GO ; R5 réserve |
 | 21/07 | **Sonde multi-turn génération vérifiée** | Draft→spans→révision sur les 8 échecs génération + 10 contrôles, verdicts appariés, spans contrôlés par string-matching | 🔵 en cours |
+| 21-23/07 | **Qualification des juges + référence officielle** | 5 juges comparés sur réponses figées 2x ; runs 118/123/124 re-jugés offline sous Scaleway maj-3 ; gate automatisé par #333 | Référence 0,677 ; 26 échecs stables ; protocole officiel opérationnel |
+| 22/07 | **Screening P1 `rerank_input_k=40`** (run 145) | Grok single-shot apparié à sa référence ; sortie rerank top-20 inchangée | Signal attendu confirmé sur q17 ; q218 non attribuable au mécanisme ; gate officiel différé avec R2 |
 
 ---
 
 ## 4. Roadmap consolidée
 
-1. **Vague 0 — stabilisation de la mesure** *(bloquant)* : 2 runs baseline supplémentaires → référence majoritaire-à-3 + σ documenté.
-2. **Vague 1 — mécanique runtime** : `v3_rerank_input_k=40` + fix intent gating (derrière flag) ; hygiène selector en A/B séparé.
+1. **Vague 0 — stabilisation de la mesure** : ✅ soldée — référence officielle Scaleway maj-3 construite offline à 0,677, 26 échecs stables et bruit documenté ; gate automatisé par #333.
+2. **Vague 1 — mécanique runtime** : `v3_rerank_input_k=40` livré par #335 et screené au run 145 (signal confirmé sur q17) ; gate d'adoption combiné avec R2 en attente. Fix intent gating toujours à livrer derrière flag ; hygiène selector en A/B séparé.
 3. **Vague 2 — anti-hallucination** : gate d'abstention t=0,20 (+ conditions) + min_kept=4 borné, par ministère.
-4. **Vague 3 — enrichissement** *(chantier principal)* : pipeline R2 résumés-articles (dgafp d'abord) + `rag_renvois_edges` + dédup chunking SP. Impact combiné projeté ≈ +0,09 (recouvrement limité à q194/q229).
+4. **Vague 3 — enrichissement** *(chantier principal)* : pipeline R2 mergé via #332 ; restent la génération, la revue humaine et l'application du corpus, puis le gate P1+R2. `rag_renvois_edges` et dédup chunking SP restent à construire. Impact combiné projeté ≈ +0,09 (recouvrement limité à q194/q229).
 5. **Programme B — génération vérifiée** : selon verdict de la sonde en cours ; sinon A/B générateur (décision souveraineté).
 6. **Programme C — mesure à l'échelle** : goldset 300-500 + juge continu sur trafic réel.
 
-**Trajectoire** : 0,670 (116) → mesure assainie ~0,70-0,73 → vagues 1-2 ~0,75-0,78 → vague 3 ~0,82-0,85 → programmes B/C : **0,85-0,90** + zéro réponse fausse confiante (gate + citations vérifiées).
+**Trajectoire** : la référence officielle est désormais **0,677**. Les plages projetées pour les vagues 1-2 (~0,75-0,78), la vague 3 (~0,82-0,85) et les programmes B/C (**0,85-0,90**) restent des hypothèses tant qu'elles ne sont pas confirmées par les gates officiels.
 
 ## 5. Principes actés (à ne pas re-débattre sans donnée nouvelle)
 
@@ -148,4 +151,4 @@ Constat moteur : le corpus Service-Public (structuré en Q&A) surperforme ; le c
 2. **Aucune garantie par prompt** — le biais de complaisance est mesuré (`found=true` sur 7/7 échecs) ; seules comptent les garanties mécaniques (hit rate, seuils, gates, string-matching).
 3. **Les enrichissements trouvent, ils ne disent jamais** — tout texte généré (résumés, questions synthétiques) est une clé d'index ; le générateur ne reçoit que le texte source authentique.
 4. **Un chiffre d'éval sans protocole apparié est du bruit** (σ ±0,05 single-shot).
-5. **Zéro-rétention obligatoire** pour tout LLM externe (OpenRouter `data_collection=deny`) ; Albert souverain par défaut en prod.
+5. **Zéro-rétention stricte obligatoire** pour tout LLM externe : sur OpenRouter, `data_collection=deny` **et** `zdr=true` sont requis. Les gates d'adoption utilisent le juge souverain Scaleway maj-3 ; les modes `full`/`production` imposent ce protocole via #333. Albert reste souverain par défaut en prod.

@@ -4,8 +4,25 @@ Les parseurs legacy consomment du texte plat ligne à ligne (sortie pdftotext
 avec marqueurs [PAGE n]); mistral-ocr sort du markdown. flatten_ocr_to_text
 fait l'aplatissement à drift minimal: marqueurs de page conservés au format
 legacy, tableaux externalisés (page["tables"]) réinjectés puis dé-pipés,
-marqueurs de heading retirés (le titre reste en ligne isolée, détectable par
-les heuristiques), refs d'images non annotées retirées.
+refs d'images non annotées retirées.
+
+Divergences assumées vs l'aplatissement legacy (issue #302, docs cassés):
+- Les headings markdown de l'OCR ne sont plus détruits mais traduits en
+  marqueurs de structure `(Titre)`/`(Intertitre)` que detect_heading comprend
+  déjà — le mode guide suit alors la vraie structure du document au lieu de
+  re-deviner des headings par heuristiques (qui promouvaient les en-têtes de
+  courrier « ET DES SOLIDARITÉS » et des lignes de tableaux en titres de
+  sections). Les autres parseurs retirent le marqueur ligne à ligne
+  (strip_structure_marker) et voient le même texte qu'avant.
+- Les en-têtes/pieds de page répétés (letterhead « MINISTÈRES SOCIAUX /
+  Liberté / Égalité / Fraternité », folios « Bulletin officiel … Page n »)
+  sont retirés avant aplatissement — même principe que le
+  _page_edge_boilerplate du silver heading-based, fenêtre élargie aux pages
+  courtes (slides).
+- Les tableaux-matrices à cases cochées (en-tête sur deux lignes + cellules
+  ☑/X) sont sérialisés ligne à ligne avec leurs noms de colonnes: le dé-pipage
+  legacy perdait la colonne porteuse de la réponse (« produit par : DRHM ou
+  SD ? »).
 
 Divergences connues (arbitrage au goldset, règle de la Phase D):
 - Documents « process » type slides/logigramme (ex: « Je recrute un contractuel
@@ -19,6 +36,8 @@ Divergences connues (arbitrage au goldset, règle de la Phase D):
 from __future__ import annotations
 
 import re
+from collections import Counter
+from math import ceil
 from typing import Any
 
 from ...service_public.section_splitter import count_tokens
@@ -32,9 +51,13 @@ from .engine import QnaEngineConfig, SectionBlock, normalize_text, parse_documen
 
 __all__ = ["QnaSilverBuilder", "flatten_ocr_to_text"]
 
+_H1_MARKER_RE = re.compile(r"^#\s+")
 _HEADING_MARKER_RE = re.compile(r"^#{1,6}\s+", re.MULTILINE)
 _BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
 _TABLE_SEPARATOR_ROW_RE = re.compile(r"^\s*\|[\s\-:|]+\|\s*$")
+
+# Cellule « case cochée » d'un tableau-matrice (croix ou coche).
+_MATRIX_MARK_RE = re.compile(r"^[☑✓✔Xx×]$")
 
 # Mapping mode de parsing -> doc_type (repris du notebook MSO).
 _MODE_DOC_TYPES = {
@@ -73,16 +96,108 @@ def _inline_ocr_tables(markdown: str, tables: list[dict]) -> str:
 
 
 def _flatten_markdown_line(line: str) -> str:
-    line = _HEADING_MARKER_RE.sub("", line)
+    if _H1_MARKER_RE.match(line):
+        line = "(Titre) " + _H1_MARKER_RE.sub("", line)
+    elif _HEADING_MARKER_RE.match(line):
+        line = "(Intertitre) " + re.sub(r"^#{2,6}\s+", "", line)
     line = _BOLD_RE.sub(r"\1", line)
     line = IMAGE_REF_RE.sub("", line)
-    stripped = line.strip()
-    if _TABLE_SEPARATOR_ROW_RE.match(stripped):
-        return ""
-    if stripped.startswith("|") and stripped.endswith("|"):
-        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-        return " ".join(cell for cell in cells if cell)
     return line
+
+
+def _repeated_page_lines(page_markdowns: list[str]) -> set[str]:
+    """Letterhead/folios répétés de page en page (« MINISTÈRES SOCIAUX »,
+    « Bulletin officiel … Page n », « RÉPUBLIQUE FRANÇAISE »…).
+
+    Même principe que le _page_edge_boilerplate du silver heading-based, avec
+    une fenêtre élargie: les slides tiennent en entier dans le letterhead
+    (pages courtes = toute la page est un « bord »). Les headings markdown,
+    lignes de tableaux, puces et refs [tbl-N.md] ne sont jamais candidats.
+    """
+    if len(page_markdowns) < 3:
+        return set()
+    counter: Counter[str] = Counter()
+    for page in page_markdowns:
+        lines = [line.strip() for line in page.splitlines() if line.strip()]
+        window = lines if len(lines) <= 12 else lines[:6] + lines[-4:]
+        for line in set(window):
+            if 3 <= len(line) <= 80 and not line.startswith(("#", "|", "-", "•", "[", "!")):
+                counter[line] += 1
+    threshold = max(3, ceil(len(page_markdowns) * 0.4))
+    return {line for line, count in counter.items() if count >= threshold}
+
+
+def _parse_table_cells(rows: list[str]) -> list[list[str]]:
+    parsed: list[list[str]] = []
+    for row in rows:
+        if _TABLE_SEPARATOR_ROW_RE.match(row):
+            continue
+        # Parité avec l'aplatissement legacy, qui strippait gras et refs
+        # d'images sur la ligne entière AVANT le dé-pipage.
+        row = _BOLD_RE.sub(r"\1", row)
+        row = IMAGE_REF_RE.sub("", row)
+        parsed.append([cell.strip() for cell in row.strip().strip("|").split("|")])
+    return parsed
+
+
+def _is_matrix_table(parsed: list[list[str]]) -> bool:
+    """Tableau-matrice: en-tête de groupes + sous-en-tête (1re cellule vide,
+    libellés courts) et cellules « case cochée » dans les lignes de données.
+
+    Tout autre tableau garde le dé-pipage legacy (« cellule cellule cellule »)
+    dont dépendent les parseurs table_matrix/process."""
+    if len(parsed) < 3:
+        return False
+    sub = parsed[1]
+    if sub[0] or len(sub) < 3:
+        return False
+    labels = [cell for cell in sub[1:] if cell]
+    if len(labels) < 2 or any(len(label) > 24 for label in labels):
+        return False
+    marks = sum(1 for row in parsed[2:] for cell in row[1:] if _MATRIX_MARK_RE.match(cell))
+    return marks >= 2
+
+
+def _matrix_headers(group_row: list[str], sub_row: list[str]) -> list[str]:
+    headers: list[str] = []
+    group = ""
+    for j in range(max(len(group_row), len(sub_row))):
+        g = group_row[j] if j < len(group_row) else ""
+        s = sub_row[j] if j < len(sub_row) else ""
+        if g:
+            group = g.rstrip(" :")
+        if s and group and j > 0:
+            headers.append(f"{group} : {s}")
+        else:
+            headers.append(s or group)
+    return headers
+
+
+def _serialize_table_lines(rows: list[str]) -> list[str]:
+    parsed = _parse_table_cells(rows)
+    if not _is_matrix_table(parsed):
+        # Dé-pipage legacy, à l'identique de l'aplatissement d'origine.
+        return [" ".join(cell for cell in cells if cell) for cells in parsed if any(cells)]
+    headers = _matrix_headers(parsed[0], parsed[1])
+    out: list[str] = [" ".join(cell for cell in parsed[0] if cell)]
+    for cells in parsed[2:]:
+        label = cells[0]
+        facts: list[str] = []
+        for j, cell in enumerate(cells[1:], start=1):
+            if not cell:
+                continue
+            header = headers[j] if j < len(headers) else ""
+            if _MATRIX_MARK_RE.match(cell):
+                facts.append(header or cell)
+            elif header:
+                facts.append(f"{header} : {cell}")
+            else:
+                facts.append(cell)
+        if label and facts:
+            out.append(f"{label} — {' ; '.join(facts)}")
+        elif label or facts:
+            out.append(label or " ; ".join(facts))
+    return out
 
 
 def flatten_ocr_to_text(ocr: OcrResult) -> str:
@@ -95,16 +210,39 @@ def flatten_ocr_to_text(ocr: OcrResult) -> str:
     page_markdowns = [str(page.get("markdown") or "") for page in ocr.pages]
     if not any(md.strip() for md in page_markdowns):
         return normalize_text(_flatten_body(ocr.markdown or ""))
+    boilerplate = _repeated_page_lines(page_markdowns)
     parts: list[str] = []
     for number, page in enumerate(ocr.pages, start=1):
         markdown = _inline_ocr_tables(str(page.get("markdown") or ""), page.get("tables") or [])
-        body = _flatten_body(markdown)
+        body = _flatten_body(markdown, boilerplate)
         parts.append(f"[PAGE {number}]\n{body}" if len(ocr.pages) > 1 else body)
     return normalize_text("\n\n".join(parts))
 
 
-def _flatten_body(markdown: str) -> str:
-    return "\n".join(_flatten_markdown_line(line) for line in markdown.splitlines())
+def _flatten_body(markdown: str, boilerplate: set[str] = frozenset()) -> str:
+    out: list[str] = []
+    table_rows: list[str] = []
+
+    def flush_table() -> None:
+        if table_rows:
+            out.extend(_serialize_table_lines(table_rows))
+            table_rows.clear()
+
+    for line in markdown.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            table_rows.append(stripped)
+            continue
+        if table_rows and not table_rows[-1].endswith("|") and stripped:
+            # Cellule multi-lignes: la ligne physique continue la rangée ouverte.
+            table_rows[-1] += " " + stripped
+            continue
+        flush_table()
+        if stripped and stripped in boilerplate:
+            continue
+        out.append(_flatten_markdown_line(line))
+    flush_table()
+    return "\n".join(out)
 
 
 def qna_section_uuid(identity: MinistryIdentity, doc_id: str, qa_id: str, section_index: int) -> str:

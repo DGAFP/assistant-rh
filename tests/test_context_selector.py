@@ -70,6 +70,10 @@ def test_floor_tops_up_a_thin_selection(patch_llm) -> None:
         "selected_by_llm": 1,
         "served": 4,
     }
+    expected_prompt = "Question: question\n\nSections:\n" + "\n\n---\n\n".join(
+        f"[{i}] {section.heading} (unknown)\n{section.markdown}" for i, section in enumerate(sections)
+    )
+    assert selector.last_prompt_chars == len(expected_prompt)
 
 
 def test_floor_does_not_touch_a_wide_enough_selection(patch_llm) -> None:

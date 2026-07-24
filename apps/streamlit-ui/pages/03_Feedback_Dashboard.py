@@ -222,6 +222,7 @@ GROUP_COLORS, GROUP_LABELS = group_chart_maps()
 # Labels pour les catégories d'erreur (identifiées par LLM)
 ERROR_CATEGORY_LABELS = {
     "retrieval_issue": "🔍 Retrieval: mauvais chunks",
+    "candidate_cut": "📉 Agrégation: coupé avant sélection",
     "selector_misunderstanding": "🟡 Selector: mauvaise compréhension",
     "selector_wrong_priority": "🟡 Selector: mauvaise priorité",
     "generator_hallucination": "🔴 Generator: hallucination",
@@ -234,6 +235,7 @@ ERROR_CATEGORY_LABELS = {
 
 ERROR_CATEGORY_COLORS = {
     "retrieval_issue": "#00CC96",  # Vert (retrieval)
+    "candidate_cut": "#19D3F3",  # Cyan (agrégation / coupe des candidats)
     "selector_misunderstanding": "#FECB52",  # Jaune
     "selector_wrong_priority": "#FFA15A",  # Orange
     "generator_hallucination": "#EF553B",  # Rouge
@@ -626,6 +628,8 @@ if "error_category" in df_f.columns and df_f["error_category"].notna().any():
         def categorize_issue_type(cat):
             if cat == "retrieval_issue":
                 return "🔍 Retrieval (recherche)"
+            elif cat == "candidate_cut":
+                return "📉 Agrégation (coupe candidats)"
             elif cat in ["selector_misunderstanding", "selector_wrong_priority"]:
                 return "🎯 Selector (sélection)"
             elif cat in ["generator_hallucination", "generator_incomplete", "generator_wrong_interpretation"]:
@@ -643,6 +647,7 @@ if "error_category" in df_f.columns and df_f["error_category"].notna().any():
 
         type_colors = {
             "🔍 Retrieval (recherche)": "#00CC96",
+            "📉 Agrégation (coupe candidats)": "#19D3F3",
             "🎯 Selector (sélection)": "#FECB52",
             "✍️ Generator (génération)": "#EF553B",
             "📄 Document manquant": "#636EFA",

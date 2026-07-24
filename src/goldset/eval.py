@@ -47,6 +47,8 @@ DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
 DEFAULT_JUDGE_PROVIDER = "openrouter"
 DEFAULT_JUDGE_MODEL = "x-ai/grok-4.5"
 DEFAULT_JUDGE_BASE_URL = "https://openrouter.ai/api/v1"
+DEFAULT_SCALEWAY_JUDGE_MODEL = "qwen3-235b-a22b-instruct-2507"
+ALLOWED_JUDGE_VOTES = frozenset({1, 3})
 # RAGAS reste sur Scaleway/OpenAI-compat (le SDK ragas attend un endpoint
 # embeddings+LLM compatible; Claude via OpenRouter n'y est pas branché).
 DEFAULT_SCALEWAY_BASE_URL = "https://api.scaleway.ai/v1"
@@ -63,9 +65,27 @@ DEFAULT_RAGAS_MAX_TOKENS = 16384
 # mais utilisait la clé/endpoint OpenRouter). ``default_base_url`` sert de secours
 # quand ni --judge-base-url ni la var d'env n'est fournie.
 JUDGE_PROVIDERS: dict[str, dict[str, str]] = {
-    "openrouter": {"key_env": "OPENROUTER_API_KEY", "url_env": "OPENROUTER_BASE_URL", "default_base_url": DEFAULT_JUDGE_BASE_URL},
-    "scaleway": {"key_env": "SCALEWAY_API_KEY", "url_env": "SCALEWAY_BASE_URL", "default_base_url": DEFAULT_SCALEWAY_BASE_URL},
-    "openai": {"key_env": "OPENAI_API_KEY", "url_env": "OPENAI_BASE_URL", "default_base_url": "https://api.openai.com/v1"},
+    "openrouter": {
+        "key_env": "OPENROUTER_API_KEY",
+        "url_env": "OPENROUTER_BASE_URL",
+        "default_base_url": DEFAULT_JUDGE_BASE_URL,
+        "model_env": "OPENROUTER_JUDGE_MODEL",
+        "default_model": DEFAULT_JUDGE_MODEL,
+    },
+    "scaleway": {
+        "key_env": "SCALEWAY_API_KEY",
+        "url_env": "SCALEWAY_BASE_URL",
+        "default_base_url": DEFAULT_SCALEWAY_BASE_URL,
+        "model_env": "SCALEWAY_JUDGE_MODEL",
+        "default_model": DEFAULT_SCALEWAY_JUDGE_MODEL,
+    },
+    "openai": {
+        "key_env": "OPENAI_API_KEY",
+        "url_env": "OPENAI_BASE_URL",
+        "default_base_url": "https://api.openai.com/v1",
+        "model_env": "OPENAI_JUDGE_MODEL",
+        "default_model": "",
+    },
 }
 
 
@@ -80,6 +100,30 @@ def resolve_judge_endpoint(provider: str | None, explicit_base_url: str | None =
     base_url = (explicit_base_url or "").strip() or os.getenv(defaults["url_env"], "").strip() or defaults["default_base_url"]
     api_key = os.getenv(defaults["key_env"], "").strip()
     return resolved, base_url, api_key
+
+
+def resolve_judge_model(provider: str | None, explicit_model: str | None = None) -> str:
+    """Resolve the judge model from the selected provider, never from another provider's defaults."""
+    resolved = (provider or DEFAULT_JUDGE_PROVIDER).strip().lower()
+    defaults = JUDGE_PROVIDERS.get(resolved)
+    if defaults is None:
+        raise ValueError(f"Unsupported judge provider: {resolved!r}")
+    model = (explicit_model or "").strip() or os.getenv(defaults["model_env"], "").strip() or defaults["default_model"]
+    if not model:
+        raise ValueError(f"No judge model configured for provider {resolved!r}; pass --judge-model or set {defaults['model_env']}.")
+    return model
+
+
+def normalize_judge_votes(value: Any) -> int:
+    """Return a supported vote count shared by scoping and execution."""
+    try:
+        votes = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("judge_votes must be 1 (screening) or 3 (official adoption gate)") from exc
+    if votes not in ALLOWED_JUDGE_VOTES:
+        allowed = ", ".join(str(item) for item in sorted(ALLOWED_JUDGE_VOTES))
+        raise ValueError(f"judge_votes must be one of: {allowed}")
+    return votes
 
 
 @dataclass
@@ -321,6 +365,21 @@ def ensure_eval_schema(conn: psycopg.Connection[Any]) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_rag_quality_eval_items_question_id ON public.rag_quality_eval_items (question_id)")
 
 
+def _eval_scope_variants(eval_scope: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the current scope plus semantically equivalent legacy encodings."""
+    optional_legacy_keys: list[str] = []
+    if eval_scope.get("ministry_scope") == "none":
+        optional_legacy_keys.append("ministry_scope")
+    legacy_votes = 1 if eval_scope.get("judge_enabled") else 0
+    if eval_scope.get("judge_votes") == legacy_votes:
+        optional_legacy_keys.append("judge_votes")
+
+    variants = [dict(eval_scope)]
+    for key in optional_legacy_keys:
+        variants.extend({item_key: item_value for item_key, item_value in variant.items() if item_key != key} for variant in list(variants))
+    return variants
+
+
 def find_existing_run(
     conn: psycopg.Connection[Any],
     *,
@@ -332,7 +391,13 @@ def find_existing_run(
     eval_scope: dict[str, Any],
 ) -> dict[str, Any] | None:
     git_sql = "AND git_sha = %s" if dedupe_scope == "config-and-git" else ""
-    params: list[Any] = [goldset_name, config_hash, tags, json.dumps(eval_scope, sort_keys=True, ensure_ascii=False, default=str)]
+    scope_variants = _eval_scope_variants(eval_scope)
+    params: list[Any] = [
+        goldset_name,
+        config_hash,
+        tags,
+        [json.dumps(variant, sort_keys=True, ensure_ascii=False, default=str) for variant in scope_variants],
+    ]
     if dedupe_scope == "config-and-git":
         params.append(git_sha)
     rows = conn.execute(
@@ -342,7 +407,7 @@ def find_existing_run(
         WHERE goldset_name = %s
           AND config_fingerprint = %s
           AND tag_filter = %s::text[]
-          AND metadata -> 'eval_scope' = %s::jsonb
+          AND metadata -> 'eval_scope' = ANY(%s::jsonb[])
           {git_sql}
           AND status IN ('started', 'running', 'completed')
         ORDER BY created_at DESC
@@ -403,13 +468,9 @@ def _load_eval_run(
     else:
         if not goldset_name or tags is None or eval_scope is None:
             return None
-        # Un candidat ministry_scope="none" est comparable aux runs historiques
-        # enregistrés AVANT l'introduction de la clé (aucun scope appliqué =
-        # même comportement): accepter aussi la variante legacy sans la clé,
-        # sinon le lookup auto ne trouve jamais de baseline pré-06/07/2026.
-        scope_variants = [eval_scope]
-        if eval_scope.get("ministry_scope") == "none":
-            scope_variants.append({key: value for key, value in eval_scope.items() if key != "ministry_scope"})
+        # Accept legacy encodings for fields whose missing value had the same
+        # runtime semantics (ministry_scope=none and judge_votes=1/0).
+        scope_variants = _eval_scope_variants(eval_scope)
         rows = conn.execute(
             """
             SELECT id, status, created_at, completed_at, goldset_name, tag_filter,
@@ -444,6 +505,9 @@ def _baseline_is_comparable(
     # identique (le gate CI COMPARE_BASELINE échouait jusqu'à re-baseline).
     if "ministry_scope" in eval_scope and "ministry_scope" not in baseline_scope:
         baseline_scope = {**baseline_scope, "ministry_scope": "none"}
+    legacy_votes = 1 if eval_scope.get("judge_enabled") else 0
+    if eval_scope.get("judge_votes") == legacy_votes and "judge_votes" not in baseline_scope:
+        baseline_scope = {**baseline_scope, "judge_votes": legacy_votes}
     if baseline_run.get("status") != "completed":
         reasons.append(f"baseline status is {baseline_run.get('status')!r}, expected 'completed'")
     if str(baseline_run.get("goldset_name") or "") != goldset_name:
@@ -562,6 +626,7 @@ def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion])
     """Return the question and evaluator options that make a run reusable."""
     judge_enabled = not args.skip_judge
     ragas_enabled = not args.skip_ragas
+    judge_votes = normalize_judge_votes(getattr(args, "judge_votes", 1)) if judge_enabled else 0
     return {
         "limit": args.limit,
         "question_count": len(questions),
@@ -577,6 +642,10 @@ def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion])
         if judge_enabled
         else "",
         "judge_model": args.judge_model if judge_enabled else "",
+        # Vote majoritaire du juge : un run jugé en maj-3 (protocole officiel
+        # d'adoption, juge souverain) n'est PAS comparable à un run single-shot
+        # (screening intermédiaire grok) — la clé de scope les sépare.
+        "judge_votes": judge_votes,
         # Partie de la clé de comparabilité: un run scopé « all ministries »
         # n'est pas comparable à un run historique sans scope.
         "ministry_scope": getattr(args, "ministry_scope", "none"),
@@ -1044,6 +1113,176 @@ def aggregate_items(items: list[EvalItem]) -> dict[str, Any]:
         "ragas_faithfulness_avg": _metric_average(items, "faithfulness", "ragas_metrics"),
         "ragas_context_precision_avg": _metric_average(items, "context_precision", "ragas_metrics"),
         "ragas_context_recall_avg": _metric_average(items, "context_recall", "ragas_metrics"),
+        "token_usage": _aggregate_token_usage(items),
+    }
+
+
+# Prix Scaleway Generative APIs (EUR / 1M tokens, input/output). La clé inclut
+# le provider: un même nom de modèle peut avoir un tarif différent ailleurs.
+# Albert est traité séparément comme gratuit dans l'agrégat.
+_LLM_PRICE_EUR_PER_MTOK: dict[tuple[str, str], tuple[float, float]] = {
+    ("scaleway", "qwen3-235b-a22b-instruct-2507"): (0.75, 2.25),
+    ("scaleway", "llama-3.3-70b-instruct"): (0.90, 0.90),
+    ("scaleway", "gpt-oss-120b"): (0.15, 0.60),
+}
+
+
+def _usage_cost_eur(provider: str, model: str, prompt_tokens: int, completion_tokens: int) -> float | None:
+    """Coût EUR d'un usage, ou None sans tarif vérifié pour ce provider."""
+    price = _LLM_PRICE_EUR_PER_MTOK.get(((provider or "").lower(), model or ""))
+    if price is None:
+        return None
+    return round(prompt_tokens / 1_000_000 * price[0] + completion_tokens / 1_000_000 * price[1], 6)
+
+
+class _TokenUsage:
+    """Cumule les tokens facturables sur un client OpenAI-compatible.
+
+    Le juge fait 1 appel; RAGAS en fait N (extraction de statements, NLI de
+    faithfulness, context precision/recall) qui ré-envoient le contexte. On
+    instrumente ``chat.completions.create`` pour tout capter sans dépendre des
+    internes de RAGAS."""
+
+    def __init__(self) -> None:
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.calls = 0
+        self.attempted_calls = 0
+        self.reported_cost = 0.0
+        self.reported_cost_calls = 0
+
+    def record(self, usage: Any) -> bool:
+        if not usage:
+            return False
+        self.prompt_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
+        self.completion_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
+        self.calls += 1
+        reported_cost = _safe_float(getattr(usage, "cost", None))
+        if reported_cost is not None:
+            self.reported_cost += reported_cost
+            self.reported_cost_calls += 1
+        return True
+
+    def as_dict(self, model: str, provider: str, *, capture_complete: bool) -> dict[str, Any]:
+        return {
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "calls": self.calls,
+            "model": model,
+            "provider": provider,
+            "cost_eur": _usage_cost_eur(provider, model, self.prompt_tokens, self.completion_tokens),
+            # OpenRouter reports this value in credits, not in EUR. Keep it
+            # explicit and separate so it is never silently added to EUR.
+            "reported_cost": round(self.reported_cost, 8) if self.reported_cost_calls else None,
+            "reported_cost_unit": "openrouter_credit" if provider == "openrouter" and self.reported_cost_calls else None,
+            "capture_complete": capture_complete,
+        }
+
+
+def _instrument_usage(client: Any, tracker: _TokenUsage) -> bool:
+    """Instrumente ``client.chat.completions.create`` pour cumuler l'usage.
+
+    On surcharge la méthode sur l'instance (``chat``/``completions`` sont des
+    cached_property stables en openai v1) plutôt que d'envelopper le client:
+    ``llm_factory`` de RAGAS vérifie le type, il faut garder l'instance réelle."""
+    try:
+        completions = client.chat.completions
+        original = completions.create
+
+        def wrapped(*args: Any, **kwargs: Any) -> Any:
+            tracker.attempted_calls += 1
+            response = original(*args, **kwargs)
+            try:
+                tracker.record(getattr(response, "usage", None))
+            except Exception:  # noqa: BLE001 — le tally ne doit jamais casser l'appel LLM
+                pass
+            return response
+
+        completions.create = wrapped
+        return True
+    except Exception:  # noqa: BLE001 — si l'API change, on dégrade sans usage plutôt que crasher
+        return False
+
+
+def _aggregate_token_usage(items: list["EvalItem"]) -> dict[str, Any]:
+    """Agrège l'usage LLM sans convertir un coût inconnu en faux zéro."""
+
+    def _sum(getter: Any) -> dict[str, Any]:
+        prompt = completion = calls = tracked = active = 0
+        eur_total = 0.0
+        eur_complete = True
+        providers: set[str] = set()
+        models: set[str] = set()
+        reported_by_unit: dict[str, float] = {}
+        reported_items = 0
+        for item in items:
+            result = getter(item)
+            if not isinstance(result, dict) or result.get("status") == "skipped":
+                continue
+            active += 1
+            usage = result.get("usage")
+            if not isinstance(usage, dict):
+                eur_complete = False
+                continue
+            prompt += int(usage.get("prompt_tokens") or 0)
+            completion += int(usage.get("completion_tokens") or 0)
+            calls += int(usage.get("calls") or 0)
+            if usage.get("capture_complete") is True:
+                tracked += 1
+            else:
+                eur_complete = False
+            if usage.get("provider"):
+                providers.add(str(usage["provider"]))
+            if usage.get("model"):
+                models.add(str(usage["model"]))
+            item_cost = _safe_float(usage.get("cost_eur"))
+            if item_cost is None:
+                eur_complete = False
+            else:
+                eur_total += item_cost
+            reported_cost = _safe_float(usage.get("reported_cost"))
+            reported_unit = str(usage.get("reported_cost_unit") or "")
+            if reported_cost is not None and reported_unit:
+                reported_by_unit[reported_unit] = reported_by_unit.get(reported_unit, 0.0) + reported_cost
+                reported_items += 1
+        reported_complete = active > 0 and tracked == active and reported_items == active and len(reported_by_unit) == 1
+        single_reported_unit = next(iter(reported_by_unit)) if reported_complete else None
+        return {
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+            "calls": calls,
+            "items": tracked,
+            "active_items": active,
+            "coverage_complete": tracked == active,
+            "provider": next(iter(providers)) if len(providers) == 1 else "mixed" if providers else "",
+            "model": next(iter(models)) if len(models) == 1 else "mixed" if models else "",
+            "cost_eur": round(eur_total, 6) if active and eur_complete else 0.0 if not active else None,
+            "reported_cost": round(reported_by_unit[single_reported_unit], 8) if single_reported_unit else None,
+            "reported_cost_unit": single_reported_unit,
+        }
+
+    judge = _sum(lambda it: it.judge_result)
+    ragas = _sum(lambda it: it.ragas_metrics)
+    # Générateur/sélecteur = Albert (gratuit): estimation depuis les volumes stockés
+    # réellement envoyés (sortie = compteur réel; input ~ chars/4).
+    gen_out = sum(int((item.timing or {}).get("response_length_tokens") or 0) for item in items)
+    gen_in_est = sum(int((item.metadata or {}).get("generator_prompt_chars") or 0) for item in items) // 4
+    sel_in_est = sum(int((item.metadata or {}).get("selector_prompt_chars") or 0) for item in items) // 4
+    sel_out_est = sum(int((item.metadata or {}).get("selector_response_chars") or 0) for item in items) // 4
+    active_billable = [part for part in (judge, ragas) if part["active_items"]]
+    billable = (
+        round(sum(float(part["cost_eur"]) for part in active_billable), 4) if all(part["cost_eur"] is not None for part in active_billable) else None
+    )
+    return {
+        "judge": judge,
+        "ragas": ragas,
+        "generator_albert_est": {"prompt_tokens": gen_in_est, "completion_tokens": gen_out, "cost_eur": 0.0},
+        "selector_albert_est": {"prompt_tokens": sel_in_est, "completion_tokens": sel_out_est, "cost_eur": 0.0},
+        "billable_cost_eur": billable,
+        "note": (
+            "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. "
+            "Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+        ),
     }
 
 
@@ -1068,6 +1307,8 @@ def compute_ragas_metrics(
     except ImportError as exc:
         return {"status": "skipped", "reason": f"missing dependency: {exc.name}"}
 
+    usage = _TokenUsage()
+    instrumented = False
     try:
         dataset = Dataset.from_list(
             [
@@ -1080,6 +1321,7 @@ def compute_ragas_metrics(
             ]
         )
         client = OpenAI(api_key=api_key, base_url=base_url)
+        instrumented = _instrument_usage(client, usage)  # capte tous les sous-appels RAGAS
         llm = llm_factory(
             model=model,
             provider="openai",
@@ -1095,9 +1337,20 @@ def compute_ragas_metrics(
             "faithfulness": _safe_float(row.get("faithfulness")),
             "context_precision": _safe_float(row.get("context_precision")),
             "context_recall": _safe_float(row.get("context_recall")),
+            "usage": usage.as_dict(
+                model,
+                "scaleway",
+                capture_complete=instrumented and usage.attempted_calls > 0 and usage.calls == usage.attempted_calls,
+            ),
         }
     except Exception as exc:
-        return {"status": "failed", "reason": str(exc)}
+        return {
+            "status": "failed",
+            "reason": str(exc),
+            # Les appels déjà terminés restent visibles, mais un run RAGAS
+            # interrompu ne permet pas de garantir que tout usage est revenu.
+            "usage": usage.as_dict(model, "scaleway", capture_complete=False),
+        }
 
 
 def _safe_float(value: Any) -> float | None:
@@ -1357,6 +1610,8 @@ def judge_answer(
         "Return only valid JSON with keys: score, pass, failure_category, material_contradiction, "
         "dimensions, missing_required_points, contradictions, rationale, source_support."
     )
+    usage = _TokenUsage()
+    usage_captured = False
     try:
         # base_url vide (ex. provider openai sans OPENAI_BASE_URL) -> ne pas la
         # passer, sinon OpenAI(base_url="") lève UnsupportedProtocol (revue #318).
@@ -1378,12 +1633,100 @@ def judge_answer(
         if provider == "openrouter":
             create_kwargs["extra_body"] = {"provider": {"data_collection": "deny", "zdr": True}}
         response = client.chat.completions.create(**create_kwargs)
+        usage_captured = usage.record(getattr(response, "usage", None))
         content = response.choices[0].message.content or "{}"
         parsed = _extract_json_object(content)
         parsed["status"] = "completed"
-        return calibrate_judge_result(parsed, deterministic_metrics)
+        calibrated = calibrate_judge_result(parsed, deterministic_metrics)
+        calibrated["usage"] = usage.as_dict(model, provider, capture_complete=usage_captured)
+        return calibrated
     except Exception as exc:
-        return {"status": "failed", "reason": str(exc)}
+        return {
+            "status": "failed",
+            "reason": str(exc),
+            "usage": usage.as_dict(model, provider, capture_complete=usage_captured),
+        }
+
+
+def _combine_usage_payloads(results: list[dict[str, Any]], *, provider: str, model: str) -> dict[str, Any]:
+    """Combine usage from every judge vote without hiding incomplete capture."""
+    usages = [result.get("usage") for result in results]
+    valid = [usage for usage in usages if isinstance(usage, dict)]
+    providers = {str(usage.get("provider") or "") for usage in valid if usage.get("provider")}
+    models = {str(usage.get("model") or "") for usage in valid if usage.get("model")}
+    costs_eur = [_safe_float(usage.get("cost_eur")) for usage in valid]
+    capture_complete = len(valid) == len(results) and all(usage.get("capture_complete") is True for usage in valid)
+
+    reported = [
+        (_safe_float(usage.get("reported_cost")), str(usage.get("reported_cost_unit") or ""))
+        for usage in valid
+        if usage.get("reported_cost") is not None
+    ]
+    reported_units = {unit for _, unit in reported if unit}
+    reported_complete = len(reported) == len(valid) and len(reported_units) == 1 and all(cost is not None for cost, _ in reported)
+    reported_unit = next(iter(reported_units)) if reported_complete else None
+
+    return {
+        "prompt_tokens": sum(int(usage.get("prompt_tokens") or 0) for usage in valid),
+        "completion_tokens": sum(int(usage.get("completion_tokens") or 0) for usage in valid),
+        "calls": sum(int(usage.get("calls") or 0) for usage in valid),
+        "model": next(iter(models)) if len(models) == 1 else "mixed" if models else model,
+        "provider": next(iter(providers)) if len(providers) == 1 else "mixed" if providers else provider,
+        "cost_eur": round(sum(cost for cost in costs_eur if cost is not None), 6) if valid and all(cost is not None for cost in costs_eur) else None,
+        "reported_cost": (round(sum(cost for cost, _ in reported if cost is not None), 8) if reported_complete else None),
+        "reported_cost_unit": reported_unit,
+        "capture_complete": capture_complete,
+    }
+
+
+def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
+    """Vote majoritaire du juge : ``votes`` appels indépendants, verdict = majorité.
+
+    Écrase mécaniquement le bruit propre du juge (single-shot mesuré le
+    21-22/07 : scaleway/qwen3-235b 5,1 %, grok-4.5 6,1 % -> ~0,8-1,1 % en
+    maj-3). Réservé au protocole OFFICIEL d'adoption ; le screening
+    intermédiaire reste en single-shot. Les votes individuels sont archivés
+    dans ``judge_result["votes"]`` (audit), le payload de base (rationale,
+    catégorie) vient d'un vote MAJORITAIRE pour rester cohérent."""
+    votes = normalize_judge_votes(votes)
+    if votes == 1:
+        return judge_answer(**kwargs)
+    results = [judge_answer(**kwargs) for _ in range(votes)]
+    combined_usage = _combine_usage_payloads(
+        results,
+        provider=str(kwargs.get("provider") or DEFAULT_JUDGE_PROVIDER),
+        model=str(kwargs.get("model") or ""),
+    )
+    completed = [r for r in results if r.get("status") == "completed"]
+    n_pass = sum(1 for r in completed if r.get("pass"))
+    n_fail = len(completed) - n_pass
+    quorum = votes // 2 + 1
+    vote_audit = [
+        {
+            "pass": r.get("pass"),
+            "score": r.get("score"),
+            "failure_category": r.get("failure_category"),
+            "status": r.get("status"),
+            "reason": r.get("reason"),
+            "usage": r.get("usage"),
+        }
+        for r in results
+    ]
+    if max(n_pass, n_fail) < quorum:
+        return {
+            "status": "failed",
+            "reason": f"judge vote quorum not reached: required={quorum}, pass={n_pass}, fail={n_fail}, completed={len(completed)}/{votes}",
+            "votes": vote_audit,
+            "vote_agreement": f"{max(n_pass, n_fail)}/{len(completed)}",
+            "usage": combined_usage,
+        }
+    verdict = n_pass >= quorum
+    base = dict(next(r for r in completed if bool(r.get("pass")) == verdict))
+    base["pass"] = verdict
+    base["votes"] = vote_audit
+    base["vote_agreement"] = f"{max(n_pass, n_fail)}/{len(completed)}"
+    base["usage"] = combined_usage
+    return base
 
 
 def build_full_ministry_scope() -> Any:
@@ -1445,6 +1788,7 @@ def run_question(
     judge_base_url: str,
     judge_api_key: str,
     judge_provider: str = DEFAULT_JUDGE_PROVIDER,
+    judge_votes: int = 1,
     ragas_model: str,
     scaleway_base_url: str,
     scaleway_api_key: str,
@@ -1467,7 +1811,14 @@ def run_question(
         item.contexts = contexts
         item.sources = result.sources
         item.timing = {**result.timing, "eval_total_ms": elapsed_ms}
-        item.metadata = result.metadata
+        metadata = dict(result.metadata) if isinstance(result.metadata, dict) else {}
+        # Les prompts exposés par Pipeline sont exactement les deux messages
+        # envoyés au générateur. Conserver uniquement leurs tailles évite
+        # d'écrire le contenu sensible tout en donnant une estimation fidèle.
+        generator_user_prompt = str(getattr(pipe, "last_full_prompt", "") or "")
+        generator_system_prompt = str(getattr(pipe, "last_system_prompt", "") or "")
+        metadata["generator_prompt_chars"] = len(generator_user_prompt) + len(generator_system_prompt)
+        item.metadata = metadata
         item.deterministic_metrics = deterministic_metrics(question.retrieval_gold, doc_ids, aliases=identifier_aliases)
 
         context_texts = [str(context.get("content") or "") for context in contexts if str(context.get("content") or "").strip()]
@@ -1485,7 +1836,8 @@ def run_question(
             item.ragas_metrics = {"status": "skipped", "reason": "disabled"}
 
         if run_judge:
-            item.judge_result = judge_answer(
+            item.judge_result = judge_answer_with_votes(
+                votes=judge_votes,
                 question=question.question,
                 gold_answer=question.gold_answer,
                 answer=result.answer,
@@ -1525,8 +1877,7 @@ def run_question_with_retry(*, attempts: int = 3, backoff_s: float = 5.0, **kwar
             if attempt == attempts:
                 raise
             print(
-                f"[resilience] connexion DB perdue sur la question {kwargs['question'].id} "
-                f"(tentative {attempt}/{attempts}) : {exc}",
+                f"[resilience] connexion DB perdue sur la question {kwargs['question'].id} (tentative {attempt}/{attempts}) : {exc}",
                 flush=True,
             )
             time.sleep(backoff_s * attempt)
@@ -1646,6 +1997,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override du nombre de sections offertes au sélecteur (v3_rerank_top_k runtime sinon).",
     )
+    parser.add_argument(
+        "--rerank-input-k",
+        type=int,
+        default=None,
+        help="Override de l'ENTRÉE du reranker (candidats vus ; v3_rerank_input_k runtime sinon). A/B vague 1 : 40.",
+    )
     parser.add_argument("--initial-top-k", type=int, default=None, help="Override retrieval.initial_top_k (ablation).")
     parser.add_argument("--ivfflat-probes", type=int, default=None, help="Override retrieval.ivfflat_probes (ablation; 0=défaut serveur).")
     parser.add_argument("--min-kept-sections", type=int, default=None, help="Override selector.min_kept_sections (ablation; 0=désactivé).")
@@ -1671,13 +2028,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--judge-model",
-        default=os.getenv("OPENROUTER_JUDGE_MODEL", DEFAULT_JUDGE_MODEL),
-        help="Judge model (OpenRouter par défaut, ex. anthropic/claude-sonnet-4.5).",
+        default="",
+        help="Judge model override. Empty selects the configured default for --judge-provider.",
     )
     parser.add_argument(
         "--judge-base-url",
         default=None,
         help="Override de la base URL du juge (sinon dérivée du provider: var d'env puis défaut).",
+    )
+    parser.add_argument(
+        "--judge-votes",
+        type=int,
+        default=os.getenv("JUDGE_VOTES", "1") or "1",
+        help=(
+            "Vote majoritaire du juge : N appels par réponse, verdict = majorité. "
+            "Protocole OFFICIEL d'adoption (gates staging/prod) : 3 votes sur le juge "
+            "souverain Scaleway (bruit propre 5,1%% single-shot -> ~0,8%% en maj-3). "
+            "Screening intermédiaire : 1 (défaut)."
+        ),
     )
     parser.add_argument(
         "--ragas-model",
@@ -1697,7 +2065,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def derive_completion_status(items: list[EvalItem], *, judge_enabled: bool, ragas_enabled: bool) -> tuple[str, str]:
+def derive_completion_status(items: list[EvalItem], *, judge_enabled: bool, ragas_enabled: bool, judge_votes: int = 1) -> tuple[str, str]:
     """Derive the run status from executed items (before any baseline gating).
 
     Returns ``(status, error)``. Rules, strictest last:
@@ -1713,6 +2081,10 @@ def derive_completion_status(items: list[EvalItem], *, judge_enabled: bool, raga
         status = "completed_with_errors"
     if items and all(item.error for item in items):
         return "failed", f"all {len(items)} questions failed to execute"
+    if judge_enabled and judge_votes > 1:
+        completed_judgments = sum(1 for item in items if not item.error and item.judge_result.get("status") == "completed")
+        if completed_judgments != len(items):
+            return "failed", f"official judge protocol completed {completed_judgments}/{len(items)} judgments"
     for label, enabled, attr in (
         ("judge", judge_enabled, "judge_result"),
         ("ragas", ragas_enabled, "ragas_metrics"),
@@ -1729,6 +2101,9 @@ def derive_completion_status(items: list[EvalItem], *, judge_enabled: bool, raga
 def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.any_goldset and not args.tag:
         raise ValueError("At least one --tag is required with --any-goldset.")
+    if not args.skip_judge:
+        args.judge_votes = normalize_judge_votes(args.judge_votes)
+        args.judge_model = resolve_judge_model(args.judge_provider, args.judge_model)
 
     dsn = resolve_dsn(args.dsn, args.dsn_env)
     # The pipeline and prompt/config helpers read the canonical runtime DSN.
@@ -1748,6 +2123,9 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.section_rerank_top_k is not None:
         pipeline_config.aggregation.section_rerank_top_k = args.section_rerank_top_k
         config_adjustments.append(f"section_rerank_top_k={args.section_rerank_top_k}")
+    if args.rerank_input_k is not None:
+        pipeline_config.aggregation.rerank_input_k = args.rerank_input_k
+        config_adjustments.append(f"rerank_input_k={args.rerank_input_k}")
     if args.initial_top_k is not None:
         pipeline_config.retrieval.initial_top_k = args.initial_top_k
         config_adjustments.append(f"initial_top_k={args.initial_top_k}")
@@ -1882,6 +2260,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 judge_base_url=judge_base_url,
                 judge_api_key=judge_api_key,
                 judge_provider=judge_provider,
+                judge_votes=args.judge_votes,
                 ragas_model=args.ragas_model,
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,
@@ -1923,7 +2302,12 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                         time.sleep(5 * attempt)
             if item.error and args.fail_fast:
                 raise RuntimeError(item.error)
-        status, status_error = derive_completion_status(items, judge_enabled=not args.skip_judge, ragas_enabled=not args.skip_ragas)
+        status, status_error = derive_completion_status(
+            items,
+            judge_enabled=not args.skip_judge,
+            ragas_enabled=not args.skip_ragas,
+            judge_votes=args.judge_votes if not args.skip_judge else 0,
+        )
         error = error or status_error
     except Exception as exc:
         status = "failed"

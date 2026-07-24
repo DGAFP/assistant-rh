@@ -155,6 +155,9 @@ def audit_embedding_coverage(
             report["missing_tables"].append(table)
             continue
         table_summary: dict[str, Any] = {}
+        # Même exclusion des lignes-résumé R2 que fetch_missing_rows : l'audit
+        # et le backfill doivent voir le même ensemble de lignes embeddables.
+        summary_exclusion = sql.SQL(_summary_rows_exclusion(conn, schema, table).replace(" AND ", "WHERE ", 1) or "")
         for embedding_spec in spec["embeddings"]:
             column = str(embedding_spec.get("column") or "").strip()
             if not column:
@@ -174,12 +177,14 @@ def audit_embedding_coverage(
                                 WHERE LENGTH(TRIM(COALESCE({text_col}, ''))) = 0
                             ) AS empty_text
                         FROM {schema}.{table}
+                        {exclusion}
                         """
                     ).format(
                         col=sql.Identifier(column),
                         text_col=sql.Identifier(spec["text_column"]),
                         schema=sql.Identifier(schema),
                         table=sql.Identifier(table),
+                        exclusion=summary_exclusion,
                     )
                 )
                 total, non_null, missing_with_text, empty_text = (int(value or 0) for value in cur.fetchone())
@@ -316,6 +321,24 @@ class AlbertEmbedClient:
         return _embed_via_api_with_retry(lambda: self._post_embeddings(text), "embedding_m3 (Albert)")
 
 
+def _summary_rows_exclusion(conn: psycopg.Connection, schema: str, table: str) -> str:
+    """Clause excluant les lignes-résumé R2 (``index_variant`` renseigné).
+
+    Une ligne R2 encode le RÉSUMÉ dans son vecteur, jamais ``chunk_text`` : la
+    backfiller générique depuis le texte produirait un vecteur du texte
+    juridique dans un espace censé représenter le résumé (revue #332, round 2).
+    Ses colonnes d'embedding non peuplées (bge/qwen) restent NULL par design.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM information_schema.columns WHERE table_schema=%s AND table_name=%s AND column_name='index_variant'",
+            (schema, table),
+        )
+        if cur.fetchone():
+            return " AND index_variant IS NULL"
+    return ""
+
+
 def fetch_missing_rows(
     conn: psycopg.Connection,
     schema: str,
@@ -328,11 +351,12 @@ def fetch_missing_rows(
     # Predicate must stay aligned with audit_embedding_coverage's "row has text"
     # check (LENGTH(TRIM(COALESCE(...))) > 0) so the audit and the backfill agree
     # on which rows are embeddable. Whitespace-only rows are skipped on both sides.
+    # R2 summary rows are excluded on BOTH sides too (_summary_rows_exclusion).
     query = f"""
         SELECT {id_column} AS id, {text_column} AS text
         FROM {schema}.{table}
         WHERE {embedding_column} IS NULL
-          AND LENGTH(TRIM(COALESCE({text_column}, ''))) > 0
+          AND LENGTH(TRIM(COALESCE({text_column}, ''))) > 0{_summary_rows_exclusion(conn, schema, table)}
         ORDER BY {id_column}
     """
     if limit:
