@@ -23,6 +23,7 @@ from assistant_rh_data_engineering.utils.medallion_delta import gold_reuse_finge
 def _seed_gold_fingerprint(lake_root: Path, uids: list[str], *, enable_m3: bool = False, enable_bge: bool = False, single_chunk: bool = True) -> None:
     """Sidecar d'empreinte config PAR document (défaut = run --no-embed, single_chunk True côté Legi)."""
     fp = gold_reuse_fingerprint(
+        source_name="legifrance",
         single_chunk_per_article=single_chunk,
         embeddings=EmbeddingConfig(enable_m3=enable_m3, enable_bge_scaleway=enable_bge),
     )

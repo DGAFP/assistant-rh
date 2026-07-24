@@ -19,6 +19,7 @@ uv run data-ingestion service-public ingest --help
 uv run data-ingestion legifrance bulk-dump --help
 uv run data-ingestion legifrance medallion --help
 uv run data-ingestion legifrance ingest --help
+uv run data-ingestion legifrance url-backfill --help
 
 uv run data-ingestion embeddings backfill --help
 uv run data-ingestion embeddings service-public --help
