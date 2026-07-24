@@ -292,6 +292,7 @@ def main() -> int:
     if args.delta:
         previous_checksums = capture_previous_checksums(config.paths.silver_dir / "documents")
         gold_fingerprint = gold_reuse_fingerprint(
+            source_name="service_public",
             single_chunk_per_article=getattr(config.gold, "single_chunk_per_article", False),
             embeddings=config.embeddings,
         )

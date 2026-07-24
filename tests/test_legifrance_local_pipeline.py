@@ -197,14 +197,77 @@ def test_non_code_articles_use_loda_urls_and_historical_chunk_format(tmp_path: P
     assert legacy_rows[0]["title"] == "Décret n°2002-141"
     assert legacy_rows[0]["full_title"].startswith("Décret n°2002-141 du 4 février 2002")
     assert legacy_rows[0]["text"] == "Les services du ministère peuvent déroger aux garanties minimales."
-    assert legacy_rows[0]["chunk_text"].startswith(
-        "Décret n°2002-141 du 4 février 2002 portant dérogations"
-    )
+    assert legacy_rows[0]["chunk_text"].startswith("Décret n°2002-141 du 4 février 2002 portant dérogations")
     assert "\nArticle 1\nStatut: VIGUEUR\n\nLes services du ministère" in legacy_rows[0]["chunk_text"]
     assert legacy_rows[0]["end_date"] is None
     assert legacy_rows[0]["ministry"] is None
     assert legacy_rows[0]["lien_citations_count"] == 1
     assert legacy_rows[0]["lien_citations"][0]["linkType"] == "CITATION"
+
+
+def test_mapped_chronique_keeps_identity_but_url_points_to_version(tmp_path: Path) -> None:
+    # #350 : avec un mapping alias→chronique (#307), l'identité corpus (cid,
+    # chunk_id, source_url du document) reste keyée chronique, mais l'URL des
+    # chunks est construite sur l'id de VERSION (seule forme acceptée par la
+    # route article_lc de Légifrance).
+    version_id = "LEGIARTI000050546231"
+    chronique = "LEGIARTI000006486629"
+    config = LegifrancePipelineConfig(paths=LakePaths(root_dir=tmp_path / "lake"))
+    config.embeddings.enable_m3 = False
+    config.embeddings.enable_bge_scaleway = False
+    config.gold.export_parquet = False
+    config.gold.export_npy = False
+    config.bronze.article_cid_mapping = {version_id: chronique}
+    pipeline = LegifrancePipeline(config)
+
+    xml_dir = pipeline.bronze_repo.bulk_articles_dir / "Freemium_legi_global_20250713-140000"
+    xml_dir.mkdir(parents=True, exist_ok=True)
+    (xml_dir / f"{version_id}.xml").write_text(
+        f"""
+        <ARTICLE>
+          <META>
+            <META_COMMUN>
+              <ID>{version_id}</ID>
+            </META_COMMUN>
+            <META_SPEC>
+              <META_ARTICLE>
+                <NUM>R115-3</NUM>
+                <ETAT>VIGUEUR</ETAT>
+                <DATE_DEBUT>2025-02-01</DATE_DEBUT>
+                <DATE_FIN>2999-01-01</DATE_FIN>
+              </META_ARTICLE>
+            </META_SPEC>
+          </META>
+          <BLOC_TEXTUEL>
+            <CONTENU>
+              <P>La communication des informations intervient au plus tard dans un délai de sept jours.</P>
+            </CONTENU>
+          </BLOC_TEXTUEL>
+          <CONTEXTE>
+            <TEXTE nature="CODE">
+              <TITRE_TXT id_txt="LEGITEXT000044416551">Code général de la fonction publique</TITRE_TXT>
+              <TITRE_TM id="LEGISCTA000050546227">Section 2</TITRE_TM>
+            </TEXTE>
+          </CONTEXTE>
+        </ARTICLE>
+        """,
+        encoding="utf-8",
+    )
+
+    bronze_assets = pipeline.run_bronze()
+    silver_bundles = pipeline.run_silver(bronze_assets)
+    gold_bundles = pipeline.run_gold(silver_bundles)
+    gold_chunks = [chunk for bundle in gold_bundles for chunk in bundle.chunks]
+    legacy_rows = LegifranceDbWriter.project_legacy_chunks(gold_chunks)
+
+    # Identité chronique intacte (#307) : bronze source_url comprise.
+    assert bronze_assets[0].payload["cid"] == chronique
+    assert bronze_assets[0].payload["short_id"] == chronique
+    assert chronique in bronze_assets[0].payload["source_url"]
+    assert legacy_rows[0]["chunk_id"] == f"{chronique}_0"
+    assert legacy_rows[0]["cid"] == chronique
+    # URL d'affichage sur l'id de version (#350).
+    assert legacy_rows[0]["url"] == f"https://www.legifrance.gouv.fr/codes/article_lc/{version_id}"
 
 
 def test_bulk_full_run_snapshot_splits_targets_as_expected() -> None:

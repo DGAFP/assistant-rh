@@ -8,6 +8,7 @@ from ..service_public.qna_chunking import chunk_markdown_like_notebook
 from ..utils.gold import GoldBundle, GoldRepository, build_embedders
 from ..utils.helpers import utc_now_iso
 from .config import EmbeddingConfig, GoldConfig
+from .helpers import build_legifrance_article_url
 
 
 def _hard_wrap(text: str, max_chars: int) -> list[str]:
@@ -231,6 +232,14 @@ class LegifranceGoldBuilder:
         short_id = document["short_id"]
         thematique = metadata.get("category") or metadata.get("thematique") or ""
         article_id = str(metadata.get("cid") or metadata.get("article_id") or short_id)
+        # URL d'affichage (#350) : la route article_lc n'accepte que des ids de
+        # VERSION — construite sur metadata.article_id (META_COMMUN/ID du dump
+        # DILA), jamais sur le cid chronique (404 pour ~43 % du CGFP, ancienne
+        # version sinon). L'identité corpus (chunk_id, cid, doc_id silver)
+        # reste keyée chronique (acquis revue #307). Sans article_id : repli
+        # sur source_url (chronique), comportement historique.
+        version_id = str(metadata.get("article_id") or "").strip()
+        display_url = build_legifrance_article_url(version_id, metadata.get("category")) if version_id else str(document.get("source_url") or "")
         full_sections_title = str(
             metadata.get("full_sections_title") or metadata.get("subtitles") or metadata.get("section_parent_titre") or ""
         ).strip()
@@ -262,7 +271,7 @@ class LegifranceGoldBuilder:
                         "full_title": document.get("full_title") or document.get("title") or "",
                         "number": metadata.get("num_article") or short_id,
                         "category": metadata.get("category") or "",
-                        "url": document.get("source_url") or "",
+                        "url": display_url,
                         "cid": article_id,
                         "status": metadata.get("status") or "",
                         "subtitles": metadata.get("full_sections_title") or metadata.get("subtitles") or "",
