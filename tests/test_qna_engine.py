@@ -405,3 +405,235 @@ def test_coverage_guard_discards_low_coverage_mode() -> None:
     mode_legacy, blocks_legacy, _ = parse_document(text, "Processus - Je recrute.pdf", "", permissive)
     assert mode_legacy == "process"
     assert sum(len(b.answer) for b in blocks_legacy) < 0.1 * len(content)
+
+
+# --- Issue #302: structure OCR préservée, sommaires, letterhead, matrices ----
+
+
+def test_flatten_translates_headings_into_structure_markers() -> None:
+    ocr = OcrResult(
+        provider="albert",
+        version="v",
+        markdown="",
+        pages=[{"index": 0, "markdown": "# 1. Périmètre d'application\n\nCorps du texte.\n\n## Il doit permettre de :\n\n- premier point"}],
+    )
+
+    flat = flatten_ocr_to_text(ocr)
+
+    assert "(Titre) 1. Périmètre d'application" in flat
+    assert "(Intertitre) Il doit permettre de :" in flat
+    assert "# " not in flat
+
+
+def test_guide_follows_ocr_structure_not_synthetic_headings() -> None:
+    # Instruction RDR SD (6598D90CA5): l'en-tête de courrier « MINISTÈRE / DU
+    # TRAVAIL / ET DES SOLIDARITÉS » et les rangées de tableau aplaties
+    # (« A 80 % 20 % 60 % 40 % ») devenaient des titres de section; les vrais
+    # headings markdown de l'OCR étaient détruits par l'aplatissement.
+    text = "\n".join(
+        [
+            "[PAGE 1]",
+            "MINISTÈRE",
+            "DU TRAVAIL",
+            "ET DES SOLIDARITÉS",
+            "(Titre) 1. Périmètre d'application",
+            "Le référentiel a vocation à servir de cadre de référence pour le recrutement des agents contractuels.",
+            "(Intertitre) 2. Utilisation du référentiel",
+            "La grille se lit par métier et par niveau d'expérience du candidat.",
+            "A 80 % 20 % 60 % 40 %",
+            "C 100 % 0 % 90 % 10 %",
+            "(Titre) 3. Éléments et principes de rémunération",
+            "Trois éléments composent la rémunération des agents contractuels.",
+        ]
+    )
+
+    config = QnaEngineConfig(modes=("guide",), chunk_format="titre_section")
+    mode, blocks, _ = parse_document(text, "instruction_rdr.pdf", "", config)
+    paths = [b.section_path for b in blocks]
+
+    assert mode == "guide"
+    assert "1. Périmètre d'application" in paths
+    # Numérotation prioritaire sur le niveau du marqueur: « 2. » (émis en ##
+    # par l'OCR) est un frère de « 1. », pas son enfant.
+    assert "2. Utilisation du référentiel" in paths
+    assert "3. Éléments et principes de rémunération" in paths
+    assert not any("ET DES SOLIDARITÉS" in p for p in paths)
+    assert not any("80 %" in p for p in paths)
+
+
+def test_strip_toc_handles_accents_and_short_dot_leaders() -> None:
+    # Sommaire MATTE 2011: « Table des matières » (accentué) + entrées à 3
+    # points (« 2.1 - Les services concernés...6 ») partaient entiers dans les
+    # chunks, et les entrées devenaient des titres de section.
+    text = "\n".join(
+        [
+            "(Titre) Instruction relative à l'aménagement et à la réduction du temps de travail",
+            "(Titre) Table des matières",
+            "PRÉAMBULE...4",
+            "1 - CONCERTATION LOCALE...5",
+            "2 - CADRE JURIDIQUE ET CHAMP D'APPLICATION...6",
+            "2.1 - Les services concernés...6",
+            "(Titre) PRÉAMBULE",
+            "Corps du préambule décrivant le cadre général applicable aux services.",
+            "(Titre) 1 - CONCERTATION LOCALE",
+            "La concertation locale est organisée dans chaque service.",
+        ]
+    )
+
+    config = QnaEngineConfig(modes=("guide",), chunk_format="qr")
+    _, blocks, _ = parse_document(text, "instruction_2011.pdf", "", config)
+    paths = [b.section_path for b in blocks]
+
+    assert not any("..." in p for p in paths)  # aucune entrée de sommaire en titre
+    assert not any("table des matières" in p.lower() for p in paths)
+    assert "PRÉAMBULE" in paths
+    assert "1 - CONCERTATION LOCALE" in paths
+
+
+def test_flatten_removes_repeated_page_letterhead() -> None:
+    # Slides MSO (B3B0F8FA68): « MINISTÈRES SOCIAUX / Liberté / Égalité … »
+    # répété sur chaque slide devenait le titre de section de 35 chunks sur 61.
+    pages = [
+        {
+            "index": i,
+            "markdown": (
+                "MINISTÈRES SOCIAUX\nLiberté\nÉgalité\nFraternité\nSecrétariat général\n"
+                f"# Slide numéro {i}\n\nContenu propre à la slide {i}.\n\n27/01/2026\nC1 - Public"
+            ),
+        }
+        for i in range(1, 6)
+    ]
+    ocr = OcrResult(provider="albert", version="v", markdown="", pages=pages)
+
+    flat = flatten_ocr_to_text(ocr)
+
+    assert "MINISTÈRES SOCIAUX" not in flat
+    assert "Liberté" not in flat
+    assert "C1 - Public" not in flat
+    assert "(Titre) Slide numéro 3" in flat
+    assert "Contenu propre à la slide 3." in flat
+
+
+def test_flatten_serializes_checkbox_matrix_tables_with_column_names() -> None:
+    # Tableaux « qui produit quoi » (B3B0F8FA68): le dé-pipage legacy perdait
+    # la colonne porteuse de la coche — « Décision X ☑ ☑ » ne dit pas si c'est
+    # la DRHM ou le SD qui produit l'acte depuis le 1er janvier 2026.
+    table = "\n".join(
+        [
+            "|  Décision ou Acte | AUJOURD'HUI, PRODUIT PAR : |   | A/c du 1er janvier 2026, PRODUIT PAR :  |   |",
+            "| --- | --- | --- | --- | --- |",
+            "|   |  DRHM | SD | DRHM | SD  |",
+            "|  **Arrêté de congés maternité/naissance/adoption** | ☑ |  |  | ☑  |",
+            "|  Autorisation de télétravail |  | ☑ |  | ☑  |",
+        ]
+    )
+    ocr = OcrResult(
+        provider="albert",
+        version="v",
+        markdown="",
+        pages=[
+            {"index": 0, "markdown": "# Les décisions ou arrêtés visés\n\n[tbl-0.md](tbl-0.md)", "tables": [{"id": "tbl-0.md", "content": table}]}
+        ],
+    )
+
+    flat = flatten_ocr_to_text(ocr)
+
+    assert "Arrêté de congés maternité/naissance/adoption — AUJOURD'HUI, PRODUIT PAR : DRHM ; A/c du 1er janvier 2026, PRODUIT PAR : SD" in flat
+    assert "Autorisation de télétravail — AUJOURD'HUI, PRODUIT PAR : SD ; A/c du 1er janvier 2026, PRODUIT PAR : SD" in flat
+    assert "**" not in flat
+    assert "DRHM SD DRHM SD" not in flat  # le sous-en-tête ne fuit plus en ligne isolée
+
+
+def test_legacy_flat_tables_unchanged_for_table_matrix_docs() -> None:
+    # Le tableau des actes déconcentrés (352963BCB1) n'est PAS une matrice à
+    # cases cochées: il garde le dé-pipage legacy dont dépend split_table_row.
+    table = "\n".join(
+        [
+            "|  Type d'actes | Entité de gestion  |   |",
+            "| --- | --- | --- |",
+            "|  Congé maternité | 14° | Déconcentré  |",
+        ]
+    )
+    ocr = OcrResult(
+        provider="albert",
+        version="v",
+        markdown="",
+        pages=[{"index": 0, "markdown": "[tbl-0.md](tbl-0.md)", "tables": [{"id": "tbl-0.md", "content": table}]}],
+    )
+
+    flat = flatten_ocr_to_text(ocr)
+
+    assert "Congé maternité 14° Déconcentré" in flat
+
+
+def test_multiline_table_cells_are_joined_before_depiping() -> None:
+    # La rangée-rubrique « Signature des contrats et avenants (La production…) »
+    # s'étale sur deux lignes physiques dans le markdown OCR: sans recollage la
+    # rubrique n'était jamais reconnue et 12 actes partaient dans la rubrique
+    # précédente.
+    table = "\n".join(
+        [
+            "|  Type d'actes | Entité de gestion  |   |",
+            "| --- | --- | --- |",
+            "|  Signature des contrats et avenants",
+            "(La production de tout type de contrat reste de la compétence de la DRHM)  |   |   |",
+            "|  Recrutement en CDI | 1° | DRH-BPECO  |",
+        ]
+    )
+    ocr = OcrResult(
+        provider="albert",
+        version="v",
+        markdown="",
+        pages=[{"index": 0, "markdown": "[tbl-0.md](tbl-0.md)", "tables": [{"id": "tbl-0.md", "content": table}]}],
+    )
+
+    flat = flatten_ocr_to_text(ocr)
+
+    assert "Signature des contrats et avenants (La production de tout type de contrat reste de la compétence de la DRHM)" in flat
+    assert "Recrutement en CDI 1° DRH-BPECO" in flat
+
+
+def test_faq_routing_and_parsing_ignore_structure_markers() -> None:
+    # Les marqueurs (Titre)/(Intertitre) ne concernent que le mode guide: un
+    # doc FAQ dont les titres sont marqués route et parse comme avant.
+    marked = "(Titre) FAQ Protection sociale complémentaire\n" + "\n".join(
+        f"{i}. Comment fonctionne la garantie numéro {i} du dispositif santé ?\nLa garantie {i} couvre les soins courants." for i in range(1, 8)
+    )
+
+    assert detect_document_mode(marked, "PSC_FAQ Santé.pdf") == "faq"
+
+    config = QnaEngineConfig(modes=("faq",), chunk_format="titre_section")
+    mode, blocks, _ = parse_document(marked, "PSC_FAQ Santé.pdf", "", config)
+    assert mode == "faq"
+    assert any("garantie numéro 3" in b.section_title for b in blocks)
+
+
+def test_table_cells_strip_image_refs_like_legacy_flatten() -> None:
+    # Parité legacy: les refs d'images non annotées étaient strippées sur la
+    # ligne entière AVANT le dé-pipage — le chemin tableau ne doit pas les
+    # laisser fuir dans les chunks.
+    ocr = OcrResult(
+        provider="albert",
+        version="v",
+        markdown="",
+        pages=[{"index": 0, "markdown": "| Colonne A | Colonne B |\n| --- | --- |\n| Voir schéma ![img-3.jpeg](img-3.jpeg) | Valeur |"}],
+    )
+
+    flat = flatten_ocr_to_text(ocr)
+
+    assert "img-3.jpeg" not in flat
+    assert "Voir schéma Valeur" in flat
+
+
+def test_sommaire_without_dot_leaders_does_not_swallow_blank_lines() -> None:
+    # Un « Sommaire » de FAQ numéroté (sans pointillés) ne doit pas laisser le
+    # mode TOC actif jusqu'à la fin du document — sinon toutes les lignes
+    # vides sont avalées et les paragraphes du corps se collent.
+    from assistant_rh_data_engineering.pdf_ministry.qna.engine import strip_table_of_contents
+
+    text = "Sommaire\n1. Comment ça marche ? 4\n2. Qui contacter ? 5\n\nCorps du document.\n\nParagraphe deux.\n\nParagraphe trois."
+
+    out = strip_table_of_contents(text)
+
+    assert "Corps du document.\n\nParagraphe deux." in out
+    assert "Paragraphe deux.\n\nParagraphe trois." in out

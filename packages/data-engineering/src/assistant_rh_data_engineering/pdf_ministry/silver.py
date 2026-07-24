@@ -30,6 +30,53 @@ _PAGE_NUMBER_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Titres internes que mistral-ocr laisse en texte plat (audit issue #302 sur
+# la fiche MI « Recrutement, gestion et rémunération des agents
+# contractuels »: les encadrés « Fiche outils : qui fait quoi ? » et
+# « Focus: les CDI » ne portent aucun marqueur #, tout leur contenu — dont le
+# tableau de répartition des compétences licenciement/rupture — était avalé
+# par la section précédente « 1.4 … fiche de poste »).
+_PROMOTABLE_HEADING_RE = re.compile(r"^(fiche outils?|focus)\s*:\s*\S", re.IGNORECASE)
+
+# Verbe conjugué usuel: signature d'une PHRASE promue à tort en heading par
+# l'OCR (« Une part variable peut être attribuée sous certaines conditions : »,
+# « La formulation de la fiche de poste va contribuer à … recruteur. »). Un
+# titre nominal légitime n'en contient pas.
+_FINITE_VERB_RE = re.compile(
+    r"\b(est|sont|peut|peuvent|doit|doivent|va|vont|sera|seront|a|ont|fait|font)\b",
+    re.IGNORECASE,
+)
+
+_HEADING_LINE_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
+
+# Headings de sommaire: la section est conservée mais jamais indexée (ses
+# chunks-sommaires polluaient le retrieval — issue #302).
+_TOC_HEADINGS = {"sommaire", "table des matieres", "table des matières"}
+
+
+def _is_sentence_like_heading(title: str) -> bool:
+    words = title.split()
+    if len(words) < 6:
+        return False
+    if title.rstrip().endswith("."):
+        return True
+    return title.rstrip().endswith(":") and bool(_FINITE_VERB_RE.search(title))
+
+
+def _refine_heading_line(line: str) -> str:
+    """Corrige les erreurs de niveau de titre de l'OCR, ligne à ligne:
+    rétrograde en paragraphe les phrases promues en heading, promeut en
+    heading les titres d'encadrés laissés en texte plat."""
+    m = _HEADING_LINE_RE.match(line)
+    if m:
+        return m.group(2) if _is_sentence_like_heading(m.group(2)) else line
+    stripped = line.strip()
+    # Une ligne qui se termine par un numéro de page est une entrée de
+    # sommaire, jamais un titre d'encadré à promouvoir.
+    if _PROMOTABLE_HEADING_RE.match(stripped) and not stripped[-1].isdigit():
+        return f"### {stripped}"
+    return line
+
 
 def doc_uuid(identity: MinistryIdentity, short_id: str) -> str:
     return stable_uuid_from_parts(identity.namespace, identity.doc_source, short_id)
@@ -111,7 +158,7 @@ def normalize_ocr_markdown(ocr: OcrResult, titre: str) -> str:
         content_indexes = [index for index, line in enumerate(lines) if line.strip()]
         edge_indexes = set(content_indexes[:3] + content_indexes[-3:])
         kept = [
-            line
+            _refine_heading_line(line)
             for index, line in enumerate(lines)
             if line.strip() not in boilerplate and not (index in edge_indexes and _PAGE_NUMBER_LINE_RE.match(line.strip()))
         ]
@@ -227,7 +274,11 @@ class HeadingSilverBuilder:
                     "char_count": len(own_markdown),
                     "text_hash": sha256_text(own_markdown),
                     "doc_text_hash": doc_text_hash,
-                    "is_indexable": section.is_indexable and len(own_markdown) >= self.config.min_section_chars,
+                    "is_indexable": (
+                        section.is_indexable
+                        and len(own_markdown) >= self.config.min_section_chars
+                        and (section.heading or "").strip().lower() not in _TOC_HEADINGS
+                    ),
                 }
             )
 

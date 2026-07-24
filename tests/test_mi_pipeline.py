@@ -234,6 +234,72 @@ def test_silver_sections_partition_the_document(tmp_path: Path) -> None:
     assert total_chunk_chars <= len(document["doc_markdown"]) * 1.2
 
 
+def test_silver_demotes_sentence_like_ocr_headings(tmp_path: Path) -> None:
+    # Issue #302 (fiche MI BC9868CECC): mistral-ocr promeut des PHRASES en
+    # headings (« Une part variable peut être attribuée sous certaines
+    # conditions : ») — tout le contenu suivant (indemnité télétravail…)
+    # était étiqueté sous ce titre mensonger au lieu de « 2.3 Le calcul de la
+    # rémunération ».
+    config = make_config(tmp_path)
+    markdown = (
+        "# 2.3 Le calcul de la rémunération\n\nLa rémunération est fixée par référence au référentiel ministériel.\n\n"
+        "# Une part variable peut être attribuée sous certaines conditions :\n\n"
+        "Les agents qui font du télétravail peuvent bénéficier d'une indemnité de 2,88 euros par jour.\n"
+    )
+
+    _, sections = MiSilverBuilder(config.silver).build_bundle(make_asset(make_row(), markdown=markdown))
+
+    headings = [section["heading"] for section in sections]
+    assert not any("Une part variable" in heading for heading in headings)
+    remu = next(s for s in sections if s["heading"] == "2.3 Le calcul de la rémunération")
+    assert "indemnité de 2,88 euros" in remu["section_markdown"]
+    assert "Une part variable peut être attribuée" in remu["section_markdown"]  # rétrogradée en corps, pas perdue
+
+
+def test_silver_promotes_unmarked_fiche_outils_headings(tmp_path: Path) -> None:
+    # Issue #302: les encadrés « Fiche outils : qui fait quoi ? » / « Focus: … »
+    # sont émis en texte plat par l'OCR — leur contenu (dont le tableau de
+    # répartition des compétences licenciement/rupture) était avalé par la
+    # section précédente « 1.4 … fiche de poste ».
+    config = make_config(tmp_path)
+    markdown = (
+        "# 1.4 Recommandations dans la rédaction de la fiche de poste\n\n"
+        "La fiche de poste doit permettre au candidat d'évaluer l'adéquation de son profil.\n\n"
+        "Fiche outils : qui fait quoi ?\n\n"
+        "Le licenciement durant la période d'essai relève du préfet de région pour les CDD de moins de trois ans.\n\n"
+        "Focus: les contrats à durée indéterminée\n\n"
+        "Les CDI sont de la compétence exclusive de la direction des ressources humaines.\n"
+    )
+
+    _, sections = MiSilverBuilder(config.silver).build_bundle(make_asset(make_row(), markdown=markdown))
+
+    fiche = next(s for s in sections if s["heading"] == "Fiche outils : qui fait quoi ?")
+    assert "licenciement durant la période d'essai" in fiche["section_markdown"]
+    focus = next(s for s in sections if s["heading"] == "Focus: les contrats à durée indéterminée")
+    assert "compétence exclusive" in focus["section_markdown"]
+    parent = next(s for s in sections if s["heading"].startswith("1.4"))
+    assert "licenciement" not in parent["section_markdown"]
+
+
+def test_silver_toc_entries_are_not_promoted_and_sommaire_not_indexable(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    markdown = (
+        "# Sommaire\n\n"
+        "Fiche outils : comment déterminer la date de recrutement ? ... 10\n\n"
+        "Fiche outils : qui fait quoi ? ... 11\n\n"
+        "# 1. La procédure de recrutement\n\nContenu de la partie, suffisamment long pour être indexable sans souci.\n"
+    )
+
+    _, sections = MiSilverBuilder(config.silver).build_bundle(make_asset(make_row(), markdown=markdown))
+
+    headings = [section["heading"] for section in sections]
+    assert not any(heading.endswith("10") or heading.endswith("11") for heading in headings)
+    sommaire = next(s for s in sections if s["heading"] == "Sommaire")
+    assert sommaire["is_indexable"] is False
+    procedure = next(s for s in sections if s["heading"] == "1. La procédure de recrutement")
+    assert procedure["is_indexable"] is True
+
+
 # --- Gold ---------------------------------------------------------------------
 
 
