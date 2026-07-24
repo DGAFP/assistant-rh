@@ -44,8 +44,6 @@ USER_PROMPT_TEMPLATE = """Voici le contexte documentaire pour répondre à la qu
 En vous appuyant uniquement sur les sources ci-dessus, répondez au gestionnaire RH de {ministere_sigle} de manière opérationnelle :
 - nommez explicitement l'acteur de chaque action (le gestionnaire, le service RH, l'autorité compétente, l'agent)
   et ne vous adressez jamais à l'agent à la deuxième personne ;
-- conservez le détail utile à l'instruction du dossier : conditions, étapes, délais, montants,
-  contrôles et exceptions présents dans les sources ;
 - écartez les cas particuliers de corps spécifiques (enseignants, Police nationale…) sauf si la question les vise.
 Si les sources ne permettent pas de répondre, dites-le explicitement et n'inventez pas."""
 

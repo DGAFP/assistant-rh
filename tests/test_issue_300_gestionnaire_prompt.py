@@ -37,10 +37,14 @@ def test_prompt_encodes_issue_300_audience_scope_and_detail_contract() -> None:
         "injonction à la deuxième personne",
         "les enseignants et la police nationale",
         "que si la question le vise explicitement",
-        "types de contrôles",
-        "délais, montants, exceptions",
-        "ne réduisez pas à deux ou trois phrases",
     )
+    # Volet « niveau de détail » DIFFÉRÉ (ablation run 165 : l'instruction de
+    # restitution exhaustive poussait le générateur à sur-citer -> wrong_law
+    # 13->20). Le persona V7 ne porte que le STYLE (voix, acteurs, périmètre) ;
+    # la complétude reviendra comme levier séparé, avec grounding des citations.
+    deferred_detail_markers = ("types de contrôles", "ne réduisez pas à deux ou trois phrases")
+    for marker in deferred_detail_markers:
+        assert marker not in prompt
 
     for marker in required_policy_markers:
         assert marker in prompt
