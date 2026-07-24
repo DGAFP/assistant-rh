@@ -1769,6 +1769,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-kept-sections", type=int, default=None, help="Override selector.min_kept_sections (ablation; 0=désactivé).")
     parser.add_argument("--doc-entire-threshold-wide", type=int, default=None, help="Override context.doc_entire_threshold_wide (ablation).")
     parser.add_argument(
+        "--system-prompt-name",
+        default=None,
+        help=(
+            "Override du prompt système du générateur (ablation persona ; "
+            "v3_system_prompt_name runtime sinon). Ex: system_prompt_V7_gestionnaires_rh.md"
+        ),
+    )
+    parser.add_argument(
         "--ministry-scope",
         choices=["per-question", "all", "none"],
         default="per-question",
@@ -1899,6 +1907,9 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.doc_entire_threshold_wide is not None:
         pipeline_config.context.doc_entire_threshold_wide = args.doc_entire_threshold_wide
         config_adjustments.append(f"doc_entire_threshold_wide={args.doc_entire_threshold_wide}")
+    if args.system_prompt_name:
+        pipeline_config.generation.system_prompt_name = args.system_prompt_name
+        config_adjustments.append(f"system_prompt_name={args.system_prompt_name}")
     config_hash = config_fingerprint(pipeline_config)
     git_sha = _git_sha()
     run_label = args.run_label or f"{datetime.now(tz=UTC).strftime('%Y%m%dT%H%M%SZ')}_{args.goldset_name}"
