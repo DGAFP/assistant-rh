@@ -491,3 +491,47 @@ Flips vs 116 : 8 gagnées (q28, 194, 197, 221, 223, 226, 228, 926), 9 perdues (q
 **Lecture** : le mécanisme produit le signal attendu sur q17 : sa section-réponse, auparavant coupée avant le reranker, atteint désormais le top-20 servi et convertit. Le PASS de q218 n'est pas une preuve du mécanisme sans trace montrant que la section-réponse a rejoint le contexte final ; il reste compatible avec le bruit du screening. Le net −3 sur les stables est lui aussi indistinguable du bruit du juge : c'est PRÉCISÉMENT pourquoi l'adoption doit passer par le gate Scaleway maj-3, seul étage capable de trancher.
 
 **Prochain au 23/07** : #332 et #333 sont mergées. Générer, revoir humainement puis appliquer le corpus R2, puis soumettre le paquet P1+R2 à un seul **gate d'adoption Scaleway maj-3** (économie de runs).
+
+---
+
+## Run 156 — `gate_adoption_p1r2_20260723` (23/07) — GATE OFFICIEL du paquet P1+R2 → **ADOPTÉ**
+
+**Changements vs référence (runs 118/123/124)** : dev @f8811de. Paquet complet vague 1 :
+- **P1** : `--rerank-input-k 40` (entrée du reranker 20→40, sortie 20 inchangée — #335) ;
+- **R2** : 4 203 lignes-résumé en base staging (`index_variant r2_summary/r2s1-openweight-medium-pfc72d953+embed-openweight-embeddings/…`), embedding = résumé métier, `chunk_text` = texte juridique authentique (#332). Vérifs post-apply : 4 203 lignes = 4 203 vecteurs, zéro divergence de texte, zéro orpheline.
+- **Juge** : protocole OFFICIEL — Scaleway `qwen3-235b-a22b-instruct-2507`, **vote majoritaire à 3** (#333), lecture appariée contre les verdicts versionnés (`docs/evals/verdicts-officiels/`).
+
+**Incident d'infra (résolu avant le run)** : le premier `--apply` R2 s'est auto-deadlocké — transaction lectrice FOR UPDATE du job bloquant l'`ALTER TABLE ADD COLUMN index_variant` de sa propre connexion sœur, retrieval staging gelé ~40 min derrière l'ACCESS EXCLUSIVE. Kill sans dégâts (0 ligne écrite), fix #343 (DDL avant la transaction apply, contrat « jamais de DDL dans la branche caller-conn »), re-apply propre (`applied=4203`, 1 seul appel LLM — cache).
+
+**Résultats** :
+
+| Mesure | Run 156 | Référence |
+|---|---|---|
+| judge_pass global | **0,677** (67/99) | 0,677 |
+| Conversions (échecs stables) | **8** : q3, q17*, q23, q30*, q198, q215, q217*, q223 (* = cibles nommées) | — |
+| Casses (passers stables) | 5 : q2, q20, q194, q202, q4534 | chaque run de réf. : 0,616-0,667 vs majorité |
+| **Net stables** | **+3** | — |
+| Cibles nommées | 3/6 (q17 P1 ; q30, q217 R2) — q192/q213/q221 restent FAIL, non dégradées | critère #336 : ≥4 |
+| wrong_law | 5 | 10 (run 118, juge d'origine — caveat) |
+| Latence retrieval p50/p95 | **1,56 s / 2,11 s** | 1,64-3,61 s / 2,57-4,55 s |
+| retrieval_gap_rate | 0,263 | 0,232 |
+
+**Analyse des 5 casses — aucune signature P1/R2** : q2/q194/q202 avaient déjà `hit_rate=0` en baseline (le gold n'a jamais été retrouvé ; leurs PASS étaient de la chance de génération) ; q20/q4534 gardent `hit_rate=1` avec des réponses « factuellement correctes » recalées sur un point manquant. C'est la variance générateur/juge, dans la bande des runs de référence eux-mêmes.
+
+**Mécanisme R2 observé** : dès les premiers items, des lignes `_r2s` dans le pool de retrieval de 11/11 questions (ex. q1 : 23 chunks `_r2s` — CGFP, décret 86-83, décret 2022-662). Le pont lexical question-métier → article fonctionne en conditions réelles.
+
+**Décision (utilisateur, 23/07)** : **ADOPTION** malgré le critère cibles à 3/6 — motifs : global = référence sous le juge le plus strict, net stables +3, 5 bonus hors cibles, casses expliquées par la variance, latence améliorée, et les 3 cibles restantes (q192, q213, q221) sont précisément les cibles des leviers suivants (vague 2 #244, renvois). `update_rag_config` staging appliqué le 23/07 à 16:10 (`v3_rerank_input_k=40`, hors fenêtre de run, orphelins #339 vérifiés inactifs). Rollback R2 disponible en 1 DELETE.
+
+**À surveiller post-adoption** : retrieval_gap_rate (+3 questions vs baseline), feedbacks testeurs sur typologie_contrats, et les orphelins `running` (14 en base → #339).
+
+---
+
+## Run 161 — `candidate_input64_20260723` (23/07 soir) — screening `rerank_input_k=64`
+
+**Changements vs run 156** : dev @f8811de inchangé, override CLI `--rerank-input-k 64` (config partagée restée à 40). Juge : **grok single-shot (étage screening)** — lecture appariée contre la référence grok (0,707), jamais contre la référence officielle.
+
+**Résultats** : global **0,717** (+1 pt vs 0,707) ; 4 conversions d'échecs stables-grok (q175, q220, q657, q660), 6 casses (q2, q16*, q200, q204, q214, q4534 — majoritairement les fragiles connues) → net **−2**, dans la bande de bruit. Cibles nommées : q192 **convertie**, q16/q191 toujours FAIL malgré leur gold servi (rangs 15/6) — le selector les jette. Risques surveillés q185/q186 : **tous deux PASS**. Latence retrieval p95 : 1 810 ms (vs 2 105 ms au run 156).
+
+**Lecture** : input64 fait exactement ce que le contrefactuel prédisait au containment, mais les conversions sont plafonnées par le selector (goulot aval mesuré). Décision : input64 **non adopté** — l'élargissement du pool passera par l'architecture 3-pipelines (design cible, cf. `revue-experimentations-sondes-20260723.md`), en paquet avec le selector v2 (#306) + union top-8, un seul screening + gate.
+
+**Post-run** : curation goldset du 24/07 (7 questions re-annotées, backup versionné sur VM) → funnel final des 18 échecs stables réattribué : 4 génération / 4 selector / 4 coupe-candidats / 4 hors-pool / 2 goldset à re-sourcer.
