@@ -521,10 +521,12 @@ MARQUEURS de recherche — de courtes chaînes qui apparaîtraient telles quelle
 document source contenant cette information.
 
 Règles pour les marqueurs :
-- 2 à 6 marqueurs, chacun de 4 à 40 caractères
+- 2 à 6 marqueurs, chacun de 4 à 40 caractères, de 1 à 3 mots maximum
 - très spécifiques : valeur chiffrée (« 159,20 »), terme technique (« plafond d'emploi »), référence (« annexe 3 »), intitulé précis
 - en français, avec les accents, sans guillemets ni ponctuation d'encadrement
 - PAS de mots génériques (« contrat », « agent », « ministère »)
+- N'INVENTE JAMAIS de référence (numéro de décret, d'article…) : n'utilise une
+  référence que si elle apparaît dans la question, la réponse ou le commentaire
 
 Réponds UNIQUEMENT en JSON valide :
 {"missing_info": "<1 phrase : l'information attendue>", "markers": ["...", "..."]}"""
@@ -538,8 +540,25 @@ _MINISTRY_CHUNK_TABLES = {
 _SHARED_CHUNK_TABLES = ["rag_chunks_service_public", "rag_chunks_dgafp"]
 
 
+_DASHES = "‐‑‒–—―−"
+
+
 def _normalize(s: str) -> str:
-    return (s or "").lower().replace("’", "'").replace("\u00a0", " ")
+    out = (s or "").lower().replace("’", "'").replace("\u00a0", " ")
+    for dash in _DASHES:
+        out = out.replace(dash, "-")
+    return out
+
+
+# Références numérotées (« décret n° 2020-1234 », « article L113-3 ») : mode
+# d'hallucination dominant du LLM extracteur. Une référence n'est conservée
+# que si elle apparaît verbatim dans la conversation (question/réponse/feedback).
+_REF_MARKER_PATTERN = re.compile(r"(décret|arrêté|article|circulaire|instruction|loi)\b.*\d", re.IGNORECASE)
+
+
+def _filter_hallucinated_markers(markers: List[str], feedback: Dict[str, Any]) -> List[str]:
+    grounding = _normalize(" ".join(str(feedback.get(k) or "") for k in ("question", "answer", "comment", "reasons_negative")))
+    return [m for m in markers if not _REF_MARKER_PATTERN.search(m) or _normalize(m) in grounding]
 
 
 def _extract_markers(feedback: Dict[str, Any]) -> Tuple[str, List[str]]:
@@ -552,9 +571,10 @@ def _extract_markers(feedback: Dict[str, Any]) -> Tuple[str, List[str]]:
         f"Raisons: {feedback.get('reasons_negative') or '—'}\n"
         f"Commentaire: {feedback.get('comment') or '—'}"
     )
-    data = _call_albert_json(_MARKER_SYSTEM_PROMPT, user, max_tokens=400)
+    data = _call_albert_json(_MARKER_SYSTEM_PROMPT, user, max_tokens=900)
     markers = [m.strip() for m in data.get("markers", []) if isinstance(m, str)]
     markers = [m for m in markers if 4 <= len(m) <= 60][:6]
+    markers = _filter_hallucinated_markers(markers, feedback)
     return str(data.get("missing_info", "")), markers
 
 
@@ -572,7 +592,16 @@ def _search_corpus(engine, ministry: Optional[str], markers: List[str]) -> Optio
     try:
         with engine.connect() as conn:
             for marker in markers:
-                variants = {marker, marker.replace("'", "’"), marker.replace("’", "'")}
+                ascii_dashes = marker
+                for dash in _DASHES:
+                    ascii_dashes = ascii_dashes.replace(dash, "-")
+                variants = {
+                    marker,
+                    ascii_dashes,
+                    marker.replace("'", "’"),
+                    marker.replace("’", "'"),
+                    ascii_dashes.replace("’", "'"),
+                }
                 for tbl in tables:
                     for v in variants:
                         q = text(f"SELECT 1 FROM {tbl} WHERE chunk_text ILIKE :p OR text ILIKE :p LIMIT 1")
@@ -618,6 +647,14 @@ def _classify_from_flags(
     prefix = f"Attribution mécanique (marqueurs : {', '.join(markers)}) : "
     suffix = f" Information attendue : {missing_info}" if missing_info else ""
     if not in_corpus:
+        if len(markers) < 2:
+            # Conclusion d'absence trop fragile sur un marqueur unique :
+            # on délègue au LLM avec l'hypothèse à vérifier.
+            return None, (
+                "Le seul marqueur exploitable est introuvable dans le corpus — "
+                "l'hypothèse missing_document est plausible mais non confirmée "
+                "mécaniquement ; vérifie-la en priorité."
+            )
         return "missing_document", (prefix + "aucun marqueur trouvé dans le corpus (table ministère + service_public + dgafp)." + suffix)
     if not flags["pool"]:
         return "retrieval_issue", (prefix + "présents dans le corpus mais absents du pool de retrieval." + suffix)
@@ -668,11 +705,14 @@ def analyze_single(feedback: Dict[str, Any], engine=None) -> Tuple[str, str]:
             in_corpus = True if found is None else found
         category, reason = _classify_from_flags(in_corpus, flags, selector_active, markers, missing_info)
         if category is None:
-            stage_hint = (
-                f"Les marqueurs de l'information attendue ({', '.join(markers)}) sont "
-                "PRÉSENTS dans le contexte envoyé au générateur. La cause est donc en "
-                "aval : choisis une catégorie generator_* ou chunk_quality."
-            )
+            if reason:
+                stage_hint = reason
+            elif flags["generator_context"]:
+                stage_hint = (
+                    f"Les marqueurs de l'information attendue ({', '.join(markers)}) sont "
+                    "PRÉSENTS dans le contexte envoyé au générateur. La cause est donc en "
+                    "aval : choisis une catégorie generator_* ou chunk_quality."
+                )
 
     # Étage 2 : LLM plein contexte (famille générateur, ou secours sans marqueurs)
     if category is None:

@@ -137,6 +137,34 @@ class TestStageFlags:
         }
         assert fa._stage_flags(feedback, ["plafond d'emploi"])["pool"] is True
 
+    def test_normalize_typographic_dashes(self):
+        # Cas réel : marqueur « Cas‑de‑dispense_v3 » (U+2011) vs corpus ASCII
+        assert fa._normalize("Cas‑de‑dispense_v3") == "cas-de-dispense_v3"
+
+
+# ---------------------------------------------------------------------------
+# _filter_hallucinated_markers – références inventées
+# ---------------------------------------------------------------------------
+class TestFilterHallucinatedMarkers:
+    FEEDBACK = {
+        "question": "montant des astreintes ?",
+        "answer": "Le décret n° 2015-415 renvoie à un arrêté.",
+        "comment": "il manque l'annexe 3",
+        "reasons_negative": "Incomplet",
+    }
+
+    def test_drops_invented_reference(self):
+        markers = ["décret n° 2020-1234", "159,20"]
+        assert fa._filter_hallucinated_markers(markers, self.FEEDBACK) == ["159,20"]
+
+    def test_keeps_reference_grounded_in_conversation(self):
+        markers = ["décret n° 2015-415", "annexe 3"]
+        assert fa._filter_hallucinated_markers(markers, self.FEEDBACK) == markers
+
+    def test_keeps_non_reference_markers(self):
+        markers = ["plafond d'emploi", "annexe 3"]
+        assert fa._filter_hallucinated_markers(markers, self.FEEDBACK) == markers
+
 
 # ---------------------------------------------------------------------------
 # _classify_from_flags – arbre de décision
@@ -152,9 +180,15 @@ class TestClassifyFromFlags:
         }
 
     def test_missing_document_when_not_in_corpus(self):
-        cat, reason = fa._classify_from_flags(False, self._flags(False, False, False), True, ["annexe 3"], "montants DDI")
+        cat, reason = fa._classify_from_flags(False, self._flags(False, False, False), True, ["annexe 3", "159,20"], "montants DDI")
         assert cat == "missing_document"
         assert "corpus" in reason
+
+    def test_single_marker_not_in_corpus_defers_to_llm(self):
+        # Un seul marqueur introuvable ne suffit pas à conclure missing_document
+        cat, hint = fa._classify_from_flags(False, self._flags(False, False, False), True, ["annexe 3"], "")
+        assert cat is None
+        assert "missing_document" in hint
 
     def test_retrieval_issue_when_in_corpus_but_not_in_pool(self):
         cat, _ = fa._classify_from_flags(True, self._flags(False, False, False), True, ["m"], "")
