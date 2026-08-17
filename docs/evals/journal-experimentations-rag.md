@@ -535,3 +535,27 @@ Flips vs 116 : 8 gagnées (q28, 194, 197, 221, 223, 226, 228, 926), 9 perdues (q
 **Lecture** : input64 fait exactement ce que le contrefactuel prédisait au containment, mais les conversions sont plafonnées par le selector (goulot aval mesuré). Décision : input64 **non adopté** — l'élargissement du pool passera par l'architecture 3-pipelines (design cible, cf. `revue-experimentations-sondes-20260723.md`), en paquet avec le selector v2 (#306) + union top-8, un seul screening + gate.
 
 **Post-run** : curation goldset du 24/07 (7 questions re-annotées, backup versionné sur VM) → funnel final des 18 échecs stables réattribué : 4 génération / 4 selector / 4 coupe-candidats / 4 hors-pool / 2 goldset à re-sourcer.
+
+---
+
+## Gate issue #360 — redondance vs complémentarité du sélecteur (17/08, en cours)
+
+**Objet** : vérifier sur le panel long officiel `baseline_v1` que la clarification
+« redondant » versus « complémentaire » conserve les apports distincts de
+DGAFP, Service-Public et des sources ministérielles sans dégrader les autres
+questions. Aucun gate juridique ni changement de retrieval : DGAFP reste dans
+le pool partagé permanent.
+
+**Protocole apparié** : 99 questions taguées `baseline_v1`, scope ministériel
+`per-question`, config live staging, RAGAS sauté, juge souverain Scaleway
+`qwen3-235b-a22b-instruct-2507` en vote majoritaire à 3. Comparaison et gate
+directs contre la baseline comparable déjà stockée :
+**run #156 `gate_adoption_p1r2_20260723`** (0,677 ; doc recall 0,6345).
+
+- Candidate branche `fix/issue-360-selector-legal-coverage` :
+  `issue360_complement_candidate_baseline_v1_20260817`.
+- Changement mesuré : prompt du sélecteur uniquement pour distinguer les
+  informations réellement dupliquées des contributions complémentaires ;
+  garde-fous générateur contre les procédures locales inférées.
+
+**Résultats** : en attente.
