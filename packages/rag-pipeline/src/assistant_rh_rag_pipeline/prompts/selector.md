@@ -32,6 +32,13 @@ La pertinence par rapport à la question est prioritaire sur la source.
 - N'inclus jamais une section de {ministere_sigle} si elle est hors-sujet ou trop générale, même si la source est prioritaire.
 - Si une section Service-Public ou DGAFP répond plus précisément à la question, garde-la.
 
+**Redondance et complémentarité** :
+- Deux sections sont redondantes uniquement si elles donnent la même règle, condition ou modalité sans apport supplémentaire.
+- Elles sont complémentaires si chacune apporte un élément distinct utile : champ d'application, conditions, modalités, autorité compétente, consultation requise, texte de mise en œuvre ou déclinaison ministérielle.
+- Le fait de traiter du même sujet, ou qu'une source soit prioritaire, ne suffit jamais à rendre une autre source redondante.
+- Applique le même test de pertinence à tous les éditeurs. La hiérarchie sert uniquement à départager deux passages réellement équivalents.
+- Dans `reason`, précise l'apport distinct des sections complémentaires conservées.
+
 **ÉLIMINE** les sections qui :
 - Traitent d'un sujet différent de la question
 - Sont trop génériques (introduction, présentation générale)

@@ -31,17 +31,20 @@ def make_sections(n: int) -> list[AggregatedSection]:
 class FakeLLM:
     def __init__(self, response: str):
         self._response = response
+        self.last_prompt = ""
 
     def chat(self, prompt: str, system_prompt: str = "") -> str:
+        self.last_prompt = prompt
         return self._response
 
 
 @pytest.fixture
 def patch_llm(monkeypatch: pytest.MonkeyPatch):
-    def _patch(response: str) -> None:
+    def _patch(response: str) -> FakeLLM:
+        llm = FakeLLM(response)
         monkeypatch.setattr(
             "assistant_rh_rag_pipeline.context_selector.LLMClient",
-            lambda **kwargs: FakeLLM(response),
+            lambda **kwargs: llm,
         )
         # Hermétique: load_prompt lit les prompts en base (DSN requis) — sans
         # ce patch, l'exception fait retomber select() sur « keep all » et le
@@ -50,12 +53,13 @@ def patch_llm(monkeypatch: pytest.MonkeyPatch):
             "assistant_rh_rag_pipeline.context_selector.load_prompt",
             lambda *args, **kwargs: "Question: {query}\n\nSections:\n{context}",
         )
+        return llm
 
     return _patch
 
 
 def test_floor_tops_up_a_thin_selection(patch_llm) -> None:
-    patch_llm('{"selected_ids": [2], "reason": "une seule pertinente"}')
+    llm = patch_llm('{"selected_ids": [2], "reason": "une seule pertinente"}')
     selector = ContextSelector(SelectorConfig(enabled=True, min_kept_sections=4))
     sections = make_sections(6)
 
@@ -70,10 +74,7 @@ def test_floor_tops_up_a_thin_selection(patch_llm) -> None:
         "selected_by_llm": 1,
         "served": 4,
     }
-    expected_prompt = "Question: question\n\nSections:\n" + "\n\n---\n\n".join(
-        f"[{i}] {section.heading} (unknown)\n{section.markdown}" for i, section in enumerate(sections)
-    )
-    assert selector.last_prompt_chars == len(expected_prompt)
+    assert selector.last_prompt_chars == len(llm.last_prompt)
 
 
 def test_floor_does_not_touch_a_wide_enough_selection(patch_llm) -> None:
@@ -138,3 +139,109 @@ def test_duplicate_ids_are_not_served_twice(patch_llm) -> None:
     assert [s.section_id for s in kept] == ["s2", "s0"]
     kept_idx = [entry["idx"] for entry in selector.last_decisions["kept"]]
     assert kept_idx == [2, 0]
+
+
+def test_issue_360_prompt_distinguishes_complementary_sources(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The selector must compare contributions, not publisher priority."""
+    sections = [
+        AggregatedSection(
+            section_id="matte-2011-7",
+            heading="7 – Modalités de prise en compte de la journée de solidarité",
+            markdown="L'arrêté ministériel du 23 février 2010 est mis en œuvre par l'instruction du 6 janvier 2011.",
+            chunks=[],
+            score=0.287268,
+            publisher="MATTE",
+        ),
+        AggregatedSection(
+            section_id=None,
+            heading="Article L621-10 du code général de la fonction publique",
+            markdown=(
+                "La journée de solidarité peut être accomplie par le travail d'un jour férié, "
+                "d'un jour de réduction du temps de travail ou selon une autre modalité de sept heures."
+            ),
+            chunks=[],
+            score=0.317215,
+            publisher="DGAFP",
+            metadata={"number": "L621-10"},
+        ),
+        AggregatedSection(
+            section_id=None,
+            heading="Article L621-11 du code général de la fonction publique",
+            markdown=(
+                "La journée de solidarité est fixée par arrêté du ministre compétent après avis "
+                "du comité social d'administration ministériel."
+            ),
+            chunks=[],
+            score=0.351979,
+            publisher="DGAFP",
+            metadata={"number": "L621-11"},
+        ),
+        AggregatedSection(
+            section_id=None,
+            heading="Article L132-5 du code général de la fonction publique",
+            markdown=(
+                "Le ministre de l'aménagement du territoire et de la transition écologique "
+                "arrête la composition d'une instance consultative."
+            ),
+            chunks=[],
+            score=0.004039,
+            publisher="DGAFP",
+            metadata={"number": "L132-5"},
+        ),
+    ]
+    llm = FakeLLM(
+        '{"selected_ids": [0, 1, 2], "reason": "Modalités légales, autorité compétente et mise en œuvre ministérielle distinctes"}'
+    )
+    monkeypatch.setattr("assistant_rh_rag_pipeline.context_selector.LLMClient", lambda **kwargs: llm)
+    monkeypatch.setattr(
+        "assistant_rh_rag_pipeline.context_selector.load_prompt",
+        lambda *args, **kwargs: "Ancien prompt configuré en base\nQuestion: {query}\n\n{context}",
+    )
+    selector = ContextSelector(SelectorConfig(enabled=True, min_kept_sections=0))
+
+    selected = selector.select(
+        "Quelles sont les règles relatives à la journée de solidarité au MATTE (Ministère Aménagement du territoire Transition écologique) ?",
+        sections,
+    )
+
+    assert [section.metadata.get("number") for section in selected] == [None, "L621-10", "L621-11"]
+    assert "Redondance et complémentarité" in llm.last_prompt
+    assert "même règle, la même condition ou la même modalité" in llm.last_prompt
+    assert "Applique le même test de pertinence à tous les éditeurs" in llm.last_prompt
+
+
+def test_issue_360_compatibility_rule_applies_to_single_publisher(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stale DB prompt must preserve complementary sections from one publisher."""
+    sections = [
+        AggregatedSection(
+            section_id=None,
+            heading="Article L621-10 du code général de la fonction publique",
+            markdown="La journée de solidarité peut être accomplie selon trois modalités distinctes.",
+            chunks=[],
+            score=0.317215,
+            publisher="DGAFP",
+            metadata={"number": "L621-10"},
+        ),
+        AggregatedSection(
+            section_id=None,
+            heading="Article L621-11 du code général de la fonction publique",
+            markdown="La journée est fixée par arrêté après avis du comité social d'administration.",
+            chunks=[],
+            score=0.351979,
+            publisher="DGAFP",
+            metadata={"number": "L621-11"},
+        ),
+    ]
+    llm = FakeLLM('{"selected_ids": [0, 1], "reason": "Modalités et autorité compétente complémentaires"}')
+    monkeypatch.setattr("assistant_rh_rag_pipeline.context_selector.LLMClient", lambda **kwargs: llm)
+    monkeypatch.setattr(
+        "assistant_rh_rag_pipeline.context_selector.load_prompt",
+        lambda *args, **kwargs: "Ancien prompt configuré en base\nQuestion: {query}\n\n{context}",
+    )
+    selector = ContextSelector(SelectorConfig(enabled=True, min_kept_sections=0))
+
+    selected = selector.select("Quelles sont les règles relatives à la journée de solidarité ?", sections)
+
+    assert [section.metadata["number"] for section in selected] == ["L621-10", "L621-11"]
+    assert "Redondance et complémentarité" in llm.last_prompt
+    assert "même règle, la même condition ou la même modalité" in llm.last_prompt
