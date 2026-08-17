@@ -26,7 +26,7 @@ from .config import SelectorConfig
 from .db_helpers import load_prompt
 from .llm_client import LLMClient
 from .ministry_scope import MinistrySource, render_ministry_prompt
-from .models import AggregatedSection, ContextItem
+from .models import AggregatedSection, ContextItem, section_document_id
 
 logger = logging.getLogger(__name__)
 
@@ -190,10 +190,7 @@ class ContextSelector:
                 )
                 self._last_decisions = {
                     "kept": [],
-                    "removed": [
-                        {"idx": i, "heading": (sections[i].heading or "")[:80], "publisher": sections[i].publisher or ""}
-                        for i in range(len(sections))
-                    ],
+                    "removed": [_decision_entry(i, sections[i]) for i in range(len(sections))],
                     "reason": reason,
                     "all_rejected": True,
                 }
@@ -216,8 +213,8 @@ class ContextSelector:
             served_set = set(served_ids)
             removed_ids = [i for i in range(len(sections)) if i not in served_set]
             self._last_decisions = {
-                "kept": [{"idx": i, "heading": (sections[i].heading or "")[:80], "publisher": sections[i].publisher or ""} for i in served_ids],
-                "removed": [{"idx": i, "heading": (sections[i].heading or "")[:80], "publisher": sections[i].publisher or ""} for i in removed_ids],
+                "kept": [_decision_entry(i, sections[i]) for i in served_ids],
+                "removed": [_decision_entry(i, sections[i]) for i in removed_ids],
                 "reason": reason,
             }
             if len(served_ids) > len(selected_ids):
@@ -282,6 +279,17 @@ class ContextSelector:
 
 
 # ── Pure helper functions (stateless) ──────────────────────────────────
+
+
+def _decision_entry(idx: int, section: AggregatedSection) -> dict:
+    """One kept/removed trace entry, joinable to gold doc_ids by eval tooling."""
+    return {
+        "idx": idx,
+        "heading": (section.heading or "")[:80],
+        "publisher": section.publisher or "",
+        "section_id": str(section.section_id) if section.section_id else "",
+        "document_id": section_document_id(section),
+    }
 
 
 def _parse_response(raw: str, n_items: int) -> _ParseResult:

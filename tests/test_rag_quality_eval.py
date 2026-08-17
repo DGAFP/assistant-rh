@@ -23,6 +23,7 @@ from src.goldset.eval import (
     load_goldset_questions,
     parse_text_list,
     retrieved_doc_ids,
+    stage_retrieval_metrics,
     write_artifacts,
 )
 
@@ -1623,3 +1624,66 @@ def test_rag_quality_official_protocol_rejects_overrides(forbidden) -> None:
             target_environment="staging",
             **forbidden,
         )
+
+
+def _attempt_metadata() -> dict:
+    return {
+        "retrieval_attempts": [
+            {
+                "name": "initial",
+                "chunks_before_rerank": [
+                    {"doc_id": "gold-doc", "chunk_id": "c1"},
+                    {"doc_id": "noise-doc", "chunk_id": "c2"},
+                ],
+                "aggregated_sections": [
+                    {"section_id": "s-noise", "document_id": "noise-doc", "score": 0.9},
+                    {"section_id": "s-gold", "document_id": "gold-doc", "score": 0.8},
+                ],
+                "selector": {
+                    "decisions": {
+                        "kept": [{"idx": 0, "document_id": "noise-doc"}],
+                        "removed": [{"idx": 1, "document_id": "gold-doc"}],
+                    }
+                },
+            }
+        ]
+    }
+
+
+def test_stage_retrieval_metrics_localizes_gold_loss() -> None:
+    """Le funnel doit montrer où le gold est perdu (ici : au selector)."""
+    stages = stage_retrieval_metrics(_attempt_metadata(), ["gold-doc"])
+
+    initial = stages["initial"]
+    assert initial["pool"]["hit_rate"] == 1.0
+    assert initial["sections_top12"]["hit_rate"] == 1.0
+    assert initial["sections_top20"]["hit_rate"] == 1.0
+    assert initial["selector_kept"]["hit_rate"] == 0.0
+    assert initial["selector_kept"]["doc_recall"] == 0.0
+
+
+def test_stage_retrieval_metrics_kept_falls_back_to_idx() -> None:
+    metadata = _attempt_metadata()
+    kept = metadata["retrieval_attempts"][0]["selector"]["decisions"]["kept"]
+    kept[0] = {"idx": 1}  # entrée historique sans document_id
+    stages = stage_retrieval_metrics(metadata, ["gold-doc"])
+    assert stages["initial"]["selector_kept"]["hit_rate"] == 1.0
+
+
+def test_stage_retrieval_metrics_without_attempts() -> None:
+    assert stage_retrieval_metrics({}, ["gold-doc"]) == {}
+
+
+def test_aggregate_items_averages_stage_metrics() -> None:
+    def item(hit: float) -> EvalItem:
+        it = EvalItem(question_id=1, question="q", gold_answer="a", gold_sources=["g"])
+        it.deterministic_metrics = {
+            "hit_rate": hit,
+            "stages": {"initial": {"pool": {"hit_rate": hit, "doc_recall": hit, "doc_count": 2}}},
+        }
+        return it
+
+    aggregate = aggregate_items([item(1.0), item(0.0)])
+
+    pool = aggregate["stage_metrics"]["initial"]["pool"]
+    assert pool == {"n": 2, "hit_rate_avg": 0.5, "doc_recall_avg": 0.5}

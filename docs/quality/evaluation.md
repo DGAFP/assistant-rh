@@ -191,6 +191,20 @@ Then review answer metrics:
 - material contradictions;
 - RAGAS faithfulness and context metrics when enabled.
 
+Then review the retrieval funnel (`deterministic_metrics.stages` per item,
+`aggregate.stage_metrics` per run). For each retrieval attempt it reports
+hit rate and document recall at four upstream stages:
+
+- `pool`: chunks before section rerank (was the gold retrieved at all?);
+- `sections_top20` / `sections_top12`: aggregated sections in served order
+  (did the rerank/candidate cut drop it?);
+- `selector_kept`: sections actually served (did the selector drop it?).
+
+Compare stages per corpus (SQL `GROUP BY q.source`) to attribute a recall loss
+to retrieval, aggregation, the candidate cut, or the selector without
+replaying the pipeline. These stages are diagnostics, not gates: the served
+context remains measured by the top-level deterministic metrics.
+
 Always inspect examples behind regressions. Aggregate averages are not enough.
 
 ## Regression Triage

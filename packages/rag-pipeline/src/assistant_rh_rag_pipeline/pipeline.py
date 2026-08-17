@@ -30,7 +30,7 @@ from .context_selector import ContextSelector
 from .db_helpers import get_dsn
 from .generator import StreamingGenerator
 from .ministry_scope import MinistrySource, RetrievalScope, resolve_ministry
-from .models import ContextItem, PipelineResult, estimate_tokens, serialize_raw_chunks, serialize_section_chunks
+from .models import ContextItem, PipelineResult, estimate_tokens, section_document_id, serialize_raw_chunks, serialize_section_chunks
 from .query_processor import QueryProcessor, QueryProcessResult
 from .retriever import Retriever
 from .section_aggregator import SectionAggregator
@@ -568,7 +568,7 @@ class Pipeline:
                 "publisher": s.publisher or "",
                 "chunk_count": len(s.chunks),
                 "token_estimate": s.token_estimate,
-                "document_id": str(s.document_id or s.metadata.get("doc_id", "") or ""),
+                "document_id": section_document_id(s),
             }
             for s in sections
         ]

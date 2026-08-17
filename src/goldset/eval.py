@@ -1058,6 +1058,108 @@ def deterministic_metrics(gold_sources: list[str], retrieved_ids: list[str], ali
     }
 
 
+# Funnel d'observabilité retrieval (issue selector v4, 08/2026) : recall mesuré
+# à chaque étage AVANT le contexte servi, par tentative. Les k sections tracés
+# encadrent la fenêtre du selector (12 candidats évalués, 20 sections agrégées).
+_STAGE_SECTION_KS = (12, 20)
+
+
+def _attempt_stage_doc_ids(attempt: dict[str, Any]) -> dict[str, list[str]]:
+    """Doc ids présents à chaque étage d'une tentative de retrieval.
+
+    Étages : ``pool`` (chunks avant rerank), ``sections_top{k}`` (sections
+    agrégées post-rerank, ordre servi au selector), ``selector_kept`` (sections
+    réellement servies). Un étage absent de la trace est omis, pas inventé.
+    """
+    stages: dict[str, list[str]] = {}
+
+    chunks = attempt.get("chunks_before_rerank")
+    if isinstance(chunks, list) and chunks:
+        stages["pool"] = [str(c.get("doc_id")) for c in chunks if isinstance(c, dict) and c.get("doc_id")]
+
+    aggregated = attempt.get("aggregated_sections")
+    aggregated = aggregated if isinstance(aggregated, list) else []
+    if aggregated:
+        for k in _STAGE_SECTION_KS:
+            stages[f"sections_top{k}"] = [str(s.get("document_id")) for s in aggregated[:k] if isinstance(s, dict) and s.get("document_id")]
+
+    kept = ((attempt.get("selector") or {}).get("decisions") or {}).get("kept")
+    if isinstance(kept, list):
+        kept_ids: list[str] = []
+        for entry in kept:
+            if not isinstance(entry, dict):
+                continue
+            doc_id = entry.get("document_id")
+            if not doc_id:
+                idx = entry.get("idx")
+                if isinstance(idx, int) and 0 <= idx < len(aggregated):
+                    doc_id = aggregated[idx].get("document_id")
+            if doc_id:
+                kept_ids.append(str(doc_id))
+        stages["selector_kept"] = kept_ids
+    return stages
+
+
+def stage_retrieval_metrics(
+    metadata: dict[str, Any],
+    gold_sources: list[str],
+    aliases: dict[str, set[str]] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Hit/recall par étage du funnel retrieval, pour chaque tentative tracée.
+
+    Répond à « le gold a-t-il été perdu au retrieval, à l'agrégation, à la coupe
+    top-k ou au selector ? » sans rejouer le pipeline. Le contexte final servi
+    reste mesuré par ``deterministic_metrics`` (inchangé) : ces étages sont un
+    diagnostic amont, pas un gate.
+    """
+    attempts = metadata.get("retrieval_attempts")
+    if not isinstance(attempts, list):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for position, attempt in enumerate(attempts):
+        if not isinstance(attempt, dict):
+            continue
+        name = str(attempt.get("name") or f"attempt_{position}")
+        attempt_stages: dict[str, Any] = {}
+        for stage, ids in _attempt_stage_doc_ids(attempt).items():
+            metrics = deterministic_metrics(gold_sources, ids, aliases=aliases)
+            attempt_stages[stage] = {
+                "hit_rate": metrics["hit_rate"],
+                "doc_recall": metrics["doc_recall"],
+                "doc_count": len(set(metrics["retrieved_doc_ids"])),
+            }
+        if attempt_stages:
+            out[name] = attempt_stages
+    return out
+
+
+def _aggregate_stage_metrics(items: list[EvalItem]) -> dict[str, Any]:
+    """Moyennes par tentative et par étage sur les items du run."""
+    collected: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for item in items:
+        stages = (item.deterministic_metrics or {}).get("stages")
+        if not isinstance(stages, dict):
+            continue
+        for attempt_name, attempt_stages in stages.items():
+            if not isinstance(attempt_stages, dict):
+                continue
+            for stage, metrics in attempt_stages.items():
+                if isinstance(metrics, dict):
+                    collected.setdefault(attempt_name, {}).setdefault(stage, []).append(metrics)
+    aggregated: dict[str, Any] = {}
+    for attempt_name, attempt_stages in collected.items():
+        aggregated[attempt_name] = {}
+        for stage, metric_list in attempt_stages.items():
+            hit_rates = [m["hit_rate"] for m in metric_list if m.get("hit_rate") is not None]
+            recalls = [m["doc_recall"] for m in metric_list if m.get("doc_recall") is not None]
+            aggregated[attempt_name][stage] = {
+                "n": len(metric_list),
+                "hit_rate_avg": sum(hit_rates) / len(hit_rates) if hit_rates else None,
+                "doc_recall_avg": sum(recalls) / len(recalls) if recalls else None,
+            }
+    return aggregated
+
+
 def _metric_average(items: list[EvalItem], key: str, source: str = "deterministic_metrics") -> float | None:
     values: list[float] = []
     for item in items:
@@ -1113,6 +1215,7 @@ def aggregate_items(items: list[EvalItem]) -> dict[str, Any]:
         "ragas_faithfulness_avg": _metric_average(items, "faithfulness", "ragas_metrics"),
         "ragas_context_precision_avg": _metric_average(items, "context_precision", "ragas_metrics"),
         "ragas_context_recall_avg": _metric_average(items, "context_recall", "ragas_metrics"),
+        "stage_metrics": _aggregate_stage_metrics(items),
         "token_usage": _aggregate_token_usage(items),
     }
 
@@ -1820,6 +1923,7 @@ def run_question(
         metadata["generator_prompt_chars"] = len(generator_user_prompt) + len(generator_system_prompt)
         item.metadata = metadata
         item.deterministic_metrics = deterministic_metrics(question.retrieval_gold, doc_ids, aliases=identifier_aliases)
+        item.deterministic_metrics["stages"] = stage_retrieval_metrics(metadata, question.retrieval_gold, aliases=identifier_aliases)
 
         context_texts = [str(context.get("content") or "") for context in contexts if str(context.get("content") or "").strip()]
         if run_ragas:
