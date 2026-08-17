@@ -197,7 +197,11 @@ class TestPipelineE2E:
         mock_qp.process.assert_called_once()
         mock_retriever.retrieve.assert_called_once()
         mock_agg.aggregate_with_diagnostics.assert_called_once()
-        mock_sel.select.assert_called_once()
+        mock_sel.select.assert_called_once_with(
+            "congé de mobilité",
+            sections,
+            ministry=None,
+        )
         mock_cb.build.assert_called_once()
         mock_gen.generate.assert_called_once()
 

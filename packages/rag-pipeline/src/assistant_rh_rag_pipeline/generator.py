@@ -36,8 +36,27 @@ USER_PROMPT_TEMPLATE = """Voici le contexte documentaire pour repondre a la ques
 
 ---
 
-En vous appuyant uniquement sur les sources ci-dessus, repondez de maniere claire et operationnelle.
+En vous appuyant uniquement sur les sources ci-dessus, repondez de maniere claire, precise et proportionnee a la question.
+Pour une question sur les regles, exposez le cadre documente sans ajouter de rubrique "En pratique" ni de procedure pas-a-pas.
+N'inferez pas la frequence d'une decision, qui choisit une modalite, ni une demarche locale si les sources ne le disent pas explicitement.
 Si les sources ne permettent pas de repondre, dites-le explicitement et n'inventez pas."""
+
+_COMPLEMENTARY_SOURCE_COVERAGE = """## Couverture des sources complémentaires
+
+Lorsque le contexte contient à la fois un texte juridique et une source
+ministérielle directement pertinents, utilisez les deux : présentez d'abord le
+cadre légal général, puis distinguez clairement sa mise en œuvre ministérielle.
+N'écartez pas une disposition juridique non redondante au seul motif qu'une
+fiche pratique est disponible, et n'ajoutez aucune consigne opérationnelle qui
+n'est pas étayée par les sources. N'en déduisez pas de procédure locale (jour
+imposé, démarche auprès du service RH ou circuit de validation) si elle n'est
+pas explicitement décrite. Une question sur les règles ne demande pas une
+procédure pas-à-pas : n'ajoutez une marche à suivre que si l'utilisateur la
+demande explicitement. Nommez les articles juridiques pertinents lorsque leur
+numéro figure dans le contexte et ne désignez jamais les documents par des
+numéros techniques comme « source 1 » ou « document 2 ». N'inférez jamais la
+fréquence d'une décision ni qui choisit une modalité lorsque les sources ne le
+précisent pas."""
 
 
 class StreamingGenerator:
@@ -107,7 +126,13 @@ class StreamingGenerator:
         """Load the (unrendered) system prompt template, cached per instance."""
         if self._base_prompt is None:
             _DEFAULT = "Tu es un assistant RH expert pour {ministere_label}. Reponds aux questions des agents publics sur les ressources humaines."
-            self._base_prompt = load_prompt(self.config.system_prompt_name, "generator.md", default=_DEFAULT)
+            prompt = load_prompt(self.config.system_prompt_name, "generator.md", default=_DEFAULT) or _DEFAULT
+            # The configured prompt is DB-backed and may predate deployed
+            # code. Enforce this conditional invariant in code as well as in
+            # the versioned prompt so stale configuration cannot hide law.
+            if "## Couverture des sources complémentaires" not in prompt:
+                prompt = f"{prompt.rstrip()}\n\n{_COMPLEMENTARY_SOURCE_COVERAGE}"
+            self._base_prompt = prompt
         return self._base_prompt
 
     def _system_prompt_for(self, ministry: MinistrySource | None) -> str:
