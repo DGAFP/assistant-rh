@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from assistant_rh_rag_pipeline.generator import StreamingGenerator
+from assistant_rh_rag_pipeline.generator import USER_PROMPT_TEMPLATE, StreamingGenerator
 from assistant_rh_rag_pipeline.ministry_scope import (
     MINISTRY_CATALOG,
     build_retrieval_scope,
@@ -110,6 +110,28 @@ def test_generator_system_prompt_is_ministry_specific() -> None:
     assert "MASA" in masa_sp
     assert "MATTE" not in masa_sp
     assert "votre ministère" in generic_sp
+
+
+def test_generator_adds_source_coverage_to_stale_db_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "assistant_rh_rag_pipeline.generator.load_prompt",
+        lambda *args, **kwargs: "Ancien prompt configuré en base",
+    )
+    gen = StreamingGenerator(SimpleNamespace(system_prompt_name="v3_generator.md"))
+
+    prompt = gen._base_system_prompt()
+
+    assert "Couverture des sources complémentaires" in prompt
+    assert "cadre légal général" in prompt
+    assert "mise en œuvre ministérielle" in prompt
+    assert "procédure locale" in prompt
+    assert "circuit de validation" in prompt
+    assert "procédure pas-à-pas" in prompt
+    assert "Nommez les articles juridiques pertinents" in prompt
+    assert "source 1" in prompt
+    assert "qui choisit une modalité" in prompt
+    assert 'rubrique "En pratique"' in USER_PROMPT_TEMPLATE
+    assert "frequence d'une decision" in USER_PROMPT_TEMPLATE
 
 
 # ── migration transform ───────────────────────────────────────────────────

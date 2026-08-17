@@ -535,3 +535,44 @@ Flips vs 116 : 8 gagnées (q28, 194, 197, 221, 223, 226, 228, 926), 9 perdues (q
 **Lecture** : input64 fait exactement ce que le contrefactuel prédisait au containment, mais les conversions sont plafonnées par le selector (goulot aval mesuré). Décision : input64 **non adopté** — l'élargissement du pool passera par l'architecture 3-pipelines (design cible, cf. `revue-experimentations-sondes-20260723.md`), en paquet avec le selector v2 (#306) + union top-8, un seul screening + gate.
 
 **Post-run** : curation goldset du 24/07 (7 questions re-annotées, backup versionné sur VM) → funnel final des 18 échecs stables réattribué : 4 génération / 4 selector / 4 coupe-candidats / 4 hors-pool / 2 goldset à re-sourcer.
+
+---
+
+## Gate issue #360 — redondance vs complémentarité du sélecteur (17/08, terminé)
+
+**Objet** : vérifier sur le panel long officiel `baseline_v1` que la clarification
+« redondant » versus « complémentaire » conserve les apports distincts de
+DGAFP, Service-Public et des sources ministérielles sans dégrader les autres
+questions. Aucun gate juridique ni changement de retrieval : DGAFP reste dans
+le pool partagé permanent.
+
+**Protocole apparié** : 99 questions taguées `baseline_v1`, scope ministériel
+`per-question`, config live staging, RAGAS sauté, juge souverain Scaleway
+`qwen3-235b-a22b-instruct-2507` en vote majoritaire à 3. Comparaison et gate
+directs contre la baseline comparable déjà stockée :
+**run #156 `gate_adoption_p1r2_20260723`** (0,677 ; doc recall 0,6345).
+
+- Candidat branche `fix/issue-360-selector-legal-coverage` @ `8891397` :
+  **run #180 `issue360_complement_candidate_baseline_v1_20260817`**.
+- Changement mesuré : prompt du sélecteur uniquement pour distinguer les
+  informations réellement dupliquées des contributions complémentaires ;
+  garde-fous générateur contre les procédures locales inférées.
+
+**Résultats du run #180** : gate passé, 99/99 sans erreur.
+
+| Mesure | Run #180 | Baseline #156 | Delta |
+|---|---:|---:|---:|
+| judge_pass | **0,7374** (73/99) | 0,6768 (67/99) | **+0,0606** |
+| doc_recall | **0,6410** | 0,6345 | **+0,0065** |
+
+Lecture appariée : **11 gains / 5 pertes, net +6**. Coût juge : **1,55 €**
+(297 appels, couverture complète). Le mécanisme attendu est notamment visible
+sur q20 (Service-Public complémentaire de deux articles DGAFP), q213 (deux
+dispositions DGAFP complémentaires) et q218 (sections MATTE précises retenues à
+la place d'un article juridique lexicalement proche mais hors sujet).
+
+**Rejeu issue #360 avec la config live staging** : succès en lecture seule avec
+`SCW_POSTGRES_DSN_STAGING`, sans gate juridique (`needs_legal_search=false`). Le
+sélecteur conserve L621-10, L621-11 et la section MATTE « Modalités de prise en
+compte de la journée de solidarité » ; la réponse finale utilise les trois
+apports complémentaires.
