@@ -37,6 +37,13 @@ _COMPLEMENTARY_SOURCE_SELECTION_RULE = """
 
 ## Redondance et complémentarité
 
+Procède obligatoirement en deux passes :
+1. Pour chaque section, formule la question précise à laquelle elle répond. Si
+   ce n'est pas la question de l'utilisateur, élimine-la sans raisonner par
+   analogie. Si aucune section ne répond exactement, renvoie `selected_ids: []`.
+2. Seulement entre les sections directement pertinentes restantes, distingue
+   les apports redondants des apports complémentaires.
+
 Avant d'éliminer une section comme redondante, identifie l'information précise
 qu'elle apporte. Deux sections sont redondantes uniquement si elles donnent la
 même règle, la même condition ou la même modalité sans apport supplémentaire.
@@ -46,6 +53,16 @@ réponse : champ d'application, conditions, modalités, autorité compétente,
 consultation requise, texte de mise en œuvre ou déclinaison ministérielle.
 Le fait de traiter du même sujet, ou qu'une source soit prioritaire, ne suffit
 jamais à rendre une autre source redondante.
+
+La complémentarité ne compense jamais un défaut de pertinence. Chaque section
+gardée doit répondre à la même question précise : même objet, population, type
+de situation et étape temporelle ou procédurale. Rejette un passage qui ne
+partage qu'un mot-clé ou traite d'une autre étape (par exemple l'ouverture d'un
+congé au lieu de la reprise), sauf si ce lien est explicitement nécessaire pour
+répondre. Vérifie aussi la procédure principale du document : une pièce médicale
+citée dans un dossier de mobilité ne répond pas à une question sur la reprise
+après maladie. En cas de doute entre un passage approximatif et aucune source,
+rejette le passage : le générateur signalera que la réponse n'est pas documentée.
 
 Applique le même test de pertinence à tous les éditeurs. La hiérarchie des
 sources sert uniquement à départager deux passages réellement équivalents.
