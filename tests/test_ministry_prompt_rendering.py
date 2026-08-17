@@ -130,18 +130,8 @@ def test_generator_adds_source_coverage_to_stale_db_prompt(monkeypatch: pytest.M
     assert "Nommez les articles juridiques pertinents" in prompt
     assert "source 1" in prompt
     assert "qui choisit une modalité" in prompt
-    assert "champ d'application" in prompt
-    assert "population, les conditions" in prompt
-    assert "autre étape ou à un autre acteur" in prompt
-    assert "même procédure administrative" in prompt
-    assert "exigences cumulatives" in prompt
-    assert "déclenche" in prompt
-    assert "interchangeables" in prompt
-    assert "neutralise jamais une obligation légale" in prompt
     assert 'rubrique "En pratique"' in USER_PROMPT_TEMPLATE
     assert "frequence d'une decision" in USER_PROMPT_TEMPLATE
-    assert "couple acteur-action" in USER_PROMPT_TEMPLATE
-    assert 'alternatives "ou"' in USER_PROMPT_TEMPLATE
 
 
 # ── migration transform ───────────────────────────────────────────────────

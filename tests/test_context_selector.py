@@ -207,16 +207,5 @@ def test_issue_360_prompt_distinguishes_complementary_sources(monkeypatch: pytes
 
     assert [section.metadata.get("number") for section in selected] == [None, "L621-10", "L621-11"]
     assert "Redondance et complémentarité" in llm.last_prompt
-    assert "Procède obligatoirement en deux passes" in llm.last_prompt
-    assert "sans raisonner par" in llm.last_prompt
-    assert "selected_ids: []" in llm.last_prompt
     assert "même règle, la même condition ou la même modalité" in llm.last_prompt
-    assert "La complémentarité ne compense jamais un défaut de pertinence" in llm.last_prompt
-    assert "même objet, population, type" in llm.last_prompt
-    assert "étape temporelle ou procédurale" in llm.last_prompt
-    assert "l'ouverture d'un" in llm.last_prompt
-    assert "congé au lieu de la reprise" in llm.last_prompt
-    assert "une pièce médicale" in llm.last_prompt
-    assert "dossier de mobilité" in llm.last_prompt
-    assert "En cas de doute entre un passage approximatif et aucune source" in llm.last_prompt
     assert "Applique le même test de pertinence à tous les éditeurs" in llm.last_prompt

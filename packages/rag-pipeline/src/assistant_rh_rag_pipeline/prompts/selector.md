@@ -33,15 +33,9 @@ La pertinence par rapport à la question est prioritaire sur la source.
 - Si une section Service-Public ou DGAFP répond plus précisément à la question, garde-la.
 
 **Redondance et complémentarité** :
-- Procède en deux passes : (1) pour chaque section, formule la question précise à laquelle elle répond et élimine-la si ce n'est pas celle de l'utilisateur ; (2) seulement entre les sections directement pertinentes restantes, distingue redondance et complémentarité.
-- Si aucune section ne répond exactement, renvoie `selected_ids: []` plutôt que de raisonner par analogie.
 - Deux sections sont redondantes uniquement si elles donnent la même règle, condition ou modalité sans apport supplémentaire.
 - Elles sont complémentaires si chacune apporte un élément distinct utile : champ d'application, conditions, modalités, autorité compétente, consultation requise, texte de mise en œuvre ou déclinaison ministérielle.
 - Le fait de traiter du même sujet, ou qu'une source soit prioritaire, ne suffit jamais à rendre une autre source redondante.
-- La complémentarité ne compense jamais un défaut de pertinence : chaque section gardée doit viser le même objet, la même population, le même type de situation et la même étape temporelle ou procédurale que la question.
-- Élimine un passage qui ne partage qu'un mot-clé ou traite d'une autre étape (par exemple l'ouverture d'un congé au lieu de la reprise), sauf si ce lien est explicitement nécessaire pour répondre.
-- Vérifie la procédure principale du document : une pièce médicale citée dans un dossier de mobilité ne répond pas à une question sur la reprise après maladie.
-- En cas de doute entre un passage approximatif et aucune source, rejette le passage : le générateur signalera que la réponse n'est pas documentée.
 - Applique le même test de pertinence à tous les éditeurs. La hiérarchie sert uniquement à départager deux passages réellement équivalents.
 - Dans `reason`, précise l'apport distinct des sections complémentaires conservées.
 

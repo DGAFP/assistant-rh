@@ -552,33 +552,10 @@ le pool partagé permanent.
 directs contre la baseline comparable déjà stockée :
 **run #156 `gate_adoption_p1r2_20260723`** (0,677 ; doc recall 0,6345).
 
-- Premier candidat branche `fix/issue-360-selector-legal-coverage` @ `8891397` :
-  **run #180 `issue360_complement_candidate_baseline_v1_20260817`**.
+- Candidate branche `fix/issue-360-selector-legal-coverage` :
+  `issue360_complement_candidate_baseline_v1_20260817`.
 - Changement mesuré : prompt du sélecteur uniquement pour distinguer les
   informations réellement dupliquées des contributions complémentaires ;
   garde-fous générateur contre les procédures locales inférées.
 
-**Résultats du run #180** : gate passé, 99/99 sans erreur.
-
-| Mesure | Run #180 | Baseline #156 | Delta |
-|---|---:|---:|---:|
-| judge_pass | **0,7374** (73/99) | 0,6768 (67/99) | **+0,0606** |
-| doc_recall | **0,6410** | 0,6345 | **+0,0065** |
-
-Lecture appariée : **11 gains / 5 pertes, net +6**. Coût juge : **1,55 €**
-(297 appels, couverture complète). Parmi les gains, le mécanisme attendu est
-visible sur q20 (Service-Public complémentaire de deux articles DGAFP), q213
-(deux dispositions DGAFP complémentaires) et q218 (les sections MATTE précises
-remplacent un article juridique lexicalement proche mais hors sujet).
-
-**Audit des cinq pertes** : q223 est un verdict de juge incohérent avec sa propre
-rationale, qui valide explicitement le refus faute de source ; q660 est une
-variation de complétude sans baisse de recall ; q1 fusionne à tort une pratique
-optionnelle avec l'obligation légale à six ans ; q217 utilise un justificatif
-d'une autre étape/procédure ; q4529 transfère l'action « organise » du N+1 au
-BRH. Ces trois derniers signaux ont motivé un durcissement générique : sélection
-en deux passes (pertinence exacte, puis complémentarité), identité de procédure
-et d'étape, conservation des couples acteur-action et des alternatives « ou ».
-
-**Rejeu final** : gate 99 questions contre #156 à relancer après ce durcissement,
-sous le label `issue360_complement_candidate_final_baseline_v1_20260817`.
+**Résultats** : en attente.

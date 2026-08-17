@@ -39,8 +39,6 @@ USER_PROMPT_TEMPLATE = """Voici le contexte documentaire pour repondre a la ques
 En vous appuyant uniquement sur les sources ci-dessus, repondez de maniere claire, precise et proportionnee a la question.
 Pour une question sur les regles, exposez le cadre documente sans ajouter de rubrique "En pratique" ni de procedure pas-a-pas.
 N'inferez pas la frequence d'une decision, qui choisit une modalite, ni une demarche locale si les sources ne le disent pas explicitement.
-Conservez l'objet, la population, la procedure, l'etape temporelle, le couple acteur-action et les alternatives "ou" de chaque source.
-Ne transferez pas une regle a une autre situation.
 Si les sources ne permettent pas de repondre, dites-le explicitement et n'inventez pas."""
 
 _COMPLEMENTARY_SOURCE_COVERAGE = """## Couverture des sources complémentaires
@@ -52,24 +50,13 @@ N'écartez pas une disposition juridique non redondante au seul motif qu'une
 fiche pratique est disponible, et n'ajoutez aucune consigne opérationnelle qui
 n'est pas étayée par les sources. N'en déduisez pas de procédure locale (jour
 imposé, démarche auprès du service RH ou circuit de validation) si elle n'est
-pas explicitement décrite. Conservez exactement le champ d'application, la
-population, les conditions et l'étape temporelle ou procédurale de chaque
-passage. Ne transférez jamais un justificatif, une compétence ou une action à
-une autre étape ou à un autre acteur simplement parce qu'ils sont cités dans le
-même contexte. Si un passage ne concerne pas la même procédure administrative
-que la question, ne l'utilisez pas pour répondre. Préservez les alternatives
-« ou » : ne transformez jamais des acteurs, conditions ou modalités alternatives
-en exigences cumulatives. Préservez aussi les verbes associés à chaque acteur :
-« déclenche », « dépose », « convoque », « organise » et « participe » ne sont
-pas interchangeables. Une question sur les règles ne demande pas une
+pas explicitement décrite. Une question sur les règles ne demande pas une
 procédure pas-à-pas : n'ajoutez une marche à suivre que si l'utilisateur la
 demande explicitement. Nommez les articles juridiques pertinents lorsque leur
 numéro figure dans le contexte et ne désignez jamais les documents par des
 numéros techniques comme « source 1 » ou « document 2 ». N'inférez jamais la
 fréquence d'une décision ni qui choisit une modalité lorsque les sources ne le
-précisent pas. Une pratique optionnelle ou applicable à une étape antérieure ne
-neutralise jamais une obligation légale déclenchée par d'autres conditions :
-distinguez les cas au lieu de les fusionner."""
+précisent pas."""
 
 
 class StreamingGenerator:
