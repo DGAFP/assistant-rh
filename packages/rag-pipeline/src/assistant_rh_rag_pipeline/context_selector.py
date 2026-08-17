@@ -153,10 +153,9 @@ class ContextSelector:
                 default=_DEFAULT_PROMPT,
             ) or _DEFAULT_PROMPT
             # DB-backed prompts can lag behind the versioned fallback. Apply
-            # the same redundancy test to every request and every publisher;
-            # DGAFP is already part of the always-on retrieval pool.
-            publishers = {str(section.publisher or "").strip().casefold() for section in sections if section.publisher}
-            if len(publishers) > 1 and "## Redondance et complémentarité" not in prompt_template:
+            # the same redundancy test to every request, including when all
+            # complementary sections come from a single publisher.
+            if "## Redondance et complémentarité" not in prompt_template:
                 prompt_template = f"{prompt_template.rstrip()}\n{_COMPLEMENTARY_SOURCE_SELECTION_RULE}"
             # Resolve {ministere_*} before format_map fills {query}/{context}.
             prompt_template = render_ministry_prompt(prompt_template, ministry)
