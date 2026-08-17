@@ -116,6 +116,28 @@ def _round_score(score: Any) -> float | None:
     return round(float(score), 6)
 
 
+_DOC_ID_METADATA_KEYS = ("doc_id", "doc_short_id", "document_id", "source_document_id", "short_id", "cid")
+
+
+def section_document_id(section: "AggregatedSection") -> str:
+    """Best-effort corpus document identifier for one aggregated section.
+
+    Standalone legal sections (DGAFP/Légifrance chunks without a rag_sections
+    row) have no ``document_id``; their identifier lives in chunk metadata
+    (``cid``/``short_id``). Traces that omit this fallback cannot be joined
+    back to gold ``doc_id``s during eval funnel analysis.
+    """
+    if section.document_id:
+        return str(section.document_id)
+    section_meta = section.metadata if isinstance(section.metadata, dict) else {}
+    chunk_meta: Dict[str, Any] = {}
+    for chunk in section.chunks:
+        if isinstance(chunk.metadata, dict) and chunk.metadata:
+            chunk_meta = chunk.metadata
+            break
+    return str(_first_metadata_value(section_meta, chunk_meta, keys=_DOC_ID_METADATA_KEYS) or "")
+
+
 def _chunk_log_dict(
     chunk: "RetrievedChunk",
     *,
@@ -130,7 +152,7 @@ def _chunk_log_dict(
         doc_id = section.document_id or _first_metadata_value(
             section_meta,
             meta,
-            keys=("doc_id", "doc_short_id", "document_id", "source_document_id", "short_id", "cid"),
+            keys=_DOC_ID_METADATA_KEYS,
         )
         doc_title = _first_metadata_value(
             section_meta,
