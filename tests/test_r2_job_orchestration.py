@@ -36,9 +36,9 @@ class _FakeConn:
 
 def test_run_limit_report_and_stale_skip(monkeypatch, tmp_path, capsys) -> None:
     articles = [
-        {"cid": "C1", "chunk_text": "texte un"},
-        {"cid": "C2", "chunk_text": "texte deux"},
-        {"cid": "C3", "chunk_text": "texte trois"},
+        {"cid": "C1", "chunk_id": "C1_0", "chunk_text": "texte un"},
+        {"cid": "C2", "chunk_id": "C2_0", "chunk_text": "texte deux"},
+        {"cid": "C3", "chunk_id": "C3_0", "chunk_text": "texte trois"},
     ]
     # État de la base au moment de l'APPLY : C2 modifié par une ingestion
     # concurrente pendant la génération, C1 intact.
@@ -53,7 +53,7 @@ def test_run_limit_report_and_stale_skip(monkeypatch, tmp_path, capsys) -> None:
             events.append("fetch_for_update")
         if uids is None:
             return [dict(r) for r in articles]
-        return [{"cid": c, "chunk_text": current_after[c]} for c in uids if c in current_after]
+        return [{"cid": c, "chunk_id": f"{c}_0", "chunk_text": current_after[c]} for c in uids if c in current_after]
 
     monkeypatch.setenv("TEST_R2_DSN", "postgresql://fake")
     monkeypatch.setenv("ALBERT_API_KEY", "clef-test")
@@ -131,3 +131,33 @@ def test_run_limit_report_and_stale_skip(monkeypatch, tmp_path, capsys) -> None:
     # transaction FOR UPDATE, sinon son ALTER attend derrière les verrous du
     # job lui-même (auto-deadlock du 23/07 qui a gelé le retrieval staging).
     assert events == ["ensure_ddl", "fetch_for_update"]
+
+
+def test_select_canonical_article_rows_ignores_tail_chunks_and_reports_missing_zero() -> None:
+    rows = [
+        {"cid": "C1", "chunk_id": "C1_0", "chunk_text": "texte canonique"},
+        {"cid": "C1", "chunk_id": "C1_1", "chunk_text": "fragment final"},
+        {"cid": "C2", "chunk_id": "C2_1", "chunk_text": "fragment sans canonique"},
+    ]
+
+    canonical, missing = job._select_canonical_article_rows(rows)
+
+    assert canonical == [rows[0]]
+    assert missing == {"C2": ["C2_1"]}
+
+
+def test_multichunk_canonical_selection_keeps_freshness_idempotent() -> None:
+    version = "r2s-test"
+    rows = [
+        {"cid": "C1", "chunk_id": "C1_0", "chunk_text": "texte canonique"},
+        {"cid": "C1", "chunk_id": "C1_1", "chunk_text": "fragment final"},
+    ]
+    canonical, missing = job._select_canonical_article_rows(rows)
+    existing = {"C1": job.build_index_variant(version, "texte canonique", embed_model="emb-test")}
+
+    first_plan = job.plan_missing_summaries(canonical, existing, version, embed_model="emb-test")
+    second_plan = job.plan_missing_summaries(canonical, existing, version, embed_model="emb-test")
+
+    assert missing == {}
+    assert first_plan == []
+    assert second_plan == []

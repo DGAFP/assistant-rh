@@ -119,6 +119,36 @@ def _table_has_index_variant(conn: psycopg.Connection, schema: str, table: str) 
     return row is not None
 
 
+def _select_canonical_article_rows(article_rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
+    """Retain the canonical ``{cid}_0`` source row for each legal article.
+
+    Legacy imports may contain several chunks for the same CID.  R2 indexes
+    one article per CID, so allowing the later ``rows_by_cid`` dict to choose
+    a row would silently make the lexicographically last chunk authoritative.
+    CIDs that have chunks but no canonical ``_0`` row are returned separately
+    so the plan reports them instead of generating from an arbitrary fragment.
+    """
+    canonical_by_cid: dict[str, dict[str, Any]] = {}
+    chunk_ids_by_cid: dict[str, list[str]] = {}
+    cid_order: list[str] = []
+
+    for row in article_rows:
+        cid = str(row.get("cid") or "").strip()
+        if not cid:
+            continue
+        if cid not in chunk_ids_by_cid:
+            cid_order.append(cid)
+            chunk_ids_by_cid[cid] = []
+        chunk_id = str(row.get("chunk_id") or "").strip()
+        chunk_ids_by_cid[cid].append(chunk_id)
+        if chunk_id == f"{cid}_0":
+            canonical_by_cid[cid] = row
+
+    missing_canonical = {cid: chunk_ids_by_cid[cid] for cid in cid_order if cid not in canonical_by_cid}
+    canonical = [canonical_by_cid[cid] for cid in cid_order if cid in canonical_by_cid]
+    return canonical, missing_canonical
+
+
 def fetch_article_rows(
     conn: psycopg.Connection,
     schema: str,
@@ -200,7 +230,11 @@ def remove_orphaned_summaries(
     en cours, la vérification BLOQUE derrière ses verrous et ne lit qu'après
     son commit — jamais un snapshot d'avant-suppression qui conclurait à tort
     « article présent »."""
-    conditions = [sql.SQL("UPPER(TRIM(cid)) = ANY(%s)"), sql.SQL("chunk_id NOT LIKE %s")]
+    conditions = [
+        sql.SQL("UPPER(TRIM(cid)) = ANY(%s)"),
+        sql.SQL("chunk_id NOT LIKE %s"),
+        sql.SQL("chunk_id = TRIM(cid) || '_0'"),
+    ]
     params: list[Any] = [[str(c).strip().upper() for c in cids], f"%{SUMMARY_CHUNK_SUFFIX}"]
     if has_index_variant:
         conditions.append(sql.SQL("index_variant IS NULL"))
@@ -258,7 +292,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     with psycopg.connect(dsn) as conn:
         conn.read_only = not args.apply
         has_variant_col = _table_has_index_variant(conn, args.schema, args.table)
-        article_rows = fetch_article_rows(conn, args.schema, args.table, uids=uids or None, has_index_variant=has_variant_col)
+        fetched_article_rows = fetch_article_rows(conn, args.schema, args.table, uids=uids or None, has_index_variant=has_variant_col)
+        article_rows, missing_canonical = _select_canonical_article_rows(fetched_article_rows)
         existing = fetch_existing_variants(conn, args.schema, args.table, has_index_variant=has_variant_col)
 
     missing = plan_missing_summaries(article_rows, existing, summarizer.version, embed_model=embed_model)
@@ -271,6 +306,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": summarizer.model,
         "embed_model": embed_model,
         "articles_in_scope": len(article_rows),
+        "source_cids_without_canonical": len(missing_canonical),
+        "source_cids_without_canonical_sample": list(missing_canonical)[:20],
         # « à jour » = hors manquants TOTAUX — jamais tronqué par --limit
         # (revue #332 : le rapport annonçait 4 107 à jour avec --limit 100).
         "summaries_up_to_date": len(article_rows) - missing_total,
@@ -342,7 +379,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             # commit — une ingestion concurrente (DELETE/UPDATE par cid) bloque
             # derrière le verrou au lieu de s'intercaler entre la revalidation
             # et l'upsert (revue #332, round 2).
-            current_rows = fetch_article_rows(
+            fetched_current_rows = fetch_article_rows(
                 apply_conn,
                 args.schema,
                 args.table,
@@ -350,6 +387,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 has_index_variant=has_variant_col,
                 for_update=True,
             )
+            current_rows, _missing_current_canonical = _select_canonical_article_rows(fetched_current_rows)
             current_texts = {str(r["cid"]).strip(): str(r.get("chunk_text") or "") for r in current_rows}
             fresh_cids, stale = split_stale_sources({item.uid: source_shas[item.uid] for item in accepted}, current_texts)
             fresh_set = set(fresh_cids)

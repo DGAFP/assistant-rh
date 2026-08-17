@@ -646,7 +646,11 @@ def _search_corpus(engine, ministry: Optional[str], markers: List[str]) -> Optio
                 }
                 for tbl in tables:
                     for v in variants:
-                        q = text(f"SELECT 1 FROM {tbl} WHERE chunk_text ILIKE :p OR text ILIKE :p LIMIT 1")
+                        # ``text`` may contain an LLM-generated R2 summary used
+                        # only for retrieval.  ``chunk_text`` is the
+                        # authoritative source text actually served to the
+                        # generator, so only it can establish corpus presence.
+                        q = text(f"SELECT 1 FROM {tbl} WHERE chunk_text ILIKE :p LIMIT 1")
                         if conn.execute(q, {"p": f"%{v}%"}).first():
                             return True
         return False

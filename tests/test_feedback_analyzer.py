@@ -318,6 +318,45 @@ class TestSearchCorpus:
         assert fa._search_corpus(_NoQueryEngine(), None, ["RIFSEEP"]) is None
         assert fa._search_corpus(_NoQueryEngine(), "unknown", ["RIFSEEP"]) is None
 
+    @staticmethod
+    def _engine_with_authoritative_text(authoritative_text):
+        class _Result:
+            def __init__(self, found):
+                self.found = found
+
+            def first(self):
+                return object() if self.found else None
+
+        class _Connection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def execute(self, query, params):
+                sql = str(query)
+                assert "chunk_text ILIKE" in sql
+                assert " OR text ILIKE" not in sql
+                marker = params["p"].strip("%")
+                return _Result(marker in authoritative_text)
+
+        class _Engine:
+            def connect(self):
+                return _Connection()
+
+        return _Engine()
+
+    def test_generated_summary_text_does_not_establish_corpus_presence(self):
+        engine = self._engine_with_authoritative_text("Le texte juridique ne contient pas le montant attendu.")
+
+        assert fa._search_corpus(engine, "matte", ["159,20 euros"]) is False
+
+    def test_authoritative_chunk_text_establishes_corpus_presence(self):
+        engine = self._engine_with_authoritative_text("Le montant est de 159,20 euros par semaine.")
+
+        assert fa._search_corpus(engine, "matte", ["159,20 euros"]) is True
+
 
 # ---------------------------------------------------------------------------
 # _classify_from_flags – arbre de décision

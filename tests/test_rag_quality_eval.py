@@ -1573,6 +1573,13 @@ def _load_rag_quality_protocol_module():
     return module
 
 
+def test_rag_quality_workflow_watches_protocol_script() -> None:
+    workflow = (Path(__file__).parents[1] / ".github/workflows/rag-quality-eval.yml").read_text(encoding="utf-8")
+    paths_block = workflow.split("paths:", 1)[1].split("workflow_dispatch:", 1)[0]
+
+    assert '- ".github/scripts/rag_quality_protocol.py"' in paths_block
+
+
 @pytest.mark.parametrize(
     ("kwargs", "expected"),
     [
