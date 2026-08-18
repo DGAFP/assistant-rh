@@ -43,8 +43,12 @@ DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
 # était le backup validé du même spot-check (« comportement proche ») et
 # dispose d'un endpoint ZDR (xAI). claude-sonnet-4.5 (ZDR Bedrock) reste
 # écarté : over-strict ; glm-5.2 (ZDR AtlasCloud) : verdicts incohérents.
-# Surchargeable au run (--judge-model / OPENROUTER_JUDGE_MODEL).
-DEFAULT_JUDGE_PROVIDER = "openrouter"
+# Surchargeable au run (--judge-provider / --judge-model). Défaut SOUVERAIN :
+# scaleway/qwen3 — l'incident du run #189 (17/08/2026) a montré qu'un launcher
+# omettant les flags produisait un run jugé grok-4.5 single-shot, non
+# comparable aux baselines officielles (+5 pts de biais mesuré à réponses
+# identiques). OpenRouter reste disponible explicitement via --judge-provider.
+DEFAULT_JUDGE_PROVIDER = "scaleway"
 DEFAULT_JUDGE_MODEL = "x-ai/grok-4.5"
 DEFAULT_JUDGE_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_SCALEWAY_JUDGE_MODEL = "qwen3-235b-a22b-instruct-2507"

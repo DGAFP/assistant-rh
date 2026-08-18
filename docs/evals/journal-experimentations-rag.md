@@ -579,7 +579,7 @@ apports complémentaires.
 
 ---
 
-## Re-baseline panel curé + providers Scaleway (18/08, lancement)
+## Re-baseline panel curé + providers Scaleway (18/08 — ANNULÉ, malentendu de périmètre)
 
 **Objet** : établir la nouvelle référence après la curation du 18/08 (98
 questions, 4 golds réécrits), en testant au passage le service des mêmes
@@ -604,7 +604,7 @@ Label : `rebaseline_scaleway_curated_20260818`.
 
 ---
 
-## Tournoi de modèles générateur+sélecteur (18/08, chaîné après le run #193)
+## Tournoi de modèles générateur+sélecteur (18/08 — ANNULÉ avant lancement)
 
 **Objet** : mesurer des remplaçants de `gpt-oss-120b` sur le couple
 générateur+sélecteur (config champion v2, panel curé 98 Q), contre la
@@ -625,5 +625,27 @@ Labels : `ab_gen_<modele>_curated_20260818`. Comparaison informative
 tarifs candidats absents de la table de prix (champs coût à null — à
 compléter). Lecture attendue : pass global, flips par corpus vs #193,
 latences sélecteur/générateur.
+
+**Statut** : consigné avant lancement ; résultats à compléter.
+
+
+> **Note d'annulation (18/08)** : les deux protocoles ci-dessus changeaient les
+> modèles du pipeline RAG (générateur/sélecteur), alors que la demande portait
+> sur le **juge de l'eval** (défaut openrouter/grok → scaleway). Le run #193 a
+> été arrêté après ~2 items (statut `cancelled` en base). Les modèles du RAG
+> restent ceux d'Albert. Correctif appliqué : `DEFAULT_JUDGE_PROVIDER =
+> "scaleway"` dans `eval.py` — un launcher sans flags juge reste désormais
+> dans le protocole souverain (les overrides `--judge-provider` subsistent).
+
+---
+
+## Re-baseline panel curé, config live (18/08, lancement)
+
+**Objet** : nouvelle référence après la curation du 18/08 (98 questions, 4
+golds réécrits), **config live inchangée** (générateur/sélecteur Albert
+`openweight-large`, selector v2 champion). Juge scaleway qwen3 maj-3
+(désormais le défaut du code). Comparaison informative au run #180 (agrégats
+non comparables — panel/golds modifiés) ; lecture des flips sur les 92
+questions inchangées. Label : `rebaseline_curated_20260818`.
 
 **Statut** : consigné avant lancement ; résultats à compléter.
