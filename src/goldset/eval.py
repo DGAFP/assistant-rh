@@ -1621,6 +1621,14 @@ DEFAULT_JUDGE_RUBRIC = JudgeRubric(
 def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any], rubric: JudgeRubric = DEFAULT_JUDGE_RUBRIC) -> dict[str, Any]:
     dimensions_raw = parsed.get("dimensions")
     dimensions = dimensions_raw if isinstance(dimensions_raw, dict) else {}
+    if not dimensions:
+        # Repli tolérant : certains modèles (banc des juges du 18/08 —
+        # deepseek-v4-flash) rendent les dimensions À PLAT au lieu de les
+        # imbriquer sous "dimensions". Sans ce repli, toutes les dimensions
+        # valent 0 et le verdict est un quality_gate_failed artefactuel.
+        flat = {dim: parsed.get(dim) for dim in rubric.dimension_weights if parsed.get(dim) is not None}
+        if flat:
+            dimensions = flat
     normalized_dimensions = {dim: _dimension_score(dimensions, dim) for dim in rubric.dimension_weights}
     weighted_score = sum(normalized_dimensions[dim] * weight for dim, weight in rubric.dimension_weights.items())
     raw_model_score = _safe_float(parsed.get("score"))
