@@ -300,17 +300,33 @@ def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:
     assert "embedding_source:" in workflow
     assert "embedding_only_column:" in workflow
     assert "- matte" in embedding_source_block
+    assert "- mi" in embedding_source_block
+    assert "- masa" in embedding_source_block
+    assert "- mso" in embedding_source_block
+    assert "pdf_sources_ministry: ${{ steps.plan.outputs.pdf_sources_ministry }}" in workflow
     assert "RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ingestion || false }}" in workflow
     assert "WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}" in workflow
     assert (
         "EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' "
-        "&& (inputs.source == 'matte' && 'matte' || inputs.embedding_source) || 'all' }}"
+        "&& (inputs.source == 'matte' && 'matte' || inputs.source == 'mi' && 'mi' || inputs.source == 'masa' && 'masa' "
+        "|| inputs.source == 'mso' && 'mso' || inputs.embedding_source) || 'all' }}"
     ) in workflow
     assert "EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}" in workflow
     assert '--run-ingestion "${RUN_INGESTION}"' in start_step
     assert '--wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}"' in start_step
+    assert '--pdf-sources-ministry "${{ needs.plan.outputs.pdf_sources_ministry }}"' in start_step
     assert '--embedding-source "${EMBEDDING_SOURCE}"' in start_step
     assert '--embedding-only-column "${EMBEDDING_ONLY_COLUMN}"' in start_step
+
+
+def test_promote_prod_provides_pdf_ministry_credentials() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-promote-prod.yml").read_text(encoding="utf-8")
+
+    assert "SCW_BUCKET_SOURCES_PDF:" in workflow
+    assert "GRIST_API_BASE_URL: ${{ vars.GRIST_API_BASE_URL }}" in workflow
+    assert "GRIST_API_KEY: ${{ secrets.GRIST_API_KEY }}" in workflow
+    assert "GRIST_DOC_ID: ${{ vars.GRIST_DOC_ID }}" in workflow
+    assert "GRIST_TABLE_ID: ${{ vars.GRIST_TABLE_ID }}" in workflow
 
 
 def test_job_starting_workflows_provide_albert_credentials() -> None:

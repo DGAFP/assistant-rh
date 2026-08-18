@@ -1687,3 +1687,12 @@ def test_aggregate_items_averages_stage_metrics() -> None:
 
     pool = aggregate["stage_metrics"]["initial"]["pool"]
     assert pool == {"n": 2, "hit_rate_avg": 0.5, "doc_recall_avg": 0.5}
+
+
+def test_secret_backed_rag_eval_does_not_run_on_pull_request_heads() -> None:
+    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/rag-quality-eval.yml").read_text(encoding="utf-8")
+    triggers = workflow.split("permissions:", 1)[0]
+
+    assert "\n  push:" in triggers
+    assert "\n  pull_request:" not in triggers
+    assert "github.event.pull_request" not in workflow
