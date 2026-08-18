@@ -576,3 +576,28 @@ la place d'un article juridique lexicalement proche mais hors sujet).
 sélecteur conserve L621-10, L621-11 et la section MATTE « Modalités de prise en
 compte de la journée de solidarité » ; la réponse finale utilise les trois
 apports complémentaires.
+
+---
+
+## Re-baseline panel curé + providers Scaleway (18/08, lancement)
+
+**Objet** : établir la nouvelle référence après la curation du 18/08 (98
+questions, 4 golds réécrits), en testant au passage le service des mêmes
+modèles par **Scaleway** au lieu d'Albert : générateur et sélecteur
+`gpt-oss-120b` (mêmes poids que `openweight-large`), juge souverain
+inchangé. Code : **champion v2** (dev + overrides de provider), PAS la
+branche v4 — c'est la baseline du pipeline en production.
+
+**Candidat** : branche `feat/eval-provider-overrides` @ `a84a25f` (dev +
+overrides `--selector-provider/--generator-model/--generator-provider` +
+double lecture `juge_borderline`).
+
+**Protocole** : 98 questions `baseline_v1` (q202 retirée), scope
+`per-question`, RAGAS sauté, juge Scaleway qwen3 maj-3 explicite.
+Comparaison **informative** au run #180 (pas de gate : agrégats non
+comparables — panel et golds modifiés, provider changé). Deux lectures
+attendues : (a) niveau global de la nouvelle baseline ; (b) sur les 92
+questions inchangées, flips vs #180 pour isoler l'effet provider du bruit.
+Label : `rebaseline_scaleway_curated_20260818`.
+
+**Statut** : consigné avant lancement ; résultats à compléter.
