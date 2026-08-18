@@ -601,3 +601,29 @@ questions inchangées, flips vs #180 pour isoler l'effet provider du bruit.
 Label : `rebaseline_scaleway_curated_20260818`.
 
 **Statut** : consigné avant lancement ; résultats à compléter.
+
+---
+
+## Tournoi de modèles générateur+sélecteur (18/08, chaîné après le run #193)
+
+**Objet** : mesurer des remplaçants de `gpt-oss-120b` sur le couple
+générateur+sélecteur (config champion v2, panel curé 98 Q), contre la
+re-baseline #193 (`rebaseline_scaleway_curated_20260818`), à juge constant
+(scaleway qwen3 maj-3) et retrieval constant.
+
+**Candidats** (catalogue Scaleway, un run chacun, séquentiel) :
+
+1. `deepseek-v4-flash-0731` — tier rapide/économique, candidat latence ;
+2. `qwen3.5-397b-a17b` — plus grand modèle du catalogue ; ⚠ même famille que
+   le juge (biais de famille possible, à lire avec la double lecture
+   borderline et l'audit de flips) ;
+3. `mistral-medium-3.5-128b` — spécialiste français, successeur du
+   mistral-medium testé au run 59.
+
+Labels : `ab_gen_<modele>_curated_20260818`. Comparaison informative
+`--baseline-run-id 193`, pas de gate mécanique. Coûts juge ~1,6 €/run ;
+tarifs candidats absents de la table de prix (champs coût à null — à
+compléter). Lecture attendue : pass global, flips par corpus vs #193,
+latences sélecteur/générateur.
+
+**Statut** : consigné avant lancement ; résultats à compléter.
