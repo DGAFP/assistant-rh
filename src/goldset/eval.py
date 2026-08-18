@@ -1621,6 +1621,9 @@ DEFAULT_JUDGE_RUBRIC = JudgeRubric(
 def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any], rubric: JudgeRubric = DEFAULT_JUDGE_RUBRIC) -> dict[str, Any]:
     dimensions_raw = parsed.get("dimensions")
     dimensions = dimensions_raw if isinstance(dimensions_raw, dict) else {}
+    if os.getenv("JUDGE_DEBUG_PARSED"):
+        import json as _json
+        print("JUDGE_DEBUG parsed:", _json.dumps(parsed, ensure_ascii=False, default=str)[:600], flush=True)
     if not dimensions:
         # Repli tolérant : certains modèles (banc des juges du 18/08 —
         # deepseek-v4-flash) rendent les dimensions À PLAT au lieu de les
@@ -1807,6 +1810,16 @@ def judge_answer(
         usage_captured = usage.record(getattr(response, "usage", None))
         content = response.choices[0].message.content or "{}"
         parsed = _extract_json_object(content)
+        if not ({"score", "dimensions"} & set(parsed)):
+            # Certains modèles reasoning (banc du 18/08 : deepseek-v4-flash)
+            # rendent un objet vide/minimal sous response_format=json_object
+            # (décodage contraint vs raisonnement). Un retry SANS contrainte
+            # récupère le verdict complet ; le parse tolérant fait le reste.
+            create_kwargs.pop("response_format", None)
+            response = client.chat.completions.create(**create_kwargs)
+            usage_captured = usage.record(getattr(response, "usage", None)) or usage_captured
+            content = response.choices[0].message.content or "{}"
+            parsed = _extract_json_object(content)
         parsed["status"] = "completed"
         calibrated = calibrate_judge_result(parsed, deterministic_metrics)
         calibrated["usage"] = usage.as_dict(model, provider, capture_complete=usage_captured)
