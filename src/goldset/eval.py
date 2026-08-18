@@ -620,9 +620,10 @@ def build_baseline_comparison(
     # gate) : borne l'effet réel quand le delta complet est dans la bande de
     # bruit. Le taux baseline est recalculé depuis ses items pour couvrir les
     # runs antérieurs à cette clé d'agrégat.
+    # Row factory agnostique (la connexion du run est en dict_row).
     excluded = [
-        r[0]
-        for r in conn.execute(
+        row["id"] if isinstance(row, dict) else row[0]
+        for row in conn.execute(
             "SELECT id FROM goldset_questions_v2 WHERE %s = ANY(tags)", (BORDERLINE_TAG,)
         ).fetchall()
     ]
@@ -630,13 +631,13 @@ def build_baseline_comparison(
     if excluded and baseline_run_id is not None:
         row = conn.execute(
             """SELECT count(*) FILTER (WHERE judge_result->>'pass' = 'true')::float
-                      / NULLIF(count(*) FILTER (WHERE judge_result->>'status' = 'completed'), 0)
+                      / NULLIF(count(*) FILTER (WHERE judge_result->>'status' = 'completed'), 0) AS rate
                FROM rag_quality_eval_items
                WHERE run_id = %s AND NOT (question_id = ANY(%s))
                  AND judge_result->>'status' = 'completed'""",
             (baseline_run_id, excluded),
         ).fetchone()
-        baseline_excl = row[0] if row else None
+        baseline_excl = (row.get("rate") if isinstance(row, dict) else row[0]) if row else None
         candidate_excl = candidate_aggregate.get("judge_pass_rate_excl_borderline")
         comparison["judge_borderline"] = {
             "excluded_question_ids": sorted(excluded),
