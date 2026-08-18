@@ -204,6 +204,8 @@ class SectionAtomicGoldBuilder:
 
             section_id = str(section.get("section_id") or "")
             section_path = str(section.get("heading_path") or section.get("heading") or "").strip()
+            # SHA-1 is part of persisted deterministic IDs; it does not protect sensitive data.
+            # codeql[py/weak-sensitive-data-hashing]
             qa_id = hashlib.sha1(f"section:{section_id}".encode("utf-8")).hexdigest()
             texts = split_section_markdown(
                 section_markdown,

@@ -58,6 +58,8 @@ class RagDbWriter:
         if max_length <= 8:
             return value[:max_length]
 
+        # Preserve legacy deterministic suffixes used by persisted identifiers; this is not security hashing.
+        # codeql[py/weak-sensitive-data-hashing]
         digest = hashlib.sha1(value.encode("utf-8")).hexdigest()[:8]
         head = value[: max_length - len(digest) - 1].rstrip("_- ")
         return f"{head}_{digest}" if head else digest[:max_length]
