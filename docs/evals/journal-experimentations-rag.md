@@ -649,3 +649,25 @@ non comparables — panel/golds modifiés) ; lecture des flips sur les 92
 questions inchangées. Label : `rebaseline_curated_20260818`.
 
 **Statut** : consigné avant lancement ; résultats à compléter.
+
+---
+
+## A/B modèles Albert (18/08, chaîné après la re-baseline live)
+
+**Objet** : tester des remplaçants de `openweight-large` (gpt-oss-120b) sur le
+couple générateur+sélecteur en restant sur **Albert** (souverain,
+prod-compatible), contre la re-baseline `rebaseline_curated_20260818`, juge
+scaleway qwen3 maj-3 constant, retrieval constant, panel curé 98 Q.
+
+Candidats (catalogue Albert vérifié le 18/08) :
+
+1. `deepseek-v4-flash` — tier rapide/économique, candidat latence selector ;
+2. `mistral-medium-3-5-128b` — successeur du mistral-medium-2508 (testé run
+   59), spécialiste français.
+
+Labels : `ab_albert_<modele>_curated_20260818`. Comparaison informative à la
+re-baseline (id résolu au lancement), pas de gate mécanique. Lecture : pass
+global + par corpus, flips, latences sélecteur/générateur, double lecture
+borderline.
+
+**Statut** : consigné avant lancement ; résultats à compléter.
