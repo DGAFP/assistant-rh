@@ -55,29 +55,37 @@ régimes voisins : la sur-inclusion dilue ou mélange). Un agrégat plat peut
 masquer 68/99 questions qui bougent en sens opposés : **la lecture par corpus
 est obligatoire pour tout gate selector.**
 
-## Funnel retrieval par étage (rétro-calcul sur les traces, hit %)
+## Funnel retrieval par étage (métriques natives du run #191, hit %)
 
-| Étape (run #189, dark) | manual | MATTE | SP | synthetic |
+| Étape | manual | MATTE | SP | synthetic |
 |---|---:|---:|---:|---:|
-| pool avant rerank | 45 | 92 | 100 | 100 |
-| sections top-20 | 33 | 92 | 93 | 90 |
-| sections top-12 (entrée selector) | 29 | 83 | 93 | 80 |
-| gardées par le selector | 20 | 83 | 86 | 70 |
+| pool avant rerank | 62 | 92 | 100 | 100 |
+| sections top-20 | 42 | 92 | 93 | 90 |
+| sections top-12 (entrée selector) | 38 | 83 | 93 | 80 |
+| gardées par le selector | 31 | 75 | 86 | 60 |
 | **servies (avec doc entier + retries)** | **61** | **92** | **100** | **91** |
+
+> Correctif du 18/08 : une première version de ce tableau (rétro-calcul sur
+> les traces du #189) donnait manuel à 45 % au pool — sous-compte causé par
+> des `gold_doc_ids` périmés (UUID fantômes d'une ancienne ingestion du
+> décret 86-83, corrigés depuis, cf. 04). Les chiffres ci-dessus viennent des
+> métriques d'étage natives (PR #367), calculées avec la résolution runtime.
 
 Enseignements :
 
-1. **Le goulot dominant du corpus manuel est le retrieval** (45 % de hit au
-   pool en première tentative) — aucune politique de sélection ne rattrape un
-   gold absent.
-2. **La coupe 20→12 a un coût réel** (−4 à −10 pts d'entrée selon corpus ;
+1. **La falaise dominante du corpus manuel est pool→top-20 (−20 pts)** : le
+   gold est retrouvé en chunks mais ses sections ne survivent pas au rerank
+   d'agrégation. Le pool lui-même (62 %) reste le second chantier ; « servi »
+   ≈ « pool » — les mécanismes de secours récupèrent presque tout ce qui a
+   été retrouvé.
+2. **La coupe 20→12 a un coût réel** (−4 pts manuel, −9 MATTE, −10 synthetic ;
    perte q174 : gold au rang 13–20).
 3. **La rétention du gold par la sélection v4 est MEILLEURE que v2** :
    étape « gardées », MATTE 83 % contre 58 %, SP 86 % contre 71 %, MSO 75 %
    contre 50 %. Le problème « le selector jette le gold » (juillet) est
    résolu ; le problème restant est ce qu'il garde **en plus**.
 4. Les mécanismes de secours (document entier, retries, recherche légale)
-   récupèrent beaucoup de golds après le selector (manuel : 20 % → 61 %).
+   récupèrent beaucoup de golds après le selector (manuel : 31 % → 61 %).
 
 Depuis la PR #367 (mergée sur dev, native au run #191), ces métriques sont
 calculées par le run lui-même (`deterministic_metrics.stages` par item,
@@ -87,7 +95,8 @@ calculées par le run lui-même (`deterministic_metrics.stages` par item,
 
 | Cause | Questions | Enseignement |
 |---|---|---|
-| Trou de retrieval + flip de juge | q30, q202, q203, q213 | gold jamais dans le pool ; #180 « passait » sur un contenu non-gold |
+| Trou de retrieval + flip de juge | q30, q213 | gold ingéré mais jamais retrouvé ; #180 « passait » sur un contenu non-gold |
+| Trou d'INGESTION (audit 18/08) | q202, q203 | articles 3/4 du décret 86-83 absents du corpus — issue #369 |
 | Coupe top-12 | q174 | gold au rang 13–20 |
 | Sélection a écarté le gold | q206 | seul vrai cas ; corrigé en v4.1 |
 | Gold servi, dilution/mélange de régimes | q205, q211 | cible de l'arbitrage de régimes (04) |

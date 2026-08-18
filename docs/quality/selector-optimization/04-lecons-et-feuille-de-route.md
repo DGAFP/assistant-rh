@@ -66,10 +66,18 @@ Ordre choisi par levier/coût, décidé après le run #191 :
    production l'instrumentation, et fait des requêtes réelles un jeu de
    calibration gratuit (distributions de couverture, fréquence des splits de
    régime, taux `insuffisante` sur vraies questions).
-3. **Attaquer le retrieval du corpus manuel** (pool hit 45 %) — le goulot
-   dominant démontré. Leviers au journal : architecture 3-pipelines, input64
-   revisité, retrieval conscient de la supersession. Progrès directement
-   lisible via les métriques d'étage natives.
+3. **Attaquer la falaise pool→top-20 du corpus manuel** (62 % → 42 % de hit :
+   le gold retrouvé en chunks ne survit pas au rerank d'agrégation de
+   sections), puis le pool lui-même. Leviers au journal : architecture
+   3-pipelines, input64 revisité, retrieval conscient de la supersession.
+   Progrès directement lisible via les métriques d'étage natives.
+
+   *Exécuté le 18/08 (audit goldset, étapes 1–3 de la curation)* : 16
+   questions purgées de leurs UUID fantômes (`gold_doc_ids` re-résolus,
+   sauvegarde conservée) ; trou d'ingestion décret 86-83 art. 3/3-1/4
+   identifié → issue #369 (q196/q202/q203 étaient des faux « échecs
+   retrieval ») ; 8 questions taguées `juge_borderline` + double lecture
+   appariée avec/sans dans l'eval (PR #370).
 4. **Une itération d'arbitrage de régimes, avec critère d'abandon.** Design :
    plusieurs `directe` de régimes incompatibles ⇒ split explicite (les servir
    comme régimes concurrents identifiés, pas silencieusement côte à côte),
