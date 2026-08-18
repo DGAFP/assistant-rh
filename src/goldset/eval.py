@@ -603,7 +603,7 @@ def build_baseline_comparison(
         tags=tags,
         eval_scope=eval_scope,
     )
-    return compare_with_baseline(
+    comparison = compare_with_baseline(
         candidate_aggregate=candidate_aggregate,
         baseline_run=baseline_run,
         goldset_name=goldset_name,
@@ -612,6 +612,37 @@ def build_baseline_comparison(
         max_judge_pass_rate_drop=args.max_judge_pass_rate_drop,
         max_doc_recall_drop=args.max_doc_recall_drop,
     )
+    # Double lecture hors questions au juge instable (informative, pas un
+    # gate) : borne l'effet réel quand le delta complet est dans la bande de
+    # bruit. Le taux baseline est recalculé depuis ses items pour couvrir les
+    # runs antérieurs à cette clé d'agrégat.
+    excluded = [
+        r[0]
+        for r in conn.execute(
+            "SELECT id FROM goldset_questions_v2 WHERE %s = ANY(tags)", (BORDERLINE_TAG,)
+        ).fetchall()
+    ]
+    baseline_run_id = baseline_run.get("id")
+    if excluded and baseline_run_id is not None:
+        row = conn.execute(
+            """SELECT count(*) FILTER (WHERE judge_result->>'pass' = 'true')::float
+                      / NULLIF(count(*) FILTER (WHERE judge_result->>'status' = 'completed'), 0)
+               FROM rag_quality_eval_items
+               WHERE run_id = %s AND NOT (question_id = ANY(%s))
+                 AND judge_result->>'status' = 'completed'""",
+            (baseline_run_id, excluded),
+        ).fetchone()
+        baseline_excl = row[0] if row else None
+        candidate_excl = candidate_aggregate.get("judge_pass_rate_excl_borderline")
+        comparison["judge_borderline"] = {
+            "excluded_question_ids": sorted(excluded),
+            "candidate_pass_rate_excl": candidate_excl,
+            "baseline_pass_rate_excl": baseline_excl,
+            "delta_excl": (candidate_excl - baseline_excl)
+            if candidate_excl is not None and baseline_excl is not None
+            else None,
+        }
+    return comparison
 
 
 def baseline_gate_failed(args: argparse.Namespace, comparison: dict[str, Any]) -> bool:
@@ -1184,6 +1215,30 @@ def _judge_dimension_average(items: list[EvalItem], key: str) -> float | None:
     if not values:
         return None
     return sum(values) / len(values)
+
+
+BORDERLINE_TAG = "juge_borderline"
+
+
+def borderline_question_ids(questions: list[GoldsetQuestion]) -> list[int]:
+    """Questions marquées instables au juge (curation du 18/08/2026).
+
+    Le tag est posé sur les questions dont le verdict a flippé entre runs à
+    réponse quasi identique (bruit juge/générateur ~±2-3 flips par run, du
+    même ordre que les effets recherchés). La double lecture avec/sans ces
+    questions borne l'effet réel d'un changement ; le gate officiel reste sur
+    le taux complet."""
+    return sorted(q.id for q in questions if BORDERLINE_TAG in (q.tags or []))
+
+
+def judge_pass_rate_excluding(items: list[EvalItem], excluded_ids: set[int]) -> float | None:
+    judged = [
+        item for item in items
+        if item.judge_result.get("status") == "completed" and item.question_id not in excluded_ids
+    ]
+    if not judged:
+        return None
+    return sum(1 for item in judged if item.judge_result.get("pass") is True) / len(judged)
 
 
 def aggregate_items(items: list[EvalItem]) -> dict[str, Any]:
@@ -2462,6 +2517,10 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 "dedupe_scope": args.dedupe_scope,
                 "eval_scope": eval_scope,
                 "judge_failed": sum(1 for item in items if item.judge_result.get("status") == "failed"),
+                "judge_borderline_ids": borderline_question_ids(questions),
+                "judge_pass_rate_excl_borderline": judge_pass_rate_excluding(
+                    items, set(borderline_question_ids(questions))
+                ),
                 "ragas_failed": sum(1 for item in items if item.ragas_metrics.get("status") == "failed"),
             }
         )
