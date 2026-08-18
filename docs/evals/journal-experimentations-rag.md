@@ -703,3 +703,38 @@ humain » manque au banc ; à combler pour le choix final si deux candidats
 sont proches.
 
 **Statut** : consigné avant lancement ; résultats à compléter.
+
+**Résultats du banc (18/08, substrat = 98 réponses du run #195, maj-3 partout)** :
+
+| Juge (Scaleway) | Accord vs réf | Taux de pass | Splits 2-1 | Splits borderline | s/verdict | €/panel | Échecs |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **mistral-medium-3.5-128b** | **86,7 %** | 68,4 % | 1,0 % | 0 % | 20,7 | 2,90 | 0 |
+| **mistral-small-3.2-24b** | 83,7 % | 77,6 % | 1,0 % | 0 % | **14,7** | **0,24** | 0 |
+| qwen3.5-397b-a17b | 82,7 % | 76,5 % | 5,1 % | 25 % | 240 | 5,30 | 0 |
+| qwen3.6-35b-a3b | 78,6 % | 86,7 % | 7,1 % | 0 % | 53 | 1,32 | 0 |
+| gemma-4-26b | 76,5 % | 82,7 % | 16,3 % | 12,5 % | 70 | 0,71 | 0 |
+| deepseek-v4-flash-0731 | 73,1 % | 80,6 % | 7,5 % | 12,5 % | 333 | 1,90 | 5 |
+| glm-5.2 | 71,0 % | 59,1 % | 9,7 % | 14,3 % | 255 | 7,48 | 5 |
+| *qwen3-235b (réf. actuelle)* | — | 67,3 % | 1,0 % | — | lent (endpoint chargé) | 1,53 | 0 |
+
+Deux passes invalidées puis corrigées au passage (dimensions à plat `2a2072b`,
+verdict minimal sous response_format `d370781`) — le harnais est désormais
+robuste aux modèles non conformes.
+
+**Lecture** : les deux Mistral dominent sans ambiguïté — consistance parfaite
+(1 % de splits, 0 sur borderline), latence 10-20× meilleure que la référence.
+`mistral-medium-3.5` a le meilleur accord ET un calibrage de sévérité
+quasi identique à la référence (68,4 % vs 67,3 % de pass) ; `mistral-small`
+est 12× moins cher pour 3 pts d'accord de moins et un léger laxisme (+10).
+Les modèles à long raisonnement (deepseek, glm, qwen3.5) sont pénalisés sur
+les trois axes à la fois. deepseek-v4-flash, candidat initial, est écarté
+(accord 73 %, 333 s/verdict, 5 échecs).
+
+**Proposition de nouveau harnais** (à valider par arbitrage humain) :
+- juge souverain des gates : **mistral-medium-3.5 maj-3** (2,90 €/run,
+  runs d'eval ~2 h → ~40 min) ;
+- screening intermédiaire : **mistral-small single-shot** (~0,08 €/panel) ;
+- étape de validation AVANT bascule : audit humain des ~13 désaccords
+  mistral-medium ↔ qwen (l'accord n'est pas une vérité terrain — les
+  désaccords disent qui, du candidat ou du sortant, juge le mieux) ;
+  CSV d'arbitrage à générer.
