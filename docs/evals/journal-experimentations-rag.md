@@ -652,7 +652,7 @@ questions inchangées. Label : `rebaseline_curated_20260818`.
 
 ---
 
-## A/B modèles Albert (18/08, chaîné après la re-baseline live)
+## A/B modèles Albert (18/08 — ANNULÉ avant lancement, 2e malentendu de périmètre)
 
 **Objet** : tester des remplaçants de `openweight-large` (gpt-oss-120b) sur le
 couple générateur+sélecteur en restant sur **Albert** (souverain,
@@ -669,5 +669,37 @@ Labels : `ab_albert_<modele>_curated_20260818`. Comparaison informative à la
 re-baseline (id résolu au lancement), pas de gate mécanique. Lecture : pass
 global + par corpus, flips, latences sélecteur/générateur, double lecture
 borderline.
+
+**Statut** : consigné avant lancement ; résultats à compléter.
+
+
+> **Note (18/08)** : second recadrage — l'objet du test est le **juge de
+> l'eval** (le harnais), pas les modèles du pipeline. Chaîne A/B modèles tuée
+> avant tout lancement ; le run #195 (re-baseline config live) est préservé et
+> sert de substrat au banc d'essai des juges.
+
+---
+
+## Banc d'essai des juges (18/08, lancé à la fin du run #195)
+
+**Objet** : choisir le nouveau harnais d'eval. Pipeline intouché (config live
+Albert). Les 98 réponses du run #195 sont rejugées par chaque candidat en
+vote majoritaire à 3, et comparées au verdict souverain actuel (scaleway
+qwen3-235b maj-3, verdicts du run #195 lui-même).
+
+**Candidats** (Scaleway) : `deepseek-v4-flash-0731` · `glm-5.2` ·
+`qwen3.5-397b-a17b` · `mistral-medium-3.5-128b`.
+
+**Métriques par candidat** : taux d'accord avec le juge actuel (+ kappa) ;
+auto-consistance (part de votes partagés 2-1) ; comportement sur les 8
+questions `juge_borderline` (vérité de facto des audits : verdicts stables
+attendus) ; latence moyenne par verdict ; tokens/coût. Résultats stockés en
+JSON (scratchpad VM) + synthèse ici — PAS dans `rag_quality_eval_runs`
+(expériences de juge, pas runs d'eval).
+
+**Lacune notée** : `calibrate_judge.py` attend des labels humains
+(`data/eval/judge_calibration/labels.csv`) jamais constitués — l'axe « accord
+humain » manque au banc ; à combler pour le choix final si deux candidats
+sont proches.
 
 **Statut** : consigné avant lancement ; résultats à compléter.
