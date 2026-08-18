@@ -74,9 +74,12 @@ Ordre choisi par levier/coût, décidé après le run #191 :
 
    *Exécuté le 18/08 (audit goldset, étapes 1–3 de la curation)* : 16
    questions purgées de leurs UUID fantômes (`gold_doc_ids` re-résolus,
-   sauvegarde conservée) ; trou d'ingestion décret 86-83 art. 3/3-1/4
-   identifié → issue #369 (q196/q202/q203 étaient des faux « échecs
-   retrieval ») ; 8 questions taguées `juge_borderline` + double lecture
+   sauvegarde conservée) ; q196/q202/q203 requalifiées :
+   leurs golds citent des articles du décret 86-83 abrogés par la
+   codification CGFP (ingestion complète : 92/92 articles en vigueur du
+   manifeste) → issue #369, re-annotation vers les successeurs CGFP à
+   valider ; leçon « controlling authority » appliquée au goldset lui-même
+   (contrôle périodique goldset ↔ manifeste en-vigueur à outiller) ; 8 questions taguées `juge_borderline` + double lecture
    appariée avec/sans dans l'eval (PR #370).
 4. **Une itération d'arbitrage de régimes, avec critère d'abandon.** Design :
    plusieurs `directe` de régimes incompatibles ⇒ split explicite (les servir

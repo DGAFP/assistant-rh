@@ -96,7 +96,7 @@ calculées par le run lui-même (`deterministic_metrics.stages` par item,
 | Cause | Questions | Enseignement |
 |---|---|---|
 | Trou de retrieval + flip de juge | q30, q213 | gold ingéré mais jamais retrouvé ; #180 « passait » sur un contenu non-gold |
-| Trou d'INGESTION (audit 18/08) | q202, q203 | articles 3/4 du décret 86-83 absents du corpus — issue #369 |
+| Golds obsolètes (audit 18/08) | q202, q203 | articles 3/4 du décret 86-83 abrogés (codification CGFP) : l'ingestion suit son contrat en-vigueur (92/92), les golds citent des textes morts — issue #369 |
 | Coupe top-12 | q174 | gold au rang 13–20 |
 | Sélection a écarté le gold | q206 | seul vrai cas ; corrigé en v4.1 |
 | Gold servi, dilution/mélange de régimes | q205, q211 | cible de l'arbitrage de régimes (04) |
