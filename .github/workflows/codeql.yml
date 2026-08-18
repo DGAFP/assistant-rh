@@ -29,9 +29,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language:
-          - python
-          - javascript-typescript
+        include:
+          - language: python
+            suppression_pack: codeql/python-queries:AlertSuppression.ql
+          - language: javascript-typescript
+            suppression_pack: codeql/javascript-queries:AlertSuppression.ql
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,6 +43,7 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: none
+          packs: ${{ matrix.suppression_pack }}
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v4
