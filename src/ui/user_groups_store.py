@@ -19,7 +19,8 @@ Seed passwords:
   - the admin group is seeded from ``ADMIN_PASSWORD``;
   - every other group is seeded from the shared ``GROUP_DEFAULT_PASSWORD``.
 A group whose seed password env var is empty is created with no password
-(``password_hash IS NULL``) and cannot be logged into until an admin sets one.
+(``password_hash IS NULL``) and cannot be logged into until an admin sets one
+or the bootstrap secret becomes available on a later initialization.
 """
 
 from __future__ import annotations
@@ -44,7 +45,7 @@ from assistant_rh_rag_pipeline.ministry_scope import (
 )
 from psycopg.types.json import Jsonb
 
-from src.ui.groups import ADMIN_GROUP, GROUPS
+from src.ui.groups import ADMIN_GROUP, DEFAULT_GROUP, GROUPS
 
 logger = logging.getLogger(__name__)
 
@@ -138,8 +139,9 @@ CREATE TABLE IF NOT EXISTS user_groups (
 def init_user_groups_table() -> bool:
     """Create the ``user_groups`` table and seed missing groups.
 
-    Idempotent: existing rows are never overwritten (``ON CONFLICT DO NOTHING``),
-    so an admin's later password/label changes survive re-seeding.
+    Idempotent: existing metadata and non-empty passwords are never overwritten,
+    so an admin's later changes survive re-seeding. Missing seed passwords are
+    backfilled when their bootstrap secret becomes available.
     """
     conn = _conn()
     if not conn:
@@ -153,13 +155,29 @@ def init_user_groups_table() -> bool:
             cur.execute("ALTER TABLE user_groups ADD COLUMN IF NOT EXISTS visible BOOLEAN NOT NULL DEFAULT TRUE")
             cur.execute("ALTER TABLE user_groups ADD COLUMN IF NOT EXISTS allowed_ministries JSONB NOT NULL DEFAULT '[\"matte\"]'::jsonb")
             cur.execute("ALTER TABLE user_groups ADD COLUMN IF NOT EXISTS default_ministry TEXT NOT NULL DEFAULT 'matte'")
+            # Anonymous sessions use the default group before authentication.
+            # Repair any value created before this invariant was enforced.
+            cur.execute(
+                "UPDATE user_groups SET is_admin = FALSE, updated_at = CURRENT_TIMESTAMP WHERE slug = %s AND is_admin IS TRUE",
+                (DEFAULT_GROUP,),
+            )
             # Only seed groups not already present: hashing is expensive
             # (pbkdf2, 200k iters) and ``ON CONFLICT DO NOTHING`` would throw
             # the work away for every already-seeded group on each new session.
-            cur.execute("SELECT slug FROM user_groups")
-            existing = {row[0] for row in cur.fetchall()}
+            cur.execute("SELECT slug, password_hash FROM user_groups")
+            existing = {row[0]: row[1] for row in cur.fetchall()}
             for g in GROUPS:
                 if g.slug in existing:
+                    raw = admin_pwd if g.slug == ADMIN_GROUP else default_pwd
+                    if raw and not existing[g.slug]:
+                        cur.execute(
+                            """
+                            UPDATE user_groups
+                            SET password_hash = %s, updated_at = CURRENT_TIMESTAMP
+                            WHERE slug = %s AND password_hash IS NULL
+                            """,
+                            (hash_password(raw), g.slug),
+                        )
                     continue
                 is_admin = g.slug == ADMIN_GROUP
                 raw = admin_pwd if is_admin else default_pwd
@@ -576,6 +594,8 @@ def update_group(slug: str, **fields: Any) -> tuple[bool, str]:
     updates = {k: v for k, v in fields.items() if k in _EDITABLE_FIELDS}
     if not updates:
         return False, "Aucun champ à mettre à jour."
+    if slug == DEFAULT_GROUP and updates.get("is_admin"):
+        return False, "Le groupe par défaut ne peut pas être administrateur."
     if "label" in updates and not str(updates["label"]).strip():
         return False, "Le libellé est requis."
     if "priority" in updates and int(updates["priority"]) < 0:

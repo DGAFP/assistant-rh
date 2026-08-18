@@ -45,6 +45,7 @@ jobs:
       SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
       COOKIES_PASSWORD: ${{ secrets.COOKIES_PASSWORD }}
       ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      GROUP_DEFAULT_PASSWORD: ${{ secrets.GROUP_DEFAULT_PASSWORD }}
       GRIST_API_KEY: ${{ secrets.GRIST_API_KEY }}
 
       ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
@@ -87,6 +88,7 @@ jobs:
             SCALEWAY_API_KEY
             COOKIES_PASSWORD
             ADMIN_PASSWORD
+            GROUP_DEFAULT_PASSWORD
             GRIST_API_BASE_URL
             GRIST_API_KEY
             GRIST_DOC_ID

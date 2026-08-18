@@ -13,6 +13,10 @@ on:
           - service_public
           - legifrance
           - matte
+          - mi
+          - masa
+          - mso
+          - pdf_sources
           - embeddings
       run_ingestion:
         description: "Ingerer aussi dans la base Scaleway production via les jobs serverless"
@@ -25,7 +29,7 @@ on:
         default: false
         type: boolean
       run_embeddings:
-        description: "Backfill embeddings en plus de la source choisie (implicite si source=embeddings ou matte)"
+        description: "Backfill embeddings en plus de la source choisie (implicite si source=embeddings ou un ministère PDF)"
         required: true
         default: false
         type: boolean
@@ -39,6 +43,9 @@ on:
           - service_public
           - legifrance
           - matte
+          - mi
+          - masa
+          - mso
       embedding_only_column:
         description: "Colonne embeddings cible optionnelle, ex: embedding_bge_scw"
         required: false
@@ -68,6 +75,7 @@ jobs:
       service_public: ${{ steps.plan.outputs.service_public }}
       legifrance: ${{ steps.plan.outputs.legifrance }}
       pdf_sources: ${{ steps.plan.outputs.pdf_sources }}
+      pdf_sources_ministry: ${{ steps.plan.outputs.pdf_sources_ministry }}
       embeddings: ${{ steps.plan.outputs.embeddings }}
       run_embeddings: ${{ steps.plan.outputs.run_embeddings }}
       has_builds: ${{ steps.plan.outputs.has_builds }}
@@ -151,6 +159,7 @@ jobs:
       SCW_BUCKET_BRONZE: assistant-rh-bronze
       SCW_BUCKET_SILVER: assistant-rh-silver
       SCW_BUCKET_GOLD: assistant-rh-gold
+      SCW_BUCKET_SOURCES_PDF: assistant-rh-sources-pdf
       SCW_PREFIX_STAGING: staging
       SCW_PREFIX_PROD: prod
       SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
@@ -160,9 +169,13 @@ jobs:
       SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
       ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
       ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
+      GRIST_API_BASE_URL: ${{ vars.GRIST_API_BASE_URL }}
+      GRIST_API_KEY: ${{ secrets.GRIST_API_KEY }}
+      GRIST_DOC_ID: ${{ vars.GRIST_DOC_ID }}
+      GRIST_TABLE_ID: ${{ vars.GRIST_TABLE_ID }}
       RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ingestion || false }}
       WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}
-      EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && (inputs.source == 'matte' && 'matte' || inputs.embedding_source) || 'all' }}
+      EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && (inputs.source == 'matte' && 'matte' || inputs.source == 'mi' && 'mi' || inputs.source == 'masa' && 'masa' || inputs.source == 'mso' && 'mso' || inputs.embedding_source) || 'all' }}
       EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
 
     steps:
@@ -188,6 +201,7 @@ jobs:
             --service-public "${{ needs.plan.outputs.service_public }}" \
             --legifrance "${{ needs.plan.outputs.legifrance }}" \
             --pdf-sources "${{ needs.plan.outputs.pdf_sources }}" \
+            --pdf-sources-ministry "${{ needs.plan.outputs.pdf_sources_ministry }}" \
             --embeddings "${{ needs.plan.outputs.embeddings }}" \
             --run-ingestion "${RUN_INGESTION}" \
             --wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}" \

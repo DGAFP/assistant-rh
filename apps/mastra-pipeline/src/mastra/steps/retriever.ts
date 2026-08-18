@@ -287,7 +287,7 @@ function normalizeRetrievalConfig(
 	const base: NormalizedRetrievalConfig = {
 		search_mode: "semantic",
 		embedding_model: "albert",
-		initial_top_k: 15,
+		initial_top_k: 30,
 		alpha: 0.5,
 		tables: ["matte", "service_public", "dgafp", "rgrh"],
 		enable_selector_retry: true,

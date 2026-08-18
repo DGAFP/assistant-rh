@@ -135,13 +135,13 @@ The full run answers: is the change safe across the full current goldset?
 
 ## Baseline Versus Candidate
 
-For ordinary PRs, run the head-only staging smoke eval. It is intentionally
-small and should answer only: did this change obviously break the RAG runner or
-quality path?
+After a change is integrated into `dev` or `staging`, the staging smoke eval is
+run from that protected branch. It is intentionally small and should answer
+only: did this change obviously break the RAG runner or quality path? PR head
+code is not executed with staging or production secrets.
 
 Run a full baseline-versus-candidate comparison only when:
 
-- the PR is labelled `rag-quality-full`;
 - the workflow is manually dispatched in `full` mode;
 - a production/release gate is being evaluated.
 

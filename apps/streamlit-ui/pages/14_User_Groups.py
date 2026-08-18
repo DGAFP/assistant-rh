@@ -10,6 +10,7 @@ import streamlit as st
 from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG
 
 from src.ui.admin_auth import require_admin, show_admin_badge
+from src.ui.groups import DEFAULT_GROUP
 from src.ui.user_groups_store import (
     PROTECTED_SLUGS,
     create_group,
@@ -170,7 +171,15 @@ with tab_edit:
                 e_icon = st.text_input("Icône (emoji)", value=current["icon"])
                 e_priority = st.number_input("Priorité", min_value=0, value=int(current["priority"]), step=10)
             with e2:
-                e_is_admin = st.checkbox("Groupe administrateur", value=bool(current["is_admin"]))
+                is_default_group = edit_slug == DEFAULT_GROUP
+                e_is_admin = st.checkbox(
+                    "Groupe administrateur",
+                    value=False if is_default_group else bool(current["is_admin"]),
+                    disabled=is_default_group,
+                    help="Le groupe par défaut représente les sessions anonymes et ne peut pas être administrateur."
+                    if is_default_group
+                    else None,
+                )
                 e_visible = st.checkbox("Visible dans le sélecteur", value=bool(current.get("visible", True)))
                 e_color = st.color_picker("Couleur (badge)", value=current["color"] or "#6b7280")
                 e_chart_color = st.color_picker("Couleur (graphiques)", value=current["chart_color"] or "#888888")

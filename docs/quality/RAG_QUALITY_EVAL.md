@@ -91,12 +91,12 @@ A matching run is defined by:
 
 The GitHub workflow `.github/workflows/rag-quality-eval.yml` is tiered:
 
-- PRs run a head-only smoke eval on staging (`limit=5`, judge enabled, RAGAS
-  skipped). This catches runner/runtime failures and severe quality failures
-  without paying the cost of a full comparison on every PR.
-- PRs labelled `rag-quality-full` and manual `workflow_dispatch` runs in
-  `full` mode run the full goldset and compare the candidate to a stored DB
-  baseline from `rag_quality_eval_runs`.
+- Pushes already integrated into the protected `dev` and `staging` branches run
+  a smoke eval on staging (`limit=5`, judge enabled, RAGAS skipped). Pull-request
+  code is never executed with environment secrets.
+- Manual `workflow_dispatch` runs in `full` mode run the full goldset and compare
+  the selected trusted revision to a stored DB baseline from
+  `rag_quality_eval_runs`.
 - Manual production dispatches force full mode and require a comparable DB
   baseline.
 
