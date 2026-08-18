@@ -29,7 +29,7 @@ from typing import Any
 import psycopg
 from assistant_rh_rag_pipeline import PipelineResult, create_pipeline
 from assistant_rh_rag_pipeline.admin import get_rag_config, runtime_config_to_rag_config
-from assistant_rh_rag_pipeline.config import RAGConfig
+from assistant_rh_rag_pipeline.config import LLMProvider, RAGConfig
 from assistant_rh_rag_pipeline.query_processor import _fold as _fold_text
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
@@ -2096,6 +2096,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override du modèle du sélecteur (ex: mistral-medium-2508) sans toucher à la config runtime partagée.",
     )
     parser.add_argument(
+        "--selector-provider",
+        default="",
+        choices=["", "albert", "scaleway", "mistral"],
+        help="Override du provider du sélecteur (A/B de fournisseur sans muter la config partagée).",
+    )
+    parser.add_argument(
+        "--generator-model",
+        default="",
+        help="Override du modèle du générateur (ex: gpt-oss-120b).",
+    )
+    parser.add_argument(
+        "--generator-provider",
+        default="",
+        choices=["", "albert", "scaleway", "mistral"],
+        help="Override du provider du générateur.",
+    )
+    parser.add_argument(
         "--section-rerank-top-k",
         type=int,
         default=None,
@@ -2224,6 +2241,15 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.selector_model:
         pipeline_config.selector.model = args.selector_model
         config_adjustments.append(f"selector_model={args.selector_model}")
+    if args.selector_provider:
+        pipeline_config.selector.provider = LLMProvider(args.selector_provider)
+        config_adjustments.append(f"selector_provider={args.selector_provider}")
+    if args.generator_model:
+        pipeline_config.generation.model = args.generator_model
+        config_adjustments.append(f"generator_model={args.generator_model}")
+    if args.generator_provider:
+        pipeline_config.generation.provider = LLMProvider(args.generator_provider)
+        config_adjustments.append(f"generator_provider={args.generator_provider}")
     if args.section_rerank_top_k is not None:
         pipeline_config.aggregation.section_rerank_top_k = args.section_rerank_top_k
         config_adjustments.append(f"section_rerank_top_k={args.section_rerank_top_k}")
