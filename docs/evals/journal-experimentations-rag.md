@@ -762,3 +762,20 @@ que la référence, 10× plus rapide, parfaitement consistant. La bascule du
 juge souverain est fondée, sous réserve de l'arbitrage humain final sur les
 divergences (CSV disponible) et d'un re-jugement de référence du run #195
 pour re-seuiller la baseline dans le nouveau harnais.
+
+---
+
+## Re-référencement sous le nouveau harnais (19/08, chaîné)
+
+Suite à la bascule du juge (`2f13872`), deux runs de référence :
+
+1. **Re-jugement officiel du run #195** par mistral-medium-3.5 rubrique v2
+   (`rejudge_of_run_id=195`, maj-3, parallèle) — donne le facteur de
+   conversion ancien↔nouveau juge sur réponses identiques. Label :
+   `rebaseline_curated_rejudge_mistral_20260819`.
+2. **Run frais basé dev** (pipeline champion v2, config live Albert, panel
+   curé 98 Q), jugé nativement par le nouveau juge — c'est l'équivalent du
+   run #180 dans le nouveau harnais et la **baseline vivante** des prochains
+   gates. Label : `baseline_dev_mistral_judge_20260819`.
+
+**Statut** : consigné avant lancement ; résultats à compléter.
