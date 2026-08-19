@@ -326,26 +326,6 @@ class RagDbWriter:
             cur.execute(query, (normalized_short_ids,))
             return int(cur.rowcount or 0)
 
-    def _delete_chunks_by_doc_ids(
-        self,
-        conn: psycopg.Connection,
-        doc_ids: list[str],
-        table: str | None = None,
-    ) -> int:
-        resolved_table = self._require_chunk_table(table)
-        if not doc_ids:
-            return 0
-
-        with conn.cursor() as cur:
-            query = sql.SQL(
-                """
-                DELETE FROM {}.{}
-                WHERE source_document_id = ANY(%s::uuid[])
-                """
-            ).format(sql.Identifier(self.schema), sql.Identifier(resolved_table))
-            cur.execute(query, (doc_ids,))
-            return int(cur.rowcount or 0)
-
     def _canonical_doc_id(self, conn: psycopg.Connection, short_id: str) -> str | None:
         """doc_id réellement en base pour un short_id, dans la transaction courante.
 
@@ -552,20 +532,27 @@ class RagDbWriter:
                 params: list[Any] = [normalized_short_ids, source.strip().lower()]
 
                 cur.execute(
-                    sql.SQL("SELECT doc_id FROM {}.{} WHERE {}").format(
+                    sql.SQL("SELECT doc_id, short_id FROM {}.{} WHERE {}").format(
                         sql.Identifier(self.schema),
                         sql.Identifier("rag_documents"),
                         doc_filter,
                     ),
                     params,
                 )
-                doc_ids = [str(row[0]) for row in cur.fetchall()]
+                matched_documents = cur.fetchall()
+                doc_ids = [str(row[0]) for row in matched_documents]
+                matched_short_ids = [str(row[1]) for row in matched_documents]
 
                 deleted_chunks = 0
                 deleted_sections = 0
                 deleted_documents = 0
                 if doc_ids:
-                    deleted_chunks = self._delete_chunks_by_doc_ids(conn, doc_ids, table=resolved_table)
+                    # Le lien source_document_id n'existe pas dans toutes les
+                    # tables legacy. Le short_id du document, déjà filtré par
+                    # source ci-dessus, reste le contrat commun aux deux
+                    # générations de schéma et évite de laisser des chunks
+                    # orphelins pendant une migration progressive.
+                    deleted_chunks = self._delete_chunks_by_short_ids(conn, matched_short_ids, table=resolved_table)
 
                     cur.execute(
                         sql.SQL("DELETE FROM {}.{} WHERE doc_id = ANY(%s::uuid[])").format(

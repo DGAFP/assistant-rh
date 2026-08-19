@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS rag_chunks_service_public (
     thematique TEXT,
     short_id VARCHAR(64),
     source TEXT,
+    references_juridiques JSONB,
+    section_id UUID,
+    source_document_id UUID,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     embedding_m3 vector(1024),
@@ -29,6 +32,12 @@ CREATE TABLE IF NOT EXISTS rag_chunks_service_public (
 
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_sp_short_id
     ON rag_chunks_service_public (short_id);
+
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_sp_section_id
+    ON rag_chunks_service_public (section_id);
+
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_sp_source_document_id
+    ON rag_chunks_service_public (source_document_id);
 
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_service_public_tsv
     ON rag_chunks_service_public USING GIN (text_tsv);
