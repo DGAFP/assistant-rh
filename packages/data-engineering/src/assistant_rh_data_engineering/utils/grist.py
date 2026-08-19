@@ -111,7 +111,7 @@ class ManifestRow:
     titre: str
     cle_bucket: str
     statut: str
-    date_publication: date | None = None
+    date_publication: str | None = None
     fields: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -228,7 +228,7 @@ def validate_manifest_columns(columns: list[str], required: tuple[str, ...] = RE
         raise GristContractError(f"Colonnes manquantes dans la table Grist: {', '.join(missing)} (requises: {', '.join(required)})")
 
 
-def _normalize_optional_date(value: Any) -> date | None:
+def _normalize_optional_date(value: Any) -> str | None:
     """Normalise une date Grist sans rendre ce champ optionnel bloquant.
 
     L'API Grist renvoie les colonnes Date sous forme de timestamp Unix pour
@@ -239,12 +239,12 @@ def _normalize_optional_date(value: Any) -> date | None:
     if value is None or value == "":
         return None
     if isinstance(value, datetime):
-        return value.date()
+        return value.date().isoformat()
     if isinstance(value, date):
-        return value
+        return value.isoformat()
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         try:
-            return datetime.fromtimestamp(value, tz=timezone.utc).date()
+            return datetime.fromtimestamp(value, tz=timezone.utc).date().isoformat()
         except (OverflowError, OSError, ValueError):
             return None
 
@@ -252,7 +252,7 @@ def _normalize_optional_date(value: Any) -> date | None:
     if not text:
         return None
     try:
-        return date.fromisoformat(text)
+        return date.fromisoformat(text).isoformat()
     except ValueError:
         return None
 
