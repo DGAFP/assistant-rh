@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 from assistant_rh_data_engineering.jobs import service_public_ingestion
 from assistant_rh_data_engineering.service_public import reconcile
+from assistant_rh_data_ingestion_cli import main as ingestion_cli
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
@@ -64,6 +65,26 @@ def test_run_cli_retains_bounded_final_crash_diagnostic(monkeypatch: pytest.Monk
     assert diagnostic.startswith("Service-Public ingestion crashed: RuntimeError: database exploded ")
     assert "\n" not in diagnostic
     assert len(diagnostic) <= len("Service-Public ingestion crashed: RuntimeError: ") + 500
+
+
+@pytest.mark.parametrize("job", ["ingest", "ingestion"])
+def test_data_ingestion_cli_uses_service_public_diagnostic_entrypoint(monkeypatch: pytest.MonkeyPatch, job: str) -> None:
+    calls: list[str] = []
+
+    class FakeModule:
+        @staticmethod
+        def main() -> int:
+            raise AssertionError("the raw main entrypoint must not be used")
+
+        @staticmethod
+        def run_cli() -> int:
+            calls.append("run_cli")
+            return 0
+
+    monkeypatch.setattr(ingestion_cli.importlib, "import_module", lambda _module: FakeModule)
+
+    assert ingestion_cli.main(["service-public", job]) == 0
+    assert calls == ["run_cli"]
 
 
 def _rec(record_id: int, **fields: Any) -> dict[str, Any]:
