@@ -779,3 +779,28 @@ Suite à la bascule du juge (`2f13872`), deux runs de référence :
    gates. Label : `baseline_dev_mistral_judge_20260819`.
 
 **Statut** : consigné avant lancement ; résultats à compléter.
+
+**Résultats du re-référencement (19/08)** :
+
+| run | contenu | pass | hors borderline |
+|---|---|---|---|
+| #195 | réponses du 18/08, juge qwen (ancien harnais) | 67,3 % | — |
+| **#204** | mêmes réponses, rejugées mistral-medium v2 | **65,3 %** | 67,8 % |
+| **#206** | run frais basé dev, juge mistral-medium v2 | **60,2 %** | 62,2 % |
+
+- **Facteur de conversion juge** (mêmes réponses) : **−2 pts** — cohérent avec
+  le banc (effet de la règle abstention-échec, légère sévérité en plus).
+- **Écart #204→#206 (−5 pts, 7 baisses / 2 hausses sur 9 flips)** : variance de
+  génération pure — 0 erreur technique, flips motivés sur le fond (couverture
+  incomplète, cadrage légal différent d'un tirage à l'autre). Le pipeline
+  génère avec ~±5 pts de bruit run-à-run sur ce panel : les réponses du 18/08
+  étaient un tirage favorable.
+- **Baseline officielle du nouveau harnais : run #206 — 60,2 % (62,2 % hors
+  borderline)**, `baseline_dev_mistral_judge_20260819`.
+
+**Doctrine de comparaison pour les prochains gates** : un changement de
+pipeline se mesure par paire de runs frais sous le même juge ; un changement
+de juge/rubrique par rejudge des mêmes réponses. Ne jamais comparer un chiffre
+qwen à un chiffre mistral sans appliquer le facteur de conversion (−2 pts).
+Compte tenu du bruit de génération (±5 pts), tout gate sérieux devrait
+s'appuyer sur 2 runs frais ou sur un delta > au bruit.
