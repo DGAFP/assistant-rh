@@ -33,6 +33,7 @@ import logging
 import os
 import re
 import secrets
+from dataclasses import dataclass
 from typing import Any
 
 import psycopg
@@ -136,18 +137,29 @@ CREATE TABLE IF NOT EXISTS user_groups (
 """
 
 
-def init_user_groups_table() -> bool:
+@dataclass(frozen=True)
+class UserGroupsInitResult:
+    """Outcome of the user-group bootstrap and security repair."""
+
+    initialized: bool
+    default_admin_repaired: bool = False
+
+
+def init_user_groups_table_with_status() -> UserGroupsInitResult:
     """Create the ``user_groups`` table and seed missing groups.
 
     Idempotent: existing metadata and non-empty passwords are never overwritten,
     so an admin's later changes survive re-seeding. Missing seed passwords are
-    backfilled when their bootstrap secret becomes available.
+    backfilled when their bootstrap secret becomes available. The result also
+    reports whether a legacy default-admin row was repaired so callers can
+    invalidate any authorization decision cached before the repair.
     """
     conn = _conn()
     if not conn:
-        return False
+        return UserGroupsInitResult(initialized=False)
     admin_pwd = os.getenv("ADMIN_PASSWORD", "").strip()
     default_pwd = os.getenv("GROUP_DEFAULT_PASSWORD", "").strip()
+    default_admin_repaired = False
     try:
         with conn.cursor() as cur:
             cur.execute(_CREATE_TABLE_SQL)
@@ -161,6 +173,7 @@ def init_user_groups_table() -> bool:
                 "UPDATE user_groups SET is_admin = FALSE, updated_at = CURRENT_TIMESTAMP WHERE slug = %s AND is_admin IS TRUE",
                 (DEFAULT_GROUP,),
             )
+            default_admin_repaired = getattr(cur, "rowcount", 0) > 0
             # Only seed groups not already present: hashing is expensive
             # (pbkdf2, 200k iters) and ``ON CONFLICT DO NOTHING`` would throw
             # the work away for every already-seeded group on each new session.
@@ -192,12 +205,17 @@ def init_user_groups_table() -> bool:
                     (g.slug, g.label, g.icon, g.color, g.priority, pwd_hash, is_admin, Jsonb(["matte"]), "matte", g.chart_color, g.chart_label),
                 )
         conn.commit()
-        return True
+        return UserGroupsInitResult(initialized=True, default_admin_repaired=default_admin_repaired)
     except psycopg.Error as exc:
         logger.warning("user_groups table init failed: %s", exc)
-        return False
+        return UserGroupsInitResult(initialized=False)
     finally:
         conn.close()
+
+
+def init_user_groups_table() -> bool:
+    """Backward-compatible boolean wrapper around the detailed bootstrap."""
+    return init_user_groups_table_with_status().initialized
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -126,4 +126,22 @@ Protect `dev`, `staging`, and `main` in GitHub:
 - Require PRs before merging.
 - Require status checks appropriate to each branch.
 - Keep merge commits available for `staging` and `main` promotion PRs.
-- Keep the `scaleway-production` environment protected for production secrets and deployment approval.
+- Configure **Selected branches and tags** on both `scaleway-staging` and
+  `scaleway-production`, with custom branch rules for `dev`, `staging`, and
+  `main` only. Do not add a wildcard or tag rule.
+- Keep deployment approval on `scaleway-production` in addition to that branch
+  allowlist.
+
+The environment branch policy is the security boundary for secret-backed
+`workflow_dispatch` jobs: GitHub evaluates it before releasing environment
+secrets. A branch check inside a workflow is insufficient because a manually
+selected ref supplies its own workflow definition and can remove that check.
+
+Verify the policy after any environment change:
+
+```bash
+gh api repos/DGAFP/assistant-rh/environments/scaleway-staging
+gh api repos/DGAFP/assistant-rh/environments/scaleway-staging/deployment-branch-policies
+gh api repos/DGAFP/assistant-rh/environments/scaleway-production
+gh api repos/DGAFP/assistant-rh/environments/scaleway-production/deployment-branch-policies
+```

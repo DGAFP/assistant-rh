@@ -221,6 +221,7 @@ class TestPipelineE2E:
         assert meta["chunks_after_rerank"][0]["rerank_score"] is not None
         assert meta["context_before_selector"][0]["rerank_score"] is not None
         assert meta["retrieval_attempts"][0]["chunks_raw"] == meta["chunks_raw"]
+        assert meta["retrieval_attempts"][0]["context_items_ref"][0]["doc_id"] == "doc_0"
         assert meta["selector_prompt_chars"] == 321
         assert meta["selector_response_chars"] == 2
 
