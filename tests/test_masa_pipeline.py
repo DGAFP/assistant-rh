@@ -407,8 +407,8 @@ class FakeGrist:
     def writeback_status(self, record_id: int, fields: dict[str, Any], table_id: str | None = None) -> None:
         self.writebacks.append((record_id, fields))
 
-    def status_for(self, record_id: int) -> list[str]:
-        return [fields["statut_ingestion"] for rid, fields in self.writebacks if rid == record_id]
+    def fields_for(self, record_id: int) -> list[dict[str, Any]]:
+        return [fields for rid, fields in self.writebacks if rid == record_id]
 
 
 class FakeStore:
@@ -523,8 +523,9 @@ def grist_record(
     abroge: str = "",
     cle_bucket: str | None = None,
     statut_ingestion: str = "",
+    ingere_staging: bool | None = None,
 ) -> dict[str, Any]:
-    return {
+    record = {
         "id": record_id,
         "fields": {
             "source_corpus": "MASA",
@@ -535,6 +536,9 @@ def grist_record(
             "statut_ingestion": statut_ingestion,
         },
     }
+    if ingere_staging is not None:
+        record["fields"]["ingere_staging"] = ingere_staging
+    return record
 
 
 def build_pipeline(
@@ -576,8 +580,8 @@ def test_run_ingests_new_documents_and_writes_back_ok(tmp_path: Path) -> None:
     assert ocr.calls == 2
     assert len(writer.upserted_documents) == 2
     assert len(writer.replaced_chunks) == 2
-    assert grist.status_for(11) == ["ok"]
-    assert grist.status_for(12) == ["ok"]
+    assert grist.fields_for(11) == [{"ingere_staging": True}]
+    assert grist.fields_for(12) == [{"ingere_staging": True}]
     assert len(writer.runs) == 1
     assert writer.runs[0]["run_id"] == summary["run_id"]
     # Le cache bronze est alimenté (PDF + OCR) pour les runs suivants.
@@ -605,7 +609,7 @@ def test_rerun_is_idempotent_all_ignore_inchange(tmp_path: Path) -> None:
     assert summary["ingested_count"] == 0
     assert summary["skipped_count"] == 1
     assert ocr.calls == 1  # aucun re-paiement OCR
-    assert grist.status_for(11) == ["ok", "ok"]  # statut consolidé (détail dans la trace de run)
+    assert grist.fields_for(11) == [{"ingere_staging": True}, {"ingere_staging": True}]
 
 
 def test_force_reprocess_reingests_without_reocr(tmp_path: Path) -> None:
@@ -666,7 +670,7 @@ def test_abrogated_row_is_deleted_and_written_back(tmp_path: Path) -> None:
     summary = pipeline.run(ingest=True)
 
     assert writer.cascade_deletes == [["MASA-0001"]]
-    assert grist.status_for(11) == ["supprime"]
+    assert grist.fields_for(11) == [{"ingere_staging": False}]
     assert summary["deleted_count"] == 1
 
 
@@ -682,7 +686,7 @@ def test_rejected_manifest_row_is_written_back_and_run_continues(tmp_path: Path)
 
     assert summary["ingested_count"] == 1
     assert summary["rejected_count"] == 1
-    assert grist.status_for(12) == ["erreur"]
+    assert grist.fields_for(12) == [{"ingere_staging": False}]
 
 
 def test_document_failure_writes_back_erreur_and_run_continues(tmp_path: Path) -> None:
@@ -695,8 +699,8 @@ def test_document_failure_writes_back_erreur_and_run_continues(tmp_path: Path) -
 
     assert summary["ingested_count"] == 1
     assert summary["failed_count"] == 1
-    assert grist.status_for(11) == ["ok"]
-    assert grist.status_for(12) == ["erreur"]
+    assert grist.fields_for(11) == [{"ingere_staging": True}]
+    assert grist.fields_for(12) == [{"ingere_staging": False}]
 
 
 def test_dry_run_makes_no_writes(tmp_path: Path) -> None:
@@ -802,7 +806,7 @@ def test_doc_id_filter_still_deletes_targeted_abrogated_document(tmp_path: Path)
 
     assert writer.cascade_deletes == [["MASA-0001"]]
     assert "MASA-0002" in writer.state  # hors filtre: intouché
-    assert grist.status_for(11) == ["supprime"]
+    assert grist.fields_for(11) == [{"ingere_staging": False}]
     assert summary["deleted_count"] == 1
 
 
@@ -854,7 +858,7 @@ def test_operator_a_supprimer_triggers_cascade_delete(tmp_path: Path) -> None:
     summary = pipeline.run(ingest=True)
 
     assert writer.cascade_deletes == [["MASA-0001"]]
-    assert grist.status_for(11) == ["supprime"]
+    assert grist.fields_for(11) == [{"ingere_staging": False}]
     assert summary["deleted_count"] == 1
 
 
@@ -865,14 +869,14 @@ def test_operator_a_supprimer_on_never_ingested_row_is_acknowledged(tmp_path: Pa
     summary = pipeline.run(ingest=True)
 
     assert writer.cascade_deletes == []  # rien en base
-    assert grist.status_for(11) == ["supprime"]
+    assert grist.fields_for(11) == [{"ingere_staging": False}]
     assert summary["details"]["MASA-0001"]["statut"] == "supprime"
 
 
 def test_supprime_row_is_neither_reingested_nor_repatched(tmp_path: Path) -> None:
     # Ligne supprimée au run précédent: inactive tant que l'opérateur ne vide
     # pas la cellule — pas de ré-ingestion, pas de re-PATCH à chaque run.
-    records = [grist_record("MASA-0001", record_id=11, statut_ingestion="supprime")]
+    records = [grist_record("MASA-0001", record_id=11, statut_ingestion="supprime", ingere_staging=False)]
     documents = {"masa/masa-0001_circulaire.pdf": b"%PDF-doc1"}
     pipeline, grist, store, ocr, writer = build_pipeline(tmp_path, records=records, documents=documents)
 
@@ -893,7 +897,7 @@ def test_cleared_statut_reactivates_the_row(tmp_path: Path) -> None:
     summary = pipeline.run(ingest=True)
 
     assert summary["ingested_count"] == 1
-    assert grist.status_for(11) == ["ok"]
+    assert grist.fields_for(11) == [{"ingere_staging": True}]
 
 
 def test_acknowledgment_requires_ingest_mode(tmp_path: Path) -> None:
@@ -921,7 +925,7 @@ def test_rejected_row_never_deletes_its_ingested_document(tmp_path: Path) -> Non
     assert summary["deleted_count"] == 0
     assert writer.cascade_deletes == []
     assert "MASA-0001" in writer.state
-    assert grist.status_for(11) == ["erreur"]
+    assert grist.fields_for(11) == [{"ingere_staging": True}]
 
 
 def test_rejected_row_keeps_operator_inactive_status(tmp_path: Path) -> None:

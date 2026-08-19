@@ -33,6 +33,8 @@ WRITEBACK_MANIFEST_COLUMNS: tuple[str, ...] = (
     "nb_chunks",
     "hash_contenu",
     "erreur_ingestion",
+    "ingere_prod",
+    "ingere_staging",
 )
 
 # Vocabulaire de statut_ingestion — colonne de statut UNIQUE, partagée entre
@@ -406,6 +408,41 @@ def build_writeback_fields(
         )
         if statut_reel is not None:
             fields["statut_ingestion_reelle"] = statut_reel
+        if nb_chunks is not None:
+            fields["nb_chunks"] = nb_chunks
+        if hash_contenu:
+            fields["hash_contenu"] = hash_contenu
+    if corpus_present is not None and env in INGERE_ENV_COLUMNS:
+        fields[INGERE_ENV_COLUMNS[env]] = corpus_present
+    return fields
+
+
+def build_pdf_writeback_fields(
+    *,
+    statut: str,
+    nb_chunks: int | None = None,
+    hash_contenu: str = "",
+    erreur: str = "",
+    env: str = CANONICAL_ENV,
+    corpus_present: bool | None = None,
+) -> dict[str, Any]:
+    """Writeback PDF séparé par environnement, compatible avec le statut legacy.
+
+    Les pipelines PDF utilisent encore ``statut_ingestion`` comme cycle de vie
+    opérateur (``a_supprimer``/``supprime``). La prod reste donc seule à écrire
+    ce statut détaillé et ses métadonnées historiques. Chaque environnement
+    écrit uniquement son booléen ``ingere_{env}`` quand la présence réelle en
+    base est connue.
+    """
+    fields: dict[str, Any] = {}
+    if env == CANONICAL_ENV:
+        fields.update(
+            {
+                "statut_ingestion": statut,
+                "derniere_ingestion": utc_now_iso(),
+                "erreur_ingestion": erreur,
+            }
+        )
         if nb_chunks is not None:
             fields["nb_chunks"] = nb_chunks
         if hash_contenu:
