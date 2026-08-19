@@ -26,6 +26,31 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 import generate_service_public_config as gen  # noqa: E402
 
 
+def test_delta_failure_diagnostic_is_bounded_and_deterministic() -> None:
+    diagnostic = service_public_ingestion.delta_failure_diagnostic(
+        {
+            "failed": {
+                "F4": "fourth",
+                "F2": "second",
+                "F3": "third",
+                "F1": "x" * 250,
+            }
+        }
+    )
+
+    assert diagnostic is not None
+    payload = json.loads(diagnostic.split(": ", 1)[1])
+    assert payload == {
+        "failed_count": 4,
+        "failures": {"F1": "x" * 200, "F2": "second", "F3": "third"},
+        "truncated": True,
+    }
+
+
+def test_delta_failure_diagnostic_ignores_success() -> None:
+    assert service_public_ingestion.delta_failure_diagnostic({"failed": {}}) is None
+
+
 def _rec(record_id: int, **fields: Any) -> dict[str, Any]:
     return {"id": record_id, "fields": fields}
 
