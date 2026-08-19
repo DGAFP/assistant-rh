@@ -1,6 +1,6 @@
 [project]
 name = "assistant-rh"
-version = "0.7.0"
+version = "0.8.0"
 description = "Assistant RH - Chatbot Contractuels FPE"
 readme = "README.md"
 requires-python = ">=3.12"
