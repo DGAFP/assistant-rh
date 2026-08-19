@@ -109,33 +109,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate-protected-ref:
-    name: validate protected revision
-    runs-on: ubuntu-latest
-    steps:
-      - name: Reject unprotected manual refs
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          CANDIDATE_REF: ${{ github.ref }}
-        run: |
-          set -euo pipefail
-          if [[ "$EVENT_NAME" != "workflow_dispatch" ]]; then
-            exit 0
-          fi
-
-          case "$CANDIDATE_REF" in
-            refs/heads/dev|refs/heads/staging|refs/heads/main)
-              ;;
-            *)
-              echo "Manual secret-backed evaluations are restricted to dev, staging, or main." >&2
-              exit 1
-              ;;
-          esac
-
   rag-quality-eval:
     name: rag quality
-    needs: validate-protected-ref
     runs-on: ubuntu-latest
+    # Security boundary: both GitHub environments restrict deployments to the
+    # dev/staging/main branches before making their secrets available. A check
+    # implemented in this workflow would be editable from a dispatched ref.
     environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target_environment == 'production' && 'scaleway-production' || 'scaleway-staging' }}
     env:
       SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}

@@ -30,6 +30,7 @@ import psycopg
 from assistant_rh_rag_pipeline import PipelineResult, create_pipeline
 from assistant_rh_rag_pipeline.admin import get_rag_config, runtime_config_to_rag_config
 from assistant_rh_rag_pipeline.config import RAGConfig
+from assistant_rh_rag_pipeline.models import metadata_document_id
 from assistant_rh_rag_pipeline.query_processor import _fold as _fold_text
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
@@ -1103,11 +1104,15 @@ def _attempt_stage_doc_ids(attempt: dict[str, Any]) -> dict[str, list[str]]:
 
     context_items = attempt.get("context_items_ref")
     if isinstance(context_items, list):
-        stages["context_builder_output"] = [
-            str(item.get("doc_id") or item.get("document_id"))
-            for item in context_items
-            if isinstance(item, dict) and (item.get("doc_id") or item.get("document_id"))
-        ]
+        context_doc_ids: list[str] = []
+        for item in context_items:
+            if not isinstance(item, dict):
+                continue
+            nested_metadata = item.get("metadata")
+            doc_id = metadata_document_id(item, nested_metadata if isinstance(nested_metadata, dict) else {})
+            if doc_id:
+                context_doc_ids.append(doc_id)
+        stages["context_builder_output"] = context_doc_ids
     return stages
 
 

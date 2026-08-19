@@ -1678,6 +1678,15 @@ def test_stage_retrieval_metrics_localizes_context_builder_loss() -> None:
     assert stages["context_builder_output"]["hit_rate"] == 0.0
 
 
+def test_stage_retrieval_metrics_context_builder_uses_legal_cid() -> None:
+    metadata = _attempt_metadata()
+    metadata["retrieval_attempts"][0]["context_items_ref"] = [{"cid": "LEGIARTI000044423797"}]
+
+    stage = stage_retrieval_metrics(metadata, ["LEGIARTI000044423797"])["initial"]["context_builder_output"]
+
+    assert stage == {"hit_rate": 1.0, "doc_recall": 1.0, "doc_count": 1}
+
+
 def test_stage_retrieval_metrics_kept_falls_back_to_idx() -> None:
     metadata = _attempt_metadata()
     kept = metadata["retrieval_attempts"][0]["selector"]["decisions"]["kept"]
@@ -1747,14 +1756,14 @@ def test_secret_backed_rag_eval_does_not_run_on_pull_request_heads() -> None:
     assert "github.event.pull_request" not in workflow
 
 
-def test_secret_backed_rag_eval_validates_ref_before_environment_job() -> None:
+def test_secret_backed_rag_eval_relies_on_environment_branch_policy() -> None:
     workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/rag-quality-eval.yml").read_text(encoding="utf-8")
 
-    validation_job = workflow.index("  validate-protected-ref:")
-    eval_job = workflow.index("  rag-quality-eval:")
-    assert validation_job < eval_job
-    assert "needs: validate-protected-ref" in workflow[eval_job:]
-    assert "refs/heads/dev|refs/heads/staging|refs/heads/main" in workflow[validation_job:eval_job]
+    assert "validate-protected-ref" not in workflow
+    assert "environment: ${{" in workflow
+    assert "scaleway-production" in workflow
+    assert "scaleway-staging" in workflow
+    assert "both GitHub environments restrict deployments" in workflow
 
 
 def test_rag_eval_dispatch_strings_are_not_interpolated_in_shell() -> None:

@@ -119,6 +119,23 @@ def _round_score(score: Any) -> float | None:
 _DOC_ID_METADATA_KEYS = ("doc_id", "doc_short_id", "document_id", "source_document_id", "short_id", "cid")
 
 
+def metadata_document_id(*sources: Dict[str, Any]) -> str:
+    """Return the canonical document identifier carried by metadata.
+
+    The corpus schemas do not all use the same key. In particular, standalone
+    legal chunks use ``cid``/``short_id`` instead of ``doc_id``. Keeping this
+    fallback centralized prevents trace stages from disagreeing about whether
+    a document was actually served.
+    """
+    return str(_first_metadata_value(*sources, keys=_DOC_ID_METADATA_KEYS) or "")
+
+
+def context_item_document_id(item: "ContextItem") -> str:
+    """Best-effort corpus document identifier for a built context item."""
+    metadata = item.metadata if isinstance(item.metadata, dict) else {}
+    return metadata_document_id(metadata)
+
+
 def section_document_id(section: "AggregatedSection") -> str:
     """Best-effort corpus document identifier for one aggregated section.
 
@@ -135,7 +152,7 @@ def section_document_id(section: "AggregatedSection") -> str:
         if isinstance(chunk.metadata, dict) and chunk.metadata:
             chunk_meta = chunk.metadata
             break
-    return str(_first_metadata_value(section_meta, chunk_meta, keys=_DOC_ID_METADATA_KEYS) or "")
+    return metadata_document_id(section_meta, chunk_meta)
 
 
 def _chunk_log_dict(
