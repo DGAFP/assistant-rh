@@ -142,8 +142,8 @@ def test_list_short_ids_with_checksum_tolerates_missing_checksum_column(monkeypa
 
 def test_delete_documents_cascade_deletes_chunks_only_for_matched_documents() -> None:
     script = [
-        {"rows": [("doc-uuid-1",), ("doc-uuid-2",)]},  # SELECT doc_id with source filter
-        {"rowcount": 7},  # DELETE chunks by source_document_id
+        {"rows": [("doc-uuid-1", "MI-0001"), ("doc-uuid-2", "MI-0002")]},  # SELECT docs with source filter
+        {"rowcount": 7},  # DELETE chunks by matched short_id
         {"rowcount": 5},  # DELETE rag_sections
         {"rowcount": 2},  # DELETE rag_documents
     ]
@@ -155,23 +155,23 @@ def test_delete_documents_cascade_deletes_chunks_only_for_matched_documents() ->
     assert events == ["commit"]
     assert "rag_documents" in calls[0]["query"]
     assert calls[0]["params"] == [["MI-0001", "MI-0002"], "mi"]
-    assert "source_document_id" in calls[1]["query"]
-    assert calls[1]["params"] == (["doc-uuid-1", "doc-uuid-2"],)
+    assert "short_id" in calls[1]["query"]
+    assert calls[1]["params"] == (["MI-0001", "MI-0002"],)
     assert "rag_sections" in calls[2]["query"]
     assert "rag_documents" in calls[3]["query"]
 
 
 def test_delete_documents_cascade_deletes_in_order_and_commits_once(monkeypatch: pytest.MonkeyPatch) -> None:
     script = [
-        {"rows": [("doc-uuid-1",), ("doc-uuid-2",)]},  # SELECT doc_id
+        {"rows": [("doc-uuid-1", "MI-0001"), ("doc-uuid-2", "MI-0002")]},  # SELECT documents
         {"rowcount": 5},  # DELETE rag_sections
         {"rowcount": 2},  # DELETE rag_documents
     ]
     writer, calls, events = make_writer(script)
     monkeypatch.setattr(
         writer,
-        "_delete_chunks_by_doc_ids",
-        lambda conn, doc_ids, table=None: 7,
+        "_delete_chunks_by_short_ids",
+        lambda conn, short_ids, table=None: 7,
     )
 
     counts = writer.delete_documents_cascade(["mi-0001", " MI-0002 "], source="MI")
