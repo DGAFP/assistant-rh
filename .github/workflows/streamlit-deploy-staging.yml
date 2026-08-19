@@ -21,6 +21,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    concurrency:
+      # Shared with db-migrations-scaleway.yml: whichever job starts first
+      # applies pending migrations; the second observes an up-to-date schema.
+      group: scaleway-staging-db-migrations
+      cancel-in-progress: false
     environment: scaleway-staging
     env:
       SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
