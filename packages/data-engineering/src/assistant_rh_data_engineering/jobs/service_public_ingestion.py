@@ -460,6 +460,22 @@ def ingest_delta(
     return summary
 
 
+def delta_failure_diagnostic(summary: dict[str, Any], *, max_failures: int = 3) -> str | None:
+    """Render a bounded final error line for Serverless Jobs diagnostics."""
+    failures = summary.get("failed")
+    if not isinstance(failures, dict) or not failures:
+        return None
+
+    ordered = sorted((str(uid), str(error)) for uid, error in failures.items())
+    sample = {uid: error[:200] for uid, error in ordered[:max_failures]}
+    payload = {
+        "failed_count": len(ordered),
+        "failures": sample,
+        "truncated": len(ordered) > max_failures,
+    }
+    return f"Service-Public delta ingestion failed: {json.dumps(payload, ensure_ascii=False, sort_keys=True)}"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=("Job d'ingestion Service-Public: relit les artefacts silver/gold et applique les UPSERTs du notebook ingestion_pdf en base.")
@@ -633,7 +649,14 @@ def main() -> int:
         summary["lake_root"] = str(lake_root)
         summary["short_ids"] = short_ids
         print(json.dumps(summary, ensure_ascii=False, indent=2))
-        return 1 if summary.get("failed") else 0
+        diagnostic = delta_failure_diagnostic(summary)
+        if diagnostic:
+            # Scaleway truncates the job error message. Keep a bounded failure
+            # summary as the final flushed stderr line so GitHub Actions retains
+            # the actionable fiche IDs and database error instead of S3 progress.
+            print(diagnostic, file=sys.stderr, flush=True)
+            return 1
+        return 0
 
     existing_doc_ids_by_short_id = writer.list_document_ids_by_short_id(short_ids)
     remapped = remap_existing_document_ids(
