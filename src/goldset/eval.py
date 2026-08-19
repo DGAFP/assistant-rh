@@ -51,7 +51,11 @@ DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
 DEFAULT_JUDGE_PROVIDER = "scaleway"
 DEFAULT_JUDGE_MODEL = "x-ai/grok-4.5"
 DEFAULT_JUDGE_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_SCALEWAY_JUDGE_MODEL = "qwen3-235b-a22b-instruct-2507"
+# Bascule du 19/08/2026 (banc des juges, journal) : mistral-medium-3.5 —
+# accord 88,8 % avec l'ancien protocole à rubrique amendée, calage de sévérité
+# identique, 1 % de votes partagés, ~20 s/verdict maj-3 (10× plus rapide).
+# L'ancien souverain qwen3-235b reste accessible via SCALEWAY_JUDGE_MODEL.
+DEFAULT_SCALEWAY_JUDGE_MODEL = "mistral-medium-3.5-128b"
 ALLOWED_JUDGE_VOTES = frozenset({1, 3})
 # RAGAS reste sur Scaleway/OpenAI-compat (le SDK ragas attend un endpoint
 # embeddings+LLM compatible; Claude via OpenRouter n'y est pas branché).
@@ -1285,6 +1289,8 @@ def aggregate_items(items: list[EvalItem]) -> dict[str, Any]:
 # Albert est traité séparément comme gratuit dans l'agrégat.
 _LLM_PRICE_EUR_PER_MTOK: dict[tuple[str, str], tuple[float, float]] = {
     ("scaleway", "qwen3-235b-a22b-instruct-2507"): (0.75, 2.25),
+    ("scaleway", "mistral-medium-3.5-128b"): (1.50, 7.50),
+    ("scaleway", "mistral-small-3.2-24b-instruct-2506"): (0.15, 0.35),
     ("scaleway", "llama-3.3-70b-instruct"): (0.90, 0.90),
     ("scaleway", "gpt-oss-120b"): (0.15, 0.60),
 }
@@ -1782,7 +1788,14 @@ def judge_answer(
         "(4) material_contradiction requires quoting the candidate sentence and the gold sentence "
         "that directly conflict; if you cannot quote both, it is not material. "
         "Return only valid JSON with keys: score, pass, failure_category, material_contradiction, "
-        "dimensions, missing_required_points, contradictions, rationale, source_support."
+        "dimensions, missing_required_points, contradictions, rationale, source_support. "
+        "Two additional strict rules: (1) If the candidate answer states that the information was not found, "
+        "is not specified in the sources, or cannot be determined, while the gold answer contains a substantive "
+        "answer, this is ALWAYS a failure: set gold_answer_alignment and completeness to 0.0 and failure_category "
+        "to retrieval_gap — an honest abstention is still a failed answer when the gold expects one. "
+        "(2) Before reporting material_contradiction or contradictions, normalize units, periods and formulations "
+        "(e.g. '25 jours ouvres' for a 5-day week EQUALS '5 semaines'; '6 semaines avant + 10 apres' EQUALS "
+        "'16 semaines'): only report a contradiction when the facts are genuinely incompatible after normalization."
     )
     # Amendements de rubrique injectables (banc des juges du 18-19/08) : permet
     # de tester une rubrique corrigée sans toucher au protocole officiel.
