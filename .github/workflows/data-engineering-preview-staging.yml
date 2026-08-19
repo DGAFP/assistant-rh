@@ -66,6 +66,11 @@ on:
         options:
           - apply
           - plan
+      delta:
+        description: "Reconciliation incrementale canonique (Service-Public via Grist, Legifrance via Grist + PISTE)"
+        required: true
+        default: true
+        type: boolean
       run_ingestion:
         description: "Ingerer aussi dans la base Scaleway staging"
         required: true
@@ -169,7 +174,7 @@ jobs:
     # Pull-request refs are intentionally not allowed by the scaleway-staging
     # environment. PRs keep the secretless plan job; image builds and previews
     # start only from an integrated staging ref or an approved manual dispatch.
-    if: ${{ github.event_name != 'pull_request' && needs.plan.result == 'success' && needs.plan.outputs.has_builds == 'true' }}
+    if: ${{ github.event_name != 'pull_request' && needs.plan.result == 'success' && needs.plan.outputs.mode == 'apply' && needs.plan.outputs.has_builds == 'true' }}
     timeout-minutes: 90
     environment: scaleway-staging
     strategy:
@@ -219,7 +224,7 @@ jobs:
     needs:
       - plan
       - build-staging-images
-    if: ${{ needs.plan.result == 'success' && needs.plan.outputs.has_runs == 'true' && needs.build-staging-images.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_preview_jobs)) }}
+    if: ${{ needs.plan.result == 'success' && needs.plan.outputs.mode == 'apply' && needs.plan.outputs.has_runs == 'true' && needs.build-staging-images.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_preview_jobs)) }}
     timeout-minutes: 180
     environment: scaleway-staging
     strategy:
@@ -237,6 +242,7 @@ jobs:
       RUN_EMBEDDINGS: ${{ (github.event_name == 'push' && needs.plan.outputs.run_embeddings == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' && (inputs.run_embeddings || inputs.source == 'embeddings' || inputs.source == 'matte' || inputs.source == 'mi' || inputs.source == 'masa' || inputs.source == 'mso')) || false }}
       EMBEDDING_SOURCE: ${{ matrix.embedding_source }}
       EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
+      DELTA_MODE: ${{ github.event_name == 'push' || inputs.delta }}
       SERVICE_PUBLIC_FICHE_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.service_public_fiche_config || 'config/service_public_fiches.json' }}
       LEGIFRANCE_ARTICLE_IDS_JSON: ${{ github.event_name == 'workflow_dispatch' && inputs.legifrance_article_ids_json || 'config/legifrance_article_cids.json' }}
       SCW_DEFAULT_REGION: fr-par
@@ -259,6 +265,8 @@ jobs:
       GRIST_TABLE_ID: ${{ vars.GRIST_TABLE_ID }}
       ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
       ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
+      LEGIFRANCE_CLIENT_ID: ${{ secrets.LEGIFRANCE_CLIENT_ID }}
+      LEGIFRANCE_CLIENT_SECRET: ${{ secrets.LEGIFRANCE_CLIENT_SECRET }}
       SCW_BUCKET_SOURCES_PDF: assistant-rh-sources-pdf
 
     steps:
@@ -291,6 +299,7 @@ jobs:
             --target-env staging \
             --image-tag "${STAGING_IMAGE_TAG}" \
             --mode "${{ needs.plan.outputs.mode }}" \
+            --delta "${DELTA_MODE}" \
             --service-public "${{ matrix.service_public }}" \
             --legifrance "${{ matrix.legifrance }}" \
             --pdf-sources "${{ matrix.pdf_sources }}" \
