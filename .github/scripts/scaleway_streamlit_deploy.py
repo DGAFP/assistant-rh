@@ -208,13 +208,16 @@ def streamlit_runtime_environment(default_app_env: str) -> dict[str, str]:
 
 
 def streamlit_secret_environment() -> dict[str, str]:
+    # GROUP_DEFAULT_PASSWORD is managed directly in the Scaleway runtime.
+    # Serverless Containers keeps unspecified secrets unchanged on update, so
+    # deliberately omitting it preserves the existing value instead of
+    # requiring a duplicate GitHub environment secret.
     container_secret_env = {
         "SCW_POSTGRES_DSN": env_required("SCW_POSTGRES_DSN"),
         "ALBERT_API_KEY": env_required("ALBERT_API_KEY"),
         "SCALEWAY_API_KEY": env_required("SCALEWAY_API_KEY"),
         "COOKIES_PASSWORD": env_required("COOKIES_PASSWORD"),
         "ADMIN_PASSWORD": env_required("ADMIN_PASSWORD"),
-        "GROUP_DEFAULT_PASSWORD": env_required("GROUP_DEFAULT_PASSWORD"),
         "GRIST_API_KEY": env_required("GRIST_API_KEY"),
         "SCW_ACCESS_KEY": env_required("SCW_ACCESS_KEY"),
         "SCW_SECRET_KEY": env_required("SCW_SECRET_KEY"),
@@ -331,7 +334,6 @@ def main() -> int:
         "SCALEWAY_API_KEY",
         "COOKIES_PASSWORD",
         "ADMIN_PASSWORD",
-        "GROUP_DEFAULT_PASSWORD",
         "GRIST_API_BASE_URL",
         "GRIST_API_KEY",
         "GRIST_DOC_ID",
