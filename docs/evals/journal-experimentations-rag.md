@@ -738,3 +738,27 @@ les trois axes à la fois. deepseek-v4-flash, candidat initial, est écarté
   mistral-medium ↔ qwen (l'accord n'est pas une vérité terrain — les
   désaccords disent qui, du candidat ou du sortant, juge le mieux) ;
   CSV d'arbitrage à générer.
+
+**Test rubrique amendée (19/08, mistral-medium-3.5, mêmes 98 réponses)** —
+deux règles ajoutées (abstention = échec quand le gold attend une réponse ;
+normalisation des unités avant toute contradiction), via
+`JUDGE_RUBRIC_ADDENDUM` (env-gated, protocole officiel intouché) :
+
+- accord : 86,7 % → **88,8 %** ; calage de sévérité conservé (pass 64,3 %
+  vs réf 67,3 %) ;
+- **les deux faux pass d'abstention (q2, q223) sont corrigés**, q221 résolue
+  en bonus ; q218 (« 25 jours ouvrés » ≡ « 5 semaines ») reste faux malgré la
+  règle — seule erreur franche récalcitrante ;
+- « nouvelle » divergence q30 : mistral-v2 refuse une abstention que la
+  référence qwen avait passée — c'est qwen qui contredit ici notre doctrine
+  gold-explicite ; divergence à mettre AU CRÉDIT du candidat ;
+- arbitrage humain-suppléant (Claude) des 11 divergences restantes :
+  ~6 pour mistral (q30, q177, q200, q203, q208, q224 — pédanterie
+  d'incomplétude de qwen), ~4 pour qwen (q17, q18, q19, q218 — sévérité de
+  mistral sur des réponses correctes), 1 ambiguë (q220).
+
+**Lecture** : à rubrique amendée, mistral-medium-3.5 est au moins aussi juste
+que la référence, 10× plus rapide, parfaitement consistant. La bascule du
+juge souverain est fondée, sous réserve de l'arbitrage humain final sur les
+divergences (CSV disponible) et d'un re-jugement de référence du run #195
+pour re-seuiller la baseline dans le nouveau harnais.
