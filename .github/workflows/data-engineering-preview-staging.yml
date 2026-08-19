@@ -5,7 +5,8 @@ on:
     branches:
       - staging
     paths:
-      - ".github/workflows/data-engineering-*.yml"
+      - ".github/workflows/data-engineering-preview-staging.yml"
+      - ".github/workflows/data-engineering-cron-delta.yml"
       - ".github/scripts/data_engineering_plan.py"
       - ".github/scripts/scaleway_data_jobs.py"
       - ".github/data-engineering-jobs.json"
@@ -24,7 +25,8 @@ on:
     branches:
       - staging
     paths:
-      - ".github/workflows/data-engineering-*.yml"
+      - ".github/workflows/data-engineering-preview-staging.yml"
+      - ".github/workflows/data-engineering-cron-delta.yml"
       - ".github/scripts/data_engineering_plan.py"
       - ".github/scripts/scaleway_data_jobs.py"
       - ".github/data-engineering-jobs.json"
@@ -143,6 +145,7 @@ jobs:
       has_builds: ${{ steps.plan.outputs.has_builds }}
       has_runs: ${{ steps.plan.outputs.has_runs }}
       matrix: ${{ steps.plan.outputs.matrix }}
+      run_matrix: ${{ steps.plan.outputs.run_matrix }}
       mode: ${{ steps.plan.outputs.mode }}
     steps:
       - name: Checkout code
@@ -208,6 +211,7 @@ jobs:
             .
 
   preview-staging:
+    name: preview-staging (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs:
       - plan
@@ -215,17 +219,20 @@ jobs:
     if: ${{ needs.plan.result == 'success' && needs.plan.outputs.has_runs == 'true' && needs.build-staging-images.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_preview_jobs)) }}
     timeout-minutes: 180
     environment: scaleway-staging
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.run_matrix) }}
     env:
       # Staging branch pushes run a complete preview with destructive chunk wipe disabled.
       # Manual dispatch keeps operator controls.
-      SERVICE_PUBLIC_SELECTED: ${{ needs.plan.outputs.service_public }}
+      SERVICE_PUBLIC_SELECTED: ${{ matrix.service_public }}
       # mode=plan (socle #288) neutralise toute mutation, y compris l'ingestion
       # interne du médaillon PDF (via RUN_INGESTION). push et dispatch apply
       # gardent le comportement historique.
       RUN_INGESTION: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_ingestion && inputs.mode == 'apply') || false }}
       WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}
       RUN_EMBEDDINGS: ${{ (github.event_name == 'push' && needs.plan.outputs.run_embeddings == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' && (inputs.run_embeddings || inputs.source == 'embeddings' || inputs.source == 'matte' || inputs.source == 'mi' || inputs.source == 'masa' || inputs.source == 'mso')) || false }}
-      EMBEDDING_SOURCE: ${{ (github.event_name == 'push' && needs.plan.outputs.embedding_source) || (github.event_name == 'workflow_dispatch' && (inputs.source == 'matte' && 'matte' || inputs.source == 'mi' && 'mi' || inputs.source == 'masa' && 'masa' || inputs.source == 'mso' && 'mso' || inputs.embedding_source)) || 'all' }}
+      EMBEDDING_SOURCE: ${{ matrix.embedding_source }}
       EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
       SERVICE_PUBLIC_FICHE_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.service_public_fiche_config || 'config/service_public_fiches.json' }}
       LEGIFRANCE_ARTICLE_IDS_JSON: ${{ github.event_name == 'workflow_dispatch' && inputs.legifrance_article_ids_json || 'config/legifrance_article_cids.json' }}
@@ -281,11 +288,11 @@ jobs:
             --target-env staging \
             --image-tag "${STAGING_IMAGE_TAG}" \
             --mode "${{ needs.plan.outputs.mode }}" \
-            --service-public "${{ needs.plan.outputs.service_public }}" \
-            --legifrance "${{ needs.plan.outputs.legifrance }}" \
-            --pdf-sources "${{ needs.plan.outputs.pdf_sources }}" \
-            --pdf-sources-ministry "${{ needs.plan.outputs.pdf_sources_ministry }}" \
-            --embeddings "${{ needs.plan.outputs.embeddings }}" \
+            --service-public "${{ matrix.service_public }}" \
+            --legifrance "${{ matrix.legifrance }}" \
+            --pdf-sources "${{ matrix.pdf_sources }}" \
+            --pdf-sources-ministry "${{ matrix.pdf_sources_ministry }}" \
+            --embeddings "${{ matrix.embeddings }}" \
             --run-ingestion "${RUN_INGESTION}" \
             --wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}" \
             --run-embeddings "${RUN_EMBEDDINGS}" \

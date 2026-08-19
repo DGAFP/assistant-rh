@@ -75,7 +75,11 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
 
     for path in files:
         common = (
-            path.startswith(".github/workflows/data-engineering-")
+            path
+            in {
+                ".github/workflows/data-engineering-preview-staging.yml",
+                ".github/workflows/data-engineering-cron-delta.yml",
+            }
             or path == ".github/scripts/data_engineering_plan.py"
             or path == ".github/scripts/scaleway_data_jobs.py"
             or path == ".github/data-engineering-jobs.json"
@@ -174,6 +178,76 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
     return result
 
 
+def build_run_matrix(
+    selected: dict[str, bool],
+    *,
+    run_embeddings: bool,
+    embedding_source: str,
+    pdf_sources_ministry: str = "",
+) -> list[dict[str, str | bool]]:
+    """Build independent source chains for the workflow run matrix.
+
+    Each source keeps its ordered medallion -> ingestion -> embeddings chain in
+    one matrix cell. Different sources can therefore run independently with
+    ``fail-fast: false``: a Service-Public failure no longer prevents the
+    Legifrance chain from starting (and conversely).
+    """
+
+    entries: list[dict[str, str | bool]] = []
+    entries_by_source: dict[str, dict[str, str | bool]] = {}
+
+    def add_source(name: str, *, service_public: bool = False, legifrance: bool = False, pdf_sources: bool = False) -> None:
+        entry: dict[str, str | bool] = {
+            "name": name,
+            "service_public": service_public,
+            "legifrance": legifrance,
+            "pdf_sources": pdf_sources,
+            "pdf_sources_ministry": pdf_sources_ministry if pdf_sources else "",
+            "embeddings": False,
+            "embedding_source": "all",
+        }
+        entries.append(entry)
+        entries_by_source[name] = entry
+
+    if selected["service_public"]:
+        add_source("service-public", service_public=True)
+    if selected["legifrance"]:
+        add_source("legifrance", legifrance=True)
+    if selected["pdf_sources"]:
+        pdf_name = f"pdf-sources-{pdf_sources_ministry}" if pdf_sources_ministry else "pdf-sources"
+        add_source(pdf_name, pdf_sources=True)
+
+    if selected["embeddings"] and run_embeddings:
+        embedding_targets = ["service_public", "legifrance"] if embedding_source == "all" else [embedding_source]
+        parent_by_target = {
+            "service_public": "service-public",
+            "legifrance": "legifrance",
+            "mi": f"pdf-sources-{pdf_sources_ministry}" if pdf_sources_ministry == "mi" else "pdf-sources",
+            "masa": f"pdf-sources-{pdf_sources_ministry}" if pdf_sources_ministry == "masa" else "pdf-sources",
+            "matte": f"pdf-sources-{pdf_sources_ministry}" if pdf_sources_ministry == "matte" else "pdf-sources",
+            "mso": f"pdf-sources-{pdf_sources_ministry}" if pdf_sources_ministry == "mso" else "pdf-sources",
+        }
+        for target in embedding_targets:
+            parent = entries_by_source.get(parent_by_target.get(target, ""))
+            if parent is not None:
+                parent["embeddings"] = True
+                parent["embedding_source"] = target
+                continue
+            entries.append(
+                {
+                    "name": f"embeddings-{target.replace('_', '-')}",
+                    "service_public": False,
+                    "legifrance": False,
+                    "pdf_sources": False,
+                    "pdf_sources_ministry": "",
+                    "embeddings": True,
+                    "embedding_source": target,
+                }
+            )
+
+    return entries
+
+
 def infer_embedding_source(selected: dict[str, bool], requested_source: str = "") -> str:
     if requested_source in {"service_public", "legifrance", "matte", "mi", "masa", "mso"}:
         return requested_source
@@ -234,6 +308,22 @@ def main() -> int:
         if selected[domain]:
             matrix.extend(IMAGE_MATRIX[domain])
 
+    run_matrix = build_run_matrix(
+        selected,
+        run_embeddings=run_embeddings,
+        embedding_source=embedding_source,
+        pdf_sources_ministry=pdf_sources_ministry,
+    )
+    noop_run = {
+        "name": "noop",
+        "service_public": False,
+        "legifrance": False,
+        "pdf_sources": False,
+        "pdf_sources_ministry": "",
+        "embeddings": False,
+        "embedding_source": "all",
+    }
+
     outputs = {
         "service_public": str(selected["service_public"]).lower(),
         "legifrance": str(selected["legifrance"]).lower(),
@@ -246,6 +336,7 @@ def main() -> int:
         "has_builds": str(bool(matrix)).lower(),
         "has_runs": str(selected["service_public"] or selected["legifrance"] or selected["pdf_sources"] or selected["embeddings"]).lower(),
         "matrix": json.dumps({"include": matrix or [{"image": "noop", "dockerfile": "Dockerfile.service_public_pipeline"}]}),
+        "run_matrix": json.dumps({"include": run_matrix or [noop_run]}),
         "changed_files": json.dumps(files),
     }
     print(json.dumps(outputs, indent=2))

@@ -82,6 +82,17 @@ def test_classify_from_files_common_ci_change_selects_all_domains() -> None:
     }
 
 
+def test_classify_from_files_production_workflow_change_does_not_select_staging_domains() -> None:
+    selected = data_engineering_plan.classify_from_files([".github/workflows/data-engineering-promote-prod.yml"])
+
+    assert selected == {
+        "service_public": False,
+        "legifrance": False,
+        "pdf_sources": False,
+        "embeddings": False,
+    }
+
+
 def test_classify_from_files_common_with_specific_source_scopes_to_source() -> None:
     selected = data_engineering_plan.classify_from_files(
         [
@@ -197,6 +208,66 @@ def test_push_plan_adds_embeddings_to_changed_source_preview(
     assert [item["image"] for item in matrix["include"]] == expected_images
 
 
+def test_run_matrix_isolates_full_service_public_and_legifrance_chains() -> None:
+    run_matrix = data_engineering_plan.build_run_matrix(
+        {"service_public": True, "legifrance": True, "pdf_sources": False, "embeddings": True},
+        run_embeddings=True,
+        embedding_source="all",
+    )
+
+    assert run_matrix == [
+        {
+            "name": "service-public",
+            "service_public": True,
+            "legifrance": False,
+            "pdf_sources": False,
+            "pdf_sources_ministry": "",
+            "embeddings": True,
+            "embedding_source": "service_public",
+        },
+        {
+            "name": "legifrance",
+            "service_public": False,
+            "legifrance": True,
+            "pdf_sources": False,
+            "pdf_sources_ministry": "",
+            "embeddings": True,
+            "embedding_source": "legifrance",
+        },
+    ]
+
+
+def test_run_matrix_keeps_ministry_medallion_and_embeddings_in_one_chain() -> None:
+    run_matrix = data_engineering_plan.build_run_matrix(
+        {"service_public": False, "legifrance": False, "pdf_sources": True, "embeddings": True},
+        run_embeddings=True,
+        embedding_source="masa",
+        pdf_sources_ministry="masa",
+    )
+
+    assert run_matrix == [
+        {
+            "name": "pdf-sources-masa",
+            "service_public": False,
+            "legifrance": False,
+            "pdf_sources": True,
+            "pdf_sources_ministry": "masa",
+            "embeddings": True,
+            "embedding_source": "masa",
+        }
+    ]
+
+
+def test_run_matrix_preserves_unrelated_explicit_embeddings_request() -> None:
+    run_matrix = data_engineering_plan.build_run_matrix(
+        {"service_public": True, "legifrance": False, "pdf_sources": False, "embeddings": True},
+        run_embeddings=True,
+        embedding_source="legifrance",
+    )
+
+    assert [entry["name"] for entry in run_matrix] == ["service-public", "embeddings-legifrance"]
+
+
 def test_workflow_dispatch_matte_selects_embeddings_backfill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     output_path = tmp_path / "github-output.txt"
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
@@ -252,7 +323,32 @@ def test_preview_staging_push_runs_complete_preview_with_wipe_disabled() -> None
     ) in workflow
     assert "WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}" in workflow
     assert "RUN_EMBEDDINGS: ${{ (github.event_name == 'push' && needs.plan.outputs.run_embeddings == 'true')" in workflow
-    assert "EMBEDDING_SOURCE: ${{ (github.event_name == 'push' && needs.plan.outputs.embedding_source)" in workflow
+    assert "EMBEDDING_SOURCE: ${{ matrix.embedding_source }}" in workflow
+    assert "run_matrix: ${{ steps.plan.outputs.run_matrix }}" in workflow
+    assert "matrix: ${{ fromJson(needs.plan.outputs.run_matrix) }}" in workflow
+    assert '--service-public "${{ matrix.service_public }}"' in workflow
+    assert '--legifrance "${{ matrix.legifrance }}"' in workflow
+
+
+def test_preview_staging_does_not_trigger_for_production_only_workflows() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-preview-staging.yml").read_text(encoding="utf-8")
+
+    triggers = workflow.split("workflow_dispatch:", 1)[0]
+    assert '".github/workflows/data-engineering-preview-staging.yml"' in triggers
+    assert '".github/workflows/data-engineering-cron-delta.yml"' in triggers
+    assert '".github/workflows/data-engineering-*.yml"' not in triggers
+    assert "data-engineering-promote-prod.yml" not in triggers
+
+
+def test_delta_cron_runs_sources_in_independent_matrix_cells() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-cron-delta.yml").read_text(encoding="utf-8")
+
+    assert "fail-fast: false" in workflow
+    assert "- name: service-public" in workflow
+    assert "- name: legifrance" in workflow
+    assert '--service-public "${{ matrix.service_public }}"' in workflow
+    assert '--legifrance "${{ matrix.legifrance }}"' in workflow
+    assert '--embedding-source "${{ matrix.embedding_source }}"' in workflow
 
 
 def test_preview_staging_threads_plan_apply_mode() -> None:
@@ -284,10 +380,7 @@ def test_preview_staging_exposes_matte_embedding_dispatch() -> None:
     assert "- mso" in source_block
     assert "- mso" in embedding_source_block
     assert "inputs.source == 'embeddings' || inputs.source == 'matte'" in workflow
-    assert (
-        "inputs.source == 'matte' && 'matte' || inputs.source == 'mi' && 'mi' || inputs.source == 'masa' && 'masa' "
-        "|| inputs.source == 'mso' && 'mso' || inputs.embedding_source"
-    ) in workflow
+    assert "EMBEDDING_SOURCE: ${{ matrix.embedding_source }}" in workflow
 
 
 def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:
@@ -306,15 +399,13 @@ def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:
     assert "pdf_sources_ministry: ${{ steps.plan.outputs.pdf_sources_ministry }}" in workflow
     assert "RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ingestion || false }}" in workflow
     assert "WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}" in workflow
-    assert (
-        "EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' "
-        "&& (inputs.source == 'matte' && 'matte' || inputs.source == 'mi' && 'mi' || inputs.source == 'masa' && 'masa' "
-        "|| inputs.source == 'mso' && 'mso' || inputs.embedding_source) || 'all' }}"
-    ) in workflow
+    assert "EMBEDDING_SOURCE: ${{ matrix.embedding_source }}" in workflow
+    assert "run_matrix: ${{ steps.plan.outputs.run_matrix }}" in workflow
+    assert "matrix: ${{ fromJson(needs.plan.outputs.run_matrix) }}" in workflow
     assert "EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}" in workflow
     assert '--run-ingestion "${RUN_INGESTION}"' in start_step
     assert '--wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}"' in start_step
-    assert '--pdf-sources-ministry "${{ needs.plan.outputs.pdf_sources_ministry }}"' in start_step
+    assert '--pdf-sources-ministry "${{ matrix.pdf_sources_ministry }}"' in start_step
     assert '--embedding-source "${EMBEDDING_SOURCE}"' in start_step
     assert '--embedding-only-column "${EMBEDDING_ONLY_COLUMN}"' in start_step
 
@@ -432,7 +523,9 @@ def test_cron_delta_workflow_chains_delta_on_staging() -> None:
     assert "--delta true" in workflow
     assert "--image-tag staging-latest" in workflow  # tag stable, pas de rebuild
     assert "--wait" in workflow  # chaîne séquentielle medallion->ingest->embeddings
-    assert "--service-public true" in workflow and "--legifrance true" in workflow
+    assert '--service-public "${{ matrix.service_public }}"' in workflow
+    assert '--legifrance "${{ matrix.legifrance }}"' in workflow
+    assert "fail-fast: false" in workflow
     assert "--run-ingestion true" in workflow and "--run-embeddings true" in workflow
     # Le cron fournit les creds Grist ET Légifrance/PISTE (jobs delta).
     assert "GRIST_API_KEY:" in workflow
