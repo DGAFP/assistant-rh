@@ -7,7 +7,6 @@ HTTP mocké — aucun appel réseau. Le contrat: colonne manquante => échec fra
 from __future__ import annotations
 
 import json
-from datetime import date
 from typing import Any
 
 import pytest
@@ -191,7 +190,7 @@ def test_validate_manifest_records_accepts_valid_row_case_insensitive() -> None:
     assert row.short_id == "7361BF3024"
     assert row.corpus == "MI"
     assert row.statut == "en_vigueur"
-    assert row.date_publication == date(2024, 1, 15)
+    assert row.date_publication == "2024-01-15"
     assert row.record_id == 1
 
 
@@ -231,7 +230,8 @@ def test_validate_manifest_records_normalizes_grist_date_timestamp() -> None:
     result = validate_manifest_records(records, "mi")
 
     assert result.ok
-    assert result.valid[0].date_publication == date(2026, 1, 1)
+    assert result.valid[0].date_publication == "2026-01-01"
+    assert json.loads(json.dumps({"publication_date": result.valid[0].date_publication})) == {"publication_date": "2026-01-01"}
 
 
 def test_validate_manifest_records_ignores_invalid_optional_date() -> None:
