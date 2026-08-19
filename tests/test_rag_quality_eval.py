@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1645,6 +1647,7 @@ def _attempt_metadata() -> dict:
                         "removed": [{"idx": 1, "document_id": "gold-doc"}],
                     }
                 },
+                "context_items_ref": [{"doc_id": "noise-doc"}],
             }
         ]
     }
@@ -1660,6 +1663,19 @@ def test_stage_retrieval_metrics_localizes_gold_loss() -> None:
     assert initial["sections_top20"]["hit_rate"] == 1.0
     assert initial["selector_kept"]["hit_rate"] == 0.0
     assert initial["selector_kept"]["doc_recall"] == 0.0
+    assert initial["context_builder_output"]["hit_rate"] == 0.0
+
+
+def test_stage_retrieval_metrics_localizes_context_builder_loss() -> None:
+    metadata = _attempt_metadata()
+    attempt = metadata["retrieval_attempts"][0]
+    attempt["selector"]["decisions"]["kept"] = [{"document_id": "gold-doc"}]
+    attempt["context_items_ref"] = []
+
+    stages = stage_retrieval_metrics(metadata, ["gold-doc"])["initial"]
+
+    assert stages["selector_kept"]["hit_rate"] == 1.0
+    assert stages["context_builder_output"]["hit_rate"] == 0.0
 
 
 def test_stage_retrieval_metrics_kept_falls_back_to_idx() -> None:
@@ -1672,6 +1688,39 @@ def test_stage_retrieval_metrics_kept_falls_back_to_idx() -> None:
 
 def test_stage_retrieval_metrics_without_attempts() -> None:
     assert stage_retrieval_metrics({}, ["gold-doc"]) == {}
+
+
+def test_stage_retrieval_metrics_records_present_empty_stages_as_zero() -> None:
+    metadata = {
+        "retrieval_attempts": [
+            {
+                "name": "empty",
+                "chunks_before_rerank": [],
+                "aggregated_sections": [],
+                "selector": {"decisions": {"kept": []}},
+                "context_items_ref": [],
+            }
+        ]
+    }
+
+    stages = stage_retrieval_metrics(metadata, ["gold-doc"])["empty"]
+
+    assert set(stages) == {"pool", "sections_top12", "sections_top20", "selector_kept", "context_builder_output"}
+    assert all(metrics == {"hit_rate": 0.0, "doc_recall": 0.0, "doc_count": 0} for metrics in stages.values())
+
+
+def test_stage_retrieval_metrics_omits_missing_stages() -> None:
+    assert stage_retrieval_metrics({"retrieval_attempts": [{"name": "missing"}]}, ["gold-doc"]) == {}
+
+
+def test_stage_doc_count_uses_raw_ids_before_alias_expansion() -> None:
+    metadata = {"retrieval_attempts": [{"name": "initial", "chunks_before_rerank": [{"doc_id": "doc-1"}]}]}
+    aliases = {"DOC-1": {"doc-short", "https://example.test/doc-1"}}
+
+    pool = stage_retrieval_metrics(metadata, ["doc-1"], aliases=aliases)["initial"]["pool"]
+
+    assert pool["hit_rate"] == 1.0
+    assert pool["doc_count"] == 1
 
 
 def test_aggregate_items_averages_stage_metrics() -> None:
@@ -1696,3 +1745,78 @@ def test_secret_backed_rag_eval_does_not_run_on_pull_request_heads() -> None:
     assert "\n  push:" in triggers
     assert "\n  pull_request:" not in triggers
     assert "github.event.pull_request" not in workflow
+
+
+def test_secret_backed_rag_eval_validates_ref_before_environment_job() -> None:
+    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/rag-quality-eval.yml").read_text(encoding="utf-8")
+
+    validation_job = workflow.index("  validate-protected-ref:")
+    eval_job = workflow.index("  rag-quality-eval:")
+    assert validation_job < eval_job
+    assert "needs: validate-protected-ref" in workflow[eval_job:]
+    assert "refs/heads/dev|refs/heads/staging|refs/heads/main" in workflow[validation_job:eval_job]
+
+
+def test_rag_eval_dispatch_strings_are_not_interpolated_in_shell() -> None:
+    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/rag-quality-eval.yml").read_text(encoding="utf-8")
+    resolve_step = workflow.split("      - name: Resolve eval parameters", 1)[1].split("      - name: Run RAG quality eval", 1)[0]
+    script = resolve_step.split("        run: |", 1)[1]
+
+    assert "${{ inputs." not in script
+    for variable in (
+        "GOLDSET_NAME_INPUT",
+        "GOLDSET_TAG_INPUT",
+        "LIMIT_INPUT",
+        "BASELINE_RUN_ID_INPUT",
+        "BASELINE_RUN_LABEL_INPUT",
+        "RUN_LABEL_SUFFIX_INPUT",
+    ):
+        assert variable in resolve_step
+
+
+@pytest.mark.parametrize(
+    "variable",
+    [
+        "GOLDSET_NAME_INPUT",
+        "GOLDSET_TAG_INPUT",
+        "LIMIT_INPUT",
+        "BASELINE_RUN_ID_INPUT",
+        "BASELINE_RUN_LABEL_INPUT",
+        "RUN_LABEL_SUFFIX_INPUT",
+    ],
+)
+def test_rag_eval_dispatch_rejects_shell_payloads(variable: str, tmp_path: Path) -> None:
+    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/rag-quality-eval.yml").read_text(encoding="utf-8")
+    resolve_step = workflow.split("      - name: Resolve eval parameters", 1)[1].split("      - name: Run RAG quality eval", 1)[0]
+    script = resolve_step.split("        run: |", 1)[1]
+    marker = tmp_path / "payload-executed"
+    github_env = tmp_path / "github-env"
+    env = {
+        **os.environ,
+        "EVENT_NAME": "workflow_dispatch",
+        "EVAL_MODE_INPUT": "smoke",
+        "TARGET_ENVIRONMENT_INPUT": "staging",
+        "GOLDSET_NAME_INPUT": "iteration2_V1",
+        "GOLDSET_TAG_INPUT": "iteration2",
+        "LIMIT_INPUT": "5",
+        "SKIP_RAGAS_INPUT": "true",
+        "SKIP_JUDGE_INPUT": "false",
+        "ANY_GOLDSET_INPUT": "false",
+        "BASELINE_RUN_ID_INPUT": "",
+        "BASELINE_RUN_LABEL_INPUT": "",
+        "JUDGE_PROVIDER_INPUT": "openrouter",
+        "RUN_LABEL_SUFFIX_INPUT": "",
+        "JUDGE_MODEL_INPUT": "",
+        "JUDGE_VOTES_INPUT": "1",
+        "GITHUB_SHA_INPUT": "a" * 40,
+        "GITHUB_REF_NAME_INPUT": "dev",
+        "DEFAULT_BASELINE_RUN_ID": "",
+        "DEFAULT_BASELINE_RUN_LABEL": "",
+        "GITHUB_ENV": str(github_env),
+    }
+    env[variable] = f"safe; touch {marker}"
+
+    completed = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, check=False)
+
+    assert completed.returncode != 0
+    assert not marker.exists()

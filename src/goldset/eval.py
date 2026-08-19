@@ -1059,8 +1059,9 @@ def deterministic_metrics(gold_sources: list[str], retrieved_ids: list[str], ali
 
 
 # Funnel d'observabilité retrieval (issue selector v4, 08/2026) : recall mesuré
-# à chaque étage AVANT le contexte servi, par tentative. Les k sections tracés
-# encadrent la fenêtre du selector (12 candidats évalués, 20 sections agrégées).
+# à chaque étage, par tentative. Les k sections tracés encadrent la fenêtre du
+# selector (12 candidats évalués, 20 sections agrégées), puis le dernier étage
+# reflète le contexte effectivement produit par ContextBuilder.
 _STAGE_SECTION_KS = (12, 20)
 
 
@@ -1068,20 +1069,22 @@ def _attempt_stage_doc_ids(attempt: dict[str, Any]) -> dict[str, list[str]]:
     """Doc ids présents à chaque étage d'une tentative de retrieval.
 
     Étages : ``pool`` (chunks avant rerank), ``sections_top{k}`` (sections
-    agrégées post-rerank, ordre servi au selector), ``selector_kept`` (sections
-    réellement servies). Un étage absent de la trace est omis, pas inventé.
+    agrégées post-rerank, ordre présenté au selector), ``selector_kept``
+    (sections retenues par le selector) et ``context_builder_output`` (items
+    effectivement servis). Un étage absent de la trace est omis, pas inventé.
     """
     stages: dict[str, list[str]] = {}
 
     chunks = attempt.get("chunks_before_rerank")
-    if isinstance(chunks, list) and chunks:
+    if isinstance(chunks, list):
         stages["pool"] = [str(c.get("doc_id")) for c in chunks if isinstance(c, dict) and c.get("doc_id")]
 
     aggregated = attempt.get("aggregated_sections")
-    aggregated = aggregated if isinstance(aggregated, list) else []
-    if aggregated:
+    if isinstance(aggregated, list):
         for k in _STAGE_SECTION_KS:
             stages[f"sections_top{k}"] = [str(s.get("document_id")) for s in aggregated[:k] if isinstance(s, dict) and s.get("document_id")]
+    else:
+        aggregated = []
 
     kept = ((attempt.get("selector") or {}).get("decisions") or {}).get("kept")
     if isinstance(kept, list):
@@ -1097,6 +1100,14 @@ def _attempt_stage_doc_ids(attempt: dict[str, Any]) -> dict[str, list[str]]:
             if doc_id:
                 kept_ids.append(str(doc_id))
         stages["selector_kept"] = kept_ids
+
+    context_items = attempt.get("context_items_ref")
+    if isinstance(context_items, list):
+        stages["context_builder_output"] = [
+            str(item.get("doc_id") or item.get("document_id"))
+            for item in context_items
+            if isinstance(item, dict) and (item.get("doc_id") or item.get("document_id"))
+        ]
     return stages
 
 
@@ -1122,11 +1133,12 @@ def stage_retrieval_metrics(
         name = str(attempt.get("name") or f"attempt_{position}")
         attempt_stages: dict[str, Any] = {}
         for stage, ids in _attempt_stage_doc_ids(attempt).items():
+            raw_doc_count = len(_stable_unique([str(doc_id).strip() for doc_id in ids if str(doc_id).strip()]))
             metrics = deterministic_metrics(gold_sources, ids, aliases=aliases)
             attempt_stages[stage] = {
                 "hit_rate": metrics["hit_rate"],
                 "doc_recall": metrics["doc_recall"],
-                "doc_count": len(set(metrics["retrieved_doc_ids"])),
+                "doc_count": raw_doc_count,
             }
         if attempt_stages:
             out[name] = attempt_stages

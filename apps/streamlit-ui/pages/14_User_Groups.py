@@ -9,14 +9,13 @@ import pandas as pd
 import streamlit as st
 from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG
 
-from src.ui.admin_auth import require_admin, show_admin_badge
+from src.ui.admin_auth import initialize_admin_security, require_admin, show_admin_badge
 from src.ui.groups import DEFAULT_GROUP
 from src.ui.user_groups_store import (
     PROTECTED_SLUGS,
     create_group,
     delete_group,
     group_policy_status,
-    init_user_groups_table,
     list_groups,
     set_password,
     update_group,
@@ -24,13 +23,9 @@ from src.ui.user_groups_store import (
 
 st.set_page_config(page_title="Groupes utilisateurs", page_icon="👥", layout="wide")
 
+initialize_admin_security()
 require_admin()
 show_admin_badge()
-
-# Ensure the table exists/seeded once per session (matches Home.py guard).
-if "user_groups_initialized" not in st.session_state:
-    init_user_groups_table()
-    st.session_state.user_groups_initialized = True
 
 st.title("👥 Gestion des groupes utilisateurs")
 st.caption(
