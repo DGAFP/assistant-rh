@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
+from datetime import date, datetime, timezone
 from typing import Any
 
 import requests
@@ -110,7 +111,7 @@ class ManifestRow:
     titre: str
     cle_bucket: str
     statut: str
-    date_publication: Any = None
+    date_publication: date | None = None
     fields: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -227,6 +228,35 @@ def validate_manifest_columns(columns: list[str], required: tuple[str, ...] = RE
         raise GristContractError(f"Colonnes manquantes dans la table Grist: {', '.join(missing)} (requises: {', '.join(required)})")
 
 
+def _normalize_optional_date(value: Any) -> date | None:
+    """Normalise une date Grist sans rendre ce champ optionnel bloquant.
+
+    L'API Grist renvoie les colonnes Date sous forme de timestamp Unix pour
+    certaines lignes et de chaîne ISO pour d'autres. PostgreSQL n'accepte pas
+    le timestamp entier tel quel dans une colonne ``date``; on convertit donc
+    les deux représentations au bord du manifest.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            return datetime.fromtimestamp(value, tz=timezone.utc).date()
+        except (OverflowError, OSError, ValueError):
+            return None
+
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
 def validate_manifest_records(
     records: list[dict[str, Any]],
     corpus: str,
@@ -305,7 +335,7 @@ def validate_manifest_records(
                 titre=titre,
                 cle_bucket=cle_bucket,
                 statut=statut,
-                date_publication=fields.get("date_publication") or None,
+                date_publication=_normalize_optional_date(fields.get("date_publication")),
                 fields=fields,
             )
         )
