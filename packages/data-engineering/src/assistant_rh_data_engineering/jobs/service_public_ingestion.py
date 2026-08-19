@@ -711,5 +711,15 @@ def main() -> int:
     return 0
 
 
+def run_cli() -> int:
+    """Run the CLI while retaining a bounded final crash diagnostic."""
+    try:
+        return main()
+    except Exception as exc:
+        message = str(exc).replace("\n", " ")[:500]
+        print(f"Service-Public ingestion crashed: {type(exc).__name__}: {message}", file=sys.stderr, flush=True)
+        raise
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_cli())
