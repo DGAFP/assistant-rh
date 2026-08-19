@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import base64
+import logging
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import requests
+
+logger = logging.getLogger(__name__)
+
+_OCR_RETRY_BACKOFF_SECONDS = (10.0, 30.0, 60.0)
 
 
 class OcrError(RuntimeError):
@@ -51,6 +57,17 @@ class OcrProvider:
 def _sanitize_version(value: str) -> str:
     # La version sert de segment de chemin S3: on neutralise séparateurs et espaces.
     return re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip()) or "default"
+
+
+def _retry_delay(response: requests.Response, fallback_seconds: float) -> float:
+    """Utilise Retry-After quand il contient un délai numérique valide."""
+    retry_after = response.headers.get("Retry-After")
+    if retry_after:
+        try:
+            return max(0.0, float(retry_after))
+        except ValueError:
+            pass
+    return fallback_seconds
 
 
 class AlbertOcrProvider(OcrProvider):
@@ -106,18 +123,54 @@ class AlbertOcrProvider(OcrProvider):
             body["include_image_base64"] = True
 
         url = f"{self.base_url}/ocr"
-        try:
-            response = requests.post(
-                url,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=body,
-                timeout=self.timeout,
+        response: requests.Response | None = None
+        last_transport_error: requests.RequestException | None = None
+        max_attempts = len(_OCR_RETRY_BACKOFF_SECONDS) + 1
+        for attempt in range(max_attempts):
+            try:
+                response = requests.post(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=body,
+                    timeout=self.timeout,
+                )
+                last_transport_error = None
+            except requests.RequestException as exc:
+                response = None
+                last_transport_error = exc
+                if attempt == max_attempts - 1:
+                    break
+                delay = _OCR_RETRY_BACKOFF_SECONDS[attempt]
+                logger.warning(
+                    "OCR Albert indisponible pour %s (erreur réseau, tentative %d/%d); nouvel essai dans %.0fs",
+                    document_name,
+                    attempt + 1,
+                    max_attempts,
+                    delay,
+                )
+                time.sleep(delay)
+                continue
+
+            if response.status_code != 429 and not 500 <= response.status_code < 600:
+                break
+            if attempt == max_attempts - 1:
+                break
+            delay = _retry_delay(response, _OCR_RETRY_BACKOFF_SECONDS[attempt])
+            logger.warning(
+                "OCR Albert indisponible pour %s (HTTP %d, tentative %d/%d); nouvel essai dans %.0fs",
+                document_name,
+                response.status_code,
+                attempt + 1,
+                max_attempts,
+                delay,
             )
-        except requests.RequestException as exc:
-            raise OcrError(f"POST {url} ({document_name}, modèle {self.model}) impossible: {exc}") from exc
+            time.sleep(delay)
+
+        if response is None:
+            raise OcrError(f"POST {url} ({document_name}, modèle {self.model}) impossible: {last_transport_error}") from last_transport_error
         if response.status_code >= 400:
             raise OcrError(f"POST {url} ({document_name}) -> HTTP {response.status_code}: {response.text[:500]}")
 
