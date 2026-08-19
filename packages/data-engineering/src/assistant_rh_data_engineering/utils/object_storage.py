@@ -115,6 +115,7 @@ class ScalewayObjectStorageSync:
             source,
             str(destination_dir),
             "--no-progress",
+            "--only-show-errors",
         ]
         subprocess.run(cmd, check=True, env=self._base_env())
 
