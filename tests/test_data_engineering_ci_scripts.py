@@ -363,6 +363,8 @@ def test_preview_staging_threads_plan_apply_mode() -> None:
     assert "INPUT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'apply' }}" in workflow
     assert "mode: ${{ steps.plan.outputs.mode }}" in workflow
     assert '--mode "${{ needs.plan.outputs.mode }}"' in workflow
+    assert "needs.plan.outputs.mode == 'apply' && needs.plan.outputs.has_builds == 'true'" in workflow
+    assert "needs.plan.outputs.mode == 'apply' && needs.plan.outputs.has_runs == 'true'" in workflow
     # mode=plan neutralise la mutation côté env (ingestion PDF + embeddings).
     assert "inputs.run_ingestion && inputs.mode == 'apply'" in workflow
     assert "inputs.mode == 'apply' && (inputs.run_embeddings" in workflow
@@ -397,7 +399,7 @@ def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:
     assert "- masa" in embedding_source_block
     assert "- mso" in embedding_source_block
     assert "pdf_sources_ministry: ${{ steps.plan.outputs.pdf_sources_ministry }}" in workflow
-    assert "RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ingestion || false }}" in workflow
+    assert "RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' && inputs.run_ingestion || false }}" in workflow
     assert "WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}" in workflow
     assert "EMBEDDING_SOURCE: ${{ matrix.embedding_source }}" in workflow
     assert "run_matrix: ${{ steps.plan.outputs.run_matrix }}" in workflow
@@ -408,6 +410,33 @@ def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:
     assert '--pdf-sources-ministry "${{ matrix.pdf_sources_ministry }}"' in start_step
     assert '--embedding-source "${EMBEDDING_SOURCE}"' in start_step
     assert '--embedding-only-column "${EMBEDDING_ONLY_COLUMN}"' in start_step
+
+
+def test_preview_staging_defaults_to_grist_delta_and_provides_piste_credentials() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-preview-staging.yml").read_text(encoding="utf-8")
+    inputs_block = workflow.split("workflow_dispatch:", 1)[1].split("jobs:", 1)[0]
+
+    assert "delta:" in inputs_block
+    assert "DELTA_MODE: ${{ github.event_name == 'push' || inputs.delta }}" in workflow
+    assert '--delta "${DELTA_MODE}"' in workflow
+    assert "LEGIFRANCE_CLIENT_ID: ${{ secrets.LEGIFRANCE_CLIENT_ID }}" in workflow
+    assert "LEGIFRANCE_CLIENT_SECRET: ${{ secrets.LEGIFRANCE_CLIENT_SECRET }}" in workflow
+
+
+def test_promote_prod_requires_explicit_apply_and_defaults_to_grist_delta() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/data-engineering-promote-prod.yml").read_text(encoding="utf-8")
+    inputs_block = workflow.split("workflow_dispatch:", 1)[1].split("permissions:", 1)[0]
+
+    assert 'default: "plan"' in inputs_block
+    assert "INPUT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'plan' }}" in workflow
+    assert "mode: ${{ steps.plan.outputs.mode }}" in workflow
+    assert "needs.plan.outputs.mode == 'apply' && needs.plan.outputs.has_builds == 'true'" in workflow
+    assert "needs.plan.outputs.mode == 'apply' && needs.plan.outputs.has_runs == 'true'" in workflow
+    assert "DELTA_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.delta || false }}" in workflow
+    assert '--mode "${{ needs.plan.outputs.mode }}"' in workflow
+    assert '--delta "${DELTA_MODE}"' in workflow
+    assert "LEGIFRANCE_CLIENT_ID: ${{ secrets.LEGIFRANCE_CLIENT_ID }}" in workflow
+    assert "LEGIFRANCE_CLIENT_SECRET: ${{ secrets.LEGIFRANCE_CLIENT_SECRET }}" in workflow
 
 
 def test_promote_prod_provides_pdf_ministry_credentials() -> None:
