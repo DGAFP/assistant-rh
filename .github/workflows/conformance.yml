@@ -3,6 +3,8 @@ name: Conformance
 on:
   pull_request:
     branches: [staging]
+  push:
+    branches: [staging]
   workflow_dispatch:
 
 permissions:
@@ -57,6 +59,9 @@ jobs:
   stage-conformance:
     name: conformance / ${{ matrix.stage }}
     needs: detect-conformance-changes
+    # The staging environment only accepts integrated dev/staging/main refs.
+    # Never expose its credentials to GitHub's synthetic pull-request merge ref.
+    if: ${{ github.event_name != 'pull_request' && needs.detect-conformance-changes.outputs.should_run == 'true' }}
     runs-on: ubuntu-latest
     environment: scaleway-staging
     continue-on-error: ${{ matrix.required == false }}
@@ -102,49 +107,22 @@ jobs:
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
 
     steps:
-      - name: Create skipped conformance report
-        if: ${{ needs.detect-conformance-changes.outputs.should_run != 'true' }}
-        run: |
-          mkdir -p tests/conformance/reports/ci
-          REPORT_PATH="tests/conformance/reports/ci/${{ matrix.stage }}.json"
-          cat > "$REPORT_PATH" <<JSON
-          {
-            "generatedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-            "mode": "replay",
-            "queriesFile": "tests/conformance/queries.sample.jsonl",
-            "queryCount": 0,
-            "succeededCount": 0,
-            "failedCount": 0,
-            "skipped": true,
-            "skipReason": "No conformance-relevant files changed in this pull request.",
-            "summary": {},
-            "details": [],
-            "errors": []
-          }
-          JSON
-          echo "Skipping ${{ matrix.stage }} conformance: no conformance-relevant files changed."
-
       - name: Checkout code
-        if: ${{ needs.detect-conformance-changes.outputs.should_run == 'true' }}
         uses: actions/checkout@v5
 
       - name: Setup pnpm
-        if: ${{ needs.detect-conformance-changes.outputs.should_run == 'true' }}
         uses: pnpm/action-setup@v5
 
       - name: Setup Node.js
-        if: ${{ needs.detect-conformance-changes.outputs.should_run == 'true' }}
         uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install dependencies
-        if: ${{ needs.detect-conformance-changes.outputs.should_run == 'true' }}
         run: pnpm install --frozen-lockfile
 
       - name: Run conformance stage
-        if: ${{ needs.detect-conformance-changes.outputs.should_run == 'true' }}
         env:
           ALLOW_SECRETLESS_SKIP: ${{ github.event_name == 'pull_request' && github.actor == 'dependabot[bot]' }}
           REQUIRES_DB: ${{ matrix.requires_db }}
@@ -198,7 +176,7 @@ jobs:
           esac
 
       - name: Enforce deterministic thresholds
-        if: ${{ matrix.required && needs.detect-conformance-changes.outputs.should_run == 'true' }}
+        if: ${{ matrix.required }}
         env:
           STAGE: ${{ matrix.stage }}
           SUMMARY_KEY: ${{ matrix.summary_key }}
@@ -281,7 +259,9 @@ jobs:
     name: conformance / summary
     runs-on: ubuntu-latest
     if: ${{ always() }}
-    needs: stage-conformance
+    needs:
+      - detect-conformance-changes
+      - stage-conformance
     permissions:
       contents: read
       pull-requests: write
@@ -290,7 +270,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Build protected-ref PR summary
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          SHOULD_RUN: ${{ needs.detect-conformance-changes.outputs.should_run }}
+        run: |
+          if [[ "$SHOULD_RUN" == "true" ]]; then
+            cat > "$RUNNER_TEMP/conformance-summary.md" <<'MARKDOWN'
+          Conformance-relevant changes were detected. Secret-backed replay is deferred until this candidate is integrated into the protected `staging` branch.
+          MARKDOWN
+          else
+            cat > "$RUNNER_TEMP/conformance-summary.md" <<'MARKDOWN'
+          No conformance-relevant files changed. Secret-backed replay is not required for this pull request.
+          MARKDOWN
+          fi
+
       - name: Download conformance reports
+        if: ${{ github.event_name != 'pull_request' }}
         uses: actions/download-artifact@v7
         with:
           pattern: conformance-*
@@ -298,6 +294,7 @@ jobs:
           merge-multiple: true
 
       - name: Build conformance summary
+        if: ${{ github.event_name != 'pull_request' }}
         run: |
           python scripts/summarize_conformance_reports.py \
             --reports-dir tests/conformance/reports/ci \
