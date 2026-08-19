@@ -1784,6 +1784,11 @@ def judge_answer(
         "Return only valid JSON with keys: score, pass, failure_category, material_contradiction, "
         "dimensions, missing_required_points, contradictions, rationale, source_support."
     )
+    # Amendements de rubrique injectables (banc des juges du 18-19/08) : permet
+    # de tester une rubrique corrigée sans toucher au protocole officiel.
+    rubric_addendum = os.getenv("JUDGE_RUBRIC_ADDENDUM", "").strip()
+    if rubric_addendum:
+        system = f"{system}\n{rubric_addendum}"
     usage = _TokenUsage()
     usage_captured = False
     try:
