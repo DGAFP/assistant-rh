@@ -34,32 +34,32 @@ WHERE chunks.source_document_id IS NULL
   AND chunks.short_id IS NOT NULL
   AND UPPER(TRIM(chunks.short_id)) = documents.normalized_short_id;
 
--- Rejoue le même choix déterministe que le résolveur legacy du retriever:
--- heading_path exact en priorité, puis dernier heading du chemin.
+-- Rejoue le même choix déterministe que le résolveur legacy du retriever :
+-- heading_path exact en priorité, puis dernier heading du chemin. La jointure
+-- est volontairement ensembliste : une sous-requête corrélée par chunk garde
+-- le verrou ALTER TABLE pendant plusieurs minutes sur le corpus existant.
 WITH resolved_sections AS (
-    SELECT
+    SELECT DISTINCT ON (chunks.hash_id)
         chunks.hash_id,
-        (
-            SELECT sections.section_id
-            FROM public.rag_documents AS documents
-            JOIN public.rag_sections AS sections
-              ON sections.doc_id = documents.doc_id
-            WHERE LOWER(TRIM(documents.source)) = 'service_public'
-              AND UPPER(TRIM(documents.short_id)) = UPPER(TRIM(chunks.short_id))
-              AND (
-                  sections.heading_path = chunks.section_path
-                  OR sections.heading = BTRIM(REGEXP_REPLACE(chunks.section_path, '^.*>\s*', ''))
-              )
-            ORDER BY
-                CASE WHEN sections.heading_path = chunks.section_path THEN 0 ELSE 1 END,
-                sections.section_index NULLS LAST,
-                sections.section_id
-            LIMIT 1
-        ) AS section_id
+        sections.section_id
     FROM public.rag_chunks_service_public AS chunks
+    JOIN public.rag_documents AS documents
+      ON UPPER(TRIM(documents.short_id)) = UPPER(TRIM(chunks.short_id))
+     AND LOWER(TRIM(documents.source)) = 'service_public'
+    JOIN public.rag_sections AS sections
+      ON sections.doc_id = documents.doc_id
+     AND (
+         sections.heading_path = chunks.section_path
+         OR sections.heading = BTRIM(REGEXP_REPLACE(chunks.section_path, '^.*>\s*', ''))
+     )
     WHERE chunks.section_id IS NULL
       AND chunks.short_id IS NOT NULL
       AND chunks.section_path IS NOT NULL
+    ORDER BY
+        chunks.hash_id,
+        CASE WHEN sections.heading_path = chunks.section_path THEN 0 ELSE 1 END,
+        sections.section_index NULLS LAST,
+        sections.section_id
 )
 UPDATE public.rag_chunks_service_public AS chunks
 SET section_id = resolved.section_id
