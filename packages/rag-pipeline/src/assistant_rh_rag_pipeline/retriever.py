@@ -560,6 +560,28 @@ class Retriever:
 
         existing = self._get_table_columns(table.name)
         if "section_id" in existing:
+            if {"short_id", "section_path"}.issubset(existing):
+                # Une migration ajoute section_id à une table Service-Public
+                # déjà peuplée avant que tous les chunks aient été réingérés.
+                # Conserver le résolveur legacy pour les seules lignes NULL
+                # évite une perte temporaire de recherche par titres.
+                return r"""
+                , COALESCE(
+                    t.section_id,
+                    (
+                        SELECT s.section_id
+                        FROM rag_documents d
+                        JOIN rag_sections s ON s.doc_id = d.doc_id
+                        WHERE d.short_id = t.short_id
+                          AND (
+                            s.heading_path = t.section_path
+                            OR s.heading = btrim(regexp_replace(t.section_path, '^.*>\s*', ''))
+                          )
+                        ORDER BY CASE WHEN s.heading_path = t.section_path THEN 0 ELSE 1 END
+                        LIMIT 1
+                    )
+                ) AS section_id
+            """
             return ", t.section_id"
 
         if {"short_id", "section_path"}.issubset(existing):
