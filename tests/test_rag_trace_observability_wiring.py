@@ -32,6 +32,7 @@ def _streamlit_required_secret_env() -> dict[str, str]:
         "SCALEWAY_API_KEY": "scaleway",
         "COOKIES_PASSWORD": "cookies",
         "ADMIN_PASSWORD": "admin",
+        "GROUP_DEFAULT_PASSWORD": "groups",
         "GRIST_API_KEY": "grist",
         "SCW_ACCESS_KEY": "access",
         "SCW_SECRET_KEY": "secret",
@@ -86,6 +87,7 @@ def test_streamlit_deploy_passes_otlp_headers_as_secret(monkeypatch: pytest.Monk
 
     assert env["OTEL_EXPORTER_OTLP_HEADERS"] == "Authorization=Bearer token"
     assert env["GRIST_API_KEY"] == "grist"
+    assert env["GROUP_DEFAULT_PASSWORD"] == "groups"
     assert env["SCW_ACCESS_KEY"] == "access"
     assert env["SCW_SECRET_KEY"] == "secret"
 
@@ -124,6 +126,7 @@ def test_streamlit_workflows_expose_source_import_configuration() -> None:
         assert "GRIST_DOC_ID" in workflow
         assert "GRIST_TABLE_ID" in workflow
         assert "SCW_BUCKET_SOURCES_PDF" in workflow
+        assert "GROUP_DEFAULT_PASSWORD" in workflow
 
 
 def test_grafana_import_payload_requires_stable_dashboard_uid() -> None:

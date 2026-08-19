@@ -245,3 +245,42 @@ def test_issue_360_compatibility_rule_applies_to_single_publisher(monkeypatch: p
     assert [section.metadata["number"] for section in selected] == ["L621-10", "L621-11"]
     assert "Redondance et complémentarité" in llm.last_prompt
     assert "même règle, la même condition ou la même modalité" in llm.last_prompt
+
+
+def test_decision_entries_carry_document_id(patch_llm) -> None:
+    """Les entrées kept/removed doivent être joignables aux gold doc_ids.
+
+    Sans document_id, l'analyse de funnel des runs d'eval ne peut pas attribuer
+    une perte de gold au selector (constat run #180, 17/08/2026 : sections
+    juridiques standalone avec document_id vide dans la trace)."""
+    sections = [
+        AggregatedSection(
+            section_id="s0",
+            heading="Fiche congés",
+            markdown="Contenu",
+            chunks=[],
+            score=0.9,
+            document_id="doc-uuid-0",
+            publisher="Service-Public",
+        ),
+        AggregatedSection(
+            section_id=None,
+            heading="Article L621-10",
+            markdown="Contenu légal",
+            chunks=[],
+            score=0.8,
+            publisher="DGAFP",
+            metadata={"cid": "LEGIARTI000044423797"},
+        ),
+    ]
+    patch_llm('{"selected_ids": [0], "reason": "ok"}')
+    selector = ContextSelector(SelectorConfig(enabled=True, min_kept_sections=0))
+
+    selector.select("question", sections)
+
+    kept = selector.last_decisions["kept"]
+    removed = selector.last_decisions["removed"]
+    assert kept[0]["document_id"] == "doc-uuid-0"
+    assert kept[0]["section_id"] == "s0"
+    assert removed[0]["document_id"] == "LEGIARTI000044423797"
+    assert removed[0]["section_id"] == ""

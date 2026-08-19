@@ -646,7 +646,7 @@ def _search_corpus(engine, ministry: Optional[str], markers: List[str]) -> Optio
                 }
                 for tbl in tables:
                     for v in variants:
-                        q = text(f"SELECT 1 FROM {tbl} WHERE chunk_text ILIKE :p OR text ILIKE :p LIMIT 1")
+                        q = text(f"SELECT 1 FROM {tbl} WHERE chunk_text ILIKE :p LIMIT 1")
                         if conn.execute(q, {"p": f"%{v}%"}).first():
                             return True
         return False
