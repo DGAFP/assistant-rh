@@ -111,6 +111,90 @@
       ]
     },
     {
+      "key": "pdf-sources-mi-medallion",
+      "domain": "pdf_sources",
+      "image": "pdf-sources-pipeline",
+      "description": "CI/CD MI (Intérieur) PDF sources medallion pipeline (Grist manifest, OCR, réconciliation).",
+      "cpu_limit": 2000,
+      "memory_limit": 4096,
+      "local_storage_capacity": 4096,
+      "job_timeout": "7200s",
+      "auto_start_on_push": false,
+      "requires_ingestion": true,
+      "env_groups": ["object_storage", "postgres", "grist", "albert", "embeddings_api"],
+      "args": [
+        "mi",
+        "medallion",
+        "--target-env",
+        "{target_env}",
+        "--ingest",
+        "--sync-object-storage"
+      ]
+    },
+    {
+      "key": "pdf-sources-masa-medallion",
+      "domain": "pdf_sources",
+      "image": "pdf-sources-pipeline",
+      "description": "CI/CD MASA (Agriculture et Souveraineté alimentaire) PDF sources medallion pipeline (Grist manifest, OCR, réconciliation).",
+      "cpu_limit": 2000,
+      "memory_limit": 4096,
+      "local_storage_capacity": 4096,
+      "job_timeout": "7200s",
+      "auto_start_on_push": false,
+      "requires_ingestion": true,
+      "env_groups": ["object_storage", "postgres", "grist", "albert", "embeddings_api"],
+      "args": [
+        "masa",
+        "medallion",
+        "--target-env",
+        "{target_env}",
+        "--ingest",
+        "--sync-object-storage"
+      ]
+    },
+    {
+      "key": "pdf-sources-matte-medallion",
+      "domain": "pdf_sources",
+      "image": "pdf-sources-pipeline",
+      "description": "CI/CD MATTE PDF sources medallion pipeline (rebuild Phase D — Grist manifest, OCR, réconciliation).",
+      "cpu_limit": 2000,
+      "memory_limit": 4096,
+      "local_storage_capacity": 4096,
+      "job_timeout": "7200s",
+      "auto_start_on_push": false,
+      "requires_ingestion": true,
+      "env_groups": ["object_storage", "postgres", "grist", "albert", "embeddings_api"],
+      "args": [
+        "matte",
+        "medallion",
+        "--target-env",
+        "{target_env}",
+        "--ingest",
+        "--sync-object-storage"
+      ]
+    },
+    {
+      "key": "pdf-sources-mso-medallion",
+      "domain": "pdf_sources",
+      "image": "pdf-sources-pipeline",
+      "description": "CI/CD MSO PDF sources medallion pipeline (rebuild Phase D — Grist manifest, OCR, réconciliation).",
+      "cpu_limit": 2000,
+      "memory_limit": 4096,
+      "local_storage_capacity": 4096,
+      "job_timeout": "7200s",
+      "auto_start_on_push": false,
+      "requires_ingestion": true,
+      "env_groups": ["object_storage", "postgres", "grist", "albert", "embeddings_api"],
+      "args": [
+        "mso",
+        "medallion",
+        "--target-env",
+        "{target_env}",
+        "--ingest",
+        "--sync-object-storage"
+      ]
+    },
+    {
       "key": "embeddings-service-public",
       "domain": "embeddings",
       "image": "embeddings-job",
@@ -138,7 +222,7 @@
       "local_storage_capacity": 8192,
       "job_timeout": "14400s",
       "requires_embeddings": true,
-      "env_groups": ["postgres", "embeddings_api"],
+      "env_groups": ["postgres", "embeddings_api", "albert"],
       "args": [
         "embeddings",
         "legifrance",
@@ -151,6 +235,7 @@
       "domain": "embeddings",
       "image": "embeddings-job",
       "description": "CI/CD MATTE embeddings backfill.",
+      "requires_explicit_embedding_source": true,
       "cpu_limit": 2000,
       "memory_limit": 8192,
       "local_storage_capacity": 8192,
@@ -161,6 +246,66 @@
       "args": [
         "embeddings",
         "matte",
+        "--dsn-env",
+        "SCW_POSTGRES_DSN"
+      ]
+    },
+    {
+      "key": "embeddings-mi",
+      "domain": "embeddings",
+      "image": "embeddings-job",
+      "description": "CI/CD MI embeddings backfill.",
+      "cpu_limit": 2000,
+      "memory_limit": 8192,
+      "local_storage_capacity": 8192,
+      "job_timeout": "14400s",
+      "requires_embeddings": true,
+      "requires_explicit_embedding_source": true,
+      "auto_start_on_push": false,
+      "env_groups": ["postgres", "embeddings_api"],
+      "args": [
+        "embeddings",
+        "mi",
+        "--dsn-env",
+        "SCW_POSTGRES_DSN"
+      ]
+    },
+    {
+      "key": "embeddings-masa",
+      "domain": "embeddings",
+      "image": "embeddings-job",
+      "description": "CI/CD MASA embeddings backfill.",
+      "cpu_limit": 2000,
+      "memory_limit": 8192,
+      "local_storage_capacity": 8192,
+      "job_timeout": "14400s",
+      "requires_embeddings": true,
+      "requires_explicit_embedding_source": true,
+      "auto_start_on_push": false,
+      "env_groups": ["postgres", "embeddings_api"],
+      "args": [
+        "embeddings",
+        "masa",
+        "--dsn-env",
+        "SCW_POSTGRES_DSN"
+      ]
+    },
+    {
+      "key": "embeddings-mso",
+      "domain": "embeddings",
+      "image": "embeddings-job",
+      "description": "CI/CD MSO embeddings backfill.",
+      "cpu_limit": 2000,
+      "memory_limit": 8192,
+      "local_storage_capacity": 8192,
+      "job_timeout": "14400s",
+      "requires_embeddings": true,
+      "requires_explicit_embedding_source": true,
+      "auto_start_on_push": false,
+      "env_groups": ["postgres", "embeddings_api"],
+      "args": [
+        "embeddings",
+        "mso",
         "--dsn-env",
         "SCW_POSTGRES_DSN"
       ]

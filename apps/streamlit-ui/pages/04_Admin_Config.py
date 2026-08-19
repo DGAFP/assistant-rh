@@ -319,33 +319,19 @@ with tab_config:
     st.markdown("### 🔍 Retrieval V3")
 
     st.markdown("#### 📦 Sources de données")
-    col_src1, col_src2 = st.columns(2)
-    with col_src1:
-        current_chunks_test = getattr(config, 'v3_enable_chunks_test', True)
-        new_chunks_test = st.toggle(
-            "Activer rag_chunks_test",
-            value=current_chunks_test,
-            help="Table unifiée avec chunking par sections (meilleur recall). Recommandé: ON",
-            key="toggle_v3_chunks_test"
-        )
-        if new_chunks_test != current_chunks_test:
-            changes["v3_enable_chunks_test"] = new_chunks_test
-    with col_src2:
-        tables_available = ["matte", "service_public", "dgafp", "rgrh"]
-        current_tables = getattr(config, 'v3_tables', tables_available)
-        new_tables = st.multiselect(
-            "Tables DE activées",
-            tables_available,
-            default=current_tables,
-            help="Sources interrogées par le retrieval V3. DGAFP/Légifrance reste actif si sélectionné.",
-            key="multiselect_v3_tables"
-        )
-        if set(new_tables) != set(current_tables):
-            changes["v3_tables"] = new_tables
+    tables_available = ["matte", "service_public", "dgafp", "rgrh"]
+    current_tables = getattr(config, 'v3_tables', tables_available)
+    new_tables = st.multiselect(
+        "Tables DE activées",
+        tables_available,
+        default=current_tables,
+        help="Sources interrogées par le retrieval V3. DGAFP/Légifrance reste actif si sélectionné.",
+        key="multiselect_v3_tables"
+    )
+    if set(new_tables) != set(current_tables):
+        changes["v3_tables"] = new_tables
 
     active_sources = list(new_tables)
-    if new_chunks_test:
-        active_sources.append("rag_chunks_test")
     st.caption(f"📊 Sources actives: {', '.join(active_sources)} ({len(active_sources)} tables)")
 
     col_ret1, col_ret2 = st.columns(2)
@@ -384,10 +370,15 @@ with tab_config:
             changes["v3_enable_reranker"] = new_v3_reranker
         
         if new_v3_reranker:
-            current_v3_rerank_top_k = getattr(config, 'v3_rerank_top_k', 5)
+            # max 15 -> 30: la config validée par l'eval (candidate_v2, run 115)
+            # utilise 20 sections — le plafond 15 rendait la valeur mesurée
+            # inatteignable depuis l'UI. Clamp de la valeur DB dans [3,30]: une
+            # valeur hors bornes (posée par SQL/ancien code) ferait crasher
+            # st.slider (value hors [min,max]).
+            current_v3_rerank_top_k = max(3, min(30, getattr(config, 'v3_rerank_top_k', 5)))
             new_v3_rerank_top_k = st.slider(
                 "Sections après rerank",
-                min_value=3, max_value=15, value=current_v3_rerank_top_k, step=1,
+                min_value=3, max_value=30, value=current_v3_rerank_top_k, step=1,
                 help="Nombre de sections conservées après reranking",
                 key="slider_v3_rerank_top_k"
             )

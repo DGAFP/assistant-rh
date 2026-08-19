@@ -6,7 +6,7 @@ on:
       - published
   push:
     branches:
-      - main
+      - staging
     paths:
       - "supabase/migrations/**"
       - "tests/conformance/**/*.jsonl"
@@ -40,6 +40,11 @@ jobs:
   migrate-staging:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.target == 'staging') }}
     runs-on: ubuntu-latest
+    concurrency:
+      # Streamlit deploy also runs `supabase db push`. Serialize both jobs so
+      # they cannot race on supabase_migrations.schema_migrations.
+      group: scaleway-staging-db-migrations
+      cancel-in-progress: false
     environment: scaleway-staging
     env:
       SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}

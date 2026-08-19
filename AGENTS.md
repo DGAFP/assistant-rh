@@ -37,11 +37,14 @@ scripts/                One-off tooling and historical notebooks/scripts
 This repository is normally used as a bare/worktree workspace under `/Users/luis/Code/alliance/assistant-rh`.
 
 - Do not edit files from the workspace control-plane root. Work inside a real worktree such as `main/`, `chore-add-agents-md/`, or a new feature worktree.
-- For new work, create a dedicated worktree from up-to-date `main` using Worktrunk (`wt`), not raw `git worktree` commands.
+- For new work, create a dedicated worktree from up-to-date `dev` using Worktrunk (`wt`), not raw `git worktree` commands.
 - After creating a worktree in a non-interactive agent session, run `wt step copy-ignored` from the new worktree so `.env` and other ignored local files are copied when configured.
 - Keep changes scoped and reviewable. Avoid drive-by refactors.
 - Use conventional commit messages such as `fix: ...`, `feat: ...`, `docs: ...`, `chore: ...`.
-- Prefer creating PRs directly with `gh pr create -R DGAFP/assistant-rh --base main --head <branch>`.
+- Branch flow: feature PRs target `dev`; promotion PRs go `dev` -> `staging` -> `main`; release-please handles the final production release PR from `main`.
+- Preserve release-please semantics: squash feature PRs into `dev` with conventional titles, but use merge commits for `dev` -> `staging` and `staging` -> `main` promotions.
+- Prefer creating feature PRs directly with `gh pr create -R DGAFP/assistant-rh --base dev --head <branch>`.
+- See `docs/git_flow.md` for the full branch, staging, release, and rollback procedure.
 
 ## Local setup and commands
 
@@ -148,7 +151,6 @@ Common RAG tables:
 - `rag_chunks_service_public`: Service-Public chunks.
 - `rag_chunks_dgafp`: legal/regulatory chunks.
 - `rag_chunks_rgrh`: RGRH chunks.
-- `rag_chunks_test`: additional/test chunks when enabled.
 - `rag_config`: runtime pipeline configuration.
 - `system_prompts`: editable prompt templates.
 - `acronyms`: acronym expansion dictionary.

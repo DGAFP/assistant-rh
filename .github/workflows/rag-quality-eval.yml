@@ -1,0 +1,363 @@
+name: RAG Quality Eval
+
+on:
+  # Secret-backed evaluations only run from revisions already integrated into
+  # protected branches. Pull-request code is never executed with staging or
+  # production credentials.
+  push:
+    branches: [dev, staging]
+    paths:
+      - "packages/rag-pipeline/**"
+      - "apps/streamlit-ui/pages/01_Chatbot.py"
+      - "src/goldset/**"
+      - "scripts/run_rag_quality_eval.py"
+      - "scripts/prepare_goldset.py"
+      - "supabase/migrations/**rag_quality_eval**.sql"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/rag-quality-eval.yml"
+  workflow_dispatch:
+    inputs:
+      eval_mode:
+        description: "Eval mode"
+        required: true
+        type: choice
+        options:
+          - smoke
+          - full
+        default: smoke
+      target_environment:
+        description: "GitHub environment / DB target"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+      goldset_name:
+        description: "Goldset name"
+        required: true
+        type: string
+        default: iteration2_V1
+      tag:
+        description: "Goldset tag filter"
+        required: true
+        type: string
+        default: iteration2
+      limit:
+        description: "Max questions, 0 = all. Full production eval forces 0."
+        required: true
+        type: string
+        default: "5"
+      skip_ragas:
+        description: "Skip RAGAS metrics"
+        required: true
+        type: boolean
+        default: true
+      skip_judge:
+        description: "Skip Scaleway LLM judge"
+        required: true
+        type: boolean
+        default: false
+      baseline_run_id:
+        description: "Optional baseline rag_quality_eval_runs.id"
+        required: false
+        type: string
+        default: ""
+      baseline_run_label:
+        description: "Optional baseline rag_quality_eval_runs.run_label"
+        required: false
+        type: string
+        default: ""
+      any_goldset:
+        description: "Select questions by tag across all goldsets (--any-goldset)"
+        required: false
+        type: boolean
+        default: false
+      run_label_suffix:
+        description: "Optional suffix appended to the run label (distinct runs on the same sha)"
+        required: false
+        type: string
+        default: ""
+      judge_provider:
+        description: "Juge du screening manuel (full/production force Scaleway)"
+        required: false
+        type: choice
+        options:
+          - openrouter
+          - scaleway
+        default: openrouter
+      judge_model:
+        description: "Override du modèle juge pour le screening (interdit sur un gate officiel)"
+        required: false
+        type: string
+        default: ""
+      judge_votes:
+        description: "Votes du screening manuel (full/production force 3)"
+        required: false
+        type: choice
+        options:
+          - "1"
+          - "3"
+        default: "1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rag-quality-eval-${{ github.workflow }}-${{ github.ref }}-${{ inputs.run_label_suffix || '' }}
+  cancel-in-progress: true
+
+jobs:
+  rag-quality-eval:
+    name: rag quality
+    runs-on: ubuntu-latest
+    # Security boundary: both GitHub environments restrict deployments to the
+    # dev/staging/main branches before making their secrets available. A check
+    # implemented in this workflow would be editable from a dispatched ref.
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target_environment == 'production' && 'scaleway-production' || 'scaleway-staging' }}
+    env:
+      SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
+      ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
+      ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || secrets.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
+      SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
+      SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || secrets.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
+      # Juge LLM = OpenRouter/Claude (remplace Scaleway qwen3 depuis 2026-07-15).
+      # RAGAS reste sur Scaleway (SCALEWAY_API_KEY ci-dessus).
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_BASE_URL: ${{ vars.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1' }}
+      OPENROUTER_JUDGE_MODEL: ${{ vars.OPENROUTER_JUDGE_MODEL || 'x-ai/grok-4.5' }}
+      DEFAULT_BASELINE_RUN_ID: ${{ vars.RAG_QUALITY_BASELINE_RUN_ID || '' }}
+      DEFAULT_BASELINE_RUN_LABEL: ${{ vars.RAG_QUALITY_BASELINE_RUN_LABEL || '' }}
+
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Resolve eval parameters
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVAL_MODE_INPUT: ${{ inputs.eval_mode }}
+          TARGET_ENVIRONMENT_INPUT: ${{ inputs.target_environment }}
+          GOLDSET_NAME_INPUT: ${{ inputs.goldset_name }}
+          GOLDSET_TAG_INPUT: ${{ inputs.tag }}
+          LIMIT_INPUT: ${{ inputs.limit }}
+          SKIP_RAGAS_INPUT: ${{ inputs.skip_ragas }}
+          SKIP_JUDGE_INPUT: ${{ inputs.skip_judge }}
+          ANY_GOLDSET_INPUT: ${{ inputs.any_goldset }}
+          BASELINE_RUN_ID_INPUT: ${{ inputs.baseline_run_id }}
+          BASELINE_RUN_LABEL_INPUT: ${{ inputs.baseline_run_label }}
+          JUDGE_PROVIDER_INPUT: ${{ inputs.judge_provider }}
+          RUN_LABEL_SUFFIX_INPUT: ${{ inputs.run_label_suffix }}
+          JUDGE_MODEL_INPUT: ${{ inputs.judge_model }}
+          JUDGE_VOTES_INPUT: ${{ inputs.judge_votes }}
+          GITHUB_SHA_INPUT: ${{ github.sha }}
+          GITHUB_REF_NAME_INPUT: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          validate_required_name() {
+            local name="$1"
+            local value="$2"
+            if (( ${#value} > 128 )) || [[ ! "$value" =~ ^[A-Za-z0-9._:-]+$ ]]; then
+              echo "$name invalide (1-128 caractères parmi [A-Za-z0-9._:-])." >&2
+              exit 1
+            fi
+          }
+          validate_optional_label() {
+            local name="$1"
+            local value="$2"
+            if (( ${#value} > 255 )) || [[ ! "$value" =~ ^[A-Za-z0-9._:/-]*$ ]]; then
+              echo "$name invalide (0-255 caractères parmi [A-Za-z0-9._:/-])." >&2
+              exit 1
+            fi
+          }
+          validate_boolean() {
+            local name="$1"
+            local value="$2"
+            if [[ "$value" != "true" && "$value" != "false" ]]; then
+              echo "$name doit valoir true ou false." >&2
+              exit 1
+            fi
+          }
+
+          if [[ ! "$GITHUB_SHA_INPUT" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "github.sha invalide." >&2
+            exit 1
+          fi
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$EVAL_MODE_INPUT" != "smoke" && "$EVAL_MODE_INPUT" != "full" ]]; then
+              echo "eval_mode invalide." >&2
+              exit 1
+            fi
+            if [[ "$TARGET_ENVIRONMENT_INPUT" != "staging" && "$TARGET_ENVIRONMENT_INPUT" != "production" ]]; then
+              echo "target_environment invalide." >&2
+              exit 1
+            fi
+            validate_required_name "goldset_name" "$GOLDSET_NAME_INPUT"
+            validate_required_name "tag" "$GOLDSET_TAG_INPUT"
+            if [[ ! "$LIMIT_INPUT" =~ ^[0-9]+$ ]]; then
+              echo "limit doit être un entier positif ou nul." >&2
+              exit 1
+            fi
+            validate_boolean "skip_ragas" "$SKIP_RAGAS_INPUT"
+            validate_boolean "skip_judge" "$SKIP_JUDGE_INPUT"
+            validate_boolean "any_goldset" "$ANY_GOLDSET_INPUT"
+            if [[ ! "$BASELINE_RUN_ID_INPUT" =~ ^[0-9]*$ ]]; then
+              echo "baseline_run_id doit être un identifiant numérique." >&2
+              exit 1
+            fi
+            validate_optional_label "baseline_run_label" "$BASELINE_RUN_LABEL_INPUT"
+            if (( ${#RUN_LABEL_SUFFIX_INPUT} > 64 )) || [[ ! "$RUN_LABEL_SUFFIX_INPUT" =~ ^[A-Za-z0-9._-]*$ ]]; then
+              echo "run_label_suffix invalide (0-64 caractères parmi [A-Za-z0-9._-])." >&2
+              exit 1
+            fi
+
+            baseline_run_id="$BASELINE_RUN_ID_INPUT"
+            baseline_run_label="$BASELINE_RUN_LABEL_INPUT"
+            if [[ -z "$baseline_run_id" ]]; then
+              baseline_run_id="$DEFAULT_BASELINE_RUN_ID"
+            fi
+            if [[ -z "$baseline_run_label" ]]; then
+              baseline_run_label="$DEFAULT_BASELINE_RUN_LABEL"
+            fi
+            if [[ ! "$baseline_run_id" =~ ^[0-9]*$ ]]; then
+              echo "RAG_QUALITY_BASELINE_RUN_ID doit être numérique." >&2
+              exit 1
+            fi
+            validate_optional_label "RAG_QUALITY_BASELINE_RUN_LABEL" "$baseline_run_label"
+
+            if [[ "$EVAL_MODE_INPUT" == "full" || "$TARGET_ENVIRONMENT_INPUT" == "production" ]]; then
+              eval_mode=full
+              limit=0
+              compare_baseline=true
+            else
+              eval_mode=smoke
+              limit="$LIMIT_INPUT"
+              compare_baseline=false
+            fi
+            run_label="$TARGET_ENVIRONMENT_INPUT-$eval_mode-$GITHUB_SHA_INPUT${RUN_LABEL_SUFFIX_INPUT:+-$RUN_LABEL_SUFFIX_INPUT}"
+
+            {
+              printf 'GOLDSET_NAME=%s\n' "$GOLDSET_NAME_INPUT"
+              printf 'GOLDSET_TAG=%s\n' "$GOLDSET_TAG_INPUT"
+              printf 'EVAL_MODE=%s\n' "$eval_mode"
+              printf 'COMPARE_BASELINE=%s\n' "$compare_baseline"
+              printf 'LIMIT=%s\n' "$limit"
+              printf 'SKIP_RAGAS=%s\n' "$SKIP_RAGAS_INPUT"
+              printf 'SKIP_JUDGE=%s\n' "$SKIP_JUDGE_INPUT"
+              printf 'ANY_GOLDSET=%s\n' "$ANY_GOLDSET_INPUT"
+              printf 'BASELINE_RUN_ID=%s\n' "$baseline_run_id"
+              printf 'BASELINE_RUN_LABEL=%s\n' "$baseline_run_label"
+              printf 'RUN_LABEL=%s\n' "$run_label"
+            } >> "$GITHUB_ENV"
+          else
+            if [[ "$EVENT_NAME" != "push" || ( "$GITHUB_REF_NAME_INPUT" != "dev" && "$GITHUB_REF_NAME_INPUT" != "staging" ) ]]; then
+              echo "Événement ou branche automatique non autorisé." >&2
+              exit 1
+            fi
+            if [[ ! "$DEFAULT_BASELINE_RUN_ID" =~ ^[0-9]*$ ]]; then
+              echo "RAG_QUALITY_BASELINE_RUN_ID doit être numérique." >&2
+              exit 1
+            fi
+            validate_optional_label "RAG_QUALITY_BASELINE_RUN_LABEL" "$DEFAULT_BASELINE_RUN_LABEL"
+            {
+              printf 'GOLDSET_NAME=%s\n' "iteration2_V1"
+              printf 'GOLDSET_TAG=%s\n' "iteration2"
+              printf 'EVAL_MODE=%s\n' "smoke"
+              printf 'COMPARE_BASELINE=%s\n' "false"
+              printf 'LIMIT=%s\n' "5"
+              printf 'SKIP_RAGAS=%s\n' "true"
+              printf 'SKIP_JUDGE=%s\n' "false"
+              printf 'ANY_GOLDSET=%s\n' "false"
+              printf 'BASELINE_RUN_ID=%s\n' "$DEFAULT_BASELINE_RUN_ID"
+              printf 'BASELINE_RUN_LABEL=%s\n' "$DEFAULT_BASELINE_RUN_LABEL"
+              printf 'RUN_LABEL=%s\n' "$GITHUB_REF_NAME_INPUT-$GITHUB_SHA_INPUT"
+            } >> "$GITHUB_ENV"
+          fi
+
+          # The protocol validates provider/model/vote inputs before emitting
+          # its own environment assignments.
+          uv run python .github/scripts/rag_quality_protocol.py >> "$GITHUB_ENV"
+
+      - name: Run RAG quality eval
+        run: |
+          set -euo pipefail
+          limit_args=()
+          if [[ "$LIMIT" != "0" && -n "$LIMIT" ]]; then
+            limit_args+=(--limit "$LIMIT")
+          fi
+          ragas_args=()
+          judge_args=()
+          if [[ "$SKIP_RAGAS" == "true" ]]; then
+            ragas_args+=(--skip-ragas)
+          fi
+          if [[ "$SKIP_JUDGE" == "true" ]]; then
+            judge_args+=(--skip-judge)
+          else
+            judge_args+=(--judge-provider "${JUDGE_PROVIDER:-openrouter}")
+            judge_args+=(--judge-votes "${JUDGE_VOTES:-1}")
+            if [[ -n "${JUDGE_MODEL_OVERRIDE:-}" ]]; then
+              judge_args+=(--judge-model "$JUDGE_MODEL_OVERRIDE")
+            fi
+          fi
+          baseline_args=()
+          if [[ "$COMPARE_BASELINE" == "true" ]]; then
+            baseline_args+=(--require-baseline --gate-against-baseline)
+            if [[ -n "${BASELINE_RUN_ID:-}" ]]; then
+              baseline_args+=(--baseline-run-id "$BASELINE_RUN_ID")
+            fi
+            if [[ -n "${BASELINE_RUN_LABEL:-}" ]]; then
+              baseline_args+=(--baseline-run-label "$BASELINE_RUN_LABEL")
+            fi
+          fi
+          any_goldset_args=()
+          if [[ "${ANY_GOLDSET:-false}" == "true" ]]; then
+            any_goldset_args+=(--any-goldset)
+          fi
+          dedupe_args=()
+          if [[ "$EVAL_MODE" == "smoke" ]]; then
+            dedupe_args+=(--skip-if-started)
+          fi
+
+          uv run --no-sync python scripts/run_rag_quality_eval.py \
+            --goldset-name "$GOLDSET_NAME" \
+            --tag "$GOLDSET_TAG" \
+            "${any_goldset_args[@]}" \
+            "${limit_args[@]}" \
+            "${ragas_args[@]}" \
+            "${judge_args[@]}" \
+            "${baseline_args[@]}" \
+            --record-db \
+            --init-schema \
+            "${dedupe_args[@]}" \
+            --dedupe-scope config-and-git \
+            --run-label "$RUN_LABEL" \
+            --output-dir ".cache/assistant-rh/evals/$RUN_LABEL" \
+            | tee "$RUNNER_TEMP/rag-quality.json"
+
+      - name: Summarize
+        run: |
+          set -euo pipefail
+          {
+            echo "## RAG quality eval"
+            echo ""
+            echo "- mode: $EVAL_MODE"
+            echo "- compare baseline: $COMPARE_BASELINE"
+            echo "- limit: $LIMIT"
+            echo ""
+            echo "\`\`\`json"
+            cat "$RUNNER_TEMP/rag-quality.json"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"

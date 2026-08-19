@@ -17,7 +17,6 @@
         "dgafp",
         "rgrh"
       ],
-      "enable_chunks_test": false,
       "enable_chunk_reranker": false,
       "chunk_rerank_top_k": 30
     },

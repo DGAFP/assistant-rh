@@ -38,15 +38,15 @@ Source HTTP / tarball
 
 | Couche | Implémentation principale | Notes |
 |---|---|---|
-| CLI | [apps/data-ingestion-cli/src/assistant_rh_data_ingestion_cli/main.py](apps/data-ingestion-cli/src/assistant_rh_data_ingestion_cli/main.py) | Registre statique de 9 commandes, import dynamique de modules `jobs/*` |
-| Service-Public Bronze | [packages/data-engineering/src/assistant_rh_data_engineering/service_public/bronze.py](packages/data-engineering/src/assistant_rh_data_engineering/service_public/bronze.py) | Fetch ZIP data.gouv.fr, fallback URL hardcodée |
-| Service-Public Silver | [service_public/silver.py](packages/data-engineering/src/assistant_rh_data_engineering/service_public/silver.py) + [section_splitter.py](packages/data-engineering/src/assistant_rh_data_engineering/service_public/section_splitter.py) | `splitter_v2`, sections hiérarchiques par heading + FIGURE_TEXT |
-| Service-Public Gold | [service_public/gold.py](packages/data-engineering/src/assistant_rh_data_engineering/service_public/gold.py) + [qna_chunking.py](packages/data-engineering/src/assistant_rh_data_engineering/service_public/qna_chunking.py) | Chunking QNA pattern-matching (Q:/A:), embeddings M3 + BGE |
-| Légifrance Bronze | [legifrance/bulk_dump.py](packages/data-engineering/src/assistant_rh_data_engineering/legifrance/bulk_dump.py) + [bronze.py](packages/data-engineering/src/assistant_rh_data_engineering/legifrance/bronze.py) | DILA LEGI bulk dump (full + deltas) |
-| Légifrance Gold | [legifrance/gold.py](packages/data-engineering/src/assistant_rh_data_engineering/legifrance/gold.py) | `split_legal_chunks(text, max=1200, min=350, overlap=100)` |
+| CLI | [apps/data-ingestion-cli/src/assistant_rh_data_ingestion_cli/main.py](../../apps/data-ingestion-cli/src/assistant_rh_data_ingestion_cli/main.py) | Registre statique de 9 commandes, import dynamique de modules `jobs/*` |
+| Service-Public Bronze | [packages/data-engineering/src/assistant_rh_data_engineering/service_public/bronze.py](../../packages/data-engineering/src/assistant_rh_data_engineering/service_public/bronze.py) | Fetch ZIP data.gouv.fr, fallback URL hardcodée |
+| Service-Public Silver | [service_public/silver.py](../../packages/data-engineering/src/assistant_rh_data_engineering/service_public/silver.py) + [section_splitter.py](../../packages/data-engineering/src/assistant_rh_data_engineering/service_public/section_splitter.py) | `splitter_v2`, sections hiérarchiques par heading + FIGURE_TEXT |
+| Service-Public Gold | [service_public/gold.py](../../packages/data-engineering/src/assistant_rh_data_engineering/service_public/gold.py) + [qna_chunking.py](../../packages/data-engineering/src/assistant_rh_data_engineering/service_public/qna_chunking.py) | Chunking QNA pattern-matching (Q:/A:), embeddings M3 + BGE |
+| Légifrance Bronze | [legifrance/bulk_dump.py](../../packages/data-engineering/src/assistant_rh_data_engineering/legifrance/bulk_dump.py) + [bronze.py](../../packages/data-engineering/src/assistant_rh_data_engineering/legifrance/bronze.py) | DILA LEGI bulk dump (full + deltas) |
+| Légifrance Gold | [legifrance/gold.py](../../packages/data-engineering/src/assistant_rh_data_engineering/legifrance/gold.py) | `split_legal_chunks(text, max=1200, min=350, overlap=100)` |
 | MATTE / RGRH | — | Tables exposées au retrieval mais ingestion **non implémentée** en jobs |
-| Embeddings backfill | [jobs/embeddings_backfill.py](packages/data-engineering/src/assistant_rh_data_engineering/jobs/embeddings_backfill.py) | Manifest-driven, retry/backoff 6 tentatives, ThreadPoolExecutor |
-| Health export | [jobs/rag_health_exporter.py](packages/data-engineering/src/assistant_rh_data_engineering/jobs/rag_health_exporter.py) | Serveur Prometheus, métriques chunk/section/doc par source |
+| Embeddings backfill | [jobs/embeddings_backfill.py](../../packages/data-engineering/src/assistant_rh_data_engineering/jobs/embeddings_backfill.py) | Manifest-driven, retry/backoff 6 tentatives, ThreadPoolExecutor |
+| Health export | [jobs/rag_health_exporter.py](../../packages/data-engineering/src/assistant_rh_data_engineering/jobs/rag_health_exporter.py) | Serveur Prometheus, métriques chunk/section/doc par source |
 
 Storage côté DB : 6 tables `rag_chunks_*` (service_public, dgafp legacy, legifrance, matte, rgrh, test) + `rag_documents` + `rag_sections` + index partiels uniques sur `(short_id)` et `(doc_id, section_index)`.
 
@@ -60,8 +60,8 @@ Storage côté DB : 6 tables `rag_chunks_*` (service_public, dgafp legacy, legif
 
 ### 2.3 Idempotence et déduplication
 
-- **Hash chunk déterministe** : `hash_id = sha1(source_name | qa_id | role | chunk_index | text[:256])` ([service_public/gold.py:68-77](packages/data-engineering/src/assistant_rh_data_engineering/service_public/gold.py)). Même algorithme côté Légifrance via `_build_legacy_chunk_id` ([legifrance/gold.py:88-90](packages/data-engineering/src/assistant_rh_data_engineering/legifrance/gold.py)).
-- **UPSERT** par `hash_id` (chunks), `short_id` ou `(doc_id, section_index)` (sections/docs) — [service_public/db.py:154-198](packages/data-engineering/src/assistant_rh_data_engineering/service_public/db.py).
+- **Hash chunk déterministe** : `hash_id = sha1(source_name | qa_id | role | chunk_index | text[:256])` ([service_public/gold.py:68-77](../../packages/data-engineering/src/assistant_rh_data_engineering/service_public/gold.py)). Même algorithme côté Légifrance via `_build_legacy_chunk_id` ([legifrance/gold.py:88-90](../../packages/data-engineering/src/assistant_rh_data_engineering/legifrance/gold.py)).
+- **UPSERT** par `hash_id` (chunks), `short_id` ou `(doc_id, section_index)` (sections/docs) — [service_public/db.py:154-198](../../packages/data-engineering/src/assistant_rh_data_engineering/service_public/db.py).
 - **Aucune table `ingestion_runs`** ni colonne `model_version`/`embedded_at` sur les chunks.
 - **Aucun delete-then-upsert** pour fiches supprimées en amont : les chunks orphelins persistent silencieusement.
 - **Le bronze fetch ne fait pas de conditional GET** (`If-None-Match` / `Last-Modified`) : chaque run télécharge la ZIP/tarball complet.
@@ -75,7 +75,7 @@ Storage côté DB : 6 tables `rag_chunks_*` (service_public, dgafp legacy, legif
 - **Hash déterministe** : c'est exactement ce que fait `RecordManager` de LangChain en interne. La fondation pour le tracking incrémental est déjà là.
 - **Pluggable embedders** (M3 local + BGE Scaleway via interface `BaseBatchEmbedder`) — facilite l'ajout futur de Qwen3-Embedding.
 - **Health exporter Prometheus** — la plupart des projets équivalents n'en ont pas.
-- **Retry/backoff sur l'API d'embedding** ([jobs/embeddings_backfill.py:94-130](packages/data-engineering/src/assistant_rh_data_engineering/jobs/embeddings_backfill.py)) : 6 tentatives, distingue 429/5xx transient vs 4xx final.
+- **Retry/backoff sur l'API d'embedding** ([jobs/embeddings_backfill.py:94-130](../../packages/data-engineering/src/assistant_rh_data_engineering/jobs/embeddings_backfill.py)) : 6 tentatives, distingue 429/5xx transient vs 4xx final.
 
 ---
 
@@ -93,7 +93,7 @@ Storage côté DB : 6 tables `rag_chunks_*` (service_public, dgafp legacy, legif
 
 ### 4.2 Légifrance : chunking sliding-window au lieu d'article-level
 
-**Constat.** [`split_legal_chunks(text, max_chars=1200, min_chars=350)`](packages/data-engineering/src/assistant_rh_data_engineering/legifrance/gold.py) découpe par paragraphes `\n\n`, sans aligner les frontières sur les marqueurs `Article L.` / `R.` / `D.`. Le helper [`normalize_article_number()`](packages/data-engineering/src/assistant_rh_data_engineering/legifrance/helpers.py) existe déjà mais n'est pas utilisé dans le découpage.
+**Constat.** [`split_legal_chunks(text, max_chars=1200, min_chars=350)`](../../packages/data-engineering/src/assistant_rh_data_engineering/legifrance/gold.py) découpe par paragraphes `\n\n`, sans aligner les frontières sur les marqueurs `Article L.` / `R.` / `D.`. Le helper [`normalize_article_number()`](../../packages/data-engineering/src/assistant_rh_data_engineering/legifrance/helpers.py) existe déjà mais n'est pas utilisé dans le découpage.
 
 **Référence.** [arXiv 2510.06999 (oct. 2025) — Towards Reliable Retrieval in RAG for Large Legal Datasets](https://arxiv.org/html/2510.06999v1) : Summary-Augmented Chunking (split récursif 500 chars + résumé document 150 chars) **divise par 2 le Document-Level Retrieval Mismatch** sur ContractNLI. Pour les codes français, le motif standard est un split aligné sur `Article L./R./D.` (cf. [HamzaG737/legal-code-rag](https://github.com/HamzaG737/legal-code-rag)). À noter : les **résumés génériques battent les résumés "expert légal"** — les cues sémantiques larges généralisent mieux que la dense legalese.
 
@@ -109,7 +109,7 @@ Storage côté DB : 6 tables `rag_chunks_*` (service_public, dgafp legacy, legif
 
 ### 4.4 Table-par-source : devenu antipattern
 
-**Constat.** 6 tables `rag_chunks_*` distinctes (service_public, dgafp legacy, legifrance, matte, rgrh, test). Index HNSW, schéma, RLS et chemin de requête dupliqués par source. Le retriever fan-out en parallèle sur les tables ([rag-pipeline/retriever](packages/rag-pipeline/)) — c'est une union explicite qui mime ce que ferait un `WHERE source = ANY(...)` sur une table unique.
+**Constat.** 6 tables `rag_chunks_*` distinctes (service_public, dgafp legacy, legifrance, matte, rgrh, test). Index HNSW, schéma, RLS et chemin de requête dupliqués par source. Le retriever fan-out en parallèle sur les tables ([rag-pipeline/retriever](../../packages/rag-pipeline/)) — c'est une union explicite qui mime ce que ferait un `WHERE source = ANY(...)` sur une table unique.
 
 **Référence.** Consensus 2025/2026 ([Supabase](https://supabase.com/docs/guides/ai/hybrid-search), [Nile multi-tenant RAG](https://www.thenile.dev/blog/multi-tenant-rag), [Crunchy Scaling Vector Data](https://www.crunchydata.com/blog/scaling-vector-data-with-postgres), [dbi-services mars 2026](https://www.dbi-services.com/blog/pgvector-a-guide-for-dba-part-2-indexes-update-march-2026/)) : **une table `chunks` unique + colonne `source` + B-tree sur `source`**, avec `PARTITION BY LIST(source)` seulement si cardinalité ou isolation d'écriture l'exige (typiquement au-delà de quelques dizaines de sources, ou si une source domine les écritures).
 
@@ -135,7 +135,7 @@ Storage côté DB : 6 tables `rag_chunks_*` (service_public, dgafp legacy, legif
 
 ### 4.7 Versionnage temporel Légifrance (priorité basse)
 
-**Constat.** L'ingestion ne capture que la version courante de chaque article. Les colonnes `start_date` / `end_date` existent ([rag_chunks_dgafp](packages/data-engineering/src/assistant_rh_data_engineering/legifrance/db.py)) mais aucune logique de snapshot historique : un article modifié en amont écrase la version précédente.
+**Constat.** L'ingestion ne capture que la version courante de chaque article. Les colonnes `start_date` / `end_date` existent ([rag_chunks_dgafp](../../packages/data-engineering/src/assistant_rh_data_engineering/legifrance/db.py)) mais aucune logique de snapshot historique : un article modifié en amont écrase la version précédente.
 
 **Référence.** [arXiv 2505.00039 — Graph RAG for Legal Norms](https://arxiv.org/html/2505.00039v5) : séparer Work / Temporal Version (CTV) / Language Version, indexer **toutes** les versions, réutiliser les CTV enfants inchangés via agrégation, sélectionner au query time avec `valid_start ≤ t < valid_end`.
 
@@ -156,9 +156,9 @@ Storage côté DB : 6 tables `rag_chunks_*` (service_public, dgafp legacy, legif
 
 ### P0 — Quality wins immédiats (≤ 2 sprints)
 
-1. **[Contextual Retrieval]** Préfixer 50-100 tokens de résumé par chunk avant embedding. LLM = Albert. Cache du résumé sur `text_hash` calculé en silver. À implémenter dans [service_public/gold.py](packages/data-engineering/src/assistant_rh_data_engineering/service_public/gold.py) puis [legifrance/gold.py](packages/data-engineering/src/assistant_rh_data_engineering/legifrance/gold.py). **Critère de succès** : -20 % minimum sur le taux de no-answer du goldset DGAFP existant (note 01). Backfill incrémental possible grâce à §4.5.
+1. **[Contextual Retrieval]** Préfixer 50-100 tokens de résumé par chunk avant embedding. LLM = Albert. Cache du résumé sur `text_hash` calculé en silver. À implémenter dans [service_public/gold.py](../../packages/data-engineering/src/assistant_rh_data_engineering/service_public/gold.py) puis [legifrance/gold.py](../../packages/data-engineering/src/assistant_rh_data_engineering/legifrance/gold.py). **Critère de succès** : -20 % minimum sur le taux de no-answer du goldset DGAFP existant (note 01). Backfill incrémental possible grâce à §4.5.
 
-2. **[Chunking article-level Légifrance]** Aligner `split_legal_chunks` sur les marqueurs `Article L./R./D.` via [`normalize_article_number()`](packages/data-engineering/src/assistant_rh_data_engineering/legifrance/helpers.py) déjà présent. **Critère de succès** : chaque chunk Légifrance contient au plus un article ; nb de citations correctes par réponse en hausse mesurable sur le goldset.
+2. **[Chunking article-level Légifrance]** Aligner `split_legal_chunks` sur les marqueurs `Article L./R./D.` via [`normalize_article_number()`](../../packages/data-engineering/src/assistant_rh_data_engineering/legifrance/helpers.py) déjà présent. **Critère de succès** : chaque chunk Légifrance contient au plus un article ; nb de citations correctes par réponse en hausse mesurable sur le goldset.
 
 ### P1 — Fondations opérationnelles (1 trimestre)
 

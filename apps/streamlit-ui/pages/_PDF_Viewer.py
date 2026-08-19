@@ -3,12 +3,17 @@ PDF Viewer - Affiche un PDF en plein écran
 
 Chaîne de résolution pour rag_doc_id :
 1. legacy_doc_id → lit les bytes depuis la table `documents`
-2. source_url    → redirige vers l'URL externe (service-public.fr, legifrance.gouv.fr)
+2. storage_path  → lit le fichier depuis la dropzone S3 (corpus PDF
+   ministériels: MI/MASA/MATTE/MSO, storage_path = cle_bucket du manifest
+   Grist; les originaux bureautiques .doc/.xlsx sont proposés au
+   téléchargement)
+3. source_url    → redirige vers l'URL externe (service-public.fr, legifrance.gouv.fr)
 
 URLs supportées :
-- /PDF_Viewer?rag_doc_id=<uuid> → Résolution via rag_documents (legacy DB > URL)
+- /PDF_Viewer?rag_doc_id=<uuid> → Résolution via rag_documents (legacy DB > dropzone S3 > URL)
 - /PDF_Viewer?doc_id=<uuid>     → Legacy direct: lit depuis table documents (bytes en DB)
 """
+
 import streamlit as st
 
 # Config minimaliste (AVANT tout autre import Streamlit)
@@ -17,18 +22,23 @@ st.set_page_config(
     page_icon="📄",
     layout="wide",
     initial_sidebar_state="collapsed",
-    menu_items={'Get Help': None, 'Report a bug': None, 'About': None}
+    menu_items={"Get Help": None, "Report a bug": None, "About": None},
 )
 
 # CSS minimal pour plein écran
-st.markdown("""<style>
+st.markdown(
+    """<style>
 #MainMenu,footer,header,.stDeployButton,[data-testid="stSidebar"]{display:none!important}
 .main .block-container,.main,.element-container,.stApp{padding:0!important;margin:0!important;max-width:100%!important}
 iframe{border:none!important;width:100vw!important;height:100vh!important;position:fixed!important;top:0!important;left:0!important}
-</style>""", unsafe_allow_html=True)
+</style>""",
+    unsafe_allow_html=True,
+)
 
 # Imports (après le CSS pour un rendu initial plus rapide)
 import base64
+import html
+import logging
 from typing import Optional
 
 import streamlit.components.v1 as components
@@ -49,7 +59,7 @@ def get_rag_doc_info(rag_doc_id: str) -> dict | None:
     Récupère les infos d'un rag_document (legacy_doc_id, title, source_url).
 
     Returns:
-        dict with keys {legacy_doc_id, title, source_url} or None
+        dict with keys {legacy_doc_id, title, source_url, storage_path} or None
     """
     from sqlalchemy import text
 
@@ -57,11 +67,11 @@ def get_rag_doc_info(rag_doc_id: str) -> dict | None:
     with engine.connect() as conn:
         result = conn.execute(
             text("""
-                SELECT title, source_url, legacy_doc_id
+                SELECT title, source_url, legacy_doc_id, storage_path
                 FROM rag_documents
                 WHERE doc_id = :doc_id
             """),
-            {"doc_id": rag_doc_id}
+            {"doc_id": rag_doc_id},
         )
         row = result.fetchone()
 
@@ -72,6 +82,7 @@ def get_rag_doc_info(rag_doc_id: str) -> dict | None:
             "title": row[0] or "Document",
             "source_url": row[1],
             "legacy_doc_id": str(row[2]) if row[2] else None,
+            "storage_path": str(row[3]).strip() if row[3] else None,
         }
 
 
@@ -79,18 +90,19 @@ def get_rag_doc_info(rag_doc_id: str) -> dict | None:
 # Legacy: Load PDF from documents table
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def get_document_pdf_legacy(doc_id: str) -> Optional[dict]:
     """
     Récupère un PDF depuis l'ancienne table documents (bytes en DB).
-    
+
     Args:
         doc_id: UUID du document
-        
+
     Returns:
         dict avec 'filename' et 'data' (bytes), ou None
     """
     from sqlalchemy import text
-    
+
     engine = get_engine()
     with engine.connect() as conn:
         result = conn.execute(
@@ -99,10 +111,10 @@ def get_document_pdf_legacy(doc_id: str) -> Optional[dict]:
                 FROM documents
                 WHERE id = :doc_id
             """),
-            {"doc_id": doc_id}
+            {"doc_id": doc_id},
         )
         row = result.fetchone()
-        
+
         if row:
             return {"filename": row[0], "data": row[1]}
         return None
@@ -112,14 +124,15 @@ def get_document_pdf_legacy(doc_id: str) -> Optional[dict]:
 # PDF Display
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def display_pdf_from_bytes(pdf_bytes: bytes, filename: str = "document.pdf"):
     """
     Affiche un PDF depuis des bytes (méthode legacy avec PDF.js).
     """
-    pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
-    
+    pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
+
     # Viewer PDF.js complet
-    pdf_viewer_html = f'''
+    pdf_viewer_html = f"""
     <!DOCTYPE html>
     <html>
     <head>
@@ -306,30 +319,109 @@ def display_pdf_from_bytes(pdf_bytes: bytes, filename: str = "document.pdf"):
         </script>
     </body>
     </html>
-    '''
-    
+    """
+
     components.html(pdf_viewer_html, height=900, scrolling=False)
+
+
+# Au-delà, le rendu inline PDF.js (base64 dans le HTML, ~2,3x la taille en
+# mémoire + payload navigateur) est remplacé par un bouton de téléchargement.
+MAX_INLINE_PDF_BYTES = 40 * 1024 * 1024
+
+
+@st.cache_data(ttl=300, max_entries=16, show_spinner=False)
+def _fetch_dropzone_bytes(storage_path: str) -> bytes:
+    # Cache: un clic sur st.download_button relance le script Streamlit —
+    # sans cache, chaque interaction re-télécharge le fichier depuis S3.
+    from src.ui.source_import import DropzoneUploader
+
+    return DropzoneUploader.from_env().fetch_file(storage_path)
+
+
+def display_dropzone_document(storage_path: str, title: str) -> bool:
+    """Affiche un document des corpus PDF ministériels depuis la dropzone S3.
+
+    storage_path = cle_bucket du manifest Grist (ex: mi/{uid}_{nom}.pdf) —
+    les storage_path d'autres formes (chemins bruts Légifrance) sont ignorés.
+    Les PDF sont rendus dans le viewer; les originaux bureautiques
+    (.doc/.docx/.xls/.xlsx, convertis en PDF seulement dans le pipeline) et
+    les PDF trop volumineux pour l'inline sont proposés au téléchargement.
+    Retourne False si la clé n'est pas une clé dropzone ou si la lecture
+    échoue (tracé en log: une erreur d'accès S3 ne doit pas être confondue
+    avec un document sans source).
+    """
+    from src.ui.source_import import SourceImportError, content_type_for, is_dropzone_key
+
+    if not is_dropzone_key(storage_path):
+        return False
+
+    try:
+        data = _fetch_dropzone_bytes(storage_path)
+    except SourceImportError as exc:
+        logging.getLogger(__name__).warning("Lecture dropzone échouée pour %r: %s", storage_path, exc)
+        return False
+
+    filename = storage_path.rsplit("/", 1)[-1]
+    if filename.lower().endswith(".pdf") and len(data) <= MAX_INLINE_PDF_BYTES:
+        display_pdf_from_bytes(data, filename)
+        return True
+
+    if filename.lower().endswith(".pdf"):
+        help_text = "Document volumineux — téléchargez-le pour l'ouvrir."
+    else:
+        extension = filename.rsplit(".", 1)[-1] if "." in filename else "inconnu"
+        help_text = f"Document source au format bureautique ({html.escape(extension)}) — téléchargez-le pour l'ouvrir."
+    try:
+        mime = content_type_for(filename)
+    except SourceImportError:
+        mime = "application/octet-stream"
+
+    st.markdown(
+        f"""
+    <div style="display: flex; justify-content: center; align-items: center; height: 60vh; flex-direction: column;">
+        <h2>📄 {html.escape(title)}</h2>
+        <p style="font-size: 16px; margin: 12px 0;">{help_text}</p>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+    _, center, _ = st.columns([2, 1, 2])
+    with center:
+        st.download_button(
+            f"⬇️ Télécharger {filename}",
+            data=data,
+            file_name=filename,
+            mime=mime,
+            use_container_width=True,
+        )
+    return True
 
 
 def display_error(message: str, help_text: str = ""):
     """Affiche une page d'erreur stylée."""
-    st.markdown(f"""
+    st.markdown(
+        f"""
     <div style="display: flex; justify-content: center; align-items: center; height: 100vh; flex-direction: column;">
         <h1 style="color: #e74c3c;">❌ {message}</h1>
-        {f'<p style="font-size: 18px; margin: 16px 0;">{help_text}</p>' if help_text else ''}
+        {f'<p style="font-size: 18px; margin: 16px 0;">{help_text}</p>' if help_text else ""}
         <button onclick="location.reload()" style="margin-top: 16px; padding: 8px 16px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer;">🔄 Réessayer</button>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
 
 def display_placeholder():
     """Affiche la page d'accueil quand aucun document n'est spécifié."""
-    st.markdown("""
+    st.markdown(
+        """
     <div style="display: flex; justify-content: center; align-items: center; height: 100vh; flex-direction: column;">
         <h1>📄 PDF Viewer</h1>
         <p>Aucun document spécifié dans l'URL.</p>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -360,18 +452,25 @@ elif rag_doc_id:
                     display_pdf_from_bytes(bytes(doc["data"]), doc["filename"])
                     pdf_loaded = True
 
+            if not pdf_loaded and info.get("storage_path"):
+                pdf_loaded = display_dropzone_document(info["storage_path"], title)
+
             if not pdf_loaded and info["source_url"] and info["source_url"].startswith("http"):
-                st.markdown(f"""
-                <script>window.open("{info['source_url']}", "_blank");</script>
+                safe_url = html.escape(info["source_url"], quote=True)
+                st.markdown(
+                    f"""
+                <script>window.open("{safe_url}", "_blank");</script>
                 <div style="text-align: center; padding: 50px;">
-                    <h2>📄 {title}</h2>
-                    <p><a href="{info['source_url']}" target="_blank">Cliquez ici pour ouvrir le document</a></p>
+                    <h2>📄 {html.escape(title)}</h2>
+                    <p><a href="{safe_url}" target="_blank">Cliquez ici pour ouvrir le document</a></p>
                 </div>
-                """, unsafe_allow_html=True)
+                """,
+                    unsafe_allow_html=True,
+                )
                 pdf_loaded = True
 
             if not pdf_loaded:
-                display_error("Aucune source disponible", f"Ni PDF en base, ni URL pour « {title} ».")
+                display_error("Aucune source disponible", f"Ni PDF en base, ni fichier dropzone, ni URL pour « {html.escape(title)} ».")
 
     except Exception as e:
         display_error("Erreur de chargement", str(e))
@@ -383,7 +482,7 @@ elif doc_id:
         if not doc:
             display_error("Document introuvable", f"Le document {doc_id[:8]}... n'existe pas dans la table documents.")
         else:
-            display_pdf_from_bytes(bytes(doc['data']), doc['filename'])
+            display_pdf_from_bytes(bytes(doc["data"]), doc["filename"])
 
     except Exception as e:
         error_msg = str(e)

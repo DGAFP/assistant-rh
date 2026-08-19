@@ -73,7 +73,6 @@ interface NormalizedRetrievalConfig {
 	initial_top_k: number;
 	alpha: number;
 	tables: string[];
-	enable_chunks_test: boolean;
 	enable_selector_retry: boolean;
 	selector_retry_search_mode: SearchMode;
 	selector_retry_top_k: number;
@@ -86,7 +85,6 @@ const retrieverConfigSchema = z
 		initial_top_k: z.number().int().positive(),
 		alpha: z.number(),
 		tables: z.array(z.string()),
-		enable_chunks_test: z.boolean(),
 		enable_selector_retry: z.boolean(),
 		selector_retry_search_mode: searchModeSchema,
 		selector_retry_top_k: z.number().int().positive(),
@@ -203,10 +201,6 @@ const DEFAULT_PUBLISHER_ROUTING: Record<string, PublisherRoutingEntry> = {
 		tableSource: "RGRH",
 		aliases: ["rgrh"],
 	},
-	chunkstest: {
-		tableSource: "ChunksTest",
-		aliases: ["chunkstest", "chunks_test", "chunk_test"],
-	},
 };
 
 const SAFE_TABLE_KEY_RE = /^[a-z0-9_]+$/;
@@ -293,10 +287,9 @@ function normalizeRetrievalConfig(
 	const base: NormalizedRetrievalConfig = {
 		search_mode: "semantic",
 		embedding_model: "albert",
-		initial_top_k: 15,
+		initial_top_k: 30,
 		alpha: 0.5,
 		tables: ["matte", "service_public", "dgafp", "rgrh"],
-		enable_chunks_test: false,
 		enable_selector_retry: true,
 		selector_retry_search_mode: "hybrid",
 		selector_retry_top_k: 30,
@@ -309,8 +302,6 @@ function normalizeRetrievalConfig(
 		initial_top_k: override?.initial_top_k ?? runtimeConfig?.initial_top_k ?? base.initial_top_k,
 		alpha: override?.alpha ?? runtimeConfig?.alpha ?? base.alpha,
 		tables: override?.tables ?? runtimeConfig?.tables ?? base.tables,
-		enable_chunks_test:
-			override?.enable_chunks_test ?? runtimeConfig?.enable_chunks_test ?? base.enable_chunks_test,
 		enable_selector_retry:
 			override?.enable_selector_retry ??
 			runtimeConfig?.enable_selector_retry ??
@@ -330,13 +321,7 @@ function getPublisherKeys(config: NormalizedRetrievalConfig): string[] {
 	const keys = (config.tables || [])
 		.map((key) => key.trim().toLowerCase())
 		.filter((key) => key.length > 0 && SAFE_TABLE_KEY_RE.test(key));
-
-	const deduped = Array.from(new Set(keys));
-	if (config.enable_chunks_test && !deduped.includes("chunkstest")) {
-		deduped.push("chunkstest");
-	}
-
-	return deduped;
+	return Array.from(new Set(keys));
 }
 
 function getPublisherAliases(

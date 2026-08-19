@@ -1,52 +1,19 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from ..utils.helpers import (
-    ensure_dir,
     stable_doc_uuid,
     stable_section_uuid,
     utc_now_iso,
-    write_json,
-    write_jsonl,
 )
+from ..utils.silver import SilverBundle, SilverRepository
 from .config import SilverConfig
 from .section_splitter import split_document_into_sections
 from .xml_parser import parse_fiche_xml_from_bytes
 
-
-@dataclass
-class SilverBundle:
-    document: dict[str, Any]
-    sections: list[dict[str, Any]]
-    document_path: Path
-    sections_path: Path
-
-
-class SilverRepository:
-    def __init__(self, silver_dir: Path):
-        self.root = ensure_dir(silver_dir)
-        self.documents_dir = ensure_dir(self.root / "documents")
-        self.sections_dir = ensure_dir(self.root / "sections")
-        self.manifest_dir = ensure_dir(self.root / "manifests")
-
-    def save_document(self, short_id: str, document: dict[str, Any]) -> Path:
-        path = self.documents_dir / f"{short_id}.document.json"
-        write_json(path, document)
-        return path
-
-    def save_sections(self, short_id: str, sections: list[dict[str, Any]]) -> Path:
-        path = self.sections_dir / f"{short_id}.sections.jsonl"
-        write_jsonl(path, sections)
-        return path
-
-    def save_manifest(self, manifest: dict[str, Any]) -> Path:
-        path = self.manifest_dir / f"silver_manifest_{manifest['run_id']}.json"
-        write_json(path, manifest)
-        return path
+__all__ = ["ServicePublicSilverBuilder", "SilverBundle", "SilverRepository"]
 
 
 class ServicePublicSilverBuilder:
@@ -122,8 +89,7 @@ class ServicePublicSilverBuilder:
             "doc_text_hash": parsed["doc_text_hash"],
             "token_count": parsed["token_count"],
             "char_count": parsed["char_count"],
-            "line_count": parsed["doc_markdown"].count("\n")
-            + (1 if parsed["doc_markdown"] else 0),
+            "line_count": parsed["doc_markdown"].count("\n") + (1 if parsed["doc_markdown"] else 0),
             "metadata": parsed["metadata"],
             "doc_structure": {
                 "section_count": len(sections),
@@ -167,13 +133,9 @@ class ServicePublicSilverBuilder:
             )
 
         for record in section_records:
-            source_section = next(
-                s for s in sections if s.section_index == record["section_index"]
-            )
+            source_section = next(s for s in sections if s.section_index == record["section_index"])
             if source_section.parent_index is not None:
-                record["parent_section_id"] = section_ids_by_index.get(
-                    source_section.parent_index
-                )
+                record["parent_section_id"] = section_ids_by_index.get(source_section.parent_index)
 
         return doc_record, section_records
 

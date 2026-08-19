@@ -29,7 +29,6 @@ from psycopg.rows import dict_row
 
 from .config import (
     CHUNK_TABLES,
-    CHUNKS_TEST_TABLE,
     ChunkTable,
     EmbeddingModel,
     RetrievalConfig,
@@ -182,6 +181,7 @@ class Retriever:
         tables: list[str] | None = None,
         search_mode: SearchMode | None = None,
         top_k: int | None = None,
+        strict_table_errors: bool = False,
     ) -> List[RetrievedChunk]:
         """Embed *query*, search all configured tables in parallel, return merged results.
 
@@ -191,9 +191,15 @@ class Retriever:
         ``self.config.tables``.
         *search_mode* and *top_k*: optional request-scoped overrides used by
         fallback/retry paths without mutating ``self.config``.
+        *strict_table_errors*: raise if a requested table key/table query fails.
+        Legacy unscoped retrieval keeps the previous partial-result behavior.
         """
         t0 = time.time()
         _force_names = {CHUNK_TABLES[k].name for k in (force_hybrid_tables or set()) if k in CHUNK_TABLES}
+        table_keys = self.config.tables if tables is None else tables
+        unknown_table_keys = [k for k in table_keys if k not in CHUNK_TABLES]
+        if unknown_table_keys and strict_table_errors:
+            raise ValueError(f"Unknown retrieval table key(s): {', '.join(unknown_table_keys)}")
 
         embedding = self.embedder.embed_query(query)
         if embedding is None:
@@ -206,13 +212,13 @@ class Retriever:
         is_hybrid = effective_search_mode == SearchMode.HYBRID
         is_lexical = effective_search_mode == SearchMode.LEXICAL
 
-        table_keys = self.config.tables if tables is None else tables
         chunk_tables = [CHUNK_TABLES[k] for k in table_keys if k in CHUNK_TABLES]
-        if not chunk_tables and not self.config.enable_chunks_test:
+        if not chunk_tables:
             return []
 
-        n_workers = (len(chunk_tables) * 2) + (1 if self.config.enable_chunks_test else 0)
+        n_workers = len(chunk_tables) * 2
         per_source_results: Dict[str, List[RetrievedChunk]] = {}
+        table_errors: list[str] = []
         with ThreadPoolExecutor(max_workers=max(n_workers, 1)) as pool:
             futures = {
                 pool.submit(
@@ -224,44 +230,23 @@ class Retriever:
                     force_hybrid=(tbl.name in _force_names),
                     search_mode=effective_search_mode,
                     top_k=effective_top_k,
+                    strict_errors=strict_table_errors,
                 ): tbl.name
                 for tbl in chunk_tables
             }
             futures.update(
                 {
-                    pool.submit(self._search_table_headings, tbl, query, top_k=effective_top_k): f"{_HEADING_SOURCE_PREFIX}{tbl.name}"
+                    pool.submit(
+                        self._search_table_headings,
+                        tbl,
+                        query,
+                        top_k=effective_top_k,
+                        strict_errors=strict_table_errors,
+                    ): f"{_HEADING_SOURCE_PREFIX}{tbl.name}"
                     for tbl in chunk_tables
                     if tbl.has_sections
                 }
             )
-            if self.config.enable_chunks_test:
-                if is_hybrid:
-                    futures[
-                        pool.submit(
-                            self._search_chunks_test_hybrid,
-                            embedding,
-                            embed_model_used,
-                            query,
-                            top_k=effective_top_k,
-                        )
-                    ] = "rag_chunks_test"
-                elif is_lexical:
-                    futures[
-                        pool.submit(
-                            self._search_chunks_test_lexical,
-                            query,
-                            top_k=effective_top_k,
-                        )
-                    ] = "rag_chunks_test"
-                else:
-                    futures[
-                        pool.submit(
-                            self._search_chunks_test,
-                            embedding,
-                            embed_model_used,
-                            top_k=effective_top_k,
-                        )
-                    ] = "rag_chunks_test"
 
             for future in as_completed(futures):
                 name = futures[future]
@@ -276,6 +261,11 @@ class Retriever:
                     per_source_results[name] = result
                 except Exception as exc:
                     logger.error("Search on %s failed (%s): %s", name, type(exc).__name__, exc)
+                    if strict_table_errors:
+                        table_errors.append(f"{name}: {type(exc).__name__}: {exc}")
+
+        if table_errors:
+            raise RuntimeError("Scoped retrieval failed on requested table(s): " + "; ".join(table_errors))
 
         all_chunks = self._merge_cross_source_ranks(per_source_results)
         all_chunks = self._normalize_merged_scores(
@@ -387,6 +377,8 @@ class Retriever:
 
     _TABLE_META_COLS: Dict[str, List[str]] = {
         "rag_chunks_matte": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
+        "rag_chunks_mso": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
+        "rag_chunks_mi": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
         "rag_chunks_service_public": ["source_name", "section_path", "role", "thematique", "references_juridiques", "source_document_id"],
         CHUNK_TABLES["service_public_scw"].name: ["source_name", "section_path", "role", "thematique", "short_id", "source"],
         "rag_chunks_dgafp": ["title", "full_title", "number", "category", "url", "cid"],
@@ -463,6 +455,7 @@ class Retriever:
         query: str,
         *,
         top_k: int | None = None,
+        strict_errors: bool = False,
     ) -> List[RetrievedChunk]:
         """Search document titles, section headings and heading paths for section-backed tables."""
         if not table.has_sections:
@@ -549,6 +542,8 @@ class Retriever:
                 )
         except Exception as exc:
             logger.error("Heading query on %s failed (%s): %s", table.name, type(exc).__name__, exc)
+            if strict_errors:
+                raise
 
         self._sort_chunks_deterministically(chunks)
         return chunks[:effective_top_k]
@@ -565,6 +560,28 @@ class Retriever:
 
         existing = self._get_table_columns(table.name)
         if "section_id" in existing:
+            if {"short_id", "section_path"}.issubset(existing):
+                # Une migration ajoute section_id à une table Service-Public
+                # déjà peuplée avant que tous les chunks aient été réingérés.
+                # Conserver le résolveur legacy pour les seules lignes NULL
+                # évite une perte temporaire de recherche par titres.
+                return r"""
+                , COALESCE(
+                    t.section_id,
+                    (
+                        SELECT s.section_id
+                        FROM rag_documents d
+                        JOIN rag_sections s ON s.doc_id = d.doc_id
+                        WHERE d.short_id = t.short_id
+                          AND (
+                            s.heading_path = t.section_path
+                            OR s.heading = btrim(regexp_replace(t.section_path, '^.*>\s*', ''))
+                          )
+                        ORDER BY CASE WHEN s.heading_path = t.section_path THEN 0 ELSE 1 END
+                        LIMIT 1
+                    )
+                ) AS section_id
+            """
             return ", t.section_id"
 
         if {"short_id", "section_path"}.issubset(existing):
@@ -595,6 +612,7 @@ class Retriever:
         force_hybrid: bool = False,
         search_mode: SearchMode | None = None,
         top_k: int | None = None,
+        strict_errors: bool = False,
     ) -> List[RetrievedChunk]:
         """Search a DE table. Uses hybrid RRF when tsvector is available, else semantic."""
         effective_search_mode = search_mode or self.config.search_mode
@@ -613,6 +631,7 @@ class Retriever:
                 query,
                 search_mode=effective_search_mode,
                 top_k=effective_top_k,
+                strict_errors=strict_errors,
             )
         else:
             chunks = self._search_table_semantic(
@@ -620,12 +639,38 @@ class Retriever:
                 embedding,
                 model_used,
                 top_k=effective_top_k,
+                strict_errors=strict_errors,
             )
 
         for chunk in chunks:
             chunk.metadata.setdefault("source_score_mode", mode)
 
         return chunks
+
+    # Tables portant des lignes-résumé R2 additives ({cid}_0 et {cid}_r2s au
+    # même chunk_text) : on sur-échantillonne (x2) puis on fusionne la paire
+    # AVANT de tronquer à top_k — sinon elle consomme deux places du top_k du
+    # retriever et la couverture juridique unique diminue (revue #332, round 2).
+    _R2_SUMMARY_TABLES = frozenset({"rag_chunks_dgafp"})
+    _R2_SUFFIX = "_r2s"
+
+    @classmethod
+    def _merge_r2_pairs(cls, chunks: List[RetrievedChunk], top_k: int) -> List[RetrievedChunk]:
+        """Garde le mieux classé de chaque paire {cid}_0/{cid}_r2s, tronque à top_k."""
+        merged: List[RetrievedChunk] = []
+        seen_pairs: set[str] = set()
+        for chunk in chunks:
+            cid = str((chunk.metadata or {}).get("cid") or "").strip()
+            chunk_id = str(chunk.chunk_id or "")
+            if cid and chunk_id in (f"{cid}_0", f"{cid}{cls._R2_SUFFIX}"):
+                pair_key = f"{chunk.table_source}:{cid}"
+                if pair_key in seen_pairs:
+                    continue
+                seen_pairs.add(pair_key)
+            merged.append(chunk)
+            if len(merged) >= top_k:
+                break
+        return merged
 
     def _search_table_semantic(
         self,
@@ -634,10 +679,13 @@ class Retriever:
         model_used: str,
         *,
         top_k: int | None = None,
+        strict_errors: bool = False,
     ) -> List[RetrievedChunk]:
         """Pure semantic (cosine) search on a DE table."""
         embed_col = table.embed_col_albert if model_used == "albert" else table.embed_col_bge
         effective_top_k = top_k or self.config.initial_top_k
+        r2_dedup = table.name in self._R2_SUMMARY_TABLES
+        fetch_k = effective_top_k * 2 if r2_dedup else effective_top_k
 
         extra_cols = self._select_existing_meta_cols(table)
         extra_sql = "".join(f", t.{c}" for c in extra_cols)
@@ -657,8 +705,11 @@ class Retriever:
             ORDER BY t.{embed_col} <=> %s::vector, t.{table.id_col}
             LIMIT %s
         """
-        params: Tuple = (embedding, embedding, effective_top_k)
-        return self._exec_de_table(table, sql, params, model_used)
+        params: Tuple = (embedding, embedding, fetch_k)
+        results = self._exec_de_table(table, sql, params, model_used, strict_errors=strict_errors)
+        if r2_dedup:
+            results = self._merge_r2_pairs(results, effective_top_k)
+        return results
 
     def _search_table_hybrid(
         self,
@@ -669,6 +720,7 @@ class Retriever:
         *,
         search_mode: SearchMode | None = None,
         top_k: int | None = None,
+        strict_errors: bool = False,
     ) -> List[RetrievedChunk]:
         """Hybrid RRF search on a DE table that has a tsvector column."""
         embed_col = table.embed_col_albert if model_used == "albert" else table.embed_col_bge
@@ -676,6 +728,8 @@ class Retriever:
         alpha = self.config.alpha
         rrf_k = 60
         top_k = top_k or self.config.initial_top_k
+        r2_dedup = table.name in self._R2_SUMMARY_TABLES
+        fetch_k = top_k * 2 if r2_dedup else top_k
         effective_search_mode = search_mode or self.config.search_mode
         is_lexical_only = effective_search_mode == SearchMode.LEXICAL
 
@@ -703,8 +757,11 @@ class Retriever:
                 ORDER BY ts_rank_cd(t.{tsv}, pq.q) DESC, t.{table.id_col}
                 LIMIT %s
             """
-            params: Tuple = (query, query, query, top_k)
-            return self._exec_de_table(table, sql, params, "lexical")
+            params: Tuple = (query, query, query, fetch_k)
+            lex_results = self._exec_de_table(table, sql, params, "lexical", strict_errors=strict_errors)
+            if r2_dedup:
+                lex_results = self._merge_r2_pairs(lex_results, top_k)
+            return lex_results
 
         # Full hybrid: RRF of semantic + lexical
         sql = f"""
@@ -753,17 +810,20 @@ class Retriever:
             query,  # parsed_query
             embedding,
             embedding,
-            top_k,  # semantic_ranked
-            top_k,  # lexical_ranked
+            fetch_k,  # semantic_ranked
+            fetch_k,  # lexical_ranked
             alpha,
             rrf_k,
-            top_k,  # rrf semantic part
+            fetch_k,  # rrf semantic part (rang-pénalité des absents)
             alpha,
             rrf_k,
-            top_k,  # rrf lexical part
-            top_k,  # final limit
+            fetch_k,  # rrf lexical part (rang-pénalité des absents)
+            fetch_k,  # final limit
         )
-        return self._exec_de_table(table, sql, params, model_used)
+        results = self._exec_de_table(table, sql, params, model_used, strict_errors=strict_errors)
+        if r2_dedup:
+            results = self._merge_r2_pairs(results, top_k)
+        return results
 
     def _exec_de_table(
         self,
@@ -771,12 +831,21 @@ class Retriever:
         sql: str,
         params: Tuple,
         model_used: str,
+        *,
+        strict_errors: bool = False,
     ) -> List[RetrievedChunk]:
         """Execute a search query on a DE table and return parsed chunks."""
         extra_cols = self._select_existing_meta_cols(table)
         chunks: List[RetrievedChunk] = []
         try:
             with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+                # Défaut serveur probes=1: 1 % des listes IVFFLAT scannées.
+                # SET n'accepte pas de paramètre bindé — int() garde le
+                # littéral sûr. Connexion dédiée à la requête: portée session
+                # sans fuite. Sans effet sur les requêtes purement lexicales.
+                probes = int(getattr(self.config, "ivfflat_probes", 0) or 0)
+                if probes > 0:
+                    conn.execute(f"SET ivfflat.probes = {probes}")
                 rows = conn.execute(sql, params).fetchall()
 
             for row in rows:
@@ -798,181 +867,7 @@ class Retriever:
                 )
         except Exception as exc:
             logger.error("Query on %s failed (%s): %s", table.name, type(exc).__name__, exc)
-
-        return chunks
-
-    # ------------------------------------------------------------------
-    # rag_chunks_test: semantic (default)
-    # ------------------------------------------------------------------
-
-    def _search_chunks_test(
-        self,
-        embedding: List[float],
-        model_used: str,
-        *,
-        top_k: int | None = None,
-    ) -> List[RetrievedChunk]:
-        """Pure semantic search on rag_chunks_test via rag_chunk_embeddings."""
-        tbl = CHUNKS_TEST_TABLE
-        embed_col = tbl.embed_col_albert if model_used == "albert" else tbl.embed_col_bge
-        top_k = top_k or self.config.initial_top_k
-
-        sql = f"""
-            SELECT
-                t.chunk_id, t.chunk_text, t.section_id, t.doc_id, t.metadata,
-                1 - (e.{embed_col} <=> %s::vector) AS score
-            FROM rag_chunks_test t
-            JOIN rag_chunk_embeddings e ON e.chunk_id = t.chunk_id
-            WHERE e.{embed_col} IS NOT NULL
-            ORDER BY e.{embed_col} <=> %s::vector, t.chunk_id
-            LIMIT %s
-        """
-        return self._exec_chunks_test(sql, (embedding, embedding, top_k), model_used)
-
-    # ------------------------------------------------------------------
-    # rag_chunks_test: hybrid (RRF = semantic + lexical)
-    # ------------------------------------------------------------------
-
-    def _search_chunks_test_hybrid(
-        self,
-        embedding: List[float],
-        model_used: str,
-        query: str,
-        *,
-        top_k: int | None = None,
-    ) -> List[RetrievedChunk]:
-        """Hybrid search on rag_chunks_test using Reciprocal Rank Fusion."""
-        tbl = CHUNKS_TEST_TABLE
-        embed_col = tbl.embed_col_albert if model_used == "albert" else tbl.embed_col_bge
-        alpha = self.config.alpha
-        rrf_k = 60
-        top_k = top_k or self.config.initial_top_k
-        tsq = _TSQUERY_OR.format(p="%s")
-
-        sql = f"""
-            WITH parsed_query AS (
-                SELECT ({tsq}) AS q
-            ),
-            semantic_ranked AS (
-                SELECT t.chunk_id,
-                       ROW_NUMBER() OVER (ORDER BY e.{embed_col} <=> %s::vector, t.chunk_id) AS sem_rank
-                FROM rag_chunks_test t
-                JOIN rag_chunk_embeddings e ON e.chunk_id = t.chunk_id
-                WHERE e.{embed_col} IS NOT NULL
-                ORDER BY e.{embed_col} <=> %s::vector, t.chunk_id
-                LIMIT %s
-            ),
-            lexical_ranked AS (
-                SELECT t.chunk_id,
-                       ROW_NUMBER() OVER (ORDER BY ts_rank_cd(t.chunk_tsv, pq.q) DESC, t.chunk_id) AS lex_rank
-                FROM rag_chunks_test t
-                CROSS JOIN parsed_query pq
-                WHERE t.chunk_tsv @@ pq.q
-                ORDER BY ts_rank_cd(t.chunk_tsv, pq.q) DESC, t.chunk_id
-                LIMIT %s
-            ),
-            rrf AS (
-                SELECT COALESCE(s.chunk_id, l.chunk_id) AS chunk_id,
-                       %s * (1.0 / (%s + COALESCE(s.sem_rank, %s)))
-                       + (1 - %s) * (1.0 / (%s + COALESCE(l.lex_rank, %s))) AS rrf_score
-                FROM semantic_ranked s
-                FULL OUTER JOIN lexical_ranked l ON s.chunk_id = l.chunk_id
-            )
-            SELECT t.chunk_id, t.chunk_text, t.section_id, t.doc_id, t.metadata,
-                   r.rrf_score AS score
-            FROM rrf r
-            JOIN rag_chunks_test t ON t.chunk_id = r.chunk_id
-            ORDER BY r.rrf_score DESC, t.chunk_id
-            LIMIT %s
-        """
-        params: Tuple = (
-            query,
-            query,
-            query,  # parsed_query (3 refs)
-            embedding,
-            embedding,
-            top_k,  # semantic_ranked
-            top_k,  # lexical_ranked
-            alpha,
-            rrf_k,
-            top_k,  # rrf semantic part
-            alpha,
-            rrf_k,
-            top_k,  # rrf lexical part
-            top_k,  # final limit
-        )
-        return self._exec_chunks_test(sql, params, model_used)
-
-    # ------------------------------------------------------------------
-    # rag_chunks_test: lexical only
-    # ------------------------------------------------------------------
-
-    def _search_chunks_test_lexical(
-        self,
-        query: str,
-        *,
-        top_k: int | None = None,
-    ) -> List[RetrievedChunk]:
-        """Pure lexical search on rag_chunks_test using chunk_tsv."""
-        tsq = _TSQUERY_OR.format(p="%s")
-        top_k = top_k or self.config.initial_top_k
-
-        sql = f"""
-            WITH parsed_query AS (
-                SELECT ({tsq}) AS q
-            )
-            SELECT t.chunk_id, t.chunk_text, t.section_id, t.doc_id, t.metadata,
-                   ts_rank_cd(t.chunk_tsv, pq.q) AS score
-            FROM rag_chunks_test t
-            CROSS JOIN parsed_query pq
-            WHERE t.chunk_tsv @@ pq.q
-            ORDER BY ts_rank_cd(t.chunk_tsv, pq.q) DESC, t.chunk_id
-            LIMIT %s
-        """
-        params: Tuple = (query, query, query, top_k)
-        return self._exec_chunks_test(sql, params, "lexical")
-
-    # ------------------------------------------------------------------
-    # Shared helper for rag_chunks_test result parsing
-    # ------------------------------------------------------------------
-
-    def _exec_chunks_test(
-        self,
-        sql: str,
-        params: Tuple,
-        model_used: str,
-    ) -> List[RetrievedChunk]:
-        """Execute a query on rag_chunks_test and return parsed chunks."""
-        tbl = CHUNKS_TEST_TABLE
-        chunks: List[RetrievedChunk] = []
-        try:
-            with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
-                rows = conn.execute(sql, params).fetchall()
-
-            for row in rows:
-                meta = row.get("metadata") or {}
-                if isinstance(meta, str):
-                    import json
-
-                    meta = json.loads(meta)
-                if not isinstance(meta, dict):
-                    meta = {}
-                meta = dict(meta)
-                if row.get("doc_id") is not None:
-                    meta.setdefault("doc_id", row.get("doc_id"))
-
-                chunks.append(
-                    RetrievedChunk(
-                        chunk_id=str(row["chunk_id"]),
-                        text=row["chunk_text"] or "",
-                        score=float(row["score"]),
-                        table_source=tbl.publisher,
-                        metadata=meta,
-                        section_id=row.get("section_id"),
-                        embedding_model_used=model_used,
-                    )
-                )
-        except psycopg.Error as exc:
-            logger.warning("Query on rag_chunks_test failed: %s", exc)
+            if strict_errors:
+                raise
 
         return chunks

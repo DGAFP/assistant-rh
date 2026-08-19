@@ -47,6 +47,7 @@ st.caption("Comparaison des stratégies de chunking — Recall, MRR, NDCG sur le
 # DATABASE CONNECTION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def get_dsn() -> str:
     """Get database DSN with tunnel support."""
     tunnel_dsn = os.getenv("TUNNEL_DSN")
@@ -60,6 +61,40 @@ def get_dsn() -> str:
 
 
 DSN = get_dsn()
+
+
+def parse_gold_sources(value) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    except json.JSONDecodeError:
+        pass
+    return [part.strip() for part in text.replace(";", ",").split(",") if part.strip()]
+
+
+def format_gold_sources(value) -> str:
+    return ", ".join(parse_gold_sources(value))
+
+
+def gold_sources_match(value, short_id: str) -> bool:
+    short_id_key = str(short_id or "").strip().lower()
+    if not short_id_key:
+        return False
+    return short_id_key in {source.lower() for source in parse_gold_sources(value)}
+
+
+def gold_sources_overlap(value, short_ids) -> bool:
+    source_keys = {source.lower() for source in parse_gold_sources(value)}
+    short_id_keys = {str(short_id or "").strip().lower() for short_id in short_ids if str(short_id or "").strip()}
+    return bool(source_keys & short_id_keys)
 
 
 def get_connection():
@@ -93,14 +128,16 @@ def get_connection():
 # STRATEGY DEFINITIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class TableConfig:
     """Configuration for a single table in a chunking strategy."""
+
     table: str
     embed_col: str
     text_col: str
     id_col: str
-    short_id_mode: str  # "column" = short_id is a column, "join_documents" = via rag_documents
+    short_id_mode: str  # "column" = short_id is a column, "none" = unavailable
     extra_cols: str = ""  # additional SELECT columns
     short_id_col: str = "short_id"  # column name used as short_id (e.g. "number" for V2 tables)
 
@@ -108,6 +145,7 @@ class TableConfig:
 @dataclass
 class ChunkingStrategy:
     """A chunking strategy to evaluate."""
+
     key: str
     name: str
     description: str
@@ -163,54 +201,6 @@ STRATEGY_DE_CTX = ChunkingStrategy(
             id_col="hash_id",
             short_id_mode="column",
             extra_cols=", source_name, source, role, short_id",
-        ),
-    ],
-)
-
-STRATEGY_V3 = ChunkingStrategy(
-    key="v3",
-    name="Chunking V3",
-    description="Contextualized embeddings, extraction markdown, dynamic chunking (chunks → sections → documents)",
-    color="#4ECDC4",
-    tables=[
-        TableConfig(
-            table="rag_chunks_test",
-            embed_col="embedding",
-            text_col="chunk_markdown",
-            id_col="chunk_id",
-            short_id_mode="join_documents",
-        ),
-    ],
-)
-
-STRATEGY_V3_RAW = ChunkingStrategy(
-    key="v3_raw",
-    name="Chunking V3 Raw Embed",
-    description="Mêmes chunks V3, mais embeddings bruts (chunk_markdown sans contexte)",
-    color="#81C784",
-    tables=[
-        TableConfig(
-            table="rag_chunks_test",
-            embed_col="embedding_raw",
-            text_col="chunk_markdown",
-            id_col="chunk_id",
-            short_id_mode="join_documents",
-        ),
-    ],
-)
-
-STRATEGY_V3_RAW_TEXT = ChunkingStrategy(
-    key="v3_raw_text",
-    name="Chunking V3 Raw Text",
-    description="Chunks V3, embeddings sur texte pur (markdown strippé, sans contexte)",
-    color="#4DB6AC",
-    tables=[
-        TableConfig(
-            table="rag_chunks_test",
-            embed_col="embedding_raw_text",
-            text_col="chunk_markdown",
-            id_col="chunk_id",
-            short_id_mode="join_documents",
         ),
     ],
 )
@@ -284,15 +274,7 @@ STRATEGY_DE_MAPPED = ChunkingStrategy(
     ],
 )
 
-STRATEGY_HYBRID = ChunkingStrategy(
-    key="hybrid",
-    name="Hybrid (V3 + DE)",
-    description="V3 raw embed + DE mappés combinés, embeddings mixtes, fusion par score",
-    color="#7E57C2",
-    tables=[],  # Special: handled by run_strategy_retrieval via mixed mode
-)
-
-ALL_STRATEGIES = [STRATEGY_DE, STRATEGY_DE_CTX, STRATEGY_V3, STRATEGY_V3_RAW, STRATEGY_V3_RAW_TEXT, STRATEGY_V2_ORIGINAL, STRATEGY_HF_SP, STRATEGY_DE_MAPPED, STRATEGY_HYBRID]
+ALL_STRATEGIES = [STRATEGY_DE, STRATEGY_DE_CTX, STRATEGY_V2_ORIGINAL, STRATEGY_HF_SP, STRATEGY_DE_MAPPED]
 STRATEGY_MAP = {s.key: s for s in ALL_STRATEGIES}
 
 # Color map for charts
@@ -303,9 +285,11 @@ STRATEGY_COLORS = {s.key: s.color for s in ALL_STRATEGIES}
 # GOLDSET DEFINITIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class GoldsetConfig:
     """Configuration for a goldset."""
+
     key: str
     name: str
     description: str
@@ -351,7 +335,26 @@ GOLDSETS = {
         name="Fiches SP Subset (doc-level)",
         description="Toutes questions sur les 48 docs fiches_sp — comparaison V2/HF/V3 équitable",
         match_mode="document",
-        filter_sql="gold_sources IN (SELECT DISTINCT number FROM rag_chunks_fiches_sp WHERE number IS NOT NULL)",
+        filter_sql="""
+            EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(
+                    CASE
+                        WHEN LEFT(BTRIM(gold_sources), 1) = '[' THEN gold_sources::jsonb
+                        ELSE jsonb_build_array(gold_sources)
+                    END
+                ) AS source_ids(value)
+                WHERE source_ids.value IN (
+                    SELECT DISTINCT short_id FROM rag_chunks_service_public WHERE short_id IS NOT NULL
+                    UNION
+                    SELECT DISTINCT number FROM rag_chunks_dgafp WHERE number IS NOT NULL
+                    UNION
+                    SELECT DISTINCT cid FROM rag_chunks_dgafp WHERE cid IS NOT NULL
+                    UNION
+                    SELECT DISTINCT chunk_id FROM rag_chunks_dgafp WHERE chunk_id IS NOT NULL
+                )
+            )
+        """,
     ),
 }
 
@@ -359,6 +362,7 @@ GOLDSETS = {
 # ═══════════════════════════════════════════════════════════════════════════════
 # QUESTION LOADING
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @st.cache_data(ttl=300)
 def load_goldset_questions(goldset_key: str, limit: Optional[int] = None) -> pd.DataFrame:
@@ -386,6 +390,7 @@ def load_goldset_questions(goldset_key: str, limit: Optional[int] = None) -> pd.
 
     # Extract gold_chunk_ids from comment JSON for chunk-level goldsets
     if gc.match_mode == "chunk":
+
         def _extract_chunk_meta(comment):
             if not comment:
                 return {}
@@ -427,7 +432,15 @@ def load_goldset_short_ids(goldset_key: str) -> List[str]:
     with conn.cursor() as cur:
         cur.execute(sql)
         rows = cur.fetchall()
-    return [r["gold_sources"] for r in rows]
+    short_ids: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        for short_id in parse_gold_sources(row["gold_sources"]):
+            if short_id in seen:
+                continue
+            seen.add(short_id)
+            short_ids.append(short_id)
+    return short_ids
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -489,73 +502,6 @@ def search_de_table(
         r["table_source"] = table_cfg.table
         r["strategy"] = "de"
         # short_id comes from extra_cols or sid_alias
-
-    return [dict(r) for r in results]
-
-
-def search_v3_table(
-    cur,
-    query_embedding: List[float],
-    top_k: int = 50,
-    filter_short_ids: Optional[List[str]] = None,
-    embed_col: str = "embedding",
-    strategy_key: str = "v3",
-    publisher_filter: Optional[str] = None,
-) -> List[Dict]:
-    """
-    Semantic search on V3 tables (rag_chunks_test + rag_chunk_embeddings + rag_documents).
-    Optionally filters to common_corpus documents via rag_documents.short_id.
-    Optionally filters by publisher (e.g. 'MATTE' or 'Service-Public').
-    embed_col: column in rag_chunk_embeddings to use (e.g. 'embedding' for ctx, 'embedding_raw' for raw).
-    """
-    embed_ref = f"e.{embed_col}"
-    where_clauses = []
-    params: list = [query_embedding]  # first %s for score calculation
-
-    if filter_short_ids:
-        where_clauses.append("d.short_id = ANY(%s)")
-        params.append(filter_short_ids)
-    if publisher_filter:
-        where_clauses.append("d.publisher = %s")
-        params.append(publisher_filter)
-
-    params.append(query_embedding)  # for ORDER BY
-    params.append(top_k)  # for LIMIT
-
-    where_extra = ""
-    if where_clauses:
-        where_extra = "AND " + " AND ".join(where_clauses)
-
-    sql = f"""
-        SELECT
-            c.chunk_id::text as chunk_id,
-            c.chunk_markdown as text,
-            c.token_count,
-            1 - ({embed_ref} <=> %s::vector) as score,
-            c.section_id::text as section_id,
-            s.heading as section_heading,
-            s.section_markdown,
-            s.heading_path,
-            s.level as section_level,
-            s.token_count as section_token_count,
-            d.title as source_name,
-            d.publisher as source,
-            d.short_id
-        FROM rag_chunks_test c
-        JOIN rag_chunk_embeddings e ON c.chunk_id = e.chunk_id AND e.embedding_model = 'albert'
-        JOIN rag_sections s ON c.section_id = s.section_id
-        JOIN rag_documents d ON c.doc_id = d.doc_id
-        WHERE {embed_ref} IS NOT NULL {where_extra}
-        ORDER BY {embed_ref} <=> %s::vector
-        LIMIT %s
-    """
-
-    cur.execute(sql, params)
-    results = cur.fetchall()
-
-    for r in results:
-        r["table_source"] = "rag_chunks_test"
-        r["strategy"] = strategy_key
 
     return [dict(r) for r in results]
 
@@ -626,33 +572,9 @@ def run_strategy_retrieval(
     """
     Run retrieval for a given strategy. Merges results from all tables and sorts by score.
     publisher_filter: 'MATTE', 'Service-Public', or None for all.
-    For DE strategies, filters tables by publisher. For V3, adds WHERE on d.publisher.
+    Filters DE tables by publisher.
     """
     all_chunks = []
-
-    # ── HYBRID strategy: combine V3 raw + DE mapped ──
-    if strategy.key == "hybrid":
-        per_source_k = top_k
-        # V3 part: use raw embed
-        v3_chunks = search_v3_table(
-            cur, query_embedding, top_k=per_source_k,
-            filter_short_ids=filter_short_ids,
-            embed_col="embedding_raw",
-            strategy_key="hybrid",
-            publisher_filter=publisher_filter,
-        )
-        all_chunks.extend(v3_chunks)
-        # DE mapped part
-        for table_cfg in STRATEGY_DE_MAPPED.tables:
-            if publisher_filter:
-                table_pub = DE_TABLE_PUBLISHER.get(table_cfg.table)
-                if table_pub and table_pub != publisher_filter:
-                    continue
-            chunks = search_de_table_mapped(cur, table_cfg, query_embedding, top_k=per_source_k, filter_short_ids=filter_short_ids)
-            all_chunks.extend(chunks)
-        all_chunks.sort(key=lambda x: x.get("score", 0), reverse=True)
-        all_chunks = all_chunks[:top_k]
-        return all_chunks
 
     # ── DE MAPPED strategy: only mapped chunks with section JOIN ──
     if strategy.key == "de_mapped":
@@ -667,33 +589,16 @@ def run_strategy_retrieval(
         all_chunks = all_chunks[:top_k]
         return all_chunks
 
-    # Check if this is a V3-type strategy (uses rag_chunks_test with join_documents)
-    is_v3 = any(t.short_id_mode == "join_documents" for t in strategy.tables)
+    for table_cfg in strategy.tables:
+        if publisher_filter:
+            table_pub = DE_TABLE_PUBLISHER.get(table_cfg.table)
+            if table_pub and table_pub != publisher_filter:
+                continue
+        chunks = search_de_table(cur, table_cfg, query_embedding, top_k=top_k, filter_short_ids=filter_short_ids)
+        all_chunks.extend(chunks)
 
-    if is_v3:
-        # V3 strategy: use search_v3_table with the configured embed_col + publisher filter
-        embed_col = strategy.tables[0].embed_col if strategy.tables else "embedding"
-        all_chunks = search_v3_table(
-            cur, query_embedding, top_k=top_k,
-            filter_short_ids=filter_short_ids,
-            embed_col=embed_col,
-            strategy_key=strategy.key,
-            publisher_filter=publisher_filter,
-        )
-    else:
-        # DE strategy: search each table, skip tables not matching publisher filter
-        for table_cfg in strategy.tables:
-            # Publisher filter: skip tables that don't match
-            if publisher_filter:
-                table_pub = DE_TABLE_PUBLISHER.get(table_cfg.table)
-                if table_pub and table_pub != publisher_filter:
-                    continue  # skip this table
-            chunks = search_de_table(cur, table_cfg, query_embedding, top_k=top_k, filter_short_ids=filter_short_ids)
-            all_chunks.extend(chunks)
-
-        # Sort merged results by score desc and keep top_k
-        all_chunks.sort(key=lambda x: x.get("score", 0), reverse=True)
-        all_chunks = all_chunks[:top_k]
+    all_chunks.sort(key=lambda x: x.get("score", 0), reverse=True)
+    all_chunks = all_chunks[:top_k]
 
     return all_chunks
 
@@ -701,6 +606,7 @@ def run_strategy_retrieval(
 # ═══════════════════════════════════════════════════════════════════════════════
 # RERANKER
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def rerank_chunks(
     query: str,
@@ -714,6 +620,7 @@ def rerank_chunks(
     texts = [c.get("text", "")[:2000] for c in chunks]
 
     from assistant_rh_rag_pipeline.reranker import AlbertReranker
+
     reranker = AlbertReranker(timeout=10)
     ranked = reranker.rerank(query, texts, top_k=top_k)
     reranked = []
@@ -729,6 +636,7 @@ def rerank_chunks(
 # SECTION EXPANSION + RERANK
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def expand_chunks_to_sections(
     cur,
     chunks: List[Dict],
@@ -736,8 +644,8 @@ def expand_chunks_to_sections(
     """
     Expand chunk results to section-level by grouping chunks that share a section_id.
 
-    For chunks from search_de_table_mapped or search_v3_table, section metadata is
-    already present. For chunks without section_id (basic DE search), they pass through
+    For chunks from search_de_table_mapped, section metadata is already present.
+    For chunks without section_id (basic DE search), they pass through
     unchanged.
 
     Returns section-level results sorted by aggregated score (max chunk score per section).
@@ -747,23 +655,10 @@ def expand_chunks_to_sections(
         return chunks
 
     section_map = {}  # section_id -> best chunk (with section data)
-    no_section = []   # chunks without section_id
+    no_section = []  # chunks without section_id
 
     for chunk in chunks:
         sid = chunk.get("section_id")
-        if not sid:
-            # No section mapping: if the chunk came from V3, try to fetch section_id
-            chunk_id = chunk.get("chunk_id")
-            if chunk.get("table_source") == "rag_chunks_test" and chunk_id:
-                cur.execute(
-                    "SELECT section_id::text FROM rag_chunks_test WHERE chunk_id = %s",
-                    [chunk_id]
-                )
-                row = cur.fetchone()
-                if row and row.get("section_id"):
-                    sid = row["section_id"]
-                    chunk["section_id"] = sid
-
         if sid:
             if sid not in section_map or chunk.get("score", 0) > section_map[sid].get("score", 0):
                 section_map[sid] = chunk.copy()
@@ -773,7 +668,8 @@ def expand_chunks_to_sections(
     # For sections that don't have section_markdown yet, fetch it
     for sid, sec_chunk in section_map.items():
         if not sec_chunk.get("section_markdown"):
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT s.section_markdown, s.heading as section_heading,
                        s.heading_path, s.level as section_level,
                        s.token_count as section_token_count,
@@ -781,7 +677,9 @@ def expand_chunks_to_sections(
                 FROM rag_sections s
                 JOIN rag_documents d ON s.doc_id = d.doc_id
                 WHERE s.section_id = %s::uuid
-            """, [sid])
+            """,
+                [sid],
+            )
             row = cur.fetchone()
             if row:
                 for k, v in dict(row).items():
@@ -811,6 +709,7 @@ def rerank_sections(
         texts.append(f"# {heading}\n\n{markdown[:2000]}")
 
     from assistant_rh_rag_pipeline.reranker import AlbertReranker
+
     reranker = AlbertReranker(timeout=10)
     ranked = reranker.rerank(query, texts, top_k=top_k)
 
@@ -827,9 +726,10 @@ def rerank_sections(
 # METRICS COMPUTATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def _is_hit(chunk: Dict, gold_sources: str, match_mode: str = "document", gold_chunk_id: Optional[str] = None) -> bool:
     """Check if a chunk matches the gold reference.
-    
+
     match_mode:
       - "document": match by short_id vs gold_sources
       - "chunk": match by chunk_id (hash_id) vs gold_chunk_id
@@ -841,9 +741,7 @@ def _is_hit(chunk: Dict, gold_sources: str, match_mode: str = "document", gold_c
         return chunk_id.strip().lower() == gold_chunk_id.strip().lower()
     else:
         chunk_short_id = chunk.get("short_id")
-        if not chunk_short_id or not gold_sources:
-            return False
-        return chunk_short_id.strip().lower() == gold_sources.strip().lower()
+        return gold_sources_match(gold_sources, chunk_short_id)
 
 
 def compute_recall_at_k(chunks: List[Dict], gold_sources: str, k: int, match_mode: str = "document", gold_chunk_id: Optional[str] = None) -> int:
@@ -911,6 +809,7 @@ def compute_all_metrics(chunks: List[Dict], gold_sources: str, match_mode: str =
 # RUN EVALUATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def run_evaluation(
     strategies: List[ChunkingStrategy],
     goldset_key: str = "common_corpus",
@@ -944,6 +843,7 @@ def run_evaluation(
 
     # Filter by publisher: keep only questions whose gold_sources come from the right source
     if publisher_filter:
+
         def _get_chunk_table(comment):
             if not comment:
                 return None
@@ -970,14 +870,11 @@ def run_evaluation(
                 # This works for neutral goldsets where questions came from doc-level
                 conn = get_connection()
                 with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT DISTINCT short_id FROM rag_documents WHERE publisher = %s",
-                        [publisher_filter]
-                    )
+                    cur.execute("SELECT DISTINCT short_id FROM rag_documents WHERE publisher = %s", [publisher_filter])
                     pub_short_ids = set(r["short_id"] for r in cur.fetchall())
                 if "_chunk_table" in questions_df.columns:
                     questions_df = questions_df.drop(columns=["_chunk_table"])
-                questions_df = questions_df[questions_df["gold_sources"].isin(pub_short_ids)]
+                questions_df = questions_df[questions_df["gold_sources"].apply(lambda value: gold_sources_overlap(value, pub_short_ids))]
         else:
             # For doc-level goldsets: handled below via publisher-filtered short_ids
             pass
@@ -996,7 +893,9 @@ def run_evaluation(
     if match_mode == "chunk" and require_both_mappings:
         n_before_both = len(questions_df)
         has_v1 = questions_df["gold_chunk_id"].notna() if "gold_chunk_id" in questions_df.columns else pd.Series(False, index=questions_df.index)
-        has_v3 = questions_df["gold_chunk_id_v3"].notna() if "gold_chunk_id_v3" in questions_df.columns else pd.Series(False, index=questions_df.index)
+        has_v3 = (
+            questions_df["gold_chunk_id_v3"].notna() if "gold_chunk_id_v3" in questions_df.columns else pd.Series(False, index=questions_df.index)
+        )
         questions_df = questions_df[has_v1 & has_v3]
         n_after_both = len(questions_df)
         if n_before_both != n_after_both:
@@ -1009,14 +908,11 @@ def run_evaluation(
     if publisher_filter and filter_short_ids and match_mode == "document":
         conn = get_connection()
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT DISTINCT short_id FROM rag_documents WHERE publisher = %s",
-                [publisher_filter]
-            )
+            cur.execute("SELECT DISTINCT short_id FROM rag_documents WHERE publisher = %s", [publisher_filter])
             pub_short_ids = set(r["short_id"] for r in cur.fetchall())
         filter_short_ids = [sid for sid in filter_short_ids if sid in pub_short_ids]
         # Also filter questions to matching gold_sources
-        questions_df = questions_df[questions_df["gold_sources"].isin(pub_short_ids)]
+        questions_df = questions_df[questions_df["gold_sources"].apply(lambda value: gold_sources_overlap(value, pub_short_ids))]
 
     # V3 mapping coverage info
     v3_info = ""
@@ -1053,7 +949,7 @@ def run_evaluation(
             "strategies": [s.key for s in strategies],
         },
         "per_question": [],  # List of {question_id, question, gold_sources, strategy_key: {metrics, chunks}}
-        "aggregate": {},     # {strategy_key: {metric_name: value}}
+        "aggregate": {},  # {strategy_key: {metric_name: value}}
     }
 
     progress = st.progress(0, text="Lancement de l'évaluation...")
@@ -1073,63 +969,40 @@ def run_evaluation(
             gold_chunk_id_de = row.get("gold_chunk_id") if match_mode == "chunk" else None
             gold_chunk_id_v3 = row.get("gold_chunk_id_v3") if match_mode == "chunk" else None
 
-            progress.progress(
-                (i + 1) / len(questions_df),
-                text=f"Question {i+1}/{len(questions_df)}: {question_text[:60]}..."
-            )
+            progress.progress((i + 1) / len(questions_df), text=f"Question {i + 1}/{len(questions_df)}: {question_text[:60]}...")
 
             q_result = {
                 "question_id": row["id"],
                 "question": question_text,
-                "gold_sources": gold_sources,
+                "gold_sources": format_gold_sources(gold_sources),
                 "gold_chunk_id": gold_chunk_id_de,
                 "gold_chunk_id_v3": gold_chunk_id_v3,
                 "theme": row.get("theme"),
             }
 
             for strategy in strategies:
-                # Pick the right gold_chunk_id for this strategy
-                # V3-type strategies use gold_chunk_id_v3, DE-type use gold_chunk_id
-                is_v3_strategy = any(t.short_id_mode == "join_documents" for t in strategy.tables)
-                if match_mode == "chunk" and is_v3_strategy:
-                    strat_gold_chunk_id = gold_chunk_id_v3
-                    # Skip V3 metrics if this question has no V3 mapping
-                    if not strat_gold_chunk_id:
-                        q_result[strategy.key] = {
-                            "raw_metrics": {f"recall@{k}": None for k in K_VALUES},
-                            "rerank_metrics": None,
-                            "retrieval_time_ms": 0,
-                            "rerank_time_ms": 0,
-                            "n_chunks": 0,
-                            "top_chunks": [],
-                            "top_reranked": [],
-                            "v3_unmapped": True,
-                        }
-                        q_result[strategy.key]["raw_metrics"]["mrr"] = None
-                        q_result[strategy.key]["raw_metrics"]["first_hit_rank"] = None
-                        continue
-                else:
-                    strat_gold_chunk_id = gold_chunk_id_de
-                    # Skip DE metrics if this question has no DE chunk mapping
-                    if match_mode == "chunk" and not strat_gold_chunk_id:
-                        q_result[strategy.key] = {
-                            "raw_metrics": {f"recall@{k}": None for k in K_VALUES},
-                            "rerank_metrics": None,
-                            "retrieval_time_ms": 0,
-                            "rerank_time_ms": 0,
-                            "n_chunks": 0,
-                            "top_chunks": [],
-                            "top_reranked": [],
-                            "de_unmapped": True,
-                        }
-                        q_result[strategy.key]["raw_metrics"]["mrr"] = None
-                        q_result[strategy.key]["raw_metrics"]["first_hit_rank"] = None
-                        continue
+                strat_gold_chunk_id = gold_chunk_id_de
+                if match_mode == "chunk" and not strat_gold_chunk_id:
+                    q_result[strategy.key] = {
+                        "raw_metrics": {f"recall@{k}": None for k in K_VALUES},
+                        "rerank_metrics": None,
+                        "retrieval_time_ms": 0,
+                        "rerank_time_ms": 0,
+                        "n_chunks": 0,
+                        "top_chunks": [],
+                        "top_reranked": [],
+                        "de_unmapped": True,
+                    }
+                    q_result[strategy.key]["raw_metrics"]["mrr"] = None
+                    q_result[strategy.key]["raw_metrics"]["first_hit_rank"] = None
+                    continue
 
                 # ── Retrieval ──
                 t0 = time.time()
                 chunks = run_strategy_retrieval(
-                    cur, strategy, embedding,
+                    cur,
+                    strategy,
+                    embedding,
                     top_k=top_k,
                     filter_short_ids=filter_short_ids,
                     publisher_filter=publisher_filter,
@@ -1203,20 +1076,13 @@ def run_evaluation(
         agg = {}
         # Filter out unmapped questions (V3 or DE) where metrics are None
         valid_questions = [
-            q for q in results["per_question"]
-            if strategy.key in q
-            and not q[strategy.key].get("v3_unmapped")
-            and not q[strategy.key].get("de_unmapped")
+            q
+            for q in results["per_question"]
+            if strategy.key in q and not q[strategy.key].get("v3_unmapped") and not q[strategy.key].get("de_unmapped")
         ]
         n = len(valid_questions)
-        n_v3_unmapped = sum(
-            1 for q in results["per_question"]
-            if strategy.key in q and q[strategy.key].get("v3_unmapped")
-        )
-        n_de_unmapped = sum(
-            1 for q in results["per_question"]
-            if strategy.key in q and q[strategy.key].get("de_unmapped")
-        )
+        n_v3_unmapped = sum(1 for q in results["per_question"] if strategy.key in q and q[strategy.key].get("v3_unmapped"))
+        n_de_unmapped = sum(1 for q in results["per_question"] if strategy.key in q and q[strategy.key].get("de_unmapped"))
         n_unmapped = n_v3_unmapped + n_de_unmapped
         agg["n_evaluated"] = n
         agg["n_unmapped"] = n_unmapped
@@ -1227,7 +1093,9 @@ def run_evaluation(
 
         # Raw metrics
         for metric_name in [f"recall@{k}" for k in K_VALUES] + ["mrr"] + [f"ndcg@{k}" for k in K_VALUES]:
-            values = [q[strategy.key]["raw_metrics"][metric_name] for q in valid_questions if q[strategy.key]["raw_metrics"].get(metric_name) is not None]
+            values = [
+                q[strategy.key]["raw_metrics"][metric_name] for q in valid_questions if q[strategy.key]["raw_metrics"].get(metric_name) is not None
+            ]
             agg[f"raw_{metric_name}"] = round(np.mean(values), 4) if values else 0.0
 
         # Rerank metrics
@@ -1246,10 +1114,7 @@ def run_evaluation(
 
         # Latency — rerank (retrieval + rerank combined)
         if enable_rerank:
-            rr_times = [
-                q[strategy.key]["retrieval_time_ms"] + q[strategy.key].get("rerank_time_ms", 0)
-                for q in valid_questions
-            ]
+            rr_times = [q[strategy.key]["retrieval_time_ms"] + q[strategy.key].get("rerank_time_ms", 0) for q in valid_questions]
             agg["rerank_avg_latency_ms"] = round(np.mean(rr_times), 1) if rr_times else 0.0
 
         # First hit rank distribution — raw
@@ -1281,6 +1146,7 @@ def run_evaluation(
 # ═══════════════════════════════════════════════════════════════════════════════
 # PERSISTENCE (save to DB)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def save_eval_to_db(results: Dict, run_name: str) -> Optional[int]:
     """Save evaluation results to retrieval_eval_runs."""
@@ -1408,12 +1274,15 @@ def load_eval_from_db(run_id: int) -> Optional[Dict]:
         return None
     try:
         with conn.cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT config, raw_distribution, question_details,
                        n_questions, total_elapsed_s, run_name
                 FROM retrieval_eval_runs
                 WHERE id = %s
-            """, (run_id,))
+            """,
+                (run_id,),
+            )
             row = cur.fetchone()
             if not row:
                 return None
@@ -1464,6 +1333,7 @@ def load_eval_from_db(run_id: int) -> Optional[Dict]:
 # UI HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def format_pct(value: float) -> str:
     """Format a ratio as percentage string."""
     if value is None:
@@ -1484,21 +1354,21 @@ def build_summary_table(results: Dict, stage: str = "raw") -> pd.DataFrame:
         }
         for k in K_VALUES:
             row[f"Recall@{k}"] = format_pct(agg.get(f"{prefix}recall@{k}", 0))
-        mrr_val = agg.get(f'{prefix}mrr', 0)
+        mrr_val = agg.get(f"{prefix}mrr", 0)
         row["MRR"] = f"{mrr_val:.4f}" if mrr_val is not None else "—"
         for k in K_VALUES:
-            ndcg_val = agg.get(f'{prefix}ndcg@{k}', 0)
+            ndcg_val = agg.get(f"{prefix}ndcg@{k}", 0)
             row[f"NDCG@{k}"] = f"{ndcg_val:.4f}" if ndcg_val is not None else "—"
         avg_rank = agg.get(f"{prefix}avg_first_hit_rank")
         row["Avg rank 1er hit"] = f"{avg_rank:.2f}" if avg_rank is not None else "—"
-        n_found = agg.get(f'{prefix}n_found', 0) or 0
-        n_missed = agg.get(f'{prefix}n_missed', 0) or 0
-        n_unmapped = agg.get('n_unmapped', 0)
+        n_found = agg.get(f"{prefix}n_found", 0) or 0
+        n_missed = agg.get(f"{prefix}n_missed", 0) or 0
+        n_unmapped = agg.get("n_unmapped", 0)
         found_str = f"{n_found} / {n_missed}"
         if n_unmapped > 0:
             found_str += f" ({n_unmapped} non-mappés)"
         row["Trouvés / Manqués"] = found_str
-        latency = agg.get(f'{prefix}avg_latency_ms', 0)
+        latency = agg.get(f"{prefix}avg_latency_ms", 0)
         row["Latence moy. (ms)"] = f"{latency:.0f}" if latency is not None else "—"
         rows.append(row)
     return pd.DataFrame(rows)
@@ -1514,14 +1384,16 @@ def recall_curve_chart(results: Dict, stage: str = "raw") -> go.Figure:
             continue
         agg = results["aggregate"][s.key]
         ys = [agg.get(f"{prefix}recall@{k}", 0) * 100 for k in K_VALUES]
-        fig.add_trace(go.Scatter(
-            x=K_VALUES,
-            y=ys,
-            mode="lines+markers",
-            name=s.name,
-            line=dict(color=s.color, width=3),
-            marker=dict(size=10),
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=K_VALUES,
+                y=ys,
+                mode="lines+markers",
+                name=s.name,
+                line=dict(color=s.color, width=3),
+                marker=dict(size=10),
+            )
+        )
 
     fig.update_layout(
         title=f"Recall@K — {stage.upper()}",
@@ -1549,13 +1421,17 @@ def mrr_comparison_chart(results: Dict, stage: str = "raw") -> go.Figure:
         values.append(agg.get(f"{prefix}mrr", 0) or 0)
         colors.append(s.color)
 
-    fig = go.Figure(data=[go.Bar(
-        x=names,
-        y=values,
-        marker_color=colors,
-        text=[f"{v:.4f}" for v in values],
-        textposition="auto",
-    )])
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=names,
+                y=values,
+                marker_color=colors,
+                text=[f"{v:.4f}" for v in values],
+                textposition="auto",
+            )
+        ]
+    )
     fig.update_layout(
         title=f"MRR — {stage.upper()}",
         yaxis_title="MRR",
@@ -1577,13 +1453,15 @@ def first_hit_rank_histogram(results: Dict) -> go.Figure:
                 if rank is not None:
                     ranks.append(rank)
         if ranks:
-            fig.add_trace(go.Histogram(
-                x=ranks,
-                name=s.name,
-                marker_color=s.color,
-                opacity=0.7,
-                nbinsx=20,
-            ))
+            fig.add_trace(
+                go.Histogram(
+                    x=ranks,
+                    name=s.name,
+                    marker_color=s.color,
+                    opacity=0.7,
+                    nbinsx=20,
+                )
+            )
 
     fig.update_layout(
         title="Distribution du rang du 1er hit (raw)",
@@ -1622,7 +1500,7 @@ def per_question_comparison_df(results: Dict, stage: str = "raw") -> pd.DataFram
                 metrics = q[s.key]["rerank_metrics"]
             else:
                 metrics = q[s.key]["raw_metrics"]
-            mrr_val = metrics.get('mrr', 0)
+            mrr_val = metrics.get("mrr", 0)
             row[f"{s.name} hit@10"] = "✅" if metrics.get("recall@10", 0) == 1 else "❌"
             row[f"{s.name} rank"] = metrics.get("first_hit_rank", "—")
             row[f"{s.name} MRR"] = f"{mrr_val:.3f}" if mrr_val is not None else "n/a"
@@ -1657,6 +1535,7 @@ def per_question_comparison_df(results: Dict, stage: str = "raw") -> pd.DataFram
 # TAB 1: RUN EVALUATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def tab_run_evaluation():
     """Configuration and execution of the evaluation."""
     st.header("🚀 Lancer l'évaluation")
@@ -1668,7 +1547,7 @@ def tab_run_evaluation():
             "Jeu de questions",
             options=list(GOLDSETS.keys()),
             format_func=lambda k: GOLDSETS[k].name,
-            help="Choisir le goldset pour l'évaluation. Doc-level = match par document, Chunk-level = match par chunk exact."
+            help="Choisir le goldset pour l'évaluation. Doc-level = match par document, Chunk-level = match par chunk exact.",
         )
         gc = GOLDSETS[goldset_key]
         st.caption(f"_{gc.description}_  \nMatch: **{gc.match_mode}**")
@@ -1688,8 +1567,7 @@ def tab_run_evaluation():
             require_both = st.checkbox(
                 "Exiger mapping V1 ET V3",
                 value=(goldset_key == "common_corpus_chunk"),  # ON par défaut pour le goldset neutre
-                help="Ne garder que les questions ayant un gold_chunk_id pour V1 ET V3. "
-                     "Indispensable pour une comparaison équitable au chunk-level.",
+                help="Ne garder que les questions ayant un gold_chunk_id pour V1 ET V3. Indispensable pour une comparaison équitable au chunk-level.",
             )
 
         st.divider()
@@ -1703,8 +1581,11 @@ def tab_run_evaluation():
         publisher_filter = None if publisher_choice == "Tous" else publisher_choice
         top_k = st.slider("Top K retrieval", 10, 100, 50, step=10)
         max_q = st.number_input("Max questions (0 = toutes)", 0, 500, 0)
-        filter_corpus = st.toggle("Filtrer au corpus du goldset", value=True,
-                                   help="ON = recherche uniquement dans les documents du goldset. OFF = recherche dans tout le corpus.")
+        filter_corpus = st.toggle(
+            "Filtrer au corpus du goldset",
+            value=True,
+            help="ON = recherche uniquement dans les documents du goldset. OFF = recherche dans tout le corpus.",
+        )
         st.divider()
         enable_rerank = st.checkbox("Activer le reranker (Albert)", value=False)
         rerank_top_k = st.slider("Rerank top K", 5, 50, 20, disabled=not enable_rerank)
@@ -1713,10 +1594,13 @@ def tab_run_evaluation():
             "Section expansion + rerank",
             value=False,
             help="Expand les chunks en sections (via section_id), deduplique par section, "
-                 "puis reranke sur section_markdown. Fonctionne pour DE Mapped, Hybrid, et V3.",
+            "puis reranke sur section_markdown. Fonctionne pour DE Mapped, Hybrid, et V3.",
         )
         section_rerank_top_k = st.slider(
-            "Section rerank top K", 5, 30, 15,
+            "Section rerank top K",
+            5,
+            30,
+            15,
             disabled=not enable_section_expansion,
         )
 
@@ -1738,7 +1622,17 @@ def tab_run_evaluation():
 
     # Display selected strategies
     cols = st.columns(len(selected_strategies))
-    color_icons = {"de": "🔴", "de_ctx": "🟠", "v3": "🟢", "v3_raw": "🟡", "v3_raw_text": "🔵", "v2_original": "🟣", "hf_sp": "🟤", "de_mapped": "🔻", "hybrid": "🟪"}
+    color_icons = {
+        "de": "🔴",
+        "de_ctx": "🟠",
+        "v3": "🟢",
+        "v3_raw": "🟡",
+        "v3_raw_text": "🔵",
+        "v2_original": "🟣",
+        "hf_sp": "🟤",
+        "de_mapped": "🔻",
+        "hybrid": "🟪",
+    }
     for col, s in zip(cols, selected_strategies):
         with col:
             icon = color_icons.get(s.key, "⚪")
@@ -1770,7 +1664,7 @@ def tab_run_evaluation():
     st.divider()
     strats_short = "+".join(selected_keys)
     conf_str = f"_conf{''.join(c[0] for c in v3_confidence_filter)}" if v3_confidence_filter else ""
-    pub_str = f"_{publisher_choice.lower().replace('-','')}" if publisher_filter else ""
+    pub_str = f"_{publisher_choice.lower().replace('-', '')}" if publisher_filter else ""
     both_str = "_both" if (gc.match_mode == "chunk" and require_both) else ""
     sec_str = f"_secexp{section_rerank_top_k}" if enable_section_expansion else ""
     auto_name = f"chunking_eval_{goldset_key}_{strats_short}_{'filtered' if filter_corpus else 'full'}_k{top_k}{pub_str}{conf_str}{both_str}{'_rr' + str(rerank_top_k) if enable_rerank else ''}{sec_str}"
@@ -1796,8 +1690,13 @@ def tab_run_evaluation():
             st.session_state["chunk_eval_results"] = eval_results
             st.session_state["chunk_eval_run_name"] = run_name
 
-            # Auto-save
-            run_id = save_eval_to_db(eval_results, run_name)
+            # Auto-save — best effort : la table retrieval_eval_runs n'existe
+            # pas dans tous les environnements ; les résultats restent affichés.
+            try:
+                run_id = save_eval_to_db(eval_results, run_name)
+            except Exception as e:
+                run_id = None
+                st.info(f"💾 Sauvegarde indisponible ({type(e).__name__}) — résultats affichés sans persistance.")
             if run_id:
                 st.success(f"💾 Run sauvegardé (id={run_id})")
 
@@ -1835,6 +1734,7 @@ def _display_summary_metrics():
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 2: RESULTS COMPARISON
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def tab_results_comparison():
     """Detailed charts and analysis of results."""
@@ -1891,12 +1791,16 @@ def tab_results_comparison():
             col.metric(label, f"{count}", f"{pct:.1f}%")
 
         # Pie chart
-        fig = go.Figure(data=[go.Pie(
-            labels=list(outcome_counts.index),
-            values=list(outcome_counts.values),
-            marker_colors=[base_colors.get(l, "#ccc") for l in outcome_counts.index],
-            hole=0.3,
-        )])
+        fig = go.Figure(
+            data=[
+                go.Pie(
+                    labels=list(outcome_counts.index),
+                    values=list(outcome_counts.values),
+                    marker_colors=[base_colors.get(l, "#ccc") for l in outcome_counts.index],
+                    hole=0.3,
+                )
+            ]
+        )
         fig.update_layout(title="Répartition Recall@10", height=350)
         st.plotly_chart(fig, width="stretch")
 
@@ -1909,15 +1813,20 @@ def tab_results_comparison():
             continue
         agg = results["aggregate"][s.key]
         for k in K_VALUES:
-            ndcg_data.append({
-                "Strategy": s.name,
-                "K": k,
-                "NDCG": agg.get(f"{prefix}ndcg@{k}", 0) or 0,
-            })
+            ndcg_data.append(
+                {
+                    "Strategy": s.name,
+                    "K": k,
+                    "NDCG": agg.get(f"{prefix}ndcg@{k}", 0) or 0,
+                }
+            )
     if ndcg_data:
         ndcg_df = pd.DataFrame(ndcg_data)
         fig = px.bar(
-            ndcg_df, x="K", y="NDCG", color="Strategy",
+            ndcg_df,
+            x="K",
+            y="NDCG",
+            color="Strategy",
             barmode="group",
             color_discrete_map={s.name: s.color for s in ALL_STRATEGIES},
             title=f"NDCG@K — {stage.upper()}",
@@ -1929,6 +1838,7 @@ def tab_results_comparison():
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 3: PER-QUESTION DETAIL
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def tab_per_question_detail():
     """Per-question analysis with error breakdown."""
@@ -1957,10 +1867,7 @@ def tab_per_question_detail():
         themes = sorted(per_q_df["theme"].dropna().unique().tolist())
         theme_filter = st.multiselect("Filtrer par thème", themes, default=themes)
 
-    filtered = per_q_df[
-        per_q_df["outcome"].isin(outcome_filter)
-        & per_q_df["theme"].isin(theme_filter)
-    ]
+    filtered = per_q_df[per_q_df["outcome"].isin(outcome_filter) & per_q_df["theme"].isin(theme_filter)]
 
     st.info(f"**{len(filtered)}** questions affichées sur {len(per_q_df)}")
 
@@ -2015,7 +1922,7 @@ def tab_per_question_detail():
             # Metrics summary
             mcol1, mcol2, mcol3, mcol4 = st.columns(4)
             mcol1.metric("Recall@10", "✅" if metrics.get("recall@10") == 1 else "❌")
-            mrr_val = metrics.get('mrr', 0)
+            mrr_val = metrics.get("mrr", 0)
             mcol2.metric("MRR", f"{mrr_val:.4f}" if mrr_val is not None else "—")
             mcol3.metric("1er hit rang", metrics.get("first_hit_rank", "—"))
             mcol4.metric("Latence", f"{s_data.get('retrieval_time_ms', 0)} ms")
@@ -2044,6 +1951,7 @@ def tab_per_question_detail():
 # TAB 4: UNION RETRIEVAL (HEAD-TO-HEAD)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def run_union_retrieval(
     cur,
     strategies: List[ChunkingStrategy],
@@ -2060,35 +1968,22 @@ def run_union_retrieval(
     all_chunks = []
 
     for strategy in strategies:
-        is_v3 = any(t.short_id_mode == "join_documents" for t in strategy.tables)
-
-        if is_v3:
-            embed_col = strategy.tables[0].embed_col if strategy.tables else "embedding"
-            chunks = search_v3_table(
-                cur, query_embedding, top_k=top_k,
+        for table_cfg in strategy.tables:
+            # Skip DE tables not matching publisher filter
+            if publisher_filter:
+                table_pub = DE_TABLE_PUBLISHER.get(table_cfg.table)
+                if table_pub and table_pub != publisher_filter:
+                    continue
+            chunks = search_de_table(
+                cur,
+                table_cfg,
+                query_embedding,
+                top_k=top_k,
                 filter_short_ids=filter_short_ids,
-                embed_col=embed_col,
-                strategy_key=strategy.key,
-                publisher_filter=publisher_filter,
             )
             for c in chunks:
                 c["strategy"] = strategy.key
             all_chunks.extend(chunks)
-        else:
-            for table_cfg in strategy.tables:
-                # Skip DE tables not matching publisher filter
-                if publisher_filter:
-                    table_pub = DE_TABLE_PUBLISHER.get(table_cfg.table)
-                    if table_pub and table_pub != publisher_filter:
-                        continue
-                chunks = search_de_table(
-                    cur, table_cfg, query_embedding,
-                    top_k=top_k,
-                    filter_short_ids=filter_short_ids,
-                )
-                for c in chunks:
-                    c["strategy"] = strategy.key
-                all_chunks.extend(chunks)
 
     # Sort all chunks by score desc
     all_chunks.sort(key=lambda x: x.get("score", 0), reverse=True)
@@ -2151,13 +2046,10 @@ def tab_union_retrieval():
         if union_pub_filter:
             conn = get_connection()
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT DISTINCT short_id FROM rag_documents WHERE publisher = %s",
-                    [union_pub_filter]
-                )
+                cur.execute("SELECT DISTINCT short_id FROM rag_documents WHERE publisher = %s", [union_pub_filter])
                 pub_short_ids = set(r["short_id"] for r in cur.fetchall())
             # Filter questions
-            questions_df = questions_df[questions_df["gold_sources"].isin(pub_short_ids)]
+            questions_df = questions_df[questions_df["gold_sources"].apply(lambda value: gold_sources_overlap(value, pub_short_ids))]
             # Filter short_ids
             if filter_short_ids:
                 filter_short_ids = [sid for sid in filter_short_ids if sid in pub_short_ids]
@@ -2182,14 +2074,13 @@ def tab_union_retrieval():
 
                 gold_sources = row.get("gold_sources", "")
 
-                progress.progress(
-                    (i + 1) / len(questions_df),
-                    text=f"Question {i+1}/{len(questions_df)}: {row['question'][:50]}..."
-                )
+                progress.progress((i + 1) / len(questions_df), text=f"Question {i + 1}/{len(questions_df)}: {row['question'][:50]}...")
 
                 # Union retrieval
                 all_chunks = run_union_retrieval(
-                    cur, selected_strategies, embedding,
+                    cur,
+                    selected_strategies,
+                    embedding,
                     top_k=union_top_k,
                     filter_short_ids=filter_short_ids,
                     publisher_filter=union_pub_filter,
@@ -2201,7 +2092,7 @@ def tab_union_retrieval():
                     s_key = chunk.get("strategy", "?")
                     chunk_short_id = chunk.get("short_id", "")
 
-                    is_gold = chunk_short_id.strip().lower() == gold_sources.strip().lower() if chunk_short_id and gold_sources else False
+                    is_gold = gold_sources_match(gold_sources, chunk_short_id)
 
                     if is_gold and s_key not in strategy_best:
                         strategy_best[s_key] = {
@@ -2215,25 +2106,27 @@ def tab_union_retrieval():
                 if strategy_best:
                     winner = min(strategy_best, key=lambda k: strategy_best[k]["rank"])
 
-                per_question.append({
-                    "question_id": row["id"],
-                    "question": row["question"],
-                    "gold_sources": gold_sources,
-                    "winner": winner,
-                    "strategy_best": strategy_best,
-                    "top_10": [
-                        {
-                            "rank": r + 1,
-                            "strategy": c.get("strategy", "?"),
-                            "chunk_id": c.get("chunk_id", "")[:12],
-                            "short_id": c.get("short_id", ""),
-                            "score": round(c.get("score", 0), 5),
-                            "is_gold": (c.get("short_id", "").strip().lower() == gold_sources.strip().lower()) if c.get("short_id") and gold_sources else False,
-                            "source_name": c.get("source_name", "")[:50],
-                        }
-                        for r, c in enumerate(all_chunks[:10])
-                    ],
-                })
+                per_question.append(
+                    {
+                        "question_id": row["id"],
+                        "question": row["question"],
+                        "gold_sources": format_gold_sources(gold_sources),
+                        "winner": winner,
+                        "strategy_best": strategy_best,
+                        "top_10": [
+                            {
+                                "rank": r + 1,
+                                "strategy": c.get("strategy", "?"),
+                                "chunk_id": c.get("chunk_id", "")[:12],
+                                "short_id": c.get("short_id", ""),
+                                "score": round(c.get("score", 0), 5),
+                                "is_gold": gold_sources_match(gold_sources, c.get("short_id", "")),
+                                "source_name": c.get("source_name", "")[:50],
+                            }
+                            for r, c in enumerate(all_chunks[:10])
+                        ],
+                    }
+                )
 
         progress.progress(1.0, text="Tournoi terminé!")
         st.session_state["union_results"] = per_question
@@ -2287,28 +2180,32 @@ def tab_union_retrieval():
         top1 = top1_counts.get(s.key, 0)
         ranks = avg_ranks.get(s.key, [])
         scores = avg_scores.get(s.key, [])
-        summary_rows.append({
-            "Stratégie": s.name,
-            "Wins (gold #1)": wins,
-            "Win %": f"{100*wins/max(n,1):.1f}%",
-            "Top-1 (tous)": top1,
-            "Top-1 %": f"{100*top1/max(n,1):.1f}%",
-            "Avg rank gold": f"{np.mean(ranks):.2f}" if ranks else "—",
-            "Median rank": f"{np.median(ranks):.1f}" if ranks else "—",
-            "Avg score gold": f"{np.mean(scores):.4f}" if scores else "—",
-            "Found": f"{len(ranks)}/{n}",
-        })
+        summary_rows.append(
+            {
+                "Stratégie": s.name,
+                "Wins (gold #1)": wins,
+                "Win %": f"{100 * wins / max(n, 1):.1f}%",
+                "Top-1 (tous)": top1,
+                "Top-1 %": f"{100 * top1 / max(n, 1):.1f}%",
+                "Avg rank gold": f"{np.mean(ranks):.2f}" if ranks else "—",
+                "Median rank": f"{np.median(ranks):.1f}" if ranks else "—",
+                "Avg score gold": f"{np.mean(scores):.4f}" if scores else "—",
+                "Found": f"{len(ranks)}/{n}",
+            }
+        )
 
     if no_winner:
-        summary_rows.append({
-            "Stratégie": "Aucun (miss)",
-            "Wins (gold #1)": no_winner,
-            "Win %": f"{100*no_winner/max(n,1):.1f}%",
-            "Top-1 (tous)": "",
-            "Top-1 %": "",
-            "Avg rank gold": "",
-            "Found": "",
-        })
+        summary_rows.append(
+            {
+                "Stratégie": "Aucun (miss)",
+                "Wins (gold #1)": no_winner,
+                "Win %": f"{100 * no_winner / max(n, 1):.1f}%",
+                "Top-1 (tous)": "",
+                "Top-1 %": "",
+                "Avg rank gold": "",
+                "Found": "",
+            }
+        )
 
     st.dataframe(pd.DataFrame(summary_rows), width="stretch", hide_index=True)
 
@@ -2320,15 +2217,17 @@ def tab_union_retrieval():
             win_data.append({"Stratégie": s.name, "Wins": win_counts[s.key], "color": s.color})
 
     if win_data:
-        fig = go.Figure(data=[
-            go.Bar(
-                x=[d["Stratégie"] for d in win_data],
-                y=[d["Wins"] for d in win_data],
-                marker_color=[d["color"] for d in win_data],
-                text=[d["Wins"] for d in win_data],
-                textposition="auto",
-            )
-        ])
+        fig = go.Figure(
+            data=[
+                go.Bar(
+                    x=[d["Stratégie"] for d in win_data],
+                    y=[d["Wins"] for d in win_data],
+                    marker_color=[d["color"] for d in win_data],
+                    text=[d["Wins"] for d in win_data],
+                    textposition="auto",
+                )
+            ]
+        )
         fig.update_layout(
             title=f"Nombre de fois où chaque stratégie place le gold chunk en premier ({n} questions)",
             yaxis_title="Nombre de victoires",
@@ -2352,12 +2251,14 @@ def tab_union_retrieval():
             if s.key in top10_dist:
                 ranks = list(range(1, 11))
                 counts = [top10_dist[s.key].get(r, 0) for r in ranks]
-                fig2.add_trace(go.Bar(
-                    x=ranks,
-                    y=counts,
-                    name=s.name,
-                    marker_color=s.color,
-                ))
+                fig2.add_trace(
+                    go.Bar(
+                        x=ranks,
+                        y=counts,
+                        name=s.name,
+                        marker_color=s.color,
+                    )
+                )
         fig2.update_layout(
             title="Quelle stratégie occupe chaque rang du Top 10 ?",
             xaxis_title="Rang",
@@ -2372,12 +2273,14 @@ def tab_union_retrieval():
     score_traces = []
     for s in ALL_STRATEGIES:
         if s.key in selected_keys and s.key in avg_scores:
-            score_traces.append(go.Box(
-                y=avg_scores[s.key],
-                name=s.name,
-                marker_color=s.color,
-                boxmean=True,
-            ))
+            score_traces.append(
+                go.Box(
+                    y=avg_scores[s.key],
+                    name=s.name,
+                    marker_color=s.color,
+                    boxmean=True,
+                )
+            )
     if score_traces:
         fig3 = go.Figure(data=score_traces)
         fig3.update_layout(
@@ -2436,7 +2339,7 @@ def tab_union_retrieval():
 
         cols = st.columns(len(dominance))
         for i, (name, count) in enumerate(sorted(dominance.items(), key=lambda x: -x[1])):
-            cols[i].metric(f"{name}", f"{count} docs", f"{100*count/len(doc_stats):.0f}%")
+            cols[i].metric(f"{name}", f"{count} docs", f"{100 * count / len(doc_stats):.0f}%")
 
         # Heatmap: win rate per document per strategy
         if len(selected_keys) >= 2:
@@ -2448,24 +2351,24 @@ def tab_union_retrieval():
                 if total == 0:
                     continue
                 heatmap_sids.append(sid[:25])
-                heatmap_data.append([
-                    d.get(s.key, 0) / total
-                    for s in ALL_STRATEGIES if s.key in selected_keys
-                ])
+                heatmap_data.append([d.get(s.key, 0) / total for s in ALL_STRATEGIES if s.key in selected_keys])
 
             if heatmap_data and len(heatmap_sids) > 1:
                 strat_names = [s.name for s in ALL_STRATEGIES if s.key in selected_keys]
                 heatmap_arr = np.array(heatmap_data)
-                fig_hm = go.Figure(data=go.Heatmap(
-                    z=heatmap_arr.T,
-                    x=heatmap_sids,
-                    y=strat_names,
-                    colorscale="RdYlGn",
-                    zmin=0, zmax=1,
-                    text=[[f"{v:.0%}" for v in row] for row in heatmap_arr.T],
-                    texttemplate="%{text}",
-                    hovertemplate="Doc: %{x}<br>Stratégie: %{y}<br>Win rate: %{z:.0%}<extra></extra>",
-                ))
+                fig_hm = go.Figure(
+                    data=go.Heatmap(
+                        z=heatmap_arr.T,
+                        x=heatmap_sids,
+                        y=strat_names,
+                        colorscale="RdYlGn",
+                        zmin=0,
+                        zmax=1,
+                        text=[[f"{v:.0%}" for v in row] for row in heatmap_arr.T],
+                        texttemplate="%{text}",
+                        hovertemplate="Doc: %{x}<br>Stratégie: %{y}<br>Win rate: %{z:.0%}<extra></extra>",
+                    )
+                )
                 fig_hm.update_layout(
                     title="Win rate par document et stratégie",
                     xaxis_title="Document",
@@ -2525,12 +2428,14 @@ def tab_union_retrieval():
 # MAIN LAYOUT
 # ═══════════════════════════════════════════════════════════════════════════════
 
-tab1, tab2, tab3, tab4 = st.tabs([
-    "Run Evaluation",
-    "Résultats & Comparaison",
-    "Détail par question",
-    "Union Retrieval",
-])
+tab1, tab2, tab3, tab4 = st.tabs(
+    [
+        "Run Evaluation",
+        "Résultats & Comparaison",
+        "Détail par question",
+        "Union Retrieval",
+    ]
+)
 
 with tab1:
     tab_run_evaluation()

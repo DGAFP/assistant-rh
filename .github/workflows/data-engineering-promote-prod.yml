@@ -1,24 +1,6 @@
 name: Data Engineering Promote Prod
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/data-engineering-*.yml"
-      - ".github/scripts/data_engineering_plan.py"
-      - ".github/scripts/scaleway_data_jobs.py"
-      - ".github/data-engineering-jobs.json"
-      - "apps/data-ingestion-cli/**"
-      - "packages/data-engineering/**"
-      - "packages/shared-config/**"
-      - "config/**"
-      - "Dockerfile.service_public_pipeline"
-      - "Dockerfile.service_public_ingestion"
-      - "Dockerfile.legifrance_pipeline"
-      - "Dockerfile.legifrance_ingestion"
-      - "Dockerfile.legifrance_bulk_dump"
-      - "Dockerfile.embeddings_job"
   workflow_dispatch:
     inputs:
       source:
@@ -31,7 +13,24 @@ on:
           - service_public
           - legifrance
           - matte
+          - mi
+          - masa
+          - mso
+          - pdf_sources
           - embeddings
+      mode:
+        description: "plan = detection seule (aucune mutation) ; apply = ingestion/reconciliation"
+        required: true
+        default: "plan"
+        type: choice
+        options:
+          - plan
+          - apply
+      delta:
+        description: "Reconciliation incrementale canonique (Service-Public via Grist, Legifrance via Grist + PISTE)"
+        required: true
+        default: true
+        type: boolean
       run_ingestion:
         description: "Ingerer aussi dans la base Scaleway production via les jobs serverless"
         required: true
@@ -43,7 +42,7 @@ on:
         default: false
         type: boolean
       run_embeddings:
-        description: "Backfill embeddings en plus de la source choisie (implicite si source=embeddings ou matte)"
+        description: "Backfill embeddings en plus de la source choisie (implicite si source=embeddings ou un ministère PDF)"
         required: true
         default: false
         type: boolean
@@ -57,6 +56,9 @@ on:
           - service_public
           - legifrance
           - matte
+          - mi
+          - masa
+          - mso
       embedding_only_column:
         description: "Colonne embeddings cible optionnelle, ex: embedding_bge_scw"
         required: false
@@ -85,11 +87,15 @@ jobs:
     outputs:
       service_public: ${{ steps.plan.outputs.service_public }}
       legifrance: ${{ steps.plan.outputs.legifrance }}
+      pdf_sources: ${{ steps.plan.outputs.pdf_sources }}
+      pdf_sources_ministry: ${{ steps.plan.outputs.pdf_sources_ministry }}
       embeddings: ${{ steps.plan.outputs.embeddings }}
       run_embeddings: ${{ steps.plan.outputs.run_embeddings }}
       has_builds: ${{ steps.plan.outputs.has_builds }}
       has_runs: ${{ steps.plan.outputs.has_runs }}
       matrix: ${{ steps.plan.outputs.matrix }}
+      run_matrix: ${{ steps.plan.outputs.run_matrix }}
+      mode: ${{ steps.plan.outputs.mode }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -102,12 +108,14 @@ jobs:
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
           INPUT_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
           INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_embeddings || '' }}
+          INPUT_EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_source || '' }}
+          INPUT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'plan' }}
         run: python3 .github/scripts/data_engineering_plan.py
 
   build-prod-images:
     runs-on: ubuntu-latest
     needs: plan
-    if: ${{ needs.plan.outputs.has_builds == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.skip_builds) }}
+    if: ${{ needs.plan.outputs.mode == 'apply' && needs.plan.outputs.has_builds == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.skip_builds) }}
     timeout-minutes: 90
     environment: scaleway-production
     strategy:
@@ -152,13 +160,17 @@ jobs:
             .
 
   promote-prod:
+    name: promote-prod (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs:
       - plan
       - build-prod-images
-    if: ${{ always() && needs.plan.outputs.has_runs == 'true' && (needs.build-prod-images.result == 'success' || (needs.build-prod-images.result == 'skipped' && github.event_name == 'workflow_dispatch' && inputs.skip_builds)) }}
+    if: ${{ always() && needs.plan.outputs.mode == 'apply' && needs.plan.outputs.has_runs == 'true' && (needs.build-prod-images.result == 'success' || (needs.build-prod-images.result == 'skipped' && github.event_name == 'workflow_dispatch' && inputs.skip_builds)) }}
     timeout-minutes: 240
     environment: scaleway-production
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.run_matrix) }}
     env:
       SCW_DEFAULT_REGION: fr-par
       SCW_DEFAULT_PROJECT_ID: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
@@ -167,6 +179,7 @@ jobs:
       SCW_BUCKET_BRONZE: assistant-rh-bronze
       SCW_BUCKET_SILVER: assistant-rh-silver
       SCW_BUCKET_GOLD: assistant-rh-gold
+      SCW_BUCKET_SOURCES_PDF: assistant-rh-sources-pdf
       SCW_PREFIX_STAGING: staging
       SCW_PREFIX_PROD: prod
       SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
@@ -174,9 +187,18 @@ jobs:
       SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
       SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
       SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
-      RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ingestion || false }}
+      ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
+      ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
+      GRIST_API_BASE_URL: ${{ vars.GRIST_API_BASE_URL }}
+      GRIST_API_KEY: ${{ secrets.GRIST_API_KEY }}
+      GRIST_DOC_ID: ${{ vars.GRIST_DOC_ID }}
+      GRIST_TABLE_ID: ${{ vars.GRIST_TABLE_ID }}
+      LEGIFRANCE_CLIENT_ID: ${{ secrets.LEGIFRANCE_CLIENT_ID }}
+      LEGIFRANCE_CLIENT_SECRET: ${{ secrets.LEGIFRANCE_CLIENT_SECRET }}
+      RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' && inputs.run_ingestion || false }}
       WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}
-      EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && (inputs.source == 'matte' && 'matte' || inputs.embedding_source) || 'all' }}
+      DELTA_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.delta || false }}
+      EMBEDDING_SOURCE: ${{ matrix.embedding_source }}
       EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
 
     steps:
@@ -199,9 +221,13 @@ jobs:
           python3 .github/scripts/scaleway_data_jobs.py \
             --target-env prod \
             --image-tag "${PROD_IMAGE_TAG}" \
-            --service-public "${{ needs.plan.outputs.service_public }}" \
-            --legifrance "${{ needs.plan.outputs.legifrance }}" \
-            --embeddings "${{ needs.plan.outputs.embeddings }}" \
+            --mode "${{ needs.plan.outputs.mode }}" \
+            --delta "${DELTA_MODE}" \
+            --service-public "${{ matrix.service_public }}" \
+            --legifrance "${{ matrix.legifrance }}" \
+            --pdf-sources "${{ matrix.pdf_sources }}" \
+            --pdf-sources-ministry "${{ matrix.pdf_sources_ministry }}" \
+            --embeddings "${{ matrix.embeddings }}" \
             --run-ingestion "${RUN_INGESTION}" \
             --wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}" \
             --run-embeddings "${{ needs.plan.outputs.run_embeddings }}" \

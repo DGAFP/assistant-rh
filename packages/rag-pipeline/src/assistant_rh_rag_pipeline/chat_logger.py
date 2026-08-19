@@ -167,53 +167,53 @@ def _source_distribution(items: list, key: str = "publisher") -> dict:
 
 _TABLE_BY_RUNTIME_KEY = {
     "matte": "rag_chunks_matte",
+    "mso": "rag_chunks_mso",
     "service_public": "rag_chunks_service_public",
     "service_public_scw": "rag_chunks_service_public_scw",
     "dgafp": "rag_chunks_dgafp",
     "dgafp_scw": "rag_chunks_dgafp_scw",
     "rgrh": "rag_chunks_rgrh",
-    "rag_chunks_test": "rag_chunks_test",
 }
 
 _TABLE_BY_PUBLISHER = {
     "matte": "rag_chunks_matte",
+    "mso": "rag_chunks_mso",
     "service-public": "rag_chunks_service_public",
     "service public": "rag_chunks_service_public",
     "service-public (scaleway)": "rag_chunks_service_public_scw",
     "dgafp": "rag_chunks_dgafp",
     "dgafp (scaleway)": "rag_chunks_dgafp_scw",
     "rgrh": "rag_chunks_rgrh",
-    "chunkstest": "rag_chunks_test",
 }
 
 _ALBERT_EMBED_COL_BY_TABLE = {
     "rag_chunks_matte": "embedding_m3",
+    "rag_chunks_mso": "embedding_m3",
     "rag_chunks_service_public": "embedding_m3",
     "rag_chunks_service_public_scw": "embedding_m3",
     "rag_chunks_dgafp": "embedding_m3",
     "rag_chunks_dgafp_scw": "embedding_m3",
     "rag_chunks_rgrh": "embedding_m3",
-    "rag_chunks_test": "embedding_raw",
 }
 
 _BGE_EMBED_COL_BY_TABLE = {
     "rag_chunks_matte": "embedding_bge_scw",
+    "rag_chunks_mso": "embedding_bge_scw",
     "rag_chunks_service_public": "embedding_bge_scw",
     "rag_chunks_service_public_scw": "embedding_bge_scw",
     "rag_chunks_dgafp": "embedding_bge_scw",
     "rag_chunks_dgafp_scw": "embedding_bge_scw",
     "rag_chunks_rgrh": "embedding_bge_scw",
-    "rag_chunks_test": "embedding_bge",
 }
 
 _TABLE_LABEL_BY_TABLE = {
     "rag_chunks_matte": "matte",
+    "rag_chunks_mso": "mso",
     "rag_chunks_service_public": "sp",
     "rag_chunks_service_public_scw": "sp_scw",
     "rag_chunks_dgafp": "dgafp",
     "rag_chunks_dgafp_scw": "dgafp_scw",
     "rag_chunks_rgrh": "rgrh",
-    "rag_chunks_test": "test",
 }
 
 _LEGACY_VARCHAR_30_LIMIT = 30
@@ -221,6 +221,20 @@ _LEGACY_VARCHAR_30_LIMIT = 30
 
 def _enum_value(value: Any) -> Any:
     return getattr(value, "value", value)
+
+
+def _selected_ministry_value(scope: Any) -> str | None:
+    """Raw ministry id for ``chat_runs.selected_ministry`` (NULL when unknown).
+
+    Accepts a ``RetrievalScope``, a plain ministry id string, or *None*.
+    Never guesses from retrieved sources: shared sources (Service-Public,
+    DGAFP) cannot identify the active ministry.
+    """
+    if scope is None:
+        return None
+    raw = getattr(scope, "selected_ministry", scope)
+    text = str(raw or "").strip()
+    return text or None
 
 
 def _table_name(value: Any) -> str:
@@ -472,8 +486,6 @@ def build_log_row(
     generation_config = getattr(config, "generation", None)
 
     configured_tables = list(getattr(retrieval_config, "tables", []) or [])
-    if getattr(retrieval_config, "enable_chunks_test", False) or getattr(runtime_config, "v3_enable_chunks_test", False):
-        configured_tables.append("rag_chunks_test")
     table_names = _table_names(v3_metadata.get("tables_searched") or configured_tables)
     table_label = _legacy_table_label(table_names)
     embedding_model_logged = str(
@@ -528,6 +540,7 @@ def build_log_row(
         "conversation_id": session_state.get("conversation_id", ""),
         "turn_index": len(session_state.get("turns", [])),
         "user_group": session_state.get("user_group", "default"),
+        "selected_ministry": _selected_ministry_value(v3_metadata.get("selected_ministry")),
         "total_time_ms": total_time_ms,
         "pipeline_latency_ms": total_time_ms,
     }
@@ -706,6 +719,7 @@ def build_non_rag_row(
     session_state: dict,
     runtime_config: Any = None,
     trace_id: str | None = None,
+    retrieval_scope: Any = None,
 ) -> dict:
     """Build a minimal log row for non-RAG turns (chit-chat, out-of-scope)."""
     _intent_val = qr.intent.value if qr.intent else "unknown"
@@ -772,6 +786,7 @@ def build_non_rag_row(
         "cascade_source": "",
         "expanded_refs_count": 0,
         "user_group": session_state.get("user_group", "default"),
+        "selected_ministry": _selected_ministry_value(retrieval_scope),
         "llm_selector_model": "",
         "llm_selector_prompt_name": "",
         "llm_selector_reasoning": "",

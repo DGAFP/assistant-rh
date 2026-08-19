@@ -121,7 +121,7 @@ function normalizeContextBuildConfig(
 		legal_refs_budget: 1000,
 		token_budget_wide: 12000,
 		max_full_docs_wide: 2,
-		doc_entire_threshold_wide: 5000,
+		doc_entire_threshold_wide: 9000,
 		max_sections_wide: 20,
 		legal_refs_budget_wide: 2000,
 	};

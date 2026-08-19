@@ -21,9 +21,12 @@ on:
       - "Dockerfile.legifrance_ingestion"
       - "Dockerfile.legifrance_bulk_dump"
       - "Dockerfile.embeddings_job"
+      - "Dockerfile.pdf_sources_pipeline"
       - "Dockerfile.rag_health_exporter"
   pull_request:
     branches:
+      - dev
+      - staging
       - main
     paths:
       - ".github/workflows/data-engineering-*.yml"
@@ -44,6 +47,7 @@ on:
       - "Dockerfile.legifrance_ingestion"
       - "Dockerfile.legifrance_bulk_dump"
       - "Dockerfile.embeddings_job"
+      - "Dockerfile.pdf_sources_pipeline"
       - "Dockerfile.rag_health_exporter"
   workflow_dispatch:
 
@@ -86,6 +90,7 @@ jobs:
           uv run --no-sync python -c "
           from assistant_rh_data_engineering.service_public import ServicePublicPipeline
           from assistant_rh_data_engineering.legifrance import LegifrancePipeline
+          from assistant_rh_data_engineering.mi import MiPipeline
           from assistant_rh_data_engineering.utils.object_storage import ScalewayObjectStorageSync
           print('Data engineering imports OK')
           "
@@ -104,7 +109,10 @@ jobs:
           uv run --no-sync data-ingestion legifrance bulk-dump --help > /dev/null
           uv run --no-sync data-ingestion legifrance medallion --help > /dev/null
           uv run --no-sync data-ingestion legifrance ingest --help > /dev/null
+          uv run --no-sync data-ingestion legifrance url-backfill --help > /dev/null
+          uv run --no-sync data-ingestion mi medallion --help > /dev/null
           uv run --no-sync data-ingestion embeddings service-public --help > /dev/null
           uv run --no-sync data-ingestion embeddings legifrance --help > /dev/null
           uv run --no-sync data-ingestion embeddings matte --help > /dev/null
+          uv run --no-sync data-ingestion embeddings mi --help > /dev/null
           uv run --no-sync data-ingestion observability rag-health --help > /dev/null

@@ -358,6 +358,18 @@ class TestBuildLogRow:
         row = self._build_row()
         assert row["v3_doc_entire_count"] == 1
 
+    def test_selected_ministry_persisted_from_metadata(self):
+        row = self._build_row(metadata_overrides={"selected_ministry": "matte"})
+        assert row["selected_ministry"] == "matte"
+
+    def test_selected_ministry_null_when_scope_unknown(self):
+        row = self._build_row()
+        assert row["selected_ministry"] is None
+
+    def test_selected_ministry_null_when_empty_string(self):
+        row = self._build_row(metadata_overrides={"selected_ministry": ""})
+        assert row["selected_ministry"] is None
+
     def test_legal_refs_from_resolved(self):
         row = self._build_row()
         assert row["v3_legal_refs_from_dgafp"] == 1
@@ -368,7 +380,7 @@ class TestBuildLogRow:
     def test_legacy_observability_columns_populated(self):
         row = self._build_row(
             metadata_overrides={
-                "tables_searched": ["dgafp", "service_public", "rag_chunks_test"],
+                "tables_searched": ["dgafp", "service_public"],
                 "context_before_selector": [
                     {
                         "chunk_id": "LEGIARTI000045662634_0",
@@ -385,10 +397,10 @@ class TestBuildLogRow:
         assert row["provider"] == "albert"
         assert row["model"] == "openweight-large"
         assert row["temperature"] == 0.15
-        assert row["table"] == "dgafp,sp,test"
-        assert row["cascade_source"] == "dgafp,sp,test"
+        assert row["table"] == "dgafp,sp"
+        assert row["cascade_source"] == "dgafp,sp"
         assert len(row["table"]) <= 30
-        assert row["embed_col"] == "embedding_m3,embedding_raw"
+        assert row["embed_col"] == "embedding_m3"
         assert row["retrieval_mode"] == "semantic"
         assert row["chunk_selection_mode"] == "V3_STANDARD"
         assert row["chunks_before_pick"] == 2
@@ -538,7 +550,7 @@ class TestBuildLogRow:
 
 
 class TestBuildNonRagRow:
-    def _build_row(self):
+    def _build_row(self, retrieval_scope=None):
         pipeline = _MockPipeline(_MockResult())
         pipeline._timing = {"query_processing_ms": 120}
         qr = _MockQR(
@@ -556,6 +568,7 @@ class TestBuildNonRagRow:
             pipeline=pipeline,
             session_state={"session_id": "s1", "conversation_id": "c1", "turns": []},
             trace_id="trace-non-rag",
+            retrieval_scope=retrieval_scope,
         )
 
     def test_backend_is_intent_gating(self):
@@ -569,6 +582,16 @@ class TestBuildNonRagRow:
     def test_intent_value(self):
         row = self._build_row()
         assert row["v3_intent"] == "chit_chat"
+
+    def test_selected_ministry_from_retrieval_scope(self):
+        from assistant_rh_rag_pipeline.ministry_scope import build_retrieval_scope
+
+        row = self._build_row(retrieval_scope=build_retrieval_scope("matte"))
+        assert row["selected_ministry"] == "matte"
+
+    def test_selected_ministry_null_without_scope(self):
+        row = self._build_row()
+        assert row["selected_ministry"] is None
 
     def test_required_fields_present(self):
         row = self._build_row()
@@ -653,6 +676,44 @@ class TestLogRun:
         row = {"turn_id": "abc", "question": "hello"}
         log_run(row, engine=None, csv_path=csv_path, csv_fields=["turn_id", "question"])
         assert csv_path.exists()
+
+    def test_csv_fallback_persists_selected_ministry_with_runs_fields(self, tmp_path):
+        # Issue #341: a PostgreSQL outage must not lose the ministry — the CSV
+        # fallback filters the row to RUNS_FIELDS, which must carry the column.
+        import csv as csv_module
+
+        from src.ui.chatbot_logging import RUNS_FIELDS
+
+        assert "selected_ministry" in RUNS_FIELDS
+
+        pipeline, qr, config, runtime, items, v1_chunks = _build_mock_objects()
+        pipeline.last_result.metadata["selected_ministry"] = "mso"
+        row = build_log_row(
+            turn_id="csv-ministry",
+            query="Question RTT",
+            response="Réponse",
+            pipeline=pipeline,
+            qr=qr,
+            config=config,
+            runtime_config=runtime,
+            session_state={"session_id": "s1", "conversation_id": "c1", "turns": []},
+            total_time_ms=100.0,
+            context_items=items,
+            v1_chunks_for_display=v1_chunks,
+            legal_refs_v3=[],
+        )
+        csv_path = tmp_path / "chat_runs.csv"
+        log_run(row, engine=None, csv_path=csv_path, csv_fields=RUNS_FIELDS)
+
+        with csv_path.open(encoding="utf-8") as f:
+            rows = list(csv_module.DictReader(f))
+        assert rows[0]["selected_ministry"] == "mso"
+
+    def test_chatbot_page_runs_fields_include_selected_ministry(self):
+        # The Streamlit page defines its own RUNS_FIELDS copy (not importable
+        # without a Streamlit session) — keep it in sync via its source.
+        page = Path(__file__).resolve().parent.parent / "apps" / "streamlit-ui" / "pages" / "01_Chatbot.py"
+        assert '"selected_ministry",' in page.read_text(encoding="utf-8")
 
 
 class TestTraceEvents:

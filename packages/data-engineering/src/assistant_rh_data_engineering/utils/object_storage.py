@@ -58,17 +58,11 @@ class ScalewayObjectStorageSync:
     def __init__(self, config: ObjectStorageConfig):
         self.config = config
         if not shutil.which("aws"):
-            raise RuntimeError(
-                "aws CLI is required to sync pipeline artifacts "
-                "to Scaleway Object Storage."
-            )
+            raise RuntimeError("aws CLI is required to sync pipeline artifacts to Scaleway Object Storage.")
 
     def _base_env(self) -> dict[str, str]:
         if not self.config.access_key or not self.config.secret_key:
-            raise RuntimeError(
-                "SCW_ACCESS_KEY and SCW_SECRET_KEY are required "
-                "for Object Storage sync."
-            )
+            raise RuntimeError("SCW_ACCESS_KEY and SCW_SECRET_KEY are required for Object Storage sync.")
         env = os.environ.copy()
         env["AWS_ACCESS_KEY_ID"] = self.config.access_key
         env["AWS_SECRET_ACCESS_KEY"] = self.config.secret_key
@@ -120,6 +114,8 @@ class ScalewayObjectStorageSync:
             "sync",
             source,
             str(destination_dir),
+            "--no-progress",
+            "--only-show-errors",
         ]
         subprocess.run(cmd, check=True, env=self._base_env())
 
@@ -211,6 +207,22 @@ class ScalewayObjectStorageSync:
             ]
         )
 
+    def upload_object(self, source: Path, bucket: str, key: str) -> ObjectStorageObject:
+        subprocess.run(
+            [
+                "aws",
+                "--endpoint-url",
+                self.config.endpoint_url,
+                "s3",
+                "cp",
+                str(source),
+                f"s3://{bucket}/{key}",
+            ],
+            check=True,
+            env=self._base_env(),
+        )
+        return ObjectStorageObject(bucket=bucket, key=key)
+
     def download_object(self, obj: ObjectStorageObject, destination: Path) -> Path:
         destination.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(
@@ -292,35 +304,46 @@ class ScalewayObjectStorageSync:
         source_name: str = "service_public",
         *,
         delete: bool = False,
+        include_layers: tuple[str, ...] = ("bronze", "silver", "gold"),
     ) -> dict[str, str]:
         env_prefix = self.config.prefix_for_env(target_env)
         bronze_prefix = f"{env_prefix}/bronze/{source_name}".strip("/")
         silver_prefix = f"{env_prefix}/silver/{source_name}".strip("/")
         gold_prefix = f"{env_prefix}/gold/{source_name}".strip("/")
 
-        self._sync_dir(
-            lake_root / "bronze",
-            self.config.bucket_bronze,
-            bronze_prefix,
-            delete=delete,
-        )
-        self._sync_dir(
-            lake_root / "silver",
-            self.config.bucket_silver,
-            silver_prefix,
-            delete=delete,
-        )
-        self._sync_dir(
-            lake_root / "gold",
-            self.config.bucket_gold,
-            gold_prefix,
-            delete=delete,
-        )
-        return {
+        # ``include_layers`` restreint la synchro : un médaillon qui LIT le bronze
+        # depuis l'Object Storage (``--from-object-storage``) ne le POSSÈDE pas —
+        # le synchroniser (surtout avec ``delete``) écraserait/supprimerait le
+        # bronze distant (produit par le bulk dump) à partir d'un bronze local vide.
+        if "bronze" in include_layers:
+            self._sync_dir(
+                lake_root / "bronze",
+                self.config.bucket_bronze,
+                bronze_prefix,
+                delete=delete,
+            )
+        if "silver" in include_layers:
+            self._sync_dir(
+                lake_root / "silver",
+                self.config.bucket_silver,
+                silver_prefix,
+                delete=delete,
+            )
+        if "gold" in include_layers:
+            self._sync_dir(
+                lake_root / "gold",
+                self.config.bucket_gold,
+                gold_prefix,
+                delete=delete,
+            )
+        # Ne reporter QUE les couches réellement synchronisées (P3 revue #317) :
+        # annoncer une destination bronze non synchronisée serait trompeur.
+        destinations = {
             "bronze": f"s3://{self.config.bucket_bronze}/{bronze_prefix}/",
             "silver": f"s3://{self.config.bucket_silver}/{silver_prefix}/",
             "gold": f"s3://{self.config.bucket_gold}/{gold_prefix}/",
         }
+        return {layer: uri for layer, uri in destinations.items() if layer in include_layers}
 
     def download_medallion_root(
         self,

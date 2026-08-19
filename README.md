@@ -64,7 +64,7 @@ assistant-rh/
 
 ### Sources de données
 
-Le pipeline interroge **4-5 tables** (DGAFP conditionnel via intent gater) :
+Le pipeline interroge **4 tables** (DGAFP conditionnel via intent gater) :
 
 | Table | Contenu | Publisher |
 |-------|---------|-----------|
@@ -72,7 +72,6 @@ Le pipeline interroge **4-5 tables** (DGAFP conditionnel via intent gater) :
 | `rag_chunks_service_public` | Fiches Service Public | Service-Public |
 | `rag_chunks_dgafp` | Textes réglementaires Legifrance + CGFP | DGAFP |
 | `rag_chunks_rgrh` | Base RGRH | RGRH |
-| `rag_chunks_test` | Chunks Matte + Service public (activé par défaut, pour meilleur recall) | ChunksTest |
 
 Les chunks sont liés à des **`rag_sections`** (contexte markdown plus large)
 elles-mêmes liées à des **`rag_documents`** (titre, URL, publisher).
@@ -196,7 +195,7 @@ Les déploiements actifs ciblent Scaleway :
 - jobs d'ingestion et migrations → workflows Scaleway dédiés.
 
 Les secrets `SCW_POSTGRES_DSN`, `ALBERT_API_KEY`, `SCALEWAY_API_KEY`, `COOKIES_PASSWORD` et `ADMIN_PASSWORD` sont résolus via les environnements GitHub `scaleway-staging` et `scaleway-production`.
-Voir `docs/SCALEWAY_STREAMLIT_DEPLOY_RUNBOOK.md` et `docs/SCALEWAY_PIPELINE_RUNBOOK.md`.
+Voir `docs/deployment/SCALEWAY_STREAMLIT_DEPLOY_RUNBOOK.md` et `docs/deployment/SCALEWAY_PIPELINE_RUNBOOK.md`.
 
 ---
 

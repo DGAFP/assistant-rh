@@ -163,6 +163,7 @@ class TestPipelineE2E:
         mock_sel.last_decisions = {"kept": [{"idx": 0, "heading": "Fiche 0"}], "removed": [{"idx": 1}]}
         mock_sel.last_reasoning = "Section 0 traite spécifiquement du congé de mobilité."
         mock_sel.last_raw_response = "{}"
+        mock_sel.last_prompt_chars = 321
 
         context_items = [_make_context_item(0)]
         mock_cb = MockContextBuilder.return_value
@@ -196,7 +197,11 @@ class TestPipelineE2E:
         mock_qp.process.assert_called_once()
         mock_retriever.retrieve.assert_called_once()
         mock_agg.aggregate_with_diagnostics.assert_called_once()
-        mock_sel.select.assert_called_once()
+        mock_sel.select.assert_called_once_with(
+            "congé de mobilité",
+            sections,
+            ministry=None,
+        )
         mock_cb.build.assert_called_once()
         mock_gen.generate.assert_called_once()
 
@@ -216,6 +221,9 @@ class TestPipelineE2E:
         assert meta["chunks_after_rerank"][0]["rerank_score"] is not None
         assert meta["context_before_selector"][0]["rerank_score"] is not None
         assert meta["retrieval_attempts"][0]["chunks_raw"] == meta["chunks_raw"]
+        assert meta["retrieval_attempts"][0]["context_items_ref"][0]["doc_id"] == "doc_0"
+        assert meta["selector_prompt_chars"] == 321
+        assert meta["selector_response_chars"] == 2
 
     @patch("assistant_rh_rag_pipeline.pipeline.StreamingGenerator")
     @patch("assistant_rh_rag_pipeline.pipeline.ContextBuilder")
@@ -433,7 +441,6 @@ class TestPipelineE2E:
         mock_retriever.retrieve.side_effect = [initial_chunks, retry_chunks]
         mock_retriever.config = MagicMock()
         mock_retriever.config.tables = ["matte", "service_public", "dgafp"]
-        mock_retriever.config.enable_chunks_test = False
         mock_retriever.config.search_mode = SearchMode.SEMANTIC
         mock_retriever.config.initial_top_k = 15
 
@@ -450,6 +457,7 @@ class TestPipelineE2E:
         initial_selector.last_decisions = {}
         initial_selector.last_reasoning = "Aucune section pertinente."
         initial_selector.last_raw_response = '{"selected_ids": []}'
+        initial_selector.last_prompt_chars = 120
 
         retry_selector = MagicMock()
         retry_selector.select.return_value = retry_sections
@@ -457,6 +465,7 @@ class TestPipelineE2E:
         retry_selector.last_decisions = {"kept": [{"idx": 0, "heading": "Fiche 10"}]}
         retry_selector.last_reasoning = "La seconde recherche trouve une section utile."
         retry_selector.last_raw_response = '{"selected_ids": [0]}'
+        retry_selector.last_prompt_chars = 180
         MockSelector.side_effect = [initial_selector, retry_selector]
 
         context_items = [_make_context_item(10, "Service-Public")]
@@ -502,6 +511,8 @@ class TestPipelineE2E:
         assert attempts[1]["search_mode"] == "hybrid"
         assert attempts[1]["top_k"] == 30
         assert len(attempts[1]["aggregated_sections"]) == 1
+        assert result.metadata["selector_prompt_chars"] == 300
+        assert result.metadata["selector_response_chars"] == len(initial_selector.last_raw_response) + len(retry_selector.last_raw_response)
         assert result.metadata["stage_trace"]["stages"]["context-selector"]["output"]["selector_retry_triggered"] is True
 
     @patch("assistant_rh_rag_pipeline.pipeline.StreamingGenerator")
@@ -528,7 +539,6 @@ class TestPipelineE2E:
         mock_retriever.retrieve.side_effect = [[_make_chunk(0)], [_make_chunk(1, table="service_public")]]
         mock_retriever.config = MagicMock()
         mock_retriever.config.tables = ["matte", "service_public"]
-        mock_retriever.config.enable_chunks_test = False
         mock_retriever.config.search_mode = SearchMode.SEMANTIC
         mock_retriever.config.initial_top_k = 15
 
@@ -598,7 +608,6 @@ class TestPipelineE2E:
         mock_retriever.retrieve.side_effect = [[_make_chunk(0)], [_make_chunk(1, table="service_public")]]
         mock_retriever.config = MagicMock()
         mock_retriever.config.tables = ["matte", "service_public"]
-        mock_retriever.config.enable_chunks_test = False
         mock_retriever.config.search_mode = SearchMode.SEMANTIC
         mock_retriever.config.initial_top_k = 15
 

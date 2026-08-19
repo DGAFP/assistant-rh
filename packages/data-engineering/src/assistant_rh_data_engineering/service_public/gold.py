@@ -3,12 +3,11 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from ..utils.gold import GoldBundle, GoldRepository, build_embedders, match_section_id
+from ..utils.gold import SECTION_CHUNK_ROLE, GoldBundle, GoldRepository, build_chunk_row, build_embedders, match_section_id
 from ..utils.helpers import utc_now_iso
 from .config import EmbeddingConfig, GoldConfig
 from .qna_chunking import chunk_markdown_like_notebook, split_on_paragraphs
 
-SECTION_CHUNK_ROLE = "SECTION_ATOMIC"
 SECTION_CHUNK_MAX_CHARS = 1200
 SECTION_CHUNK_OVERLAP = 200
 
@@ -79,34 +78,9 @@ class ServicePublicGoldBuilder:
 
     @staticmethod
     def _build_chunk_row(document: dict[str, Any], chunk: dict[str, Any]) -> dict[str, Any]:
-        row = {
-            "qa_id": chunk["qa_id"],
-            "parent_qa_id": chunk["parent_qa_id"],
-            "source_name": chunk["source_name"],
-            "section_path": chunk["section_path"],
-            "role": chunk["role"],
-            "chunk_index": chunk["chunk_index"],
-            "text": chunk["text"],
-            "chunk_text": chunk["text"],
-            "thematique": chunk["thematique"],
-            "lang": chunk["lang"],
-            "references_juridiques": chunk.get("references_juridiques") or [],
-            "source_document_id": document["doc_id"],
-            "section_id": chunk.get("section_id"),
-            "short_id": document["short_id"],
-            "source": "SERVICE PUBLIC",
-        }
-        seed = "|".join(
-            [
-                row["source_name"],
-                row["qa_id"],
-                row["role"],
-                str(row["chunk_index"]),
-                row["text"][:256],
-            ]
-        )
-        row["hash_id"] = hashlib.sha1(seed.encode("utf-8")).hexdigest()
-        return row
+        # Builder partagé (utils/gold.py): seed hash_id commun à tous les
+        # corpus, source propre à Service-Public (valeur historique).
+        return build_chunk_row(document, chunk, source="SERVICE PUBLIC")
 
     def _build_missing_section_chunks(
         self,
