@@ -51,6 +51,21 @@ def test_delta_failure_diagnostic_ignores_success() -> None:
     assert service_public_ingestion.delta_failure_diagnostic({"failed": {}}) is None
 
 
+def test_run_cli_retains_bounded_final_crash_diagnostic(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    def crash() -> int:
+        raise RuntimeError("database exploded\n" + "x" * 600)
+
+    monkeypatch.setattr(service_public_ingestion, "main", crash)
+
+    with pytest.raises(RuntimeError, match="database exploded"):
+        service_public_ingestion.run_cli()
+
+    diagnostic = capsys.readouterr().err.strip()
+    assert diagnostic.startswith("Service-Public ingestion crashed: RuntimeError: database exploded ")
+    assert "\n" not in diagnostic
+    assert len(diagnostic) <= len("Service-Public ingestion crashed: RuntimeError: ") + 500
+
+
 def _rec(record_id: int, **fields: Any) -> dict[str, Any]:
     return {"id": record_id, "fields": fields}
 
