@@ -5,7 +5,9 @@ name: Data Engineering — cron delta (staging)
 # embeddings, en ne (re)traitant que le new/changed. La prod reste en promotion
 # manuelle (aucun apply prod automatisé). Le dispatcher démarre les jobs
 # Scaleway sélectionnés DANS L'ORDRE du config (medallion < ingest < embeddings)
-# et attend la fin de chacun (--wait) : la chaîne est donc séquentielle.
+# et attend la fin de chacun (--wait). Chaque corpus conserve sa chaîne
+# séquentielle, tandis que Service-Public et Légifrance s'exécutent dans deux
+# cellules de matrice indépendantes.
 
 on:
   schedule:
@@ -21,9 +23,22 @@ concurrency:
 
 jobs:
   cron-delta-staging:
+    name: cron-delta-staging (${{ matrix.name }})
     runs-on: ubuntu-latest
     environment: scaleway-staging
     timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: service-public
+            service_public: true
+            legifrance: false
+            embedding_source: service_public
+          - name: legifrance
+            service_public: false
+            legifrance: true
+            embedding_source: legifrance
     env:
       SCW_DEFAULT_REGION: fr-par
       SCW_DEFAULT_PROJECT_ID: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
@@ -65,8 +80,8 @@ jobs:
           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
 
-      - name: Run SP + Legi delta chain on staging
-        # Un seul appel : le dispatcher démarre medallion -> ingest -> embeddings
+      - name: Run ${{ matrix.name }} delta chain on staging
+        # Dans chaque cellule, le dispatcher démarre medallion -> ingest -> embeddings
         # (ordre du config) avec --wait, donc séquentiellement. --delta ajoute
         # --delta aux jobs medallion+ingest SP/Legi (+ --from-grist au medallion
         # SP). Images = tag stable staging-latest (maintenu à chaque build staging).
@@ -76,9 +91,10 @@ jobs:
             --image-tag staging-latest \
             --mode apply \
             --delta true \
-            --service-public true \
-            --legifrance true \
+            --service-public "${{ matrix.service_public }}" \
+            --legifrance "${{ matrix.legifrance }}" \
             --embeddings true \
             --run-ingestion true \
             --run-embeddings true \
+            --embedding-source "${{ matrix.embedding_source }}" \
             --wait
