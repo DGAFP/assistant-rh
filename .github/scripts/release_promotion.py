@@ -40,6 +40,9 @@ REQUIRED_STAGING_WORKFLOWS = frozenset(
 )
 SUCCESS_CONCLUSIONS = frozenset({"success", "neutral", "skipped"})
 SELF_WORKFLOW = "Release Please"
+# Sentinel returned by GitHubClient.api when a direct merge is rejected
+# (conflict or branch protection) and the caller opted into handling it.
+MERGE_BLOCKED = object()
 
 
 class PromotionError(RuntimeError):
@@ -57,6 +60,7 @@ class GitHubClient:
         payload: dict[str, Any] | None = None,
         *,
         allow_not_found: bool = False,
+        allow_merge_blocked: bool = False,
     ) -> Any:
         command = ["gh", "api", "--method", method, endpoint]
         input_text = None
@@ -68,6 +72,8 @@ class GitHubClient:
         if result.returncode != 0:
             if allow_not_found and "HTTP 404" in result.stderr:
                 return None
+            if allow_merge_blocked and any(code in result.stderr for code in ("HTTP 403", "HTTP 405", "HTTP 409")):
+                return MERGE_BLOCKED
             raise PromotionError(f"GitHub API {method} {endpoint} failed: {result.stderr.strip()}")
         if not result.stdout.strip():
             return None
@@ -90,8 +96,7 @@ class GitHubClient:
         if bool(pull_request.get("draft")) == draft:
             return
         mutation = (
-            "mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id})"
-            "{pullRequest{isDraft}}}"
+            "mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id}){pullRequest{isDraft}}}"
             if draft
             else "mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft}}}"
         )
@@ -298,9 +303,7 @@ def wait_for_staging(
     head_ref = str((pull.get("head") or {}).get("ref", ""))
     compare_contains(client, staging_sha, head_ref, staging_sha)
 
-    workflow_lines = "\n".join(
-        f"  - {name}: `{run.get('conclusion')}`" for name, run in sorted(latest.items())
-    )
+    workflow_lines = "\n".join(f"  - {name}: `{run.get('conclusion')}`" for name, run in sorted(latest.items()))
     append_summary(
         "## Staging validation\n\n"
         f"Release PR #{pull_number} passed staging validation and remains draft while its lockfile is refreshed.\n\n"
@@ -333,6 +336,54 @@ def update_file(client: GitHubClient, branch: str, file_path: str, source_path: 
     write_output("commit_sha", str(result["commit"]["sha"]))
 
 
+def back_merge(client: GitHubClient, base: str, head: str) -> None:
+    merge = client.api(
+        "POST",
+        f"repos/{client.repo}/merges",
+        {
+            "base": base,
+            "head": head,
+            "commit_message": f"chore(release): back-merge {head} into {base}",
+        },
+        allow_merge_blocked=True,
+    )
+    if merge is MERGE_BLOCKED:
+        owner = client.repo.split("/", 1)[0]
+        query = urlencode({"state": "open", "base": base, "head": f"{owner}:{head}"})
+        pulls = client.api("GET", f"repos/{client.repo}/pulls?{query}") or []
+        if pulls:
+            pull = pulls[0]
+        else:
+            pull = client.api(
+                "POST",
+                f"repos/{client.repo}/pulls",
+                {
+                    "base": base,
+                    "head": head,
+                    "title": f"chore(release): back-merge {head} into {base}",
+                    "body": (
+                        f"Le merge automatique de `{head}` dans `{base}` a été refusé"
+                        " (conflit ou protection de branche). Résoudre les conflits puis"
+                        " merger cette PR avec un merge commit pour resynchroniser les"
+                        " fichiers de release (version, changelog, uv.lock)."
+                    ),
+                },
+            )
+        write_output("back_merge", "pull-request")
+        write_output("back_merge_pr_url", str(pull["html_url"]))
+        append_summary(
+            f"## Back-merge\n\nDirect merge of `{head}` into `{base}` was rejected; opened or reused [{pull['html_url']}]({pull['html_url']})."
+        )
+        return
+    if merge is None:
+        write_output("back_merge", "up-to-date")
+        append_summary(f"## Back-merge\n\n`{base}` already contains `{head}`; nothing to merge.")
+        return
+    write_output("back_merge", "merged")
+    write_output("back_merge_sha", str(merge["sha"]))
+    append_summary(f"## Back-merge\n\nMerged `{head}` into `{base}`: `{merge['sha']}`.")
+
+
 def refresh_pull_request_checks(client: GitHubClient, pull_number: int, staging_sha: str) -> None:
     current_staging_sha = client.ref_sha("staging")
     if current_staging_sha != staging_sha:
@@ -356,12 +407,17 @@ def refresh_pull_request_checks(client: GitHubClient, pull_number: int, staging_
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("prepare", "finalize", "wait", "update-file", "refresh-checks"))
+    parser.add_argument(
+        "command",
+        choices=("prepare", "finalize", "wait", "update-file", "refresh-checks", "back-merge"),
+    )
     parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
     parser.add_argument("--staging-sha", default="")
     parser.add_argument("--main-sha", default="")
     parser.add_argument("--pull-number", type=int)
     parser.add_argument("--branch", default="")
+    parser.add_argument("--base", default="dev")
+    parser.add_argument("--head", default="main")
     parser.add_argument("--file", default="")
     parser.add_argument("--source", default="")
     parser.add_argument("--message", default="")
@@ -400,6 +456,10 @@ def main() -> int:
         if not args.branch or not args.file or not args.source or not args.message:
             raise PromotionError("update-file requires --branch, --file, --source and --message")
         update_file(client, args.branch, args.file, args.source, args.message)
+    elif args.command == "back-merge":
+        if not args.base or not args.head:
+            raise PromotionError("back-merge requires --base and --head")
+        back_merge(client, args.base, args.head)
     else:
         if args.pull_number is None or not args.staging_sha:
             raise PromotionError("refresh-checks requires --pull-number and --staging-sha")

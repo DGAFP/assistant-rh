@@ -32,7 +32,8 @@ Flow:
 3. The workflow waits for all staging workflows on that SHA, refreshes `uv.lock`, and marks the PR ready only when they are green and `staging` has not moved.
 4. Merge the Release Please PR with a merge commit. This is also the `staging -> main` promotion; do not open a separate promotion PR.
 5. The resulting `main` push publishes the tag + GitHub Release (for example `v0.8.1`) without creating another PR.
-6. The published release event triggers production migrations, then the production deployment workflow.
+6. The same `main` push back-merges `main` into `dev` (fallback: an automatic `chore(release): back-merge main into dev` PR when the direct merge is blocked) so the release commit returns to the integration branch.
+7. The published release event triggers production migrations, then the production deployment workflow.
 
 Versioning rules:
 

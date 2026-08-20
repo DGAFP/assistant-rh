@@ -12,6 +12,7 @@ flowchart TD
     DEV -->|"promotion PR · merge commit"| STG["staging<br/>deployable test branch"]
     STG -->|"release-please PR · merge commit"| MAIN["main<br/>release branch"]
     MAIN -->|"automatic publication"| REL["GitHub Release<br/>tag vX.Y.Z"]
+    MAIN -.->|"automatic back-merge"| DEV
 
     STG -.->|push| S1["Streamlit deploy · staging (always)"]
     STG -.->|"push · if supabase/migrations or seed paths"| S2["DB migrations · staging"]
@@ -48,7 +49,8 @@ Do not use `main` as the default target for feature work. Production deployment 
 7. The workflow waits for all push workflows attached to that staging SHA, refreshes `uv.lock` with a GitHub-signed commit, and leaves the PR in draft on any failure. It marks the PR ready only when staging is unchanged and green.
 8. Review and merge that release/promotion PR with a merge commit, not squash.
 9. The push to `main` publishes the tag and GitHub Release without opening another PR.
-10. The published GitHub Release triggers production migrations and Streamlit production deployment.
+10. The same `main` push back-merges `main` into `dev` so the release commit (version fields, changelog, `uv.lock`) never diverges from the integration branch. If the direct merge is rejected (conflict or branch protection), the workflow opens a `chore(release): back-merge main into dev` PR instead — resolve and merge it with a merge commit.
+11. The published GitHub Release triggers production migrations and Streamlit production deployment.
 
 Useful PR commands:
 
@@ -86,6 +88,7 @@ The automatic staging data preview runs selected medallion, ingestion, and embed
 On push to `main`:
 
 - `.github/workflows/release-please.yml` detects the merged pending release PR and publishes its tag and GitHub Release; it cannot open a second release PR.
+- The same workflow back-merges `main` into `dev` (direct merge commit, or a fallback PR when the merge is blocked) so release metadata flows back to the integration branch.
 - Production still deploys from the published release event, not directly from the branch push.
 
 On release publication:

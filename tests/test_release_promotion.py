@@ -72,18 +72,37 @@ class _FakeClient:
             "html_url": "https://github.com/DGAFP/assistant-rh/pull/42",
         }
         self.remote_file_content = b"old lock"
+        self.merge_result: object = {"sha": "candidate-sha"}
+        self.open_back_merge_pulls: list[dict] = []
 
     def ref_sha(self, branch: str) -> str:
         return {"main": "main-sha", "staging": "staging-sha", "release-candidate": "candidate-sha"}[branch]
 
-    def api(self, method: str, endpoint: str, payload: dict | None = None, *, allow_not_found: bool = False):
+    def api(
+        self,
+        method: str,
+        endpoint: str,
+        payload: dict | None = None,
+        *,
+        allow_not_found: bool = False,
+        allow_merge_blocked: bool = False,
+    ):
         self.calls.append((method, endpoint, payload))
         if endpoint.endswith("/git/ref/heads/release-candidate"):
             return None if allow_not_found else {"object": {"sha": "candidate-sha"}}
         if endpoint.endswith("/merges"):
-            return {"sha": "candidate-sha"}
+            if self.merge_result is release_promotion.MERGE_BLOCKED:
+                assert allow_merge_blocked
+            return self.merge_result
         if endpoint.endswith("/pulls?state=open&per_page=100"):
             return [self.pull]
+        if "/pulls?" in endpoint and "base=dev" in endpoint:
+            return self.open_back_merge_pulls
+        if endpoint.endswith("/pulls") and method == "POST":
+            return {
+                "number": 99,
+                "html_url": "https://github.com/DGAFP/assistant-rh/pull/99",
+            }
         if "/contents/uv.lock?" in endpoint:
             return {
                 "sha": "blob-sha",
@@ -202,6 +221,61 @@ def test_refresh_checks_toggles_release_pr_from_draft_to_ready() -> None:
     assert client.draft_updates == [(42, True), (42, False)]
 
 
+def test_back_merge_merges_main_into_dev_directly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _FakeClient()
+    client.merge_result = {"sha": "back-merge-sha"}
+    output = tmp_path / "outputs"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+
+    release_promotion.back_merge(client, "dev", "main")
+
+    outputs = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
+    assert outputs == {"back_merge": "merged", "back_merge_sha": "back-merge-sha"}
+
+
+def test_back_merge_is_a_noop_when_dev_already_contains_main(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _FakeClient()
+    client.merge_result = None
+    output = tmp_path / "outputs"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+
+    release_promotion.back_merge(client, "dev", "main")
+
+    outputs = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
+    assert outputs == {"back_merge": "up-to-date"}
+    assert not any(method == "POST" and endpoint.endswith("/pulls") for method, endpoint, _ in client.calls)
+
+
+def test_back_merge_opens_pull_request_when_direct_merge_is_blocked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _FakeClient()
+    client.merge_result = release_promotion.MERGE_BLOCKED
+    output = tmp_path / "outputs"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+
+    release_promotion.back_merge(client, "dev", "main")
+
+    create_call = next(call for call in client.calls if call[0] == "POST" and call[1].endswith("/pulls"))
+    assert create_call[2]["base"] == "dev"
+    assert create_call[2]["head"] == "main"
+    outputs = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
+    assert outputs["back_merge"] == "pull-request"
+    assert outputs["back_merge_pr_url"].endswith("/pull/99")
+
+
+def test_back_merge_reuses_existing_back_merge_pull_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _FakeClient()
+    client.merge_result = release_promotion.MERGE_BLOCKED
+    client.open_back_merge_pulls = [{"number": 7, "html_url": "https://github.com/DGAFP/assistant-rh/pull/7"}]
+    output = tmp_path / "outputs"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+
+    release_promotion.back_merge(client, "dev", "main")
+
+    assert not any(method == "POST" and endpoint.endswith("/pulls") for method, endpoint, _ in client.calls)
+    outputs = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
+    assert outputs["back_merge_pr_url"].endswith("/pull/7")
+
+
 def test_workflow_creates_one_draft_promotion_and_publishes_without_second_pr() -> None:
     workflow = (REPO_ROOT / ".github/workflows/release-please.yml").read_text(encoding="utf-8")
     config = (REPO_ROOT / "release-please-config.json").read_text(encoding="utf-8")
@@ -221,6 +295,8 @@ def test_workflow_creates_one_draft_promotion_and_publishes_without_second_pr() 
     assert not (REPO_ROOT / ".github/workflows/release-please-lockfile.yml").exists()
     assert "release_promotion.py update-file" in workflow
     assert "release_promotion.py refresh-checks" in workflow
+    assert "Back-merge main into dev" in workflow
+    assert "release_promotion.py back-merge --base dev --head main" in workflow
 
 
 @pytest.mark.parametrize(
