@@ -631,3 +631,44 @@ de run, rollback en 1 UPDATE.
 **Infra** : premier run du banc local (docker pgvector seedé de staging,
 `docs/LOCAL_DEV.md`) + nouveau flag `--generator-model` dans `eval.py`
 (override au run, config partagée intacte, tracé dans `config_adjustments`).
+
+---
+
+## Run — `candidate_gen_sel_dsv4flash_20260820` (20/08 soir, en cours) — paquet générateur + sélecteur deepseek
+
+**Changements vs run #215** : une seule variable — `--selector-model
+deepseek-v4-flash` s'ajoute au générateur deepseek (les deux via overrides
+CLI, config partagée intacte). Amorce : run local 218 (0,6735 vs 0,6633 ;
+golds jetés par le sélecteur 6→3, sélection 3,6 vs 2,1 docs, 5 flips
+seulement). Cf. `revue-deepseek-v4-flash-20260820.md`.
+
+**Protocole** : identique au #215 — panel `baseline_v1` 98 q, scope
+`per-question`, juge souverain Scaleway `mistral-medium-3.5-128b` maj-3,
+RAGAS sauté. Baseline appariée : **run #215** (0,6531). Lecture attendue :
+contribution du sélecteur sous juge souverain, funnel `selector_jette`.
+
+**Résultats du run #216** : 98/98, coût juge 4,49 €.
+
+| Mesure | #216 (paquet) | #215 (gen seul) | #206 (openweight) |
+|---|---:|---:|---:|
+| judge_pass (maj-3) | 0,6429 | **0,6531** | 0,6020 |
+| golds jetés par le sélecteur (échecs) | **3** | 6 | 7 |
+| docs gardés par le sélecteur (moy.) | 3,9 | 2,2 | — |
+| échecs « génération, gold servi » | 19 | 16 | 15 |
+
+Apparié #216 vs #215 : 9 gains / 10 pertes (net −1), 25 double-échecs.
+Gains : les cibles sélecteur convergent (q186, q4528, q4530 — mêmes
+conversions qu'en local) + q29, q187, q190, q200, q222, q926. Pertes :
+plusieurs gains historiques du générateur re-basculent (q20, q33, q218,
+q221, q660…) — les contextes changent, la variance de génération se
+redistribue.
+
+**Lecture** : le mécanisme se **réplique** sous juge souverain (golds jetés
+divisés par 2, sélection plus riche 3,9 vs 2,2 docs, kept_hit 0,60 vs 0,55)
+mais **ne convertit pas** : les golds sauvés sont mangés par l'étage
+génération (16→19), vraisemblablement dilution du contexte élargi + variance.
+Local (+1) et staging (−1) concordent : **swap sélecteur neutre au score**.
+**Décision proposée** : adopter le générateur seul (config #215) ; garder le
+sélecteur openweight ; re-tester le sélecteur deepseek APRÈS les correctifs
+de prompt générateur (a contrario + interdiction de chiffres hors verbatim),
+car l'étage génération est redevenu le plafond visible.
