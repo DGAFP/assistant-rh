@@ -21,6 +21,9 @@ IMAGE_MATRIX = {
     "embeddings": [
         {"image": "embeddings-job", "dockerfile": "Dockerfile.embeddings_job"},
     ],
+    "r2": [
+        {"image": "embeddings-job", "dockerfile": "Dockerfile.embeddings_job"},
+    ],
 }
 
 
@@ -66,11 +69,14 @@ def classify_from_source(source: str) -> dict[str, bool]:
         # redémarrer les trois autres (suivi de la revue #266).
         "pdf_sources": source in {"pdf_sources", "mi", "masa", "matte", "mso"},
         "embeddings": source in {"all", "embeddings", "matte", "mi", "masa", "mso"},
+        # R2 reste une dérivation Gold explicitement revue : jamais inclus
+        # dans source=all ni dans les crons d'ingestion.
+        "r2": source == "r2",
     }
 
 
 def classify_from_files(files: list[str]) -> dict[str, bool]:
-    result = {"service_public": False, "legifrance": False, "pdf_sources": False, "embeddings": False}
+    result = {"service_public": False, "legifrance": False, "pdf_sources": False, "embeddings": False, "r2": False}
     has_common = False
 
     for path in files:
@@ -99,6 +105,9 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
         if common:
             has_common = True
             continue
+
+        if path == "packages/data-engineering/src/assistant_rh_data_engineering/jobs/r2_article_summaries.py":
+            result["r2"] = True
 
         if startswith_any(
             path,
@@ -172,8 +181,8 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
     # A change to shared/common CI or config files only triggers a full all-sources
     # preview when nothing source-specific changed. When a specific source also
     # changed, scope the preview to that source instead of fanning out to everything.
-    if has_common and not (result["service_public"] or result["legifrance"] or result["pdf_sources"] or result["embeddings"]):
-        return {"service_public": True, "legifrance": True, "pdf_sources": True, "embeddings": True}
+    if has_common and not (result["service_public"] or result["legifrance"] or result["pdf_sources"] or result["embeddings"] or result["r2"]):
+        return {"service_public": True, "legifrance": True, "pdf_sources": True, "embeddings": True, "r2": False}
 
     return result
 
@@ -204,6 +213,7 @@ def build_run_matrix(
             "pdf_sources": pdf_sources,
             "pdf_sources_ministry": pdf_sources_ministry if pdf_sources else "",
             "embeddings": False,
+            "r2": False,
             "embedding_source": "all",
         }
         entries.append(entry)
@@ -216,6 +226,19 @@ def build_run_matrix(
     if selected["pdf_sources"]:
         pdf_name = f"pdf-sources-{pdf_sources_ministry}" if pdf_sources_ministry else "pdf-sources"
         add_source(pdf_name, pdf_sources=True)
+    if selected.get("r2", False):
+        entries.append(
+            {
+                "name": "legifrance-r2-summaries",
+                "service_public": False,
+                "legifrance": False,
+                "pdf_sources": False,
+                "pdf_sources_ministry": "",
+                "embeddings": False,
+                "r2": True,
+                "embedding_source": "all",
+            }
+        )
 
     if selected["embeddings"] and run_embeddings:
         embedding_targets = ["service_public", "legifrance"] if embedding_source == "all" else [embedding_source]
@@ -241,6 +264,7 @@ def build_run_matrix(
                     "pdf_sources": False,
                     "pdf_sources_ministry": "",
                     "embeddings": True,
+                    "r2": False,
                     "embedding_source": target,
                 }
             )
@@ -275,10 +299,13 @@ def write_outputs(outputs: dict[str, str]) -> None:
 
 
 def resolve_mode(raw: str | None) -> str:
-    """Socle #288 — axe plan/apply. Défaut ``apply`` (comportement historique) ;
-    toute valeur inconnue retombe sur ``apply`` par sécurité."""
+    """Socle #288 — axe plan/apply, étendu à generate pour R2 uniquement.
+
+    Défaut ``apply`` (comportement historique) ; toute valeur inconnue retombe
+    sur ``apply`` par sécurité.
+    """
     mode = (raw or "apply").strip().lower()
-    return mode if mode in {"plan", "apply"} else "apply"
+    return mode if mode in {"plan", "generate", "apply"} else "apply"
 
 
 def main() -> int:
@@ -303,8 +330,19 @@ def main() -> int:
         if run_embeddings:
             selected["embeddings"] = True
 
+    if mode == "generate" and not selected["r2"]:
+        raise SystemExit("mode=generate est réservé à source=r2 ; les autres sources utilisent plan/apply.")
+
+    if selected.get("r2", False) and mode != "apply":
+        # R2 sélectionné hors apply : la condition des workflows ouvre le job
+        # de run dès que r2 est vrai, quel que soit le mode. Sans ce garde,
+        # source=r2 + run_embeddings=true démarrerait les backfills embeddings
+        # (mutation d'index) pendant un run censé être plan/generate seul.
+        run_embeddings = False
+        selected["embeddings"] = False
+
     matrix: list[dict[str, str]] = []
-    for domain in ("service_public", "legifrance", "pdf_sources", "embeddings"):
+    for domain in ("service_public", "legifrance", "pdf_sources", "embeddings", "r2"):
         if selected[domain]:
             matrix.extend(IMAGE_MATRIX[domain])
 
@@ -321,6 +359,7 @@ def main() -> int:
         "pdf_sources": False,
         "pdf_sources_ministry": "",
         "embeddings": False,
+        "r2": False,
         "embedding_source": "all",
     }
 
@@ -329,12 +368,15 @@ def main() -> int:
         "legifrance": str(selected["legifrance"]).lower(),
         "pdf_sources": str(selected["pdf_sources"]).lower(),
         "embeddings": str(selected["embeddings"]).lower(),
+        "r2": str(selected["r2"]).lower(),
         "run_embeddings": str(run_embeddings).lower(),
         "embedding_source": embedding_source,
         "pdf_sources_ministry": pdf_sources_ministry,
         "mode": mode,
         "has_builds": str(bool(matrix)).lower(),
-        "has_runs": str(selected["service_public"] or selected["legifrance"] or selected["pdf_sources"] or selected["embeddings"]).lower(),
+        "has_runs": str(
+            selected["service_public"] or selected["legifrance"] or selected["pdf_sources"] or selected["embeddings"] or selected["r2"]
+        ).lower(),
         "matrix": json.dumps({"include": matrix or [{"image": "noop", "dockerfile": "Dockerfile.service_public_pipeline"}]}),
         "run_matrix": json.dumps({"include": run_matrix or [noop_run]}),
         "changed_files": json.dumps(files),

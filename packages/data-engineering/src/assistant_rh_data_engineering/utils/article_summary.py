@@ -312,15 +312,24 @@ class ArticleSummaryCache:
     miss (re-génération), jamais comme une erreur collante.
     """
 
-    def __init__(self, root: Path | str, name: str, version: str):
+    def __init__(
+        self,
+        root: Path | str,
+        name: str,
+        version: str,
+        *,
+        on_put: Callable[[Path, str, str], None] | None = None,
+    ):
         self.base_dir = Path(root) / "article_summaries" / name / version
+        self.on_put = on_put
 
-    def _path(self, article_uid: str, checksum: str) -> Path:
+    def path_for(self, article_uid: str, checksum: str) -> Path:
+        """Return the stable local path for an article summary artifact."""
         safe_uid = re.sub(r"[^0-9A-Za-z._-]+", "-", str(article_uid)).strip("-") or "unknown"
         return self.base_dir / safe_uid / f"{checksum}.json"
 
     def get(self, article_uid: str, checksum: str) -> dict[str, Any] | None:
-        path = self._path(article_uid, checksum)
+        path = self.path_for(article_uid, checksum)
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
@@ -334,9 +343,11 @@ class ArticleSummaryCache:
         return payload
 
     def put(self, article_uid: str, checksum: str, payload: dict[str, Any]) -> Path:
-        path = self._path(article_uid, checksum)
+        path = self.path_for(article_uid, checksum)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        if self.on_put is not None:
+            self.on_put(path, article_uid, checksum)
         return path
 
 
