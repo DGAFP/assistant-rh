@@ -58,14 +58,39 @@ on:
           - mso
           - pdf_sources
           - embeddings
+          - r2
       mode:
-        description: "plan = detection seule (aucune mutation) ; apply = ingestion/reconciliation"
+        description: "plan/apply pour les ingestions ; generate est réservé à source=r2"
         required: true
         default: "apply"
         type: choice
         options:
           - apply
           - plan
+          - generate
+      r2_reviewed_cache:
+        description: "Confirmation obligatoire avant apply R2 : le cache généré a été revu"
+        required: true
+        default: false
+        type: boolean
+      r2_cache_source_env:
+        description: "Cache Gold à hydrater avant la cible (staging pour promouvoir vers prod)"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - prod
+      r2_limit:
+        description: "Limiter le nombre d'articles R2 (0 = tout le delta)"
+        required: true
+        default: 0
+        type: number
+      r2_allow_cache_misses:
+        description: "Apply R2 partiel malgré des caches manquants"
+        required: true
+        default: false
+        type: boolean
       delta:
         description: "Reconciliation incrementale canonique (Service-Public via Grist, Legifrance via Grist + PISTE)"
         required: true
@@ -145,6 +170,7 @@ jobs:
       # 05/07: source=matte a démarré mi+masa+matte).
       pdf_sources_ministry: ${{ steps.plan.outputs.pdf_sources_ministry }}
       embeddings: ${{ steps.plan.outputs.embeddings }}
+      r2: ${{ steps.plan.outputs.r2 }}
       run_embeddings: ${{ steps.plan.outputs.run_embeddings }}
       embedding_source: ${{ steps.plan.outputs.embedding_source }}
       has_builds: ${{ steps.plan.outputs.has_builds }}
@@ -174,7 +200,7 @@ jobs:
     # Pull-request refs are intentionally not allowed by the scaleway-staging
     # environment. PRs keep the secretless plan job; image builds and previews
     # start only from an integrated staging ref or an approved manual dispatch.
-    if: ${{ github.event_name != 'pull_request' && needs.plan.result == 'success' && needs.plan.outputs.mode == 'apply' && needs.plan.outputs.has_builds == 'true' }}
+    if: ${{ github.event_name != 'pull_request' && needs.plan.result == 'success' && (needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_builds == 'true' }}
     timeout-minutes: 90
     environment: scaleway-staging
     strategy:
@@ -224,7 +250,7 @@ jobs:
     needs:
       - plan
       - build-staging-images
-    if: ${{ needs.plan.result == 'success' && needs.plan.outputs.mode == 'apply' && needs.plan.outputs.has_runs == 'true' && needs.build-staging-images.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_preview_jobs)) }}
+    if: ${{ needs.plan.result == 'success' && (needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_runs == 'true' && needs.build-staging-images.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.run_preview_jobs || needs.plan.outputs.r2 == 'true'))) }}
     timeout-minutes: 180
     environment: scaleway-staging
     strategy:
@@ -242,6 +268,10 @@ jobs:
       RUN_EMBEDDINGS: ${{ (github.event_name == 'push' && needs.plan.outputs.run_embeddings == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' && (inputs.run_embeddings || inputs.source == 'embeddings' || inputs.source == 'matte' || inputs.source == 'mi' || inputs.source == 'masa' || inputs.source == 'mso')) || false }}
       EMBEDDING_SOURCE: ${{ matrix.embedding_source }}
       EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
+      R2_REVIEWED_CACHE: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_reviewed_cache || false }}
+      R2_CACHE_SOURCE_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_cache_source_env || 'staging' }}
+      R2_LIMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_limit || 0 }}
+      R2_ALLOW_CACHE_MISSES: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_allow_cache_misses || false }}
       DELTA_MODE: ${{ github.event_name == 'push' || inputs.delta }}
       SERVICE_PUBLIC_FICHE_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.service_public_fiche_config || 'config/service_public_fiches.json' }}
       LEGIFRANCE_ARTICLE_IDS_JSON: ${{ github.event_name == 'workflow_dispatch' && inputs.legifrance_article_ids_json || 'config/legifrance_article_cids.json' }}
@@ -305,11 +335,16 @@ jobs:
             --pdf-sources "${{ matrix.pdf_sources }}" \
             --pdf-sources-ministry "${{ matrix.pdf_sources_ministry }}" \
             --embeddings "${{ matrix.embeddings }}" \
+            --r2 "${{ matrix.r2 }}" \
             --run-ingestion "${RUN_INGESTION}" \
             --wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}" \
             --run-embeddings "${RUN_EMBEDDINGS}" \
             --embedding-source "${EMBEDDING_SOURCE}" \
             --embedding-only-column "${EMBEDDING_ONLY_COLUMN}" \
+            --r2-reviewed-cache "${R2_REVIEWED_CACHE}" \
+            --r2-cache-source-env "${R2_CACHE_SOURCE_ENV}" \
+            --r2-limit "${R2_LIMIT}" \
+            --r2-allow-cache-misses "${R2_ALLOW_CACHE_MISSES}" \
             --service-public-fiche-config "${SERVICE_PUBLIC_FICHE_CONFIG}" \
             --legifrance-article-ids-json "${LEGIFRANCE_ARTICLE_IDS_JSON}" \
             --wait

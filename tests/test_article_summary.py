@@ -153,6 +153,22 @@ def test_cache_roundtrip_and_self_healing(tmp_path) -> None:
     assert cache.get("LEGIARTI000044420769", checksum) is None
 
 
+def test_cache_put_checkpoints_persistent_artifact(tmp_path) -> None:
+    checkpoints: list[tuple[object, str, str]] = []
+    cache = r2.ArticleSummaryCache(
+        tmp_path,
+        "albert-article-summary",
+        "r2s1-test-p0",
+        on_put=lambda path, uid, checksum: checkpoints.append((path, uid, checksum)),
+    )
+    checksum = r2.source_checksum(ARTICLE_TEXT)
+
+    path = cache.put("LEGIARTI000044420769", checksum, {"summary": GOOD_SUMMARY})
+
+    assert checkpoints == [(path, "LEGIARTI000044420769", checksum)]
+    assert cache.path_for("LEGIARTI000044420769", checksum) == path
+
+
 # --- Orchestration du lot -------------------------------------------------------
 
 

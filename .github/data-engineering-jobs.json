@@ -111,6 +111,35 @@
       ]
     },
     {
+      "key": "legifrance-r2-summaries",
+      "domain": "r2",
+      "image": "embeddings-job",
+      "description": "CI/CD Legifrance R2 derived summaries (plan/generate/reviewed apply).",
+      "cpu_limit": 2000,
+      "memory_limit": 4096,
+      "local_storage_capacity": 2048,
+      "job_timeout": "14400s",
+      "auto_start_on_push": false,
+      "env_groups": ["object_storage", "postgres", "albert"],
+      "args": [
+        "legifrance",
+        "r2-summaries",
+        "--mode",
+        "{mode}",
+        "--target-env",
+        "{target_env}",
+        "--cache-source-env",
+        "{r2_cache_source_env}",
+        "--sync-object-storage",
+        "--cache-dir",
+        "/tmp/r2_summaries",
+        "--out",
+        "/tmp/r2-inspection.jsonl",
+        "--dsn-env",
+        "SCW_POSTGRES_DSN"
+      ]
+    },
+    {
       "key": "pdf-sources-mi-medallion",
       "domain": "pdf_sources",
       "image": "pdf-sources-pipeline",
