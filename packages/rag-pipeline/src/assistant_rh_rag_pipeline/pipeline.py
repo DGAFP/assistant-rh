@@ -29,6 +29,7 @@ from .context_builder import ContextBuilder
 from .context_selector import ContextSelector
 from .db_helpers import get_dsn
 from .generator import StreamingGenerator
+from .llm_client import derive_llm_seed
 from .ministry_scope import MinistrySource, RetrievalScope, resolve_ministry
 from .models import (
     ContextItem,
@@ -202,9 +203,11 @@ class Pipeline:
         query: str,
         conversation_history: list[Dict[str, str]] | None = None,
         retrieval_scope: RetrievalScope | None = None,
+        *,
+        llm_seed: int | None = None,
     ) -> QueryProcessResult:
         state = _RunState()
-        qr = self._process_query(query, conversation_history, state, ministry=resolve_ministry(retrieval_scope))
+        qr = self._process_query(query, conversation_history, state, ministry=resolve_ministry(retrieval_scope), llm_seed=llm_seed)
         self._timing = dict(state.timing)
         return qr
 
@@ -220,11 +223,14 @@ class Pipeline:
         turn_id: str | None = None,
         trace_id: str | None = None,
         retrieval_scope: RetrievalScope | None = None,
+        llm_seed: int | None = None,
     ) -> PipelineResult:
         state = _RunState(turn_id=turn_id or "", trace_id=normalize_trace_id(trace_id))
+        if llm_seed is not None:
+            state.stage_refs["llm_seed"] = llm_seed
         _record_scope(state, retrieval_scope)
         ministry = resolve_ministry(retrieval_scope)
-        qr = self._process_query(query, conversation_history, state, ministry=ministry)
+        qr = self._process_query(query, conversation_history, state, ministry=ministry, llm_seed=llm_seed)
 
         if not qr.should_proceed:
             metadata: Dict[str, Any] = {
@@ -237,6 +243,8 @@ class Pipeline:
                 "selected_ministry": state.stage_refs.get("selected_ministry"),
                 "scoped_table_keys": state.stage_refs.get("scoped_table_keys", []),
             }
+            if llm_seed is not None:
+                metadata["llm_seed"] = llm_seed
             if include_stage_trace:
                 metadata["stage_trace"] = self._build_stage_trace(
                     query=query,
@@ -258,7 +266,7 @@ class Pipeline:
             self._timing = dict(result.timing)
             return result
 
-        context_items = self._retrieve_and_build(qr, state, retrieval_scope=retrieval_scope, ministry=ministry)
+        context_items = self._retrieve_and_build(qr, state, retrieval_scope=retrieval_scope, ministry=ministry, llm_seed=llm_seed)
 
         if not context_items and state.stage_refs.get("selector_all_rejected"):
             no_answer = (
@@ -283,7 +291,11 @@ class Pipeline:
             return result
 
         t0 = time.time()
-        answer = self._generator.generate(qr.query_for_retrieval, context_items, ministry=ministry)
+        generator_seed = derive_llm_seed(llm_seed, "generator")
+        if generator_seed is None:
+            answer = self._generator.generate(qr.query_for_retrieval, context_items, ministry=ministry)
+        else:
+            answer = self._generator.generate(qr.query_for_retrieval, context_items, ministry=ministry, seed=generator_seed)
         generation_ms = (time.time() - t0) * 1000
         state.timing["generation_ms"] = generation_ms
         state.timing["response_length_tokens"] = estimate_tokens(answer)
@@ -309,6 +321,7 @@ class Pipeline:
         turn_id: str | None = None,
         trace_id: str | None = None,
         retrieval_scope: RetrievalScope | None = None,
+        llm_seed: int | None = None,
     ) -> PipelineResult:
         """Run pipeline and include stage-level input/output trace in metadata."""
         return self.run(
@@ -318,6 +331,7 @@ class Pipeline:
             turn_id=turn_id,
             trace_id=trace_id,
             retrieval_scope=retrieval_scope,
+            llm_seed=llm_seed,
         )
 
     # ------------------------------------------------------------------
@@ -332,6 +346,7 @@ class Pipeline:
         turn_id: str | None = None,
         trace_id: str | None = None,
         retrieval_scope: RetrievalScope | None = None,
+        llm_seed: int | None = None,
     ) -> Generator[str, None, None]:
         """
         Yield tokens for the streaming answer.
@@ -344,6 +359,8 @@ class Pipeline:
         (useful for updating a Streamlit loader).
         """
         state = _RunState(turn_id=turn_id or "", trace_id=normalize_trace_id(trace_id))
+        if llm_seed is not None:
+            state.stage_refs["llm_seed"] = llm_seed
         _record_scope(state, retrieval_scope)
         ministry = resolve_ministry(retrieval_scope)
         self._record_query_processor_event(
@@ -356,7 +373,7 @@ class Pipeline:
         _notify = on_status or (lambda _: None)
 
         _notify("📚 Recherche dans les sources...")
-        context_items = self._retrieve_and_build(qr, state, retrieval_scope=retrieval_scope, ministry=ministry)
+        context_items = self._retrieve_and_build(qr, state, retrieval_scope=retrieval_scope, ministry=ministry, llm_seed=llm_seed)
 
         if not context_items and state.stage_refs.get("selector_all_rejected"):
             _notify("🚫 Aucune source pertinente trouvée")
@@ -379,7 +396,11 @@ class Pipeline:
         collected: list[str] = []
         t0 = time.time()
         ttft: float = 0.0
-        for token in self._generator.stream(qr.query_for_retrieval, context_items, conversation_history, ministry=ministry):
+        stream_kwargs: dict[str, Any] = {}
+        generator_seed = derive_llm_seed(llm_seed, "generator")
+        if generator_seed is not None:
+            stream_kwargs["seed"] = generator_seed
+        for token in self._generator.stream(qr.query_for_retrieval, context_items, conversation_history, ministry=ministry, **stream_kwargs):
             if not collected:
                 ttft = (time.time() - t0) * 1000
             collected.append(token)
@@ -407,9 +428,14 @@ class Pipeline:
         conversation_history: list[Dict[str, str]] | None,
         state: _RunState,
         ministry: MinistrySource | None = None,
+        llm_seed: int | None = None,
     ) -> QueryProcessResult:
         t0 = time.time()
-        qr = self._query_processor.process(query, conversation_history, ministry=ministry)
+        query_seed = derive_llm_seed(llm_seed, "query-processor")
+        if query_seed is None:
+            qr = self._query_processor.process(query, conversation_history, ministry=ministry)
+        else:
+            qr = self._query_processor.process(query, conversation_history, ministry=ministry, seed=query_seed)
         duration_ms = (time.time() - t0) * 1000
         state.timing["query_processing_ms"] = duration_ms
         self._record_query_processor_event(query=query, conversation_history=conversation_history, qr=qr, state=state, duration_ms=duration_ms)
@@ -423,6 +449,7 @@ class Pipeline:
         *,
         retrieval_scope: RetrievalScope | None = None,
         ministry: MinistrySource | None = None,
+        llm_seed: int | None = None,
     ) -> List[ContextItem]:
         retrieval_query = qr.query_for_retrieval
 
@@ -442,6 +469,7 @@ class Pipeline:
             top_k=self.config.retrieval.initial_top_k,
             strict_table_errors=strict_table_errors,
             ministry=ministry,
+            llm_seed=llm_seed,
         )
         attempts = [initial_attempt]
         items = initial_attempt.context_items_ref
@@ -471,6 +499,7 @@ class Pipeline:
             top_k=self.config.retrieval.selector_retry_top_k,
             strict_table_errors=strict_table_errors,
             ministry=ministry,
+            llm_seed=llm_seed,
         )
         attempts.append(retry_attempt)
         retry_has_context = bool(retry_attempt.context_items_ref)
@@ -497,6 +526,7 @@ class Pipeline:
         top_k: int,
         strict_table_errors: bool,
         ministry: MinistrySource | None = None,
+        llm_seed: int | None = None,
     ) -> _RetrievalAttempt:
         tables_searched = list(active_tables)
 
@@ -607,7 +637,11 @@ class Pipeline:
             sections_before = len(sections)
             t0 = time.time()
             selector = ContextSelector(self.config.selector)
-            sections = selector.select(retrieval_query, sections, ministry=ministry)
+            selector_seed = derive_llm_seed(llm_seed, f"context-selector:{name}")
+            if selector_seed is None:
+                sections = selector.select(retrieval_query, sections, ministry=ministry)
+            else:
+                sections = selector.select(retrieval_query, sections, ministry=ministry, seed=selector_seed)
             selector_ms = (time.time() - t0) * 1000
             state.timing[f"selector_{name}_ms"] = selector_ms
             attempt.selector_decisions = selector.last_decisions
@@ -808,6 +842,8 @@ class Pipeline:
             "trace_id": state.trace_id,
             "rag_trace_events": list(state.trace_events),
         }
+        if state.stage_refs.get("llm_seed") is not None:
+            metadata["llm_seed"] = state.stage_refs["llm_seed"]
         metadata["selector_decision"] = self._selector_decision(metadata)
         metadata["reranker_status"] = self._reranker_status(state)
         metadata["rag_diagnostics"] = self._build_rag_diagnostics(

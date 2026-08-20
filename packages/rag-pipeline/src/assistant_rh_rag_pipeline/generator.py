@@ -99,6 +99,8 @@ class StreamingGenerator:
         context_items: List[ContextItem],
         history: list[Dict[str, str]] | None = None,
         ministry: MinistrySource | None = None,
+        *,
+        seed: int | None = None,
     ) -> Generator[str, None, None]:
         """Yield tokens one by one."""
         context_text = ContextBuilder.format_for_prompt(context_items)
@@ -106,13 +108,18 @@ class StreamingGenerator:
         self.last_full_prompt = user_prompt
         system_prompt = self._system_prompt_for(ministry)
         self.last_system_prompt = system_prompt
-        yield from self.llm.chat_stream(user_prompt, system_prompt=system_prompt, history=history)
+        if seed is None:
+            yield from self.llm.chat_stream(user_prompt, system_prompt=system_prompt, history=history)
+        else:
+            yield from self.llm.chat_stream(user_prompt, system_prompt=system_prompt, history=history, seed=seed)
 
     def generate(
         self,
         query: str,
         context_items: List[ContextItem],
         ministry: MinistrySource | None = None,
+        *,
+        seed: int | None = None,
     ) -> str:
         """Non-streaming variant (useful for evaluation)."""
         context_text = ContextBuilder.format_for_prompt(context_items)
@@ -120,7 +127,9 @@ class StreamingGenerator:
         self.last_full_prompt = user_prompt
         system_prompt = self._system_prompt_for(ministry)
         self.last_system_prompt = system_prompt
-        return self.llm.chat(user_prompt, system_prompt=system_prompt)
+        if seed is None:
+            return self.llm.chat(user_prompt, system_prompt=system_prompt)
+        return self.llm.chat(user_prompt, system_prompt=system_prompt, seed=seed)
 
     def _base_system_prompt(self) -> str:
         """Load the (unrendered) system prompt template, cached per instance."""

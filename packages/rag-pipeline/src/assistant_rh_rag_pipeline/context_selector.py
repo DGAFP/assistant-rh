@@ -128,6 +128,8 @@ class ContextSelector:
         query: str,
         sections: List[AggregatedSection],
         ministry: MinistrySource | None = None,
+        *,
+        seed: int | None = None,
     ) -> List[AggregatedSection]:
         """
         Filter *sections* through the LLM selector.
@@ -176,7 +178,10 @@ class ContextSelector:
                 prompt = prompt_template.replace("{query}", query).replace("{context}", "\n\n---\n\n".join(numbered)).replace("{theme}", "")
 
             self._last_prompt_chars = len(prompt)
-            raw = llm.chat(prompt, system_prompt="")
+            if seed is None:
+                raw = llm.chat(prompt, system_prompt="")
+            else:
+                raw = llm.chat(prompt, system_prompt="", seed=seed)
             self._last_raw_response = raw
             parsed = _parse_response(raw, len(sections))
             reason = _parse_reason(raw)

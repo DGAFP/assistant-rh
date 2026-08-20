@@ -20,6 +20,27 @@ uv run --group dev python scripts/run_rag_quality_eval.py \
 
 Use `--limit 1 --skip-ragas --skip-judge` for a cheap pipeline smoke test.
 
+## Reproducibility
+
+Evaluation runs use a base seed of `42` by default. Override it with `--seed`
+or `RAG_EVAL_SEED`. The seed is stored in `eval_scope`, so runs with different
+seeds are not de-duplicated or compared as equivalent.
+
+For every question, the runner derives stable, independent seeds for the query
+processor, context selector, answer generator, RAGAS, and judge. A three-vote
+judge uses three distinct derived seeds: the votes remain independent while the
+whole majority decision remains replayable.
+
+The normal Streamlit inference path does not set a seed. Its behavior is
+unchanged: the pipeline only sends the optional seed when an explicit caller,
+such as this evaluation runner, supplies one. Provider or model updates can
+still change outputs over long periods even when requests are seeded.
+
+Existing unseeded baselines are intentionally not comparable with seeded runs.
+When rolling this protocol out, record one seeded full run without a baseline
+gate, review it, then configure that run as the new baseline before re-enabling
+full adoption gates.
+
 ## Judge And RAGAS
 
 The runner uses Scaleway through the OpenAI-compatible SDK for:
@@ -84,8 +105,8 @@ A matching run is defined by:
 - `goldset_name`;
 - exact `tag_filter`;
 - `config_fingerprint`;
-- exact `eval_scope`, including selected question ids, `--limit`, judge/RAGAS
-  enablement, judge model, and RAGAS model;
+- exact `eval_scope`, including selected question ids, `--limit`, `--seed`,
+  judge/RAGAS enablement, judge model, and RAGAS model;
 - current git SHA, unless `--dedupe-scope config` is used;
 - status in `started`, `running`, or `completed`.
 

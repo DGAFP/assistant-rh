@@ -400,6 +400,7 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         GoldsetQuestion(id=2, question="q2", gold_answer="a2", gold_sources=["doc-b"]),
     ]
     base = dict(
+        seed=42,
         skip_ragas=False,
         ragas_model="ragas-a",
         skip_judge=False,
@@ -422,6 +423,7 @@ def test_build_eval_scope_separates_smoke_full_and_judge_modes() -> None:
         "limit": 1,
         "question_count": 1,
         "question_ids": [1],
+        "seed": 42,
         "ragas_enabled": True,
         "ragas_model": "ragas-a",
         "judge_enabled": True,
@@ -501,6 +503,32 @@ def test_judge_vote_count_is_bounded_and_shared_with_eval_scope() -> None:
     )
     with pytest.raises(ValueError, match="one of: 1, 3"):
         build_eval_scope(args, [GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[])])
+
+
+def test_eval_seed_is_bounded_and_changes_eval_scope() -> None:
+    from src.goldset.eval import normalize_eval_seed
+
+    assert normalize_eval_seed("42") == 42
+    assert normalize_eval_seed(-(1 << 63)) == -(1 << 63)
+    assert normalize_eval_seed((1 << 63) - 1) == (1 << 63) - 1
+    for invalid in (-(1 << 63) - 1, 1 << 63, "not-an-int"):
+        with pytest.raises(ValueError, match="signed 64-bit"):
+            normalize_eval_seed(invalid)
+
+    question = GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[])
+    base = dict(
+        limit=1,
+        skip_ragas=True,
+        ragas_model="",
+        skip_judge=True,
+        judge_model="",
+        judge_provider="scaleway",
+        judge_base_url="https://api.scaleway.ai/v1",
+        ministry_scope="all",
+    )
+    assert build_eval_scope(argparse.Namespace(seed=1, **base), [question]) != build_eval_scope(
+        argparse.Namespace(seed=2, **base), [question]
+    )
 
 
 def test_judge_answer_missing_key_message_names_provider() -> None:
@@ -1260,13 +1288,17 @@ def test_aggregate_token_usage_fails_closed_when_capture_is_missing() -> None:
 def test_run_question_records_exact_generator_prompt_size() -> None:
     from types import SimpleNamespace
 
+    from assistant_rh_rag_pipeline.llm_client import derive_llm_seed
+
     from src.goldset.eval import GoldsetQuestion, run_question
 
     class _Pipe:
         last_full_prompt = "user prompt"
         last_system_prompt = "system"
+        call_kwargs: dict = {}
 
         def run_with_trace(self, *args, **kwargs):
+            self.call_kwargs = kwargs
             return SimpleNamespace(
                 answer="answer",
                 context_items=[],
@@ -1275,8 +1307,9 @@ def test_run_question_records_exact_generator_prompt_size() -> None:
                 metadata={"existing": True},
             )
 
+    pipe = _Pipe()
     item = run_question(
-        pipe=_Pipe(),
+        pipe=pipe,
         question=GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[]),
         run_ragas=False,
         run_judge=False,
@@ -1290,6 +1323,58 @@ def test_run_question_records_exact_generator_prompt_size() -> None:
 
     assert item.metadata["generator_prompt_chars"] == len("user promptsystem")
     assert item.metadata["existing"] is True
+    question_seed = derive_llm_seed(42, "question:1")
+    assert pipe.call_kwargs["llm_seed"] == derive_llm_seed(question_seed, "pipeline")
+
+
+def test_compute_ragas_metrics_forwards_seed_to_model_and_run_config(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    import pandas as pd
+    import ragas
+    import ragas.llms
+
+    from src.goldset.eval import compute_ragas_metrics
+
+    captured: dict = {}
+
+    class _Completions:
+        def create(self, **kwargs):
+            return SimpleNamespace(usage=None)
+
+    class _OpenAI:
+        def __init__(self, **kwargs):
+            self.chat = SimpleNamespace(completions=_Completions())
+
+    def fake_llm_factory(**kwargs):
+        captured["factory"] = kwargs
+        return object()
+
+    def fake_evaluate(dataset, **kwargs):
+        captured["run_config"] = kwargs["run_config"]
+        return SimpleNamespace(
+            to_pandas=lambda: pd.DataFrame([{"faithfulness": 1.0, "context_precision": 1.0, "context_recall": 1.0}])
+        )
+
+    monkeypatch.setattr("openai.OpenAI", _OpenAI)
+    monkeypatch.setattr(ragas.llms, "llm_factory", fake_llm_factory)
+    monkeypatch.setattr(ragas, "evaluate", fake_evaluate)
+
+    result = compute_ragas_metrics(
+        question="q",
+        answer="a",
+        contexts=["c"],
+        reference="r",
+        model="m",
+        base_url="https://api.scaleway.ai/v1",
+        api_key="key",
+        seed=987,
+    )
+
+    assert result["status"] == "completed"
+    assert result["seed"] == 987
+    assert captured["factory"]["seed"] == 987
+    assert captured["run_config"].seed == 987
 
 
 def test_judge_answer_openrouter_enforces_zdr(monkeypatch) -> None:
@@ -1333,9 +1418,12 @@ def test_judge_answer_openrouter_enforces_zdr(monkeypatch) -> None:
         base_url="https://openrouter.ai/api/v1",
         api_key="k",
         provider="openrouter",
+        seed=123,
     )
     assert result["status"] == "completed"
     assert captured["extra_body"] == {"provider": {"data_collection": "deny", "zdr": True}}
+    assert captured["seed"] == 123
+    assert result["seed"] == 123
 
 
 def test_run_question_reraises_db_connection_errors() -> None:
@@ -1448,6 +1536,29 @@ def test_judge_answer_with_votes_majority(monkeypatch) -> None:
     assert result["vote_agreement"] == "2/3"
     # payload de base cohérent avec le verdict (un vote majoritaire)
     assert result["failure_category"] is None
+
+
+def test_judge_answer_with_votes_uses_distinct_replayable_seeds(monkeypatch) -> None:
+    from src.goldset import eval as eval_module
+
+    seen: list[int] = []
+
+    def fake_judge_answer(**kwargs):
+        seen.append(kwargs["seed"])
+        return {"status": "completed", "pass": True, "score": 1.0}
+
+    monkeypatch.setattr(eval_module, "judge_answer", fake_judge_answer)
+
+    first = eval_module.judge_answer_with_votes(votes=3, question="q", seed=1234)
+    first_seeds = list(seen)
+    seen.clear()
+    second = eval_module.judge_answer_with_votes(votes=3, question="q", seed=1234)
+
+    assert len(set(first_seeds)) == 3
+    assert seen == first_seeds
+    assert [vote["seed"] for vote in first["votes"]] == first_seeds
+    assert [vote["seed"] for vote in second["votes"]] == first_seeds
+    assert first["seed"] == second["seed"] == 1234
 
 
 def test_judge_answer_with_votes_sums_usage_from_every_paid_call(monkeypatch) -> None:

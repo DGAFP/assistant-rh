@@ -30,6 +30,7 @@ import psycopg
 from assistant_rh_rag_pipeline import PipelineResult, create_pipeline
 from assistant_rh_rag_pipeline.admin import get_rag_config, runtime_config_to_rag_config
 from assistant_rh_rag_pipeline.config import RAGConfig
+from assistant_rh_rag_pipeline.llm_client import MAX_LLM_SEED, derive_llm_seed
 from assistant_rh_rag_pipeline.models import metadata_document_id
 from assistant_rh_rag_pipeline.query_processor import _fold as _fold_text
 from dotenv import load_dotenv
@@ -64,6 +65,8 @@ DEFAULT_SCALEWAY_BASE_URL = "https://api.scaleway.ai/v1"
 # RAGAS then retries on every truncation, stalling the run.
 DEFAULT_RAGAS_MODEL = "llama-3.3-70b-instruct"
 DEFAULT_RAGAS_MAX_TOKENS = 16384
+DEFAULT_EVAL_SEED = 42
+MIN_LLM_SEED = -(1 << 63)
 
 # Endpoint du juge par provider: le provider pilote RÉELLEMENT la clé ET la base
 # URL (revue #318: sinon --judge-provider scaleway inscrivait "scaleway" en base
@@ -129,6 +132,17 @@ def normalize_judge_votes(value: Any) -> int:
         allowed = ", ".join(str(item) for item in sorted(ALLOWED_JUDGE_VOTES))
         raise ValueError(f"judge_votes must be one of: {allowed}")
     return votes
+
+
+def normalize_eval_seed(value: Any) -> int:
+    """Return an API-compatible signed 64-bit seed."""
+    try:
+        seed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("seed must be a signed 64-bit integer") from exc
+    if not MIN_LLM_SEED <= seed <= MAX_LLM_SEED:
+        raise ValueError("seed must be a signed 64-bit integer")
+    return seed
 
 
 @dataclass
@@ -636,6 +650,7 @@ def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion])
         "limit": args.limit,
         "question_count": len(questions),
         "question_ids": [question.id for question in questions],
+        "seed": normalize_eval_seed(getattr(args, "seed", DEFAULT_EVAL_SEED)),
         "ragas_enabled": ragas_enabled,
         "ragas_model": args.ragas_model if ragas_enabled else "",
         "judge_enabled": judge_enabled,
@@ -1421,6 +1436,7 @@ def compute_ragas_metrics(
     model: str,
     base_url: str,
     api_key: str,
+    seed: int | None = None,
 ) -> dict[str, Any]:
     if not api_key:
         return {"status": "skipped", "reason": "missing SCALEWAY_API_KEY"}
@@ -1430,6 +1446,7 @@ def compute_ragas_metrics(
         from ragas import evaluate
         from ragas.llms import llm_factory
         from ragas.metrics import context_precision, context_recall, faithfulness
+        from ragas.run_config import RunConfig
     except ImportError as exc:
         return {"status": "skipped", "reason": f"missing dependency: {exc.name}"}
 
@@ -1453,9 +1470,11 @@ def compute_ragas_metrics(
             provider="openai",
             client=client,
             max_tokens=int(os.getenv("RAGAS_MAX_TOKENS", str(DEFAULT_RAGAS_MAX_TOKENS))),
+            seed=seed,
         )
         metrics = [copy.deepcopy(faithfulness), copy.deepcopy(context_precision), copy.deepcopy(context_recall)]
-        result = evaluate(dataset, metrics=metrics, llm=llm, show_progress=False)
+        run_seed = seed if seed is not None else DEFAULT_EVAL_SEED
+        result = evaluate(dataset, metrics=metrics, llm=llm, run_config=RunConfig(seed=run_seed), show_progress=False)
         frame = result.to_pandas()
         row = frame.iloc[0].to_dict()
         return {
@@ -1463,6 +1482,7 @@ def compute_ragas_metrics(
             "faithfulness": _safe_float(row.get("faithfulness")),
             "context_precision": _safe_float(row.get("context_precision")),
             "context_recall": _safe_float(row.get("context_recall")),
+            "seed": seed,
             "usage": usage.as_dict(
                 model,
                 "scaleway",
@@ -1475,6 +1495,7 @@ def compute_ragas_metrics(
             "reason": str(exc),
             # Les appels déjà terminés restent visibles, mais un run RAGAS
             # interrompu ne permet pas de garantir que tout usage est revenu.
+            "seed": seed,
             "usage": usage.as_dict(model, "scaleway", capture_complete=False),
         }
 
@@ -1660,6 +1681,7 @@ def judge_answer(
     base_url: str,
     api_key: str,
     provider: str = DEFAULT_JUDGE_PROVIDER,
+    seed: int | None = None,
 ) -> dict[str, Any]:
     if not api_key:
         key_env = JUDGE_PROVIDERS.get(provider, {}).get("key_env", "OPENROUTER_API_KEY")
@@ -1758,6 +1780,8 @@ def judge_answer(
                 {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
             ],
         }
+        if seed is not None:
+            create_kwargs["seed"] = seed
         # DINUM (données réglementaires): sur OpenRouter, n'acheminer QU'AUX
         # endpoints Zero Data Retention. `data_collection: deny` exclut les
         # providers qui collectent/entraînent, mais la ZDR est un attribut
@@ -1771,6 +1795,7 @@ def judge_answer(
         parsed = _extract_json_object(content)
         parsed["status"] = "completed"
         calibrated = calibrate_judge_result(parsed, deterministic_metrics)
+        calibrated["seed"] = seed
         calibrated["usage"] = usage.as_dict(model, provider, capture_complete=usage_captured)
         return calibrated
     except Exception as exc:
@@ -1822,9 +1847,15 @@ def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
     dans ``judge_result["votes"]`` (audit), le payload de base (rationale,
     catégorie) vient d'un vote MAJORITAIRE pour rester cohérent."""
     votes = normalize_judge_votes(votes)
+    base_seed = kwargs.pop("seed", None)
     if votes == 1:
-        return judge_answer(**kwargs)
-    results = [judge_answer(**kwargs) for _ in range(votes)]
+        return judge_answer(**kwargs) if base_seed is None else judge_answer(**kwargs, seed=base_seed)
+    vote_seeds = [derive_llm_seed(base_seed, f"vote:{index}") for index in range(votes)]
+    results = (
+        [judge_answer(**kwargs) for _ in range(votes)]
+        if base_seed is None
+        else [judge_answer(**kwargs, seed=vote_seed) for vote_seed in vote_seeds]
+    )
     combined_usage = _combine_usage_payloads(
         results,
         provider=str(kwargs.get("provider") or DEFAULT_JUDGE_PROVIDER),
@@ -1842,8 +1873,9 @@ def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
             "status": r.get("status"),
             "reason": r.get("reason"),
             "usage": r.get("usage"),
+            "seed": vote_seed,
         }
-        for r in results
+        for r, vote_seed in zip(results, vote_seeds, strict=True)
     ]
     if max(n_pass, n_fail) < quorum:
         return {
@@ -1852,6 +1884,7 @@ def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
             "votes": vote_audit,
             "vote_agreement": f"{max(n_pass, n_fail)}/{len(completed)}",
             "usage": combined_usage,
+            "seed": base_seed,
         }
     verdict = n_pass >= quorum
     base = dict(next(r for r in completed if bool(r.get("pass")) == verdict))
@@ -1859,6 +1892,7 @@ def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
     base["votes"] = vote_audit
     base["vote_agreement"] = f"{max(n_pass, n_fail)}/{len(completed)}"
     base["usage"] = combined_usage
+    base["seed"] = base_seed
     return base
 
 
@@ -1926,6 +1960,7 @@ def run_question(
     scaleway_base_url: str,
     scaleway_api_key: str,
     retrieval_scope: Any = None,
+    eval_seed: int = DEFAULT_EVAL_SEED,
 ) -> EvalItem:
     started = time.perf_counter()
     item = EvalItem(
@@ -1935,7 +1970,11 @@ def run_question(
         gold_sources=question.gold_sources,
     )
     try:
-        result = pipe.run_with_trace(question.question, retrieval_scope=retrieval_scope)
+        question_seed = derive_llm_seed(eval_seed, f"question:{question.id}")
+        pipeline_seed = derive_llm_seed(question_seed, "pipeline")
+        ragas_seed = derive_llm_seed(question_seed, "ragas")
+        judge_seed = derive_llm_seed(question_seed, "judge")
+        result = pipe.run_with_trace(question.question, retrieval_scope=retrieval_scope, llm_seed=pipeline_seed)
         elapsed_ms = (time.perf_counter() - started) * 1000
         contexts = context_payload(result)
         doc_ids = retrieved_doc_ids(result, contexts)
@@ -1965,6 +2004,7 @@ def run_question(
                 model=ragas_model,
                 base_url=scaleway_base_url,
                 api_key=scaleway_api_key,
+                seed=ragas_seed,
             )
         else:
             item.ragas_metrics = {"status": "skipped", "reason": "disabled"}
@@ -1981,6 +2021,7 @@ def run_question(
                 base_url=judge_base_url,
                 api_key=judge_api_key,
                 provider=judge_provider,
+                seed=judge_seed,
             )
         else:
             item.judge_result = {"status": "skipped", "reason": "disabled"}
@@ -2121,6 +2162,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-ragas", action="store_true", help="Skip RAGAS metrics.")
     parser.add_argument("--skip-judge", action="store_true", help="Skip Scaleway LLM-as-judge.")
     parser.add_argument(
+        "--seed",
+        type=normalize_eval_seed,
+        default=os.getenv("RAG_EVAL_SEED", str(DEFAULT_EVAL_SEED)),
+        help="Base seed for reproducible pipeline, RAGAS and judge calls (default: 42).",
+    )
+    parser.add_argument(
         "--selector-model",
         default="",
         help="Override du modèle du sélecteur (ex: mistral-medium-2508) sans toucher à la config runtime partagée.",
@@ -2235,6 +2282,7 @@ def derive_completion_status(items: list[EvalItem], *, judge_enabled: bool, raga
 def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.any_goldset and not args.tag:
         raise ValueError("At least one --tag is required with --any-goldset.")
+    args.seed = normalize_eval_seed(getattr(args, "seed", DEFAULT_EVAL_SEED))
     if not args.skip_judge:
         args.judge_votes = normalize_judge_votes(args.judge_votes)
         args.judge_model = resolve_judge_model(args.judge_provider, args.judge_model)
@@ -2399,6 +2447,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,
                 retrieval_scope=resolve_question_scope(question, args.ministry_scope),
+                eval_seed=args.seed,
             )
             items.append(item)
             if item_conn is not None and run_id is not None:

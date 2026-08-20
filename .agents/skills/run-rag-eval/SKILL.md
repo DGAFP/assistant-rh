@@ -71,6 +71,7 @@ exec uv run --no-sync python scripts/run_rag_quality_eval.py \
   --record-db --dedupe-scope config \
   --baseline-run-id <N> \
   --ministry-scope per-question \
+  --seed 42 \
   --run-label "<label>" \
   --output-dir "$SCRATCH/eval-<label>"
 EOF
@@ -83,6 +84,9 @@ Options utiles :
   scopée sur SON ministère (comme l'app). `all` = pleinement granté (contamination
   inter-ministères). `none` = v3_tables seulement (mso/mi/masa invisibles).
 - `--selector-model <modele>` / `--section-rerank-top-k <n>` : overrides A/B.
+- `--seed <n>` : seed de base persistée dans l'`eval_scope` (défaut `42`).
+  Le runner dérive des seeds stables par question/étape et trois seeds distinctes
+  pour un juge maj-3.
 - `--skip-ragas` pour un run plus rapide sans RAGAS.
 
 ### 3. Attendre en détaché (jamais bloquer)
@@ -120,8 +124,9 @@ Commiter le journal.
 
 - **CWD** : le CWD Bash retombe sur la checkout principale entre appels — toujours
   `cd <worktree>` en tête du launcher, sinon `uv` importe le code SANS les modifs.
-- **Modèle non déterministe** : `gpt-oss-120b` (générateur ET sélecteur) varie à
-  temp 0. Ne jamais conclure sur un single-shot ; comparer à périmètre constant.
+- **Seed ≠ modèle figé** : `--seed` stabilise l'échantillonnage à paramètres
+  identiques, mais un changement de modèle/backend peut modifier les sorties.
+  Toujours comparer à périmètre constant et garder le maj-3 pour le juge officiel.
 - **Goldset figé pendant un run** : ne pas modifier `goldset_questions_v2` pendant
   qu'un run tourne, sinon ses items mélangent deux régimes (run contaminé — cf.
   run 54). Corriger le goldset AVANT, puis lancer.

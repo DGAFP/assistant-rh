@@ -14,6 +14,7 @@ Environment variables (at least one pair required):
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from typing import Dict, Generator, Optional
@@ -26,6 +27,16 @@ _PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
     "openrouter": {"key_env": "OPENROUTER_API_KEY", "url_env": "OPENROUTER_BASE_URL"},
     "openai": {"key_env": "OPENAI_API_KEY", "url_env": ""},
 }
+
+MAX_LLM_SEED = (1 << 63) - 1
+
+
+def derive_llm_seed(base_seed: int | None, namespace: str) -> int | None:
+    """Derive a stable signed-64-bit-compatible seed for one inference stage."""
+    if base_seed is None:
+        return None
+    payload = f"assistant-rh-llm-seed-v1\0{base_seed}\0{namespace}".encode()
+    return int.from_bytes(hashlib.sha256(payload).digest()[:8], "big") & MAX_LLM_SEED
 
 
 class LLMClient:
@@ -60,14 +71,17 @@ class LLMClient:
 
     # -- Synchronous ----------------------------------------------------------
 
-    def chat(self, prompt: str, system_prompt: str | None = None) -> str:
+    def chat(self, prompt: str, system_prompt: str | None = None, *, seed: int | None = None) -> str:
         messages = self._build_messages(prompt, system_prompt)
-        resp = self._client.chat.completions.create(
+        create_kwargs = dict(
             model=self.model,
             messages=messages,
             temperature=self.temperature,
             timeout=self.timeout,
         )
+        if seed is not None:
+            create_kwargs["seed"] = seed
+        resp = self._client.chat.completions.create(**create_kwargs)
         return (resp.choices[0].message.content or "").strip()
 
     # -- Streaming ------------------------------------------------------------
@@ -77,15 +91,20 @@ class LLMClient:
         prompt: str,
         system_prompt: str | None = None,
         history: list[Dict[str, str]] | None = None,
+        *,
+        seed: int | None = None,
     ) -> Generator[str, None, None]:
         messages = self._build_messages(prompt, system_prompt, history)
-        stream = self._client.chat.completions.create(
+        create_kwargs = dict(
             model=self.model,
             messages=messages,
             temperature=self.temperature,
             stream=True,
             timeout=self.timeout,
         )
+        if seed is not None:
+            create_kwargs["seed"] = seed
+        stream = self._client.chat.completions.create(**create_kwargs)
         for chunk in stream:
             if chunk.choices and chunk.choices[0].delta.content is not None:
                 yield chunk.choices[0].delta.content
@@ -140,10 +159,10 @@ class FallbackLLMClient:
 
     # -- Synchronous ----------------------------------------------------------
 
-    def chat(self, prompt: str, system_prompt: str | None = None) -> str:
+    def chat(self, prompt: str, system_prompt: str | None = None, *, seed: int | None = None) -> str:
         if self._primary:
             try:
-                result = self._primary.chat(prompt, system_prompt)
+                result = self._primary.chat(prompt, system_prompt, seed=seed)
                 self.last_provider_used = self._primary_name
                 return result
             except Exception as exc:
@@ -151,7 +170,7 @@ class FallbackLLMClient:
 
         if self._fallback:
             try:
-                result = self._fallback.chat(prompt, system_prompt)
+                result = self._fallback.chat(prompt, system_prompt, seed=seed)
                 self.last_provider_used = self._fallback_name
                 self.fallback_count += 1
                 return result
@@ -167,12 +186,14 @@ class FallbackLLMClient:
         prompt: str,
         system_prompt: str | None = None,
         history: list[Dict[str, str]] | None = None,
+        *,
+        seed: int | None = None,
     ) -> Generator[str, None, None]:
         tokens_yielded = 0
 
         if self._primary:
             try:
-                for tok in self._primary.chat_stream(prompt, system_prompt, history):
+                for tok in self._primary.chat_stream(prompt, system_prompt, history, seed=seed):
                     tokens_yielded += 1
                     yield tok
                 self.last_provider_used = self._primary_name
@@ -185,7 +206,7 @@ class FallbackLLMClient:
 
         if self._fallback and tokens_yielded == 0:
             try:
-                for tok in self._fallback.chat_stream(prompt, system_prompt, history):
+                for tok in self._fallback.chat_stream(prompt, system_prompt, history, seed=seed):
                     yield tok
                 self.last_provider_used = self._fallback_name
                 self.fallback_count += 1
