@@ -355,7 +355,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     missing = plan_missing_summaries(article_rows, existing, summarizer.version, embed_model=embed_model)
     missing_total = len(missing)
-    todo = missing[: max(0, int(args.limit))] if args.limit else missing
+    limit = max(0, int(args.limit)) if args.limit else 0
+    if limit and (mode == "generate" or legacy_generate_during_apply):
+        # generate n'écrit rien en base : le plan DB resélectionne toujours les
+        # mêmes premiers articles. Les cache-hits ne consomment donc pas la
+        # limite, sinon les runs par lots (--limit N) resteraient bloqués sur
+        # le premier lot déjà généré.
+        todo = [row for row in missing if cache.get(str(row["cid"]).strip(), source_checksum(str(row.get("chunk_text") or ""))) is None][:limit]
+    else:
+        todo = missing[:limit] if limit else missing
 
     report: dict[str, Any] = {
         "summarizer": summarizer.name,

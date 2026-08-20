@@ -181,9 +181,7 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
     # A change to shared/common CI or config files only triggers a full all-sources
     # preview when nothing source-specific changed. When a specific source also
     # changed, scope the preview to that source instead of fanning out to everything.
-    if has_common and not (
-        result["service_public"] or result["legifrance"] or result["pdf_sources"] or result["embeddings"] or result["r2"]
-    ):
+    if has_common and not (result["service_public"] or result["legifrance"] or result["pdf_sources"] or result["embeddings"] or result["r2"]):
         return {"service_public": True, "legifrance": True, "pdf_sources": True, "embeddings": True, "r2": False}
 
     return result
@@ -334,6 +332,14 @@ def main() -> int:
 
     if mode == "generate" and not selected["r2"]:
         raise SystemExit("mode=generate est réservé à source=r2 ; les autres sources utilisent plan/apply.")
+
+    if selected.get("r2", False) and mode != "apply":
+        # R2 sélectionné hors apply : la condition des workflows ouvre le job
+        # de run dès que r2 est vrai, quel que soit le mode. Sans ce garde,
+        # source=r2 + run_embeddings=true démarrerait les backfills embeddings
+        # (mutation d'index) pendant un run censé être plan/generate seul.
+        run_embeddings = False
+        selected["embeddings"] = False
 
     matrix: list[dict[str, str]] = []
     for domain in ("service_public", "legifrance", "pdf_sources", "embeddings", "r2"):
