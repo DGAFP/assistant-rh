@@ -699,7 +699,8 @@ def test_embeddings_legifrance_declares_albert_env_group() -> None:
     assert "albert" in spec["env_groups"]
 
 
-def test_r2_job_is_explicit_and_declares_persistent_dependencies() -> None:
+def test_r2_job_is_explicit_and_declares_persistent_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     config = scaleway_data_jobs.load_config(scaleway_data_jobs.DEFAULT_CONFIG)
     spec = next(job for job in config["jobs"] if job["key"] == "legifrance-r2-summaries")
     args = scaleway_data_jobs.build_parser().parse_args(
@@ -710,6 +711,8 @@ def test_r2_job_is_explicit_and_declares_persistent_dependencies() -> None:
     assert set(spec["env_groups"]) == {"object_storage", "postgres", "albert"}
     assert "--sync-object-storage" in spec["args"]
     assert scaleway_data_jobs.should_run(spec, args) is True
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    assert scaleway_data_jobs.should_run(spec, args) is False
 
 
 def test_redacted_handles_overlapping_secrets_longest_first() -> None:
