@@ -2126,6 +2126,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override du modèle du sélecteur (ex: mistral-medium-2508) sans toucher à la config runtime partagée.",
     )
     parser.add_argument(
+        "--generator-model",
+        default="",
+        help="Override du modèle générateur (ex: deepseek-v4-flash) sans toucher à la config runtime partagée.",
+    )
+    parser.add_argument(
         "--section-rerank-top-k",
         type=int,
         default=None,
@@ -2254,6 +2259,9 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.selector_model:
         pipeline_config.selector.model = args.selector_model
         config_adjustments.append(f"selector_model={args.selector_model}")
+    if args.generator_model:
+        pipeline_config.generation.model = args.generator_model
+        config_adjustments.append(f"generator_model={args.generator_model}")
     if args.section_rerank_top_k is not None:
         pipeline_config.aggregation.section_rerank_top_k = args.section_rerank_top_k
         config_adjustments.append(f"section_rerank_top_k={args.section_rerank_top_k}")

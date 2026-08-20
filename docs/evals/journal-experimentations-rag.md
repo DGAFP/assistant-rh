@@ -576,3 +576,58 @@ la place d'un article juridique lexicalement proche mais hors sujet).
 sélecteur conserve L621-10, L621-11 et la section MATTE « Modalités de prise en
 compte de la journée de solidarité » ; la réponse finale utilise les trois
 apports complémentaires.
+
+---
+
+## Run — `candidate_generator_dsv4flash_20260820` (20/08, en cours) — candidat générateur deepseek-v4-flash
+
+**Objet** : premier A/B générateur via le nouveau flag `--generator-model`
+(ajouté à `src/goldset/eval.py` ce jour, même mécanique d'override que
+`--selector-model` : surcharge locale au run, config partagée intacte).
+Candidat : `deepseek-v4-flash` (API Albert) à la place d'`openweight-large`.
+
+**Amorce** : screening local du jour (base locale seedée de staging, juge
+mistral single-shot) — run local 217 : judge_pass 0,663 vs 0,602 pour le run
+staging 206 apparié, 17 gains / 11 pertes / 22 double-échecs. Encourageant mais
+single-shot et corpus SP ré-embeddé entre les deux runs → validation staging.
+
+**Protocole** : panel `baseline_v1` (98 q), scope `per-question`, config live
+staging (seule surcharge : `generator_model=deepseek-v4-flash`), RAGAS sauté,
+juge souverain Scaleway `mistral-medium-3.5-128b` en vote majoritaire à 3.
+Baseline appariée : **run #206 `baseline_dev_mistral_judge_20260819`**
+(0,602 ; même juge, mêmes votes, même panel). Code : dev @600c8f5 + flag.
+
+**Résultats du run #215** : 98/98 sans erreur, coût juge 3,22 € (couverture complète).
+
+| Mesure | Run #215 (deepseek) | Baseline #206 (openweight) | Delta |
+|---|---:|---:|---:|
+| judge_pass (maj-3) | **0,6531** (64/98) | 0,6020 (59/98) | **+0,0511** |
+| doc_recall | 0,6996 | 0,7039 | −0,0043 |
+| retrieval_gap_rate | 0,235 | 0,224 | +0,011 |
+
+Lecture appariée : **17 gains / 12 pertes, net +5** (47 double-pass, 22
+double-échec). Le retrieval est identique par construction (doc_recall et gap
+plats) — le delta est bien porté par la génération. Parmi les gains : **q192,
+q213, q221**, c'est-à-dire les 3 cibles nommées restantes de l'adoption P1R2
+(run 156), plus q20/q218 (les questions « mécanisme » du gate #360). Pertes
+notables : q13 (rupture conventionnelle — deepseek y hallucine des barèmes,
+échec déjà vu au screening local : faiblesse reproductible du candidat), q3,
+q4. Familles d'échec : 16 retrieval_gap / 10 incomplete / 7
+material_contradiction / 1 wrong_law — même structure que la baseline (le
+modèle ne déplace pas la typologie d'échecs).
+
+**Lecture** : +5,1 pts sous le juge souverain maj-3 à périmètre constant, net
++5 sur 29 flips — au-dessus de la baseline mais un 17/12 n'est pas significatif
+seul (test des signes p≈0,46) ; c'est la **convergence des deux étages**
+(screening local 0,663 single-shot, staging 0,653 maj-3, gains recoupés dont
+les cibles historiques) qui rend le signal crédible. deepseek-v4-flash est en
+outre nettement plus rapide (~19 s/question en génération locale vs
+openweight-large) et gratuit côté Albert. Vigilance : les hallucinations de
+barèmes chiffrés (q13) — à traiter par prompt ou garde-fou avant toute bascule
+prod. Décision d'adoption : à l'appréciation de l'équipe ; le cas échéant,
+`update_rag_config` staging `v3_generator_model=deepseek-v4-flash` hors fenêtre
+de run, rollback en 1 UPDATE.
+
+**Infra** : premier run du banc local (docker pgvector seedé de staging,
+`docs/LOCAL_DEV.md`) + nouveau flag `--generator-model` dans `eval.py`
+(override au run, config partagée intacte, tracé dans `config_adjustments`).
