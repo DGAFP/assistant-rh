@@ -34,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--legifrance", type=parse_bool, default=False)
     parser.add_argument("--pdf-sources", type=parse_bool, default=False)
     parser.add_argument("--embeddings", type=parse_bool, default=False)
+    parser.add_argument("--r2", type=parse_bool, default=False)
     parser.add_argument("--run-ingestion", type=parse_bool, default=False)
     parser.add_argument("--run-embeddings", type=parse_bool, default=False)
     parser.add_argument("--service-public-fiche-config", default="config/service_public_fiches.json")
@@ -46,7 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
     # (ni ingestion Postgres, ni backfill embeddings) ; `apply` (défaut) =
     # comportement historique. Le gating prod (apply prod = confirmation
     # explicite) est câblé avec le workflow en PR-3.
-    parser.add_argument("--mode", choices=("plan", "apply"), default="apply")
+    parser.add_argument("--mode", choices=("plan", "generate", "apply"), default="apply")
+    parser.add_argument("--r2-reviewed-cache", type=parse_bool, default=False)
+    parser.add_argument("--r2-cache-source-env", choices=("staging", "prod"), default="staging")
+    parser.add_argument("--r2-limit", type=int, default=0)
+    parser.add_argument("--r2-allow-cache-misses", type=parse_bool, default=False)
     # Chaîne delta quotidienne (#250) : ajoute --delta aux jobs medallion+ingest
     # SP/Legi (et --from-grist au medallion SP) pour ne (re)traiter que le
     # new/changed. Le chemin legacy (upsert-all) reste le défaut.
@@ -348,6 +353,8 @@ def should_run(spec: dict[str, Any], args: argparse.Namespace) -> bool:
             return False
     if domain == "embeddings" and not args.embeddings:
         return False
+    if domain == "r2" and not getattr(args, "r2", False):
+        return False
     if os.getenv("GITHUB_EVENT_NAME") == "push" and spec.get("auto_start_on_push") is False:
         return False
     if domain == "embeddings":
@@ -482,17 +489,26 @@ def upsert_and_start_jobs(args: argparse.Namespace) -> int:
     ]
     context = {
         "target_env": args.target_env,
+        "mode": getattr(args, "mode", "apply"),
+        "r2_cache_source_env": getattr(args, "r2_cache_source_env", "staging"),
         "service_public_fiche_config": args.service_public_fiche_config,
         "legifrance_article_ids_json": args.legifrance_article_ids_json,
     }
-    definitions = list_definitions(project_id, region, secrets=secrets, dry_run=args.dry_run)
     selected_specs = [spec for spec in config["jobs"] if should_run(spec, args)]
+    if (
+        any(spec.get("key") == "legifrance-r2-summaries" for spec in selected_specs)
+        and getattr(args, "mode", "apply") == "apply"
+        and not getattr(args, "r2_reviewed_cache", False)
+    ):
+        raise RuntimeError("R2 apply requires --r2-reviewed-cache true after human review.")
     validate_wipe_existing_chunks_selection(selected_specs, args)
     selected_specs = order_specs_for_wipe_existing_chunks(selected_specs, args)
 
     if not selected_specs:
         print("No Scaleway data engineering job selected.")
         return 0
+
+    definitions = list_definitions(project_id, region, secrets=secrets, dry_run=args.dry_run)
 
     for spec in selected_specs:
         name = config["job_name_template"].format(target_env=args.target_env, key=spec["key"])
@@ -507,6 +523,14 @@ def upsert_and_start_jobs(args: argparse.Namespace) -> int:
             job_id = create_definition(spec, name, image, project_id, region, secrets=secrets, dry_run=args.dry_run)
 
         command_args = render_args(spec["args"], context)
+        if spec.get("key") == "legifrance-r2-summaries":
+            if getattr(args, "r2_reviewed_cache", False):
+                command_args.append("--reviewed-cache")
+            if getattr(args, "r2_allow_cache_misses", False):
+                command_args.append("--allow-cache-misses")
+            r2_limit = int(getattr(args, "r2_limit", 0) or 0)
+            if r2_limit > 0:
+                command_args.extend(["--limit", str(r2_limit)])
         if getattr(args, "delta", False):
             command_args.extend(delta_args_for(str(spec.get("key") or "")))
         if spec.get("key") == "service-public-ingestion" and getattr(args, "wipe_existing_chunks", False):

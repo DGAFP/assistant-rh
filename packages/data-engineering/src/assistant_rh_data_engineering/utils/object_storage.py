@@ -119,6 +119,23 @@ class ScalewayObjectStorageSync:
         ]
         subprocess.run(cmd, check=True, env=self._base_env())
 
+    def sync_directory(
+        self,
+        source_dir: Path,
+        bucket: str,
+        prefix: str,
+        *,
+        delete: bool = False,
+    ) -> str:
+        """Persist a derived-artifact directory under an explicit S3 prefix."""
+        self._sync_dir(source_dir, bucket, prefix, delete=delete)
+        return f"s3://{bucket}/{prefix.strip('/')}/"
+
+    def download_directory(self, bucket: str, prefix: str, destination_dir: Path) -> str:
+        """Hydrate a local derived-artifact directory from an explicit prefix."""
+        self._download_dir(bucket, prefix, destination_dir)
+        return f"s3://{bucket}/{prefix.strip('/')}/"
+
     def _bucket_for_layer(self, layer: str) -> str:
         if layer == "bronze":
             return self.config.bucket_bronze

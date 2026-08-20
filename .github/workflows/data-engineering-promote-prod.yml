@@ -18,14 +18,39 @@ on:
           - mso
           - pdf_sources
           - embeddings
+          - r2
       mode:
-        description: "plan = detection seule (aucune mutation) ; apply = ingestion/reconciliation"
+        description: "plan/apply pour les ingestions ; generate est réservé à source=r2"
         required: true
         default: "plan"
         type: choice
         options:
           - plan
           - apply
+          - generate
+      r2_reviewed_cache:
+        description: "Confirmation obligatoire avant apply R2 : le cache généré a été revu"
+        required: true
+        default: false
+        type: boolean
+      r2_cache_source_env:
+        description: "Cache Gold à promouvoir avant la cible"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - prod
+      r2_limit:
+        description: "Limiter le nombre d'articles R2 (0 = tout le delta)"
+        required: true
+        default: 0
+        type: number
+      r2_allow_cache_misses:
+        description: "Apply R2 partiel malgré des caches manquants"
+        required: true
+        default: false
+        type: boolean
       delta:
         description: "Reconciliation incrementale canonique (Service-Public via Grist, Legifrance via Grist + PISTE)"
         required: true
@@ -90,6 +115,7 @@ jobs:
       pdf_sources: ${{ steps.plan.outputs.pdf_sources }}
       pdf_sources_ministry: ${{ steps.plan.outputs.pdf_sources_ministry }}
       embeddings: ${{ steps.plan.outputs.embeddings }}
+      r2: ${{ steps.plan.outputs.r2 }}
       run_embeddings: ${{ steps.plan.outputs.run_embeddings }}
       has_builds: ${{ steps.plan.outputs.has_builds }}
       has_runs: ${{ steps.plan.outputs.has_runs }}
@@ -115,7 +141,7 @@ jobs:
   build-prod-images:
     runs-on: ubuntu-latest
     needs: plan
-    if: ${{ needs.plan.outputs.mode == 'apply' && needs.plan.outputs.has_builds == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.skip_builds) }}
+    if: ${{ (needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_builds == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.skip_builds) }}
     timeout-minutes: 90
     environment: scaleway-production
     strategy:
@@ -165,7 +191,7 @@ jobs:
     needs:
       - plan
       - build-prod-images
-    if: ${{ always() && needs.plan.outputs.mode == 'apply' && needs.plan.outputs.has_runs == 'true' && (needs.build-prod-images.result == 'success' || (needs.build-prod-images.result == 'skipped' && github.event_name == 'workflow_dispatch' && inputs.skip_builds)) }}
+    if: ${{ always() && (needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_runs == 'true' && (needs.build-prod-images.result == 'success' || (needs.build-prod-images.result == 'skipped' && github.event_name == 'workflow_dispatch' && inputs.skip_builds)) }}
     timeout-minutes: 240
     environment: scaleway-production
     strategy:
@@ -200,6 +226,10 @@ jobs:
       DELTA_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.delta || false }}
       EMBEDDING_SOURCE: ${{ matrix.embedding_source }}
       EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
+      R2_REVIEWED_CACHE: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_reviewed_cache || false }}
+      R2_CACHE_SOURCE_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_cache_source_env || 'staging' }}
+      R2_LIMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_limit || 0 }}
+      R2_ALLOW_CACHE_MISSES: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_allow_cache_misses || false }}
 
     steps:
       - name: Checkout code
@@ -228,11 +258,16 @@ jobs:
             --pdf-sources "${{ matrix.pdf_sources }}" \
             --pdf-sources-ministry "${{ matrix.pdf_sources_ministry }}" \
             --embeddings "${{ matrix.embeddings }}" \
+            --r2 "${{ matrix.r2 }}" \
             --run-ingestion "${RUN_INGESTION}" \
             --wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}" \
             --run-embeddings "${{ needs.plan.outputs.run_embeddings }}" \
             --embedding-source "${EMBEDDING_SOURCE}" \
             --embedding-only-column "${EMBEDDING_ONLY_COLUMN}" \
+            --r2-reviewed-cache "${R2_REVIEWED_CACHE}" \
+            --r2-cache-source-env "${R2_CACHE_SOURCE_ENV}" \
+            --r2-limit "${R2_LIMIT}" \
+            --r2-allow-cache-misses "${R2_ALLOW_CACHE_MISSES}" \
             --service-public-fiche-config "config/service_public_fiches.json" \
             --legifrance-article-ids-json "config/legifrance_article_cids.json" \
             --wait

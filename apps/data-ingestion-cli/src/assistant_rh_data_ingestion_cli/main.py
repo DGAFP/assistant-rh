@@ -49,6 +49,10 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
         "assistant_rh_data_engineering.jobs.legifrance_url_backfill",
         "Backfill Legifrance display URLs from silver artifacts.",
     ),
+    ("legifrance", "r2-summaries"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.r2_article_summaries",
+        "Plan, generate, or apply reviewed R2 legal article summaries.",
+    ),
     ("mi", "medallion"): CommandSpec(
         "assistant_rh_data_engineering.jobs.pdf_sources_medallion",
         "Run the MI (Intérieur) PDF sources medallion pipeline.",
