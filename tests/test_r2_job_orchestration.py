@@ -158,6 +158,62 @@ def test_generate_hydrates_staging_and_checkpoints_to_prod_gold(monkeypatch, tmp
     assert report["cache_persisted_to"].startswith("s3://gold-bucket/prod/gold/legifrance/")
 
 
+def test_generate_limit_advances_past_cached_articles(monkeypatch, tmp_path) -> None:
+    # generate n'écrit rien en base : sans ce comportement, deux runs
+    # successifs à --limit 1 resélectionneraient toujours C1 (cache-hit) et le
+    # corpus ne progresserait jamais par lots.
+    monkeypatch.setenv("TEST_R2_DSN", "postgresql://fake")
+    monkeypatch.setenv("ALBERT_API_KEY", "clef-test")
+    articles = [
+        {"cid": "C1", "chunk_text": "texte un"},
+        {"cid": "C2", "chunk_text": "texte deux"},
+    ]
+    monkeypatch.setattr(job, "fetch_article_rows", lambda *a, **k: [dict(r) for r in articles])
+    monkeypatch.setattr(job, "fetch_existing_variants", lambda *a, **k: {})
+    monkeypatch.setattr(job, "_table_has_index_variant", lambda *a, **k: True)
+    monkeypatch.setattr(job.psycopg, "connect", lambda dsn, **k: _FakeConn())
+
+    summarizer = job.AlbertArticleSummarizer(model="m-test")
+    cache = job.ArticleSummaryCache(tmp_path / "cache", summarizer.name, summarizer.version)
+    cache.put("C1", job.source_checksum("texte un"), {"summary": "résumé déjà généré et revu du premier article"})
+
+    seen: list[list[str]] = []
+
+    def fake_summarize(articles_in, summarizer_in, cache_in, *, max_workers, on_result):
+        seen.append([a["uid"] for a in articles_in])
+        for art in articles_in:
+            on_result(SummaryBatchItem(uid=art["uid"], checksum="x", status="ok", summary=f"résumé {art['uid']}"))
+
+    monkeypatch.setattr(job, "summarize_articles", fake_summarize)
+    args = argparse.Namespace(
+        dsn_env="TEST_R2_DSN",
+        env_file=str(tmp_path / "absent.env"),
+        mode="generate",
+        generate=False,
+        apply=False,
+        reviewed_cache=False,
+        allow_cache_misses=False,
+        sync_object_storage=False,
+        target_env="staging",
+        cache_source_env="staging",
+        model="m-test",
+        cache_dir=str(tmp_path / "cache"),
+        uid=[],
+        uids_file=None,
+        schema="public",
+        table="rag_chunks_dgafp",
+        limit=1,
+        out=None,
+        max_workers=1,
+    )
+
+    report = job.run(args)
+
+    assert seen == [["C2"]]
+    assert report["selected_for_run"] == 1
+    assert report["summaries_missing"] == 2
+
+
 def test_run_limit_report_and_stale_skip(monkeypatch, tmp_path, capsys) -> None:
     articles = [
         {"cid": "C1", "chunk_text": "texte un"},

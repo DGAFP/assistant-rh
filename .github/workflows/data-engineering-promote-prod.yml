@@ -192,7 +192,8 @@ jobs:
       - plan
       - build-prod-images
     if: ${{ always() && (needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_runs == 'true' && (needs.build-prod-images.result == 'success' || (needs.build-prod-images.result == 'skipped' && github.event_name == 'workflow_dispatch' && inputs.skip_builds)) }}
-    timeout-minutes: 240
+    # > job_timeout R2 (14400s) + marge : --wait doit voir le statut terminal.
+    timeout-minutes: 250
     environment: scaleway-production
     strategy:
       fail-fast: false
@@ -261,7 +262,7 @@ jobs:
             --r2 "${{ matrix.r2 }}" \
             --run-ingestion "${RUN_INGESTION}" \
             --wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}" \
-            --run-embeddings "${{ needs.plan.outputs.run_embeddings }}" \
+            --run-embeddings "${{ needs.plan.outputs.mode == 'apply' && needs.plan.outputs.run_embeddings || 'false' }}" \
             --embedding-source "${EMBEDDING_SOURCE}" \
             --embedding-only-column "${EMBEDDING_ONLY_COLUMN}" \
             --r2-reviewed-cache "${R2_REVIEWED_CACHE}" \

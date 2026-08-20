@@ -251,7 +251,8 @@ jobs:
       - plan
       - build-staging-images
     if: ${{ needs.plan.result == 'success' && (needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_runs == 'true' && needs.build-staging-images.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.run_preview_jobs || needs.plan.outputs.r2 == 'true'))) }}
-    timeout-minutes: 180
+    # > job_timeout R2 (14400s) + marge : --wait doit voir le statut terminal.
+    timeout-minutes: 250
     environment: scaleway-staging
     strategy:
       fail-fast: false

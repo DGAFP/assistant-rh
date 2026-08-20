@@ -324,10 +324,12 @@ def plan_mode_overrides(mode: str, run_ingestion: bool, run_embeddings: bool) ->
     """En mode ``plan`` on ne mute rien : ni ingestion Postgres, ni backfill
     embeddings. Le socle #288 sépare la détection (``plan``) de la
     réconciliation (``apply``) ; ``apply`` conserve le comportement historique.
+    ``generate`` (réservé à R2) alimente le cache Gold sans écrire en base :
+    les compagnons mutants restent neutralisés comme en ``plan``.
 
     Renvoie ``(run_ingestion, run_embeddings)`` effectifs.
     """
-    if mode == "plan":
+    if mode in {"plan", "generate"}:
         return False, False
     return run_ingestion, run_embeddings
 
