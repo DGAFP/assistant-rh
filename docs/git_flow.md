@@ -3,15 +3,15 @@
 Assistant RH uses three long-lived branches before production:
 
 ```text
-feature branch -> dev -> staging -> main -> release-please PR -> GitHub Release -> production deploy
+feature branch -> dev -> staging -> release-please promotion PR -> main/tag -> production deploy
 ```
 
 ```mermaid
 flowchart TD
     F["feature branch"] -->|"squash PR · conventional title"| DEV["dev<br/>integration branch"]
     DEV -->|"promotion PR · merge commit"| STG["staging<br/>deployable test branch"]
-    STG -->|"promotion PR · merge commit"| MAIN["main<br/>release branch"]
-    MAIN -->|"release-please PR (merge)"| REL["GitHub Release<br/>tag vX.Y.Z"]
+    STG -->|"release-please PR · merge commit"| MAIN["main<br/>release branch"]
+    MAIN -->|"automatic publication"| REL["GitHub Release<br/>tag vX.Y.Z"]
 
     STG -.->|push| S1["Streamlit deploy · staging (always)"]
     STG -.->|"push · if supabase/migrations or seed paths"| S2["DB migrations · staging"]
@@ -33,7 +33,7 @@ Solid arrows are branch promotions (merge policy on the label); dashed arrows ar
 
 - `dev` is the integration branch for feature work. Feature PRs target `dev`.
 - `staging` is the deployable test branch. Merging `dev` into `staging` deploys the staging app and runs staging data preview jobs.
-- `main` is the release branch. Merging `staging` into `main` lets release-please prepare the next release.
+- `main` is the release branch. The release-please PR is also the promotion of the validated `staging` revision into `main`.
 
 Do not use `main` as the default target for feature work. Production deployment is gated by a published GitHub Release, not by an ordinary merge to `main`.
 
@@ -44,19 +44,17 @@ Do not use `main` as the default target for feature work. Production deployment 
 3. Squash feature PRs into `dev` with a conventional PR title, for example `feat: add trace filters` or `fix: harden staging deploy`.
 4. After local validation on `dev`, open a promotion PR from `dev` to `staging`.
 5. Merge `dev -> staging` with a merge commit, not squash.
-6. Verify the staging deployment, migrations, and staging data preview jobs.
-7. Open a promotion PR from `staging` to `main`.
-8. Merge `staging -> main` with a merge commit, not squash.
-9. Wait for release-please to open or update its release PR against `main`.
-10. Merge the release-please PR to create the version bump, changelog update, tag, and GitHub Release.
-11. The published GitHub Release triggers production migrations and Streamlit production deployment.
+6. Release Please automatically creates or updates one draft PR against `main`. Its head contains both `main` and the exact `staging` revision, followed by the version and changelog update.
+7. The workflow waits for all push workflows attached to that staging SHA, refreshes `uv.lock` with a GitHub-signed commit, and leaves the PR in draft on any failure. It marks the PR ready only when staging is unchanged and green.
+8. Review and merge that release/promotion PR with a merge commit, not squash.
+9. The push to `main` publishes the tag and GitHub Release without opening another PR.
+10. The published GitHub Release triggers production migrations and Streamlit production deployment.
 
 Useful PR commands:
 
 ```bash
 gh pr create -R DGAFP/assistant-rh --base dev --head <feature-branch>
 gh pr create -R DGAFP/assistant-rh --base staging --head dev --title "chore: promote dev to staging"
-gh pr create -R DGAFP/assistant-rh --base main --head staging --title "chore: promote staging to main"
 ```
 
 ## Merge Policy
@@ -70,9 +68,9 @@ Use squash merges for feature PRs into `dev`, and make the squash commit title c
 Use merge commits for branch promotions:
 
 - `dev -> staging`: preserve the conventional feature/fix commits that were tested locally.
-- `staging -> main`: preserve those commits so release-please can compute the next version and release notes.
+- Release Please promotion -> `main`: preserve the candidate merge and the exact staging ancestry used to compute the version and release notes.
 
-Do not squash promotion PRs. If a promotion PR is squashed into `main`, release-please only sees the promotion title and may compute the wrong release version.
+Do not open a separate `staging -> main` PR and do not squash the Release Please promotion PR. Squashing would discard the staging ancestry used by the next release candidate.
 
 ## Deployment Behavior
 
@@ -81,13 +79,14 @@ On push to `staging`:
 - `.github/workflows/streamlit-deploy-staging.yml` deploys Streamlit to `scaleway-staging`.
 - `.github/workflows/db-migrations-scaleway.yml` pushes Supabase migrations to the staging database when migration or seed paths changed.
 - `.github/workflows/data-engineering-preview-staging.yml` builds selected staging job images and runs staging data preview jobs for changed data-engineering sources.
+- `.github/workflows/release-please.yml` prepares the single draft release/promotion PR, refreshes its lockfile, and marks it ready after the staging workflows pass.
 
 The automatic staging data preview runs selected medallion, ingestion, and embeddings jobs for changed Service-Public or Legifrance sources. It keeps `wipe_existing_chunks=false`. MATTE embeddings remain manual.
 
 On push to `main`:
 
-- `.github/workflows/release-please.yml` opens or updates the release-please PR.
-- Production does not deploy from the ordinary promotion merge itself.
+- `.github/workflows/release-please.yml` detects the merged pending release PR and publishes its tag and GitHub Release; it cannot open a second release PR.
+- Production still deploys from the published release event, not directly from the branch push.
 
 On release publication:
 
@@ -98,7 +97,9 @@ Production data ingestion/promotion remains manual through workflow dispatch.
 
 ## Release-Please
 
-Release-please reads conventional commits on `main`, updates `CHANGELOG.md`, bumps version fields, and publishes tags such as `v0.8.1`.
+Release Please constructs `release-candidate` by merging the current `main` baseline with the protected `staging` revision. It reads the conventional commits from that combined history, updates `CHANGELOG.md`, bumps version fields, and opens one draft PR against `main`. The candidate and generated release branches are automation-owned and must not be edited manually.
+
+The release PR remains a draft until `CI Tests`, `CodeQL`, `Conformance`, `Streamlit Deploy Staging`, and every other push workflow discovered for the same staging SHA have completed successfully. Its merge publishes a tag such as `v0.8.1` without a second PR.
 
 Current release configuration:
 

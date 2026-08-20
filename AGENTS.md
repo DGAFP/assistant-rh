@@ -41,8 +41,8 @@ This repository is normally used as a bare/worktree workspace under `/Users/luis
 - After creating a worktree in a non-interactive agent session, run `wt step copy-ignored` from the new worktree so `.env` and other ignored local files are copied when configured.
 - Keep changes scoped and reviewable. Avoid drive-by refactors.
 - Use conventional commit messages such as `fix: ...`, `feat: ...`, `docs: ...`, `chore: ...`.
-- Branch flow: feature PRs target `dev`; promotion PRs go `dev` -> `staging` -> `main`; release-please handles the final production release PR from `main`.
-- Preserve release-please semantics: squash feature PRs into `dev` with conventional titles, but use merge commits for `dev` -> `staging` and `staging` -> `main` promotions.
+- Branch flow: feature PRs target `dev`; promotion PRs go `dev` -> `staging`; release-please then opens the single release/promotion PR from the validated staging revision to `main`.
+- Preserve release-please semantics: squash feature PRs into `dev` with conventional titles, but use merge commits for `dev` -> `staging` and for the release-please promotion into `main`.
 - Prefer creating feature PRs directly with `gh pr create -R DGAFP/assistant-rh --base dev --head <branch>`.
 - See `docs/git_flow.md` for the full branch, staging, release, and rollback procedure.
 

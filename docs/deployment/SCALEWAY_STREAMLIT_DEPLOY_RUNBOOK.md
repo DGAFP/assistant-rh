@@ -18,19 +18,21 @@ The canonical branch and release procedure is documented in `docs/git_flow.md`.
 ## Release creation (release-please)
 
 - Workflow: `.github/workflows/release-please.yml`
-- Trigger: push to `main` (and manual `workflow_dispatch`)
+- Trigger: push to protected `staging` to prepare the PR, then push to `main` to publish the merged release
 - Config: `release-please-config.json` + `.release-please-manifest.json`
 - Strategy: `release-type=python` + `extra-files` so release PRs also bump version fields in `pyproject.toml` and `package.json` files
 - Auth token: `RELEASE_PLEASE_TOKEN` secret (PAT/GitHub App token). This is required so release-please-created tags/releases can trigger downstream workflows (production deploy on `release.published`).
-- Required token repository permissions: `contents: write`, `pull-requests: write`, `issues: write`.
+- Required token repository permissions: `actions: read`, `contents: write`, `pull-requests: write`, `issues: write`.
+- Commit signatures: candidate, version and lockfile commits use the built-in GitHub Actions app token so GitHub marks them verified. `RELEASE_PLEASE_TOKEN` is reserved for PR state changes that must trigger checks and for release publication.
 
 Flow:
 
 1. Merge `dev` to `staging` with a merge commit and validate staging.
-2. Merge `staging` to `main` with a merge commit.
-3. release-please opens/updates a release PR from conventional commits on `main`.
-4. Merging that PR creates a tag + GitHub Release (for example `v0.3.1`).
-5. The published release event triggers production migrations, then the production deployment workflow.
+2. Release Please merges `main` and the exact staging SHA into its automation-owned candidate, calculates the next version, and opens or updates one draft PR against `main`.
+3. The workflow waits for all staging workflows on that SHA, refreshes `uv.lock`, and marks the PR ready only when they are green and `staging` has not moved.
+4. Merge the Release Please PR with a merge commit. This is also the `staging -> main` promotion; do not open a separate promotion PR.
+5. The resulting `main` push publishes the tag + GitHub Release (for example `v0.8.1`) without creating another PR.
+6. The published release event triggers production migrations, then the production deployment workflow.
 
 Versioning rules:
 

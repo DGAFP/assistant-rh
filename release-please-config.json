@@ -5,8 +5,10 @@
       "release-type": "python",
       "component": "assistant-rh",
       "changelog-path": "CHANGELOG.md",
+      "draft-pull-request": true,
       "include-component-in-tag": false,
       "include-v-in-tag": true,
+      "pull-request-title-pattern": "chore(main): release ${version}",
       "extra-files": [
         {
           "type": "toml",
