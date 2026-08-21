@@ -17,7 +17,7 @@ comme générateur — et, question ouverte en fin de journée, comme sélecteur
 |---|---|---|---|
 | H1 | deepseek-v4-flash ≥ openweight-large comme générateur, à périmètre constant | **Soutenue** (non significative seule, convergente sur 2 étages) | Runs local 217 et staging #215 vs baseline #206 |
 | H2 | Les réponses deepseek sont qualitativement meilleures (utilisables), pas seulement mieux notées | **Soutenue** (revue manuelle des 29 flips) | Revue humaine ci-dessous |
-| H3 | deepseek a deux défauts de caractère : abstention (refus de conclure a contrario) et hallucination de chiffres | **Confirmée** | q3/q4/q227 (abstentions) ; q13 (barèmes inventés), reproduite local + staging |
+| H3 | deepseek a deux défauts de caractère : abstention (refus de conclure a contrario) et hallucination de chiffres | **Moitié confirmée, moitié RÉTRACTÉE (21/08)** : abstentions réelles (q3/q4/q227) ; « hallucination » q13 **requalifiée** — le barème est verbatim dans le corpus ET conforme à la fiche SP en ligne du 08/08/2026 : réforme 2026 du barème, c'est la gold answer qui est périmée. deepseek était fidèle. | Contexts q13 (runs #215/#217), fiche F31094 live ; run #206 = faux positif (corpus pré-ré-ingestion) |
 | H4 | Le judge_pass « habituel » (0,67–0,74) n'est pas comparable : il dépend du juge | **Confirmée** | Juge mistral-medium-3.5-128b plus sévère : baseline #206 = 0,602 (vs qwen3/grok 0,67–0,74 sur mêmes périmètres) |
 | H5 | Le sélecteur est un poste de pertes significatif et pourrait bénéficier de deepseek | **Confirmée sur le mécanisme** : golds jetés par le sélecteur divisés par 2 (6→3), sélection plus large (3,6 vs 2,1 docs) ; gain global modeste (+1, bruit) | Run local 218 vs 217, funnel ci-dessous |
 
@@ -80,6 +80,22 @@ comme générateur — et, question ouverte en fin de journée, comme sélecteur
      sélecteur deepseek est au moins équivalent et corrige la pathologie
      visée ; la confirmation sous juge souverain reste à faire si on veut
      l'adopter.
+
+## Addendum 21/08 — reconfirmation + correctifs de prompt (run #217)
+
+Run staging #217 `candidate_dsv4flash_promptV7_20260821` : config #215 + seul
+changement `system_prompt_V7_ancrage.md` (nouvelle ligne additive dans
+`system_prompts`, branchée via le nouveau flag `--system-prompt-name` ; la
+config runtime reste sur V6). Résultats :
+
+- **Niveau deepseek reconfirmé** : 0,6327 — troisième run souverain de la
+  config générateur deepseek (0,6531 / 0,6429 / 0,6327), tous nettement
+  au-dessus d'openweight (0,6020). La bande ±2 questions = variance maj-3.
+- **V7 non adopté** : net −2 (pertes = flip-floppers connus), a contrario ne
+  convertit que q4 (q3/q227 s'abstiennent encore, abstentions totales 4=4).
+- **q13 requalifiée** (voir H3) : réforme 2026 du barème de rupture
+  conventionnelle → gold périmée, corpus à jour, deepseek fidèle. Ouvre un
+  chantier : **audit des golds chiffrées vs corpus SP ré-ingéré le 20/08**.
 
 ## Décisions ouvertes
 

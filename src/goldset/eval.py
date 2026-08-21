@@ -2131,6 +2131,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override du modèle générateur (ex: deepseek-v4-flash) sans toucher à la config runtime partagée.",
     )
     parser.add_argument(
+        "--system-prompt-name",
+        default="",
+        help="Override du system prompt générateur (nom dans system_prompts) sans toucher à la config runtime partagée.",
+    )
+    parser.add_argument(
         "--section-rerank-top-k",
         type=int,
         default=None,
@@ -2262,6 +2267,9 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.generator_model:
         pipeline_config.generation.model = args.generator_model
         config_adjustments.append(f"generator_model={args.generator_model}")
+    if args.system_prompt_name:
+        pipeline_config.generation.system_prompt_name = args.system_prompt_name
+        config_adjustments.append(f"system_prompt_name={args.system_prompt_name}")
     if args.section_rerank_top_k is not None:
         pipeline_config.aggregation.section_rerank_top_k = args.section_rerank_top_k
         config_adjustments.append(f"section_rerank_top_k={args.section_rerank_top_k}")

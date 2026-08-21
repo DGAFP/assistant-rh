@@ -672,3 +672,54 @@ Local (+1) et staging (−1) concordent : **swap sélecteur neutre au score**.
 sélecteur openweight ; re-tester le sélecteur deepseek APRÈS les correctifs
 de prompt générateur (a contrario + interdiction de chiffres hors verbatim),
 car l'étage génération est redevenu le plafond visible.
+
+---
+
+## Run — `candidate_dsv4flash_promptV7_20260821` (21/08, en cours) — reconfirmation #215 + correctifs de prompt
+
+**Objet** : reconfirmer la config candidate (générateur deepseek, sélecteur
+openweight) en y ajoutant la seule variable prompt : nouveau
+`system_prompt_V7_ancrage.md` (ligne ADDITIVE dans system_prompts, la config
+runtime reste sur V6 ; branché au run via le nouveau flag
+`--system-prompt-name`). V7 = V6 + deux correctifs ciblés sur les modes
+d'échec de la revue du 20/08 :
+1. **Lecture a contrario** : sujet couvert par les sources mais disposition
+   demandée absente → conclure (« les textes ne prévoient pas... ») au lieu
+   de s'abstenir (cible : q3, q4, q227).
+2. **Chiffres verbatim uniquement** : aucun taux/barème/montant/durée qui ne
+   figure pas mot pour mot dans les sources (cible : q13 barèmes hallucinés).
+
+**Protocole** : identique au #215 (98 q, per-question, juge souverain mistral
+maj-3, sans RAGAS). Baseline appariée : **#215** (0,6531). Si ≥ #215 : le
+niveau deepseek est reconfirmé ET les correctifs sont validés ; regarder
+spécifiquement q3/q4/q227/q13 et le taux d'abstentions.
+
+**Résultats du run #217** : 98/98, coût juge 3,26 €.
+
+- judge_pass **0,6327** vs 0,6531 (#215) — net **−2** (5 gains / 7 pertes,
+  29 double-échecs). Les pertes sont majoritairement les flip-floppers connus
+  (q20, q213, q218, q660… basculent d'un run à l'autre à config quasi
+  constante) : pas de régression attribuable au prompt, mais **aucun gain**.
+- Cibles du correctif a contrario : **q4 convertie**, q3 et q227 s'abstiennent
+  encore — 1/3, et le nombre total d'abstentions est inchangé (4 vs 4).
+  Le paragraphe de prompt ne suffit pas contre ce réflexe.
+- **q13 requalifiée — découverte majeure du run** : le barème « halluciné »
+  (1/6e, 1/5e, 1/4, 1/3, plafond 1/24) est **verbatim dans le corpus**, et la
+  fiche service-public.fr F31094 en ligne (« Vérifié le 08/08/2026 ») porte
+  les mêmes valeurs : **le barème de la rupture conventionnelle a été réformé
+  en 2026 et c'est la GOLD ANSWER qui est périmée** (1/4, 2/5, 1/2, 3/5 =
+  ancien barème). Le PASS d'openweight au #206 était un faux positif (run du
+  19/08, la veille de la ré-ingestion SP : son contexte portait encore
+  l'ancienne fiche). deepseek n'a jamais halluciné sur q13 — il était fidèle
+  au corpus à jour. → **q13 en curation goldset**, et audit à prévoir des
+  golds chiffrées vs le corpus SP ré-ingéré le 20/08 (classe de dérive
+  goldset-vs-corpus créée par la ré-ingestion en cours de campagne).
+
+**Lecture** : (1) le niveau deepseek est **reconfirmé** — 3 runs souverains
+(0,6531 / 0,6429 / 0,6327) tous nettement au-dessus d'openweight (0,6020) ;
+la bande ±2 questions entre runs donne la variance maj-3 à config quasi
+constante. (2) **V7 non adopté** en l'état : pas de gain net, a contrario ne
+convertit qu'1 cible sur 3, et le vrai fix de q13 est goldset, pas prompt.
+Le garde-fou « chiffres verbatim » reste défendable sur le principe mais n'a
+rien démontré ici. (3) Prochain levier réel : curation goldset post
+ré-ingestion, avant tout nouveau tuning de prompt.
