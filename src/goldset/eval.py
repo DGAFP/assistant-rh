@@ -30,6 +30,7 @@ import psycopg
 from assistant_rh_rag_pipeline import PipelineResult, create_pipeline
 from assistant_rh_rag_pipeline.admin import get_rag_config, runtime_config_to_rag_config
 from assistant_rh_rag_pipeline.config import RAGConfig
+from assistant_rh_rag_pipeline.db_helpers import get_prompt_content, list_prompts
 from assistant_rh_rag_pipeline.models import metadata_document_id
 from assistant_rh_rag_pipeline.query_processor import _fold as _fold_text
 from dotenv import load_dotenv
@@ -241,8 +242,11 @@ def _git_sha() -> str:
         return ""
 
 
-def config_fingerprint(config: RAGConfig) -> str:
-    payload = json.dumps(config.to_dict(), sort_keys=True, ensure_ascii=False, default=str)
+def config_fingerprint(config: RAGConfig, extra: dict[str, Any] | None = None) -> str:
+    payload_source: dict[str, Any] = config.to_dict()
+    if extra:
+        payload_source = {**payload_source, **extra}
+    payload = json.dumps(payload_source, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -2133,7 +2137,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--system-prompt-name",
         default="",
-        help="Override du system prompt générateur (nom dans system_prompts) sans toucher à la config runtime partagée.",
+        help=(
+            "Override du system prompt générateur (nom dans system_prompts) sans toucher à la config runtime "
+            "partagée. Le nom est validé contre la table au démarrage. Invariant du générateur : si le prompt "
+            "ne contient pas le heading « ## Couverture des sources complémentaires », le bloc legacy est "
+            "APPENDU automatiquement — ce flag ne permet donc pas de tester la suppression ou la reformulation "
+            "de cette section."
+        ),
     )
     parser.add_argument(
         "--section-rerank-top-k",
@@ -2268,6 +2278,14 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
         pipeline_config.generation.model = args.generator_model
         config_adjustments.append(f"generator_model={args.generator_model}")
     if args.system_prompt_name:
+        # load_prompt() retombe silencieusement sur generator.md quand le nom
+        # est introuvable ou inactif sur le DSN cible : le run mesurerait le
+        # prompt générique tout en étant consigné sous le nom demandé.
+        if get_prompt_content(args.system_prompt_name, render_today=False) is None:
+            available = ", ".join(list_prompts("generator")) or "(aucun)"
+            raise RuntimeError(
+                f"--system-prompt-name {args.system_prompt_name!r} introuvable ou inactif sur le DSN cible. Prompts générateur actifs : {available}"
+            )
         pipeline_config.generation.system_prompt_name = args.system_prompt_name
         config_adjustments.append(f"system_prompt_name={args.system_prompt_name}")
     if args.section_rerank_top_k is not None:
@@ -2288,7 +2306,20 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.doc_entire_threshold_wide is not None:
         pipeline_config.context.doc_entire_threshold_wide = args.doc_entire_threshold_wide
         config_adjustments.append(f"doc_entire_threshold_wide={args.doc_entire_threshold_wide}")
-    config_hash = config_fingerprint(pipeline_config)
+    # Le fingerprint doit couvrir le CONTENU du prompt générateur, pas
+    # seulement son nom : le corps vit en base et peut être édité en place —
+    # sinon --skip-if-started dédupliquerait un run post-édition contre le run
+    # pré-édition. {today} n'est pas rendu pour rester stable d'un jour à
+    # l'autre ; la même chaîne de fallback que le générateur est appliquée.
+    resolved_prompt = (
+        get_prompt_content(pipeline_config.generation.system_prompt_name, render_today=False)
+        or get_prompt_content("generator.md", render_today=False)
+        or ""
+    )
+    config_hash = config_fingerprint(
+        pipeline_config,
+        extra={"generator_system_prompt_sha": hashlib.sha256(resolved_prompt.encode("utf-8")).hexdigest()},
+    )
     git_sha = _git_sha()
     run_label = args.run_label or f"{datetime.now(tz=UTC).strftime('%Y%m%dT%H%M%SZ')}_{args.goldset_name}"
     output_dir = args.output_dir or (DEFAULT_OUTPUT_ROOT / args.goldset_name / run_label)
@@ -2389,6 +2420,9 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     items: list[EvalItem] = []
     status = "completed"
     error = ""
+    # Compteur cumulatif du FallbackLLMClient (un seul client par run) : le
+    # delta entre deux items dit si CET item a été servi par le fallback.
+    generator_fallbacks_seen = 0
 
     item_conn: psycopg.Connection[Any] | None = None
     try:
@@ -2416,6 +2450,21 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 scaleway_api_key=api_key,
                 retrieval_scope=resolve_question_scope(question, args.ministry_scope),
             )
+            provider_used = item.metadata.get("generator_provider_used")
+            provider_configured = item.metadata.get("generator_provider")
+            fallback_count = int(item.metadata.get("generator_fallback_count") or 0)
+            item_used_fallback = bool(
+                (provider_used and provider_configured and provider_used != provider_configured) or fallback_count > generator_fallbacks_seen
+            )
+            generator_fallbacks_seen = max(generator_fallbacks_seen, fallback_count)
+            if args.generator_model and item_used_fallback and not item.error:
+                # Avec un override --generator-model, une réponse servie par le
+                # fallback mesure un autre modèle que celui consigné dans le
+                # run : l'item est invalidé plutôt que crédité au candidat.
+                item.error = (
+                    f"generator fallback: réponse servie par {provider_used or 'fallback'} au lieu de "
+                    f"{provider_configured} ({args.generator_model}) — item invalide pour l'A/B"
+                )
             items.append(item)
             if item_conn is not None and run_id is not None:
                 for attempt in range(1, 4):
