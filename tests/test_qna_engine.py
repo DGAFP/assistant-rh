@@ -364,7 +364,7 @@ def test_matte_pipeline_smoke_over_fakes(tmp_path: Path) -> None:
     assert document["source"] == "matte"
     assert {c["source"] for c in chunks} == {"MATTE"}
     assert {c["role"] for c in chunks} >= {"Q_ONLY", "QA_COMPOSITE", "A_ATOMIC"}
-    assert grist.writebacks and grist.writebacks[-1][1]["statut_ingestion"] == "ok"
+    assert grist.writebacks and grist.writebacks[-1][1] == {"ingere_staging": True}
     assert db.runs and db.runs[0]["ministere"] == "matte"
 
 

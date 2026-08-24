@@ -14,6 +14,8 @@ from typing import Any, Optional
 
 from ..utils.db import RagDbWriter
 from ..utils.grist import (
+    CANONICAL_ENV,
+    INGERE_ENV_COLUMNS,
     STATUT_ERREUR,
     STATUT_IGNORE,
     STATUT_OK,
@@ -21,6 +23,7 @@ from ..utils.grist import (
     STATUTS_INACTIFS,
     GristClient,
     ManifestRow,
+    build_pdf_writeback_fields,
     fetch_validated_manifest,
 )
 from ..utils.helpers import utc_now_iso
@@ -178,6 +181,12 @@ class MedallionPipeline:
         manifest = fetch_validated_manifest(self.grist, identity.corpus)
         writeback_enabled = not (dry_run or skip_grist_writeback)
 
+        # La présence réelle dans le corpus est la source de vérité des toggles
+        # ingere_{env}. Elle est inconnue hors mode ingest (plan/build seul).
+        current: dict[str, dict[str, Any]] = {}
+        if ingest:
+            current = self.db_writer.list_short_ids_with_checksum(identity.doc_source)
+
         rejected_fields_by_id = {record["id"]: record.get("fields") or {} for record in self.grist.list_records()} if manifest.rejected else {}
         details: dict[str, dict[str, Any]] = {}
         rejected_uids: set[str] = set()
@@ -198,6 +207,7 @@ class MedallionPipeline:
                     rejected.record_id,
                     statut=STATUT_ERREUR,
                     erreur="; ".join(rejected.errors),
+                    corpus_present=(rejected.uid.strip().upper() in current) if rejected.uid and ingest else None,
                 )
 
         requested = {uid.strip().upper() for uid in doc_ids or [] if uid.strip()}
@@ -210,10 +220,6 @@ class MedallionPipeline:
                 expected[row.short_id] = row
             else:
                 abrogated[row.short_id] = row
-
-        current: dict[str, dict[str, Any]] = {}
-        if ingest:
-            current = self.db_writer.list_short_ids_with_checksum(identity.doc_source)
 
         fetcher = BronzeFetcher(
             identity,
@@ -297,6 +303,7 @@ class MedallionPipeline:
                     statut=STATUT_OK,
                     nb_chunks=nb_chunks,
                     hash_contenu=checksums.get(short_id, ""),
+                    corpus_present=True if ingest else None,
                 )
 
         for short_id in plan["ingest"]:
@@ -329,6 +336,7 @@ class MedallionPipeline:
                         statut=STATUT_OK,
                         nb_chunks=nb_chunks,
                         hash_contenu=asset.sha256,
+                        corpus_present=True if ingest else None,
                     )
             except Exception as exc:  # noqa: BLE001 — erreur par document, le run continue
                 failures[short_id] = str(exc)
@@ -338,7 +346,12 @@ class MedallionPipeline:
             details[short_id] = {"statut": STATUT_ERREUR, "erreur": error[:500]}
             row = expected.get(short_id)
             if row is not None and writeback_enabled:
-                self._writeback(row.record_id, statut=STATUT_ERREUR, erreur=error[:500])
+                self._writeback(
+                    row.record_id,
+                    statut=STATUT_ERREUR,
+                    erreur=error[:500],
+                    corpus_present=(short_id in current) if ingest else None,
+                )
 
         deleted: list[str] = []
         if orphans and ingest:
@@ -348,7 +361,7 @@ class MedallionPipeline:
                 details[short_id] = {"statut": STATUT_SUPPRIME, "cascade": counts}
                 abrogated_row = abrogated.get(short_id)
                 if abrogated_row is not None and writeback_enabled:
-                    self._writeback(abrogated_row.record_id, statut=STATUT_SUPPRIME, nb_chunks=0)
+                    self._writeback(abrogated_row.record_id, statut=STATUT_SUPPRIME, nb_chunks=0, corpus_present=False)
 
         # Balayage des chunks hors manifest: les lignes legacy backfillées par
         # la migration de bascule (rétention du retrieval pendant la
@@ -374,8 +387,11 @@ class MedallionPipeline:
                     continue
                 details[short_id] = {"statut": STATUT_SUPPRIME, "nb_chunks": 0}
                 already = str(row.fields.get("statut_ingestion") or "").strip().lower()
-                if writeback_enabled and already != STATUT_SUPPRIME:
-                    self._writeback(row.record_id, statut=STATUT_SUPPRIME, nb_chunks=0)
+                env_column = INGERE_ENV_COLUMNS.get(self.config.target_env)
+                env_already_absent = env_column is not None and row.fields.get(env_column) is False
+                canonical_already_done = self.config.target_env != CANONICAL_ENV or already == STATUT_SUPPRIME
+                if writeback_enabled and not (env_already_absent and canonical_already_done):
+                    self._writeback(row.record_id, statut=STATUT_SUPPRIME, nb_chunks=0, corpus_present=False)
 
         finished_at = utc_now_iso()
         summary = {
@@ -405,16 +421,18 @@ class MedallionPipeline:
         nb_chunks: Optional[int] = None,
         hash_contenu: str = "",
         erreur: str = "",
+        corpus_present: bool | None = None,
     ) -> None:
-        fields: dict[str, Any] = {
-            "statut_ingestion": statut,
-            "derniere_ingestion": utc_now_iso(),
-            "erreur_ingestion": erreur,
-        }
-        if nb_chunks is not None:
-            fields["nb_chunks"] = nb_chunks
-        if hash_contenu:
-            fields["hash_contenu"] = hash_contenu
+        fields = build_pdf_writeback_fields(
+            statut=statut,
+            nb_chunks=nb_chunks,
+            hash_contenu=hash_contenu,
+            erreur=erreur,
+            env=self.config.target_env,
+            corpus_present=corpus_present,
+        )
+        if not fields:
+            return
         try:
             self.grist.writeback_status(record_id, fields)
         except Exception as exc:  # noqa: BLE001 — le writeback ne doit pas faire échouer l'ingestion

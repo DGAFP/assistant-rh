@@ -54,13 +54,17 @@ Module `utils/article_summary.py` (corpus-agnostique — v1 dgafp, réutilisable
 - `AlbertArticleSummarizer` : `/chat/completions` Albert, `temperature=0`, `max_tokens=700` ; `version = {R2_LOGIC_VERSION}-{model}-p{sha1(prompt)[:8]}` → toute évolution du modèle OU du prompt invalide le cache (même piège que page_vision).
 - **Garde anti-invention de valeurs** `unsourced_numbers(summary, source)` : tout token numérique du résumé absent du texte source (comparaison sur chiffres normalisés) ⇒ résumé **rejeté** (l'article reste sans ligne R2 ; déterministe, pas de retry). Filet grossier assumé — le résumé n'étant jamais servi, le risque résiduel est un biais de retrieval, pas une hallucination utilisateur.
 - Résumé trop court/vide ou tronqué (`finish_reason=length`) ⇒ rejeté.
-- **Cache versionné** : `{cache_root}/article_summaries/{name}/{version}/{cid}/{sha256(source)}.json` (payload : cid, checksum, résumé, tokens in/out, modèle). Local d'abord ; le répertoire est synchronisable tel quel vers le bucket bronze via `ScalewayObjectStorageSync._sync_dir` (même convention de clés que `pdf_store.page_vision_cache_key`). Reprise idempotente : hit → zéro appel LLM.
+- **Cache versionné** : `{cache_root}/article_summaries/{name}/{version}/{cid}/{sha256(source)}.json` (payload : cid, checksum, résumé, tokens in/out, modèle). Le job serverless l'hydrate et le persiste dans la couche Gold sous `{env}/gold/legifrance/r2_article_summaries/{name}/{version}`. Chaque nouveau résumé est uploadé immédiatement, puis le répertoire est synchronisé en fin de run. Reprise idempotente : hit → zéro appel LLM, y compris après timeout d'un job stateless.
 - **Throttle** : `MAX_SUMMARY_WORKERS = 2` (contrainte API partagée), échec transitoire (réseau/429/5xx) → `failed` (retenté au run suivant), rejet du garde → `rejected` (pas de retry en boucle).
 
 Intégration gold `legifrance/summary_rows.py` :
 - `plan_missing_summaries(rows, version)` : compare `index_variant` attendu (`r2_summary/{version}+embed-{modèle}/{sha16(chunk_text)}`) vs stocké → liste des articles à (re)générer. Idempotent, delta par checksum.
 - `build_summary_chunk_row(article_row, summary, embedding)` : ligne additive complète (`_targets=["legacy"]`, embedding_m3 **toujours renseigné** — cf. piège backfill).
-- Job CLI `jobs/r2_article_summaries.py` : `--dry-run` par défaut (plan JSON), `--out` JSONL (lot pilote), `--apply` requis pour écrire en base via `upsert_legacy_chunks` (upsert sur chunk_id = idempotent). **Non exécuté avec --apply dans cette phase** (gate revue humaine).
+- Job CLI `jobs/r2_article_summaries.py` : `--mode plan|generate|apply`, exposé par `data-ingestion legifrance r2-summaries`. `plan` lit uniquement Postgres ; `generate` alimente le cache Gold et un JSONL d'inspection sans écrire en base ; `apply` exige `--reviewed-cache`, consomme uniquement le cache et échoue fermé s'il manque un résumé. L'upsert sur `chunk_id` reste idempotent.
+
+### Orchestration déployée
+
+Les workflows Data Engineering staging et production exposent `source=r2` et les trois modes. R2 n'est jamais inclus dans `source=all`, les crons, ni l'auto-start d'un push. La promotion vers la production utilise `r2_cache_source_env=staging` : le cache déjà revu est hydraté, le delta seulement est généré, puis l'ensemble est copié sous le préfixe Gold `prod` avant l'apply. Les environnements GitHub `scaleway-staging` et `scaleway-production` restent la frontière d'accès aux secrets.
 
 ## 4. Résultats du lot pilote (21/07, 101 articles, staging lecture seule)
 

@@ -1,6 +1,6 @@
 {
   "source": "service_public",
-  "description": "Liste de production des fiches Service-Public — GÉNÉRÉE depuis le référentiel Grist (lignes statut a_ingerer/ingere, abroge != oui). Ne pas éditer à la main : régénérer via scripts/generate_service_public_config.py.",
+  "description": "Liste de production des fiches Service-Public — GÉNÉRÉE depuis le référentiel Grist (lignes statut a_ingerer/ingere/erreur, abroge != oui). Ne pas éditer à la main : régénérer via scripts/generate_service_public_config.py.",
   "situation": "FPE",
   "fiche_ids": [
     "F11016",
@@ -9,7 +9,6 @@
     "F12386",
     "F12390",
     "F12391",
-    "F12392",
     "F13117",
     "F13765",
     "F13852",
@@ -59,6 +58,7 @@
     "F465",
     "F469",
     "F471",
+    "F488",
     "F489",
     "F491",
     "F510",

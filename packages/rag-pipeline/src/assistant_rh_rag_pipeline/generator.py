@@ -78,6 +78,18 @@ class StreamingGenerator:
         self.last_system_prompt: str = ""
 
     @property
+    def provider_used(self) -> str | None:
+        """Provider that actually served the last request (``None`` before any
+        call). Read via ``_llm`` so observing the value never instantiates the
+        lazy client."""
+        return self._llm.last_provider_used if self._llm else None
+
+    @property
+    def fallback_count(self) -> int:
+        """Cumulative fallback activations on this generator's LLM client."""
+        return self._llm.fallback_count if self._llm else 0
+
+    @property
     def llm(self) -> FallbackLLMClient:
         if self._llm is None:
             # Baked default renders the generic (no-ministry) wording; every

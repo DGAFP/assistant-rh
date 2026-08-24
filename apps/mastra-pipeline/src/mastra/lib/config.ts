@@ -89,7 +89,7 @@ export const DEFAULT_RUNTIME_RAG_CONFIG: Required<RuntimeRagConfig> = {
 	retrieval: {
 		search_mode: "semantic",
 		embedding_model: "albert",
-		initial_top_k: 15,
+		initial_top_k: 30,
 		alpha: 0.5,
 		tables: ["matte", "service_public", "dgafp", "rgrh"],
 		enable_selector_retry: true,
@@ -101,7 +101,7 @@ export const DEFAULT_RUNTIME_RAG_CONFIG: Required<RuntimeRagConfig> = {
 		weight_mean_score: 0.3,
 		weight_chunk_count: 0.2,
 		enable_section_reranker: true,
-		section_rerank_top_k: 10,
+		section_rerank_top_k: 20,
 	},
 	context: {
 		context_mode: "standard",
@@ -113,7 +113,7 @@ export const DEFAULT_RUNTIME_RAG_CONFIG: Required<RuntimeRagConfig> = {
 		legal_refs_budget: 1000,
 		token_budget_wide: 12000,
 		max_full_docs_wide: 2,
-		doc_entire_threshold_wide: 5000,
+		doc_entire_threshold_wide: 9000,
 		max_sections_wide: 20,
 		legal_refs_budget_wide: 2000,
 	},

@@ -15,6 +15,7 @@ from assistant_rh_rag_pipeline.models import (
     AggregatedSection,
     ContextItem,
     RetrievedChunk,
+    context_item_document_id,
     estimate_tokens,
     section_document_id,
 )
@@ -1064,3 +1065,16 @@ class TestSectionDocumentId:
 
     def test_empty_when_no_identifier(self):
         assert section_document_id(self._section(metadata={})) == ""
+
+
+def test_context_item_document_id_uses_standalone_legal_cid():
+    item = ContextItem(
+        section_id=None,
+        heading="Article 3",
+        content="Texte juridique",
+        score=0.9,
+        publisher="Légifrance",
+        metadata={"cid": "LEGIARTI000044423797"},
+    )
+
+    assert context_item_document_id(item) == "LEGIARTI000044423797"

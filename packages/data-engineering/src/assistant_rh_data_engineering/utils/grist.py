@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
+from datetime import date, datetime, timezone
 from typing import Any
 
 import requests
@@ -32,6 +33,8 @@ WRITEBACK_MANIFEST_COLUMNS: tuple[str, ...] = (
     "nb_chunks",
     "hash_contenu",
     "erreur_ingestion",
+    "ingere_prod",
+    "ingere_staging",
 )
 
 # Vocabulaire de statut_ingestion — colonne de statut UNIQUE, partagée entre
@@ -110,7 +113,7 @@ class ManifestRow:
     titre: str
     cle_bucket: str
     statut: str
-    date_publication: Any = None
+    date_publication: str | None = None
     fields: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -227,6 +230,35 @@ def validate_manifest_columns(columns: list[str], required: tuple[str, ...] = RE
         raise GristContractError(f"Colonnes manquantes dans la table Grist: {', '.join(missing)} (requises: {', '.join(required)})")
 
 
+def _normalize_optional_date(value: Any) -> str | None:
+    """Normalise une date Grist sans rendre ce champ optionnel bloquant.
+
+    L'API Grist renvoie les colonnes Date sous forme de timestamp Unix pour
+    certaines lignes et de chaîne ISO pour d'autres. PostgreSQL n'accepte pas
+    le timestamp entier tel quel dans une colonne ``date``; on convertit donc
+    les deux représentations au bord du manifest.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            return datetime.fromtimestamp(value, tz=timezone.utc).date().isoformat()
+        except (OverflowError, OSError, ValueError):
+            return None
+
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text).isoformat()
+    except ValueError:
+        return None
+
+
 def validate_manifest_records(
     records: list[dict[str, Any]],
     corpus: str,
@@ -305,7 +337,7 @@ def validate_manifest_records(
                 titre=titre,
                 cle_bucket=cle_bucket,
                 statut=statut,
-                date_publication=fields.get("date_publication") or None,
+                date_publication=_normalize_optional_date(fields.get("date_publication")),
                 fields=fields,
             )
         )
@@ -376,6 +408,41 @@ def build_writeback_fields(
         )
         if statut_reel is not None:
             fields["statut_ingestion_reelle"] = statut_reel
+        if nb_chunks is not None:
+            fields["nb_chunks"] = nb_chunks
+        if hash_contenu:
+            fields["hash_contenu"] = hash_contenu
+    if corpus_present is not None and env in INGERE_ENV_COLUMNS:
+        fields[INGERE_ENV_COLUMNS[env]] = corpus_present
+    return fields
+
+
+def build_pdf_writeback_fields(
+    *,
+    statut: str,
+    nb_chunks: int | None = None,
+    hash_contenu: str = "",
+    erreur: str = "",
+    env: str = CANONICAL_ENV,
+    corpus_present: bool | None = None,
+) -> dict[str, Any]:
+    """Writeback PDF séparé par environnement, compatible avec le statut legacy.
+
+    Les pipelines PDF utilisent encore ``statut_ingestion`` comme cycle de vie
+    opérateur (``a_supprimer``/``supprime``). La prod reste donc seule à écrire
+    ce statut détaillé et ses métadonnées historiques. Chaque environnement
+    écrit uniquement son booléen ``ingere_{env}`` quand la présence réelle en
+    base est connue.
+    """
+    fields: dict[str, Any] = {}
+    if env == CANONICAL_ENV:
+        fields.update(
+            {
+                "statut_ingestion": statut,
+                "derniere_ingestion": utc_now_iso(),
+                "erreur_ingestion": erreur,
+            }
+        )
         if nb_chunks is not None:
             fields["nb_chunks"] = nb_chunks
         if hash_contenu:

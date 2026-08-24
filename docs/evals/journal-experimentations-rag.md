@@ -804,3 +804,150 @@ de juge/rubrique par rejudge des mêmes réponses. Ne jamais comparer un chiffre
 qwen à un chiffre mistral sans appliquer le facteur de conversion (−2 pts).
 Compte tenu du bruit de génération (±5 pts), tout gate sérieux devrait
 s'appuyer sur 2 runs frais ou sur un delta > au bruit.
+
+---
+
+## Run — `candidate_generator_dsv4flash_20260820` (20/08, en cours) — candidat générateur deepseek-v4-flash
+
+**Objet** : premier A/B générateur via le nouveau flag `--generator-model`
+(ajouté à `src/goldset/eval.py` ce jour, même mécanique d'override que
+`--selector-model` : surcharge locale au run, config partagée intacte).
+Candidat : `deepseek-v4-flash` (API Albert) à la place d'`openweight-large`.
+
+**Amorce** : screening local du jour (base locale seedée de staging, juge
+mistral single-shot) — run local 217 : judge_pass 0,663 vs 0,602 pour le run
+staging 206 apparié, 17 gains / 11 pertes / 22 double-échecs. Encourageant mais
+single-shot et corpus SP ré-embeddé entre les deux runs → validation staging.
+
+**Protocole** : panel `baseline_v1` (98 q), scope `per-question`, config live
+staging (seule surcharge : `generator_model=deepseek-v4-flash`), RAGAS sauté,
+juge souverain Scaleway `mistral-medium-3.5-128b` en vote majoritaire à 3.
+Baseline appariée : **run #206 `baseline_dev_mistral_judge_20260819`**
+(0,602 ; même juge, mêmes votes, même panel). Code : dev @600c8f5 + flag.
+
+**Résultats du run #215** : 98/98 sans erreur, coût juge 3,22 € (couverture complète).
+
+| Mesure | Run #215 (deepseek) | Baseline #206 (openweight) | Delta |
+|---|---:|---:|---:|
+| judge_pass (maj-3) | **0,6531** (64/98) | 0,6020 (59/98) | **+0,0511** |
+| doc_recall | 0,6996 | 0,7039 | −0,0043 |
+| retrieval_gap_rate | 0,235 | 0,224 | +0,011 |
+
+Lecture appariée : **17 gains / 12 pertes, net +5** (47 double-pass, 22
+double-échec). Le retrieval est identique par construction (doc_recall et gap
+plats) — le delta est bien porté par la génération. Parmi les gains : **q192,
+q213, q221**, c'est-à-dire les 3 cibles nommées restantes de l'adoption P1R2
+(run 156), plus q20/q218 (les questions « mécanisme » du gate #360). Pertes
+notables : q13 (rupture conventionnelle — deepseek y hallucine des barèmes,
+échec déjà vu au screening local : faiblesse reproductible du candidat), q3,
+q4. Familles d'échec : 16 retrieval_gap / 10 incomplete / 7
+material_contradiction / 1 wrong_law — même structure que la baseline (le
+modèle ne déplace pas la typologie d'échecs).
+
+**Lecture** : +5,1 pts sous le juge souverain maj-3 à périmètre constant, net
++5 sur 29 flips — au-dessus de la baseline mais un 17/12 n'est pas significatif
+seul (test des signes p≈0,46) ; c'est la **convergence des deux étages**
+(screening local 0,663 single-shot, staging 0,653 maj-3, gains recoupés dont
+les cibles historiques) qui rend le signal crédible. deepseek-v4-flash est en
+outre nettement plus rapide (~19 s/question en génération locale vs
+openweight-large) et gratuit côté Albert. Vigilance : les hallucinations de
+barèmes chiffrés (q13) — à traiter par prompt ou garde-fou avant toute bascule
+prod. Décision d'adoption : à l'appréciation de l'équipe ; le cas échéant,
+`update_rag_config` staging `v3_generator_model=deepseek-v4-flash` hors fenêtre
+de run, rollback en 1 UPDATE.
+
+**Infra** : premier run du banc local (docker pgvector seedé de staging,
+`docs/LOCAL_DEV.md`) + nouveau flag `--generator-model` dans `eval.py`
+(override au run, config partagée intacte, tracé dans `config_adjustments`).
+
+---
+
+## Run — `candidate_gen_sel_dsv4flash_20260820` (20/08 soir, en cours) — paquet générateur + sélecteur deepseek
+
+**Changements vs run #215** : une seule variable — `--selector-model
+deepseek-v4-flash` s'ajoute au générateur deepseek (les deux via overrides
+CLI, config partagée intacte). Amorce : run local 218 (0,6735 vs 0,6633 ;
+golds jetés par le sélecteur 6→3, sélection 3,6 vs 2,1 docs, 5 flips
+seulement). Cf. `revue-deepseek-v4-flash-20260820.md`.
+
+**Protocole** : identique au #215 — panel `baseline_v1` 98 q, scope
+`per-question`, juge souverain Scaleway `mistral-medium-3.5-128b` maj-3,
+RAGAS sauté. Baseline appariée : **run #215** (0,6531). Lecture attendue :
+contribution du sélecteur sous juge souverain, funnel `selector_jette`.
+
+**Résultats du run #216** : 98/98, coût juge 4,49 €.
+
+| Mesure | #216 (paquet) | #215 (gen seul) | #206 (openweight) |
+|---|---:|---:|---:|
+| judge_pass (maj-3) | 0,6429 | **0,6531** | 0,6020 |
+| golds jetés par le sélecteur (échecs) | **3** | 6 | 7 |
+| docs gardés par le sélecteur (moy.) | 3,9 | 2,2 | — |
+| échecs « génération, gold servi » | 19 | 16 | 15 |
+
+Apparié #216 vs #215 : 9 gains / 10 pertes (net −1), 25 double-échecs.
+Gains : les cibles sélecteur convergent (q186, q4528, q4530 — mêmes
+conversions qu'en local) + q29, q187, q190, q200, q222, q926. Pertes :
+plusieurs gains historiques du générateur re-basculent (q20, q33, q218,
+q221, q660…) — les contextes changent, la variance de génération se
+redistribue.
+
+**Lecture** : le mécanisme se **réplique** sous juge souverain (golds jetés
+divisés par 2, sélection plus riche 3,9 vs 2,2 docs, kept_hit 0,60 vs 0,55)
+mais **ne convertit pas** : les golds sauvés sont mangés par l'étage
+génération (16→19), vraisemblablement dilution du contexte élargi + variance.
+Local (+1) et staging (−1) concordent : **swap sélecteur neutre au score**.
+**Décision proposée** : adopter le générateur seul (config #215) ; garder le
+sélecteur openweight ; re-tester le sélecteur deepseek APRÈS les correctifs
+de prompt générateur (a contrario + interdiction de chiffres hors verbatim),
+car l'étage génération est redevenu le plafond visible.
+
+---
+
+## Run — `candidate_dsv4flash_promptV7_20260821` (21/08, en cours) — reconfirmation #215 + correctifs de prompt
+
+**Objet** : reconfirmer la config candidate (générateur deepseek, sélecteur
+openweight) en y ajoutant la seule variable prompt : nouveau
+`system_prompt_V7_ancrage.md` (ligne ADDITIVE dans system_prompts, la config
+runtime reste sur V6 ; branché au run via le nouveau flag
+`--system-prompt-name`). V7 = V6 + deux correctifs ciblés sur les modes
+d'échec de la revue du 20/08 :
+1. **Lecture a contrario** : sujet couvert par les sources mais disposition
+   demandée absente → conclure (« les textes ne prévoient pas... ») au lieu
+   de s'abstenir (cible : q3, q4, q227).
+2. **Chiffres verbatim uniquement** : aucun taux/barème/montant/durée qui ne
+   figure pas mot pour mot dans les sources (cible : q13 barèmes hallucinés).
+
+**Protocole** : identique au #215 (98 q, per-question, juge souverain mistral
+maj-3, sans RAGAS). Baseline appariée : **#215** (0,6531). Si ≥ #215 : le
+niveau deepseek est reconfirmé ET les correctifs sont validés ; regarder
+spécifiquement q3/q4/q227/q13 et le taux d'abstentions.
+
+**Résultats du run #217** : 98/98, coût juge 3,26 €.
+
+- judge_pass **0,6327** vs 0,6531 (#215) — net **−2** (5 gains / 7 pertes,
+  29 double-échecs). Les pertes sont majoritairement les flip-floppers connus
+  (q20, q213, q218, q660… basculent d'un run à l'autre à config quasi
+  constante) : pas de régression attribuable au prompt, mais **aucun gain**.
+- Cibles du correctif a contrario : **q4 convertie**, q3 et q227 s'abstiennent
+  encore — 1/3, et le nombre total d'abstentions est inchangé (4 vs 4).
+  Le paragraphe de prompt ne suffit pas contre ce réflexe.
+- **q13 requalifiée — découverte majeure du run** : le barème « halluciné »
+  (1/6e, 1/5e, 1/4, 1/3, plafond 1/24) est **verbatim dans le corpus**, et la
+  fiche service-public.fr F31094 en ligne (« Vérifié le 08/08/2026 ») porte
+  les mêmes valeurs : **le barème de la rupture conventionnelle a été réformé
+  en 2026 et c'est la GOLD ANSWER qui est périmée** (1/4, 2/5, 1/2, 3/5 =
+  ancien barème). Le PASS d'openweight au #206 était un faux positif (run du
+  19/08, la veille de la ré-ingestion SP : son contexte portait encore
+  l'ancienne fiche). deepseek n'a jamais halluciné sur q13 — il était fidèle
+  au corpus à jour. → **q13 en curation goldset**, et audit à prévoir des
+  golds chiffrées vs le corpus SP ré-ingéré le 20/08 (classe de dérive
+  goldset-vs-corpus créée par la ré-ingestion en cours de campagne).
+
+**Lecture** : (1) le niveau deepseek est **reconfirmé** — 3 runs souverains
+(0,6531 / 0,6429 / 0,6327) tous nettement au-dessus d'openweight (0,6020) ;
+la bande ±2 questions entre runs donne la variance maj-3 à config quasi
+constante. (2) **V7 non adopté** en l'état : pas de gain net, a contrario ne
+convertit qu'1 cible sur 3, et le vrai fix de q13 est goldset, pas prompt.
+Le garde-fou « chiffres verbatim » reste défendable sur le principe mais n'a
+rien démontré ici. (3) Prochain levier réel : curation goldset post
+ré-ingestion, avant tout nouveau tuning de prompt.

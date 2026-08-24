@@ -30,6 +30,8 @@ import psycopg
 from assistant_rh_rag_pipeline import PipelineResult, create_pipeline
 from assistant_rh_rag_pipeline.admin import get_rag_config, runtime_config_to_rag_config
 from assistant_rh_rag_pipeline.config import LLMProvider, RAGConfig
+from assistant_rh_rag_pipeline.db_helpers import get_prompt_content, list_prompts
+from assistant_rh_rag_pipeline.models import metadata_document_id
 from assistant_rh_rag_pipeline.query_processor import _fold as _fold_text
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
@@ -244,8 +246,11 @@ def _git_sha() -> str:
         return ""
 
 
-def config_fingerprint(config: RAGConfig) -> str:
-    payload = json.dumps(config.to_dict(), sort_keys=True, ensure_ascii=False, default=str)
+def config_fingerprint(config: RAGConfig, extra: dict[str, Any] | None = None) -> str:
+    payload_source: dict[str, Any] = config.to_dict()
+    if extra:
+        payload_source = {**payload_source, **extra}
+    payload = json.dumps(payload_source, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -627,9 +632,7 @@ def build_baseline_comparison(
     # Row factory agnostique (la connexion du run est en dict_row).
     excluded = [
         row["id"] if isinstance(row, dict) else row[0]
-        for row in conn.execute(
-            "SELECT id FROM goldset_questions_v2 WHERE %s = ANY(tags)", (BORDERLINE_TAG,)
-        ).fetchall()
+        for row in conn.execute("SELECT id FROM goldset_questions_v2 WHERE %s = ANY(tags)", (BORDERLINE_TAG,)).fetchall()
     ]
     baseline_run_id = baseline_run.get("id")
     if excluded and baseline_run_id is not None:
@@ -647,9 +650,7 @@ def build_baseline_comparison(
             "excluded_question_ids": sorted(excluded),
             "candidate_pass_rate_excl": candidate_excl,
             "baseline_pass_rate_excl": baseline_excl,
-            "delta_excl": (candidate_excl - baseline_excl)
-            if candidate_excl is not None and baseline_excl is not None
-            else None,
+            "delta_excl": (candidate_excl - baseline_excl) if candidate_excl is not None and baseline_excl is not None else None,
         }
     return comparison
 
@@ -1099,8 +1100,9 @@ def deterministic_metrics(gold_sources: list[str], retrieved_ids: list[str], ali
 
 
 # Funnel d'observabilité retrieval (issue selector v4, 08/2026) : recall mesuré
-# à chaque étage AVANT le contexte servi, par tentative. Les k sections tracés
-# encadrent la fenêtre du selector (12 candidats évalués, 20 sections agrégées).
+# à chaque étage, par tentative. Les k sections tracés encadrent la fenêtre du
+# selector (12 candidats évalués, 20 sections agrégées), puis le dernier étage
+# reflète le contexte effectivement produit par ContextBuilder.
 _STAGE_SECTION_KS = (12, 20)
 
 
@@ -1108,20 +1110,22 @@ def _attempt_stage_doc_ids(attempt: dict[str, Any]) -> dict[str, list[str]]:
     """Doc ids présents à chaque étage d'une tentative de retrieval.
 
     Étages : ``pool`` (chunks avant rerank), ``sections_top{k}`` (sections
-    agrégées post-rerank, ordre servi au selector), ``selector_kept`` (sections
-    réellement servies). Un étage absent de la trace est omis, pas inventé.
+    agrégées post-rerank, ordre présenté au selector), ``selector_kept``
+    (sections retenues par le selector) et ``context_builder_output`` (items
+    effectivement servis). Un étage absent de la trace est omis, pas inventé.
     """
     stages: dict[str, list[str]] = {}
 
     chunks = attempt.get("chunks_before_rerank")
-    if isinstance(chunks, list) and chunks:
+    if isinstance(chunks, list):
         stages["pool"] = [str(c.get("doc_id")) for c in chunks if isinstance(c, dict) and c.get("doc_id")]
 
     aggregated = attempt.get("aggregated_sections")
-    aggregated = aggregated if isinstance(aggregated, list) else []
-    if aggregated:
+    if isinstance(aggregated, list):
         for k in _STAGE_SECTION_KS:
             stages[f"sections_top{k}"] = [str(s.get("document_id")) for s in aggregated[:k] if isinstance(s, dict) and s.get("document_id")]
+    else:
+        aggregated = []
 
     kept = ((attempt.get("selector") or {}).get("decisions") or {}).get("kept")
     if isinstance(kept, list):
@@ -1137,6 +1141,18 @@ def _attempt_stage_doc_ids(attempt: dict[str, Any]) -> dict[str, list[str]]:
             if doc_id:
                 kept_ids.append(str(doc_id))
         stages["selector_kept"] = kept_ids
+
+    context_items = attempt.get("context_items_ref")
+    if isinstance(context_items, list):
+        context_doc_ids: list[str] = []
+        for item in context_items:
+            if not isinstance(item, dict):
+                continue
+            nested_metadata = item.get("metadata")
+            doc_id = metadata_document_id(item, nested_metadata if isinstance(nested_metadata, dict) else {})
+            if doc_id:
+                context_doc_ids.append(doc_id)
+        stages["context_builder_output"] = context_doc_ids
     return stages
 
 
@@ -1162,11 +1178,12 @@ def stage_retrieval_metrics(
         name = str(attempt.get("name") or f"attempt_{position}")
         attempt_stages: dict[str, Any] = {}
         for stage, ids in _attempt_stage_doc_ids(attempt).items():
+            raw_doc_count = len(_stable_unique([str(doc_id).strip() for doc_id in ids if str(doc_id).strip()]))
             metrics = deterministic_metrics(gold_sources, ids, aliases=aliases)
             attempt_stages[stage] = {
                 "hit_rate": metrics["hit_rate"],
                 "doc_recall": metrics["doc_recall"],
-                "doc_count": len(set(metrics["retrieved_doc_ids"])),
+                "doc_count": raw_doc_count,
             }
         if attempt_stages:
             out[name] = attempt_stages
@@ -1241,10 +1258,7 @@ def borderline_question_ids(questions: list[GoldsetQuestion]) -> list[int]:
 
 
 def judge_pass_rate_excluding(items: list[EvalItem], excluded_ids: set[int]) -> float | None:
-    judged = [
-        item for item in items
-        if item.judge_result.get("status") == "completed" and item.question_id not in excluded_ids
-    ]
+    judged = [item for item in items if item.judge_result.get("status") == "completed" and item.question_id not in excluded_ids]
     if not judged:
         return None
     return sum(1 for item in judged if item.judge_result.get("pass") is True) / len(judged)
@@ -1629,6 +1643,7 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
     dimensions = dimensions_raw if isinstance(dimensions_raw, dict) else {}
     if os.getenv("JUDGE_DEBUG_PARSED"):
         import json as _json
+
         print("JUDGE_DEBUG parsed:", _json.dumps(parsed, ensure_ascii=False, default=str)[:600], flush=True)
     if not dimensions:
         # Repli tolérant : certains modèles (banc des juges du 18/08 —
@@ -2203,13 +2218,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--generator-model",
         default="",
-        help="Override du modèle du générateur (ex: gpt-oss-120b).",
+        help="Override du modèle générateur (ex: deepseek-v4-flash) sans toucher à la config runtime partagée.",
     )
     parser.add_argument(
         "--generator-provider",
         default="",
         choices=["", "albert", "scaleway", "mistral"],
         help="Override du provider du générateur.",
+    )
+    parser.add_argument(
+        "--system-prompt-name",
+        default="",
+        help=(
+            "Override du system prompt générateur (nom dans system_prompts) sans toucher à la config runtime "
+            "partagée. Le nom est validé contre la table au démarrage. Invariant du générateur : si le prompt "
+            "ne contient pas le heading « ## Couverture des sources complémentaires », le bloc legacy est "
+            "APPENDU automatiquement — ce flag ne permet donc pas de tester la suppression ou la reformulation "
+            "de cette section."
+        ),
     )
     parser.add_argument(
         "--section-rerank-top-k",
@@ -2349,6 +2375,17 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.generator_provider:
         pipeline_config.generation.provider = LLMProvider(args.generator_provider)
         config_adjustments.append(f"generator_provider={args.generator_provider}")
+    if args.system_prompt_name:
+        # load_prompt() retombe silencieusement sur generator.md quand le nom
+        # est introuvable ou inactif sur le DSN cible : le run mesurerait le
+        # prompt générique tout en étant consigné sous le nom demandé.
+        if get_prompt_content(args.system_prompt_name, render_today=False) is None:
+            available = ", ".join(list_prompts("generator")) or "(aucun)"
+            raise RuntimeError(
+                f"--system-prompt-name {args.system_prompt_name!r} introuvable ou inactif sur le DSN cible. Prompts générateur actifs : {available}"
+            )
+        pipeline_config.generation.system_prompt_name = args.system_prompt_name
+        config_adjustments.append(f"system_prompt_name={args.system_prompt_name}")
     if args.section_rerank_top_k is not None:
         pipeline_config.aggregation.section_rerank_top_k = args.section_rerank_top_k
         config_adjustments.append(f"section_rerank_top_k={args.section_rerank_top_k}")
@@ -2367,7 +2404,20 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.doc_entire_threshold_wide is not None:
         pipeline_config.context.doc_entire_threshold_wide = args.doc_entire_threshold_wide
         config_adjustments.append(f"doc_entire_threshold_wide={args.doc_entire_threshold_wide}")
-    config_hash = config_fingerprint(pipeline_config)
+    # Le fingerprint doit couvrir le CONTENU du prompt générateur, pas
+    # seulement son nom : le corps vit en base et peut être édité en place —
+    # sinon --skip-if-started dédupliquerait un run post-édition contre le run
+    # pré-édition. {today} n'est pas rendu pour rester stable d'un jour à
+    # l'autre ; la même chaîne de fallback que le générateur est appliquée.
+    resolved_prompt = (
+        get_prompt_content(pipeline_config.generation.system_prompt_name, render_today=False)
+        or get_prompt_content("generator.md", render_today=False)
+        or ""
+    )
+    config_hash = config_fingerprint(
+        pipeline_config,
+        extra={"generator_system_prompt_sha": hashlib.sha256(resolved_prompt.encode("utf-8")).hexdigest()},
+    )
     git_sha = _git_sha()
     run_label = args.run_label or f"{datetime.now(tz=UTC).strftime('%Y%m%dT%H%M%SZ')}_{args.goldset_name}"
     output_dir = args.output_dir or (DEFAULT_OUTPUT_ROOT / args.goldset_name / run_label)
@@ -2468,6 +2518,9 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     items: list[EvalItem] = []
     status = "completed"
     error = ""
+    # Compteur cumulatif du FallbackLLMClient (un seul client par run) : le
+    # delta entre deux items dit si CET item a été servi par le fallback.
+    generator_fallbacks_seen = 0
 
     item_conn: psycopg.Connection[Any] | None = None
     try:
@@ -2495,6 +2548,21 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 scaleway_api_key=api_key,
                 retrieval_scope=resolve_question_scope(question, args.ministry_scope),
             )
+            provider_used = item.metadata.get("generator_provider_used")
+            provider_configured = item.metadata.get("generator_provider")
+            fallback_count = int(item.metadata.get("generator_fallback_count") or 0)
+            item_used_fallback = bool(
+                (provider_used and provider_configured and provider_used != provider_configured) or fallback_count > generator_fallbacks_seen
+            )
+            generator_fallbacks_seen = max(generator_fallbacks_seen, fallback_count)
+            if args.generator_model and item_used_fallback and not item.error:
+                # Avec un override --generator-model, une réponse servie par le
+                # fallback mesure un autre modèle que celui consigné dans le
+                # run : l'item est invalidé plutôt que crédité au candidat.
+                item.error = (
+                    f"generator fallback: réponse servie par {provider_used or 'fallback'} au lieu de "
+                    f"{provider_configured} ({args.generator_model}) — item invalide pour l'A/B"
+                )
             items.append(item)
             if item_conn is not None and run_id is not None:
                 for attempt in range(1, 4):
@@ -2562,9 +2630,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 "eval_scope": eval_scope,
                 "judge_failed": sum(1 for item in items if item.judge_result.get("status") == "failed"),
                 "judge_borderline_ids": borderline_question_ids(questions),
-                "judge_pass_rate_excl_borderline": judge_pass_rate_excluding(
-                    items, set(borderline_question_ids(questions))
-                ),
+                "judge_pass_rate_excl_borderline": judge_pass_rate_excluding(items, set(borderline_question_ids(questions))),
                 "ragas_failed": sum(1 for item in items if item.ragas_metrics.get("status") == "failed"),
             }
         )

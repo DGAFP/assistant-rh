@@ -19,11 +19,72 @@ from typing import Any
 import pytest
 from assistant_rh_data_engineering.jobs import service_public_ingestion
 from assistant_rh_data_engineering.service_public import reconcile
+from assistant_rh_data_ingestion_cli import main as ingestion_cli
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import generate_service_public_config as gen  # noqa: E402
+
+
+def test_delta_failure_diagnostic_is_bounded_and_deterministic() -> None:
+    diagnostic = service_public_ingestion.delta_failure_diagnostic(
+        {
+            "failed": {
+                "F4": "fourth",
+                "F2": "second",
+                "F3": "third",
+                "F1": "x" * 250,
+            }
+        }
+    )
+
+    assert diagnostic is not None
+    payload = json.loads(diagnostic.split(": ", 1)[1])
+    assert payload == {
+        "failed_count": 4,
+        "failures": {"F1": "x" * 200, "F2": "second", "F3": "third"},
+        "truncated": True,
+    }
+
+
+def test_delta_failure_diagnostic_ignores_success() -> None:
+    assert service_public_ingestion.delta_failure_diagnostic({"failed": {}}) is None
+
+
+def test_run_cli_retains_bounded_final_crash_diagnostic(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    def crash() -> int:
+        raise RuntimeError("database exploded\n" + "x" * 600)
+
+    monkeypatch.setattr(service_public_ingestion, "main", crash)
+
+    with pytest.raises(RuntimeError, match="database exploded"):
+        service_public_ingestion.run_cli()
+
+    diagnostic = capsys.readouterr().err.strip()
+    assert diagnostic.startswith("Service-Public ingestion crashed: RuntimeError: database exploded ")
+    assert "\n" not in diagnostic
+    assert len(diagnostic) <= len("Service-Public ingestion crashed: RuntimeError: ") + 500
+
+
+@pytest.mark.parametrize("job", ["ingest", "ingestion"])
+def test_data_ingestion_cli_uses_service_public_diagnostic_entrypoint(monkeypatch: pytest.MonkeyPatch, job: str) -> None:
+    calls: list[str] = []
+
+    class FakeModule:
+        @staticmethod
+        def main() -> int:
+            raise AssertionError("the raw main entrypoint must not be used")
+
+        @staticmethod
+        def run_cli() -> int:
+            calls.append("run_cli")
+            return 0
+
+    monkeypatch.setattr(ingestion_cli.importlib, "import_module", lambda _module: FakeModule)
+
+    assert ingestion_cli.main(["service-public", job]) == 0
+    assert calls == ["run_cli"]
 
 
 def _rec(record_id: int, **fields: Any) -> dict[str, Any]:

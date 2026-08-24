@@ -107,7 +107,7 @@ function makeAggregationOutput(section: AggregatedSection): SectionAggregatorOut
 			sectionCountAfterRerank: 1,
 			rerankerEnabled: false,
 			rerankerApplied: false,
-			rerankerTopK: 10,
+			rerankerTopK: 20,
 			rerankerCandidateCount: 1,
 			warnings: [],
 		},
@@ -244,7 +244,7 @@ async function testRetryCanRecoverContext() {
 		runRetriever: async (input) => {
 			retrieverCalls.push(input);
 			return retrieverCalls.length === 1
-				? makeRetrieverOutput(initialChunk, 15, "semantic")
+				? makeRetrieverOutput(initialChunk, 30, "semantic")
 				: makeRetrieverOutput(retryChunk, 30, "hybrid");
 		},
 		runSectionAggregator: async (input) => {
@@ -316,7 +316,7 @@ async function testRetryPreservesNoAnswerWhenSecondAttemptRejectsAll() {
 		runRetriever: async (input) => {
 			retrieverCalls.push(input);
 			return retrieverCalls.length === 1
-				? makeRetrieverOutput(initialChunk, 15, "semantic")
+				? makeRetrieverOutput(initialChunk, 30, "semantic")
 				: makeRetrieverOutput(retryChunk, 30, "hybrid");
 		},
 		runSectionAggregator: async (input) => {
@@ -368,7 +368,7 @@ async function testRetryPreservesNoAnswerWhenContextBuilderReturnsNoItems() {
 		runRetriever: async (input) => {
 			retrieverCalls.push(input);
 			return retrieverCalls.length === 1
-				? makeRetrieverOutput(initialChunk, 15, "semantic")
+				? makeRetrieverOutput(initialChunk, 30, "semantic")
 				: makeRetrieverOutput(retryChunk, 30, "hybrid");
 		},
 		runSectionAggregator: async (input) => {
@@ -498,6 +498,13 @@ async function testInvalidStateConfigFallsBackToActiveRuntimeConfig() {
 	assert.equal(retrieverCalls[0]?.config?.enable_selector_retry, false);
 }
 
+function testDefaultConfigMatchesPythonProductionDefaults() {
+	assert.equal(DEFAULT_RUNTIME_RAG_CONFIG.retrieval.initial_top_k, 30);
+	assert.equal(DEFAULT_RUNTIME_RAG_CONFIG.aggregation.section_rerank_top_k, 20);
+	assert.equal(DEFAULT_RUNTIME_RAG_CONFIG.context.doc_entire_threshold_wide, 9000);
+}
+
+testDefaultConfigMatchesPythonProductionDefaults();
 await testRetryCanRecoverContext();
 await testRetryPreservesNoAnswerWhenSecondAttemptRejectsAll();
 await testRetryPreservesNoAnswerWhenContextBuilderReturnsNoItems();
