@@ -1,0 +1,19 @@
+# Base Postgres locale pour les expérimentations (eval RAG, dev pipeline).
+# Usage : docker compose -f docker-compose.local.yml up -d
+# Voir docs/LOCAL_DEV.md pour le seed depuis staging.
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: assistant-rh-local-pg
+    ports:
+      - "55432:5432"
+    environment:
+      POSTGRES_USER: assistant_rh
+      POSTGRES_PASSWORD: assistant_rh
+      POSTGRES_DB: assistant_rh
+    volumes:
+      - assistant_rh_local_pgdata:/var/lib/postgresql/data
+    command: postgres -c shared_buffers=512MB -c maintenance_work_mem=256MB
+
+volumes:
+  assistant_rh_local_pgdata:

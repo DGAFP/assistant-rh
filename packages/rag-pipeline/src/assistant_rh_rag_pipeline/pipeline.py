@@ -782,6 +782,12 @@ class Pipeline:
             "selector_enabled": self.config.selector.enabled,
             "generator_model": self.config.generation.model,
             "generator_provider": self.config.generation.provider.value,
+            # Provider effectivement utilisé (≠ generator_provider si le
+            # FallbackLLMClient a basculé) : sans cette trace, une réponse
+            # servie par le modèle de fallback est indétectable dans les
+            # artefacts et créditée au modèle configuré (revue PR #417).
+            "generator_provider_used": self._generator.provider_used,
+            "generator_fallback_count": self._generator.fallback_count,
             "embedding_model": self.config.retrieval.embedding_model.value,
             "retrieved_chunks": state.stage_refs.get("retrieved_chunks", []),
             "aggregated_sections": state.stage_refs.get("aggregated_sections", []),
