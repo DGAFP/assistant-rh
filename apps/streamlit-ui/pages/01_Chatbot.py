@@ -46,21 +46,20 @@ load_dotenv()
 
 # RAG V3 Clean pipeline (self-contained, zero external deps)
 from assistant_rh_rag_pipeline import create_pipeline as create_pipeline_v3_clean
-from assistant_rh_rag_pipeline import get_default_config
-from assistant_rh_rag_pipeline.admin import get_rag_config, init_config_table
+from assistant_rh_rag_pipeline.admin import get_rag_config, init_config_table, runtime_config_to_rag_config
 from assistant_rh_rag_pipeline.chat_logger import build_log_row, build_non_rag_row
 from assistant_rh_rag_pipeline.chat_logger import log_run as _log_run_v3
+from assistant_rh_rag_pipeline.chat_logger import log_trace_events as _log_trace_events_v3
 from assistant_rh_rag_pipeline.config import (
     DEFAULT_SYSTEM_PROMPT,
     get_prompt_content,
     today_fr,
 )
-from assistant_rh_rag_pipeline.config import (
-    SearchMode as SearchModeV3,
-)
 from assistant_rh_rag_pipeline.db_helpers import create_engine_from_env, has_dsn
+from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG
 from assistant_rh_rag_pipeline.models import Chunk
 
+from src.ui.admin_auth import is_admin
 from src.ui.chatbot_feedback import (
     is_feedback_pending,
     render_feedback_block,
@@ -75,6 +74,14 @@ from src.ui.chatbot_sources import (
     should_hide_sources,
 )
 from src.ui.cookies_security import is_production_like_env, resolve_cookies_password
+from src.ui.groups import ADMIN_GROUP, DEFAULT_BADGE, valid_groups
+from src.ui.user_groups_store import (
+    get_group_policy,
+    group_badge_display,
+    group_priorities,
+    known_group_slugs,
+    resolve_group_retrieval_scope,
+)
 
 # --- Defaults dynamiques selon l'environnement ---
 PG_AVAILABLE = bool(has_dsn() or os.getenv("PGHOST"))
@@ -215,16 +222,8 @@ st.markdown(
     """
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0" rel="stylesheet">
 <style>
-/* ====== HIDE ONLY THE PAGE NAVIGATION (keep sidebar content) ====== */
-/* Hide the automatic Streamlit page navigation links */
-[data-testid="stSidebarNav"] { display: none !important; }
-nav[data-testid="stSidebarNav"] { display: none !important; }
-/* Target the navigation list specifically */
-[data-testid="stSidebarNavItems"] { display: none !important; }
-ul[data-testid="stSidebarNavItems"] { display: none !important; }
-/* Hide any nav element in sidebar */
-[data-testid="stSidebar"] nav { display: none !important; }
-[data-testid="stSidebar"] [data-testid="stSidebarNavSeparator"] { display: none !important; }
+/* Page navigation visibility is decided below, once the user group is known
+   (admins keep the full nav; everyone else has it hidden). */
 /* Hide deprecation warning banners */
 div[data-testid="stAlert"] .stAlert { display: none !important; }
 div.stAlert:has(> div[role="alert"]) { display: none !important; }
@@ -350,6 +349,7 @@ for p in [RUNS_CSV.parent, FEEDS_CSV.parent, REVIEWS_CSV.parent]:
 RUNS_FIELDS = [
     "ts",
     "turn_id",
+    "trace_id",
     "question",
     "answer",
     "provider",
@@ -412,6 +412,8 @@ RUNS_FIELDS = [
     "expanded_refs_count",
     # A/B Testing
     "user_group",
+    # Ministry routing (issue #341)
+    "selected_ministry",
     # ═══════════════════════════════════════════════════════════════════════════
     # V3 OBSERVABILITY COLUMNS (42 new columns for detailed V3 pipeline tracking)
     # ═══════════════════════════════════════════════════════════════════════════
@@ -529,6 +531,11 @@ def log_run_row(row: dict):
     _log_run_v3(row, engine=get_engine(), csv_path=RUNS_CSV, csv_fields=RUNS_FIELDS)
 
 
+def log_trace_event_rows(events: list[dict], *, turn_id: str, trace_id: str):
+    """Persist detailed RAG trace events and optionally export OTEL spans."""
+    _log_trace_events_v3(events, turn_id=turn_id, trace_id=trace_id, engine=get_engine())
+
+
 def upsert_reviews(turn_ids: list[str], reviewed: bool):
     """Update/insert reviews in PostgreSQL (or CSV fallback)."""
     engine = get_engine()
@@ -617,19 +624,25 @@ cookies = EncryptedCookieManager(prefix="assistant_rh_", password=resolve_cookie
 if not cookies.ready():
     st.stop()
 
+# Logout: a previous run cleared the group cookie and asked to return to the
+# group picker. Do it now (the cookie write has flushed on this rerun).
+if st.session_state.pop("_pending_logout", False):
+    st.switch_page("Home.py")
+
 _cookies_to_save = {}
 
-GROUP_PRIORITY = {
-    "dgafpallianceadmin": 100,
-    "dgafpsd1": 80,
-    "mattecentrale": 70,
-    "mattedreal": 60,
-    "cisirh": 50,
-    "specloiret": 40,
-    "betatest-jan26": 10,
-    "default": 0,
-}
-VALID_GROUPS = set(GROUP_PRIORITY.keys())
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _group_resolution_maps() -> tuple[dict[str, int], set[str]]:
+    """(priority-by-slug, known-slugs) from the store — DB-authoritative, seed fallback."""
+    return group_priorities(), known_group_slugs()
+
+
+# Priorities and the known-set come from the DB store so admin-created groups
+# carry their real priority (not 0) and are recognised. URL onboarding stays
+# restricted to seed groups (VALID_GROUPS): new groups are password-only.
+GROUP_PRIORITY, KNOWN_GROUPS = _group_resolution_maps()
+VALID_GROUPS = valid_groups()
 
 
 def _determine_user_group() -> tuple[str, bool]:
@@ -641,12 +654,16 @@ def _determine_user_group() -> tuple[str, bool]:
     reset_requested = query_params.get("reset_group") == "true"
 
     existing_group = cookies.get("user_group")
+    # Ignore a cookie pointing at a group that no longer exists (deleted), so a
+    # stale cookie can't keep authenticating; treat it as unassigned.
+    if existing_group and existing_group not in KNOWN_GROUPS:
+        existing_group = None
     existing_priority = GROUP_PRIORITY.get(existing_group, 0)
 
     url_group = query_params.get("group", "").lower()
     if url_group and url_group not in VALID_GROUPS:
         url_group = ""
-    if url_group == "dgafpallianceadmin":
+    if url_group == ADMIN_GROUP:
         url_group = ""
     url_priority = GROUP_PRIORITY.get(url_group, 0)
 
@@ -670,6 +687,29 @@ if group_needs_save:
     _cookies_to_save["user_group"] = user_group
 st.session_state.user_group = user_group
 
+# Enforce the group picker: a visitor who reaches the chatbot without an
+# identified group ("default") is sent back to the homepage to pick one. Admins
+# (authenticated via the password form, no group cookie) are exempt.
+if user_group == "default" and not is_admin():
+    st.switch_page("Home.py")
+
+# Page navigation visibility: admins keep the full sidebar page list; every
+# other group has it hidden so only the chatbot is reachable from the nav.
+if not is_admin():
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebarNav"] { display: none !important; }
+        nav[data-testid="stSidebarNav"] { display: none !important; }
+        [data-testid="stSidebarNavItems"] { display: none !important; }
+        ul[data-testid="stSidebarNavItems"] { display: none !important; }
+        [data-testid="stSidebar"] nav { display: none !important; }
+        [data-testid="stSidebar"] [data-testid="stSidebarNavSeparator"] { display: none !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 @st.cache_data(ttl=15, show_spinner=False)
 def load_runtime_config():
@@ -679,26 +719,20 @@ def load_runtime_config():
 rag_config = load_runtime_config()
 
 
+def _ministry_label(ministry_id: str) -> str:
+    ministry = MINISTRY_CATALOG.get(ministry_id)
+    return ministry.label if ministry else ministry_id
+
+
 # ------------------------------
 # Sidebar avec filtres utilisateur (VERSION PRODUCTION - épurée)
 # ------------------------------
 with st.sidebar:
-    # User Group Indicator (A/B Testing) - Only visible for admins
+    # Group indicator + logout — shown for any identified user (admins always);
+    # colours/labels come from the DB store with seed fallback.
     user_group = st.session_state.get("user_group", "default")
-
-    # Only show group indicator for admin users
-    if user_group == "dgafpallianceadmin":
-        group_colors = {
-            "dgafpallianceadmin": ("🔧", "#6366f1", "Admin"),
-            "dgafpsd1": ("🏛️", "#8b5cf6", "DGAFP SD1"),
-            "mattecentrale": ("🏢", "#f97316", "MATTE Centrale"),
-            "mattedreal": ("🌍", "#f97316", "MATTE DREAL"),
-            "cisirh": ("📊", "#eab308", "CISIRH"),
-            "specloiret": ("📍", "#10b981", "Loiret"),
-            "betatest-jan26": ("🧪", "#3b82f6", "Beta"),
-            "default": ("👤", "#6b7280", "Non assigné"),
-        }
-        icon, color, label = group_colors.get(user_group, ("👤", "#6b7280", user_group))
+    if is_admin() or user_group != "default":
+        icon, color, label = group_badge_display().get(user_group, (*DEFAULT_BADGE, user_group))
 
         st.markdown(
             f"""
@@ -707,7 +741,7 @@ with st.sidebar:
             border-left: 3px solid {color};
             padding: 8px 12px;
             border-radius: 4px;
-            margin-bottom: 16px;
+            margin-bottom: 8px;
             font-size: 0.85em;
         ">
             {icon} <strong>Groupe:</strong> {label}
@@ -717,17 +751,63 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
 
+        if st.button(
+            "✕ Déconnexion",
+            key="logout_btn",
+            use_container_width=True,
+            help="Se déconnecter et revenir à la sélection du groupe",
+        ):
+            # Reset to the "default" (unassigned) sentinel instead of deleting:
+            # EncryptedCookieManager.__delitem__ is a no-op when a cookie prefix
+            # is set, so pop/del would not actually clear the group. "default" is
+            # treated as logged-out everywhere (picker shown, is_admin false).
+            cookies["user_group"] = "default"
+            cookies.save()
+            # Also drop the active chat so it can't leak to the next group/user.
+            for _k in (
+                "user_group",
+                "admin_authenticated",
+                "_is_admin_cache",
+                "turns",
+                "conversation_id",
+                "selected_ministry",
+                "selected_ministry_picker",
+            ):
+                st.session_state.pop(_k, None)
+            st.session_state["_pending_logout"] = True
+            st.rerun()
+
     st.markdown("### 🗂️ Filtres")
 
-    # Filtre Ministère (disabled - single option for now)
-    ministere_options = ["Aménagement du territoire Transition écologique"]
-    selected_ministere = st.selectbox(
-        "Ministère",
-        ministere_options,
-        index=0,
-        disabled=True,
-        help="D'autres ministères seront disponibles prochainement",
-    )
+    retrieval_scope = None
+    retrieval_scope_error = ""
+    selected_ministere = ""
+    group_policy = get_group_policy(user_group)
+    if not group_policy["valid"]:
+        retrieval_scope_error = f"Configuration ministérielle invalide pour ce groupe : {group_policy['error']}"
+        st.error(retrieval_scope_error)
+    else:
+        ministere_options = list(group_policy["allowed_ministries"])
+        default_ministry = group_policy["default_ministry"]
+        previous_ministry = st.session_state.get("selected_ministry")
+        initial_ministry = previous_ministry if previous_ministry in ministere_options else default_ministry
+        selected_ministere = st.selectbox(
+            "Ministère",
+            ministere_options,
+            index=ministere_options.index(initial_ministry),
+            format_func=_ministry_label,
+            help="Le ministère sélectionné détermine les sources ministérielles interrogées pour cette requête.",
+            key="selected_ministry_picker",
+        )
+        if previous_ministry and previous_ministry != selected_ministere:
+            st.session_state.turns = []
+            st.session_state.conversation_id = str(uuid.uuid4())[:8]
+            st.session_state.selected_ministry = selected_ministere
+            st.rerun()
+        st.session_state.selected_ministry = selected_ministere
+        retrieval_scope, retrieval_scope_error = resolve_group_retrieval_scope(user_group, selected_ministere)
+        if retrieval_scope_error:
+            st.error(retrieval_scope_error)
 
     # Filtre Agent (disabled - single option for now)
     agent_options = ["Contractuel"]
@@ -975,10 +1055,11 @@ with col2:
 
     # Bloquer les suggestions si un feedback est en attente
     feedback_pending = is_feedback_pending()
+    rag_scope_blocked = bool(retrieval_scope_error or retrieval_scope is None)
 
     # Afficher les 3 suggestions aléatoires (tirées au sort à chaque nouveau chat)
     for i, suggestion in enumerate(st.session_state.suggestions):
-        if st.button(suggestion, key=f"sug_{i}", width="stretch", type="secondary", disabled=feedback_pending):
+        if st.button(suggestion, key=f"sug_{i}", width="stretch", type="secondary", disabled=feedback_pending or rag_scope_blocked):
             st.session_state.suggested_query = suggestion
             st.rerun()
 
@@ -993,6 +1074,7 @@ def _detect_source_type(chunk: Chunk) -> str:
         # Mapper les noms de tables vers les noms lisibles
         table_to_name = {
             "rag_chunks_matte": "MATTE",
+            "rag_chunks_mso": "MSO",
             "rag_chunks_fiches_sp": "Service Public",
             "rag_chunks_dgafp": "DGAFP",
             "rag_chunks_3": "RAG3",  # Nouvelle source
@@ -1001,6 +1083,9 @@ def _detect_source_type(chunk: Chunk) -> str:
         return table_to_name.get(table_source, table_source)
 
     # Sinon, déduire depuis les métadonnées
+    publisher = str(meta.get("source") or meta.get("publisher") or "").lower()
+    if publisher == "mso":
+        return "MSO"
     if meta.get("cid") or meta.get("nature"):
         return "DGAFP"
     elif meta.get("sid") or meta.get("audience") or meta.get("theme"):
@@ -1016,6 +1101,7 @@ def _source_badge_html(source: str) -> str:
     """Retourne un badge HTML coloré selon la source (couleurs DSFR officielles)."""
     colors = {
         "MATTE": "#696AF4",  # Violet France (DSFR)
+        "MSO": "#7c3aed",
         "Service Public": "#3b82f6",  # Bleu France (DSFR)
         "DGAFP": "#18753C",  # Vert émeraude (DSFR)
         "RGRH": "#F95C5E",  # Rouge Marianne (DSFR) - nouvelles fiches
@@ -1059,9 +1145,7 @@ def render_debug_chunks(
                     f"Embed: **{ctx.get('embed_col')}** · Filtres: "
                     f"{', '.join(f'{k}={v}' for k, v in (ctx.get('filters') or {}).items() if v) or '—'}"
                 )
-                st.caption(
-                    "Tips: vérifie `ALBERT_API_KEY`, le DSN (`SCW_POSTGRES_DSN`), les filtres et que la colonne d'embedding n'est pas vide."
-                )
+                st.caption("Tips: vérifie `ALBERT_API_KEY`, le DSN (`SCW_POSTGRES_DSN`), les filtres et que la colonne d'embedding n'est pas vide.")
             return
 
         # Compter les chunks par source
@@ -1204,7 +1288,8 @@ for idx, t in enumerate(st.session_state.turns):
 # if feedback_pending:
 #     st.warning("⚠️ Veuillez compléter votre feedback (cochez au moins une raison et cliquez sur 'Envoyer') avant de poser une nouvelle question.")
 
-query = st.chat_input("Posez votre question à notre assistant...", disabled=feedback_pending)
+rag_scope_blocked = bool(retrieval_scope_error or retrieval_scope is None)
+query = st.chat_input("Posez votre question à notre assistant...", disabled=feedback_pending or rag_scope_blocked)
 
 # Vérifier si une suggestion a été cliquée
 if hasattr(st.session_state, "suggested_query") and st.session_state.suggested_query:
@@ -1212,6 +1297,13 @@ if hasattr(st.session_state, "suggested_query") and st.session_state.suggested_q
     st.session_state.suggested_query = None  # Réinitialiser
 
 if query:
+    if retrieval_scope is None:
+        st.error(retrieval_scope_error or "Configuration ministérielle indisponible.")
+        st.stop()
+
+    turn_id = str(uuid.uuid4())[:8]
+    trace_id = uuid.uuid4().hex
+
     with st.chat_message("user", avatar="🧑‍💻"):
         st.markdown(query)
 
@@ -1221,32 +1313,7 @@ if query:
     if True:
         try:
             # Créer la config V3 Clean
-            from assistant_rh_rag_pipeline.config import ContextMode
-
-            config_v3 = get_default_config()
-            _mode_map = {"standard": ContextMode.STANDARD, "wide": ContextMode.WIDE}
-            config_v3.context.context_mode = _mode_map.get(v3_context_mode, ContextMode.STANDARD)
-            config_v3.context.token_budget = v3_token_budget
-            config_v3.context.doc_entire_threshold = getattr(rag_config, "v3_doc_entire_threshold", 3500)
-            config_v3.selector.enabled = v3_enable_selector
-            config_v3.selector.model = v3_selector_model
-            config_v3.selector.prompt_name = getattr(rag_config, "v3_selector_prompt_name", "v3_selector_business.md")
-            config_v3.query_processor.enable_intent_gating = getattr(rag_config, "enable_intent_gating", False)
-            config_v3.query_processor.enable_acronym_expansion = getattr(rag_config, "enable_query_expansion", True)
-            config_v3.query_processor.intent_prompt_name = getattr(rag_config, "v3_intent_prompt_name", "intent_unified.md")
-            configured_tables = list(getattr(rag_config, "v3_tables", None) or ["matte", "service_public", "dgafp", "rgrh"])
-            config_v3.retrieval.tables = configured_tables
-            config_v3.retrieval.enable_chunks_test = getattr(rag_config, "v3_enable_chunks_test", True)
-            config_v3.retrieval.initial_top_k = v3_initial_top_k
-            config_v3.retrieval.alpha = v3_alpha
-            config_v3.aggregation.enable_section_reranker = v3_enable_reranker
-            config_v3.aggregation.section_rerank_top_k = v3_rerank_top_k
-            search_mode_map = {"semantic": SearchModeV3.SEMANTIC, "hybrid": SearchModeV3.HYBRID, "lexical": SearchModeV3.LEXICAL}
-            config_v3.retrieval.search_mode = search_mode_map.get(v3_search_mode, SearchModeV3.SEMANTIC)
-            config_v3.generation.model = v3_generator_model
-            config_v3.generation.temperature = v3_temperature
-            config_v3.generation.system_prompt_name = v3_system_prompt_name
-            config_v3.verbose = rag_config.verbose_mode
+            config_v3 = runtime_config_to_rag_config(rag_config)
 
             pipeline_v3 = create_pipeline_v3_clean(config_v3)
 
@@ -1273,14 +1340,13 @@ if query:
             t_v3_start = time.time()
 
             # Étape 1 : traitement de la requête (intent + acronymes)
-            qr_v3 = pipeline_v3.process_query(query, conversation_history_v3)
+            qr_v3 = pipeline_v3.process_query(query, conversation_history_v3, retrieval_scope=retrieval_scope)
 
             # Si hors-scope (chit-chat, etc.), répondre directement
             if not qr_v3.should_proceed:
                 with st.chat_message("assistant"):
                     v3_response = qr_v3.direct_response or ""
                     st.markdown(v3_response)
-                turn_id = str(uuid.uuid4())[:8]
                 turn_obj = Turn(id=turn_id, user=query, assistant=v3_response, retrieved=[], prompt_used="")
                 st.session_state.turns.append(turn_obj)
 
@@ -1294,6 +1360,8 @@ if query:
                         pipeline_v3,
                         dict(st.session_state),
                         runtime_config=rag_config,
+                        trace_id=trace_id,
+                        retrieval_scope=retrieval_scope,
                     )
                     log_run_row(row)
                 except Exception as e:
@@ -1312,7 +1380,14 @@ if query:
                 def _update_status(msg: str):
                     status_placeholder.caption(f"⏳ {msg}")
 
-                stream_generator = pipeline_v3.run_stream(qr_v3, conversation_history_v3, on_status=_update_status)
+                stream_generator = pipeline_v3.run_stream(
+                    qr_v3,
+                    conversation_history_v3,
+                    on_status=_update_status,
+                    turn_id=turn_id,
+                    trace_id=trace_id,
+                    retrieval_scope=retrieval_scope,
+                )
 
                 def _stream_clear_on_first(gen, loader):
                     """Keep loader visible during retrieval, clear on first token."""
@@ -1407,7 +1482,6 @@ if query:
             # ═══════════════════════════════════════════════════════════════════
             # 📊 Créer le Turn pour l'historique
             # ═══════════════════════════════════════════════════════════════════
-            turn_id = str(uuid.uuid4())[:8]
             turn_obj = Turn(
                 id=turn_id,
                 user=query,
@@ -1435,8 +1509,10 @@ if query:
                     context_items=context_items,
                     v1_chunks_for_display=v1_chunks_for_display,
                     legal_refs_v3=legal_refs_v3,
+                    trace_id=trace_id,
                 )
                 log_run_row(row)
+                log_trace_event_rows(v3_metadata.get("rag_trace_events", []), turn_id=turn_id, trace_id=trace_id)
             except Exception as e:
                 import logging as _logging
                 import traceback
@@ -1460,7 +1536,7 @@ if query:
             st.stop()
 
 
-with st._bottom:
+with st.bottom:
     st.caption(
         # body='<p style="text-align: center;"><i>Les réponses fournies peuvent contenir des inexactitudes. Vérifiez systématiquement les sources avant toute décision.</i></p>',
         body='<p style="text-align: center;"><i>Les réponses générées par l’IA doivent être relues, complétées et validées avant toute utilisation et diffusion auprès des agents.</i></p>',

@@ -252,3 +252,121 @@ def test_backfill_bge_scaleway_reuses_one_threadpool_without_shared_session(
     assert executor_instances == 1
     assert "session" not in client_kwargs
     assert [len(batch) for batch in updates] == [2, 1]
+
+
+@pytest.fixture
+def albert_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALBERT_BASE_URL", "https://albert.env.test/v1")
+    monkeypatch.setenv("ALBERT_API_KEY", "albert-key")
+    monkeypatch.delenv("ALBERT_EMBED_MODEL", raising=False)
+
+
+def test_albert_embed_client_resolves_base_url_model_from_explicit_then_env(albert_env: None) -> None:
+    env_client = embeddings_backfill.AlbertEmbedClient()
+    assert env_client.base_url == "https://albert.env.test/v1"
+    assert env_client.api_key == "albert-key"
+    assert env_client.model_name == "openweight-embeddings"  # défaut aligné runtime
+
+    explicit_client = embeddings_backfill.AlbertEmbedClient(model_name="m", base_url="https://explicit.test/v1")
+    assert explicit_client.base_url == "https://explicit.test/v1"
+    assert explicit_client.model_name == "m"
+
+
+def test_albert_embed_client_honors_env_model_when_arg_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Ordre arg -> env -> défaut : le défaut CLI est None (build_parser), donc
+    # ALBERT_EMBED_MODEL doit primer quand aucun --albert-model n'est passé.
+    monkeypatch.setenv("ALBERT_BASE_URL", "https://albert.env.test/v1")
+    monkeypatch.setenv("ALBERT_API_KEY", "albert-key")
+    monkeypatch.setenv("ALBERT_EMBED_MODEL", "bge-m3-custom")
+
+    assert embeddings_backfill.build_parser().parse_args(["--config", "x"]).albert_model is None
+    assert embeddings_backfill.AlbertEmbedClient(model_name=None).model_name == "bge-m3-custom"
+
+
+def test_albert_embed_client_defaults_base_url_when_env_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ALBERT_BASE_URL", raising=False)
+    monkeypatch.setenv("ALBERT_API_KEY", "albert-key")
+    client = embeddings_backfill.AlbertEmbedClient()
+    assert client.base_url == "https://albert.api.etalab.gouv.fr/v1"
+
+
+def test_albert_embed_client_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALBERT_BASE_URL", "https://albert.env.test/v1")
+    monkeypatch.delenv("ALBERT_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="ALBERT_API_KEY"):
+        embeddings_backfill.AlbertEmbedClient()
+
+
+def test_albert_embed_client_posts_model_and_retries_server_error(
+    albert_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(embeddings_backfill.time, "sleep", lambda delay: None)
+    session = requests.Session()
+    captured: dict[str, Any] = {}
+    responses = [DummyResponse(status_code=503), DummyResponse()]
+
+    def flaky_post(url: str, **kwargs: Any) -> DummyResponse:
+        captured["url"] = url
+        captured["json"] = kwargs.get("json")
+        return responses.pop(0)
+
+    monkeypatch.setattr(session, "post", flaky_post)
+    client = embeddings_backfill.AlbertEmbedClient(session=session)
+
+    assert client.embed_text("texte") == [1.0, 0.0]  # 503 puis 200 (retry via helper partagé)
+    assert captured["url"] == "https://albert.env.test/v1/embeddings"
+    assert captured["json"] == {"model": "openweight-embeddings", "input": "texte"}
+
+
+def test_backfill_albert_uses_albert_client_and_one_threadpool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [{"id": "1", "text": "a"}, {"id": "2", "text": "b"}, {"id": "3", "text": "c"}]
+    updates: list[list[dict[str, Any]]] = []
+    used_client: list[str] = []
+
+    class DummyClient:
+        def __init__(self, **kwargs: Any):
+            used_client.append("albert")
+
+        def embed_text(self, text: str) -> list[float]:
+            return [float(ord(text) - ord("a") + 1), 0.0]
+
+    class DummyExecutor:
+        def __init__(self, max_workers: int):
+            self.max_workers = max_workers
+
+        def __enter__(self) -> DummyExecutor:
+            return self
+
+        def __exit__(self, *args: Any) -> None:
+            return None
+
+        def map(self, fn: Any, values: list[str]) -> list[list[float]]:
+            return [fn(value) for value in values]
+
+    monkeypatch.setattr(embeddings_backfill, "fetch_missing_rows", lambda *args: rows)
+    monkeypatch.setattr(embeddings_backfill, "AlbertEmbedClient", DummyClient)
+    monkeypatch.setattr(embeddings_backfill, "ThreadPoolExecutor", DummyExecutor)
+    monkeypatch.setattr(
+        embeddings_backfill,
+        "update_embeddings",
+        lambda conn, schema, table, id_column, embedding_column, prepared: updates.append(prepared) or len(prepared),
+    )
+
+    total = embeddings_backfill.backfill_albert(
+        conn=object(),
+        schema="public",
+        table_spec={"table": "rag_chunks_dgafp", "id_column": "chunk_id", "text_column": "chunk_text"},
+        embedding_column="embedding_m3",
+        model_name="openweight-embeddings",
+        base_url=None,
+        workers=4,
+        batch_size=2,
+        limit=None,
+    )
+
+    assert total == 3
+    assert used_client == ["albert"]
+    assert [len(batch) for batch in updates] == [2, 1]

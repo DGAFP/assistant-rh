@@ -15,7 +15,9 @@ from assistant_rh_rag_pipeline.models import (
     AggregatedSection,
     ContextItem,
     RetrievedChunk,
+    context_item_document_id,
     estimate_tokens,
+    section_document_id,
 )
 from assistant_rh_rag_pipeline.query_processor import Intent, QueryProcessor
 
@@ -154,6 +156,36 @@ class TestLoadPrompt:
 
         mock_get.return_value = None
         assert load_prompt("a.md", "b.md") is None
+
+
+def test_streaming_generator_fallback_diagnostics_are_request_scoped() -> None:
+    from assistant_rh_rag_pipeline.config import GenerationConfig
+    from assistant_rh_rag_pipeline.generator import StreamingGenerator
+
+    class FakeFallbackClient:
+        last_provider_used = "scaleway"
+        fallback_count = 3
+
+        def chat(self, prompt: str, system_prompt: str | None = None) -> str:
+            self.last_provider_used = "scaleway"
+            self.fallback_count += 1
+            return "réponse fallback"
+
+    generator = StreamingGenerator(GenerationConfig())
+    generator._llm = FakeFallbackClient()
+
+    with patch.object(generator, "_system_prompt_for", return_value="system"):
+        assert generator.generate("question", []) == "réponse fallback"
+
+    assert generator.provider_used == "scaleway"
+    assert generator.fallback_count == 1
+    assert generator.used_fallback is True
+
+    generator.begin_request()
+
+    assert generator.provider_used is None
+    assert generator.fallback_count == 0
+    assert generator.used_fallback is False
 
 
 # ---------------------------------------------------------------------------
@@ -594,6 +626,75 @@ class TestSectionAggregator:
         assert sections[0].metadata["doc_title"] == "Remboursement des frais de déplacement dans la fonction publique"
         assert sections[0].metadata["doc_url"] == "https://www.service-public.gouv.fr/particuliers/vosdroits/F527"
 
+    @patch("assistant_rh_rag_pipeline.section_aggregator.SectionAggregator._fetch_sections")
+    def test_standalone_dgafp_chunk_keeps_legal_metadata_without_prompt_promotion(self, mock_fetch):
+        from assistant_rh_rag_pipeline.config import SectionAggregationConfig
+        from assistant_rh_rag_pipeline.section_aggregator import SectionAggregator
+
+        mock_fetch.return_value = {}
+        agg = SectionAggregator(SectionAggregationConfig(), dsn="unused")
+        chunk = RetrievedChunk(
+            chunk_id="LEGIARTI000045662634_0",
+            text="Article 1-3 text",
+            score=0.99,
+            table_source="DGAFP",
+            metadata={
+                "source_document_id": "LEGIARTI000045662634",
+                "cid": "LEGIARTI000045662634",
+                "full_title": ("Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat"),
+                "title": "Décret n° 86-83 du 17 janvier 1986",
+                "number": "Article 1-3",
+                "url": "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000045662634",
+            },
+            section_id=None,
+        )
+
+        sections = agg.aggregate([chunk])
+
+        assert len(sections) == 1
+        assert sections[0].section_id is None
+        assert sections[0].document_id is None
+        assert sections[0].heading == ""
+        assert sections[0].metadata["doc_id"] == "LEGIARTI000045662634"
+        assert sections[0].metadata["doc_short_id"] == "LEGIARTI000045662634"
+        assert sections[0].metadata["doc_title"] == ""
+        assert (
+            sections[0].metadata["full_title"]
+            == "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat"
+        )
+        assert sections[0].metadata["cid"] == "LEGIARTI000045662634"
+        assert sections[0].metadata["number"] == "Article 1-3"
+
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._load_full_document")
+    @patch("assistant_rh_rag_pipeline.context_builder.ContextBuilder._resolve_cids", return_value={})
+    @patch("assistant_rh_rag_pipeline.section_aggregator.SectionAggregator._fetch_sections")
+    def test_standalone_source_document_id_does_not_trigger_doc_entire(self, mock_fetch, _mock_refs, mock_load_doc):
+        from assistant_rh_rag_pipeline.config import ContextBuildConfig, SectionAggregationConfig
+        from assistant_rh_rag_pipeline.context_builder import ContextBuilder
+        from assistant_rh_rag_pipeline.section_aggregator import SectionAggregator
+
+        mock_fetch.return_value = {}
+        chunk = RetrievedChunk(
+            chunk_id="LEGIARTI000045662634_0",
+            text="Article 1-3 text",
+            score=0.99,
+            table_source="DGAFP",
+            metadata={
+                "source_document_id": "LEGIARTI000045662634",
+                "cid": "LEGIARTI000045662634",
+                "number": "Article 1-3",
+            },
+            section_id=None,
+        )
+
+        sections = SectionAggregator(SectionAggregationConfig(), dsn="unused").aggregate([chunk])
+        result = ContextBuilder(ContextBuildConfig(max_full_docs=1, doc_entire_threshold=500, max_sections=5), dsn="unused").build(sections)
+
+        mock_load_doc.assert_not_called()
+        assert len(result) == 1
+        assert result[0].metadata.get("is_doc_entire") is not True
+        assert result[0].metadata["doc_id"] == "LEGIARTI000045662634"
+
 
 # ---------------------------------------------------------------------------
 # context_builder — ref collection
@@ -966,3 +1067,44 @@ class TestContextBuilderFormat:
 
         result = ContextBuilder.format_for_prompt([])
         assert result == "" or "Aucun" in result or len(result) < 50
+
+
+# ---------------------------------------------------------------------------
+# models.section_document_id
+# ---------------------------------------------------------------------------
+
+
+class TestSectionDocumentId:
+    def _section(self, **kwargs) -> AggregatedSection:
+        base = {"section_id": "s1", "heading": "H", "markdown": "txt", "chunks": [], "score": 1.0}
+        base.update(kwargs)
+        return AggregatedSection(**base)
+
+    def test_prefers_explicit_document_id(self):
+        sec = self._section(document_id="doc-1", metadata={"cid": "LEGI-X"})
+        assert section_document_id(sec) == "doc-1"
+
+    def test_falls_back_to_section_metadata(self):
+        sec = self._section(metadata={"doc_id": "doc-2"})
+        assert section_document_id(sec) == "doc-2"
+
+    def test_standalone_legal_section_uses_chunk_cid(self):
+        chunk = RetrievedChunk(chunk_id="c1", text="t", score=0.5, table_source="dgafp", metadata={"cid": "LEGIARTI000044423797"})
+        sec = self._section(section_id=None, metadata={}, chunks=[chunk])
+        assert section_document_id(sec) == "LEGIARTI000044423797"
+
+    def test_empty_when_no_identifier(self):
+        assert section_document_id(self._section(metadata={})) == ""
+
+
+def test_context_item_document_id_uses_standalone_legal_cid():
+    item = ContextItem(
+        section_id=None,
+        heading="Article 3",
+        content="Texte juridique",
+        score=0.9,
+        publisher="Légifrance",
+        metadata={"cid": "LEGIARTI000044423797"},
+    )
+
+    assert context_item_document_id(item) == "LEGIARTI000044423797"

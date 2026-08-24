@@ -18,15 +18,15 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
-from typing import Dict, List
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
 
 import psycopg
 from psycopg.rows import dict_row
 
 from .config import SectionAggregationConfig
 from .db_helpers import get_dsn
-from .models import AggregatedSection, RetrievedChunk
+from .models import AggregatedSection, RetrievedChunk, serialize_section_chunks
 from .reranker import AlbertReranker
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,8 @@ class SectionAggregationDiagnostics:
     sections_after_rerank: int = 0
     reranker_status: str = "not_run"
     reranker_error: str = ""
+    chunks_before_rerank: list[dict[str, Any]] = field(default_factory=list)
+    chunks_after_rerank: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -53,10 +55,34 @@ class SectionAggregationResult:
 class SectionAggregator:
     """Aggregate chunks into sections, score them, and optionally rerank."""
 
+    # Suffixe des lignes d'index ADDITIVES R2 de rag_chunks_dgafp (résumé
+    # d'article : l'embedding encode le résumé, chunk_text reste le texte
+    # authentique — cf. data-engineering legifrance/summary_rows.py).
+    _SUMMARY_CHUNK_SUFFIX = "_r2s"
+
     def __init__(self, config: SectionAggregationConfig, dsn: str | None = None):
         self.config = config
         self.dsn = dsn or get_dsn()
         self._reranker: AlbertReranker | None = None
+
+    @classmethod
+    def _standalone_group_key(cls, chunk: RetrievedChunk) -> str:
+        """Grouping key for chunks without a ``rag_sections`` parent.
+
+        La ligne-résumé R2 d'un article (``{cid}_r2s``) porte le même
+        chunk_text authentique que son chunk article (``{cid}_0``) : quand les
+        deux sont retrouvés, ils doivent FUSIONNER en une section (double hit =
+        signal ``chunk_count`` légitime) au lieu de consommer deux des
+        ``_MAX_RERANK_INPUT`` places du reranker avec un texte identique.
+        La fusion est bornée à cette paire précise (``_0``/``_r2s``), scopée
+        par ``table_source`` — les chunks positionnels d'un article multi-chunk
+        (``_1``, ``_2``…) gardent leur clé propre, comportement inchangé.
+        """
+        cid = str((chunk.metadata or {}).get("cid") or "").strip()
+        chunk_id = str(chunk.chunk_id or "")
+        if cid and chunk_id in (f"{cid}_0", f"{cid}{cls._SUMMARY_CHUNK_SUFFIX}"):
+            return f"_standalone_cid_{chunk.table_source}:{cid}"
+        return f"_standalone_{chunk_id}"
 
     def aggregate(self, chunks: List[RetrievedChunk], query: str | None = None) -> List[AggregatedSection]:
         """Return aggregated sections.
@@ -82,7 +108,7 @@ class SectionAggregator:
 
         groups: Dict[str, List[RetrievedChunk]] = {}
         for c in chunks:
-            key = str(c.section_id) if c.section_id else f"_standalone_{c.chunk_id}"
+            key = str(c.section_id) if c.section_id else self._standalone_group_key(c)
             groups.setdefault(key, []).append(c)
 
         max_count = max(len(g) for g in groups.values())
@@ -100,8 +126,9 @@ class SectionAggregator:
             first = group[0]
             is_standalone = key.startswith("_standalone_")
 
-            doc_id = meta.get("doc_id") or first.metadata.get("source_document_id")
-            first_meta = first.metadata
+            first_meta = first.metadata or {}
+
+            doc_id = meta.get("doc_id") or first_meta.get("source_document_id")
 
             doc_short_id = (
                 meta.get("doc_short_id") or first_meta.get("doc_short_id") or first_meta.get("short_id") or first_meta.get("source_document_id") or ""
@@ -137,7 +164,7 @@ class SectionAggregator:
                     markdown=meta.get("section_markdown", first.text),
                     chunks=group,
                     score=agg_score,
-                    document_id=str(doc_id) if doc_id else None,
+                    document_id=str(doc_id) if doc_id and not is_standalone else None,
                     publisher=meta.get("doc_publisher") or first.table_source,
                     references_juridiques=meta.get("references_juridiques"),
                     heading_path=meta.get("heading_path"),
@@ -148,14 +175,17 @@ class SectionAggregator:
         sections.sort(key=lambda s: s.score, reverse=True)
 
         sections_before_rerank = len(sections)
+        chunks_before_rerank = serialize_section_chunks(sections)
         reranker_status = "not_run"
         reranker_error = ""
+        reranked = False
         if not self.config.enable_section_reranker:
             reranker_status = "disabled"
         elif not query:
             reranker_status = "skipped_no_query"
         else:
             sections, reranker_status, reranker_error = self._rerank(query, sections)
+            reranked = reranker_status == "completed"
 
         return SectionAggregationResult(
             sections=sections,
@@ -164,6 +194,8 @@ class SectionAggregator:
                 sections_after_rerank=len(sections),
                 reranker_status=reranker_status,
                 reranker_error=reranker_error,
+                chunks_before_rerank=chunks_before_rerank,
+                chunks_after_rerank=serialize_section_chunks(sections, include_rerank_score=reranked),
             ),
         )
 
@@ -205,9 +237,6 @@ class SectionAggregator:
     # Reranking
     # ------------------------------------------------------------------
 
-    # Max sections to send to the reranker API (avoids 413 payload errors)
-    _MAX_RERANK_INPUT = 20
-
     def _rerank(self, query: str, sections: List[AggregatedSection]) -> tuple[List[AggregatedSection], str, str]:
         if not sections:
             return sections, "skipped_no_sections", ""
@@ -215,8 +244,14 @@ class SectionAggregator:
             if self._reranker is None:
                 self._reranker = AlbertReranker()
 
-            # Pre-filter to avoid oversized payloads to the reranker API
-            candidates = sections[: self._MAX_RERANK_INPUT]
+            # Entrée du reranker pilotée par config (v3_rerank_input_k),
+            # jamais inférieure à sa sortie. Jusqu'à 40 candidats = UNE
+            # requête /rerank (pas de dérive inter-requêtes) ; au-delà, le
+            # batching du reranker prend le relais (approximatif, cf.
+            # reranker._BATCH_SIZE). L'ancien pré-filtre en dur coupait la
+            # section-réponse de 3 échecs mesurés (q17/q192/q218, funnel 17/07).
+            input_k = max(self.config.rerank_input_k, self.config.section_rerank_top_k)
+            candidates = sections[:input_k]
 
             texts = [f"# {s.heading}\n\n{s.markdown[:1500]}" for s in candidates]
             t0 = time.time()

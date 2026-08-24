@@ -30,12 +30,23 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from assistant_rh_rag_pipeline.chat_logger import (
     SafeEncoder,
+    _build_trace_event_upsert_sql,
     _build_upsert_sql,
     _jdumps,
     _prepare_data,
+    _prepare_trace_event_rows,
     build_log_row,
     build_non_rag_row,
     log_run,
+    log_trace_events,
+)
+from assistant_rh_rag_pipeline.models import (
+    CHUNK_LOG_KEYS,
+    CHUNK_LOG_MARKDOWN_PREVIEW,
+    AggregatedSection,
+    RetrievedChunk,
+    serialize_raw_chunks,
+    serialize_section_chunks,
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -258,6 +269,11 @@ class TestDynamicSQL:
             sql = _build_upsert_sql({"turn_id": "x", col: "[]"})
             assert f"CAST(:{col} AS jsonb)" in sql
 
+    def test_restored_legacy_json_columns_cast_applied(self):
+        for col in ("retrieved", "chunks_sent_to_selector", "sources_used_content", "dist_before_rerank"):
+            sql = _build_upsert_sql({"turn_id": "x", col: "[]"})
+            assert f"CAST(:{col} AS jsonb)" in sql
+
     def test_non_jsonb_no_cast(self):
         sql = _build_upsert_sql({"turn_id": "x", "question": "q"})
         assert "CAST(:question" not in sql
@@ -272,6 +288,7 @@ class TestBuildLogRow:
     REQUIRED_COLUMNS = [
         "ts",
         "turn_id",
+        "trace_id",
         "question",
         "answer",
         "backend",
@@ -297,10 +314,17 @@ class TestBuildLogRow:
         "v3_needs_legal_final",
     ]
 
-    def _build_row(self, metadata_overrides: Optional[dict] = None):
+    def _build_row(
+        self,
+        metadata_overrides: Optional[dict] = None,
+        context_items: Optional[list] = None,
+        legal_refs_v3: Optional[list] = None,
+    ):
         pipeline, qr, config, runtime, items, v1_chunks = _build_mock_objects()
         if metadata_overrides:
             pipeline.last_result.metadata.update(metadata_overrides)
+        if context_items is not None:
+            items = context_items
         return build_log_row(
             turn_id="abc12345",
             query="Quels sont mes droits RTT ?",
@@ -313,7 +337,7 @@ class TestBuildLogRow:
             total_time_ms=2500.0,
             context_items=items,
             v1_chunks_for_display=v1_chunks,
-            legal_refs_v3=[],
+            legal_refs_v3=[] if legal_refs_v3 is None else legal_refs_v3,
         )
 
     def test_all_required_columns_present(self):
@@ -334,12 +358,80 @@ class TestBuildLogRow:
         row = self._build_row()
         assert row["v3_doc_entire_count"] == 1
 
+    def test_selected_ministry_persisted_from_metadata(self):
+        row = self._build_row(metadata_overrides={"selected_ministry": "matte"})
+        assert row["selected_ministry"] == "matte"
+
+    def test_selected_ministry_null_when_scope_unknown(self):
+        row = self._build_row()
+        assert row["selected_ministry"] is None
+
+    def test_selected_ministry_null_when_empty_string(self):
+        row = self._build_row(metadata_overrides={"selected_ministry": ""})
+        assert row["selected_ministry"] is None
+
     def test_legal_refs_from_resolved(self):
         row = self._build_row()
         assert row["v3_legal_refs_from_dgafp"] == 1
         details = json.loads(row["v3_legal_refs_details"])
         assert len(details) == 1
         assert details[0]["number"] == "L332-2"
+
+    def test_legacy_observability_columns_populated(self):
+        row = self._build_row(
+            metadata_overrides={
+                "tables_searched": ["dgafp", "service_public"],
+                "context_before_selector": [
+                    {
+                        "chunk_id": "LEGIARTI000045662634_0",
+                        "doc_publisher": "DGAFP",
+                        "final_score": 0.9986,
+                        "section_id": "",
+                        "doc_title": "Décret n° 86-83",
+                    }
+                ],
+            },
+            legal_refs_v3=[MagicMock(number="L332-2", cid="LEGIARTI000044426716", title="CGFP", url="https://example.test/L332-2")],
+        )
+
+        assert row["provider"] == "albert"
+        assert row["model"] == "openweight-large"
+        assert row["temperature"] == 0.15
+        assert row["table"] == "dgafp,sp"
+        assert row["cascade_source"] == "dgafp,sp"
+        assert len(row["table"]) <= 30
+        assert row["embed_col"] == "embedding_m3"
+        assert row["retrieval_mode"] == "semantic"
+        assert row["chunk_selection_mode"] == "V3_STANDARD"
+        assert row["chunks_before_pick"] == 2
+        assert row["chunks_after_pick"] == 1
+        assert row["sources_used_indices"] == "0"
+        assert row["expanded_refs_count"] == 1
+
+        retrieved = json.loads(row["retrieved"])
+        assert retrieved[0]["id"] == "chunk1"
+        assert retrieved[0]["source_name"] == "MATTE"
+
+        chunks_sent = json.loads(row["chunks_sent_to_selector"])
+        assert chunks_sent[0]["chunk_id"] == "LEGIARTI000045662634_0"
+        assert chunks_sent[0]["table"] == "rag_chunks_dgafp"
+
+    def test_expanded_refs_count_tracks_display_refs_not_context_total(self):
+        items = [
+            _MockContextItem(
+                publisher="DGAFP",
+                references_juridiques=[
+                    {"number": "L332-2", "cid": "LEGIARTI000044426716", "title": "CGFP"},
+                    {"number": "L332-3", "cid": "LEGIARTI000044426717", "title": "CGFP"},
+                ],
+            )
+        ]
+        matched_ref = MagicMock(number="L332-2", cid="LEGIARTI000044426716", title="CGFP", url="https://example.test/L332-2")
+
+        row = self._build_row(context_items=items, legal_refs_v3=[matched_ref])
+
+        assert row["v3_legal_refs_total"] == 2
+        assert row["expanded_refs_count"] == 1
 
     def test_selector_confidence_ratio(self):
         row = self._build_row()
@@ -388,6 +480,69 @@ class TestBuildLogRow:
         assert row["v3_reranker_status"] == ""
         assert row["v3_reranker_error"] == ""
 
+    def test_trace_id_from_metadata(self):
+        row = self._build_row(metadata_overrides={"trace_id": "abc123"})
+        assert row["trace_id"] == "abc123"
+
+    def test_chunk_trace_columns_are_persisted_from_metadata(self):
+        chunk = RetrievedChunk(
+            chunk_id="LEGIARTI000044426716#1",
+            text="x" * (CHUNK_LOG_MARKDOWN_PREVIEW + 50),
+            score=0.123456789,
+            table_source="DGAFP",
+            metadata={
+                "cid": "LEGIARTI000044426716",
+                "full_title": "Code général de la fonction publique",
+                "title": "Article L332-2",
+                "number": "L332-2",
+                "heading": "Article L332-2",
+            },
+        )
+        section = AggregatedSection(
+            section_id=None,
+            heading="",
+            markdown=chunk.text,
+            chunks=[chunk],
+            score=0.987654321,
+            publisher="DGAFP",
+            metadata={
+                "cid": "LEGIARTI000044426716",
+                "full_title": "Code général de la fonction publique",
+                "title": "Article L332-2",
+                "number": "L332-2",
+            },
+        )
+        chunks_raw = serialize_raw_chunks([chunk])
+        chunks_before_rerank = serialize_section_chunks([section])
+        chunks_after_rerank = serialize_section_chunks([section], include_rerank_score=True)
+
+        row = self._build_row(
+            metadata_overrides={
+                "chunks_raw": chunks_raw,
+                "chunks_before_rerank": chunks_before_rerank,
+                "chunks_after_rerank": chunks_after_rerank,
+                "context_before_selector": chunks_after_rerank,
+            }
+        )
+
+        raw = json.loads(row["v3_chunks_raw"])
+        before = json.loads(row["v3_chunks_before_rerank"])
+        after = json.loads(row["v3_chunks_after_rerank"])
+        context = json.loads(row["v3_context_before_selector"])
+
+        for entries in (raw, before, after, context):
+            assert len(entries) == 1
+            assert tuple(entries[0].keys()) == CHUNK_LOG_KEYS
+            assert len(entries[0]["chunk_markdown"]) == CHUNK_LOG_MARKDOWN_PREVIEW
+
+        assert raw[0]["doc_id"] == "LEGIARTI000044426716"
+        assert raw[0]["doc_title"] == "Code général de la fonction publique"
+        assert raw[0]["section_heading"] == "Article L332-2"
+        assert raw[0]["rerank_score"] is None
+        assert before[0]["rerank_score"] is None
+        assert after[0]["rerank_score"] == 0.987654
+        assert context[0] == after[0]
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TESTS – build_non_rag_row
@@ -395,7 +550,7 @@ class TestBuildLogRow:
 
 
 class TestBuildNonRagRow:
-    def _build_row(self):
+    def _build_row(self, retrieval_scope=None):
         pipeline = _MockPipeline(_MockResult())
         pipeline._timing = {"query_processing_ms": 120}
         qr = _MockQR(
@@ -412,6 +567,8 @@ class TestBuildNonRagRow:
             qr=qr,
             pipeline=pipeline,
             session_state={"session_id": "s1", "conversation_id": "c1", "turns": []},
+            trace_id="trace-non-rag",
+            retrieval_scope=retrieval_scope,
         )
 
     def test_backend_is_intent_gating(self):
@@ -426,11 +583,25 @@ class TestBuildNonRagRow:
         row = self._build_row()
         assert row["v3_intent"] == "chit_chat"
 
+    def test_selected_ministry_from_retrieval_scope(self):
+        from assistant_rh_rag_pipeline.ministry_scope import build_retrieval_scope
+
+        row = self._build_row(retrieval_scope=build_retrieval_scope("matte"))
+        assert row["selected_ministry"] == "matte"
+
+    def test_selected_ministry_null_without_scope(self):
+        row = self._build_row()
+        assert row["selected_ministry"] is None
+
     def test_required_fields_present(self):
         row = self._build_row()
-        required = ["ts", "turn_id", "question", "answer", "session_id", "conversation_id", "turn_index", "rag_version", "v3_intent"]
+        required = ["ts", "turn_id", "trace_id", "question", "answer", "session_id", "conversation_id", "turn_index", "rag_version", "v3_intent"]
         missing = [c for c in required if c not in row]
         assert not missing, f"Missing: {missing}"
+
+    def test_trace_id_present(self):
+        row = self._build_row()
+        assert row["trace_id"] == "trace-non-rag"
 
     def test_serializable(self):
         row = self._build_row()
@@ -458,6 +629,11 @@ class TestPrepareData:
         out = _prepare_data({})
         assert out.get("rag_version") is None
         assert out.get("user_group") is None
+
+    def test_legacy_short_columns_are_bounded(self):
+        out = _prepare_data({"table": "x" * 40, "cascade_source": "y" * 40})
+        assert out["table"] == "x" * 30
+        assert out["cascade_source"] == "y" * 30
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -494,6 +670,109 @@ class TestLogRun:
         row = {"turn_id": "abc", "question": "hello"}
         log_run(row, engine=mock_engine, csv_path=csv_path, csv_fields=["turn_id", "question"])
         assert csv_path.exists()
+
+    def test_csv_fallback_creates_parent_directory(self, tmp_path):
+        csv_path = tmp_path / "missing" / "chat_runs.csv"
+        row = {"turn_id": "abc", "question": "hello"}
+        log_run(row, engine=None, csv_path=csv_path, csv_fields=["turn_id", "question"])
+        assert csv_path.exists()
+
+    def test_csv_fallback_persists_selected_ministry_with_runs_fields(self, tmp_path):
+        # Issue #341: a PostgreSQL outage must not lose the ministry — the CSV
+        # fallback filters the row to RUNS_FIELDS, which must carry the column.
+        import csv as csv_module
+
+        from src.ui.chatbot_logging import RUNS_FIELDS
+
+        assert "selected_ministry" in RUNS_FIELDS
+
+        pipeline, qr, config, runtime, items, v1_chunks = _build_mock_objects()
+        pipeline.last_result.metadata["selected_ministry"] = "mso"
+        row = build_log_row(
+            turn_id="csv-ministry",
+            query="Question RTT",
+            response="Réponse",
+            pipeline=pipeline,
+            qr=qr,
+            config=config,
+            runtime_config=runtime,
+            session_state={"session_id": "s1", "conversation_id": "c1", "turns": []},
+            total_time_ms=100.0,
+            context_items=items,
+            v1_chunks_for_display=v1_chunks,
+            legal_refs_v3=[],
+        )
+        csv_path = tmp_path / "chat_runs.csv"
+        log_run(row, engine=None, csv_path=csv_path, csv_fields=RUNS_FIELDS)
+
+        with csv_path.open(encoding="utf-8") as f:
+            rows = list(csv_module.DictReader(f))
+        assert rows[0]["selected_ministry"] == "mso"
+
+    def test_chatbot_page_runs_fields_include_selected_ministry(self):
+        # The Streamlit page defines its own RUNS_FIELDS copy (not importable
+        # without a Streamlit session) — keep it in sync via its source.
+        page = Path(__file__).resolve().parent.parent / "apps" / "streamlit-ui" / "pages" / "01_Chatbot.py"
+        assert '"selected_ministry",' in page.read_text(encoding="utf-8")
+
+
+class TestTraceEvents:
+    def test_trace_event_sql_uses_jsonb_casts(self):
+        sql = _build_trace_event_upsert_sql()
+        assert "INSERT INTO rag_trace_events" in sql
+        assert "ON CONFLICT (turn_id, event_index)" in sql
+        assert "CAST(:input_ref AS jsonb)" in sql
+        assert "CAST(:output_ref AS jsonb)" in sql
+        assert "CAST(:metrics AS jsonb)" in sql
+
+    def test_prepare_trace_event_rows_bounds_defaults(self):
+        rows = _prepare_trace_event_rows(
+            turn_id="abc",
+            trace_id="trace-id",
+            env_label="staging",
+            events=[
+                {
+                    "stage": "retriever",
+                    "attempt_name": "initial",
+                    "duration_ms": 12.9,
+                    "status": "ok",
+                    "input_ref": {"query": "q"},
+                    "output_ref": {"retrieved_chunks": [{"chunk_id": "c1"}]},
+                    "metrics": {"chunk_count": 1},
+                    "error_message": "x" * 3000,
+                }
+            ],
+        )
+
+        assert rows[0]["turn_id"] == "abc"
+        assert len(rows[0]["trace_id"]) == 32
+        assert rows[0]["env"] == "staging"
+        assert rows[0]["event_index"] == 0
+        assert rows[0]["duration_ms"] == 12
+        assert json.loads(rows[0]["output_ref"])["retrieved_chunks"][0]["chunk_id"] == "c1"
+        assert len(rows[0]["error_message"]) == 2000
+
+    def test_log_trace_events_calls_db_and_commit(self):
+        mock_conn = MagicMock()
+        mock_engine = MagicMock()
+        mock_engine.connect.return_value.__enter__ = lambda _: mock_conn
+        mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("assistant_rh_rag_pipeline.chat_logger.export_events_to_otel") as mock_export:
+            log_trace_events(
+                [{"stage": "retriever", "duration_ms": 1, "output_ref": {"retrieved_chunks": []}}],
+                turn_id="abc",
+                trace_id="def",
+                engine=mock_engine,
+                env_label="staging",
+            )
+
+        mock_conn.execute.assert_called_once()
+        _, params = mock_conn.execute.call_args.args
+        assert isinstance(params, list)
+        assert params[0]["stage"] == "retriever"
+        mock_conn.commit.assert_called_once()
+        mock_export.assert_called_once()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -764,10 +1043,10 @@ class TestDBRoundTrip:
             legal_refs_v3=[],
         )
 
-        missing = [c for c in row if c.startswith("v3_") and c not in db_columns]
+        missing = [c for c in row if c not in db_columns]
         if missing:
             raise AssertionError(f"Columns in code but missing in DB: {missing}")
-        print(f"  ✅ All {len([c for c in row if c.startswith('v3_')])} V3 columns validated")
+        print(f"  ✅ All {len(row)} chat_runs columns emitted by build_log_row validated")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

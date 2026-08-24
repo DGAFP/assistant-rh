@@ -38,20 +38,11 @@ if not hasattr(st, "_original_cache"):
 from streamlit_cookies_manager import EncryptedCookieManager  # noqa: E402
 
 from src.ui.cookies_security import resolve_cookies_password  # noqa: E402
+from src.ui.groups import ADMIN_GROUP, DEFAULT_BADGE, badge_display  # noqa: E402, F401
+from src.ui.user_groups_store import init_user_groups_table_with_status, is_admin_group  # noqa: E402
 
-ADMIN_GROUP = "dgafpallianceadmin"
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-
-_GROUP_DISPLAY = {
-    "dgafpallianceadmin": ("🔧", "#6366f1", "Admin"),
-    "dgafpsd1": ("🏛️", "#8b5cf6", "DGAFP SD1"),
-    "mattecentrale": ("🏢", "#f97316", "MATTE Centrale"),
-    "mattedreal": ("🌍", "#f97316", "MATTE DREAL"),
-    "cisirh": ("📊", "#eab308", "CISIRH"),
-    "specloiret": ("📍", "#10b981", "Loiret"),
-    "betatest-jan26": ("🧪", "#3b82f6", "Beta"),
-    "default": ("👤", "#6b7280", "Non assigné"),
-}
+_ADMIN_SECURITY_VERSION = 1
 
 
 def _get_cookies() -> EncryptedCookieManager | None:
@@ -81,17 +72,57 @@ def _current_group() -> str:
     return "default"
 
 
+def _clear_cached_admin_authentication() -> None:
+    """Discard both legacy and provenance-aware authorization decisions."""
+    st.session_state.pop("admin_authenticated", None)
+    st.session_state.pop("admin_auth_method", None)
+    st.session_state.pop("_is_admin_cache", None)
+
+
+def initialize_admin_security() -> None:
+    """Repair group invariants before any cached authorization is trusted."""
+    if st.session_state.get("_admin_security_version") == _ADMIN_SECURITY_VERSION:
+        return
+
+    result = init_user_groups_table_with_status()
+    if result.default_admin_repaired:
+        _clear_cached_admin_authentication()
+    if result.initialized:
+        st.session_state.user_groups_initialized = True
+        st.session_state._admin_security_version = _ADMIN_SECURITY_VERSION
+
+
 def is_admin() -> bool:
-    """Check if the current user is an admin (via cookie group or session flag)."""
+    """Check if the current user is an admin.
+
+    Admin status comes from the group's ``is_admin`` flag in the store (not a
+    hardcoded slug), so groups an admin marks as admin in #200 are honoured.
+    The result is cached per-group in session state to avoid a DB round-trip on
+    every chatbot rerun; the password-fallback path (``require_admin``) sets
+    ``admin_authenticated`` directly and short-circuits here.
+    """
+    initialize_admin_security()
+
+    auth_method = st.session_state.get("admin_auth_method")
+    if st.session_state.get("admin_authenticated") and auth_method == "password":
+        return True
+
+    group = _current_group()
+    cache = st.session_state.get("_is_admin_cache")
+    if st.session_state.get("admin_authenticated") and auth_method == "group" and cache and cache.get("group") == group:
+        return cache["value"]
+
+    # Sessions created before auth provenance was recorded must be checked
+    # against the repaired database instead of trusting a bare cached boolean.
     if st.session_state.get("admin_authenticated"):
-        return True
+        _clear_cached_admin_authentication()
 
-    cookies = _get_cookies()
-    if cookies and cookies.get("user_group") == ADMIN_GROUP:
+    value = bool(group and is_admin_group(group))
+    st.session_state["_is_admin_cache"] = {"group": group, "value": value}
+    if value:
         st.session_state.admin_authenticated = True
-        return True
-
-    return False
+        st.session_state.admin_auth_method = "group"
+    return value
 
 
 def require_admin() -> None:
@@ -114,6 +145,7 @@ def require_admin() -> None:
         if submit:
             if password == ADMIN_PASSWORD:
                 st.session_state.admin_authenticated = True
+                st.session_state.admin_auth_method = "password"
                 st.rerun()
             else:
                 st.error("❌ Mot de passe incorrect")
@@ -124,7 +156,7 @@ def require_admin() -> None:
 def show_admin_badge() -> None:
     """Render a small group/session badge in the sidebar (admin pages only)."""
     group = _current_group()
-    icon, color, label = _GROUP_DISPLAY.get(group, ("👤", "#6b7280", group))
+    icon, color, label = badge_display().get(group, (*DEFAULT_BADGE, group))
     session_id = st.session_state.get("session_id", "N/A")
 
     # Show how the user is authenticated

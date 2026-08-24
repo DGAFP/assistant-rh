@@ -1,11 +1,12 @@
 name: Data Engineering Preview Staging
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
+      - staging
     paths:
-      - ".github/workflows/data-engineering-*.yml"
+      - ".github/workflows/data-engineering-preview-staging.yml"
+      - ".github/workflows/data-engineering-cron-delta.yml"
       - ".github/scripts/data_engineering_plan.py"
       - ".github/scripts/scaleway_data_jobs.py"
       - ".github/data-engineering-jobs.json"
@@ -19,6 +20,27 @@ on:
       - "Dockerfile.legifrance_ingestion"
       - "Dockerfile.legifrance_bulk_dump"
       - "Dockerfile.embeddings_job"
+      - "Dockerfile.pdf_sources_pipeline"
+  pull_request:
+    branches:
+      - staging
+    paths:
+      - ".github/workflows/data-engineering-preview-staging.yml"
+      - ".github/workflows/data-engineering-cron-delta.yml"
+      - ".github/scripts/data_engineering_plan.py"
+      - ".github/scripts/scaleway_data_jobs.py"
+      - ".github/data-engineering-jobs.json"
+      - "apps/data-ingestion-cli/**"
+      - "packages/data-engineering/**"
+      - "packages/shared-config/**"
+      - "config/**"
+      - "Dockerfile.service_public_pipeline"
+      - "Dockerfile.service_public_ingestion"
+      - "Dockerfile.legifrance_pipeline"
+      - "Dockerfile.legifrance_ingestion"
+      - "Dockerfile.legifrance_bulk_dump"
+      - "Dockerfile.embeddings_job"
+      - "Dockerfile.pdf_sources_pipeline"
   workflow_dispatch:
     inputs:
       source:
@@ -31,7 +53,49 @@ on:
           - service_public
           - legifrance
           - matte
+          - mi
+          - masa
+          - mso
+          - pdf_sources
           - embeddings
+          - r2
+      mode:
+        description: "plan/apply pour les ingestions ; generate est réservé à source=r2"
+        required: true
+        default: "apply"
+        type: choice
+        options:
+          - apply
+          - plan
+          - generate
+      r2_reviewed_cache:
+        description: "Confirmation obligatoire avant apply R2 : le cache généré a été revu"
+        required: true
+        default: false
+        type: boolean
+      r2_cache_source_env:
+        description: "Cache Gold à hydrater avant la cible (staging pour promouvoir vers prod)"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - prod
+      r2_limit:
+        description: "Limiter le nombre d'articles R2 (0 = tout le delta)"
+        required: true
+        default: 0
+        type: number
+      r2_allow_cache_misses:
+        description: "Apply R2 partiel malgré des caches manquants"
+        required: true
+        default: false
+        type: boolean
+      delta:
+        description: "Reconciliation incrementale canonique (Service-Public via Grist, Legifrance via Grist + PISTE)"
+        required: true
+        default: true
+        type: boolean
       run_ingestion:
         description: "Ingerer aussi dans la base Scaleway staging"
         required: true
@@ -57,6 +121,9 @@ on:
           - service_public
           - legifrance
           - matte
+          - mi
+          - masa
+          - mso
       embedding_only_column:
         description: "Colonne embeddings cible optionnelle, ex: embedding_m3"
         required: false
@@ -96,10 +163,21 @@ jobs:
     outputs:
       service_public: ${{ steps.plan.outputs.service_public }}
       legifrance: ${{ steps.plan.outputs.legifrance }}
+      pdf_sources: ${{ steps.plan.outputs.pdf_sources }}
+      # Sans cette déclaration, needs.plan.outputs.pdf_sources_ministry (passé à
+      # scaleway_data_jobs.py) se résout en chaîne vide et un dispatch
+      # source=<ministère> lance le domaine pdf_sources ENTIER (constaté le
+      # 05/07: source=matte a démarré mi+masa+matte).
+      pdf_sources_ministry: ${{ steps.plan.outputs.pdf_sources_ministry }}
       embeddings: ${{ steps.plan.outputs.embeddings }}
+      r2: ${{ steps.plan.outputs.r2 }}
+      run_embeddings: ${{ steps.plan.outputs.run_embeddings }}
+      embedding_source: ${{ steps.plan.outputs.embedding_source }}
       has_builds: ${{ steps.plan.outputs.has_builds }}
       has_runs: ${{ steps.plan.outputs.has_runs }}
       matrix: ${{ steps.plan.outputs.matrix }}
+      run_matrix: ${{ steps.plan.outputs.run_matrix }}
+      mode: ${{ steps.plan.outputs.mode }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -112,12 +190,17 @@ jobs:
           GITHUB_EVENT_BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           INPUT_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
           INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_embeddings || false }}
+          INPUT_EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_source || '' }}
+          INPUT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'apply' }}
         run: python3 .github/scripts/data_engineering_plan.py
 
   build-staging-images:
     runs-on: ubuntu-latest
     needs: plan
-    if: ${{ needs.plan.result == 'success' && needs.plan.outputs.has_builds == 'true' }}
+    # Pull-request refs are intentionally not allowed by the scaleway-staging
+    # environment. PRs keep the secretless plan job; image builds and previews
+    # start only from an integrated staging ref or an approved manual dispatch.
+    if: ${{ github.event_name != 'pull_request' && needs.plan.result == 'success' && (needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_builds == 'true' }}
     timeout-minutes: 90
     environment: scaleway-staging
     strategy:
@@ -162,21 +245,35 @@ jobs:
             .
 
   preview-staging:
+    name: preview-staging (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs:
       - plan
       - build-staging-images
-    if: ${{ needs.plan.result == 'success' && needs.plan.outputs.has_runs == 'true' && needs.build-staging-images.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.run_preview_jobs }}
-    timeout-minutes: 180
+    if: ${{ needs.plan.result == 'success' && (needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_runs == 'true' && needs.build-staging-images.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.run_preview_jobs || needs.plan.outputs.r2 == 'true'))) }}
+    # > job_timeout R2 (14400s) + marge : --wait doit voir le statut terminal.
+    timeout-minutes: 250
     environment: scaleway-staging
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.run_matrix) }}
     env:
-      # Phase 2: preview job execution is manual-only (workflow_dispatch + run_preview_jobs=true).
-      SERVICE_PUBLIC_SELECTED: ${{ needs.plan.outputs.service_public }}
-      RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ingestion || false }}
+      # Staging branch pushes run a complete preview with destructive chunk wipe disabled.
+      # Manual dispatch keeps operator controls.
+      SERVICE_PUBLIC_SELECTED: ${{ matrix.service_public }}
+      # mode=plan (socle #288) neutralise toute mutation, y compris l'ingestion
+      # interne du médaillon PDF (via RUN_INGESTION). push et dispatch apply
+      # gardent le comportement historique.
+      RUN_INGESTION: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_ingestion && inputs.mode == 'apply') || false }}
       WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}
-      RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && (inputs.run_embeddings || inputs.source == 'embeddings' || inputs.source == 'matte') || false }}
-      EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && (inputs.source == 'matte' && 'matte' || inputs.embedding_source) || 'all' }}
+      RUN_EMBEDDINGS: ${{ (github.event_name == 'push' && needs.plan.outputs.run_embeddings == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' && (inputs.run_embeddings || inputs.source == 'embeddings' || inputs.source == 'matte' || inputs.source == 'mi' || inputs.source == 'masa' || inputs.source == 'mso')) || false }}
+      EMBEDDING_SOURCE: ${{ matrix.embedding_source }}
       EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
+      R2_REVIEWED_CACHE: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_reviewed_cache || false }}
+      R2_CACHE_SOURCE_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_cache_source_env || 'staging' }}
+      R2_LIMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_limit || 0 }}
+      R2_ALLOW_CACHE_MISSES: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_allow_cache_misses || false }}
+      DELTA_MODE: ${{ github.event_name == 'push' || inputs.delta }}
       SERVICE_PUBLIC_FICHE_CONFIG: ${{ github.event_name == 'workflow_dispatch' && inputs.service_public_fiche_config || 'config/service_public_fiches.json' }}
       LEGIFRANCE_ARTICLE_IDS_JSON: ${{ github.event_name == 'workflow_dispatch' && inputs.legifrance_article_ids_json || 'config/legifrance_article_cids.json' }}
       SCW_DEFAULT_REGION: fr-par
@@ -193,6 +290,15 @@ jobs:
       SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
       SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
       SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
+      GRIST_API_BASE_URL: ${{ vars.GRIST_API_BASE_URL }}
+      GRIST_API_KEY: ${{ secrets.GRIST_API_KEY }}
+      GRIST_DOC_ID: ${{ vars.GRIST_DOC_ID }}
+      GRIST_TABLE_ID: ${{ vars.GRIST_TABLE_ID }}
+      ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
+      ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
+      LEGIFRANCE_CLIENT_ID: ${{ secrets.LEGIFRANCE_CLIENT_ID }}
+      LEGIFRANCE_CLIENT_SECRET: ${{ secrets.LEGIFRANCE_CLIENT_SECRET }}
+      SCW_BUCKET_SOURCES_PDF: assistant-rh-sources-pdf
 
     steps:
       - name: Checkout code
@@ -223,14 +329,23 @@ jobs:
           python3 .github/scripts/scaleway_data_jobs.py \
             --target-env staging \
             --image-tag "${STAGING_IMAGE_TAG}" \
-            --service-public "${{ needs.plan.outputs.service_public }}" \
-            --legifrance "${{ needs.plan.outputs.legifrance }}" \
-            --embeddings "${{ needs.plan.outputs.embeddings }}" \
+            --mode "${{ needs.plan.outputs.mode }}" \
+            --delta "${DELTA_MODE}" \
+            --service-public "${{ matrix.service_public }}" \
+            --legifrance "${{ matrix.legifrance }}" \
+            --pdf-sources "${{ matrix.pdf_sources }}" \
+            --pdf-sources-ministry "${{ matrix.pdf_sources_ministry }}" \
+            --embeddings "${{ matrix.embeddings }}" \
+            --r2 "${{ matrix.r2 }}" \
             --run-ingestion "${RUN_INGESTION}" \
             --wipe-existing-chunks "${WIPE_EXISTING_CHUNKS}" \
             --run-embeddings "${RUN_EMBEDDINGS}" \
             --embedding-source "${EMBEDDING_SOURCE}" \
             --embedding-only-column "${EMBEDDING_ONLY_COLUMN}" \
+            --r2-reviewed-cache "${R2_REVIEWED_CACHE}" \
+            --r2-cache-source-env "${R2_CACHE_SOURCE_ENV}" \
+            --r2-limit "${R2_LIMIT}" \
+            --r2-allow-cache-misses "${R2_ALLOW_CACHE_MISSES}" \
             --service-public-fiche-config "${SERVICE_PUBLIC_FICHE_CONFIG}" \
             --legifrance-article-ids-json "${LEGIFRANCE_ARTICLE_IDS_JSON}" \
             --wait
@@ -286,6 +401,9 @@ jobs:
             service_public) EMBED_CMDS=(service-public) ;;
             legifrance) EMBED_CMDS=(legifrance) ;;
             matte) EMBED_CMDS=(matte) ;;
+            mi) EMBED_CMDS=(mi) ;;
+            masa) EMBED_CMDS=(masa) ;;
+            mso) EMBED_CMDS=(mso) ;;
             *) echo "Unknown EMBEDDING_SOURCE='${EMBEDDING_SOURCE}'; skipping embedding gate"; EMBED_CMDS=() ;;
           esac
 

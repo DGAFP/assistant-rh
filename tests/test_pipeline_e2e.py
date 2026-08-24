@@ -8,16 +8,19 @@ a valid PipelineResult with answer, sources, context, and timing.
 Usage:
     pytest tests/test_pipeline_e2e.py -v
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
 from assistant_rh_rag_pipeline.config import RAGConfig, SearchMode, SelectorConfig
 from assistant_rh_rag_pipeline.models import (
+    CHUNK_LOG_KEYS,
     AggregatedSection,
     ContextItem,
     PipelineResult,
     RetrievedChunk,
+    serialize_section_chunks,
 )
 from assistant_rh_rag_pipeline.query_processor import Intent, QueryProcessResult
 from assistant_rh_rag_pipeline.section_aggregator import (
@@ -28,6 +31,7 @@ from assistant_rh_rag_pipeline.section_aggregator import (
 # ---------------------------------------------------------------------------
 # Fixtures: realistic fake data
 # ---------------------------------------------------------------------------
+
 
 def _make_chunk(idx: int, table: str = "matte", score: float = 0.9) -> RetrievedChunk:
     return RetrievedChunk(
@@ -57,8 +61,6 @@ def _make_section(idx: int, publisher: str = "MATTE") -> AggregatedSection:
     )
 
 
-
-
 def _aggregation_result(
     sections: list[AggregatedSection],
     *,
@@ -72,6 +74,8 @@ def _aggregation_result(
             sections_before_rerank=len(sections) if before is None else before,
             sections_after_rerank=len(sections) if after is None else after,
             reranker_status=reranker_status,
+            chunks_before_rerank=serialize_section_chunks(sections),
+            chunks_after_rerank=serialize_section_chunks(sections, include_rerank_score=reranker_status == "completed"),
         ),
     )
 
@@ -99,9 +103,20 @@ FAKE_QUERY_RESULT = QueryProcessResult(
 )
 
 
+def test_intent_value_handles_missing_intent() -> None:
+    from assistant_rh_rag_pipeline.pipeline import _intent_value
+
+    qr = QueryProcessResult(original_query="q", processed_query="q")
+    assert _intent_value(qr) == "rag_query"
+
+    qr.intent = None
+    assert _intent_value(qr) == "unknown"
+
+
 # ---------------------------------------------------------------------------
 # Test: full pipeline run (non-streaming)
 # ---------------------------------------------------------------------------
+
 
 class TestPipelineE2E:
     """End-to-end test: question → query processing → retrieval → aggregation → selection → context build → generation → result."""
@@ -148,6 +163,7 @@ class TestPipelineE2E:
         mock_sel.last_decisions = {"kept": [{"idx": 0, "heading": "Fiche 0"}], "removed": [{"idx": 1}]}
         mock_sel.last_reasoning = "Section 0 traite spécifiquement du congé de mobilité."
         mock_sel.last_raw_response = "{}"
+        mock_sel.last_prompt_chars = 321
 
         context_items = [_make_context_item(0)]
         mock_cb = MockContextBuilder.return_value
@@ -165,6 +181,7 @@ class TestPipelineE2E:
         config = RAGConfig()
         config.selector = SelectorConfig(enabled=True)
         from assistant_rh_rag_pipeline.pipeline import Pipeline
+
         pipe = Pipeline(config)
         result = pipe.run("Qu'est-ce que le congé de mobilité ?")
 
@@ -180,12 +197,33 @@ class TestPipelineE2E:
         mock_qp.process.assert_called_once()
         mock_retriever.retrieve.assert_called_once()
         mock_agg.aggregate_with_diagnostics.assert_called_once()
-        mock_sel.select.assert_called_once()
+        mock_sel.select.assert_called_once_with(
+            "congé de mobilité",
+            sections,
+            ministry=None,
+        )
         mock_cb.build.assert_called_once()
         mock_gen.generate.assert_called_once()
 
         # Timing should be populated
         assert isinstance(result.timing, dict)
+
+        # Chunk-level traces are carried through v3_metadata for chat_runs logging.
+        meta = result.metadata
+        assert len(meta["chunks_raw"]) == 6
+        raw_entry = meta["chunks_raw"][0]
+        assert tuple(raw_entry.keys()) == CHUNK_LOG_KEYS
+        assert raw_entry["doc_id"] == "doc_0"
+        assert raw_entry["doc_publisher"] == "MATTE"
+        assert raw_entry["section_heading"] == "Section 0"
+        assert raw_entry["rerank_score"] is None
+        assert meta["chunks_before_rerank"][0]["rerank_score"] is None
+        assert meta["chunks_after_rerank"][0]["rerank_score"] is not None
+        assert meta["context_before_selector"][0]["rerank_score"] is not None
+        assert meta["retrieval_attempts"][0]["chunks_raw"] == meta["chunks_raw"]
+        assert meta["retrieval_attempts"][0]["context_items_ref"][0]["doc_id"] == "doc_0"
+        assert meta["selector_prompt_chars"] == 321
+        assert meta["selector_response_chars"] == 2
 
     @patch("assistant_rh_rag_pipeline.pipeline.StreamingGenerator")
     @patch("assistant_rh_rag_pipeline.pipeline.ContextBuilder")
@@ -216,6 +254,7 @@ class TestPipelineE2E:
 
         config = RAGConfig()
         from assistant_rh_rag_pipeline.pipeline import Pipeline
+
         pipe = Pipeline(config)
         result = pipe.run("Bonjour, comment vas-tu ?")
 
@@ -268,9 +307,22 @@ class TestPipelineE2E:
         MockContextBuilder.return_value.last_legal_refs_found = 0
         MockContextBuilder.return_value.last_legal_refs_total = 0
 
+        mock_gen = MockGenerator.return_value
+        mock_gen.provider_used = "scaleway"
+        mock_gen.fallback_count = 1
+        mock_gen.used_fallback = True
+
+        def reset_generator_diagnostics() -> None:
+            mock_gen.provider_used = None
+            mock_gen.fallback_count = 0
+            mock_gen.used_fallback = False
+
+        mock_gen.begin_request.side_effect = reset_generator_diagnostics
+
         config = RAGConfig()
         config.selector = SelectorConfig(enabled=True)
         from assistant_rh_rag_pipeline.pipeline import Pipeline
+
         pipe = Pipeline(config)
         result = pipe.run_with_trace("Quelle est la durée du congé spatial ?")
 
@@ -306,8 +358,16 @@ class TestPipelineE2E:
         assert selector_output["selector_retry_triggered"] is True
         assert selector_output["selector_retry_succeeded"] is False
         assert stage_trace["stages"]["retriever"]["output"]["attempts"][1]["name"] == "selector_retry"
+        trace_events = result.metadata["rag_trace_events"]
+        assert result.metadata["trace_id"]
+        assert [event["stage"] for event in trace_events].count("retriever") == 2
+        assert any(event["stage"] == "generator" and event["status"] == "skipped_no_context" for event in trace_events)
+        assert result.metadata["generator_provider_used"] is None
+        assert result.metadata["generator_fallback_count"] == 0
+        assert result.metadata["generator_used_fallback"] is False
         # Generator should NOT have been called
         MockGenerator.return_value.generate.assert_not_called()
+        mock_gen.begin_request.assert_called_once_with()
         assert MockRetriever.return_value.retrieve.call_count == 2
         assert MockAggregator.return_value.aggregate_with_diagnostics.call_count == 2
         assert mock_sel.select.call_count == 2
@@ -353,7 +413,7 @@ class TestPipelineE2E:
         from assistant_rh_rag_pipeline.pipeline import Pipeline
 
         pipe = Pipeline(config)
-        chunks = list(pipe.run_stream(FAKE_QUERY_RESULT))
+        chunks = list(pipe.run_stream(FAKE_QUERY_RESULT, turn_id="turn123", trace_id="a" * 32))
 
         assert len(chunks) == 1
         assert "pas trouvé" in chunks[0].lower() or "base de connaissances" in chunks[0].lower()
@@ -361,9 +421,13 @@ class TestPipelineE2E:
         assert pipe.last_result.context_items == []
         assert pipe.last_result.metadata["selector_all_rejected"] is True
         assert pipe.last_result.metadata["selector_decision"] == "all_rejected"
-        assert pipe.last_result.metadata["rag_diagnostics"]["selector"]["rejection_reason"] == (
-            "Aucune section pertinente."
+        assert pipe.last_result.metadata["turn_id"] == "turn123"
+        assert pipe.last_result.metadata["trace_id"] == "a" * 32
+        assert any(event["stage"] == "retriever" for event in pipe.last_result.metadata["rag_trace_events"])
+        assert any(
+            event["stage"] == "generator" and event["status"] == "skipped_no_context" for event in pipe.last_result.metadata["rag_trace_events"]
         )
+        assert pipe.last_result.metadata["rag_diagnostics"]["selector"]["rejection_reason"] == ("Aucune section pertinente.")
         MockContextBuilder.return_value.build.assert_not_called()
         MockGenerator.return_value.stream.assert_not_called()
 
@@ -393,7 +457,6 @@ class TestPipelineE2E:
         mock_retriever.retrieve.side_effect = [initial_chunks, retry_chunks]
         mock_retriever.config = MagicMock()
         mock_retriever.config.tables = ["matte", "service_public", "dgafp"]
-        mock_retriever.config.enable_chunks_test = False
         mock_retriever.config.search_mode = SearchMode.SEMANTIC
         mock_retriever.config.initial_top_k = 15
 
@@ -410,6 +473,7 @@ class TestPipelineE2E:
         initial_selector.last_decisions = {}
         initial_selector.last_reasoning = "Aucune section pertinente."
         initial_selector.last_raw_response = '{"selected_ids": []}'
+        initial_selector.last_prompt_chars = 120
 
         retry_selector = MagicMock()
         retry_selector.select.return_value = retry_sections
@@ -417,6 +481,7 @@ class TestPipelineE2E:
         retry_selector.last_decisions = {"kept": [{"idx": 0, "heading": "Fiche 10"}]}
         retry_selector.last_reasoning = "La seconde recherche trouve une section utile."
         retry_selector.last_raw_response = '{"selected_ids": [0]}'
+        retry_selector.last_prompt_chars = 180
         MockSelector.side_effect = [initial_selector, retry_selector]
 
         context_items = [_make_context_item(10, "Service-Public")]
@@ -440,21 +505,30 @@ class TestPipelineE2E:
         assert result.metadata["selector_retry_succeeded"] is True
         assert result.metadata["selector_all_rejected"] is False
         assert mock_retriever.retrieve.call_count == 2
+        initial_call = mock_retriever.retrieve.call_args_list[0]
+        assert initial_call.kwargs["tables"] == ["matte", "service_public", "dgafp"]
+        assert initial_call.kwargs["force_hybrid_tables"] == {"dgafp"}
         retry_call = mock_retriever.retrieve.call_args_list[1]
         assert retry_call.kwargs["search_mode"] == SearchMode.HYBRID
         assert retry_call.kwargs["top_k"] == 30
-        assert retry_call.kwargs["tables"] == ["matte", "service_public"]
+        assert retry_call.kwargs["tables"] == ["matte", "service_public", "dgafp"]
+        assert retry_call.kwargs["force_hybrid_tables"] == {"dgafp"}
         MockGenerator.return_value.generate.assert_called_once()
 
+        assert result.metadata["tables_searched"] == ["matte", "service_public", "dgafp"]
         attempts = result.metadata["rag_diagnostics"]["attempts"]
         assert [attempt["name"] for attempt in attempts] == ["initial", "selector_retry"]
+        assert attempts[0]["tables_searched"] == ["matte", "service_public", "dgafp"]
         assert attempts[0]["selector"]["all_rejected"] is True
         assert attempts[0]["search_mode"] == "semantic"
         assert len(attempts[0]["aggregated_sections"]) == 1
+        assert attempts[1]["tables_searched"] == ["matte", "service_public", "dgafp"]
         assert attempts[1]["selector"]["all_rejected"] is False
         assert attempts[1]["search_mode"] == "hybrid"
         assert attempts[1]["top_k"] == 30
         assert len(attempts[1]["aggregated_sections"]) == 1
+        assert result.metadata["selector_prompt_chars"] == 300
+        assert result.metadata["selector_response_chars"] == len(initial_selector.last_raw_response) + len(retry_selector.last_raw_response)
         assert result.metadata["stage_trace"]["stages"]["context-selector"]["output"]["selector_retry_triggered"] is True
 
     @patch("assistant_rh_rag_pipeline.pipeline.StreamingGenerator")
@@ -481,7 +555,6 @@ class TestPipelineE2E:
         mock_retriever.retrieve.side_effect = [[_make_chunk(0)], [_make_chunk(1, table="service_public")]]
         mock_retriever.config = MagicMock()
         mock_retriever.config.tables = ["matte", "service_public"]
-        mock_retriever.config.enable_chunks_test = False
         mock_retriever.config.search_mode = SearchMode.SEMANTIC
         mock_retriever.config.initial_top_k = 15
 
@@ -551,7 +624,6 @@ class TestPipelineE2E:
         mock_retriever.retrieve.side_effect = [[_make_chunk(0)], [_make_chunk(1, table="service_public")]]
         mock_retriever.config = MagicMock()
         mock_retriever.config.tables = ["matte", "service_public"]
-        mock_retriever.config.enable_chunks_test = False
         mock_retriever.config.search_mode = SearchMode.SEMANTIC
         mock_retriever.config.initial_top_k = 15
 
@@ -649,11 +721,21 @@ class TestPipelineE2E:
         from assistant_rh_rag_pipeline.pipeline import Pipeline
 
         pipe = Pipeline(config)
-        result = pipe.run_with_trace("Qu'est-ce que le congé de mobilité ?")
+        result = pipe.run_with_trace("Qu'est-ce que le congé de mobilité ?", turn_id="turn123", trace_id="a" * 32)
 
         stage_trace = result.metadata.get("stage_trace")
         assert isinstance(stage_trace, dict)
         assert stage_trace.get("schema_version") == "2026-05-05"
+        assert result.metadata["turn_id"] == "turn123"
+        assert result.metadata["trace_id"] == "a" * 32
+        assert [event["stage"] for event in result.metadata["rag_trace_events"]] == [
+            "query-processor",
+            "retriever",
+            "section-aggregator",
+            "context-selector",
+            "context-builder",
+            "generator",
+        ]
 
         stages = stage_trace.get("stages")
         assert isinstance(stages, dict)

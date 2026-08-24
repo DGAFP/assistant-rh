@@ -1,0 +1,497 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "$trace_datasource"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traceID"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Trace ID"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show trace in this dashboard",
+                    "url": "/d/assistant-rh-rag-trace-explorer/assistant-rh-rag-trace-explorer?from=${__from}&to=${__to}&var-trace_datasource=$trace_datasource&var-metrics_datasource=$metrics_datasource&var-env=$env&var-turn_id=$turn_id&var-trace_id_filter=$trace_id_filter&var-trace_id=${__data.fields.traceID}&var-stage=$stage&var-status=$status"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "limit": 20,
+          "query": "{ resource.service.name = \"assistant-rh\" && span.rag.turn_id =~ \"$turn_id\" && span.rag.trace_id =~ \"$trace_id_filter\" && span.rag.stage =~ \"$stage\" && span.rag.status =~ \"$status\" }",
+          "queryType": "traceql",
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "serviceStats": true,
+              "spanSet": true,
+              "spanSets": true
+            },
+            "indexByName": {
+              "durationMs": 4,
+              "rootServiceName": 1,
+              "rootTraceName": 2,
+              "startTimeUnixNano": 3,
+              "traceID": 0
+            },
+            "renameByName": {
+              "durationMs": "Duration (ms)",
+              "rootServiceName": "Service",
+              "rootTraceName": "Root span",
+              "startTimeUnixNano": "Start",
+              "traceID": "Trace ID"
+            }
+          }
+        }
+      ],
+      "title": "Recent RAG traces",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "$trace_datasource"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "id": 2,
+      "options": {},
+      "targets": [
+        {
+          "query": "$trace_id",
+          "queryType": "traceql",
+          "refId": "A"
+        }
+      ],
+      "title": "Selected trace waterfall",
+      "type": "traces"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$metrics_datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(assistant_rh_rag_trace_events_24h_total{env=~\"$env\",stage=~\"$stage\",status=~\"$status\"}) by (env, stage, status)",
+          "legendFormat": "{{env}} / {{stage}} / {{status}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Trace events by stage and status",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$metrics_datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "assistant_rh_rag_trace_stage_duration_seconds{env=~\"$env\",stage=~\"$stage\",quantile=\"0.95\"}",
+          "legendFormat": "{{env}} / {{stage}} p95",
+          "refId": "A"
+        }
+      ],
+      "title": "Stage duration p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$metrics_datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 25
+      },
+      "id": 5,
+      "options": {
+        "displayMode": "gradient",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "minVizHeight": 10,
+        "minVizWidth": 0,
+        "namePlacement": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "targets": [
+        {
+          "expr": "sum(assistant_rh_rag_trace_errors_24h_total{env=~\"$env\",stage=~\"$stage\"}) by (env, stage, error_type)",
+          "legendFormat": "{{env}} / {{stage}} / {{error_type}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Errors and fallback events",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$metrics_datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 25
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "assistant_rh_rag_trace_freshness_seconds{env=~\"$env\"}",
+          "legendFormat": "{{env}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Trace freshness",
+      "type": "stat"
+    },
+    {
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "id": 7,
+      "options": {
+        "content": "This dashboard intentionally uses only Cockpit-synchronized datasources: Tempo for trace drilldown and Prometheus metrics exported by the existing RAG Health container. Use the Recent RAG traces table to select a trace, then inspect the selected trace waterfall. Use Streamlit admin Chat Logs when full chunk or prompt details are needed.",
+        "mode": "markdown"
+      },
+      "title": "Admin drilldown",
+      "type": "text"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "assistant-rh",
+    "rag",
+    "tracing",
+    "issue-143"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "includeAll": false,
+        "label": "Trace datasource",
+        "name": "trace_datasource",
+        "query": "tempo",
+        "refresh": 1,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "includeAll": false,
+        "label": "Metrics datasource",
+        "name": "metrics_datasource",
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "includeAll": true,
+        "label": "Environment",
+        "name": "env",
+        "options": [
+          {
+            "selected": false,
+            "text": "staging",
+            "value": "staging"
+          },
+          {
+            "selected": false,
+            "text": "prod",
+            "value": "prod"
+          }
+        ],
+        "query": "staging,prod",
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": ".*",
+          "value": ".*"
+        },
+        "label": "Turn ID",
+        "name": "turn_id",
+        "query": "",
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": ".*",
+          "value": ".*"
+        },
+        "label": "Trace ID filter",
+        "name": "trace_id_filter",
+        "query": "",
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "00000000000000000000000000000001",
+          "value": "00000000000000000000000000000001"
+        },
+        "label": "Selected trace ID",
+        "name": "trace_id",
+        "query": "",
+        "type": "textbox"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "includeAll": true,
+        "label": "Stage",
+        "name": "stage",
+        "options": [
+          {
+            "selected": false,
+            "text": "query-processor",
+            "value": "query-processor"
+          },
+          {
+            "selected": false,
+            "text": "retriever",
+            "value": "retriever"
+          },
+          {
+            "selected": false,
+            "text": "section-aggregator",
+            "value": "section-aggregator"
+          },
+          {
+            "selected": false,
+            "text": "context-selector",
+            "value": "context-selector"
+          },
+          {
+            "selected": false,
+            "text": "context-builder",
+            "value": "context-builder"
+          },
+          {
+            "selected": false,
+            "text": "generator",
+            "value": "generator"
+          }
+        ],
+        "query": "query-processor,retriever,section-aggregator,context-selector,context-builder,generator",
+        "type": "custom"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "includeAll": true,
+        "label": "Status",
+        "name": "status",
+        "options": [
+          {
+            "selected": false,
+            "text": "ok",
+            "value": "ok"
+          },
+          {
+            "selected": false,
+            "text": "empty",
+            "value": "empty"
+          },
+          {
+            "selected": false,
+            "text": "all_rejected",
+            "value": "all_rejected"
+          },
+          {
+            "selected": false,
+            "text": "failed",
+            "value": "failed"
+          },
+          {
+            "selected": false,
+            "text": "disabled",
+            "value": "disabled"
+          }
+        ],
+        "query": "ok,empty,all_rejected,failed,disabled",
+        "type": "custom"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Assistant RH - RAG trace explorer",
+  "uid": "assistant-rh-rag-trace-explorer",
+  "version": 1,
+  "weekStart": ""
+}

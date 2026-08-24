@@ -35,25 +35,47 @@ class AlbertReranker:
         self.model = model or os.getenv("ALBERT_RERANK_MODEL", "openweight-rerank")
         self.timeout = timeout
 
+    # Taille de lot par requête /rerank. 40 couvre la config standard
+    # (v3_rerank_input_k=40) en UNE SEULE requête — validé empiriquement
+    # contre l'API Albert (revue #335 : un appel à 40 documents passe sans
+    # 413). Au-delà, le découpage en lots est APPROXIMATIF : les scores
+    # Albert dérivent entre requêtes (jusqu'à ~6e-4 mesuré, revue #335), ce
+    # qui peut changer l'appartenance au top-k à la frontière — acceptable
+    # uniquement pour des configs exploratoires > 40.
+    _BATCH_SIZE = 40
+
     def rerank(self, query: str, texts: List[str], top_k: int | None = None) -> List[Tuple[int, float]]:
         """Return ``(original_index, score)`` pairs sorted by descending score."""
         if not texts:
             return []
-        resp = self._post(
-            f"{self.base}/rerank",
-            headers={"Authorization": f"Bearer {self.key}"},
-            json={
-                "model": self.model,
-                "query": query,
-                "documents": texts,
-                "top_n": top_k or len(texts),
-            },
-            timeout=self.timeout,
-        )
-        resp.raise_for_status()
-        body = resp.json()
-        results = body.get("data") or body.get("results") or []
-        return [(int(r.get("index")), float(r.get("relevance_score") or r.get("score") or 0.0)) for r in results]
+        scored: List[Tuple[int, float]] = []
+        for offset in range(0, len(texts), self._BATCH_SIZE):
+            batch = texts[offset : offset + self._BATCH_SIZE]
+            resp = self._post(
+                f"{self.base}/rerank",
+                headers={"Authorization": f"Bearer {self.key}"},
+                json={
+                    "model": self.model,
+                    "query": query,
+                    "documents": batch,
+                    # top_n = tout le lot : la troncature top_k ne peut se
+                    # faire qu'APRÈS la fusion (sinon des candidats inter-lots
+                    # seraient perdus). NB fusion multi-lots = approximative
+                    # (dérive inter-requêtes, cf. _BATCH_SIZE).
+                    "top_n": len(batch),
+                },
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            results = body.get("data") or body.get("results") or []
+            scored.extend(
+                (offset + int(r.get("index")), float(r.get("relevance_score") or r.get("score") or 0.0)) for r in results
+            )
+        scored.sort(key=lambda pair: (-pair[1], pair[0]))
+        if top_k is not None:
+            scored = scored[:top_k]
+        return scored
 
 
 def maybe_rerank(

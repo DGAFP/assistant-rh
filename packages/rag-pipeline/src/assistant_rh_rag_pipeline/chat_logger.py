@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from .models import estimate_tokens
+from .tracing import export_events_to_otel, normalize_trace_id
 
 if TYPE_CHECKING:
     from .config import RAGConfig
@@ -81,6 +82,24 @@ JSONB_COLUMNS: set[str] = {
     "v3_sections_after_rerank",
 }
 
+TRACE_EVENT_JSONB_COLUMNS: set[str] = {"input_ref", "output_ref", "metrics"}
+
+TRACE_EVENT_COLUMNS: tuple[str, ...] = (
+    "turn_id",
+    "trace_id",
+    "env",
+    "event_index",
+    "stage",
+    "attempt_name",
+    "duration_ms",
+    "status",
+    "input_ref",
+    "output_ref",
+    "metrics",
+    "error_type",
+    "error_message",
+)
+
 
 # ---------------------------------------------------------------------------
 # Dynamic SQL generation
@@ -98,6 +117,16 @@ def _build_upsert_sql(data: dict) -> str:
     update_set = ", ".join(f'"{c}" = EXCLUDED."{c}"' if c == "table" else f"{c} = EXCLUDED.{c}" for c in update_cols)
     col_names = ", ".join(f'"{c}"' if c == "table" else c for c in cols)
     return f"INSERT INTO chat_runs ({col_names}) VALUES ({', '.join(values)}) ON CONFLICT (turn_id) DO UPDATE SET {update_set}"
+
+
+def _build_trace_event_upsert_sql() -> str:
+    values = [f"CAST(:{c} AS jsonb)" if c in TRACE_EVENT_JSONB_COLUMNS else f":{c}" for c in TRACE_EVENT_COLUMNS]
+    updates = [c for c in TRACE_EVENT_COLUMNS if c not in ("turn_id", "event_index")]
+    update_set = ", ".join(f"{c} = EXCLUDED.{c}" for c in updates)
+    return (
+        f"INSERT INTO rag_trace_events ({', '.join(TRACE_EVENT_COLUMNS)}) VALUES ({', '.join(values)}) "
+        f"ON CONFLICT (turn_id, event_index) DO UPDATE SET {update_set}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +165,240 @@ def _source_distribution(items: list, key: str = "publisher") -> dict:
     return dist
 
 
+_TABLE_BY_RUNTIME_KEY = {
+    "matte": "rag_chunks_matte",
+    "mso": "rag_chunks_mso",
+    "service_public": "rag_chunks_service_public",
+    "service_public_scw": "rag_chunks_service_public_scw",
+    "dgafp": "rag_chunks_dgafp",
+    "dgafp_scw": "rag_chunks_dgafp_scw",
+    "rgrh": "rag_chunks_rgrh",
+}
+
+_TABLE_BY_PUBLISHER = {
+    "matte": "rag_chunks_matte",
+    "mso": "rag_chunks_mso",
+    "service-public": "rag_chunks_service_public",
+    "service public": "rag_chunks_service_public",
+    "service-public (scaleway)": "rag_chunks_service_public_scw",
+    "dgafp": "rag_chunks_dgafp",
+    "dgafp (scaleway)": "rag_chunks_dgafp_scw",
+    "rgrh": "rag_chunks_rgrh",
+}
+
+_ALBERT_EMBED_COL_BY_TABLE = {
+    "rag_chunks_matte": "embedding_m3",
+    "rag_chunks_mso": "embedding_m3",
+    "rag_chunks_service_public": "embedding_m3",
+    "rag_chunks_service_public_scw": "embedding_m3",
+    "rag_chunks_dgafp": "embedding_m3",
+    "rag_chunks_dgafp_scw": "embedding_m3",
+    "rag_chunks_rgrh": "embedding_m3",
+}
+
+_BGE_EMBED_COL_BY_TABLE = {
+    "rag_chunks_matte": "embedding_bge_scw",
+    "rag_chunks_mso": "embedding_bge_scw",
+    "rag_chunks_service_public": "embedding_bge_scw",
+    "rag_chunks_service_public_scw": "embedding_bge_scw",
+    "rag_chunks_dgafp": "embedding_bge_scw",
+    "rag_chunks_dgafp_scw": "embedding_bge_scw",
+    "rag_chunks_rgrh": "embedding_bge_scw",
+}
+
+_TABLE_LABEL_BY_TABLE = {
+    "rag_chunks_matte": "matte",
+    "rag_chunks_mso": "mso",
+    "rag_chunks_service_public": "sp",
+    "rag_chunks_service_public_scw": "sp_scw",
+    "rag_chunks_dgafp": "dgafp",
+    "rag_chunks_dgafp_scw": "dgafp_scw",
+    "rag_chunks_rgrh": "rgrh",
+}
+
+_LEGACY_VARCHAR_30_LIMIT = 30
+
+
+def _enum_value(value: Any) -> Any:
+    return getattr(value, "value", value)
+
+
+def _selected_ministry_value(scope: Any) -> str | None:
+    """Raw ministry id for ``chat_runs.selected_ministry`` (NULL when unknown).
+
+    Accepts a ``RetrievalScope``, a plain ministry id string, or *None*.
+    Never guesses from retrieved sources: shared sources (Service-Public,
+    DGAFP) cannot identify the active ministry.
+    """
+    if scope is None:
+        return None
+    raw = getattr(scope, "selected_ministry", scope)
+    text = str(raw or "").strip()
+    return text or None
+
+
+def _table_name(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("rag_chunks_"):
+        return raw
+    return _TABLE_BY_RUNTIME_KEY.get(raw, _TABLE_BY_PUBLISHER.get(raw.lower(), raw))
+
+
+def _table_names(values: Any) -> list[str]:
+    if isinstance(values, str):
+        values = [values]
+    if not isinstance(values, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        name = _table_name(value)
+        if name and name not in seen:
+            out.append(name)
+            seen.add(name)
+    return out
+
+
+def _embed_columns_for_tables(table_names: list[str], embedding_model: str) -> str:
+    mapping = _BGE_EMBED_COL_BY_TABLE if "bge" in (embedding_model or "").lower() else _ALBERT_EMBED_COL_BY_TABLE
+    cols: list[str] = []
+    seen: set[str] = set()
+    for table in table_names:
+        col = mapping.get(table)
+        if col and col not in seen:
+            cols.append(col)
+            seen.add(col)
+    return ",".join(cols)
+
+
+def _legacy_table_label(table_names: list[str]) -> str:
+    """Compact table list for legacy ``chat_runs`` varchar(30) columns."""
+    label = ",".join(_TABLE_LABEL_BY_TABLE.get(table, table) for table in table_names)
+    if len(label) <= _LEGACY_VARCHAR_30_LIMIT:
+        return label
+    return label[:_LEGACY_VARCHAR_30_LIMIT]
+
+
+def _chunk_table_for_ref(ref: dict[str, Any]) -> str:
+    return _table_name(ref.get("table") or ref.get("doc_publisher") or ref.get("publisher") or ref.get("source") or ref.get("table_source"))
+
+
+def _serialize_display_sources(chunks: list) -> list[dict[str, Any]]:
+    """Serialize rendered source pills into the historical ``retrieved`` shape."""
+    out: list[dict[str, Any]] = []
+    for chunk in chunks or []:
+        meta = getattr(chunk, "metadata", {}) or {}
+        chunk_id = getattr(chunk, "id", "") or meta.get("source_document_id") or meta.get("doc_id") or meta.get("cid") or ""
+        source = meta.get("source") or meta.get("source_name") or meta.get("doc_title") or meta.get("title") or meta.get("full_title") or ""
+        out.append(
+            {
+                "id": str(chunk_id),
+                "score": round(float(getattr(chunk, "score", 0.0) or 0.0), 4),
+                "source": source,
+                "source_name": meta.get("source_name") or source,
+                "doc_title": meta.get("doc_title") or meta.get("title") or meta.get("full_title") or source,
+                "page": meta.get("page"),
+                "url": meta.get("url"),
+            }
+        )
+    return out
+
+
+def _legacy_chunk_refs(refs: Any) -> list[dict[str, Any]]:
+    """Normalize current V3 chunk traces for legacy feedback-analysis columns."""
+    if not isinstance(refs, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for ref in refs:
+        if not isinstance(ref, dict):
+            continue
+        chunk_id = ref.get("chunk_id") or ref.get("id")
+        table = _chunk_table_for_ref(ref)
+        if not chunk_id:
+            continue
+        out.append(
+            {
+                "chunk_id": str(chunk_id),
+                "table": table,
+                "score": ref.get("score", ref.get("final_score")),
+                "section_id": str(ref.get("section_id") or ""),
+                "source_name": ref.get("doc_title") or ref.get("source_name") or ref.get("heading") or ref.get("section_heading") or "",
+                "preview": ref.get("preview") or ref.get("chunk_markdown") or "",
+            }
+        )
+    return out
+
+
+def _coerce_ref_entries(refs: Any) -> list[dict[str, Any]]:
+    if not refs:
+        return []
+    if isinstance(refs, str):
+        try:
+            refs = json.loads(refs)
+        except (ValueError, json.JSONDecodeError):
+            return []
+    if isinstance(refs, dict):
+        return [refs]
+    if isinstance(refs, list):
+        return [r for r in refs if isinstance(r, dict)]
+    return []
+
+
+def _legal_ref_details(context_items: list, resolved_refs: dict, legal_refs_v3: list) -> list[dict[str, Any]]:
+    """Build the detailed legal-ref log from selected context, with matched/ref fallback."""
+    details: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+
+    def add_ref(*, number: Any, cid: Any = "", title: Any = "", url: Any = "", source: Any = "") -> None:
+        number_s = str(number or "")
+        if not number_s:
+            return
+        resolved = resolved_refs.get(number_s) if isinstance(resolved_refs, dict) else None
+        if isinstance(resolved, dict):
+            cid = cid or resolved.get("cid", "")
+            title = title or resolved.get("title", "")
+            url = url or resolved.get("url", "")
+        cid_s = str(cid or "")
+        title_s = str(title or "")
+        source_s = str(source or "")
+        key = (number_s, cid_s, title_s, source_s)
+        if key in seen:
+            return
+        seen.add(key)
+        details.append({"number": number_s, "cid": cid_s, "title": title_s, "url": str(url or ""), "source": source_s})
+
+    for item in context_items or []:
+        item_source = getattr(item, "publisher", "") or ""
+        item_title = getattr(item, "document_title", "") or getattr(item, "heading", "") or ""
+        for ref in _coerce_ref_entries(getattr(item, "references_juridiques", None)):
+            add_ref(
+                number=ref.get("number") or ref.get("article") or ref.get("id"),
+                cid=ref.get("cid", ""),
+                title=ref.get("title") or ref.get("full_title") or item_title,
+                url=ref.get("url", ""),
+                source=ref.get("source") or item_source,
+            )
+
+    if not details:
+        for ref in legal_refs_v3 or []:
+            add_ref(
+                number=getattr(ref, "number", ""),
+                cid=getattr(ref, "cid", ""),
+                title=getattr(ref, "title", ""),
+                url=getattr(ref, "url", ""),
+                source="DGAFP" if getattr(ref, "cid", "") else "",
+            )
+
+    if not details and isinstance(resolved_refs, dict):
+        for number, info in resolved_refs.items():
+            if isinstance(info, dict):
+                add_ref(number=number, cid=info.get("cid", ""), title=info.get("title", ""), url=info.get("url", ""), source="DGAFP")
+
+    return details
+
+
 def build_log_row(
     turn_id: str,
     query: str,
@@ -149,6 +412,7 @@ def build_log_row(
     context_items: list,
     v1_chunks_for_display: list,
     legal_refs_v3: list,
+    trace_id: str | None = None,
 ) -> dict:
     """Build a complete logging dict from pipeline objects.
 
@@ -217,19 +481,66 @@ def build_log_row(
     v3_initial_top_k = getattr(runtime_config, "v3_initial_top_k", 10)
     v3_rerank_top_k = getattr(runtime_config, "v3_rerank_top_k", 5)
     v3_enable_reranker = getattr(runtime_config, "v3_enable_reranker", True)
+    retrieval_config = getattr(config, "retrieval", None)
+    query_processor_config = getattr(config, "query_processor", None)
+    generation_config = getattr(config, "generation", None)
+
+    configured_tables = list(getattr(retrieval_config, "tables", []) or [])
+    table_names = _table_names(v3_metadata.get("tables_searched") or configured_tables)
+    table_label = _legacy_table_label(table_names)
+    embedding_model_logged = str(
+        v3_metadata.get("embedding_model")
+        or getattr(runtime_config, "embedding_model", "")
+        or _enum_value(getattr(retrieval_config, "embedding_model", ""))
+        or ""
+    )
+    generation_provider = str(
+        v3_metadata.get("generator_provider")
+        or getattr(runtime_config, "llm_provider", "")
+        or _enum_value(getattr(generation_config, "provider", ""))
+        or ""
+    )
+    generation_model = str(
+        v3_metadata.get("generator_model")
+        or getattr(runtime_config, "v3_generator_model", "")
+        or getattr(generation_config, "model", "")
+        or getattr(runtime_config, "llm_model", "")
+        or ""
+    )
+    generation_temperature = getattr(
+        generation_config,
+        "temperature",
+        getattr(runtime_config, "v3_temperature", getattr(runtime_config, "temperature", 0)),
+    )
+    legacy_retrieved = _serialize_display_sources(v1_chunks_for_display)
+    legacy_chunk_refs = _legacy_chunk_refs(
+        v3_metadata.get("context_before_selector")
+        or v3_metadata.get("chunks_after_rerank")
+        or v3_metadata.get("retrieved_chunks")
+        or v3_metadata.get("chunks_raw")
+        or []
+    )
+    legal_ref_details = _legal_ref_details(context_items, resolved_refs, legal_refs_v3)
+    selector_before_count = int(selector_items_before or len(sections) or len(legacy_chunk_refs) or 0)
+    selector_after_count = int(selector_items_after if v3_enable_selector else len(context_items))
 
     # ── Core identifiers ───────────────────────────────────────────────
     row: dict = {
         "ts": dt.datetime.now(dt.UTC).isoformat(),
         "turn_id": turn_id,
+        "trace_id": trace_id or v3_metadata.get("trace_id", ""),
         "question": query,
         "answer": response,
+        "provider": generation_provider,
+        "model": generation_model,
+        "temperature": generation_temperature,
         "rag_version": "v3",
         "backend": f"rag_v3_{v3_context_mode}",
         "session_id": session_state.get("session_id", ""),
         "conversation_id": session_state.get("conversation_id", ""),
         "turn_index": len(session_state.get("turns", [])),
         "user_group": session_state.get("user_group", "default"),
+        "selected_ministry": _selected_ministry_value(v3_metadata.get("selected_ministry")),
         "total_time_ms": total_time_ms,
         "pipeline_latency_ms": total_time_ms,
     }
@@ -240,8 +551,22 @@ def build_log_row(
             "system_prompt_name": config.generation.system_prompt_name or "",
             "use_intent_gating": config.query_processor.enable_intent_gating,
             "use_reranker": config.aggregation.enable_section_reranker,
+            "reranker_name": getattr(runtime_config, "reranker_name", "") or "section_reranker",
+            "rerank_top_k": v3_rerank_top_k if v3_enable_reranker else 0,
             "top_k": v3_initial_top_k,
             "filters": _jdumps({"context_mode": v3_context_mode, "selector": v3_enable_selector}),
+            "table": table_label,
+            "embed_col": _embed_columns_for_tables(table_names, embedding_model_logged),
+            "retrieval_mode": v3_search_mode,
+            "hybrid_alpha": getattr(runtime_config, "v3_alpha", getattr(runtime_config, "hybrid_alpha", getattr(retrieval_config, "alpha", 0))),
+            "sparse_method": getattr(runtime_config, "sparse_method", ""),
+            "use_hyde": bool(getattr(query_processor_config, "enable_hyde", False)),
+            "hyde_document": "",
+            "use_query_rewriting": False,
+            "rewritten_query": "",
+            "use_query_reformulation": False,
+            "reformulated_query": "",
+            "reformulation_model": "",
         }
     )
 
@@ -253,6 +578,8 @@ def build_log_row(
             "acronyms_used": acronyms_expanded,
             "expanded_query": enriched_query if was_enriched else "",
             "intent_result": intent,
+            "intent_confidence": qr.intent_confidence,
+            "intent_model": getattr(query_processor_config, "intent_model", ""),
             "v3_intent": intent,
             "v3_intent_name": intent_name or "",
             "v3_intent_gating_enabled": config.query_processor.enable_intent_gating,
@@ -279,9 +606,22 @@ def build_log_row(
             "v3_rerank_top_k": v3_rerank_top_k if v3_enable_reranker else None,
             "v3_sections_before_rerank": _jdumps(v3_metadata.get("sections_before_rerank", 0)),
             "v3_sections_after_rerank": _jdumps(v3_metadata.get("sections_after_rerank", 0)),
+            "v3_chunks_raw": _jdumps(v3_metadata.get("chunks_raw", [])),
+            "v3_chunks_before_rerank": _jdumps(v3_metadata.get("chunks_before_rerank", [])),
+            "v3_chunks_after_rerank": _jdumps(v3_metadata.get("chunks_after_rerank", [])),
+            "v3_context_before_selector": _jdumps(v3_metadata.get("context_before_selector", [])),
             "v3_reranker_status": str(section_reranker.get("status", "") or ""),
             "v3_reranker_error": str(section_reranker.get("error", "") or "")[:2000],
+            "retrieved": _jdumps(legacy_retrieved),
+            "chunks_before_pick": selector_before_count,
+            "chunks_after_pick": selector_after_count,
+            "chunks_sent_to_selector": _jdumps(legacy_chunk_refs),
+            "chunk_selection_mode": f"V3_{str(v3_context_mode).upper()}",
+            "cascade_source": table_label,
+            "pick_mode": "llm_selector" if v3_enable_selector else "top_sections",
+            "dist_before_rerank": _jdumps(_source_distribution(v3_metadata.get("retrieved_chunks", []), key="table")),
             "dist_after_rerank": _jdumps(source_dist_post_rerank),
+            "boost_weights": "{}",
         }
     )
 
@@ -296,8 +636,13 @@ def build_log_row(
             "v3_selector_removed_indices": ",".join(str(d["idx"]) for d in selector_decisions.get("removed", [])),
             "v3_selector_llm_response": (selector_llm_response or "")[:5000],
             "llm_selector_model": config.selector.model if v3_enable_selector else "",
+            "llm_selector_prompt_name": getattr(config.selector, "prompt_name", "") if v3_enable_selector else "",
             "llm_selector_reasoning": selector_reasoning,
+            "llm_selector_time_ms": int(v3_timing.get("selector_ms", 0)),
+            "llm_selector_response": (selector_llm_response or "")[:5000],
             "v3_source_distribution": _jdumps(source_dist_post_selector),
+            "v3_need_more_context": False,
+            "v3_suggested_expansion": "",
         }
     )
 
@@ -310,6 +655,10 @@ def build_log_row(
             "v3_context_items_summary": _jdumps(v3_metadata.get("context_items_ref", [])),
             "v3_context_items_full": _jdumps(v3_metadata.get("aggregated_sections", [])),
             "sources_used_count": len(v1_chunks_for_display),
+            "sources_used_indices": ",".join(str(i) for i in range(len(v1_chunks_for_display))),
+            "sources_used_content": "[]",
+            "fallbacks_used": "",
+            "sources_raw_line": "",
         }
     )
 
@@ -319,11 +668,8 @@ def build_log_row(
             "v3_legal_refs_total": refs_in_context,
             "v3_legal_refs_from_expansion": refs_in_context,
             "v3_legal_refs_from_dgafp": refs_injected,
-            "v3_legal_refs_details": _jdumps(
-                [{"number": num, "cid": info.get("cid", ""), "title": info.get("title", "")} for num, info in resolved_refs.items()]
-            )
-            or "[]",
-            "expanded_refs_count": len(legal_refs_v3),
+            "v3_legal_refs_details": _jdumps(legal_ref_details),
+            "expanded_refs_count": len(legal_refs_v3) if legal_refs_v3 is not None else len(legal_ref_details),
         }
     )
 
@@ -334,6 +680,9 @@ def build_log_row(
             "v3_full_prompt": (full_prompt or "")[:200000],
             "v3_system_prompt_content": (system_prompt_content or "")[:5000],
             "v3_response_length": int(v3_timing.get("response_length_tokens", estimate_tokens(response))),
+            "prompt": "",
+            "system_prompt": "",
+            "direct_response": response,
         }
     )
 
@@ -350,6 +699,11 @@ def build_log_row(
             "v3_ttft_ms": int(v3_timing.get("ttft_ms", 0)),
             "v3_chars_per_second": round(v3_timing.get("chars_per_second", 0.0), 1),
             "v3_timing_breakdown": _jdumps(v3_timing),
+            "retrieval_time_ms": int(v3_timing.get("retrieval_ms", 0)),
+            "rerank_time_ms": int(v3_timing.get("aggregation_ms", 0)),
+            "llm_time_ms": int(v3_timing.get("generation_ms", 0)),
+            "ttft_ms": int(v3_timing.get("ttft_ms", 0)),
+            "tokens_per_second": round(v3_timing.get("tokens_per_second", v3_timing.get("chars_per_second", 0.0)), 1),
         }
     )
 
@@ -364,12 +718,15 @@ def build_non_rag_row(
     pipeline: "Pipeline",
     session_state: dict,
     runtime_config: Any = None,
+    trace_id: str | None = None,
+    retrieval_scope: Any = None,
 ) -> dict:
     """Build a minimal log row for non-RAG turns (chit-chat, out-of-scope)."""
     _intent_val = qr.intent.value if qr.intent else "unknown"
     return {
         "ts": dt.datetime.now(dt.UTC).isoformat(),
         "turn_id": turn_id,
+        "trace_id": trace_id or "",
         "question": query,
         "answer": response,
         "provider": getattr(runtime_config, "llm_provider", "") if runtime_config else "",
@@ -429,6 +786,7 @@ def build_non_rag_row(
         "cascade_source": "",
         "expanded_refs_count": 0,
         "user_group": session_state.get("user_group", "default"),
+        "selected_ministry": _selected_ministry_value(retrieval_scope),
         "llm_selector_model": "",
         "llm_selector_prompt_name": "",
         "llm_selector_reasoning": "",
@@ -464,6 +822,7 @@ def _append_csv_row(path: Path, fieldnames: list[str], row: dict):
     from filelock import FileLock
 
     row = {k: ("" if k in _CSV_REDACTED_FIELDS else row.get(k, "")) for k in fieldnames}
+    path.parent.mkdir(parents=True, exist_ok=True)
     lock = FileLock(str(path) + ".lock")
     with lock:
         exists = path.exists()
@@ -488,6 +847,10 @@ def _prepare_data(data: dict) -> dict:
 
     if isinstance(out.get("chunks_sent_to_selector"), (dict, list)):
         out["chunks_sent_to_selector"] = json.dumps(out["chunks_sent_to_selector"], ensure_ascii=False)
+
+    for col in ("table", "cascade_source"):
+        if isinstance(out.get(col), str) and len(out[col]) > _LEGACY_VARCHAR_30_LIMIT:
+            out[col] = out[col][:_LEGACY_VARCHAR_30_LIMIT]
 
     for col in ("rag_version", "chunk_selection_mode", "cascade_source", "expanded_refs_count", "user_group"):
         if col not in out:
@@ -537,3 +900,77 @@ def log_run(row: dict, engine=None, csv_path: Optional[Path] = None, csv_fields:
 
     if csv_path and csv_fields:
         _append_csv_row(csv_path, csv_fields, data)
+
+
+def _env_label(explicit: str | None = None) -> str:
+    import os
+
+    value = (explicit or os.getenv("APP_ENV") or os.getenv("APP_SCALEWAY_ENV") or "").strip().lower()
+    if value == "production":
+        return "prod"
+    return value
+
+
+def _prepare_trace_event_rows(
+    *,
+    turn_id: str,
+    trace_id: str,
+    events: list[dict[str, Any]],
+    env_label: str,
+) -> list[dict[str, Any]]:
+    normalized_trace_id = normalize_trace_id(trace_id)
+    rows: list[dict[str, Any]] = []
+    for index, event in enumerate(events):
+        if not isinstance(event, dict):
+            continue
+        rows.append(
+            {
+                "turn_id": turn_id,
+                "trace_id": normalized_trace_id,
+                "env": env_label,
+                "event_index": index,
+                "stage": str(event.get("stage", "") or ""),
+                "attempt_name": str(event.get("attempt_name", "") or ""),
+                "duration_ms": int(event.get("duration_ms", 0) or 0),
+                "status": str(event.get("status", "ok") or "ok"),
+                "input_ref": _jdumps(event.get("input_ref", {})),
+                "output_ref": _jdumps(event.get("output_ref", {})),
+                "metrics": _jdumps(event.get("metrics", {})),
+                "error_type": str(event.get("error_type", "") or ""),
+                "error_message": str(event.get("error_message", "") or "")[:2000],
+            }
+        )
+    return rows
+
+
+def log_trace_events(
+    events: list[dict[str, Any]],
+    *,
+    turn_id: str,
+    trace_id: str,
+    engine=None,
+    env_label: str | None = None,
+) -> None:
+    """Persist per-stage RAG trace events and export compact OTEL spans.
+
+    This function is best effort. Database errors and OTEL export failures are
+    logged but do not propagate to the caller.
+    """
+    if not events:
+        return
+    env = _env_label(env_label)
+    normalized_trace_id = normalize_trace_id(trace_id)
+    rows = _prepare_trace_event_rows(turn_id=turn_id, trace_id=normalized_trace_id, events=events, env_label=env)
+
+    if engine and rows:
+        try:
+            from sqlalchemy import text
+
+            sql = _build_trace_event_upsert_sql()
+            with engine.connect() as conn:
+                conn.execute(text(sql), rows)
+                conn.commit()
+        except Exception as exc:
+            logger.warning("PostgreSQL trace-event log failed: %s", exc)
+
+    export_events_to_otel(turn_id=turn_id, trace_id=normalized_trace_id, events=events, env_label=env)

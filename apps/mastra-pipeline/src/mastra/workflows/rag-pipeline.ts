@@ -388,7 +388,7 @@ export async function runRagPipelineRagBranch(args: {
 	}
 
 	const initialSearchMode = baseRetrievalConfig.search_mode ?? "semantic";
-	const initialTopK = baseRetrievalConfig.initial_top_k ?? 15;
+	const initialTopK = baseRetrievalConfig.initial_top_k ?? 30;
 	const selectorRetryEnabled = baseRetrievalConfig.enable_selector_retry ?? true;
 	const selectorRetrySearchMode = baseRetrievalConfig.selector_retry_search_mode ?? "hybrid";
 	const selectorRetryTopK = baseRetrievalConfig.selector_retry_top_k ?? 30;

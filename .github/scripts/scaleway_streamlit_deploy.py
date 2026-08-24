@@ -20,6 +20,10 @@ def env_optional(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
 
 
+def env_truthy(name: str) -> bool:
+    return env_optional(name).lower() in {"1", "true", "yes", "on"}
+
+
 def redact(text: str, secrets: list[str]) -> str:
     output = text
     for secret in sorted(set(secrets), key=len, reverse=True):
@@ -34,12 +38,8 @@ def run_scw(args: list[str], *, secrets: list[str]) -> str:
         stdout = redact(result.stdout.strip(), secrets)
         stderr = redact(result.stderr.strip(), secrets)
         command = redact("scw " + " ".join(args), secrets)
-        raise RuntimeError(
-            "Scaleway CLI command failed:\n"
-            f"command: {command}\n"
-            f"stdout: {stdout or '<empty>'}\n"
-            f"stderr: {stderr or '<empty>'}"
-        )
+        message = f"Scaleway CLI command failed:\ncommand: {command}\nstdout: {stdout or '<empty>'}\nstderr: {stderr or '<empty>'}"
+        raise RuntimeError(message)
     return result.stdout
 
 
@@ -178,6 +178,57 @@ def container_settings_args(
     return args
 
 
+def streamlit_runtime_environment(default_app_env: str) -> dict[str, str]:
+    container_env = {
+        "APP_ENV": env_optional("APP_ENV", default_app_env),
+        "APP_DB_TARGET": env_optional("APP_DB_TARGET", "scaleway"),
+        "APP_SCALEWAY_ENV": env_optional("APP_SCALEWAY_ENV", default_app_env),
+        "SCW_DEFAULT_REGION": env_optional("SCW_DEFAULT_REGION", "fr-par"),
+        "SCW_BUCKET_SOURCES_PDF": env_optional("SCW_BUCKET_SOURCES_PDF", "assistant-rh-sources-pdf"),
+        "GRIST_API_BASE_URL": env_optional("GRIST_API_BASE_URL"),
+        "GRIST_DOC_ID": env_optional("GRIST_DOC_ID"),
+        "GRIST_TABLE_ID": env_optional("GRIST_TABLE_ID"),
+        "ALBERT_BASE_URL": env_optional("ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1"),
+        "SCALEWAY_BASE_URL": env_optional("SCALEWAY_BASE_URL", "https://api.scaleway.ai/v1"),
+        "STREAMLIT_BROWSER_GATHER_USAGE_STATS": env_optional("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false"),
+        "RAG_TRACING_ENABLED": env_optional("RAG_TRACING_ENABLED", "false"),
+        "OTEL_SERVICE_NAME": env_optional("OTEL_SERVICE_NAME", "assistant-rh"),
+        "OTEL_EXPORTER_OTLP_ENDPOINT": env_optional("OTEL_EXPORTER_OTLP_ENDPOINT"),
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": env_optional("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"),
+    }
+    container_env = {key: value for key, value in container_env.items() if value}
+
+    endpoint_configured = env_optional("OTEL_EXPORTER_OTLP_ENDPOINT") or env_optional("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+    if env_truthy("RAG_TRACING_ENABLED") and not endpoint_configured:
+        message = (
+            "RAG_TRACING_ENABLED is true but no OTLP endpoint is configured. Set OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_TRACES_ENDPOINT."
+        )
+        raise RuntimeError(message)
+    return container_env
+
+
+def streamlit_secret_environment() -> dict[str, str]:
+    # GROUP_DEFAULT_PASSWORD is managed directly in the Scaleway runtime.
+    # Serverless Containers keeps unspecified secrets unchanged on update, so
+    # deliberately omitting it preserves the existing value instead of
+    # requiring a duplicate GitHub environment secret.
+    container_secret_env = {
+        "SCW_POSTGRES_DSN": env_required("SCW_POSTGRES_DSN"),
+        "ALBERT_API_KEY": env_required("ALBERT_API_KEY"),
+        "SCALEWAY_API_KEY": env_required("SCALEWAY_API_KEY"),
+        "COOKIES_PASSWORD": env_required("COOKIES_PASSWORD"),
+        "ADMIN_PASSWORD": env_required("ADMIN_PASSWORD"),
+        "GRIST_API_KEY": env_required("GRIST_API_KEY"),
+        "SCW_ACCESS_KEY": env_required("SCW_ACCESS_KEY"),
+        "SCW_SECRET_KEY": env_required("SCW_SECRET_KEY"),
+    }
+    optional_secret_env = {
+        "OTEL_EXPORTER_OTLP_HEADERS": env_optional("OTEL_EXPORTER_OTLP_HEADERS"),
+    }
+    container_secret_env.update({key: value for key, value in optional_secret_env.items() if value})
+    return container_secret_env
+
+
 def create_container(
     *,
     namespace_id: str,
@@ -283,34 +334,26 @@ def main() -> int:
         "SCALEWAY_API_KEY",
         "COOKIES_PASSWORD",
         "ADMIN_PASSWORD",
+        "GRIST_API_BASE_URL",
+        "GRIST_API_KEY",
+        "GRIST_DOC_ID",
+        "GRIST_TABLE_ID",
+        "SCW_ACCESS_KEY",
+        "SCW_SECRET_KEY",
     ]
     missing_runtime = [name for name in required_runtime if not env_optional(name)]
     if missing_runtime:
-        raise RuntimeError(
-            "Missing required runtime environment variable(s) for Streamlit container: " + ", ".join(missing_runtime)
-        )
+        message = "Missing required runtime environment variable(s) for Streamlit container: " + ", ".join(missing_runtime)
+        raise RuntimeError(message)
 
     default_app_env = "staging" if args.target_env == "staging" else "production"
-    container_env = {
-        "APP_ENV": env_optional("APP_ENV", default_app_env),
-        "APP_DB_TARGET": env_optional("APP_DB_TARGET", "scaleway"),
-        "APP_SCALEWAY_ENV": env_optional("APP_SCALEWAY_ENV", default_app_env),
-        "ALBERT_BASE_URL": env_optional("ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1"),
-        "SCALEWAY_BASE_URL": env_optional("SCALEWAY_BASE_URL", "https://api.scaleway.ai/v1"),
-        "STREAMLIT_BROWSER_GATHER_USAGE_STATS": env_optional("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false"),
-    }
-    container_env = {key: value for key, value in container_env.items() if value}
-
-    container_secret_env = {
-        "SCW_POSTGRES_DSN": env_required("SCW_POSTGRES_DSN"),
-        "ALBERT_API_KEY": env_required("ALBERT_API_KEY"),
-        "SCALEWAY_API_KEY": env_required("SCALEWAY_API_KEY"),
-        "COOKIES_PASSWORD": env_required("COOKIES_PASSWORD"),
-        "ADMIN_PASSWORD": env_required("ADMIN_PASSWORD"),
-    }
+    container_env = streamlit_runtime_environment(default_app_env)
+    container_secret_env = streamlit_secret_environment()
 
     secret_values = [
         *container_secret_env.values(),
+        env_optional("OTEL_EXPORTER_OTLP_ENDPOINT"),
+        env_optional("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"),
         env_optional("SCW_ACCESS_KEY"),
         env_optional("SCW_SECRET_KEY"),
     ]

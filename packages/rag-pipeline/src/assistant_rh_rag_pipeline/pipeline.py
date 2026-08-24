@@ -29,10 +29,20 @@ from .context_builder import ContextBuilder
 from .context_selector import ContextSelector
 from .db_helpers import get_dsn
 from .generator import StreamingGenerator
-from .models import ContextItem, PipelineResult, estimate_tokens
+from .ministry_scope import MinistrySource, RetrievalScope, resolve_ministry
+from .models import (
+    ContextItem,
+    PipelineResult,
+    context_item_document_id,
+    estimate_tokens,
+    section_document_id,
+    serialize_raw_chunks,
+    serialize_section_chunks,
+)
 from .query_processor import QueryProcessor, QueryProcessResult
 from .retriever import Retriever
 from .section_aggregator import SectionAggregator
+from .tracing import bounded_preview, chunk_ref, context_item_ref, make_trace_event, normalize_trace_id, section_ref
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +58,9 @@ class _RunState:
     timing: Dict[str, float] = field(default_factory=dict)
     stage_refs: Dict[str, Any] = field(default_factory=dict)
     aggregation_diagnostics: Any = None
+    turn_id: str = ""
+    trace_id: str = field(default_factory=normalize_trace_id)
+    trace_events: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -61,9 +74,15 @@ class _RetrievalAttempt:
     retrieved_chunks: list[dict[str, Any]] = field(default_factory=list)
     aggregated_sections: list[dict[str, Any]] = field(default_factory=list)
     context_items_ref: list[dict[str, Any]] = field(default_factory=list)
+    chunks_raw: list[dict[str, Any]] = field(default_factory=list)
+    chunks_before_rerank: list[dict[str, Any]] = field(default_factory=list)
+    chunks_after_rerank: list[dict[str, Any]] = field(default_factory=list)
+    context_before_selector: list[dict[str, Any]] = field(default_factory=list)
     selector_decisions: dict[str, Any] = field(default_factory=dict)
     selector_reasoning: str = ""
     selector_raw_response: str = ""
+    selector_prompt_chars: int = 0
+    selector_response_chars: int = 0
     selector_items_before: int = 0
     selector_items_after: int = 0
     selector_all_rejected: bool = False
@@ -82,10 +101,16 @@ class _RetrievalAttempt:
             "retrieved_chunks": self.retrieved_chunks,
             "aggregated_sections": self.aggregated_sections,
             "context_items_ref": self.context_items_ref,
+            "chunks_raw": self.chunks_raw,
+            "chunks_before_rerank": self.chunks_before_rerank,
+            "chunks_after_rerank": self.chunks_after_rerank,
+            "context_before_selector": self.context_before_selector,
             "selector": {
                 "decisions": self.selector_decisions,
                 "reason": self.selector_reasoning,
                 "raw_response": self.selector_raw_response,
+                "prompt_chars": self.selector_prompt_chars,
+                "response_chars": self.selector_response_chars,
                 "items_before": self.selector_items_before,
                 "items_after": self.selector_items_after,
                 "all_rejected": self.selector_all_rejected,
@@ -98,6 +123,22 @@ class _RetrievalAttempt:
                 "reranker_error": self.reranker_error,
             },
         }
+
+
+def _intent_value(qr: QueryProcessResult) -> str:
+    intent = getattr(qr, "intent", None)
+    if intent is None:
+        return "unknown"
+    return str(getattr(intent, "value", intent) or "unknown")
+
+
+def _record_scope(state: _RunState, retrieval_scope: RetrievalScope | None) -> None:
+    if retrieval_scope is None:
+        return
+    scope_dict = retrieval_scope.to_dict()
+    state.stage_refs["retrieval_scope"] = scope_dict
+    state.stage_refs["selected_ministry"] = retrieval_scope.selected_ministry
+    state.stage_refs["scoped_table_keys"] = list(retrieval_scope.table_keys)
 
 
 class Pipeline:
@@ -160,9 +201,10 @@ class Pipeline:
         self,
         query: str,
         conversation_history: list[Dict[str, str]] | None = None,
+        retrieval_scope: RetrievalScope | None = None,
     ) -> QueryProcessResult:
         state = _RunState()
-        qr = self._process_query(query, conversation_history, state)
+        qr = self._process_query(query, conversation_history, state, ministry=resolve_ministry(retrieval_scope))
         self._timing = dict(state.timing)
         return qr
 
@@ -175,14 +217,26 @@ class Pipeline:
         query: str,
         conversation_history: list[Dict[str, str]] | None = None,
         include_stage_trace: bool = False,
+        turn_id: str | None = None,
+        trace_id: str | None = None,
+        retrieval_scope: RetrievalScope | None = None,
     ) -> PipelineResult:
-        state = _RunState()
-        qr = self._process_query(query, conversation_history, state)
+        self._generator.begin_request()
+        state = _RunState(turn_id=turn_id or "", trace_id=normalize_trace_id(trace_id))
+        _record_scope(state, retrieval_scope)
+        ministry = resolve_ministry(retrieval_scope)
+        qr = self._process_query(query, conversation_history, state, ministry=ministry)
 
         if not qr.should_proceed:
             metadata: Dict[str, Any] = {
-                "intent": qr.intent.value,
+                "intent": _intent_value(qr),
                 "intent_reason": qr.intent_reason,
+                "turn_id": state.turn_id,
+                "trace_id": state.trace_id,
+                "rag_trace_events": list(state.trace_events),
+                "retrieval_scope": state.stage_refs.get("retrieval_scope"),
+                "selected_ministry": state.stage_refs.get("selected_ministry"),
+                "scoped_table_keys": state.stage_refs.get("scoped_table_keys", []),
             }
             if include_stage_trace:
                 metadata["stage_trace"] = self._build_stage_trace(
@@ -205,7 +259,7 @@ class Pipeline:
             self._timing = dict(result.timing)
             return result
 
-        context_items = self._retrieve_and_build(qr, state)
+        context_items = self._retrieve_and_build(qr, state, retrieval_scope=retrieval_scope, ministry=ministry)
 
         if not context_items and state.stage_refs.get("selector_all_rejected"):
             no_answer = (
@@ -213,6 +267,9 @@ class Pipeline:
                 "pour répondre à cette question. N'hésitez pas à reformuler votre question ou à contacter "
                 "votre service RH pour obtenir une réponse précise."
             )
+            state.timing["generation_ms"] = 0
+            state.timing["response_length_tokens"] = estimate_tokens(no_answer)
+            self._record_generator_event(qr, [], no_answer, state, duration_ms=0, status="skipped_no_context")
             result = self._build_result(
                 query,
                 no_answer,
@@ -227,9 +284,11 @@ class Pipeline:
             return result
 
         t0 = time.time()
-        answer = self._generator.generate(qr.query_for_retrieval, context_items)
-        state.timing["generation_ms"] = (time.time() - t0) * 1000
+        answer = self._generator.generate(qr.query_for_retrieval, context_items, ministry=ministry)
+        generation_ms = (time.time() - t0) * 1000
+        state.timing["generation_ms"] = generation_ms
         state.timing["response_length_tokens"] = estimate_tokens(answer)
+        self._record_generator_event(qr, context_items, answer, state, duration_ms=generation_ms)
 
         result = self._build_result(
             query,
@@ -248,12 +307,18 @@ class Pipeline:
         self,
         query: str,
         conversation_history: list[Dict[str, str]] | None = None,
+        turn_id: str | None = None,
+        trace_id: str | None = None,
+        retrieval_scope: RetrievalScope | None = None,
     ) -> PipelineResult:
         """Run pipeline and include stage-level input/output trace in metadata."""
         return self.run(
             query=query,
             conversation_history=conversation_history,
             include_stage_trace=True,
+            turn_id=turn_id,
+            trace_id=trace_id,
+            retrieval_scope=retrieval_scope,
         )
 
     # ------------------------------------------------------------------
@@ -265,6 +330,9 @@ class Pipeline:
         qr: QueryProcessResult,
         conversation_history: list[Dict[str, str]] | None = None,
         on_status: Callable[[str], None] | None = None,
+        turn_id: str | None = None,
+        trace_id: str | None = None,
+        retrieval_scope: RetrievalScope | None = None,
     ) -> Generator[str, None, None]:
         """
         Yield tokens for the streaming answer.
@@ -276,11 +344,21 @@ class Pipeline:
         *on_status* is an optional callback invoked at each pipeline stage
         (useful for updating a Streamlit loader).
         """
-        state = _RunState()
+        self._generator.begin_request()
+        state = _RunState(turn_id=turn_id or "", trace_id=normalize_trace_id(trace_id))
+        _record_scope(state, retrieval_scope)
+        ministry = resolve_ministry(retrieval_scope)
+        self._record_query_processor_event(
+            query=qr.original_query,
+            conversation_history=conversation_history,
+            qr=qr,
+            state=state,
+            duration_ms=self._timing.get("query_processing_ms", 0),
+        )
         _notify = on_status or (lambda _: None)
 
         _notify("📚 Recherche dans les sources...")
-        context_items = self._retrieve_and_build(qr, state)
+        context_items = self._retrieve_and_build(qr, state, retrieval_scope=retrieval_scope, ministry=ministry)
 
         if not context_items and state.stage_refs.get("selector_all_rejected"):
             _notify("🚫 Aucune source pertinente trouvée")
@@ -293,6 +371,7 @@ class Pipeline:
             state.timing["ttft_ms"] = 0
             state.timing["chars_per_second"] = 0.0
             state.timing["response_length_tokens"] = estimate_tokens(no_answer)
+            self._record_generator_event(qr, [], no_answer, state, duration_ms=0, status="skipped_no_context")
             yield no_answer
             self.last_result = self._build_result(qr.original_query, no_answer, [], qr, state=state)
             self._timing = dict(self.last_result.timing)
@@ -302,7 +381,7 @@ class Pipeline:
         collected: list[str] = []
         t0 = time.time()
         ttft: float = 0.0
-        for token in self._generator.stream(qr.query_for_retrieval, context_items, conversation_history):
+        for token in self._generator.stream(qr.query_for_retrieval, context_items, conversation_history, ministry=ministry):
             if not collected:
                 ttft = (time.time() - t0) * 1000
             collected.append(token)
@@ -315,6 +394,7 @@ class Pipeline:
         chars = len(answer)
         state.timing["chars_per_second"] = (chars / (gen_ms / 1000)) if gen_ms > 0 else 0.0
         state.timing["response_length_tokens"] = estimate_tokens(answer)
+        self._record_generator_event(qr, context_items, answer, state, duration_ms=gen_ms)
 
         self.last_result = self._build_result(qr.original_query, answer, context_items, qr, state=state)
         self._timing = dict(self.last_result.timing)
@@ -328,23 +408,31 @@ class Pipeline:
         query: str,
         conversation_history: list[Dict[str, str]] | None,
         state: _RunState,
+        ministry: MinistrySource | None = None,
     ) -> QueryProcessResult:
         t0 = time.time()
-        qr = self._query_processor.process(query, conversation_history)
-        state.timing["query_processing_ms"] = (time.time() - t0) * 1000
+        qr = self._query_processor.process(query, conversation_history, ministry=ministry)
+        duration_ms = (time.time() - t0) * 1000
+        state.timing["query_processing_ms"] = duration_ms
+        self._record_query_processor_event(query=query, conversation_history=conversation_history, qr=qr, state=state, duration_ms=duration_ms)
         self.last_query_result = qr
         return qr
 
-    def _retrieve_and_build(self, qr: QueryProcessResult, state: _RunState) -> List[ContextItem]:
+    def _retrieve_and_build(
+        self,
+        qr: QueryProcessResult,
+        state: _RunState,
+        *,
+        retrieval_scope: RetrievalScope | None = None,
+        ministry: MinistrySource | None = None,
+    ) -> List[ContextItem]:
         retrieval_query = qr.query_for_retrieval
 
-        configured_tables = list(self._retriever.config.tables)
+        active_tables = list(retrieval_scope.table_keys) if retrieval_scope is not None else list(self._retriever.config.tables)
+        strict_table_errors = retrieval_scope is not None
         force_hybrid_tables: set[str] = set()
-        if qr.needs_legal_search:
-            active_tables = configured_tables
+        if "dgafp" in active_tables:
             force_hybrid_tables.add("dgafp")
-        else:
-            active_tables = [t for t in configured_tables if t != "dgafp"]
 
         initial_attempt = self._run_retrieval_attempt(
             name="initial",
@@ -354,6 +442,8 @@ class Pipeline:
             state=state,
             search_mode=self.config.retrieval.search_mode,
             top_k=self.config.retrieval.initial_top_k,
+            strict_table_errors=strict_table_errors,
+            ministry=ministry,
         )
         attempts = [initial_attempt]
         items = initial_attempt.context_items_ref
@@ -381,6 +471,8 @@ class Pipeline:
             state=state,
             search_mode=self.config.retrieval.selector_retry_search_mode,
             top_k=self.config.retrieval.selector_retry_top_k,
+            strict_table_errors=strict_table_errors,
+            ministry=ministry,
         )
         attempts.append(retry_attempt)
         retry_has_context = bool(retry_attempt.context_items_ref)
@@ -405,10 +497,10 @@ class Pipeline:
         state: _RunState,
         search_mode: SearchMode,
         top_k: int,
+        strict_table_errors: bool,
+        ministry: MinistrySource | None = None,
     ) -> _RetrievalAttempt:
         tables_searched = list(active_tables)
-        if getattr(self._retriever.config, "enable_chunks_test", False) is True:
-            tables_searched.append("rag_chunks_test")
 
         attempt = _RetrievalAttempt(
             name=name,
@@ -424,8 +516,10 @@ class Pipeline:
             tables=active_tables,
             search_mode=search_mode,
             top_k=top_k,
+            strict_table_errors=strict_table_errors,
         )
-        state.timing[f"retrieval_{name}_ms"] = (time.time() - t0) * 1000
+        retrieval_ms = (time.time() - t0) * 1000
+        state.timing[f"retrieval_{name}_ms"] = retrieval_ms
 
         attempt.retrieved_chunks = [
             {
@@ -440,17 +534,42 @@ class Pipeline:
             }
             for c in chunks
         ]
+        attempt.chunks_raw = serialize_raw_chunks(chunks)
+        state.trace_events.append(
+            make_trace_event(
+                stage="retriever",
+                attempt_name=name,
+                duration_ms=retrieval_ms,
+                status="ok" if chunks else "empty",
+                input_ref={
+                    "query": bounded_preview(retrieval_query, 1_000),
+                    "tables_searched": tables_searched,
+                    "search_mode": search_mode.value,
+                    "top_k": top_k,
+                    "retrieval_scope": state.stage_refs.get("retrieval_scope"),
+                },
+                output_ref={"retrieved_chunks": [chunk_ref(chunk) for chunk in chunks]},
+                metrics={
+                    "chunk_count": len(chunks),
+                    "top_score": round(max((chunk.score for chunk in chunks), default=0.0), 4),
+                    "avg_score": round(sum(chunk.score for chunk in chunks) / len(chunks), 4) if chunks else 0.0,
+                },
+            )
+        )
 
         t0 = time.time()
         aggregation_result = self._aggregator.aggregate_with_diagnostics(chunks, query=retrieval_query)
         sections = aggregation_result.sections
         diagnostics = aggregation_result.diagnostics
-        state.timing[f"aggregation_{name}_ms"] = (time.time() - t0) * 1000
+        aggregation_ms = (time.time() - t0) * 1000
+        state.timing[f"aggregation_{name}_ms"] = aggregation_ms
 
         attempt.sections_before_rerank = int(getattr(diagnostics, "sections_before_rerank", 0) or 0)
         attempt.sections_after_rerank = int(getattr(diagnostics, "sections_after_rerank", 0) or 0)
         attempt.reranker_status = str(getattr(diagnostics, "reranker_status", "") or "")
         attempt.reranker_error = str(getattr(diagnostics, "reranker_error", "") or "")
+        attempt.chunks_before_rerank = list(getattr(diagnostics, "chunks_before_rerank", []) or [])
+        attempt.chunks_after_rerank = list(getattr(diagnostics, "chunks_after_rerank", []) or [])
         attempt.aggregated_sections = [
             {
                 "section_id": str(s.section_id) if s.section_id else "",
@@ -459,38 +578,100 @@ class Pipeline:
                 "publisher": s.publisher or "",
                 "chunk_count": len(s.chunks),
                 "token_estimate": s.token_estimate,
-                "document_id": str(s.document_id or s.metadata.get("doc_id", "") or ""),
+                "document_id": section_document_id(s),
             }
             for s in sections
         ]
+        attempt.context_before_selector = serialize_section_chunks(
+            sections,
+            include_rerank_score=attempt.reranker_status == "completed",
+        )
+        aggregation_status = "failed" if attempt.reranker_status == "failed" else "ok" if sections else "empty"
+        state.trace_events.append(
+            make_trace_event(
+                stage="section-aggregator",
+                attempt_name=name,
+                duration_ms=aggregation_ms,
+                status=aggregation_status,
+                input_ref={"retrieved_chunk_ids": [str(c.chunk_id) for c in chunks]},
+                output_ref={"aggregated_sections": [section_ref(section) for section in sections]},
+                metrics={
+                    "sections_before_rerank": attempt.sections_before_rerank,
+                    "sections_after_rerank": attempt.sections_after_rerank,
+                    "reranker_status": attempt.reranker_status,
+                },
+                error_type="reranker_error" if attempt.reranker_status == "failed" else "",
+                error_message=attempt.reranker_error,
+            )
+        )
 
         if self.config.selector.enabled:
             sections_before = len(sections)
             t0 = time.time()
             selector = ContextSelector(self.config.selector)
-            sections = selector.select(retrieval_query, sections)
-            state.timing[f"selector_{name}_ms"] = (time.time() - t0) * 1000
+            sections = selector.select(retrieval_query, sections, ministry=ministry)
+            selector_ms = (time.time() - t0) * 1000
+            state.timing[f"selector_{name}_ms"] = selector_ms
             attempt.selector_decisions = selector.last_decisions
             attempt.selector_reasoning = selector.last_reasoning
             attempt.selector_raw_response = selector.last_raw_response
+            selector_prompt_chars = selector.last_prompt_chars
+            attempt.selector_prompt_chars = selector_prompt_chars if isinstance(selector_prompt_chars, int) else 0
+            attempt.selector_response_chars = len(selector.last_raw_response)
             attempt.selector_items_before = sections_before
             attempt.selector_items_after = len(sections)
             attempt.selector_all_rejected = selector.all_rejected
             attempt.selector_rejection_reason = selector.last_reasoning if selector.all_rejected else ""
             self._selector = selector
+            selector_status = "all_rejected" if selector.all_rejected else "ok" if sections_before else "skipped_no_sections"
+            state.trace_events.append(
+                make_trace_event(
+                    stage="context-selector",
+                    attempt_name=name,
+                    duration_ms=selector_ms,
+                    status=selector_status,
+                    input_ref={
+                        "query": bounded_preview(retrieval_query, 1_000),
+                        "section_ids": [str(section.section_id or "") for section in aggregation_result.sections],
+                    },
+                    output_ref={
+                        "selector_decisions": selector.last_decisions,
+                        "selected_sections": [section_ref(section, include_chunks=False) for section in sections],
+                        "reason": bounded_preview(selector.last_reasoning, 2_000),
+                    },
+                    metrics={
+                        "items_before": attempt.selector_items_before,
+                        "items_after": attempt.selector_items_after,
+                        "all_rejected": attempt.selector_all_rejected,
+                    },
+                )
+            )
 
             if not sections and selector.all_rejected:
                 logger.info("Selector rejected all sections on %s attempt", name)
                 state.timing[f"context_build_{name}_ms"] = 0
                 return attempt
+        else:
+            state.trace_events.append(
+                make_trace_event(
+                    stage="context-selector",
+                    attempt_name=name,
+                    duration_ms=0,
+                    status="disabled",
+                    input_ref={"section_ids": [str(section.section_id or "") for section in sections]},
+                    output_ref={"selected_sections": [section_ref(section, include_chunks=False) for section in sections]},
+                    metrics={"items_before": len(sections), "items_after": len(sections), "all_rejected": False},
+                )
+            )
 
         t0 = time.time()
         items = self._context_builder.build(sections)
-        state.timing[f"context_build_{name}_ms"] = (time.time() - t0) * 1000
+        context_build_ms = (time.time() - t0) * 1000
+        state.timing[f"context_build_{name}_ms"] = context_build_ms
         attempt.context_items_ref = [
             {
                 "section_id": str(it.section_id) if it.section_id else "",
-                "doc_id": str(it.metadata.get("doc_id", "") or ""),
+                "doc_id": context_item_document_id(it),
                 "heading": (it.heading or "")[:80],
                 "publisher": it.publisher or "",
                 "tokens": it.token_estimate,
@@ -499,6 +680,21 @@ class Pipeline:
             }
             for it in items
         ]
+        state.trace_events.append(
+            make_trace_event(
+                stage="context-builder",
+                attempt_name=name,
+                duration_ms=context_build_ms,
+                status="ok" if items else "empty",
+                input_ref={"selected_section_ids": [str(section.section_id or "") for section in sections]},
+                output_ref={"context_items": [context_item_ref(item) for item in items]},
+                metrics={
+                    "context_item_count": len(items),
+                    "context_tokens": sum(item.token_estimate for item in items),
+                    "doc_entire_count": sum(1 for item in items if item.metadata.get("is_doc_entire", False)),
+                },
+            )
+        )
         state.stage_refs["_latest_context_items"] = items
         return attempt
 
@@ -513,9 +709,15 @@ class Pipeline:
         state.stage_refs["retrieved_chunks"] = latest.retrieved_chunks
         state.stage_refs["aggregated_sections"] = latest.aggregated_sections
         state.stage_refs["context_items_ref"] = latest.context_items_ref
+        state.stage_refs["chunks_raw"] = latest.chunks_raw
+        state.stage_refs["chunks_before_rerank"] = latest.chunks_before_rerank
+        state.stage_refs["chunks_after_rerank"] = latest.chunks_after_rerank
+        state.stage_refs["context_before_selector"] = latest.context_before_selector
         state.stage_refs["selector_decisions"] = latest.selector_decisions
         state.stage_refs["selector_reasoning"] = latest.selector_reasoning
         state.stage_refs["selector_raw_response"] = latest.selector_raw_response
+        state.stage_refs["selector_prompt_chars"] = sum(attempt.selector_prompt_chars for attempt in attempts)
+        state.stage_refs["selector_response_chars"] = sum(attempt.selector_response_chars for attempt in attempts)
         state.stage_refs["selector_items_before"] = latest.selector_items_before
         state.stage_refs["selector_items_after"] = latest.selector_items_after
         state.stage_refs["selector_all_rejected"] = latest.selector_all_rejected
@@ -566,7 +768,7 @@ class Pipeline:
 
         metadata: Dict[str, Any] = {
             "original_query": query,
-            "intent": qr.intent.value,
+            "intent": _intent_value(qr),
             "intent_confidence": qr.intent_confidence,
             "theme": qr.theme,
             "was_expanded": qr.was_expanded,
@@ -576,17 +778,38 @@ class Pipeline:
             "needs_legal_search": qr.needs_legal_search,
             "needs_legal_search_llm": qr.needs_legal_search_llm,
             "tables_searched": state.stage_refs.get("tables_searched", []),
+            "retrieval_scope": state.stage_refs.get("retrieval_scope"),
+            "selected_ministry": state.stage_refs.get("selected_ministry"),
+            "scoped_table_keys": state.stage_refs.get("scoped_table_keys", []),
             "selector_enabled": self.config.selector.enabled,
             "generator_model": self.config.generation.model,
             "generator_provider": self.config.generation.provider.value,
+            # Provider effectivement utilisé (≠ generator_provider si le
+            # FallbackLLMClient a basculé) : sans cette trace, une réponse
+            # servie par le modèle de fallback est indétectable dans les
+            # artefacts et créditée au modèle configuré (revue PR #417).
+            "generator_provider_used": self._generator.provider_used,
+            "generator_fallback_count": self._generator.fallback_count,
+            "generator_used_fallback": self._generator.used_fallback,
+            "generator_model_used": (
+                self.config.generation.fallback_model
+                if self._generator.used_fallback
+                else self.config.generation.model if self._generator.provider_used else None
+            ),
             "embedding_model": self.config.retrieval.embedding_model.value,
             "retrieved_chunks": state.stage_refs.get("retrieved_chunks", []),
             "aggregated_sections": state.stage_refs.get("aggregated_sections", []),
             "context_items_ref": state.stage_refs.get("context_items_ref", []),
+            "chunks_raw": state.stage_refs.get("chunks_raw", []),
+            "chunks_before_rerank": state.stage_refs.get("chunks_before_rerank", []),
+            "chunks_after_rerank": state.stage_refs.get("chunks_after_rerank", []),
+            "context_before_selector": state.stage_refs.get("context_before_selector", []),
             "selector_decisions": state.stage_refs.get("selector_decisions", {}),
             "selector_reasoning": state.stage_refs.get("selector_reasoning", ""),
             "selector_rejection_reason": state.stage_refs.get("selector_rejection_reason", ""),
             "selector_raw_response": state.stage_refs.get("selector_raw_response", ""),
+            "selector_prompt_chars": state.stage_refs.get("selector_prompt_chars", 0),
+            "selector_response_chars": state.stage_refs.get("selector_response_chars", 0),
             "selector_items_before": state.stage_refs.get("selector_items_before", 0),
             "selector_items_after": state.stage_refs.get("selector_items_after", 0),
             "sections_before_rerank": _sections_before_rerank(state),
@@ -595,6 +818,9 @@ class Pipeline:
             "selector_retry_triggered": state.stage_refs.get("selector_retry_triggered", False),
             "selector_retry_succeeded": state.stage_refs.get("selector_retry_succeeded", False),
             "retrieval_attempts": state.stage_refs.get("retrieval_attempts", []),
+            "turn_id": state.turn_id,
+            "trace_id": state.trace_id,
+            "rag_trace_events": list(state.trace_events),
         }
         metadata["selector_decision"] = self._selector_decision(metadata)
         metadata["reranker_status"] = self._reranker_status(state)
@@ -621,6 +847,66 @@ class Pipeline:
             sources=sources,
             timing=dict(state.timing),
             metadata=metadata,
+        )
+
+    def _record_query_processor_event(
+        self,
+        *,
+        query: str,
+        conversation_history: list[Dict[str, str]] | None,
+        qr: QueryProcessResult,
+        state: _RunState,
+        duration_ms: float,
+    ) -> None:
+        state.trace_events.append(
+            make_trace_event(
+                stage="query-processor",
+                duration_ms=duration_ms,
+                status="ok" if qr.should_proceed else "short_circuit",
+                input_ref={
+                    "query": bounded_preview(query, 1_000),
+                    "conversation_history_count": len(conversation_history or []),
+                },
+                output_ref={
+                    "intent": _intent_value(qr),
+                    "theme": qr.theme or "",
+                    "should_proceed": qr.should_proceed,
+                    "processed_query": bounded_preview(qr.processed_query, 1_000),
+                    "enriched_query": bounded_preview(qr.enriched_query, 1_000),
+                    "query_for_retrieval": bounded_preview(qr.query_for_retrieval, 1_000),
+                    "needs_legal_search": qr.needs_legal_search,
+                    "needs_legal_search_llm": qr.needs_legal_search_llm,
+                    "expanded_acronyms": list(qr.expanded_acronyms or []),
+                },
+                metrics={"intent_confidence": qr.intent_confidence},
+            )
+        )
+
+    def _record_generator_event(
+        self,
+        qr: QueryProcessResult,
+        context_items: List[ContextItem],
+        answer: str,
+        state: _RunState,
+        *,
+        duration_ms: float,
+        status: str = "ok",
+    ) -> None:
+        state.trace_events.append(
+            make_trace_event(
+                stage="generator",
+                duration_ms=duration_ms,
+                status=status,
+                input_ref={
+                    "query": bounded_preview(qr.query_for_retrieval, 1_000),
+                    "context_item_count": len(context_items),
+                    "context_section_ids": [str(item.section_id or "") for item in context_items],
+                    "model": self.config.generation.model,
+                    "provider": self.config.generation.provider.value,
+                },
+                output_ref={"answer_preview": bounded_preview(answer, 1_000), "sources_count": len(context_items)},
+                metrics={"answer_tokens": estimate_tokens(answer)},
+            )
         )
 
     def _build_stage_trace(
@@ -689,7 +975,7 @@ class Pipeline:
                         "conversation_history": history,
                     },
                     "output": {
-                        "intent": qr.intent.value,
+                        "intent": _intent_value(qr),
                         "theme": qr.theme,
                         "needs_legal_search": qr.needs_legal_search,
                         "needs_legal_search_llm": qr.needs_legal_search_llm,

@@ -11,6 +11,7 @@ Dependencies (internal only):
   - models (ContextItem)
   - context_builder (ContextBuilder – only the static formatter)
 """
+
 from __future__ import annotations
 
 import logging
@@ -20,6 +21,7 @@ from .config import GenerationConfig
 from .context_builder import ContextBuilder
 from .db_helpers import load_prompt
 from .llm_client import FallbackLLMClient
+from .ministry_scope import MinistrySource, render_ministry_prompt
 from .models import ContextItem
 
 logger = logging.getLogger(__name__)
@@ -34,8 +36,27 @@ USER_PROMPT_TEMPLATE = """Voici le contexte documentaire pour repondre a la ques
 
 ---
 
-En vous appuyant uniquement sur les sources ci-dessus, repondez de maniere claire et operationnelle.
+En vous appuyant uniquement sur les sources ci-dessus, repondez de maniere claire, precise et proportionnee a la question.
+Pour une question sur les regles, exposez le cadre documente sans ajouter de rubrique "En pratique" ni de procedure pas-a-pas.
+N'inferez pas la frequence d'une decision, qui choisit une modalite, ni une demarche locale si les sources ne le disent pas explicitement.
 Si les sources ne permettent pas de repondre, dites-le explicitement et n'inventez pas."""
+
+_COMPLEMENTARY_SOURCE_COVERAGE = """## Couverture des sources complémentaires
+
+Lorsque le contexte contient à la fois un texte juridique et une source
+ministérielle directement pertinents, utilisez les deux : présentez d'abord le
+cadre légal général, puis distinguez clairement sa mise en œuvre ministérielle.
+N'écartez pas une disposition juridique non redondante au seul motif qu'une
+fiche pratique est disponible, et n'ajoutez aucune consigne opérationnelle qui
+n'est pas étayée par les sources. N'en déduisez pas de procédure locale (jour
+imposé, démarche auprès du service RH ou circuit de validation) si elle n'est
+pas explicitement décrite. Une question sur les règles ne demande pas une
+procédure pas-à-pas : n'ajoutez une marche à suivre que si l'utilisateur la
+demande explicitement. Nommez les articles juridiques pertinents lorsque leur
+numéro figure dans le contexte et ne désignez jamais les documents par des
+numéros techniques comme « source 1 » ou « document 2 ». N'inférez jamais la
+fréquence d'une décision ni qui choisit une modalité lorsque les sources ne le
+précisent pas."""
 
 
 class StreamingGenerator:
@@ -52,20 +73,45 @@ class StreamingGenerator:
     def __init__(self, config: GenerationConfig):
         self.config = config
         self._llm: FallbackLLMClient | None = None
+        self._base_prompt: str | None = None
+        self._request_provider_used: str | None = None
+        self._request_fallback_count: int = 0
         self.last_full_prompt: str = ""
         self.last_system_prompt: str = ""
+
+    def begin_request(self) -> None:
+        """Reset provider diagnostics for a new pipeline request."""
+        self._request_provider_used = None
+        self._request_fallback_count = 0
+
+    @property
+    def provider_used(self) -> str | None:
+        """Provider that served the current request, if generation ran."""
+        return self._request_provider_used
+
+    @property
+    def fallback_count(self) -> int:
+        """Fallback activations during the current request (normally 0 or 1)."""
+        return self._request_fallback_count
+
+    @property
+    def used_fallback(self) -> bool:
+        """Whether generation for the current request used the fallback."""
+        return self._request_fallback_count > 0
 
     @property
     def llm(self) -> FallbackLLMClient:
         if self._llm is None:
-            system_prompt = self._load_system_prompt()
+            # Baked default renders the generic (no-ministry) wording; every
+            # request overrides it per-call with the selected ministry so a
+            # single cached client serves all tenants safely.
             self._llm = FallbackLLMClient(
                 primary_provider=self.config.provider.value,
                 primary_model=self.config.model,
                 fallback_provider=self.config.fallback_provider.value,
                 fallback_model=self.config.fallback_model,
                 temperature=self.config.temperature,
-                system_prompt=system_prompt,
+                system_prompt=self._system_prompt_for(None),
             )
         return self._llm
 
@@ -74,36 +120,57 @@ class StreamingGenerator:
         query: str,
         context_items: List[ContextItem],
         history: list[Dict[str, str]] | None = None,
+        ministry: MinistrySource | None = None,
     ) -> Generator[str, None, None]:
         """Yield tokens one by one."""
+        self.begin_request()
         context_text = ContextBuilder.format_for_prompt(context_items)
         user_prompt = USER_PROMPT_TEMPLATE.format(context=context_text, question=query)
         self.last_full_prompt = user_prompt
-        self.last_system_prompt = self._get_system_prompt()
-        yield from self.llm.chat_stream(user_prompt, history=history)
+        system_prompt = self._system_prompt_for(ministry)
+        self.last_system_prompt = system_prompt
+        llm = self.llm
+        fallbacks_before = llm.fallback_count
+        try:
+            yield from llm.chat_stream(user_prompt, system_prompt=system_prompt, history=history)
+        finally:
+            self._request_provider_used = llm.last_provider_used
+            self._request_fallback_count = max(0, llm.fallback_count - fallbacks_before)
 
     def generate(
         self,
         query: str,
         context_items: List[ContextItem],
+        ministry: MinistrySource | None = None,
     ) -> str:
         """Non-streaming variant (useful for evaluation)."""
+        self.begin_request()
         context_text = ContextBuilder.format_for_prompt(context_items)
         user_prompt = USER_PROMPT_TEMPLATE.format(context=context_text, question=query)
         self.last_full_prompt = user_prompt
-        self.last_system_prompt = self._get_system_prompt()
-        return self.llm.chat(user_prompt)
-
-    def _load_system_prompt(self) -> str:
-        _DEFAULT = (
-            "Tu es un assistant RH expert pour le Ministere de la Transition Ecologique. "
-            "Reponds aux questions des agents publics sur les ressources humaines."
-        )
-        return load_prompt(self.config.system_prompt_name, "generator.md", default=_DEFAULT)
-
-    def _get_system_prompt(self) -> str:
-        """Retrieve the system prompt from the underlying LLM client."""
+        system_prompt = self._system_prompt_for(ministry)
+        self.last_system_prompt = system_prompt
         llm = self.llm
-        if hasattr(llm, "_primary") and llm._primary:
-            return getattr(llm._primary, "system_prompt", "") or ""
-        return ""
+        fallbacks_before = llm.fallback_count
+        try:
+            return llm.chat(user_prompt, system_prompt=system_prompt)
+        finally:
+            self._request_provider_used = llm.last_provider_used
+            self._request_fallback_count = max(0, llm.fallback_count - fallbacks_before)
+
+    def _base_system_prompt(self) -> str:
+        """Load the (unrendered) system prompt template, cached per instance."""
+        if self._base_prompt is None:
+            _DEFAULT = "Tu es un assistant RH expert pour {ministere_label}. Reponds aux questions des agents publics sur les ressources humaines."
+            prompt = load_prompt(self.config.system_prompt_name, "generator.md", default=_DEFAULT) or _DEFAULT
+            # The configured prompt is DB-backed and may predate deployed
+            # code. Enforce this conditional invariant in code as well as in
+            # the versioned prompt so stale configuration cannot hide law.
+            if "## Couverture des sources complémentaires" not in prompt:
+                prompt = f"{prompt.rstrip()}\n\n{_COMPLEMENTARY_SOURCE_COVERAGE}"
+            self._base_prompt = prompt
+        return self._base_prompt
+
+    def _system_prompt_for(self, ministry: MinistrySource | None) -> str:
+        """Render the system prompt for *ministry* (generic wording if *None*)."""
+        return render_ministry_prompt(self._base_system_prompt(), ministry)

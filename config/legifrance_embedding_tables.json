@@ -7,7 +7,7 @@
       "embeddings": [
         {
           "column": "embedding_m3",
-          "algorithm": "m3"
+          "algorithm": "albert"
         },
         {
           "column": "embedding_bge_scw",
@@ -22,7 +22,7 @@
       "embeddings": [
         {
           "column": "embedding_m3",
-          "algorithm": "m3"
+          "algorithm": "albert"
         },
         {
           "column": "embedding_bge_scw",

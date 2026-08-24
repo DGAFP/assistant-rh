@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional
 from .config import QueryProcessorConfig
 from .db_helpers import get_acronym_dict, load_prompt
 from .llm_client import LLMClient
+from .ministry_scope import MinistrySource, render_ministry_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +242,7 @@ class QueryProcessor:
         self,
         query: str,
         conversation_history: Optional[List[Dict[str, str]]] = None,
+        ministry: MinistrySource | None = None,
     ) -> QueryProcessResult:
         # Canonicalize the user input at the API boundary so the LLM, retriever,
         # and replay cache all see the same byte sequence regardless of whether
@@ -252,7 +254,7 @@ class QueryProcessor:
 
         # --- intent gating (single LLM call) --------------------------------
         if self.config.enable_intent_gating:
-            intent_data = self._classify(query, conversation_history, detected)
+            intent_data = self._classify(query, conversation_history, detected, ministry)
         else:
             intent_data = self._fallback_expand(query, detected)
 
@@ -311,6 +313,7 @@ class QueryProcessor:
         query: str,
         history: Optional[List[Dict[str, str]]],
         detected_acronyms: Dict[str, str],
+        ministry: MinistrySource | None = None,
     ) -> Dict[str, Any]:
         """Run the unified intent prompt via a lightweight LLM call."""
         try:
@@ -338,6 +341,8 @@ class QueryProcessor:
             if not template:
                 raise FileNotFoundError("Intent prompt not found")
 
+            # Resolve {ministere_*} before .format() fills history/query/acronyms.
+            template = render_ministry_prompt(template, ministry)
             prompt = template.format(history=history_text, query=query, acronyms_section=acr_section)
             raw = llm.chat(prompt, system_prompt="")
 
@@ -356,6 +361,10 @@ class QueryProcessor:
             if theme and theme not in AVAILABLE_THEMES:
                 theme = "autre"
 
+            # NB: the intent prompt also emits ``requested_source``
+            # ("ministere"|"service_public"). It is intentionally NOT consumed
+            # yet — reserved for a future per-source retrieval filter. Wire it
+            # here (map "ministere" → current publisher) when that lands.
             return {
                 "intent": intent,
                 "confidence": float(data.get("confidence", 0.8)),
@@ -393,10 +402,13 @@ class QueryProcessor:
     ) -> bool:
         """Apply deterministic guardrails when the LLM under-classifies legal queries.
 
-        DGAFP is completely excluded from retrieval unless ``needs_legal_search`` is
-        true. A narrow prompt-only definition is not robust enough for legal RH
-        questions that mention the rule directly without explicitly asking for the
-        article or decree. The heuristic stays conservative:
+        ``needs_legal_search`` no longer gates whether DGAFP is retrieved: as of the
+        always-on retrieval change, DGAFP is searched whenever it is in the configured
+        tables, regardless of this flag. The flag now only feeds logging and
+        conformance metadata, but a robust classification still matters there because a
+        narrow prompt-only definition under-counts legal RH questions that mention the
+        rule directly without explicitly asking for the article or decree. The
+        heuristic stays conservative:
         - always preserve explicit LLM ``true``
         - force legal search for obvious legal markers
         - force legal search for legal-ish RH rule questions when at least two

@@ -11,6 +11,7 @@ Environment variables (at least one pair required):
   ALBERT_API_KEY  + ALBERT_BASE_URL
   SCALEWAY_API_KEY + SCALEWAY_BASE_URL
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 _PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
     "albert": {"key_env": "ALBERT_API_KEY", "url_env": "ALBERT_BASE_URL"},
     "scaleway": {"key_env": "SCALEWAY_API_KEY", "url_env": "SCALEWAY_BASE_URL"},
+    "openrouter": {"key_env": "OPENROUTER_API_KEY", "url_env": "OPENROUTER_BASE_URL"},
     "openai": {"key_env": "OPENAI_API_KEY", "url_env": ""},
 }
 
@@ -139,6 +141,7 @@ class FallbackLLMClient:
     # -- Synchronous ----------------------------------------------------------
 
     def chat(self, prompt: str, system_prompt: str | None = None) -> str:
+        self.last_provider_used = None
         if self._primary:
             try:
                 result = self._primary.chat(prompt, system_prompt)
@@ -166,6 +169,7 @@ class FallbackLLMClient:
         system_prompt: str | None = None,
         history: list[Dict[str, str]] | None = None,
     ) -> Generator[str, None, None]:
+        self.last_provider_used = None
         tokens_yielded = 0
 
         if self._primary:
@@ -177,6 +181,7 @@ class FallbackLLMClient:
                 return
             except Exception as exc:
                 if tokens_yielded > 0:
+                    self.last_provider_used = self._primary_name
                     yield f"\n\n_Erreur de connexion ({self._primary_name}). Reponse partielle._"
                     return
                 logger.warning("Primary LLM (%s) failed before streaming: %s", self._primary_name, exc)

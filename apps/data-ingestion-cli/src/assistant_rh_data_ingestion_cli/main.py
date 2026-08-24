@@ -11,6 +11,7 @@ class CommandSpec:
     module: str
     description: str
     default_args: tuple[str, ...] = ()
+    entrypoint: str = "main"
 
 
 COMMANDS: dict[tuple[str, str], CommandSpec] = {
@@ -21,10 +22,12 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
     ("service-public", "ingest"): CommandSpec(
         "assistant_rh_data_engineering.jobs.service_public_ingestion",
         "Ingest Service-Public gold artifacts into Postgres.",
+        entrypoint="run_cli",
     ),
     ("service-public", "ingestion"): CommandSpec(
         "assistant_rh_data_engineering.jobs.service_public_ingestion",
         "Alias for service-public ingest.",
+        entrypoint="run_cli",
     ),
     ("legifrance", "bulk-dump"): CommandSpec(
         "assistant_rh_data_engineering.jobs.legifrance_bulk_dump",
@@ -41,6 +44,34 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
     ("legifrance", "ingestion"): CommandSpec(
         "assistant_rh_data_engineering.jobs.legifrance_ingestion",
         "Alias for legifrance ingest.",
+    ),
+    ("legifrance", "url-backfill"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.legifrance_url_backfill",
+        "Backfill Legifrance display URLs from silver artifacts.",
+    ),
+    ("legifrance", "r2-summaries"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.r2_article_summaries",
+        "Plan, generate, or apply reviewed R2 legal article summaries.",
+    ),
+    ("mi", "medallion"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.pdf_sources_medallion",
+        "Run the MI (Intérieur) PDF sources medallion pipeline.",
+        ("--ministere", "mi"),
+    ),
+    ("masa", "medallion"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.pdf_sources_medallion",
+        "Run the MASA (Agriculture et Souveraineté alimentaire) PDF sources medallion pipeline.",
+        ("--ministere", "masa"),
+    ),
+    ("matte", "medallion"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.pdf_sources_medallion",
+        "Run the MATTE PDF sources medallion pipeline (rebuild Phase D).",
+        ("--ministere", "matte"),
+    ),
+    ("mso", "medallion"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.pdf_sources_medallion",
+        "Run the MSO (Ministères sociaux) PDF sources medallion pipeline (rebuild Phase D).",
+        ("--ministere", "mso"),
     ),
     ("embeddings", "backfill"): CommandSpec(
         "assistant_rh_data_engineering.jobs.embeddings_backfill",
@@ -60,6 +91,25 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
         "assistant_rh_data_engineering.jobs.embeddings_backfill",
         "Backfill MATTE DB embeddings.",
         ("--config", "config/matte_embedding_tables.json"),
+    ),
+    ("embeddings", "mi"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.embeddings_backfill",
+        "Backfill MI DB embeddings.",
+        ("--config", "config/mi_embedding_tables.json"),
+    ),
+    ("embeddings", "masa"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.embeddings_backfill",
+        "Backfill MASA DB embeddings.",
+        ("--config", "config/masa_embedding_tables.json"),
+    ),
+    ("embeddings", "mso"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.embeddings_backfill",
+        "Backfill MSO DB embeddings.",
+        ("--config", "config/mso_embedding_tables.json"),
+    ),
+    ("chunks", "backfill-text"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.chunk_text_backfill",
+        "Backfill chunk_text from text where empty (default rag_chunks_matte).",
     ),
     ("observability", "rag-health"): CommandSpec(
         "assistant_rh_data_engineering.jobs.rag_health_exporter",
@@ -110,7 +160,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     spec, job_args = resolved
     module = importlib.import_module(spec.module)
-    job_main: Callable[[], int] = getattr(module, "main")
+    job_main: Callable[[], int] = getattr(module, spec.entrypoint)
 
     previous_argv = sys.argv
     sys.argv = [f"data-ingestion {argv[0]} {argv[1]}", *job_args]

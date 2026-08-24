@@ -17,16 +17,13 @@ embedder et ingerer des sources RH dans Postgres/pgvector.
 - OCR: `tesseract` + `poppler` (pour `pdf2image`). EasyOCR est optionnel.
 - Ingestion active: Postgres Scaleway avec `pgvector` + `SCW_POSTGRES_DSN` (ou variables explicitement documentées par le notebook historique).
 
+> Ingestion MATTE & MSO: les notebooks historiques (`extract_pdf_MSO.ipynb`,
+> `extract_matte.ipynb`, `amelioration_matte.ipynb`, `ingestion_matte.ipynb`,
+> `ingestion_pdf.ipynb`) ont été retirés — remplacés par le pipeline médaillon
+> `assistant_rh_data_engineering.pdf_ministry` (modules `matte`/`mso`), voir
+> `docs/ingestion/MSO_NOTEBOOK_HANDOVER.md` (historique) pour la genèse.
+
 ## Notebooks
-- `scripts/extract_pdf_MSO.ipynb`
-  - Reference notebook for MSO ingestion from `data/in/MSO`.
-  - Supports `pdf`, `pptx` and `docx`.
-  - Handles section-aware guides, FAQ-like documents, process/logigramme
-    documents and matrix/table documents.
-  - Generates extracted text files, `documents/sections/chunks` JSONL,
-    embeddings and optional PostgreSQL upsert into `rag_chunks_mso`.
-  - Detailed handover doc:
-    [`docs/MSO_NOTEBOOK_HANDOVER.md`](../docs/MSO_NOTEBOOK_HANDOVER.md)
 - `scripts/analyse.ipynb`
   - Profiling/EDA (pandas, sklearn, ydata_profiling).
   - Genere `scripts/retex_profiling_report.html`.
@@ -43,19 +40,6 @@ embedder et ingerer des sources RH dans Postgres/pgvector.
 - `scripts/service_public_xml_example.ipynb`
   - Exemple de recuperation d'une fiche Service-Public via le flux XML officiel
     DILA (`data.gouv.fr` -> `vosdroits-latest.zip` -> `F12391.xml` -> markdown).
-- `scripts/extract_matte.ipynb`
-  - Extraction "matte" (temps_partiel / temps_de_travail, etc) avec OCR.
-  - Sorties: `data/out/temps_partiel/*.txt`,
-    `data/out/chunked/temps_partiel_chunks_qna.jsonl`,
-    embeddings `data/out/temps_partiel_chunks_baai_bge_m3.*`.
-- `scripts/amelioration_matte.ipynb`
-  - Nettoyage + sectioning ameliore pour "temps du travail".
-  - Sorties: `data/out/chunked/matte_temps_travail_3pdf_clean.jsonl`,
-    embeddings `data/out/matte_temps_du_travail_amelioration_chunks_*.{parquet,npy,jsonl}`.
-- `scripts/ingestion_matte.ipynb`
-  - Ingere les JSONL issus d'`amelioration_matte` vers `rag_chunks_3`.
-  - Utilise `data/out/temps_partiel_embeddings_baai_bge_m3.npy` pour
-    determiner la dimension si besoin.
 - `scripts/extract_circulaire.Ipynb`
   - Circulaires: OCR optionnel + chunking Q/A.
   - Sorties: `data/out/circulaires_txt`,
@@ -75,5 +59,5 @@ embedder et ingerer des sources RH dans Postgres/pgvector.
   - Ecrit `data/out/chunked/chunks_from_csv_grouped_entretien_professionnelle.jsonl`.
 
 ## Flux suggere
-1. `extract_*` (sources) -> (optionnel) `amelioration_matte`.
+1. `extract_*` (sources).
 2. `ingestion_*` pour alimenter Postgres/pgvector.
