@@ -49,6 +49,10 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
         "assistant_rh_data_engineering.jobs.legifrance_url_backfill",
         "Backfill Legifrance display URLs from silver artifacts.",
     ),
+    ("legifrance", "r2-summaries"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.r2_article_summaries",
+        "Plan, generate, or apply reviewed R2 legal article summaries.",
+    ),
     ("mi", "medallion"): CommandSpec(
         "assistant_rh_data_engineering.jobs.pdf_sources_medallion",
         "Run the MI (Intérieur) PDF sources medallion pipeline.",
@@ -110,6 +114,10 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
     ("observability", "rag-health"): CommandSpec(
         "assistant_rh_data_engineering.jobs.rag_health_exporter",
         "Expose read-only RAG corpus health metrics for Prometheus/Grafana.",
+    ),
+    ("quality", "gates"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.quality_gates",
+        "Run post-ingestion database quality gates.",
     ),
 }
 

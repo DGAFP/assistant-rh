@@ -67,3 +67,38 @@ jobs:
             --from-object-storage \
             --load-all-artifacts \
             --dsn "${SCW_POSTGRES_DSN}"
+
+      - name: Run prod data quality gates
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/data-quality
+
+          QUALITY_SOURCES=()
+          if [[ "${{ github.event.inputs.source }}" == "all" || "${{ github.event.inputs.source }}" == "service_public" ]]; then
+            QUALITY_SOURCES+=(--source service_public)
+          fi
+          if [[ "${{ github.event.inputs.source }}" == "all" || "${{ github.event.inputs.source }}" == "legifrance" ]]; then
+            QUALITY_SOURCES+=(--source legifrance)
+          fi
+
+          uv run --no-sync data-ingestion quality gates \
+            --target-env prod \
+            "${QUALITY_SOURCES[@]}" \
+            --blocking \
+            --json-output artifacts/data-quality/prod-ingestion-report.json \
+            --markdown-output artifacts/data-quality/prod-ingestion-summary.md
+
+      - name: Summarize prod data quality gates
+        if: always()
+        run: |
+          if [[ -f artifacts/data-quality/prod-ingestion-summary.md ]]; then
+            cat artifacts/data-quality/prod-ingestion-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload prod data quality reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: data-quality-prod-ingestion-${{ github.run_attempt }}
+          path: artifacts/data-quality/
+          if-no-files-found: ignore

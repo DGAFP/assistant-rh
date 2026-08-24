@@ -367,12 +367,17 @@ class LegifranceDbWriter(ServicePublicDbWriter):
     _EMBEDDING_COLUMNS_MODERN = ["embedding_m3", "embedding_bge_scw"]
 
     def list_legifrance_corpus(self, source: str = "legifrance") -> dict[str, dict[str, Any]]:
-        """État corpus Légifrance : short_id -> {doc_id, checksum, nb_chunks}.
+        """État corpus Légifrance : short_id -> état document + chunks.
 
         ``nb_chunks`` additionne les chunks legacy (rattachés par ``cid``) et
         modernes (par ``short_id``) — un uid ne vit que dans une des deux
         tables, l'addition est donc un simple merge. Cette inspection est
         strictement read-only afin que ``--dry-run`` ne crée ni table ni index.
+
+        Quand la colonne JSON ``metadata`` existe, ``version_id`` expose la
+        version Légifrance réellement persistée. La présence de cette clé, même
+        vide sur un document historique, permet au plan de distinguer un schéma
+        comparable d'un ancien schéma sans métadonnées.
         """
         with self._connect() as conn, conn.cursor() as cur:
 
@@ -385,24 +390,31 @@ class LegifranceDbWriter(ServicePublicDbWriter):
                 return {}
             document_columns = self._column_types(conn, "rag_documents")
             checksum_expr = sql.Identifier("checksum") if "checksum" in document_columns else sql.SQL("NULL")
+            metadata_type = document_columns.get("metadata", ("", None))[0]
+            has_metadata = metadata_type in {"json", "jsonb"}
+            version_expr = (
+                sql.SQL("COALESCE(metadata->>'version_id', metadata->>'article_id')") if has_metadata else sql.SQL("NULL")
+            )
             cur.execute(
                 sql.SQL(
                     """
-                    SELECT short_id, doc_id, {} AS checksum
+                    SELECT short_id, doc_id, {} AS checksum, {} AS version_id
                     FROM {}.{}
                     WHERE LOWER(TRIM(source)) = %s AND short_id IS NOT NULL
                     """
-                ).format(checksum_expr, sql.Identifier(self.schema), sql.Identifier("rag_documents")),
+                ).format(checksum_expr, version_expr, sql.Identifier(self.schema), sql.Identifier("rag_documents")),
                 (source.strip().lower(),),
             )
-            corpus = {
-                str(row[0]).strip().upper(): {
+            corpus: dict[str, dict[str, Any]] = {}
+            for row in cur.fetchall():
+                state: dict[str, Any] = {
                     "doc_id": str(row[1]),
                     "checksum": (str(row[2]) if row[2] is not None else None),
                     "nb_chunks": 0,
                 }
-                for row in cur.fetchall()
-            }
+                if has_metadata:
+                    state["version_id"] = str(row[3] or "").strip().upper()
+                corpus[str(row[0]).strip().upper()] = state
 
             for table, join_column in ((self.legacy_table_name, "cid"), (self.modern_table_name, "short_id")):
                 if not table_exists(table):

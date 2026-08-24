@@ -576,3 +576,582 @@ la place d'un article juridique lexicalement proche mais hors sujet).
 sélecteur conserve L621-10, L621-11 et la section MATTE « Modalités de prise en
 compte de la journée de solidarité » ; la réponse finale utilise les trois
 apports complémentaires.
+
+---
+
+## Re-baseline panel curé + providers Scaleway (18/08 — ANNULÉ, malentendu de périmètre)
+
+**Objet** : établir la nouvelle référence après la curation du 18/08 (98
+questions, 4 golds réécrits), en testant au passage le service des mêmes
+modèles par **Scaleway** au lieu d'Albert : générateur et sélecteur
+`gpt-oss-120b` (mêmes poids que `openweight-large`), juge souverain
+inchangé. Code : **champion v2** (dev + overrides de provider), PAS la
+branche v4 — c'est la baseline du pipeline en production.
+
+**Candidat** : branche `feat/eval-provider-overrides` @ `a84a25f` (dev +
+overrides `--selector-provider/--generator-model/--generator-provider` +
+double lecture `juge_borderline`).
+
+**Protocole** : 98 questions `baseline_v1` (q202 retirée), scope
+`per-question`, RAGAS sauté, juge Scaleway qwen3 maj-3 explicite.
+Comparaison **informative** au run #180 (pas de gate : agrégats non
+comparables — panel et golds modifiés, provider changé). Deux lectures
+attendues : (a) niveau global de la nouvelle baseline ; (b) sur les 92
+questions inchangées, flips vs #180 pour isoler l'effet provider du bruit.
+Label : `rebaseline_scaleway_curated_20260818`.
+
+**Statut** : consigné avant lancement ; résultats à compléter.
+
+---
+
+## Tournoi de modèles générateur+sélecteur (18/08 — ANNULÉ avant lancement)
+
+**Objet** : mesurer des remplaçants de `gpt-oss-120b` sur le couple
+générateur+sélecteur (config champion v2, panel curé 98 Q), contre la
+re-baseline #193 (`rebaseline_scaleway_curated_20260818`), à juge constant
+(scaleway qwen3 maj-3) et retrieval constant.
+
+**Candidats** (catalogue Scaleway, un run chacun, séquentiel) :
+
+1. `deepseek-v4-flash-0731` — tier rapide/économique, candidat latence ;
+2. `qwen3.5-397b-a17b` — plus grand modèle du catalogue ; ⚠ même famille que
+   le juge (biais de famille possible, à lire avec la double lecture
+   borderline et l'audit de flips) ;
+3. `mistral-medium-3.5-128b` — spécialiste français, successeur du
+   mistral-medium testé au run 59.
+
+Labels : `ab_gen_<modele>_curated_20260818`. Comparaison informative
+`--baseline-run-id 193`, pas de gate mécanique. Coûts juge ~1,6 €/run ;
+tarifs candidats absents de la table de prix (champs coût à null — à
+compléter). Lecture attendue : pass global, flips par corpus vs #193,
+latences sélecteur/générateur.
+
+**Statut** : consigné avant lancement ; résultats à compléter.
+
+
+> **Note d'annulation (18/08)** : les deux protocoles ci-dessus changeaient les
+> modèles du pipeline RAG (générateur/sélecteur), alors que la demande portait
+> sur le **juge de l'eval** (défaut openrouter/grok → scaleway). Le run #193 a
+> été arrêté après ~2 items (statut `cancelled` en base). Les modèles du RAG
+> restent ceux d'Albert. Correctif appliqué : `DEFAULT_JUDGE_PROVIDER =
+> "scaleway"` dans `eval.py` — un launcher sans flags juge reste désormais
+> dans le protocole souverain (les overrides `--judge-provider` subsistent).
+
+---
+
+## Re-baseline panel curé, config live (18/08, lancement)
+
+**Objet** : nouvelle référence après la curation du 18/08 (98 questions, 4
+golds réécrits), **config live inchangée** (générateur/sélecteur Albert
+`openweight-large`, selector v2 champion). Juge scaleway qwen3 maj-3
+(désormais le défaut du code). Comparaison informative au run #180 (agrégats
+non comparables — panel/golds modifiés) ; lecture des flips sur les 92
+questions inchangées. Label : `rebaseline_curated_20260818`.
+
+**Statut** : consigné avant lancement ; résultats à compléter.
+
+---
+
+## A/B modèles Albert (18/08 — ANNULÉ avant lancement, 2e malentendu de périmètre)
+
+**Objet** : tester des remplaçants de `openweight-large` (gpt-oss-120b) sur le
+couple générateur+sélecteur en restant sur **Albert** (souverain,
+prod-compatible), contre la re-baseline `rebaseline_curated_20260818`, juge
+scaleway qwen3 maj-3 constant, retrieval constant, panel curé 98 Q.
+
+Candidats (catalogue Albert vérifié le 18/08) :
+
+1. `deepseek-v4-flash` — tier rapide/économique, candidat latence selector ;
+2. `mistral-medium-3-5-128b` — successeur du mistral-medium-2508 (testé run
+   59), spécialiste français.
+
+Labels : `ab_albert_<modele>_curated_20260818`. Comparaison informative à la
+re-baseline (id résolu au lancement), pas de gate mécanique. Lecture : pass
+global + par corpus, flips, latences sélecteur/générateur, double lecture
+borderline.
+
+**Statut** : consigné avant lancement ; résultats à compléter.
+
+
+> **Note (18/08)** : second recadrage — l'objet du test est le **juge de
+> l'eval** (le harnais), pas les modèles du pipeline. Chaîne A/B modèles tuée
+> avant tout lancement ; le run #195 (re-baseline config live) est préservé et
+> sert de substrat au banc d'essai des juges.
+
+---
+
+## Banc d'essai des juges (18/08, lancé à la fin du run #195)
+
+**Objet** : choisir le nouveau harnais d'eval. Pipeline intouché (config live
+Albert). Les 98 réponses du run #195 sont rejugées par chaque candidat en
+vote majoritaire à 3, et comparées au verdict souverain actuel (scaleway
+qwen3-235b maj-3, verdicts du run #195 lui-même).
+
+**Candidats** (Scaleway) : `deepseek-v4-flash-0731` · `glm-5.2` ·
+`qwen3.5-397b-a17b` · `mistral-medium-3.5-128b`.
+
+**Métriques par candidat** : taux d'accord avec le juge actuel (+ kappa) ;
+auto-consistance (part de votes partagés 2-1) ; comportement sur les 8
+questions `juge_borderline` (vérité de facto des audits : verdicts stables
+attendus) ; latence moyenne par verdict ; tokens/coût. Résultats stockés en
+JSON (scratchpad VM) + synthèse ici — PAS dans `rag_quality_eval_runs`
+(expériences de juge, pas runs d'eval).
+
+**Lacune notée** : `calibrate_judge.py` attend des labels humains
+(`data/eval/judge_calibration/labels.csv`) jamais constitués — l'axe « accord
+humain » manque au banc ; à combler pour le choix final si deux candidats
+sont proches.
+
+**Statut** : consigné avant lancement ; résultats à compléter.
+
+**Résultats du banc (18/08, substrat = 98 réponses du run #195, maj-3 partout)** :
+
+| Juge (Scaleway) | Accord vs réf | Taux de pass | Splits 2-1 | Splits borderline | s/verdict | €/panel | Échecs |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **mistral-medium-3.5-128b** | **86,7 %** | 68,4 % | 1,0 % | 0 % | 20,7 | 2,90 | 0 |
+| **mistral-small-3.2-24b** | 83,7 % | 77,6 % | 1,0 % | 0 % | **14,7** | **0,24** | 0 |
+| qwen3.5-397b-a17b | 82,7 % | 76,5 % | 5,1 % | 25 % | 240 | 5,30 | 0 |
+| qwen3.6-35b-a3b | 78,6 % | 86,7 % | 7,1 % | 0 % | 53 | 1,32 | 0 |
+| gemma-4-26b | 76,5 % | 82,7 % | 16,3 % | 12,5 % | 70 | 0,71 | 0 |
+| deepseek-v4-flash-0731 | 73,1 % | 80,6 % | 7,5 % | 12,5 % | 333 | 1,90 | 5 |
+| glm-5.2 | 71,0 % | 59,1 % | 9,7 % | 14,3 % | 255 | 7,48 | 5 |
+| *qwen3-235b (réf. actuelle)* | — | 67,3 % | 1,0 % | — | lent (endpoint chargé) | 1,53 | 0 |
+
+Deux passes invalidées puis corrigées au passage (dimensions à plat `2a2072b`,
+verdict minimal sous response_format `d370781`) — le harnais est désormais
+robuste aux modèles non conformes.
+
+**Lecture** : les deux Mistral dominent sans ambiguïté — consistance parfaite
+(1 % de splits, 0 sur borderline), latence 10-20× meilleure que la référence.
+`mistral-medium-3.5` a le meilleur accord ET un calibrage de sévérité
+quasi identique à la référence (68,4 % vs 67,3 % de pass) ; `mistral-small`
+est 12× moins cher pour 3 pts d'accord de moins et un léger laxisme (+10).
+Les modèles à long raisonnement (deepseek, glm, qwen3.5) sont pénalisés sur
+les trois axes à la fois. deepseek-v4-flash, candidat initial, est écarté
+(accord 73 %, 333 s/verdict, 5 échecs).
+
+**Proposition de nouveau harnais** (à valider par arbitrage humain) :
+- juge souverain des gates : **mistral-medium-3.5 maj-3** (2,90 €/run,
+  runs d'eval ~2 h → ~40 min) ;
+- screening intermédiaire : **mistral-small single-shot** (~0,08 €/panel) ;
+- étape de validation AVANT bascule : audit humain des ~13 désaccords
+  mistral-medium ↔ qwen (l'accord n'est pas une vérité terrain — les
+  désaccords disent qui, du candidat ou du sortant, juge le mieux) ;
+  CSV d'arbitrage à générer.
+
+**Test rubrique amendée (19/08, mistral-medium-3.5, mêmes 98 réponses)** —
+deux règles ajoutées (abstention = échec quand le gold attend une réponse ;
+normalisation des unités avant toute contradiction), via
+`JUDGE_RUBRIC_ADDENDUM` (env-gated, protocole officiel intouché) :
+
+- accord : 86,7 % → **88,8 %** ; calage de sévérité conservé (pass 64,3 %
+  vs réf 67,3 %) ;
+- **les deux faux pass d'abstention (q2, q223) sont corrigés**, q221 résolue
+  en bonus ; q218 (« 25 jours ouvrés » ≡ « 5 semaines ») reste faux malgré la
+  règle — seule erreur franche récalcitrante ;
+- « nouvelle » divergence q30 : mistral-v2 refuse une abstention que la
+  référence qwen avait passée — c'est qwen qui contredit ici notre doctrine
+  gold-explicite ; divergence à mettre AU CRÉDIT du candidat ;
+- arbitrage humain-suppléant (Claude) des 11 divergences restantes :
+  ~6 pour mistral (q30, q177, q200, q203, q208, q224 — pédanterie
+  d'incomplétude de qwen), ~4 pour qwen (q17, q18, q19, q218 — sévérité de
+  mistral sur des réponses correctes), 1 ambiguë (q220).
+
+**Lecture** : à rubrique amendée, mistral-medium-3.5 est au moins aussi juste
+que la référence, 10× plus rapide, parfaitement consistant. La bascule du
+juge souverain est fondée, sous réserve de l'arbitrage humain final sur les
+divergences (CSV disponible) et d'un re-jugement de référence du run #195
+pour re-seuiller la baseline dans le nouveau harnais.
+
+---
+
+## Re-référencement sous le nouveau harnais (19/08, chaîné)
+
+Suite à la bascule du juge (`2f13872`), deux runs de référence :
+
+1. **Re-jugement officiel du run #195** par mistral-medium-3.5 rubrique v2
+   (`rejudge_of_run_id=195`, maj-3, parallèle) — donne le facteur de
+   conversion ancien↔nouveau juge sur réponses identiques. Label :
+   `rebaseline_curated_rejudge_mistral_20260819`.
+2. **Run frais basé dev** (pipeline champion v2, config live Albert, panel
+   curé 98 Q), jugé nativement par le nouveau juge — c'est l'équivalent du
+   run #180 dans le nouveau harnais et la **baseline vivante** des prochains
+   gates. Label : `baseline_dev_mistral_judge_20260819`.
+
+**Statut** : consigné avant lancement ; résultats à compléter.
+
+**Résultats du re-référencement (19/08)** :
+
+| run | contenu | pass | hors borderline |
+|---|---|---|---|
+| #195 | réponses du 18/08, juge qwen (ancien harnais) | 67,3 % | — |
+| **#204** | mêmes réponses, rejugées mistral-medium v2 | **65,3 %** | 67,8 % |
+| **#206** | run frais basé dev, juge mistral-medium v2 | **60,2 %** | 62,2 % |
+
+- **Facteur de conversion juge** (mêmes réponses) : **−2 pts** — cohérent avec
+  le banc (effet de la règle abstention-échec, légère sévérité en plus).
+- **Écart #204→#206 (−5 pts, 7 baisses / 2 hausses sur 9 flips)** : variance de
+  génération pure — 0 erreur technique, flips motivés sur le fond (couverture
+  incomplète, cadrage légal différent d'un tirage à l'autre). Le pipeline
+  génère avec ~±5 pts de bruit run-à-run sur ce panel : les réponses du 18/08
+  étaient un tirage favorable.
+- **Baseline officielle du nouveau harnais : run #206 — 60,2 % (62,2 % hors
+  borderline)**, `baseline_dev_mistral_judge_20260819`.
+
+**Doctrine de comparaison pour les prochains gates** : un changement de
+pipeline se mesure par paire de runs frais sous le même juge ; un changement
+de juge/rubrique par rejudge des mêmes réponses. Ne jamais comparer un chiffre
+qwen à un chiffre mistral sans appliquer le facteur de conversion (−2 pts).
+Compte tenu du bruit de génération (±5 pts), tout gate sérieux devrait
+s'appuyer sur 2 runs frais ou sur un delta > au bruit.
+
+---
+
+## Run — `candidate_generator_dsv4flash_20260820` (20/08, en cours) — candidat générateur deepseek-v4-flash
+
+**Objet** : premier A/B générateur via le nouveau flag `--generator-model`
+(ajouté à `src/goldset/eval.py` ce jour, même mécanique d'override que
+`--selector-model` : surcharge locale au run, config partagée intacte).
+Candidat : `deepseek-v4-flash` (API Albert) à la place d'`openweight-large`.
+
+**Amorce** : screening local du jour (base locale seedée de staging, juge
+mistral single-shot) — run local 217 : judge_pass 0,663 vs 0,602 pour le run
+staging 206 apparié, 17 gains / 11 pertes / 22 double-échecs. Encourageant mais
+single-shot et corpus SP ré-embeddé entre les deux runs → validation staging.
+
+**Protocole** : panel `baseline_v1` (98 q), scope `per-question`, config live
+staging (seule surcharge : `generator_model=deepseek-v4-flash`), RAGAS sauté,
+juge souverain Scaleway `mistral-medium-3.5-128b` en vote majoritaire à 3.
+Baseline appariée : **run #206 `baseline_dev_mistral_judge_20260819`**
+(0,602 ; même juge, mêmes votes, même panel). Code : dev @600c8f5 + flag.
+
+**Résultats du run #215** : 98/98 sans erreur, coût juge 3,22 € (couverture complète).
+
+| Mesure | Run #215 (deepseek) | Baseline #206 (openweight) | Delta |
+|---|---:|---:|---:|
+| judge_pass (maj-3) | **0,6531** (64/98) | 0,6020 (59/98) | **+0,0511** |
+| doc_recall | 0,6996 | 0,7039 | −0,0043 |
+| retrieval_gap_rate | 0,235 | 0,224 | +0,011 |
+
+Lecture appariée : **17 gains / 12 pertes, net +5** (47 double-pass, 22
+double-échec). Le retrieval est identique par construction (doc_recall et gap
+plats) — le delta est bien porté par la génération. Parmi les gains : **q192,
+q213, q221**, c'est-à-dire les 3 cibles nommées restantes de l'adoption P1R2
+(run 156), plus q20/q218 (les questions « mécanisme » du gate #360). Pertes
+notables : q13 (rupture conventionnelle — deepseek y hallucine des barèmes,
+échec déjà vu au screening local : faiblesse reproductible du candidat), q3,
+q4. Familles d'échec : 16 retrieval_gap / 10 incomplete / 7
+material_contradiction / 1 wrong_law — même structure que la baseline (le
+modèle ne déplace pas la typologie d'échecs).
+
+**Lecture** : +5,1 pts sous le juge souverain maj-3 à périmètre constant, net
++5 sur 29 flips — au-dessus de la baseline mais un 17/12 n'est pas significatif
+seul (test des signes p≈0,46) ; c'est la **convergence des deux étages**
+(screening local 0,663 single-shot, staging 0,653 maj-3, gains recoupés dont
+les cibles historiques) qui rend le signal crédible. deepseek-v4-flash est en
+outre nettement plus rapide (~19 s/question en génération locale vs
+openweight-large) et gratuit côté Albert. Vigilance : les hallucinations de
+barèmes chiffrés (q13) — à traiter par prompt ou garde-fou avant toute bascule
+prod. Décision d'adoption : à l'appréciation de l'équipe ; le cas échéant,
+`update_rag_config` staging `v3_generator_model=deepseek-v4-flash` hors fenêtre
+de run, rollback en 1 UPDATE.
+
+**Infra** : premier run du banc local (docker pgvector seedé de staging,
+`docs/LOCAL_DEV.md`) + nouveau flag `--generator-model` dans `eval.py`
+(override au run, config partagée intacte, tracé dans `config_adjustments`).
+
+---
+
+## Run — `candidate_gen_sel_dsv4flash_20260820` (20/08 soir, en cours) — paquet générateur + sélecteur deepseek
+
+**Changements vs run #215** : une seule variable — `--selector-model
+deepseek-v4-flash` s'ajoute au générateur deepseek (les deux via overrides
+CLI, config partagée intacte). Amorce : run local 218 (0,6735 vs 0,6633 ;
+golds jetés par le sélecteur 6→3, sélection 3,6 vs 2,1 docs, 5 flips
+seulement). Cf. `revue-deepseek-v4-flash-20260820.md`.
+
+**Protocole** : identique au #215 — panel `baseline_v1` 98 q, scope
+`per-question`, juge souverain Scaleway `mistral-medium-3.5-128b` maj-3,
+RAGAS sauté. Baseline appariée : **run #215** (0,6531). Lecture attendue :
+contribution du sélecteur sous juge souverain, funnel `selector_jette`.
+
+**Résultats du run #216** : 98/98, coût juge 4,49 €.
+
+| Mesure | #216 (paquet) | #215 (gen seul) | #206 (openweight) |
+|---|---:|---:|---:|
+| judge_pass (maj-3) | 0,6429 | **0,6531** | 0,6020 |
+| golds jetés par le sélecteur (échecs) | **3** | 6 | 7 |
+| docs gardés par le sélecteur (moy.) | 3,9 | 2,2 | — |
+| échecs « génération, gold servi » | 19 | 16 | 15 |
+
+Apparié #216 vs #215 : 9 gains / 10 pertes (net −1), 25 double-échecs.
+Gains : les cibles sélecteur convergent (q186, q4528, q4530 — mêmes
+conversions qu'en local) + q29, q187, q190, q200, q222, q926. Pertes :
+plusieurs gains historiques du générateur re-basculent (q20, q33, q218,
+q221, q660…) — les contextes changent, la variance de génération se
+redistribue.
+
+**Lecture** : le mécanisme se **réplique** sous juge souverain (golds jetés
+divisés par 2, sélection plus riche 3,9 vs 2,2 docs, kept_hit 0,60 vs 0,55)
+mais **ne convertit pas** : les golds sauvés sont mangés par l'étage
+génération (16→19), vraisemblablement dilution du contexte élargi + variance.
+Local (+1) et staging (−1) concordent : **swap sélecteur neutre au score**.
+**Décision proposée** : adopter le générateur seul (config #215) ; garder le
+sélecteur openweight ; re-tester le sélecteur deepseek APRÈS les correctifs
+de prompt générateur (a contrario + interdiction de chiffres hors verbatim),
+car l'étage génération est redevenu le plafond visible.
+
+---
+
+## Run — `candidate_dsv4flash_promptV7_20260821` (21/08, en cours) — reconfirmation #215 + correctifs de prompt
+
+**Objet** : reconfirmer la config candidate (générateur deepseek, sélecteur
+openweight) en y ajoutant la seule variable prompt : nouveau
+`system_prompt_V7_ancrage.md` (ligne ADDITIVE dans system_prompts, la config
+runtime reste sur V6 ; branché au run via le nouveau flag
+`--system-prompt-name`). V7 = V6 + deux correctifs ciblés sur les modes
+d'échec de la revue du 20/08 :
+1. **Lecture a contrario** : sujet couvert par les sources mais disposition
+   demandée absente → conclure (« les textes ne prévoient pas... ») au lieu
+   de s'abstenir (cible : q3, q4, q227).
+2. **Chiffres verbatim uniquement** : aucun taux/barème/montant/durée qui ne
+   figure pas mot pour mot dans les sources (cible : q13 barèmes hallucinés).
+
+**Protocole** : identique au #215 (98 q, per-question, juge souverain mistral
+maj-3, sans RAGAS). Baseline appariée : **#215** (0,6531). Si ≥ #215 : le
+niveau deepseek est reconfirmé ET les correctifs sont validés ; regarder
+spécifiquement q3/q4/q227/q13 et le taux d'abstentions.
+
+**Résultats du run #217** : 98/98, coût juge 3,26 €.
+
+- judge_pass **0,6327** vs 0,6531 (#215) — net **−2** (5 gains / 7 pertes,
+  29 double-échecs). Les pertes sont majoritairement les flip-floppers connus
+  (q20, q213, q218, q660… basculent d'un run à l'autre à config quasi
+  constante) : pas de régression attribuable au prompt, mais **aucun gain**.
+- Cibles du correctif a contrario : **q4 convertie**, q3 et q227 s'abstiennent
+  encore — 1/3, et le nombre total d'abstentions est inchangé (4 vs 4).
+  Le paragraphe de prompt ne suffit pas contre ce réflexe.
+- **q13 requalifiée — découverte majeure du run** : le barème « halluciné »
+  (1/6e, 1/5e, 1/4, 1/3, plafond 1/24) est **verbatim dans le corpus**, et la
+  fiche service-public.fr F31094 en ligne (« Vérifié le 08/08/2026 ») porte
+  les mêmes valeurs : **le barème de la rupture conventionnelle a été réformé
+  en 2026 et c'est la GOLD ANSWER qui est périmée** (1/4, 2/5, 1/2, 3/5 =
+  ancien barème). Le PASS d'openweight au #206 était un faux positif (run du
+  19/08, la veille de la ré-ingestion SP : son contexte portait encore
+  l'ancienne fiche). deepseek n'a jamais halluciné sur q13 — il était fidèle
+  au corpus à jour. → **q13 en curation goldset**, et audit à prévoir des
+  golds chiffrées vs le corpus SP ré-ingéré le 20/08 (classe de dérive
+  goldset-vs-corpus créée par la ré-ingestion en cours de campagne).
+
+**Lecture** : (1) le niveau deepseek est **reconfirmé** — 3 runs souverains
+(0,6531 / 0,6429 / 0,6327) tous nettement au-dessus d'openweight (0,6020) ;
+la bande ±2 questions entre runs donne la variance maj-3 à config quasi
+constante. (2) **V7 non adopté** en l'état : pas de gain net, a contrario ne
+convertit qu'1 cible sur 3, et le vrai fix de q13 est goldset, pas prompt.
+Le garde-fou « chiffres verbatim » reste défendable sur le principe mais n'a
+rien démontré ici. (3) Prochain levier réel : curation goldset post
+ré-ingestion, avant tout nouveau tuning de prompt.
+
+---
+
+## Run 222 — `baseline_openweight_promoted_20260824` (24/08, terminé, diagnostic uniquement) — contrôle Qwen post-promotion
+
+**Objet** : établir le contrôle apparié avant la bascule staging du générateur
+vers `deepseek-v4-flash`. Le code de #417, #419 et #372 est promu sur staging
+par le merge commit `b3603048`; les workflows de promotion doivent être verts
+avant le lancement. Le smoke automatique #221 (5 questions) ne constitue pas
+une baseline d'adoption.
+
+**Protocole exécuté** : panel `baseline_v1` (98 questions attendues), scope
+`per-question`, config live staging, prompt
+`system_prompt_V6_optimized_v2026-08-20.md`, sélecteur `openweight-large` et
+générateur explicitement fixé à `openweight-large`. Le launcher a fixé par
+erreur l'ancien juge Scaleway `qwen3-235b-a22b-instruct-2507`, vote majoritaire
+à 3, au lieu du souverain courant `mistral-medium-3.5-128b` adopté par #385 ;
+RAGAS sauté. L'override
+générateur identique à la config active les nouvelles gardes de #419 : tout
+fallback invalide le run au lieu d'être crédité au candidat.
+
+**Comparabilité** : #206 utilise le bon juge Mistral maj-3 mais un corpus
+antérieur à la ré-ingestion Service-Public ; #112 utilise Qwen sur 99 questions
+et l'ancien protocole single-shot. Le #222 décrit utilement le pipeline et le
+funnel post-promotion, mais **ne peut pas servir de baseline d'adoption** : le
+contrôle doit être rejoué sous Mistral maj-3.
+
+**Résultats** : 98/98 sans erreur technique, sans fallback générateur et sans
+échec juge ; coût juge 1,7353 € (294 appels Qwen, couverture complète).
+
+| Mesure | Run #222 |
+|---|---:|
+| judge_pass (maj-3) | **0,6327** (62/98) |
+| judge_score moyen | 0,6551 |
+| doc_recall | 0,7024 |
+| hit_rate | 0,7755 |
+| retrieval_gap_rate | 0,2245 |
+
+Le profil temporel n'est pas une panne : les 40 premières questions font
+26/40, contre 25/40, 26/40 et 25/40 aux runs récents #206/#215/#217 sur le
+même ordre. Le creux 61–70 fait 2/10, dans la plage historique 2–6/10 : le
+panel non mélangé regroupe des questions difficiles au milieu du run.
+
+Diagnostic du funnel sur les échecs observés en cours de run : les pertes se
+répartissent entre documents absents du pool initial, documents perdus au
+reranking de sections, golds explicitement retirés par le sélecteur, et
+réponses incomplètes malgré un gold présent dans le contexte final. Deux
+causes concrètes ont été reproduites : (1) q29 MSO est un near-miss ANN à la
+config courante ; un replay isolé le retrouve avec davantage de probes, mais
+**ce n'est pas un levier à rouvrir** : l'ablation consolidée a déjà rejeté
+`ivfflat_probes` 5→15/20 (sur-bruit global pour un gain isolé) ; (2) q181 est
+classée à tort `document_request`, ce qui court-circuite le RAG. À traiter
+séparément de l'A/B générateur afin de ne pas confondre les variables. La q177
+est un faux négatif gold/juge : la réponse candidate restitue correctement
+l'exception sourcée des naissances multiples, absente de la gold.
+
+**Lecture corrigée** : exécution techniquement valide, mais protocole juge
+obsolète. Le score Qwen ne doit pas piloter la décision DeepSeek. Conserver le
+run comme diagnostic de funnel et rejouer le couple contrôle/candidat avec le
+juge souverain Mistral maj-3.
+
+---
+
+## Run 224 — `candidate_dsv4flash_promoted_20260824` (24/08, annulé à 47/98) — candidat Qwen invalide
+
+**Objet** : après réussite du contrôle #222, basculer uniquement
+`rag_config.v3_generator_model` de `openweight-large` vers
+`deepseek-v4-flash`, puis mesurer le générateur adopté sur le même état staging.
+Le sélecteur et le prompt restent respectivement `openweight-large` et
+`system_prompt_V6_optimized_v2026-08-20.md`.
+
+**Protocole exécuté** : strictement identique au contrôle #222, donc avec le
+même override Qwen obsolète, et pour seule variable le générateur
+`deepseek-v4-flash`.
+
+**Résultats** : arrêté à 47/98 dès identification de l'erreur de protocole et
+marqué `cancelled` en base ; 31 PASS / 16 FAIL partiels, zéro fallback
+générateur. Ces verdicts partiels ne participent à aucune décision ni gate.
+
+---
+
+## Run 225 — `baseline_openweight_promoted_mistral_20260824` (24/08, terminé) — contrôle officiel post-promotion
+
+**Protocole figé** : panel `baseline_v1` 98 questions, scope `per-question`,
+config live staging, générateur `openweight-large`, sélecteur
+`openweight-large`, prompt `system_prompt_V6_optimized_v2026-08-20.md`, juge
+souverain Scaleway `mistral-medium-3.5-128b` maj-3 avec rubrique v2, RAGAS
+sauté. Il devient la baseline appariée du candidat DeepSeek rejoué ensuite.
+
+**Résultats** : 98/98 sans erreur technique, sans fallback générateur et sans
+échec juge ; coût juge 3,2891 € (294 appels Mistral, couverture complète).
+
+| Mesure | Run #225 |
+|---|---:|
+| judge_pass (maj-3) | **0,6837** (67/98) |
+| judge_score moyen | 0,6854 |
+| doc_recall | 0,7024 |
+| hit_rate | 0,7755 |
+| retrieval_gap_rate | 0,2245 |
+| judge_pass hors borderline | 0,7000 |
+
+Les agrégats retrieval sont identiques au diagnostic Qwen #222
+(`doc_recall=0,7024`, `hit_rate=0,7755`), mais les sorties ne sont pas figées :
+les 19 flips de verdict portent tous une réponse différente et 9 ont aussi des
+contextes/sources différents. Le +5 PASS ne mesure donc pas isolément le
+changement de juge ; il confirme seulement que #222 ne peut piloter l'adoption.
+L'audit des 7 pertes Mistral trouve 1 échec net justifié (q20), 5 faux négatifs
+probables par exigence de complétude excessive (q1/q176/q186/q660/q926), et un
+cas mixte avec raisonnement de contradiction défectueux (q206). Quatre réponses
+non conformes du sélecteur ont déclenché le fallback sûr top-5 ; aucun item n'a
+échoué techniquement.
+
+**Lecture** : baseline officielle valide pour l'A/B apparié. Le candidat doit
+conserver exactement ce juge Mistral maj-3, le même panel et le même funnel ;
+seul `v3_generator_model` passe à `deepseek-v4-flash`.
+
+---
+
+## Run 226 — `candidate_dsv4flash_promoted_mistral_20260824` (24/08, terminé) — candidat officiel DeepSeek
+
+**Protocole figé** : strictement identique au contrôle #225 — panel
+`baseline_v1` 98 questions, scope `per-question`, sélecteur
+`openweight-large`, prompt V6, juge Scaleway
+`mistral-medium-3.5-128b` maj-3 avec rubrique v2, RAGAS sauté — avec pour
+seule variable le générateur `deepseek-v4-flash`. Baseline appariée : **#225** ;
+gates intégrés sur `judge_pass_rate` et `doc_recall_avg`, et invalidation au
+moindre fallback générateur.
+
+**Lancement** : démarré à 11:44 UTC depuis le commit `530dd68` (même code
+évalué que #225). Le préflight config en base confirme que le diff complet
+contre #225 se limite à `generation.model` : `openweight-large` →
+`deepseek-v4-flash`. Le run enregistré porte bien `judge_provider=scaleway`,
+`judge_model=mistral-medium-3.5-128b`, `judge_votes=3`, sélecteur
+`openweight-large` et l'ajustement explicite
+`generator_model=deepseek-v4-flash`.
+
+**Résultats** : 98/98 sans erreur technique, sans fallback générateur et sans
+échec juge ; coût juge 3,4451 € (294 appels Mistral, couverture complète). Trois
+réponses non conformes du sélecteur ont utilisé le fallback sûr top-5.
+
+| Mesure | #226 DeepSeek | #225 Openweight | Delta |
+|---|---:|---:|---:|
+| judge_pass (maj-3) | **0,6633** (65/98) | 0,6837 (67/98) | **−0,0204** |
+| judge_pass hors borderline | 0,6778 | 0,7000 | −0,0222 |
+| judge_score moyen | 0,6604 | 0,6854 | −0,0250 |
+| doc_recall | 0,7024 | 0,7024 | 0 |
+| hit_rate | 0,7755 | 0,7755 | 0 |
+| retrieval_gap_rate | 0,2245 | 0,2245 | 0 |
+
+Le gate de non-régression passe (`judge_pass` au-dessus de la tolérance −5 pts,
+retrieval strictement plat). Lecture appariée : **8 gains / 10 pertes**, 57
+double-pass et 23 double-échecs. Les réponses diffèrent sur 96/98 questions ;
+les contextes sur 23/98. Parmi les 18 flips, 5 ont un contexte différent
+(q1/q3/q20/q175/q926) et 13 gardent le même contexte. Par corpus, seul le lot
+`manual` porte le delta (35/55 vs 37/55) ; Service-Public, MATTE, synthetic,
+MSO et DGAFP sont tous à égalité en nombre de PASS.
+
+**Audit humain des 18 flips** : le décompte brut 8 gains / 10 pertes surestime
+la différence entre modèles. Cinq flips sont des artefacts du juge ou du gold,
+et trois autres ne représentent qu'un écart mineur ou ambigu.
+
+| Question | Flip brut | Contexte | Audit | Motif principal |
+|---|---|---|---|---|
+| q1 | gain DeepSeek | différent | avantage DeepSeek mineur | DeepSeek explicite mieux l'automaticité du CDI et l'avenant ; la réponse Openweight restait substantiellement acceptable. |
+| q20 | gain DeepSeek | différent | **gain DeepSeek net** | Openweight omet les cas de temps partiel de droit et leurs quotités ; DeepSeek les couvre. |
+| q33 | gain DeepSeek | identique | **gain DeepSeek net** | Réponse plus complète sur la procédure de licenciement pour insuffisance professionnelle. |
+| q176 | gain DeepSeek | identique | artefact juge/gold | Le FAIL Openweight impose à tort aux fonctionnaires la condition d'ancienneté applicable aux contractuels ; les deux réponses sont adéquates dans le scope. |
+| q183 | gain DeepSeek | identique | **gain DeepSeek net** | DeepSeek distingue correctement besoin temporaire (12/18 mois) et saisonnier (6/12 mois). |
+| q186 | gain DeepSeek | identique | artefact juge | Les deux réponses donnent la même conclusion ; Mistral reproche seulement à Openweight une réserve sur les motifs illégaux, également absente chez DeepSeek. |
+| q206 | gain DeepSeek | identique | **gain DeepSeek net** | DeepSeek sépare correctement le délai général du régime des contrats de projet ; la justification du FAIL Openweight contient en plus des contradictions factuelles. |
+| q926 | gain DeepSeek | différent | **gain DeepSeek net** | Réponse TPT plus complète et cohérente ; Openweight mélange des règles du temps partiel ordinaire. |
+| q3 | perte DeepSeek | différent | **perte DeepSeek nette** | DeepSeek refuse de conclure alors que les sources permettent de répondre sur l'indemnité de fin de contrat. |
+| q4 | perte DeepSeek | identique | **perte DeepSeek nette** | DeepSeek expose les deux régimes mais refuse la conclusion attendue sur l'absence de droit à l'égalité de rémunération. |
+| q18 | perte DeepSeek | identique | avantage Openweight mineur | DeepSeek couvre le fond mais n'explicite pas aussi nettement le caractère « de droit » et l'assimilation à du travail effectif. |
+| q19 | perte DeepSeek | identique | avantage Openweight mineur | DeepSeek décrit surtout les modalités et omet l'objectif central de la formation statutaire ; le seuil de complétude reste appliqué de façon inégale. |
+| q175 | perte DeepSeek | différent | **perte DeepSeek nette** | DeepSeek omet les exceptions essentielles à la protection contre le licenciement pendant la maternité. |
+| q188 | perte DeepSeek | identique | artefact juge/gold | La question demande uniquement la durée minimale et maximale, correctement donnée par DeepSeek ; le FAIL sanctionne l'absence d'une précision hors question sur le CDI. |
+| q189 | perte DeepSeek | identique | **perte DeepSeek nette** | DeepSeek répond sur le CDI mais refuse de conclure sur la titularisation. |
+| q205 | perte DeepSeek | identique | artefact juge | Les deux réponses contiennent textuellement les quatre délais du gold ; Openweight passe et DeepSeek reçoit pourtant un score nul. |
+| q213 | perte DeepSeek | identique | artefact gold/juge | Le gold affirme un plein traitement pendant toute l'absence, alors que l'article 14 du décret 86-83 le borne à 1, 2 ou 3 mois selon l'ancienneté ; les deux modèles donnent cette règle. |
+| q227 | perte DeepSeek | identique | **perte DeepSeek nette** | DeepSeek refuse l'inférence opérationnelle sur l'absence de preuve d'aptitude malgré le caractère obligatoire du contrôle. |
+
+Bilan audité : **5 gains nets DeepSeek / 5 pertes nettes**, 1 avantage mineur
+DeepSeek / 2 avantages mineurs Openweight et **5 artefacts juge/gold**. Les
+contextes différents sont équilibrés entre les deux sens (q1/q20/q926 en faveur
+de DeepSeek, q3/q175 en faveur d'Openweight) et n'expliquent donc pas le delta.
+
+Le signal qualitatif important est reproductible par rapport à #215 : DeepSeek
+gagne encore sur la complétude (q20/q33/q206), mais reproduit les refus de
+conclure déjà observés sur q3/q4/q227 ; q189 relève du même mécanisme. q19 reste
+également une faiblesse récurrente. Cette stabilité invalide l'hypothèse d'une
+simple variance de run : les deux modèles sont globalement à parité, avec un
+léger avantage Openweight sur les cas exigeant une inférence juridique prudente
+mais nécessaire.
+
+**Décision corrigée après audit** : le gate automatique de non-régression passe,
+mais #226 ne justifie pas une promotion production de DeepSeek. Le conserver en
+staging reste possible pour observation. Un second run strictement inchangé
+aurait peu de valeur avant de corriger le comportement d'abstention ou de
+recalibrer le gold/juge sur q176/q186/q188/q205/q213 ; il faut ensuite rejuger
+les réponses figées ou relancer l'A/B. Références juridiques contrôlées pendant
+l'audit : [article 14 du décret 86-83](https://www.legifrance.gouv.fr/loda/id/JORFTEXT000000699956/2026-06-05),
+[article 49](https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000045662477)
+et [article 11-1](https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000045351577).

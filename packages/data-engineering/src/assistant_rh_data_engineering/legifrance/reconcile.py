@@ -83,8 +83,7 @@ def is_legifrance(fields: Mapping[str, Any]) -> bool:
 
 
 def is_article_uid(uid: str) -> bool:
-    """Un uid d'article — identité du corpus dgafp : cid chronique LEGIARTI,
-    ou JORFARTI pour les textes non re-chroniqués côté LEGI (lui aussi stable)."""
+    """Un uid d'article — CID chronique LEGIARTI ou identité LODA stable JORFARTI."""
     return str(uid or "").upper().startswith(("LEGIARTI", "JORFARTI"))
 
 
@@ -242,6 +241,9 @@ class LegifrancePlan:
     followed_articles: Mapping[str, frozenset[str]]
     protected: tuple[str, ...] = ()
     pending: tuple[str, ...] = ()
+    # Versions courantes signalées par la TOC mais absentes des artefacts
+    # silver. Distinct de ``pending`` (identités corpus) pour l'observabilité.
+    missing_toc_versions: tuple[str, ...] = ()
     out_of_scope: tuple[int, ...] = ()
     pending_mapping: tuple[int, ...] = ()
     # Documents texte-level de la table moderne encore en base : protégés
@@ -263,6 +265,8 @@ def build_legifrance_plan(
     max_auto_stale: int | None = DEFAULT_MAX_AUTO_STALE,
     extra_attributions: Mapping[str, str] | None = None,
     extra_chroniques: Mapping[str, str] | None = None,
+    silver_version_ids: Collection[str] | None = None,
+    force_ingest: Collection[str] = (),
 ) -> LegifrancePlan:
     """Adapte référentiel Grist + TOCs PISTE + état corpus au diff ``build_plan``.
 
@@ -285,11 +289,18 @@ def build_legifrance_plan(
     ``requested`` : sous-ensemble ``--uid`` — restreint manifest ET corpus.
     ``max_auto_stale`` : au-delà de ce volume de ``stale``, tous basculent en
     ``flagged`` — ``None`` désactive (migration délibérée).
+    ``force_ingest`` : identités dont une nouvelle version vient d'être
+    matérialisée. Elles passent en ``changed`` même si leur markdown (et donc
+    leur checksum) est inchangé, afin de propager les métadonnées de version.
+    Le même forçage est dérivé durablement de ``corpus[uid].version_id`` quand
+    la version PostgreSQL diffère de la version courante de la TOC.
     """
     requested_set: set[str] | None = None
     if requested is not None:
         requested_set = {str(uid).strip().upper() for uid in requested}
     loaded = {str(uid).strip().upper() for uid in silver_checksums}
+    track_versions = silver_version_ids is not None
+    materialized_versions = {str(uid).strip().upper() for uid in (silver_version_ids or ())}
 
     def _wanted(uid: str) -> bool:
         return requested_set is None or uid in requested_set
@@ -311,8 +322,19 @@ def build_legifrance_plan(
     # stale au lieu d'être supprimées comme des orphelins du manifest.
     protected: set[str] = set(selection.out_of_scope_uids)
     pending: set[str] = set()
+    missing_toc_versions: set[str] = set()
+    current_versions: dict[str, str] = {}
 
-    def _add_active(uid: str) -> None:
+    def _add_active(uid: str, version_id: str) -> None:
+        # Une chronique déjà présente en silver ne prouve pas que la VERSION
+        # courante de la TOC a été matérialisée. C'est précisément le cas qui
+        # figeait le contenu au dernier dump tout en laissant le delta au vert.
+        version_missing = track_versions and version_id not in materialized_versions
+        if version_missing:
+            missing_toc_versions.add(version_id)
+            if requested_set is None:
+                pending.add(uid)
+                return
         if uid in loaded or requested_set is not None:
             manifest[uid] = ManifestEntry(uid, content_hash=silver_checksums.get(uid, ""))
         else:
@@ -355,7 +377,8 @@ def build_legifrance_plan(
                 # la source (ETAT) : autoritaire.
                 manifest[cid] = ManifestEntry(cid, abrogated=True)
             else:
-                _add_active(cid)
+                current_versions[cid] = version_id or cid
+                _add_active(cid, version_id or cid)
             # NB : un doc corpus keyed par version_id d'un article suivi n'est
             # PAS ajouté au manifest → stale autoritaire attribuable (migration
             # d'identité version→chronique, remplacé par son cid).
@@ -412,6 +435,31 @@ def build_legifrance_plan(
         guard_empty_manifest=effective_guard,
     )
 
+    # Le checksum silver couvre le markdown, pas les métadonnées juridiques
+    # (version, dates, liens, URL). Une version PISTE fraîchement matérialisée
+    # doit donc être réingérée même si son texte est byte-identique. Le signal
+    # immédiat ``force_ingest`` couvre le run de matérialisation ; la comparaison
+    # TOC ↔ metadata PostgreSQL rend ce forçage durable si l'écriture DB échoue
+    # après la synchronisation du lake. L'absence de clé ``version_id`` signifie
+    # que le schéma DB ne permet pas la comparaison, et ne doit pas provoquer
+    # une réingestion infinie sur les anciens schémas.
+    force_ingest_set = {str(uid).strip().upper() for uid in force_ingest}
+    version_drift = {
+        uid
+        for uid in plan.unchanged
+        if "version_id" in corpus.get(uid, {})
+        and str(corpus[uid].get("version_id") or "").strip().upper() != current_versions.get(uid, "")
+    }
+    forced_changed = (force_ingest_set | version_drift).intersection(plan.unchanged)
+    if forced_changed:
+        plan = ReconciliationPlan(
+            new=plan.new,
+            changed=tuple(sorted({*plan.changed, *forced_changed})),
+            unchanged=tuple(uid for uid in plan.unchanged if uid not in forced_changed),
+            removals=plan.removals,
+            acknowledged=plan.acknowledged,
+        )
+
     # Jumeaux de MIGRATION D'IDENTITÉ : un stale dont le contenu est repris à
     # l'identique par une chronique à ingérer (même checksum silver) N'EST PAS une
     # purge — le contenu est préservé sous la nouvelle identité. Le garde
@@ -426,12 +474,18 @@ def build_legifrance_plan(
     silver_by_uid = {str(u).strip().upper(): str(c or "").strip() for u, c in silver_checksums.items()}
     to_ingest = frozenset(plan.new) | frozenset(plan.changed)
     migration_twin_uids: set[str] = set()
+    jorf_rekey_uids: set[str] = set()
     for removal in plan.removals:
         if removal.reason != "stale" or removal.confidence is not Confidence.AUTHORITATIVE:
             continue
         chronique = alias_to_chronique.get(removal.uid)
         if chronique is None or chronique not in to_ingest:
             continue
+        # #424 : un JORFARTI résolu par getArticle vers une chronique LEGIARTI
+        # est une migration vérifiée même lorsque la nouvelle version modifie le
+        # contenu. L'ingestion différera sa cascade si le remplaçant échoue.
+        if removal.uid.startswith("JORFARTI") and chronique.startswith("LEGIARTI"):
+            jorf_rekey_uids.add(removal.uid)
         entry = corpus_entries.get(removal.uid)
         stale_checksum = str(entry.content_hash or "").strip() if entry else ""
         if stale_checksum and stale_checksum == silver_by_uid.get(chronique, ""):
@@ -441,12 +495,17 @@ def build_legifrance_plan(
     # trahit un manifest partiel, pas une curation opérateur — on rétrograde ces
     # stale en flagged (WEAK). Les jumeaux de migration restent AUTHORITATIVE.
     mass_stale_guard = False
-    stale_auto = [r for r in plan.removals if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE and r.uid not in migration_twin_uids]
+    guard_exempt_uids = migration_twin_uids | jorf_rekey_uids
+    stale_auto = [
+        r
+        for r in plan.removals
+        if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE and r.uid not in guard_exempt_uids
+    ]
     if max_auto_stale is not None and len(stale_auto) > max_auto_stale:
         mass_stale_guard = True
         downgraded = tuple(
             Removal(r.uid, r.reason, Confidence.WEAK)
-            if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE and r.uid not in migration_twin_uids
+            if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE and r.uid not in guard_exempt_uids
             else r
             for r in plan.removals
         )
@@ -468,6 +527,7 @@ def build_legifrance_plan(
         followed_articles={k: frozenset(v) for k, v in followed_articles.items()},
         protected=tuple(sorted(protected)),
         pending=tuple(sorted(pending)),
+        missing_toc_versions=tuple(sorted(missing_toc_versions)),
         out_of_scope=selection.out_of_scope,
         pending_mapping=selection.pending_mapping,
         legacy_text_docs=legacy_text_docs,
@@ -475,7 +535,12 @@ def build_legifrance_plan(
     )
 
 
-def plan_summary(lf_plan: LegifrancePlan, *, sample: int = 10) -> dict[str, Any]:
+def plan_summary(
+    lf_plan: LegifrancePlan,
+    *,
+    sample: int = 10,
+    detected_missing_toc_versions: Collection[str] | None = None,
+) -> dict[str, Any]:
     """Résumé JSON du plan (compteurs + échantillons), même forme que SP."""
     plan = lf_plan.plan
     # Buckets par ce qui sera réellement APPLIQUÉ : `stale`/`abrogated` =
@@ -489,6 +554,12 @@ def plan_summary(lf_plan: LegifrancePlan, *, sample: int = 10) -> dict[str, Any]
         ordered = sorted(uids)
         return {"count": len(ordered), "sample": ordered[:sample]}
 
+    def version_bucket(uids: Sequence[str]) -> dict[str, Any]:
+        ordered = sorted(uids)
+        # Le volume attendu (~246 au backfill #424) reste assez petit pour
+        # exposer la liste complète et rendre le plan directement actionnable.
+        return {"count": len(ordered), "sample": ordered[:sample], "versions": ordered}
+
     return {
         "new": bucket(plan.new),
         "changed": bucket(plan.changed),
@@ -499,6 +570,13 @@ def plan_summary(lf_plan: LegifrancePlan, *, sample: int = 10) -> dict[str, Any]
         "acknowledged": bucket(plan.acknowledged),
         "protected_limbo": bucket(lf_plan.protected),
         "pending_artifact": bucket(lf_plan.pending),
+        # ``missing_toc_versions`` conserve le signal détecté avant une
+        # éventuelle auto-matérialisation ; ``pending_toc_versions`` indique ce
+        # qui reste réellement non résolu après celle-ci.
+        "missing_toc_versions": version_bucket(
+            tuple(lf_plan.missing_toc_versions) if detected_missing_toc_versions is None else tuple(detected_missing_toc_versions)
+        ),
+        "pending_toc_versions": version_bucket(lf_plan.missing_toc_versions),
         "legacy_text_docs": bucket(lf_plan.legacy_text_docs),
         "out_of_scope_rows": {"count": len(lf_plan.out_of_scope)},
         "pending_mapping_rows": {"count": len(lf_plan.pending_mapping)},

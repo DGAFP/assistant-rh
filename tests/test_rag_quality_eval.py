@@ -16,12 +16,14 @@ from src.goldset.eval import (
     GoldsetQuestion,
     aggregate_items,
     artifact_paths,
+    borderline_question_ids,
     build_eval_scope,
     calibrate_judge_result,
     compare_with_baseline,
     config_fingerprint,
     derive_completion_status,
     deterministic_metrics,
+    judge_pass_rate_excluding,
     load_goldset_questions,
     parse_text_list,
     retrieved_doc_ids,
@@ -56,6 +58,10 @@ def test_config_fingerprint_is_stable_and_changes_with_config() -> None:
 
     config_b.retrieval.initial_top_k = config_a.retrieval.initial_top_k + 1
     assert config_fingerprint(config_a) != config_fingerprint(config_b)
+    assert config_fingerprint(config_a, extra={"generator_system_prompt_sha": "a"}) != config_fingerprint(
+        config_a,
+        extra={"generator_system_prompt_sha": "b"},
+    )
 
 
 def test_aggregate_items_averages_available_metrics() -> None:
@@ -797,6 +803,21 @@ def test_derive_status_partial_errors_is_completed_with_errors() -> None:
     assert error == ""
 
 
+def test_derive_status_generator_fallback_is_failure_even_when_partial() -> None:
+    fallback = _item(error="generator fallback")
+    fallback.judge_result = {"status": "skipped", "reason": "generator_fallback"}
+
+    status, error = derive_completion_status(
+        [_item(), fallback],
+        judge_enabled=True,
+        ragas_enabled=False,
+        judge_votes=1,
+    )
+
+    assert status == "failed"
+    assert "generator fallback invalidated 1/2" in error
+
+
 def test_derive_status_all_clean_is_completed() -> None:
     status, error = derive_completion_status([_item(), _item()], judge_enabled=True, ragas_enabled=True)
     assert status == "completed"
@@ -1292,6 +1313,59 @@ def test_run_question_records_exact_generator_prompt_size() -> None:
     assert item.metadata["existing"] is True
 
 
+def test_run_question_rejects_generator_fallback_before_judge_and_ragas(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from src.goldset import eval as eval_module
+
+    class _FallbackPipe:
+        last_full_prompt = "user prompt"
+        last_system_prompt = "system"
+
+        def run_with_trace(self, *args, **kwargs):
+            return SimpleNamespace(
+                answer="fallback answer",
+                context_items=[],
+                sources=[],
+                timing={"response_length_tokens": 2},
+                metadata={
+                    "generator_provider": "albert",
+                    "generator_model": "deepseek-v4-flash",
+                    "generator_provider_used": "scaleway",
+                    "generator_model_used": "llama-3.1-70b-instruct",
+                    "generator_fallback_count": 1,
+                    "generator_used_fallback": True,
+                },
+            )
+
+    def fail_if_called(**kwargs):
+        raise AssertionError("judge/RAGAS must not run for a fallback answer")
+
+    monkeypatch.setattr(eval_module, "compute_ragas_metrics", fail_if_called)
+    monkeypatch.setattr(eval_module, "judge_answer_with_votes", fail_if_called)
+
+    item = eval_module.run_question(
+        pipe=_FallbackPipe(),
+        question=eval_module.GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[]),
+        run_ragas=True,
+        run_judge=True,
+        judge_model="judge",
+        judge_base_url="https://judge.invalid",
+        judge_api_key="key",
+        ragas_model="ragas",
+        scaleway_base_url="https://ragas.invalid",
+        scaleway_api_key="key",
+        reject_generator_fallback=True,
+    )
+
+    assert item.error is not None and "generator fallback" in item.error
+    assert item.judge_result == {"status": "skipped", "reason": "generator_fallback"}
+    assert item.ragas_metrics == {"status": "skipped", "reason": "generator_fallback"}
+    aggregate = eval_module.aggregate_items([item])
+    assert aggregate["judge_pass_rate"] is None
+    assert aggregate["judge_score_avg"] is None
+
+
 def test_judge_answer_openrouter_enforces_zdr(monkeypatch) -> None:
     """Revue #329 : data_collection=deny n'exclut que les providers qui
     collectent/entraînent — la ZDR est un attribut distinct chez OpenRouter,
@@ -1576,6 +1650,13 @@ def _load_rag_quality_protocol_module():
     return module
 
 
+def test_rag_quality_workflow_watches_protocol_script() -> None:
+    workflow = (Path(__file__).parents[1] / ".github/workflows/rag-quality-eval.yml").read_text(encoding="utf-8")
+    paths_block = workflow.split("paths:", 1)[1].split("workflow_dispatch:", 1)[0]
+
+    assert '- ".github/scripts/rag_quality_protocol.py"' in paths_block
+
+
 @pytest.mark.parametrize(
     ("kwargs", "expected"),
     [
@@ -1745,6 +1826,24 @@ def test_aggregate_items_averages_stage_metrics() -> None:
 
     pool = aggregate["stage_metrics"]["initial"]["pool"]
     assert pool == {"n": 2, "hit_rate_avg": 0.5, "doc_recall_avg": 0.5}
+
+
+def test_borderline_double_read_helpers() -> None:
+    """La double lecture exclut les questions au juge instable sans toucher
+    au taux officiel (le gate reste sur le taux complet)."""
+    q_stable = GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[], tags=["baseline_v1"])
+    q_flaky = GoldsetQuestion(id=2, question="q", gold_answer="a", gold_sources=[], tags=["baseline_v1", "juge_borderline"])
+    assert borderline_question_ids([q_stable, q_flaky]) == [2]
+
+    def item(qid: int, ok: bool) -> EvalItem:
+        it = EvalItem(question_id=qid, question="q", gold_answer="a", gold_sources=[])
+        it.judge_result = {"status": "completed", "pass": ok}
+        return it
+
+    items = [item(1, True), item(2, False), item(3, False)]
+    assert judge_pass_rate_excluding(items, set()) == 1 / 3
+    assert judge_pass_rate_excluding(items, {2}) == 0.5
+    assert judge_pass_rate_excluding(items, {1, 2, 3}) is None
 
 
 def test_secret_backed_rag_eval_does_not_run_on_pull_request_heads() -> None:
