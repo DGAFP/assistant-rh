@@ -1190,6 +1190,84 @@ def test_ingest_delta_materialized_version_forces_metadata_only_update() -> None
     assert summary["applied"]["ingested"] == 1
 
 
+def test_ingest_delta_retries_metadata_only_update_after_db_failure() -> None:
+    """Le drift de version DB reste visible après que le lake a été synchronisé."""
+    chronique = "LEGIARTI000039728025"
+    old_version = chronique
+    current_version = "LEGIARTI000054638420"
+    checksum = "same-markdown-hash"
+    piste = _FakePiste({JORF_D1: [CodeArticle(chronique, "VIGUEUR", "2", current_version, (chronique, current_version))]})
+    piste.article_payloads[current_version] = {
+        "article": {
+            "id": current_version,
+            "cid": chronique,
+            "num": "2",
+            "etat": "VIGUEUR",
+            "texte": "Texte inchangé.",
+            "dateDebut": "2026-08-08",
+        }
+    }
+    documents = [
+        {
+            "short_id": chronique,
+            "doc_id": "stable-doc",
+            "checksum": checksum,
+            "metadata": {"cid": chronique, "article_id": old_version, "version_id": old_version},
+        }
+    ]
+    sections = [{"doc_id": "stable-doc", "section_id": "old-section", "section_index": 0}]
+    chunks = [{"cid": chronique, "chunk_id": f"{chronique}_0", "text": "Texte inchangé.", "_targets": ["legacy"]}]
+    canonical = CodeArticle(chronique, "VIGUEUR", "2", current_version, (chronique, current_version))
+    bundle = LiveArtifactBundle(
+        canonical,
+        {
+            "short_id": chronique,
+            "doc_id": "stable-doc",
+            "checksum": checksum,
+            "metadata": {"cid": chronique, "article_id": current_version, "version_id": current_version},
+        },
+        [{"doc_id": "stable-doc", "section_id": "new-section", "section_index": 0}],
+        [{"cid": chronique, "chunk_id": f"{chronique}_0", "text": "Texte inchangé.", "_targets": ["legacy"]}],
+    )
+    stale_corpus = _corpus(**{chronique: (checksum, 1)})
+    stale_corpus[chronique]["version_id"] = old_version
+
+    class _FailingWriter(_DeltaWriter):
+        def ingest_article_bundle(self, *args: Any, **kwargs: Any) -> dict[str, int]:
+            raise RuntimeError("db temporarily down")
+
+    first = legifrance_ingestion.ingest_delta(
+        _FailingWriter(stale_corpus),
+        _RecordingGrist([_rec(1, **_texte(JORF_D1))]),
+        piste,
+        documents,
+        sections,
+        chunks,
+        live_materializer=_FakeLiveMaterializer(bundle),
+        toc_date_millis=1000,
+    )
+    retry_writer = _DeltaWriter(stale_corpus)
+    retry = legifrance_ingestion.ingest_delta(
+        retry_writer,
+        _RecordingGrist([_rec(1, **_texte(JORF_D1))]),
+        piste,
+        documents,
+        sections,
+        chunks,
+        live_materializer=_FakeLiveMaterializer(bundle),
+        toc_date_millis=1000,
+    )
+
+    assert first["status"] == "partial"
+    assert first["live_materialization"]["materialized"] == 1
+    assert first["applied"]["failed"] == 1
+    assert retry["status"] == "ok"
+    assert retry["live_materialization"]["detected"] == 0
+    assert retry["plan"]["changed"]["sample"] == [chronique]
+    assert retry_writer.article_bundles == [chronique]
+    assert retry["applied"]["ingested"] == 1
+
+
 def test_ingest_delta_targeted_alias_swaps_atomically() -> None:
     # --uid sur un ancien alias de version doit embarquer son cid chronique :
     # jamais de cascade sans ingestion du remplaçant dans le même run.

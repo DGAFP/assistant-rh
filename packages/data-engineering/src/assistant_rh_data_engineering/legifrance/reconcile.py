@@ -292,6 +292,8 @@ def build_legifrance_plan(
     ``force_ingest`` : identités dont une nouvelle version vient d'être
     matérialisée. Elles passent en ``changed`` même si leur markdown (et donc
     leur checksum) est inchangé, afin de propager les métadonnées de version.
+    Le même forçage est dérivé durablement de ``corpus[uid].version_id`` quand
+    la version PostgreSQL diffère de la version courante de la TOC.
     """
     requested_set: set[str] | None = None
     if requested is not None:
@@ -321,6 +323,7 @@ def build_legifrance_plan(
     protected: set[str] = set(selection.out_of_scope_uids)
     pending: set[str] = set()
     missing_toc_versions: set[str] = set()
+    current_versions: dict[str, str] = {}
 
     def _add_active(uid: str, version_id: str) -> None:
         # Une chronique déjà présente en silver ne prouve pas que la VERSION
@@ -374,6 +377,7 @@ def build_legifrance_plan(
                 # la source (ETAT) : autoritaire.
                 manifest[cid] = ManifestEntry(cid, abrogated=True)
             else:
+                current_versions[cid] = version_id or cid
                 _add_active(cid, version_id or cid)
             # NB : un doc corpus keyed par version_id d'un article suivi n'est
             # PAS ajouté au manifest → stale autoritaire attribuable (migration
@@ -433,13 +437,20 @@ def build_legifrance_plan(
 
     # Le checksum silver couvre le markdown, pas les métadonnées juridiques
     # (version, dates, liens, URL). Une version PISTE fraîchement matérialisée
-    # doit donc être réingérée même si son texte est byte-identique ; sinon le
-    # nouveau version_id est persisté dans le lake, le prochain run ne la
-    # rematérialise plus, et PostgreSQL reste définitivement sur l'ancien
-    # metadata. Ne promouvoir que les `unchanged` conserve les gardes
-    # protected/pending calculées par build_plan.
+    # doit donc être réingérée même si son texte est byte-identique. Le signal
+    # immédiat ``force_ingest`` couvre le run de matérialisation ; la comparaison
+    # TOC ↔ metadata PostgreSQL rend ce forçage durable si l'écriture DB échoue
+    # après la synchronisation du lake. L'absence de clé ``version_id`` signifie
+    # que le schéma DB ne permet pas la comparaison, et ne doit pas provoquer
+    # une réingestion infinie sur les anciens schémas.
     force_ingest_set = {str(uid).strip().upper() for uid in force_ingest}
-    forced_changed = force_ingest_set.intersection(plan.unchanged)
+    version_drift = {
+        uid
+        for uid in plan.unchanged
+        if "version_id" in corpus.get(uid, {})
+        and str(corpus[uid].get("version_id") or "").strip().upper() != current_versions.get(uid, "")
+    }
+    forced_changed = (force_ingest_set | version_drift).intersection(plan.unchanged)
     if forced_changed:
         plan = ReconciliationPlan(
             new=plan.new,
