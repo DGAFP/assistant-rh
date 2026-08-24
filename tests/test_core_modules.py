@@ -158,6 +158,36 @@ class TestLoadPrompt:
         assert load_prompt("a.md", "b.md") is None
 
 
+def test_streaming_generator_fallback_diagnostics_are_request_scoped() -> None:
+    from assistant_rh_rag_pipeline.config import GenerationConfig
+    from assistant_rh_rag_pipeline.generator import StreamingGenerator
+
+    class FakeFallbackClient:
+        last_provider_used = "scaleway"
+        fallback_count = 3
+
+        def chat(self, prompt: str, system_prompt: str | None = None) -> str:
+            self.last_provider_used = "scaleway"
+            self.fallback_count += 1
+            return "réponse fallback"
+
+    generator = StreamingGenerator(GenerationConfig())
+    generator._llm = FakeFallbackClient()
+
+    with patch.object(generator, "_system_prompt_for", return_value="system"):
+        assert generator.generate("question", []) == "réponse fallback"
+
+    assert generator.provider_used == "scaleway"
+    assert generator.fallback_count == 1
+    assert generator.used_fallback is True
+
+    generator.begin_request()
+
+    assert generator.provider_used is None
+    assert generator.fallback_count == 0
+    assert generator.used_fallback is False
+
+
 # ---------------------------------------------------------------------------
 # query_processor — legal-search guardrails
 # ---------------------------------------------------------------------------

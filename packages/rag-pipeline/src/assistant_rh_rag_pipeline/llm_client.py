@@ -141,6 +141,7 @@ class FallbackLLMClient:
     # -- Synchronous ----------------------------------------------------------
 
     def chat(self, prompt: str, system_prompt: str | None = None) -> str:
+        self.last_provider_used = None
         if self._primary:
             try:
                 result = self._primary.chat(prompt, system_prompt)
@@ -168,6 +169,7 @@ class FallbackLLMClient:
         system_prompt: str | None = None,
         history: list[Dict[str, str]] | None = None,
     ) -> Generator[str, None, None]:
+        self.last_provider_used = None
         tokens_yielded = 0
 
         if self._primary:
@@ -179,6 +181,7 @@ class FallbackLLMClient:
                 return
             except Exception as exc:
                 if tokens_yielded > 0:
+                    self.last_provider_used = self._primary_name
                     yield f"\n\n_Erreur de connexion ({self._primary_name}). Reponse partielle._"
                     return
                 logger.warning("Primary LLM (%s) failed before streaming: %s", self._primary_name, exc)

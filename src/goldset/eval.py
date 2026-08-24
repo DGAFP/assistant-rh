@@ -2010,6 +2010,7 @@ def run_question(
     scaleway_base_url: str,
     scaleway_api_key: str,
     retrieval_scope: Any = None,
+    reject_generator_fallback: bool = False,
 ) -> EvalItem:
     started = time.perf_counter()
     item = EvalItem(
@@ -2038,6 +2039,19 @@ def run_question(
         item.metadata = metadata
         item.deterministic_metrics = deterministic_metrics(question.retrieval_gold, doc_ids, aliases=identifier_aliases)
         item.deterministic_metrics["stages"] = stage_retrieval_metrics(metadata, question.retrieval_gold, aliases=identifier_aliases)
+
+        if reject_generator_fallback and metadata.get("generator_used_fallback") is True:
+            provider_used = str(metadata.get("generator_provider_used") or "fallback")
+            model_used = str(metadata.get("generator_model_used") or "modèle de fallback")
+            provider_configured = str(metadata.get("generator_provider") or "provider configuré")
+            model_configured = str(metadata.get("generator_model") or "modèle configuré")
+            item.error = (
+                f"generator fallback: réponse servie par {provider_used}/{model_used} au lieu de "
+                f"{provider_configured}/{model_configured} — item invalide pour l'A/B"
+            )
+            item.ragas_metrics = {"status": "skipped", "reason": "generator_fallback"}
+            item.judge_result = {"status": "skipped", "reason": "generator_fallback"}
+            return item
 
         context_texts = [str(context.get("content") or "") for context in contexts if str(context.get("content") or "").strip()]
         if run_ragas:
@@ -2323,6 +2337,9 @@ def derive_completion_status(items: list[EvalItem], *, judge_enabled: bool, raga
     """
     status = "completed"
     error = ""
+    invalid_fallbacks = [item for item in items if item.error and item.judge_result.get("reason") == "generator_fallback"]
+    if invalid_fallbacks:
+        return "failed", f"generator fallback invalidated {len(invalid_fallbacks)}/{len(items)} evaluated questions"
     if any(item.error for item in items):
         status = "completed_with_errors"
     if items and all(item.error for item in items):
@@ -2414,10 +2431,8 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
         or get_prompt_content("generator.md", render_today=False)
         or ""
     )
-    config_hash = config_fingerprint(
-        pipeline_config,
-        extra={"generator_system_prompt_sha": hashlib.sha256(resolved_prompt.encode("utf-8")).hexdigest()},
-    )
+    generator_system_prompt_sha = hashlib.sha256(resolved_prompt.encode("utf-8")).hexdigest()
+    config_hash = config_fingerprint(pipeline_config, extra={"generator_system_prompt_sha": generator_system_prompt_sha})
     git_sha = _git_sha()
     run_label = args.run_label or f"{datetime.now(tz=UTC).strftime('%Y%m%dT%H%M%SZ')}_{args.goldset_name}"
     output_dir = args.output_dir or (DEFAULT_OUTPUT_ROOT / args.goldset_name / run_label)
@@ -2456,6 +2471,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                     "existing_run_id": existing_run["id"],
                     "existing_status": existing_run["status"],
                     "config_fingerprint": config_hash,
+                    "generator_system_prompt_sha": generator_system_prompt_sha,
                     "eval_scope": eval_scope,
                 }
                 if baseline_comparison_requested(args):
@@ -2501,6 +2517,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                         "created_by": "scripts/run_rag_quality_eval.py",
                         "started_at": _now_iso(),
                         "config_adjustments": config_adjustments,
+                        "generator_system_prompt_sha": generator_system_prompt_sha,
                         "dedupe_scope": args.dedupe_scope,
                         "eval_scope": eval_scope,
                         "output_json": str(json_path),
@@ -2518,10 +2535,6 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     items: list[EvalItem] = []
     status = "completed"
     error = ""
-    # Compteur cumulatif du FallbackLLMClient (un seul client par run) : le
-    # delta entre deux items dit si CET item a été servi par le fallback.
-    generator_fallbacks_seen = 0
-
     item_conn: psycopg.Connection[Any] | None = None
     try:
         if run_id is not None:
@@ -2547,22 +2560,8 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,
                 retrieval_scope=resolve_question_scope(question, args.ministry_scope),
+                reject_generator_fallback=bool(args.generator_model),
             )
-            provider_used = item.metadata.get("generator_provider_used")
-            provider_configured = item.metadata.get("generator_provider")
-            fallback_count = int(item.metadata.get("generator_fallback_count") or 0)
-            item_used_fallback = bool(
-                (provider_used and provider_configured and provider_used != provider_configured) or fallback_count > generator_fallbacks_seen
-            )
-            generator_fallbacks_seen = max(generator_fallbacks_seen, fallback_count)
-            if args.generator_model and item_used_fallback and not item.error:
-                # Avec un override --generator-model, une réponse servie par le
-                # fallback mesure un autre modèle que celui consigné dans le
-                # run : l'item est invalidé plutôt que crédité au candidat.
-                item.error = (
-                    f"generator fallback: réponse servie par {provider_used or 'fallback'} au lieu de "
-                    f"{provider_configured} ({args.generator_model}) — item invalide pour l'A/B"
-                )
             items.append(item)
             if item_conn is not None and run_id is not None:
                 for attempt in range(1, 4):
@@ -2625,6 +2624,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 "judge_model": args.judge_model if not args.skip_judge else "",
                 "ragas_model": args.ragas_model if not args.skip_ragas else "",
                 "config_adjustments": config_adjustments,
+                "generator_system_prompt_sha": generator_system_prompt_sha,
                 "git_sha": git_sha,
                 "dedupe_scope": args.dedupe_scope,
                 "eval_scope": eval_scope,
