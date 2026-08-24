@@ -224,6 +224,31 @@ def test_workflow_dispatch_run_embeddings_adds_embeddings_to_selection(tmp_path:
     ]
 
 
+def test_automated_release_selects_both_live_sources_and_embeddings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_path = tmp_path / "github-output.txt"
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_run")
+    monkeypatch.setenv("INPUT_AUTOMATED_RELEASE", "true")
+    monkeypatch.setenv("INPUT_SOURCE", "all")
+    monkeypatch.setenv("INPUT_RUN_EMBEDDINGS", "true")
+    monkeypatch.setenv("INPUT_EMBEDDING_SOURCE", "all")
+    monkeypatch.setenv("INPUT_MODE", "apply")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+
+    assert data_engineering_plan.main() == 0
+
+    outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
+    run_matrix = json.loads(outputs["run_matrix"])["include"]
+    assert outputs["service_public"] == "true"
+    assert outputs["legifrance"] == "true"
+    assert outputs["pdf_sources"] == "false"
+    assert outputs["r2"] == "false"
+    assert outputs["embeddings"] == "true"
+    assert outputs["run_embeddings"] == "true"
+    assert outputs["mode"] == "apply"
+    assert [entry["name"] for entry in run_matrix] == ["service-public", "legifrance"]
+    assert all(entry["embeddings"] is True for entry in run_matrix)
+
+
 @pytest.mark.parametrize(
     ("changed_path", "expected_source", "expected_images"),
     [
@@ -410,6 +435,38 @@ def test_delta_cron_runs_sources_in_independent_matrix_cells() -> None:
     assert '--embedding-source "${{ matrix.embedding_source }}"' in workflow
 
 
+@pytest.mark.parametrize(
+    ("workflow_name", "step_name", "artifact_name"),
+    [
+        (
+            "data-engineering-preview-staging.yml",
+            "Run staging data quality gates",
+            "data-quality-staging-${{ matrix.name }}-${{ github.run_attempt }}",
+        ),
+        (
+            "data-engineering-promote-prod.yml",
+            "Run production data quality gates",
+            "data-quality-prod-promote-${{ matrix.name }}-${{ github.run_attempt }}",
+        ),
+    ],
+)
+def test_matrix_quality_gates_are_source_scoped_and_artifacts_are_unique(
+    workflow_name: str,
+    step_name: str,
+    artifact_name: str,
+) -> None:
+    workflow = (REPO_ROOT / ".github/workflows" / workflow_name).read_text(encoding="utf-8")
+    structural_step = workflow.split(f"- name: {step_name}", 1)[1].split("# Embedding coverage", 1)[0]
+
+    assert "if: ${{ matrix.service_public == true || matrix.legifrance == true }}" in structural_step
+    assert '${{ matrix.service_public }}' in structural_step
+    assert '${{ matrix.legifrance }}' in structural_step
+    assert "needs.plan.outputs.service_public" not in structural_step
+    assert "needs.plan.outputs.legifrance" not in structural_step
+    assert "if: ${{ matrix.embeddings == true }}" in workflow
+    assert f"name: {artifact_name}" in workflow
+
+
 def test_preview_staging_threads_plan_apply_mode() -> None:
     # Socle #288 : l'axe mode est câblé de bout en bout (input -> plan -> dispatch).
     # Défaut apply (comportement inchangé) ; plan neutralise ingestion + embeddings.
@@ -458,7 +515,7 @@ def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:
     assert "- masa" in embedding_source_block
     assert "- mso" in embedding_source_block
     assert "pdf_sources_ministry: ${{ steps.plan.outputs.pdf_sources_ministry }}" in workflow
-    assert "RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' && inputs.run_ingestion || false }}" in workflow
+    assert "RUN_INGESTION: ${{ github.event_name == 'workflow_run' || (inputs.mode == 'apply' && inputs.run_ingestion) || false }}" in workflow
     assert "WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}" in workflow
     assert "EMBEDDING_SOURCE: ${{ matrix.embedding_source }}" in workflow
     assert "run_matrix: ${{ steps.plan.outputs.run_matrix }}" in workflow
@@ -482,16 +539,22 @@ def test_preview_staging_defaults_to_grist_delta_and_provides_piste_credentials(
     assert "LEGIFRANCE_CLIENT_SECRET: ${{ secrets.LEGIFRANCE_CLIENT_SECRET }}" in workflow
 
 
-def test_promote_prod_requires_explicit_apply_and_defaults_to_grist_delta() -> None:
+def test_promote_prod_manual_run_requires_explicit_apply_and_automates_release_delta() -> None:
     workflow = (REPO_ROOT / ".github/workflows/data-engineering-promote-prod.yml").read_text(encoding="utf-8")
     inputs_block = workflow.split("workflow_dispatch:", 1)[1].split("permissions:", 1)[0]
 
     assert 'default: "plan"' in inputs_block
-    assert "INPUT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'plan' }}" in workflow
+    assert 'workflows:\n      - "Database Migrations (Scaleway)"' in workflow
+    assert "github.event.workflow_run.conclusion == 'success'" in workflow
+    assert "github.event.workflow_run.event == 'release'" in workflow
+    assert "INPUT_AUTOMATED_RELEASE: ${{ github.event_name == 'workflow_run' }}" in workflow
+    assert "INPUT_SOURCE: ${{ github.event_name == 'workflow_run' && 'all' || inputs.source }}" in workflow
+    assert "INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_run' || inputs.run_embeddings }}" in workflow
+    assert "INPUT_MODE: ${{ github.event_name == 'workflow_run' && 'apply' || inputs.mode }}" in workflow
     assert "mode: ${{ steps.plan.outputs.mode }}" in workflow
     assert "(needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_builds == 'true'" in workflow
     assert "(needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_runs == 'true'" in workflow
-    assert "DELTA_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.delta || false }}" in workflow
+    assert "DELTA_MODE: ${{ github.event_name == 'workflow_run' || inputs.delta || false }}" in workflow
     assert '--mode "${{ needs.plan.outputs.mode }}"' in workflow
     assert '--delta "${DELTA_MODE}"' in workflow
     assert "LEGIFRANCE_CLIENT_ID: ${{ secrets.LEGIFRANCE_CLIENT_ID }}" in workflow
@@ -628,6 +691,11 @@ def test_cron_delta_workflow_chains_delta_on_staging() -> None:
     assert '--legifrance "${{ matrix.legifrance }}"' in workflow
     assert "fail-fast: false" in workflow
     assert "--run-ingestion true" in workflow and "--run-embeddings true" in workflow
+    assert "data-ingestion quality gates" in workflow
+    assert '--source service_public' in workflow and '--source legifrance' in workflow
+    assert "--blocking" in workflow
+    assert "--check-only" in workflow and '--coverage-min-pct "${COVERAGE_MIN_PCT}"' in workflow
+    assert "name: data-quality-cron-${{ matrix.name }}-${{ github.run_attempt }}" in workflow
     # Le cron fournit les creds Grist ET Légifrance/PISTE (jobs delta).
     assert "GRIST_API_KEY:" in workflow
     assert "LEGIFRANCE_CLIENT_ID:" in workflow and "LEGIFRANCE_CLIENT_SECRET:" in workflow
