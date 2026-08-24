@@ -1108,10 +1108,50 @@ les contextes sur 23/98. Parmi les 18 flips, 5 ont un contexte différent
 `manual` porte le delta (35/55 vs 37/55) ; Service-Public, MATTE, synthetic,
 MSO et DGAFP sont tous à égalité en nombre de PASS.
 
-**Lecture** : DeepSeek satisfait le gate de non-régression mais ne démontre pas
-de supériorité sur ce tirage (−2 PASS). Avec le précédent #215 à +5 PASS sous le
-même juge, l'ensemble confirme surtout une variance de run de l'ordre de
-plusieurs points. Conserver DeepSeek en staging est défendable pour observation,
-mais une promotion production ne doit pas être fondée sur #226 seul : auditer
-les 18 flips, puis exiger un second run confirmatoire ou une preuve qualitative
-sur les gains/pertes stables.
+**Audit humain des 18 flips** : le décompte brut 8 gains / 10 pertes surestime
+la différence entre modèles. Cinq flips sont des artefacts du juge ou du gold,
+et trois autres ne représentent qu'un écart mineur ou ambigu.
+
+| Question | Flip brut | Contexte | Audit | Motif principal |
+|---|---|---|---|---|
+| q1 | gain DeepSeek | différent | avantage DeepSeek mineur | DeepSeek explicite mieux l'automaticité du CDI et l'avenant ; la réponse Openweight restait substantiellement acceptable. |
+| q20 | gain DeepSeek | différent | **gain DeepSeek net** | Openweight omet les cas de temps partiel de droit et leurs quotités ; DeepSeek les couvre. |
+| q33 | gain DeepSeek | identique | **gain DeepSeek net** | Réponse plus complète sur la procédure de licenciement pour insuffisance professionnelle. |
+| q176 | gain DeepSeek | identique | artefact juge/gold | Le FAIL Openweight impose à tort aux fonctionnaires la condition d'ancienneté applicable aux contractuels ; les deux réponses sont adéquates dans le scope. |
+| q183 | gain DeepSeek | identique | **gain DeepSeek net** | DeepSeek distingue correctement besoin temporaire (12/18 mois) et saisonnier (6/12 mois). |
+| q186 | gain DeepSeek | identique | artefact juge | Les deux réponses donnent la même conclusion ; Mistral reproche seulement à Openweight une réserve sur les motifs illégaux, également absente chez DeepSeek. |
+| q206 | gain DeepSeek | identique | **gain DeepSeek net** | DeepSeek sépare correctement le délai général du régime des contrats de projet ; la justification du FAIL Openweight contient en plus des contradictions factuelles. |
+| q926 | gain DeepSeek | différent | **gain DeepSeek net** | Réponse TPT plus complète et cohérente ; Openweight mélange des règles du temps partiel ordinaire. |
+| q3 | perte DeepSeek | différent | **perte DeepSeek nette** | DeepSeek refuse de conclure alors que les sources permettent de répondre sur l'indemnité de fin de contrat. |
+| q4 | perte DeepSeek | identique | **perte DeepSeek nette** | DeepSeek expose les deux régimes mais refuse la conclusion attendue sur l'absence de droit à l'égalité de rémunération. |
+| q18 | perte DeepSeek | identique | avantage Openweight mineur | DeepSeek couvre le fond mais n'explicite pas aussi nettement le caractère « de droit » et l'assimilation à du travail effectif. |
+| q19 | perte DeepSeek | identique | avantage Openweight mineur | DeepSeek décrit surtout les modalités et omet l'objectif central de la formation statutaire ; le seuil de complétude reste appliqué de façon inégale. |
+| q175 | perte DeepSeek | différent | **perte DeepSeek nette** | DeepSeek omet les exceptions essentielles à la protection contre le licenciement pendant la maternité. |
+| q188 | perte DeepSeek | identique | artefact juge/gold | La question demande uniquement la durée minimale et maximale, correctement donnée par DeepSeek ; le FAIL sanctionne l'absence d'une précision hors question sur le CDI. |
+| q189 | perte DeepSeek | identique | **perte DeepSeek nette** | DeepSeek répond sur le CDI mais refuse de conclure sur la titularisation. |
+| q205 | perte DeepSeek | identique | artefact juge | Les deux réponses contiennent textuellement les quatre délais du gold ; Openweight passe et DeepSeek reçoit pourtant un score nul. |
+| q213 | perte DeepSeek | identique | artefact gold/juge | Le gold affirme un plein traitement pendant toute l'absence, alors que l'article 14 du décret 86-83 le borne à 1, 2 ou 3 mois selon l'ancienneté ; les deux modèles donnent cette règle. |
+| q227 | perte DeepSeek | identique | **perte DeepSeek nette** | DeepSeek refuse l'inférence opérationnelle sur l'absence de preuve d'aptitude malgré le caractère obligatoire du contrôle. |
+
+Bilan audité : **5 gains nets DeepSeek / 5 pertes nettes**, 1 avantage mineur
+DeepSeek / 2 avantages mineurs Openweight et **5 artefacts juge/gold**. Les
+contextes différents sont équilibrés entre les deux sens (q1/q20/q926 en faveur
+de DeepSeek, q3/q175 en faveur d'Openweight) et n'expliquent donc pas le delta.
+
+Le signal qualitatif important est reproductible par rapport à #215 : DeepSeek
+gagne encore sur la complétude (q20/q33/q206), mais reproduit les refus de
+conclure déjà observés sur q3/q4/q227 ; q189 relève du même mécanisme. q19 reste
+également une faiblesse récurrente. Cette stabilité invalide l'hypothèse d'une
+simple variance de run : les deux modèles sont globalement à parité, avec un
+léger avantage Openweight sur les cas exigeant une inférence juridique prudente
+mais nécessaire.
+
+**Décision corrigée après audit** : le gate automatique de non-régression passe,
+mais #226 ne justifie pas une promotion production de DeepSeek. Le conserver en
+staging reste possible pour observation. Un second run strictement inchangé
+aurait peu de valeur avant de corriger le comportement d'abstention ou de
+recalibrer le gold/juge sur q176/q186/q188/q205/q213 ; il faut ensuite rejuger
+les réponses figées ou relancer l'A/B. Références juridiques contrôlées pendant
+l'audit : [article 14 du décret 86-83](https://www.legifrance.gouv.fr/loda/id/JORFTEXT000000699956/2026-06-05),
+[article 49](https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000045662477)
+et [article 11-1](https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000045351577).
