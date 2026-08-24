@@ -299,6 +299,53 @@ def ingest_delta(
     toc_by_text = canonicalize_toc_from_silver(toc_by_text, documents)
     materialized_versions, _ = silver_version_index(documents)
     active_texts = {row.uid for row in selection.followed_rows if row.active}
+
+    # Un --uid canonique LEGIARTI peut cibler une entrée TOC encore exposée sous
+    # un JORFARTI provisoire. Le CID demandé n'existe alors dans aucun alias TOC :
+    # il faut résoudre getArticle AVANT le filtre ciblé, puis réutiliser cette
+    # réponse pendant la matérialisation (un seul appel API).
+    prefetched_live_responses: dict[str, dict[str, Any]] = {}
+    requested_resolution_failures: dict[str, str] = {}
+    if requested is not None:
+        known_aliases: set[str] = set()
+        provisional_by_version: dict[str, list[Any]] = {}
+        for text_uid, articles in toc_by_text.items():
+            if text_uid not in active_texts:
+                continue
+            for article in articles:
+                if str(article.etat or "").strip().upper() != "VIGUEUR":
+                    continue
+                version_id = str(article.version_id or article.cid).strip().upper()
+                aliases = {str(alias).strip().upper() for alias in (*article.alias_ids, article.cid, version_id) if alias}
+                known_aliases.update(aliases)
+                if str(article.cid).strip().upper().startswith("JORFARTI"):
+                    provisional_by_version.setdefault(version_id, []).append(article)
+
+        for requested_uid in sorted(requested - known_aliases) if provisional_by_version else ():
+            if not requested_uid.startswith("LEGIARTI"):
+                continue
+            try:
+                response = piste.get_article(requested_uid)
+                response_article = response.get("article") or response
+                if not isinstance(response_article, dict):
+                    raise RuntimeError(f"getArticle({requested_uid}) sans objet 'article'.")
+                response_version = str(response_article.get("id") or "").strip().upper()
+                for expected_article in provisional_by_version.get(response_version, []):
+                    canonical = canonical_article_from_response(expected_article, response)
+                    canonical_aliases = {
+                        str(alias).strip().upper()
+                        for alias in (*canonical.alias_ids, canonical.cid, canonical.version_id)
+                        if alias
+                    }
+                    if requested_uid not in canonical_aliases:
+                        continue
+                    requested.update(canonical_aliases)
+                    prefetched_live_responses[response_version] = response
+                    break
+            except Exception as exc:  # noqa: BLE001 — protège le --uid d'une suppression sans remplaçant
+                requested_resolution_failures[requested_uid] = str(exc)
+                print(f"[warn] résolution PISTE du --uid {requested_uid} en échec: {exc}")
+
     live_candidates: dict[str, Any] = {}
     for text_uid, articles in toc_by_text.items():
         if text_uid not in active_texts:
@@ -310,13 +357,14 @@ def ingest_delta(
             aliases = {str(alias).strip().upper() for alias in (*article.alias_ids, article.cid, version_id) if alias}
             if requested is not None and not (aliases & requested):
                 continue
-            if str(article.cid).upper().startswith("JORFARTI") or version_id not in materialized_versions:
+            if version_id not in materialized_versions:
                 live_candidates[version_id] = article
 
     detected_missing_toc_versions = tuple(sorted(live_candidates))
     materialized_live_versions: list[str] = []
-    failed_live_versions: list[str] = []
-    materialization_failures: dict[str, str] = {}
+    materialized_live_uids: set[str] = set()
+    failed_live_versions: list[str] = list(requested_resolution_failures)
+    materialization_failures: dict[str, str] = dict(requested_resolution_failures)
     live_object_storage: dict[str, str] | None = None
     # Le job CLI fournit toujours le matérialiseur. Le paramètre reste optionnel
     # pour les appels de fonctions pures/tests et pour préserver la compatibilité
@@ -325,7 +373,7 @@ def ingest_delta(
         for version_id, expected_article in sorted(live_candidates.items()):
             failure_uid = str(expected_article.cid).strip().upper()
             try:
-                response = piste.get_article(version_id)
+                response = prefetched_live_responses.get(version_id) or piste.get_article(version_id)
                 canonical = canonical_article_from_response(expected_article, response)
                 failure_uid = canonical.cid
                 if requested is not None:
@@ -336,14 +384,41 @@ def ingest_delta(
                     }
                     if canonical_aliases & requested:
                         requested.update(canonical_aliases)
+                # L'identité getArticle est déjà validée et doit participer au
+                # plan même si une projection bronze/silver/gold échoue ensuite :
+                # les aliases JORF/LEGI restent alors dans le même périmètre de
+                # failure gating et de writeback.
+                toc_by_text = replace_toc_article(toc_by_text, canonical)
                 if not dry_run:
                     bundle = live_materializer.materialize(expected_article, response)
                     canonical = bundle.article
+
+                    # Le lake chargé contient encore l'ancienne projection du
+                    # même CID chronique. La remplacer en mémoire évite de livrer
+                    # à Postgres les deux générations de sections/chunks et de
+                    # gonfler nb_chunks (voire de conserver des chunks retirés).
+                    canonical_uid = str(canonical.cid).strip().upper()
+                    replaced_doc_ids = {
+                        str(document.get("doc_id") or "")
+                        for document in documents
+                        if str(document.get("short_id") or "").strip().upper() == canonical_uid
+                    }
+                    documents[:] = [
+                        document
+                        for document in documents
+                        if str(document.get("short_id") or "").strip().upper() != canonical_uid
+                    ]
+                    sections[:] = [section for section in sections if str(section.get("doc_id") or "") not in replaced_doc_ids]
+                    chunks[:] = [
+                        chunk
+                        for chunk in chunks
+                        if str(chunk.get("short_id") or chunk.get("cid") or "").strip().upper() != canonical_uid
+                    ]
                     documents.append(bundle.document)
                     sections.extend(bundle.sections)
                     chunks.extend(bundle.chunks)
                     materialized_live_versions.append(canonical.version_id)
-                toc_by_text = replace_toc_article(toc_by_text, canonical)
+                    materialized_live_uids.add(canonical_uid)
             except Exception as exc:  # noqa: BLE001 — échec isolé par article, aucune cascade de son texte
                 failed_live_versions.append(version_id)
                 materialization_failures[failure_uid] = str(exc)
@@ -417,6 +492,7 @@ def ingest_delta(
         extra_attributions=extra_attributions or None,
         extra_chroniques=extra_chroniques or None,
         silver_version_ids=silver_version_ids,
+        force_ingest=materialized_live_uids,
     )
     plan = lf_plan.plan
 

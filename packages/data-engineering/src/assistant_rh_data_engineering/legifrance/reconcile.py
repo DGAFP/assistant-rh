@@ -83,8 +83,7 @@ def is_legifrance(fields: Mapping[str, Any]) -> bool:
 
 
 def is_article_uid(uid: str) -> bool:
-    """Un uid d'article — identité du corpus dgafp : cid chronique LEGIARTI,
-    ou ancien/provisoire JORFARTI accepté le temps de sa migration."""
+    """Un uid d'article — CID chronique LEGIARTI ou identité LODA stable JORFARTI."""
     return str(uid or "").upper().startswith(("LEGIARTI", "JORFARTI"))
 
 
@@ -267,6 +266,7 @@ def build_legifrance_plan(
     extra_attributions: Mapping[str, str] | None = None,
     extra_chroniques: Mapping[str, str] | None = None,
     silver_version_ids: Collection[str] | None = None,
+    force_ingest: Collection[str] = (),
 ) -> LegifrancePlan:
     """Adapte référentiel Grist + TOCs PISTE + état corpus au diff ``build_plan``.
 
@@ -289,6 +289,11 @@ def build_legifrance_plan(
     ``requested`` : sous-ensemble ``--uid`` — restreint manifest ET corpus.
     ``max_auto_stale`` : au-delà de ce volume de ``stale``, tous basculent en
     ``flagged`` — ``None`` désactive (migration délibérée).
+    ``force_ingest`` : identités dont une nouvelle version vient d'être
+    matérialisée. Elles passent en ``changed`` même si leur markdown (et donc
+    leur checksum) est inchangé, afin de propager les métadonnées de version.
+    Le même forçage est dérivé durablement de ``corpus[uid].version_id`` quand
+    la version PostgreSQL diffère de la version courante de la TOC.
     """
     requested_set: set[str] | None = None
     if requested is not None:
@@ -318,12 +323,13 @@ def build_legifrance_plan(
     protected: set[str] = set(selection.out_of_scope_uids)
     pending: set[str] = set()
     missing_toc_versions: set[str] = set()
+    current_versions: dict[str, str] = {}
 
     def _add_active(uid: str, version_id: str) -> None:
         # Une chronique déjà présente en silver ne prouve pas que la VERSION
         # courante de la TOC a été matérialisée. C'est précisément le cas qui
         # figeait le contenu au dernier dump tout en laissant le delta au vert.
-        version_missing = track_versions and (version_id not in materialized_versions or uid.startswith("JORFARTI"))
+        version_missing = track_versions and version_id not in materialized_versions
         if version_missing:
             missing_toc_versions.add(version_id)
             if requested_set is None:
@@ -371,6 +377,7 @@ def build_legifrance_plan(
                 # la source (ETAT) : autoritaire.
                 manifest[cid] = ManifestEntry(cid, abrogated=True)
             else:
+                current_versions[cid] = version_id or cid
                 _add_active(cid, version_id or cid)
             # NB : un doc corpus keyed par version_id d'un article suivi n'est
             # PAS ajouté au manifest → stale autoritaire attribuable (migration
@@ -427,6 +434,31 @@ def build_legifrance_plan(
         retry_zero_chunk=retry_zero_chunk,
         guard_empty_manifest=effective_guard,
     )
+
+    # Le checksum silver couvre le markdown, pas les métadonnées juridiques
+    # (version, dates, liens, URL). Une version PISTE fraîchement matérialisée
+    # doit donc être réingérée même si son texte est byte-identique. Le signal
+    # immédiat ``force_ingest`` couvre le run de matérialisation ; la comparaison
+    # TOC ↔ metadata PostgreSQL rend ce forçage durable si l'écriture DB échoue
+    # après la synchronisation du lake. L'absence de clé ``version_id`` signifie
+    # que le schéma DB ne permet pas la comparaison, et ne doit pas provoquer
+    # une réingestion infinie sur les anciens schémas.
+    force_ingest_set = {str(uid).strip().upper() for uid in force_ingest}
+    version_drift = {
+        uid
+        for uid in plan.unchanged
+        if "version_id" in corpus.get(uid, {})
+        and str(corpus[uid].get("version_id") or "").strip().upper() != current_versions.get(uid, "")
+    }
+    forced_changed = (force_ingest_set | version_drift).intersection(plan.unchanged)
+    if forced_changed:
+        plan = ReconciliationPlan(
+            new=plan.new,
+            changed=tuple(sorted({*plan.changed, *forced_changed})),
+            unchanged=tuple(uid for uid in plan.unchanged if uid not in forced_changed),
+            removals=plan.removals,
+            acknowledged=plan.acknowledged,
+        )
 
     # Jumeaux de MIGRATION D'IDENTITÉ : un stale dont le contenu est repris à
     # l'identique par une chronique à ingérer (même checksum silver) N'EST PAS une

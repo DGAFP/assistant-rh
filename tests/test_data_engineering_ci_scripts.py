@@ -224,6 +224,31 @@ def test_workflow_dispatch_run_embeddings_adds_embeddings_to_selection(tmp_path:
     ]
 
 
+def test_automated_release_selects_both_live_sources_and_embeddings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_path = tmp_path / "github-output.txt"
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_run")
+    monkeypatch.setenv("INPUT_AUTOMATED_RELEASE", "true")
+    monkeypatch.setenv("INPUT_SOURCE", "all")
+    monkeypatch.setenv("INPUT_RUN_EMBEDDINGS", "true")
+    monkeypatch.setenv("INPUT_EMBEDDING_SOURCE", "all")
+    monkeypatch.setenv("INPUT_MODE", "apply")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+
+    assert data_engineering_plan.main() == 0
+
+    outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
+    run_matrix = json.loads(outputs["run_matrix"])["include"]
+    assert outputs["service_public"] == "true"
+    assert outputs["legifrance"] == "true"
+    assert outputs["pdf_sources"] == "false"
+    assert outputs["r2"] == "false"
+    assert outputs["embeddings"] == "true"
+    assert outputs["run_embeddings"] == "true"
+    assert outputs["mode"] == "apply"
+    assert [entry["name"] for entry in run_matrix] == ["service-public", "legifrance"]
+    assert all(entry["embeddings"] is True for entry in run_matrix)
+
+
 @pytest.mark.parametrize(
     ("changed_path", "expected_source", "expected_images"),
     [
@@ -490,7 +515,7 @@ def test_promote_prod_routes_wipe_backfill_through_scaleway_jobs() -> None:
     assert "- masa" in embedding_source_block
     assert "- mso" in embedding_source_block
     assert "pdf_sources_ministry: ${{ steps.plan.outputs.pdf_sources_ministry }}" in workflow
-    assert "RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' && inputs.run_ingestion || false }}" in workflow
+    assert "RUN_INGESTION: ${{ github.event_name == 'workflow_run' || (inputs.mode == 'apply' && inputs.run_ingestion) || false }}" in workflow
     assert "WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}" in workflow
     assert "EMBEDDING_SOURCE: ${{ matrix.embedding_source }}" in workflow
     assert "run_matrix: ${{ steps.plan.outputs.run_matrix }}" in workflow
@@ -514,16 +539,22 @@ def test_preview_staging_defaults_to_grist_delta_and_provides_piste_credentials(
     assert "LEGIFRANCE_CLIENT_SECRET: ${{ secrets.LEGIFRANCE_CLIENT_SECRET }}" in workflow
 
 
-def test_promote_prod_requires_explicit_apply_and_defaults_to_grist_delta() -> None:
+def test_promote_prod_manual_run_requires_explicit_apply_and_automates_release_delta() -> None:
     workflow = (REPO_ROOT / ".github/workflows/data-engineering-promote-prod.yml").read_text(encoding="utf-8")
     inputs_block = workflow.split("workflow_dispatch:", 1)[1].split("permissions:", 1)[0]
 
     assert 'default: "plan"' in inputs_block
-    assert "INPUT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'plan' }}" in workflow
+    assert 'workflows:\n      - "Database Migrations (Scaleway)"' in workflow
+    assert "github.event.workflow_run.conclusion == 'success'" in workflow
+    assert "github.event.workflow_run.event == 'release'" in workflow
+    assert "INPUT_AUTOMATED_RELEASE: ${{ github.event_name == 'workflow_run' }}" in workflow
+    assert "INPUT_SOURCE: ${{ github.event_name == 'workflow_run' && 'all' || inputs.source }}" in workflow
+    assert "INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_run' || inputs.run_embeddings }}" in workflow
+    assert "INPUT_MODE: ${{ github.event_name == 'workflow_run' && 'apply' || inputs.mode }}" in workflow
     assert "mode: ${{ steps.plan.outputs.mode }}" in workflow
     assert "(needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_builds == 'true'" in workflow
     assert "(needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_runs == 'true'" in workflow
-    assert "DELTA_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.delta || false }}" in workflow
+    assert "DELTA_MODE: ${{ github.event_name == 'workflow_run' || inputs.delta || false }}" in workflow
     assert '--mode "${{ needs.plan.outputs.mode }}"' in workflow
     assert '--delta "${DELTA_MODE}"' in workflow
     assert "LEGIFRANCE_CLIENT_ID: ${{ secrets.LEGIFRANCE_CLIENT_ID }}" in workflow

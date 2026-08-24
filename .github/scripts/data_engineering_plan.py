@@ -311,7 +311,10 @@ def resolve_mode(raw: str | None) -> str:
 def main() -> int:
     pdf_sources_ministry = ""
     mode = resolve_mode(os.getenv("INPUT_MODE"))
-    if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
+    explicit_selection = (
+        os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch" or os.getenv("INPUT_AUTOMATED_RELEASE", "").strip().lower() == "true"
+    )
+    if explicit_selection:
         source = os.getenv("INPUT_SOURCE") or "all"
         selected = classify_from_source(source)
         if source in {"mi", "masa", "matte", "mso"}:

@@ -1,6 +1,14 @@
 name: Data Engineering Promote Prod
 
 on:
+  # Run the production delta automatically after the release migrations have
+  # completed successfully. Keeping this dependency explicit avoids racing an
+  # ingestion image that expects a new schema against the migration workflow.
+  workflow_run:
+    workflows:
+      - "Database Migrations (Scaleway)"
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       source:
@@ -104,10 +112,11 @@ concurrency:
 
 env:
   REGISTRY_HOST: rg.fr-par.scw.cloud
-  PROD_IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_builds && 'prod-latest' || format('prod-{0}', github.sha) }}
+  PROD_IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_builds && 'prod-latest' || format('prod-{0}', github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha) }}
 
 jobs:
   plan:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release') }}
     runs-on: ubuntu-latest
     outputs:
       service_public: ${{ steps.plan.outputs.service_public }}
@@ -126,16 +135,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
 
       - name: Detect changed data engineering jobs
         id: plan
         env:
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
-          INPUT_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
-          INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_embeddings || '' }}
-          INPUT_EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_source || '' }}
-          INPUT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'plan' }}
+          INPUT_AUTOMATED_RELEASE: ${{ github.event_name == 'workflow_run' }}
+          INPUT_SOURCE: ${{ github.event_name == 'workflow_run' && 'all' || inputs.source }}
+          INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_run' || inputs.run_embeddings }}
+          INPUT_EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_run' && 'all' || inputs.embedding_source }}
+          INPUT_MODE: ${{ github.event_name == 'workflow_run' && 'apply' || inputs.mode }}
         run: python3 .github/scripts/data_engineering_plan.py
 
   build-prod-images:
@@ -151,6 +162,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -222,9 +235,9 @@ jobs:
       GRIST_TABLE_ID: ${{ vars.GRIST_TABLE_ID }}
       LEGIFRANCE_CLIENT_ID: ${{ secrets.LEGIFRANCE_CLIENT_ID }}
       LEGIFRANCE_CLIENT_SECRET: ${{ secrets.LEGIFRANCE_CLIENT_SECRET }}
-      RUN_INGESTION: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' && inputs.run_ingestion || false }}
+      RUN_INGESTION: ${{ github.event_name == 'workflow_run' || (inputs.mode == 'apply' && inputs.run_ingestion) || false }}
       WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}
-      DELTA_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.delta || false }}
+      DELTA_MODE: ${{ github.event_name == 'workflow_run' || inputs.delta || false }}
       EMBEDDING_SOURCE: ${{ matrix.embedding_source }}
       EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
       R2_REVIEWED_CACHE: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_reviewed_cache || false }}
@@ -235,6 +248,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Install Scaleway CLI
         uses: scaleway/action-scw@v0.0.3

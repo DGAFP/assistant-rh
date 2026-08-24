@@ -26,11 +26,12 @@ DEFAULT_BASE_URL = "https://api.piste.gouv.fr/dila/legifrance/lf-engine-app"
 class CodeArticle:
     """Un article d'un texte, agrégé depuis ``tableMatieres``/``lawDecree``.
 
-    ``cid`` = l'identité fournie par la TOC : CID chronique LEGIARTI lorsqu'il
-    est disponible, sinon JORFARTI provisoire. Le job follow-live résout ce
-    dernier par ``getArticle`` avant réconciliation et retient alors le CID
-    chronique LEGIARTI. ``version_id`` = l'identifiant LEGIARTI de la version
-    courante. ``alias_ids`` = TOUS les identifiants vus pour cet article
+    ``cid`` = l'identité stable fournie par la TOC : CID chronique LEGIARTI
+    lorsqu'il est disponible, sinon JORFARTI pour certains textes LODA. Le job
+    follow-live interroge ``getArticle`` avant réconciliation et ne remplace le
+    JORFARTI que si l'API retourne un CID chronique LEGIARTI distinct.
+    ``version_id`` = l'identifiant LEGIARTI de la version courante.
+    ``alias_ids`` = TOUS les identifiants vus pour cet article
     (toutes versions + cid API) — le corpus historique étant keyé par version,
     ils servent à l'attribution et à la migration d'identité.
 
@@ -39,7 +40,7 @@ class CodeArticle:
     agrège par article avec précédence VIGUEUR — jamais d'écrasement dernier-gagne.
     """
 
-    cid: str  # identité TOC (LEGIARTI chronique, ou JORFARTI provisoire)
+    cid: str  # identité TOC stable (LEGIARTI chronique, ou JORFARTI LODA)
     etat: str  # VIGUEUR | ABROGE | ...
     num: str | None = None  # numéro d'article (L1, R.331-7, ...)
     version_id: str = ""  # LEGIARTI... (version courante)
@@ -75,9 +76,9 @@ def walk_table_matieres(payload: dict) -> list[CodeArticle]:
     for key, nodes in groups.items():
         current = next((n for n in nodes if n["etat"].upper() == "VIGUEUR"), nodes[-1])
         aliases = tuple(sorted({ident for n in nodes for ident in (n["id"], n["cid"]) if ident}))
-        # La marche pure conserve le cid API. Un JORFARTI reste ici provisoire :
-        # seul getArticle permet de retrouver sans ambiguïté son CID chronique
-        # LEGIARTI, sans retomber sur l'ID de version courant (qui churnerait).
+        # La marche pure conserve le cid API. getArticle peut remplacer un
+        # JORFARTI par un CID chronique LEGIARTI, mais certains textes LODA
+        # conservent officiellement leur JORFARTI comme identité stable.
         found.append(
             CodeArticle(
                 cid=key,
@@ -156,12 +157,24 @@ class PisteClient:
         return {"Authorization": f"Bearer {self._token}", "accept": "application/json", "Content-Type": "application/json"}
 
     def consult(self, path: str, payload: dict) -> dict:
+        url = f"{self.base_url}/consult/{path.lstrip('/')}"
         resp = requests.post(
-            f"{self.base_url}/consult/{path.lstrip('/')}",
+            url,
             headers=self._headers(),
             data=json.dumps(payload),
             timeout=self.timeout,
         )
+        # Un delta complet peut durer plus longtemps que le TTL OAuth PISTE.
+        # Rafraîchir une seule fois sur 401 évite que tous les articles restants
+        # basculent artificiellement en échec, sans masquer des creds invalides.
+        if resp.status_code == 401:
+            self._token = None
+            resp = requests.post(
+                url,
+                headers=self._headers(),
+                data=json.dumps(payload),
+                timeout=self.timeout,
+            )
         resp.raise_for_status()
         return resp.json()
 

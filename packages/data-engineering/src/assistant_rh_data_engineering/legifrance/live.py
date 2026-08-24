@@ -3,7 +3,8 @@
 La TOC ``lawDecree``/``tableMatieres`` signale la version courante, mais ne
 constitue pas un artefact de contenu. Ce module transforme la réponse officielle
 ``consult/getArticle`` en un bundle bronze/silver/gold et réconcilie les anciens
-identifiants JORFARTI avec le CID chronique LEGIARTI retourné par l'API.
+identifiants JORFARTI avec le CID chronique LEGIARTI lorsque l'API en retourne
+un. Pour certains textes LODA, JORFARTI reste l'identité stable officielle.
 """
 
 from __future__ import annotations
@@ -109,14 +110,14 @@ def _canonical_link(link: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def canonical_article_from_response(expected: CodeArticle, response: Mapping[str, Any]) -> CodeArticle:
-    """Remplace l'identité TOC JORFARTI par le CID chronique de getArticle."""
+    """Retient l'identité stable LEGIARTI/JORFARTI fournie par getArticle."""
     article = _article_payload(response)
     version_id = str(article.get("id") or expected.version_id or expected.cid).strip().upper()
     cid = str(article.get("cid") or expected.cid).strip().upper()
     if not version_id.startswith("LEGIARTI"):
         raise RuntimeError(f"getArticle({expected.version_id or expected.cid}) sans version_id LEGIARTI exploitable.")
-    if not cid.startswith("LEGIARTI"):
-        raise RuntimeError(f"getArticle({version_id}) sans CID chronique LEGIARTI (reçu: {cid or 'vide'}).")
+    if not cid.startswith(("LEGIARTI", "JORFARTI")):
+        raise RuntimeError(f"getArticle({version_id}) sans CID article exploitable (reçu: {cid or 'vide'}).")
     aliases = {
         str(alias).strip().upper()
         for alias in (*expected.alias_ids, expected.cid, expected.version_id, version_id, cid)
