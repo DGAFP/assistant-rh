@@ -951,3 +951,140 @@ convertit qu'1 cible sur 3, et le vrai fix de q13 est goldset, pas prompt.
 Le garde-fou « chiffres verbatim » reste défendable sur le principe mais n'a
 rien démontré ici. (3) Prochain levier réel : curation goldset post
 ré-ingestion, avant tout nouveau tuning de prompt.
+
+---
+
+## Run 222 — `baseline_openweight_promoted_20260824` (24/08, terminé, diagnostic uniquement) — contrôle Qwen post-promotion
+
+**Objet** : établir le contrôle apparié avant la bascule staging du générateur
+vers `deepseek-v4-flash`. Le code de #417, #419 et #372 est promu sur staging
+par le merge commit `b3603048`; les workflows de promotion doivent être verts
+avant le lancement. Le smoke automatique #221 (5 questions) ne constitue pas
+une baseline d'adoption.
+
+**Protocole exécuté** : panel `baseline_v1` (98 questions attendues), scope
+`per-question`, config live staging, prompt
+`system_prompt_V6_optimized_v2026-08-20.md`, sélecteur `openweight-large` et
+générateur explicitement fixé à `openweight-large`. Le launcher a fixé par
+erreur l'ancien juge Scaleway `qwen3-235b-a22b-instruct-2507`, vote majoritaire
+à 3, au lieu du souverain courant `mistral-medium-3.5-128b` adopté par #385 ;
+RAGAS sauté. L'override
+générateur identique à la config active les nouvelles gardes de #419 : tout
+fallback invalide le run au lieu d'être crédité au candidat.
+
+**Comparabilité** : #206 utilise le bon juge Mistral maj-3 mais un corpus
+antérieur à la ré-ingestion Service-Public ; #112 utilise Qwen sur 99 questions
+et l'ancien protocole single-shot. Le #222 décrit utilement le pipeline et le
+funnel post-promotion, mais **ne peut pas servir de baseline d'adoption** : le
+contrôle doit être rejoué sous Mistral maj-3.
+
+**Résultats** : 98/98 sans erreur technique, sans fallback générateur et sans
+échec juge ; coût juge 1,7353 € (294 appels Qwen, couverture complète).
+
+| Mesure | Run #222 |
+|---|---:|
+| judge_pass (maj-3) | **0,6327** (62/98) |
+| judge_score moyen | 0,6551 |
+| doc_recall | 0,7024 |
+| hit_rate | 0,7755 |
+| retrieval_gap_rate | 0,2245 |
+
+Le profil temporel n'est pas une panne : les 40 premières questions font
+26/40, contre 25/40, 26/40 et 25/40 aux runs récents #206/#215/#217 sur le
+même ordre. Le creux 61–70 fait 2/10, dans la plage historique 2–6/10 : le
+panel non mélangé regroupe des questions difficiles au milieu du run.
+
+Diagnostic du funnel sur les échecs observés en cours de run : les pertes se
+répartissent entre documents absents du pool initial, documents perdus au
+reranking de sections, golds explicitement retirés par le sélecteur, et
+réponses incomplètes malgré un gold présent dans le contexte final. Deux
+causes concrètes ont été reproduites : (1) q29 MSO est un near-miss ANN à la
+config courante ; un replay isolé le retrouve avec davantage de probes, mais
+**ce n'est pas un levier à rouvrir** : l'ablation consolidée a déjà rejeté
+`ivfflat_probes` 5→15/20 (sur-bruit global pour un gain isolé) ; (2) q181 est
+classée à tort `document_request`, ce qui court-circuite le RAG. À traiter
+séparément de l'A/B générateur afin de ne pas confondre les variables. La q177
+est un faux négatif gold/juge : la réponse candidate restitue correctement
+l'exception sourcée des naissances multiples, absente de la gold.
+
+**Lecture corrigée** : exécution techniquement valide, mais protocole juge
+obsolète. Le score Qwen ne doit pas piloter la décision DeepSeek. Conserver le
+run comme diagnostic de funnel et rejouer le couple contrôle/candidat avec le
+juge souverain Mistral maj-3.
+
+---
+
+## Run 224 — `candidate_dsv4flash_promoted_20260824` (24/08, annulé à 47/98) — candidat Qwen invalide
+
+**Objet** : après réussite du contrôle #222, basculer uniquement
+`rag_config.v3_generator_model` de `openweight-large` vers
+`deepseek-v4-flash`, puis mesurer le générateur adopté sur le même état staging.
+Le sélecteur et le prompt restent respectivement `openweight-large` et
+`system_prompt_V6_optimized_v2026-08-20.md`.
+
+**Protocole exécuté** : strictement identique au contrôle #222, donc avec le
+même override Qwen obsolète, et pour seule variable le générateur
+`deepseek-v4-flash`.
+
+**Résultats** : arrêté à 47/98 dès identification de l'erreur de protocole et
+marqué `cancelled` en base ; 31 PASS / 16 FAIL partiels, zéro fallback
+générateur. Ces verdicts partiels ne participent à aucune décision ni gate.
+
+---
+
+## Run 225 — `baseline_openweight_promoted_mistral_20260824` (24/08, terminé) — contrôle officiel post-promotion
+
+**Protocole figé** : panel `baseline_v1` 98 questions, scope `per-question`,
+config live staging, générateur `openweight-large`, sélecteur
+`openweight-large`, prompt `system_prompt_V6_optimized_v2026-08-20.md`, juge
+souverain Scaleway `mistral-medium-3.5-128b` maj-3 avec rubrique v2, RAGAS
+sauté. Il devient la baseline appariée du candidat DeepSeek rejoué ensuite.
+
+**Résultats** : 98/98 sans erreur technique, sans fallback générateur et sans
+échec juge ; coût juge 3,2891 € (294 appels Mistral, couverture complète).
+
+| Mesure | Run #225 |
+|---|---:|
+| judge_pass (maj-3) | **0,6837** (67/98) |
+| judge_score moyen | 0,6854 |
+| doc_recall | 0,7024 |
+| hit_rate | 0,7755 |
+| retrieval_gap_rate | 0,2245 |
+| judge_pass hors borderline | 0,7000 |
+
+Les agrégats retrieval sont identiques au diagnostic Qwen #222
+(`doc_recall=0,7024`, `hit_rate=0,7755`), mais les sorties ne sont pas figées :
+les 19 flips de verdict portent tous une réponse différente et 9 ont aussi des
+contextes/sources différents. Le +5 PASS ne mesure donc pas isolément le
+changement de juge ; il confirme seulement que #222 ne peut piloter l'adoption.
+L'audit des 7 pertes Mistral trouve 1 échec net justifié (q20), 5 faux négatifs
+probables par exigence de complétude excessive (q1/q176/q186/q660/q926), et un
+cas mixte avec raisonnement de contradiction défectueux (q206). Quatre réponses
+non conformes du sélecteur ont déclenché le fallback sûr top-5 ; aucun item n'a
+échoué techniquement.
+
+**Lecture** : baseline officielle valide pour l'A/B apparié. Le candidat doit
+conserver exactement ce juge Mistral maj-3, le même panel et le même funnel ;
+seul `v3_generator_model` passe à `deepseek-v4-flash`.
+
+---
+
+## Run 226 — `candidate_dsv4flash_promoted_mistral_20260824` (24/08, en cours) — candidat officiel DeepSeek
+
+**Protocole figé** : strictement identique au contrôle #225 — panel
+`baseline_v1` 98 questions, scope `per-question`, sélecteur
+`openweight-large`, prompt V6, juge Scaleway
+`mistral-medium-3.5-128b` maj-3 avec rubrique v2, RAGAS sauté — avec pour
+seule variable le générateur `deepseek-v4-flash`. Baseline appariée : **#225** ;
+gates intégrés sur `judge_pass_rate` et `doc_recall_avg`, et invalidation au
+moindre fallback générateur.
+
+**Lancement** : démarré à 11:44 UTC depuis le commit `530dd68` (même code
+évalué que #225). Le préflight config en base confirme que le diff complet
+contre #225 se limite à `generation.model` : `openweight-large` →
+`deepseek-v4-flash`. Le run enregistré porte bien `judge_provider=scaleway`,
+`judge_model=mistral-medium-3.5-128b`, `judge_votes=3`, sélecteur
+`openweight-large` et l'ajustement explicite
+`generator_model=deepseek-v4-flash`.
+
+**Résultats** : à compléter après le run.
