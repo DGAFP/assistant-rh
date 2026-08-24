@@ -7,6 +7,7 @@ du pipeline où il apparaît encore :
       → rerank (v3_chunks_after_rerank)
       → agregation (v3_context_items_full, les ~20 sections proposées au selector)
       → selector (v3_selector_kept_indices)
+      → context builder (budget et limite de sections)
       → sources (retrieved, les sources finales affichées)
 
 Les fonctions sont pures (dict → dataclass) : elles acceptent indifféremment
@@ -22,7 +23,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-STAGES = ("retrieval", "rerank", "agregation", "selector", "sources")
+STAGES = ("retrieval", "rerank", "agregation", "selector", "context_builder", "sources")
 
 # Verdict par pattern : "ok" ou l'étape où le document attendu disparaît.
 VERDICT_LABELS = {
@@ -31,6 +32,7 @@ VERDICT_LABELS = {
     "perdu_rerank": "perdu au rerank",
     "perdu_agregation": "perdu à l'agrégation (hors top sections)",
     "ecarte_selector": "écarté par le selector",
+    "perdu_context_builder": "perdu au ContextBuilder (budget/limite)",
 }
 
 
@@ -116,7 +118,7 @@ class RunDiagnosis:
         de la sortie est la plus actionnable."""
         if not self.patterns:
             return "non_evalue"
-        order = ["absent_retrieval", "perdu_rerank", "perdu_agregation", "ecarte_selector", "ok"]
+        order = ["absent_retrieval", "perdu_rerank", "perdu_agregation", "ecarte_selector", "perdu_context_builder", "ok"]
         failing = [diag.verdict for diag in self.patterns if diag.verdict != "ok"]
         if not failing:
             return "ok"
@@ -175,8 +177,10 @@ def diagnose_pattern(
             diag.in_final_sources = True
             break
 
-    if diag.in_final_sources or diag.kept_by_selector:
+    if diag.in_final_sources:
         diag.verdict = "ok"
+    elif diag.kept_by_selector:
+        diag.verdict = "perdu_context_builder"
     elif diag.context_index is not None:
         diag.verdict = "ecarte_selector"
     elif diag.rerank_rank is not None:

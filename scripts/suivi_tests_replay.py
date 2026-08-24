@@ -11,7 +11,7 @@ Deux modes :
   report  Diagnostique une campagne DÉJÀ loggée dans ``chat_runs`` (aucun
           appel LLM) : pour chaque question, indique l'étape du pipeline où
           le document attendu disparaît (retrieval → rerank → agrégation →
-          selector → sources finales).
+          selector → ContextBuilder → sources finales).
 
 Exemples :
 
@@ -25,6 +25,8 @@ Exemples :
 
 Le mapping question → documents attendus vient de la colonne Grist
 ``expected_docs`` si elle existe, sinon de ``config/suivi_tests_expected_docs.json``.
+Chaque run le fige dans ``chat_runs.filters`` pour rendre les rapports
+reproductibles même si Grist change ensuite.
 """
 
 from __future__ import annotations
@@ -35,8 +37,9 @@ import os
 import sys
 import time
 import uuid
-from datetime import date
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Mapping
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
@@ -51,6 +54,7 @@ from src.suivi_tests.diagnose import diagnose_run, format_diagnosis_line  # noqa
 
 DEFAULT_DSN_ENV = "SCW_POSTGRES_DSN_STAGING"
 CAMPAIGN_USER_GROUP = "suivi-tests"
+EXPECTED_PATTERNS_FILTER_KEY = "suivi_tests_expected_patterns"
 
 
 def _resolve_dsn(dsn_env: str) -> str:
@@ -67,6 +71,101 @@ def _print_summary(verdicts: dict[str, int]) -> None:
         print(f"  {verdict:<45} {count}")
 
 
+def _record_id_from_conversation_id(conversation_id: str) -> int:
+    try:
+        return int(conversation_id.rsplit("-", 1)[-1])
+    except ValueError:
+        return -1
+
+
+def _parse_filters(value: Any) -> dict[str, Any]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            return {}
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _filters_with_expected_patterns(value: Any, patterns: list[str]) -> str:
+    """Ajoute au snapshot du run les attendus exacts utilisés en direct."""
+    filters = _parse_filters(value)
+    filters[EXPECTED_PATTERNS_FILTER_KEY] = list(patterns)
+    return json.dumps(filters, ensure_ascii=False)
+
+
+def _stored_expected_patterns(value: Any) -> list[str] | None:
+    """Relit les attendus figés dans ``chat_runs.filters``.
+
+    ``None`` signifie que le run est ancien et ne porte pas encore ce snapshot;
+    une liste vide est au contraire un attendu explicitement vide.
+    """
+    filters = _parse_filters(value)
+    if EXPECTED_PATTERNS_FILTER_KEY not in filters:
+        return None
+    patterns = filters[EXPECTED_PATTERNS_FILTER_KEY]
+    if not isinstance(patterns, list):
+        return None
+    return [str(pattern).strip() for pattern in patterns if str(pattern).strip()]
+
+
+def _load_report_expected_docs(args: argparse.Namespace, rows: list[Mapping[str, Any]]) -> dict[int, list[str]]:
+    """Résout les attendus des anciens runs, Grist primant sur le JSON.
+
+    Les nouveaux runs utilisent en priorité leur snapshot par ligne; ce
+    mapping ne sert donc qu'aux campagnes historiques.
+    """
+    expected = load_expected_docs(Path(args.expected_config))
+    legacy_ids = {
+        _record_id_from_conversation_id(str(row.get("conversation_id") or ""))
+        for row in rows
+        if _stored_expected_patterns(row.get("filters")) is None
+    }
+    legacy_ids.discard(-1)
+    if not legacy_ids:
+        return expected
+    try:
+        questions = fetch_campaign_questions(
+            grist_doc_id=args.grist_doc,
+            grist_table_id=args.grist_table,
+            expected_config=Path(args.expected_config),
+            only_ids=legacy_ids,
+        )
+    except Exception as exc:  # le JSON reste un repli exploitable hors Grist
+        print(f"[warn] Lecture Grist impossible pour les runs historiques, repli sur le JSON: {type(exc).__name__}: {exc}")
+        return expected
+    expected.update({question.record_id: list(question.expected_patterns) for question in questions})
+    return expected
+
+
+def _default_session_id() -> str:
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    return f"suivi-tests-{timestamp}-{uuid.uuid4().hex[:6]}"
+
+
+def _assert_logging_persisted(engine: Any, *, turn_id: str, expected_trace_events: int) -> None:
+    """Fait échouer le tour si les loggers best-effort n'ont rien persisté."""
+    import sqlalchemy as sa
+
+    with engine.connect() as conn:
+        run_logged = bool(
+            conn.execute(
+                sa.text("SELECT EXISTS (SELECT 1 FROM chat_runs WHERE turn_id = :turn_id)"),
+                {"turn_id": turn_id},
+            ).scalar_one()
+        )
+        trace_count = int(
+            conn.execute(
+                sa.text("SELECT COUNT(*) FROM rag_trace_events WHERE turn_id = :turn_id"),
+                {"turn_id": turn_id},
+            ).scalar_one()
+        )
+    if not run_logged:
+        raise RuntimeError(f"chat_runs non persisté pour turn_id={turn_id}")
+    if trace_count < expected_trace_events:
+        raise RuntimeError(f"rag_trace_events incomplets pour turn_id={turn_id}: {trace_count}/{expected_trace_events}")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # report — diagnostic d'une campagne existante dans chat_runs
 # ─────────────────────────────────────────────────────────────────────────────
@@ -76,15 +175,13 @@ def cmd_report(args: argparse.Namespace) -> int:
     import sqlalchemy as sa
 
     engine = sa.create_engine(_resolve_dsn(args.dsn_env))
-    expected = load_expected_docs(Path(args.expected_config))
-
     with engine.connect() as conn:
         rows = (
             conn.execute(
                 sa.text(
                     """
                     SELECT conversation_id, question, v3_chunks_raw, v3_chunks_after_rerank,
-                           v3_context_items_full, v3_selector_kept_indices, retrieved
+                           v3_context_items_full, v3_selector_kept_indices, retrieved, filters
                     FROM chat_runs WHERE session_id = :sid ORDER BY ts
                     """
                 ),
@@ -95,17 +192,16 @@ def cmd_report(args: argparse.Namespace) -> int:
         )
     if not rows:
         raise SystemExit(f"Aucun run pour session_id={args.session_id!r} sur {args.dsn_env}.")
+    expected = _load_report_expected_docs(args, rows)
 
     verdicts: dict[str, int] = {}
     payload: list[dict[str, object]] = []
     print(f"== Diagnostic campagne {args.session_id} ({len(rows)} runs) ==\n")
     for row in rows:
         conversation_id = str(row["conversation_id"] or "")
-        try:
-            record_id = int(conversation_id.rsplit("-", 1)[-1])
-        except ValueError:
-            record_id = -1
-        patterns = expected.get(record_id, [])
+        record_id = _record_id_from_conversation_id(conversation_id)
+        stored_patterns = _stored_expected_patterns(row.get("filters"))
+        patterns = stored_patterns if stored_patterns is not None else expected.get(record_id, [])
         if not patterns:
             verdicts["non évalué (pas de doc attendu défini)"] = verdicts.get("non évalué (pas de doc attendu défini)", 0) + 1
             if args.verbose:
@@ -191,10 +287,16 @@ def _replay_one(
         legal_refs_v3=legal_refs_v3,
         trace_id=trace_id,
     )
+    row["filters"] = _filters_with_expected_patterns(row.get("filters"), question.expected_patterns)
     if engine is not None:
         log_run(row, engine=engine)
         trace_events = (result.metadata if result else {}).get("rag_trace_events", [])
         log_trace_events(trace_events, turn_id=turn_id, trace_id=trace_id, engine=engine, env_label=env_label)
+        _assert_logging_persisted(
+            engine,
+            turn_id=turn_id,
+            expected_trace_events=sum(1 for event in trace_events if isinstance(event, dict)),
+        )
     return row
 
 
@@ -225,8 +327,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     rag_config = runtime_config_to_rag_config(runtime_config)
     pipe = create_pipeline(config=rag_config, dsn=dsn)
     engine = None if args.dry_run else create_engine_from_env()
+    if not args.dry_run and engine is None:
+        raise SystemExit(f"Connexion impossible à {args.dsn_env}: campagne annulée avant tout appel LLM.")
 
-    session_id = args.session_id or f"suivi-tests-{date.today():%Y%m%d}"
+    session_id = args.session_id or _default_session_id()
     print(f"== Rejeu {len(questions)} questions → session_id={session_id} ({args.dsn_env}{', dry-run' if args.dry_run else ''}) ==\n")
 
     verdicts: dict[str, int] = {}
@@ -259,7 +363,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     _print_summary(verdicts)
     if not args.dry_run:
         print(f"\nRapport rejouable hors-ligne : scripts/suivi_tests_replay.py report --session-id {session_id} --dsn-env {args.dsn_env}")
-    return 0
+    return 1 if verdicts.get("erreur", 0) else 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -269,12 +373,12 @@ def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--dsn-env", default=DEFAULT_DSN_ENV, help=f"Variable d'env portant le DSN Postgres (défaut: {DEFAULT_DSN_ENV})")
     common.add_argument("--expected-config", default=str(DEFAULT_EXPECTED_CONFIG), help="Fichier JSON des documents attendus par question")
+    common.add_argument("--grist-doc", default=None, help="Doc Grist Suivi-Tests (défaut: SUIVI_TESTS_GRIST_DOC_ID ou doc connu)")
+    common.add_argument("--grist-table", default=None, help="Table Grist (défaut: Manuel_testing)")
 
     run_parser = subparsers.add_parser("run", parents=[common], help="Rejouer les questions Grist et logger dans chat_runs")
-    run_parser.add_argument("--session-id", default=None, help="Défaut: suivi-tests-YYYYMMDD (date du jour)")
-    run_parser.add_argument("--grist-doc", default=None, help="Doc Grist Suivi-Tests (défaut: SUIVI_TESTS_GRIST_DOC_ID ou doc connu)")
-    run_parser.add_argument("--grist-table", default=None, help="Table Grist (défaut: Manuel_testing)")
-    run_parser.add_argument("--ids", nargs="*", default=None, help="Ne rejouer que ces record_id Grist")
+    run_parser.add_argument("--session-id", default=None, help="Défaut: suivi-tests-YYYYMMDD-HHMMSS-<suffixe>")
+    run_parser.add_argument("--ids", nargs="+", default=None, help="Ne rejouer que ces record_id Grist")
     run_parser.add_argument("--limit", type=int, default=None, help="Limiter le nombre de questions")
     run_parser.add_argument("--dry-run", action="store_true", help="Ne pas écrire dans chat_runs/rag_trace_events")
     run_parser.add_argument("--env-label", default="staging", help="Étiquette env des trace events (défaut: staging)")

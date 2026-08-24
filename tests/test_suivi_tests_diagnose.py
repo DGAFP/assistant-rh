@@ -159,9 +159,9 @@ class TestDiagnoseRun:
         assert diagnosis.patterns[1].verdict == "perdu_rerank"
         assert diagnosis.overall == "perdu_rerank"
 
-    def test_kept_sur_un_item_ulterieur_conserve_le_premier_index(self):
+    def test_kept_sur_un_item_ulterieur_signale_perte_context_builder(self):
         """Plusieurs items du même doc : le premier donne l'index, un item
-        gardé plus loin suffit à valider la sélection."""
+        gardé plus loin prouve le passage du selector, pas l'arrivée finale."""
         doc = _chunk("d1", "Vademecum de gestion", "Le temps partiel")
         row = _row(
             raw=[doc],
@@ -174,7 +174,9 @@ class TestDiagnoseRun:
         diag = diagnosis.patterns[0]
         assert diag.context_index == 0
         assert diag.kept_by_selector
-        assert diag.verdict == "ok"
+        assert not diag.in_final_sources
+        assert diag.verdict == "perdu_context_builder"
+        assert diagnosis.overall == "perdu_context_builder"
 
     def test_sans_pattern_non_evalue(self):
         assert diagnose_run(_row([], [], [], "", []), []).overall == "non_evalue"
