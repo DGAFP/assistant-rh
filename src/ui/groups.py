@@ -23,6 +23,10 @@ from dataclasses import dataclass
 # Slug of the administrator group (skips the admin password, sees every page).
 ADMIN_GROUP = "dgafpallianceadmin"
 
+# Slug used for anonymous sessions before a user selects an authenticated group.
+# It must never grant administrator privileges.
+DEFAULT_GROUP = "default"
+
 # Fallback display tuple used when a slug is unknown (matches the historical
 # ``.get(..., ("👤", "#6b7280", slug))`` defaults at the call sites).
 DEFAULT_BADGE = ("👤", "#6b7280")

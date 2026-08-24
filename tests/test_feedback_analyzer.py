@@ -357,6 +357,35 @@ class TestSearchCorpus:
 
         assert fa._search_corpus(engine, "matte", ["159,20 euros"]) is True
 
+    def test_queries_only_the_canonical_chunk_text_column(self):
+        queries = []
+
+        class _Result:
+            @staticmethod
+            def first():
+                return None
+
+        class _Connection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def execute(self, query, _params):
+                queries.append(str(query))
+                return _Result()
+
+        class _Engine:
+            @staticmethod
+            def connect():
+                return _Connection()
+
+        assert fa._search_corpus(_Engine(), "matte", ["RIFSEEP"]) is False
+        assert queries
+        assert all("WHERE chunk_text ILIKE :p" in query for query in queries)
+        assert all(" OR text ILIKE" not in query for query in queries)
+
 
 # ---------------------------------------------------------------------------
 # _classify_from_flags – arbre de décision

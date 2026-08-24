@@ -26,11 +26,31 @@ from .config import SelectorConfig
 from .db_helpers import load_prompt
 from .llm_client import LLMClient
 from .ministry_scope import MinistrySource, render_ministry_prompt
-from .models import AggregatedSection, ContextItem
+from .models import AggregatedSection, ContextItem, section_document_id
 
 logger = logging.getLogger(__name__)
 
 SelectorItem = Union[AggregatedSection, ContextItem]
+
+
+_COMPLEMENTARY_SOURCE_SELECTION_RULE = """
+
+## Redondance et complémentarité
+
+Avant d'éliminer une section comme redondante, identifie l'information précise
+qu'elle apporte. Deux sections sont redondantes uniquement si elles donnent la
+même règle, la même condition ou la même modalité sans apport supplémentaire.
+
+Elles sont complémentaires si chacune apporte un élément distinct utile à la
+réponse : champ d'application, conditions, modalités, autorité compétente,
+consultation requise, texte de mise en œuvre ou déclinaison ministérielle.
+Le fait de traiter du même sujet, ou qu'une source soit prioritaire, ne suffit
+jamais à rendre une autre source redondante.
+
+Applique le même test de pertinence à tous les éditeurs. La hiérarchie des
+sources sert uniquement à départager deux passages réellement équivalents.
+Garde toutes les sections directement pertinentes dont l'apport est distinct.
+"""
 
 
 @dataclass
@@ -112,7 +132,7 @@ class ContextSelector:
         """
         Filter *sections* through the LLM selector.
 
-        Returns the kept subset.  If disabled or on failure, returns all
+        Returns the kept subset. If disabled or on failure, returns all
         *sections* unchanged.
         """
         self._reset()
@@ -131,7 +151,12 @@ class ContextSelector:
                 self._config.prompt_name,
                 "selector.md",
                 default=_DEFAULT_PROMPT,
-            )
+            ) or _DEFAULT_PROMPT
+            # DB-backed prompts can lag behind the versioned fallback. Apply
+            # the same redundancy test to every request, including when all
+            # complementary sections come from a single publisher.
+            if "## Redondance et complémentarité" not in prompt_template:
+                prompt_template = f"{prompt_template.rstrip()}\n{_COMPLEMENTARY_SOURCE_SELECTION_RULE}"
             # Resolve {ministere_*} before format_map fills {query}/{context}.
             prompt_template = render_ministry_prompt(prompt_template, ministry)
 
@@ -165,10 +190,7 @@ class ContextSelector:
                 )
                 self._last_decisions = {
                     "kept": [],
-                    "removed": [
-                        {"idx": i, "heading": (sections[i].heading or "")[:80], "publisher": sections[i].publisher or ""}
-                        for i in range(len(sections))
-                    ],
+                    "removed": [_decision_entry(i, sections[i]) for i in range(len(sections))],
                     "reason": reason,
                     "all_rejected": True,
                 }
@@ -191,8 +213,8 @@ class ContextSelector:
             served_set = set(served_ids)
             removed_ids = [i for i in range(len(sections)) if i not in served_set]
             self._last_decisions = {
-                "kept": [{"idx": i, "heading": (sections[i].heading or "")[:80], "publisher": sections[i].publisher or ""} for i in served_ids],
-                "removed": [{"idx": i, "heading": (sections[i].heading or "")[:80], "publisher": sections[i].publisher or ""} for i in removed_ids],
+                "kept": [_decision_entry(i, sections[i]) for i in served_ids],
+                "removed": [_decision_entry(i, sections[i]) for i in removed_ids],
                 "reason": reason,
             }
             if len(served_ids) > len(selected_ids):
@@ -257,6 +279,17 @@ class ContextSelector:
 
 
 # ── Pure helper functions (stateless) ──────────────────────────────────
+
+
+def _decision_entry(idx: int, section: AggregatedSection) -> dict:
+    """One kept/removed trace entry, joinable to gold doc_ids by eval tooling."""
+    return {
+        "idx": idx,
+        "heading": (section.heading or "")[:80],
+        "publisher": section.publisher or "",
+        "section_id": str(section.section_id) if section.section_id else "",
+        "document_id": section_document_id(section),
+    }
 
 
 def _parse_response(raw: str, n_items: int) -> _ParseResult:

@@ -111,6 +111,21 @@ def test_retriever_resolves_section_id_from_service_public_short_id(monkeypatch)
     assert "s.heading_path = t.section_path" in section_sql
 
 
+def test_retriever_falls_back_for_null_migrated_service_public_section_id(monkeypatch):
+    retriever = Retriever(RetrievalConfig(), dsn="unused")
+    monkeypatch.setattr(
+        retriever,
+        "_get_table_columns",
+        lambda _table_name: {"hash_id", "short_id", "section_path", "section_id"},
+    )
+
+    section_sql = retriever._section_select_sql(CHUNK_TABLES["service_public"])
+
+    assert "COALESCE" in section_sql
+    assert "t.section_id" in section_sql
+    assert "d.short_id = t.short_id" in section_sql
+
+
 def test_retriever_exposes_document_metadata_from_short_id(monkeypatch):
     retriever = Retriever(RetrievalConfig(), dsn="unused")
     monkeypatch.setattr(

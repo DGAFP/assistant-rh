@@ -29,7 +29,9 @@ from typing import Any
 import psycopg
 from assistant_rh_rag_pipeline import PipelineResult, create_pipeline
 from assistant_rh_rag_pipeline.admin import get_rag_config, runtime_config_to_rag_config
-from assistant_rh_rag_pipeline.config import RAGConfig
+from assistant_rh_rag_pipeline.config import LLMProvider, RAGConfig
+from assistant_rh_rag_pipeline.db_helpers import get_prompt_content, list_prompts
+from assistant_rh_rag_pipeline.models import metadata_document_id
 from assistant_rh_rag_pipeline.query_processor import _fold as _fold_text
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
@@ -43,11 +45,19 @@ DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
 # était le backup validé du même spot-check (« comportement proche ») et
 # dispose d'un endpoint ZDR (xAI). claude-sonnet-4.5 (ZDR Bedrock) reste
 # écarté : over-strict ; glm-5.2 (ZDR AtlasCloud) : verdicts incohérents.
-# Surchargeable au run (--judge-model / OPENROUTER_JUDGE_MODEL).
-DEFAULT_JUDGE_PROVIDER = "openrouter"
+# Surchargeable au run (--judge-provider / --judge-model). Défaut SOUVERAIN :
+# scaleway/qwen3 — l'incident du run #189 (17/08/2026) a montré qu'un launcher
+# omettant les flags produisait un run jugé grok-4.5 single-shot, non
+# comparable aux baselines officielles (+5 pts de biais mesuré à réponses
+# identiques). OpenRouter reste disponible explicitement via --judge-provider.
+DEFAULT_JUDGE_PROVIDER = "scaleway"
 DEFAULT_JUDGE_MODEL = "x-ai/grok-4.5"
 DEFAULT_JUDGE_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_SCALEWAY_JUDGE_MODEL = "qwen3-235b-a22b-instruct-2507"
+# Bascule du 19/08/2026 (banc des juges, journal) : mistral-medium-3.5 —
+# accord 88,8 % avec l'ancien protocole à rubrique amendée, calage de sévérité
+# identique, 1 % de votes partagés, ~20 s/verdict maj-3 (10× plus rapide).
+# L'ancien souverain qwen3-235b reste accessible via SCALEWAY_JUDGE_MODEL.
+DEFAULT_SCALEWAY_JUDGE_MODEL = "mistral-medium-3.5-128b"
 ALLOWED_JUDGE_VOTES = frozenset({1, 3})
 # RAGAS reste sur Scaleway/OpenAI-compat (le SDK ragas attend un endpoint
 # embeddings+LLM compatible; Claude via OpenRouter n'y est pas branché).
@@ -236,8 +246,11 @@ def _git_sha() -> str:
         return ""
 
 
-def config_fingerprint(config: RAGConfig) -> str:
-    payload = json.dumps(config.to_dict(), sort_keys=True, ensure_ascii=False, default=str)
+def config_fingerprint(config: RAGConfig, extra: dict[str, Any] | None = None) -> str:
+    payload_source: dict[str, Any] = config.to_dict()
+    if extra:
+        payload_source = {**payload_source, **extra}
+    payload = json.dumps(payload_source, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -603,7 +616,7 @@ def build_baseline_comparison(
         tags=tags,
         eval_scope=eval_scope,
     )
-    return compare_with_baseline(
+    comparison = compare_with_baseline(
         candidate_aggregate=candidate_aggregate,
         baseline_run=baseline_run,
         goldset_name=goldset_name,
@@ -612,6 +625,34 @@ def build_baseline_comparison(
         max_judge_pass_rate_drop=args.max_judge_pass_rate_drop,
         max_doc_recall_drop=args.max_doc_recall_drop,
     )
+    # Double lecture hors questions au juge instable (informative, pas un
+    # gate) : borne l'effet réel quand le delta complet est dans la bande de
+    # bruit. Le taux baseline est recalculé depuis ses items pour couvrir les
+    # runs antérieurs à cette clé d'agrégat.
+    # Row factory agnostique (la connexion du run est en dict_row).
+    excluded = [
+        row["id"] if isinstance(row, dict) else row[0]
+        for row in conn.execute("SELECT id FROM goldset_questions_v2 WHERE %s = ANY(tags)", (BORDERLINE_TAG,)).fetchall()
+    ]
+    baseline_run_id = baseline_run.get("id")
+    if excluded and baseline_run_id is not None:
+        row = conn.execute(
+            """SELECT count(*) FILTER (WHERE judge_result->>'pass' = 'true')::float
+                      / NULLIF(count(*) FILTER (WHERE judge_result->>'status' = 'completed'), 0) AS rate
+               FROM rag_quality_eval_items
+               WHERE run_id = %s AND NOT (question_id = ANY(%s))
+                 AND judge_result->>'status' = 'completed'""",
+            (baseline_run_id, excluded),
+        ).fetchone()
+        baseline_excl = (row.get("rate") if isinstance(row, dict) else row[0]) if row else None
+        candidate_excl = candidate_aggregate.get("judge_pass_rate_excl_borderline")
+        comparison["judge_borderline"] = {
+            "excluded_question_ids": sorted(excluded),
+            "candidate_pass_rate_excl": candidate_excl,
+            "baseline_pass_rate_excl": baseline_excl,
+            "delta_excl": (candidate_excl - baseline_excl) if candidate_excl is not None and baseline_excl is not None else None,
+        }
+    return comparison
 
 
 def baseline_gate_failed(args: argparse.Namespace, comparison: dict[str, Any]) -> bool:
@@ -1058,6 +1099,124 @@ def deterministic_metrics(gold_sources: list[str], retrieved_ids: list[str], ali
     }
 
 
+# Funnel d'observabilité retrieval (issue selector v4, 08/2026) : recall mesuré
+# à chaque étage, par tentative. Les k sections tracés encadrent la fenêtre du
+# selector (12 candidats évalués, 20 sections agrégées), puis le dernier étage
+# reflète le contexte effectivement produit par ContextBuilder.
+_STAGE_SECTION_KS = (12, 20)
+
+
+def _attempt_stage_doc_ids(attempt: dict[str, Any]) -> dict[str, list[str]]:
+    """Doc ids présents à chaque étage d'une tentative de retrieval.
+
+    Étages : ``pool`` (chunks avant rerank), ``sections_top{k}`` (sections
+    agrégées post-rerank, ordre présenté au selector), ``selector_kept``
+    (sections retenues par le selector) et ``context_builder_output`` (items
+    effectivement servis). Un étage absent de la trace est omis, pas inventé.
+    """
+    stages: dict[str, list[str]] = {}
+
+    chunks = attempt.get("chunks_before_rerank")
+    if isinstance(chunks, list):
+        stages["pool"] = [str(c.get("doc_id")) for c in chunks if isinstance(c, dict) and c.get("doc_id")]
+
+    aggregated = attempt.get("aggregated_sections")
+    if isinstance(aggregated, list):
+        for k in _STAGE_SECTION_KS:
+            stages[f"sections_top{k}"] = [str(s.get("document_id")) for s in aggregated[:k] if isinstance(s, dict) and s.get("document_id")]
+    else:
+        aggregated = []
+
+    kept = ((attempt.get("selector") or {}).get("decisions") or {}).get("kept")
+    if isinstance(kept, list):
+        kept_ids: list[str] = []
+        for entry in kept:
+            if not isinstance(entry, dict):
+                continue
+            doc_id = entry.get("document_id")
+            if not doc_id:
+                idx = entry.get("idx")
+                if isinstance(idx, int) and 0 <= idx < len(aggregated):
+                    doc_id = aggregated[idx].get("document_id")
+            if doc_id:
+                kept_ids.append(str(doc_id))
+        stages["selector_kept"] = kept_ids
+
+    context_items = attempt.get("context_items_ref")
+    if isinstance(context_items, list):
+        context_doc_ids: list[str] = []
+        for item in context_items:
+            if not isinstance(item, dict):
+                continue
+            nested_metadata = item.get("metadata")
+            doc_id = metadata_document_id(item, nested_metadata if isinstance(nested_metadata, dict) else {})
+            if doc_id:
+                context_doc_ids.append(doc_id)
+        stages["context_builder_output"] = context_doc_ids
+    return stages
+
+
+def stage_retrieval_metrics(
+    metadata: dict[str, Any],
+    gold_sources: list[str],
+    aliases: dict[str, set[str]] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Hit/recall par étage du funnel retrieval, pour chaque tentative tracée.
+
+    Répond à « le gold a-t-il été perdu au retrieval, à l'agrégation, à la coupe
+    top-k ou au selector ? » sans rejouer le pipeline. Le contexte final servi
+    reste mesuré par ``deterministic_metrics`` (inchangé) : ces étages sont un
+    diagnostic amont, pas un gate.
+    """
+    attempts = metadata.get("retrieval_attempts")
+    if not isinstance(attempts, list):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for position, attempt in enumerate(attempts):
+        if not isinstance(attempt, dict):
+            continue
+        name = str(attempt.get("name") or f"attempt_{position}")
+        attempt_stages: dict[str, Any] = {}
+        for stage, ids in _attempt_stage_doc_ids(attempt).items():
+            raw_doc_count = len(_stable_unique([str(doc_id).strip() for doc_id in ids if str(doc_id).strip()]))
+            metrics = deterministic_metrics(gold_sources, ids, aliases=aliases)
+            attempt_stages[stage] = {
+                "hit_rate": metrics["hit_rate"],
+                "doc_recall": metrics["doc_recall"],
+                "doc_count": raw_doc_count,
+            }
+        if attempt_stages:
+            out[name] = attempt_stages
+    return out
+
+
+def _aggregate_stage_metrics(items: list[EvalItem]) -> dict[str, Any]:
+    """Moyennes par tentative et par étage sur les items du run."""
+    collected: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for item in items:
+        stages = (item.deterministic_metrics or {}).get("stages")
+        if not isinstance(stages, dict):
+            continue
+        for attempt_name, attempt_stages in stages.items():
+            if not isinstance(attempt_stages, dict):
+                continue
+            for stage, metrics in attempt_stages.items():
+                if isinstance(metrics, dict):
+                    collected.setdefault(attempt_name, {}).setdefault(stage, []).append(metrics)
+    aggregated: dict[str, Any] = {}
+    for attempt_name, attempt_stages in collected.items():
+        aggregated[attempt_name] = {}
+        for stage, metric_list in attempt_stages.items():
+            hit_rates = [m["hit_rate"] for m in metric_list if m.get("hit_rate") is not None]
+            recalls = [m["doc_recall"] for m in metric_list if m.get("doc_recall") is not None]
+            aggregated[attempt_name][stage] = {
+                "n": len(metric_list),
+                "hit_rate_avg": sum(hit_rates) / len(hit_rates) if hit_rates else None,
+                "doc_recall_avg": sum(recalls) / len(recalls) if recalls else None,
+            }
+    return aggregated
+
+
 def _metric_average(items: list[EvalItem], key: str, source: str = "deterministic_metrics") -> float | None:
     values: list[float] = []
     for item in items:
@@ -1082,6 +1241,27 @@ def _judge_dimension_average(items: list[EvalItem], key: str) -> float | None:
     if not values:
         return None
     return sum(values) / len(values)
+
+
+BORDERLINE_TAG = "juge_borderline"
+
+
+def borderline_question_ids(questions: list[GoldsetQuestion]) -> list[int]:
+    """Questions marquées instables au juge (curation du 18/08/2026).
+
+    Le tag est posé sur les questions dont le verdict a flippé entre runs à
+    réponse quasi identique (bruit juge/générateur ~±2-3 flips par run, du
+    même ordre que les effets recherchés). La double lecture avec/sans ces
+    questions borne l'effet réel d'un changement ; le gate officiel reste sur
+    le taux complet."""
+    return sorted(q.id for q in questions if BORDERLINE_TAG in (q.tags or []))
+
+
+def judge_pass_rate_excluding(items: list[EvalItem], excluded_ids: set[int]) -> float | None:
+    judged = [item for item in items if item.judge_result.get("status") == "completed" and item.question_id not in excluded_ids]
+    if not judged:
+        return None
+    return sum(1 for item in judged if item.judge_result.get("pass") is True) / len(judged)
 
 
 def aggregate_items(items: list[EvalItem]) -> dict[str, Any]:
@@ -1113,6 +1293,7 @@ def aggregate_items(items: list[EvalItem]) -> dict[str, Any]:
         "ragas_faithfulness_avg": _metric_average(items, "faithfulness", "ragas_metrics"),
         "ragas_context_precision_avg": _metric_average(items, "context_precision", "ragas_metrics"),
         "ragas_context_recall_avg": _metric_average(items, "context_recall", "ragas_metrics"),
+        "stage_metrics": _aggregate_stage_metrics(items),
         "token_usage": _aggregate_token_usage(items),
     }
 
@@ -1122,6 +1303,8 @@ def aggregate_items(items: list[EvalItem]) -> dict[str, Any]:
 # Albert est traité séparément comme gratuit dans l'agrégat.
 _LLM_PRICE_EUR_PER_MTOK: dict[tuple[str, str], tuple[float, float]] = {
     ("scaleway", "qwen3-235b-a22b-instruct-2507"): (0.75, 2.25),
+    ("scaleway", "mistral-medium-3.5-128b"): (1.50, 7.50),
+    ("scaleway", "mistral-small-3.2-24b-instruct-2506"): (0.15, 0.35),
     ("scaleway", "llama-3.3-70b-instruct"): (0.90, 0.90),
     ("scaleway", "gpt-oss-120b"): (0.15, 0.60),
 }
@@ -1458,6 +1641,18 @@ DEFAULT_JUDGE_RUBRIC = JudgeRubric(
 def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any], rubric: JudgeRubric = DEFAULT_JUDGE_RUBRIC) -> dict[str, Any]:
     dimensions_raw = parsed.get("dimensions")
     dimensions = dimensions_raw if isinstance(dimensions_raw, dict) else {}
+    if os.getenv("JUDGE_DEBUG_PARSED"):
+        import json as _json
+
+        print("JUDGE_DEBUG parsed:", _json.dumps(parsed, ensure_ascii=False, default=str)[:600], flush=True)
+    if not dimensions:
+        # Repli tolérant : certains modèles (banc des juges du 18/08 —
+        # deepseek-v4-flash) rendent les dimensions À PLAT au lieu de les
+        # imbriquer sous "dimensions". Sans ce repli, toutes les dimensions
+        # valent 0 et le verdict est un quality_gate_failed artefactuel.
+        flat = {dim: parsed.get(dim) for dim in rubric.dimension_weights if parsed.get(dim) is not None}
+        if flat:
+            dimensions = flat
     normalized_dimensions = {dim: _dimension_score(dimensions, dim) for dim in rubric.dimension_weights}
     weighted_score = sum(normalized_dimensions[dim] * weight for dim, weight in rubric.dimension_weights.items())
     raw_model_score = _safe_float(parsed.get("score"))
@@ -1608,8 +1803,20 @@ def judge_answer(
         "(4) material_contradiction requires quoting the candidate sentence and the gold sentence "
         "that directly conflict; if you cannot quote both, it is not material. "
         "Return only valid JSON with keys: score, pass, failure_category, material_contradiction, "
-        "dimensions, missing_required_points, contradictions, rationale, source_support."
+        "dimensions, missing_required_points, contradictions, rationale, source_support. "
+        "Two additional strict rules: (1) If the candidate answer states that the information was not found, "
+        "is not specified in the sources, or cannot be determined, while the gold answer contains a substantive "
+        "answer, this is ALWAYS a failure: set gold_answer_alignment and completeness to 0.0 and failure_category "
+        "to retrieval_gap — an honest abstention is still a failed answer when the gold expects one. "
+        "(2) Before reporting material_contradiction or contradictions, normalize units, periods and formulations "
+        "(e.g. '25 jours ouvres' for a 5-day week EQUALS '5 semaines'; '6 semaines avant + 10 apres' EQUALS "
+        "'16 semaines'): only report a contradiction when the facts are genuinely incompatible after normalization."
     )
+    # Amendements de rubrique injectables (banc des juges du 18-19/08) : permet
+    # de tester une rubrique corrigée sans toucher au protocole officiel.
+    rubric_addendum = os.getenv("JUDGE_RUBRIC_ADDENDUM", "").strip()
+    if rubric_addendum:
+        system = f"{system}\n{rubric_addendum}"
     usage = _TokenUsage()
     usage_captured = False
     try:
@@ -1636,6 +1843,16 @@ def judge_answer(
         usage_captured = usage.record(getattr(response, "usage", None))
         content = response.choices[0].message.content or "{}"
         parsed = _extract_json_object(content)
+        if not ({"score", "dimensions"} & set(parsed)):
+            # Certains modèles reasoning (banc du 18/08 : deepseek-v4-flash)
+            # rendent un objet vide/minimal sous response_format=json_object
+            # (décodage contraint vs raisonnement). Un retry SANS contrainte
+            # récupère le verdict complet ; le parse tolérant fait le reste.
+            create_kwargs.pop("response_format", None)
+            response = client.chat.completions.create(**create_kwargs)
+            usage_captured = usage.record(getattr(response, "usage", None)) or usage_captured
+            content = response.choices[0].message.content or "{}"
+            parsed = _extract_json_object(content)
         parsed["status"] = "completed"
         calibrated = calibrate_judge_result(parsed, deterministic_metrics)
         calibrated["usage"] = usage.as_dict(model, provider, capture_complete=usage_captured)
@@ -1793,6 +2010,7 @@ def run_question(
     scaleway_base_url: str,
     scaleway_api_key: str,
     retrieval_scope: Any = None,
+    reject_generator_fallback: bool = False,
 ) -> EvalItem:
     started = time.perf_counter()
     item = EvalItem(
@@ -1820,6 +2038,20 @@ def run_question(
         metadata["generator_prompt_chars"] = len(generator_user_prompt) + len(generator_system_prompt)
         item.metadata = metadata
         item.deterministic_metrics = deterministic_metrics(question.retrieval_gold, doc_ids, aliases=identifier_aliases)
+        item.deterministic_metrics["stages"] = stage_retrieval_metrics(metadata, question.retrieval_gold, aliases=identifier_aliases)
+
+        if reject_generator_fallback and metadata.get("generator_used_fallback") is True:
+            provider_used = str(metadata.get("generator_provider_used") or "fallback")
+            model_used = str(metadata.get("generator_model_used") or "modèle de fallback")
+            provider_configured = str(metadata.get("generator_provider") or "provider configuré")
+            model_configured = str(metadata.get("generator_model") or "modèle configuré")
+            item.error = (
+                f"generator fallback: réponse servie par {provider_used}/{model_used} au lieu de "
+                f"{provider_configured}/{model_configured} — item invalide pour l'A/B"
+            )
+            item.ragas_metrics = {"status": "skipped", "reason": "generator_fallback"}
+            item.judge_result = {"status": "skipped", "reason": "generator_fallback"}
+            return item
 
         context_texts = [str(context.get("content") or "") for context in contexts if str(context.get("content") or "").strip()]
         if run_ragas:
@@ -1992,6 +2224,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override du modèle du sélecteur (ex: mistral-medium-2508) sans toucher à la config runtime partagée.",
     )
     parser.add_argument(
+        "--selector-provider",
+        default="",
+        choices=["", "albert", "scaleway", "mistral"],
+        help="Override du provider du sélecteur (A/B de fournisseur sans muter la config partagée).",
+    )
+    parser.add_argument(
+        "--generator-model",
+        default="",
+        help="Override du modèle générateur (ex: deepseek-v4-flash) sans toucher à la config runtime partagée.",
+    )
+    parser.add_argument(
+        "--generator-provider",
+        default="",
+        choices=["", "albert", "scaleway", "mistral"],
+        help="Override du provider du générateur.",
+    )
+    parser.add_argument(
+        "--system-prompt-name",
+        default="",
+        help=(
+            "Override du system prompt générateur (nom dans system_prompts) sans toucher à la config runtime "
+            "partagée. Le nom est validé contre la table au démarrage. Invariant du générateur : si le prompt "
+            "ne contient pas le heading « ## Couverture des sources complémentaires », le bloc legacy est "
+            "APPENDU automatiquement — ce flag ne permet donc pas de tester la suppression ou la reformulation "
+            "de cette section."
+        ),
+    )
+    parser.add_argument(
         "--section-rerank-top-k",
         type=int,
         default=None,
@@ -2077,6 +2337,9 @@ def derive_completion_status(items: list[EvalItem], *, judge_enabled: bool, raga
     """
     status = "completed"
     error = ""
+    invalid_fallbacks = [item for item in items if item.error and item.judge_result.get("reason") == "generator_fallback"]
+    if invalid_fallbacks:
+        return "failed", f"generator fallback invalidated {len(invalid_fallbacks)}/{len(items)} evaluated questions"
     if any(item.error for item in items):
         status = "completed_with_errors"
     if items and all(item.error for item in items):
@@ -2120,6 +2383,26 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.selector_model:
         pipeline_config.selector.model = args.selector_model
         config_adjustments.append(f"selector_model={args.selector_model}")
+    if args.selector_provider:
+        pipeline_config.selector.provider = LLMProvider(args.selector_provider)
+        config_adjustments.append(f"selector_provider={args.selector_provider}")
+    if args.generator_model:
+        pipeline_config.generation.model = args.generator_model
+        config_adjustments.append(f"generator_model={args.generator_model}")
+    if args.generator_provider:
+        pipeline_config.generation.provider = LLMProvider(args.generator_provider)
+        config_adjustments.append(f"generator_provider={args.generator_provider}")
+    if args.system_prompt_name:
+        # load_prompt() retombe silencieusement sur generator.md quand le nom
+        # est introuvable ou inactif sur le DSN cible : le run mesurerait le
+        # prompt générique tout en étant consigné sous le nom demandé.
+        if get_prompt_content(args.system_prompt_name, render_today=False) is None:
+            available = ", ".join(list_prompts("generator")) or "(aucun)"
+            raise RuntimeError(
+                f"--system-prompt-name {args.system_prompt_name!r} introuvable ou inactif sur le DSN cible. Prompts générateur actifs : {available}"
+            )
+        pipeline_config.generation.system_prompt_name = args.system_prompt_name
+        config_adjustments.append(f"system_prompt_name={args.system_prompt_name}")
     if args.section_rerank_top_k is not None:
         pipeline_config.aggregation.section_rerank_top_k = args.section_rerank_top_k
         config_adjustments.append(f"section_rerank_top_k={args.section_rerank_top_k}")
@@ -2138,7 +2421,18 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.doc_entire_threshold_wide is not None:
         pipeline_config.context.doc_entire_threshold_wide = args.doc_entire_threshold_wide
         config_adjustments.append(f"doc_entire_threshold_wide={args.doc_entire_threshold_wide}")
-    config_hash = config_fingerprint(pipeline_config)
+    # Le fingerprint doit couvrir le CONTENU du prompt générateur, pas
+    # seulement son nom : le corps vit en base et peut être édité en place —
+    # sinon --skip-if-started dédupliquerait un run post-édition contre le run
+    # pré-édition. {today} n'est pas rendu pour rester stable d'un jour à
+    # l'autre ; la même chaîne de fallback que le générateur est appliquée.
+    resolved_prompt = (
+        get_prompt_content(pipeline_config.generation.system_prompt_name, render_today=False)
+        or get_prompt_content("generator.md", render_today=False)
+        or ""
+    )
+    generator_system_prompt_sha = hashlib.sha256(resolved_prompt.encode("utf-8")).hexdigest()
+    config_hash = config_fingerprint(pipeline_config, extra={"generator_system_prompt_sha": generator_system_prompt_sha})
     git_sha = _git_sha()
     run_label = args.run_label or f"{datetime.now(tz=UTC).strftime('%Y%m%dT%H%M%SZ')}_{args.goldset_name}"
     output_dir = args.output_dir or (DEFAULT_OUTPUT_ROOT / args.goldset_name / run_label)
@@ -2177,6 +2471,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                     "existing_run_id": existing_run["id"],
                     "existing_status": existing_run["status"],
                     "config_fingerprint": config_hash,
+                    "generator_system_prompt_sha": generator_system_prompt_sha,
                     "eval_scope": eval_scope,
                 }
                 if baseline_comparison_requested(args):
@@ -2222,6 +2517,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                         "created_by": "scripts/run_rag_quality_eval.py",
                         "started_at": _now_iso(),
                         "config_adjustments": config_adjustments,
+                        "generator_system_prompt_sha": generator_system_prompt_sha,
                         "dedupe_scope": args.dedupe_scope,
                         "eval_scope": eval_scope,
                         "output_json": str(json_path),
@@ -2239,7 +2535,6 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     items: list[EvalItem] = []
     status = "completed"
     error = ""
-
     item_conn: psycopg.Connection[Any] | None = None
     try:
         if run_id is not None:
@@ -2265,6 +2560,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,
                 retrieval_scope=resolve_question_scope(question, args.ministry_scope),
+                reject_generator_fallback=bool(args.generator_model),
             )
             items.append(item)
             if item_conn is not None and run_id is not None:
@@ -2328,10 +2624,13 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 "judge_model": args.judge_model if not args.skip_judge else "",
                 "ragas_model": args.ragas_model if not args.skip_ragas else "",
                 "config_adjustments": config_adjustments,
+                "generator_system_prompt_sha": generator_system_prompt_sha,
                 "git_sha": git_sha,
                 "dedupe_scope": args.dedupe_scope,
                 "eval_scope": eval_scope,
                 "judge_failed": sum(1 for item in items if item.judge_result.get("status") == "failed"),
+                "judge_borderline_ids": borderline_question_ids(questions),
+                "judge_pass_rate_excl_borderline": judge_pass_rate_excluding(items, set(borderline_question_ids(questions))),
                 "ragas_failed": sum(1 for item in items if item.ragas_metrics.get("status") == "failed"),
             }
         )

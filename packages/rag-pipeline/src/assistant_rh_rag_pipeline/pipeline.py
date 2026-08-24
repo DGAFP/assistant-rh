@@ -30,7 +30,15 @@ from .context_selector import ContextSelector
 from .db_helpers import get_dsn
 from .generator import StreamingGenerator
 from .ministry_scope import MinistrySource, RetrievalScope, resolve_ministry
-from .models import ContextItem, PipelineResult, estimate_tokens, serialize_raw_chunks, serialize_section_chunks
+from .models import (
+    ContextItem,
+    PipelineResult,
+    context_item_document_id,
+    estimate_tokens,
+    section_document_id,
+    serialize_raw_chunks,
+    serialize_section_chunks,
+)
 from .query_processor import QueryProcessor, QueryProcessResult
 from .retriever import Retriever
 from .section_aggregator import SectionAggregator
@@ -213,6 +221,7 @@ class Pipeline:
         trace_id: str | None = None,
         retrieval_scope: RetrievalScope | None = None,
     ) -> PipelineResult:
+        self._generator.begin_request()
         state = _RunState(turn_id=turn_id or "", trace_id=normalize_trace_id(trace_id))
         _record_scope(state, retrieval_scope)
         ministry = resolve_ministry(retrieval_scope)
@@ -335,6 +344,7 @@ class Pipeline:
         *on_status* is an optional callback invoked at each pipeline stage
         (useful for updating a Streamlit loader).
         """
+        self._generator.begin_request()
         state = _RunState(turn_id=turn_id or "", trace_id=normalize_trace_id(trace_id))
         _record_scope(state, retrieval_scope)
         ministry = resolve_ministry(retrieval_scope)
@@ -568,7 +578,7 @@ class Pipeline:
                 "publisher": s.publisher or "",
                 "chunk_count": len(s.chunks),
                 "token_estimate": s.token_estimate,
-                "document_id": str(s.document_id or s.metadata.get("doc_id", "") or ""),
+                "document_id": section_document_id(s),
             }
             for s in sections
         ]
@@ -661,7 +671,7 @@ class Pipeline:
         attempt.context_items_ref = [
             {
                 "section_id": str(it.section_id) if it.section_id else "",
-                "doc_id": str(it.metadata.get("doc_id", "") or ""),
+                "doc_id": context_item_document_id(it),
                 "heading": (it.heading or "")[:80],
                 "publisher": it.publisher or "",
                 "tokens": it.token_estimate,
@@ -774,6 +784,18 @@ class Pipeline:
             "selector_enabled": self.config.selector.enabled,
             "generator_model": self.config.generation.model,
             "generator_provider": self.config.generation.provider.value,
+            # Provider effectivement utilisé (≠ generator_provider si le
+            # FallbackLLMClient a basculé) : sans cette trace, une réponse
+            # servie par le modèle de fallback est indétectable dans les
+            # artefacts et créditée au modèle configuré (revue PR #417).
+            "generator_provider_used": self._generator.provider_used,
+            "generator_fallback_count": self._generator.fallback_count,
+            "generator_used_fallback": self._generator.used_fallback,
+            "generator_model_used": (
+                self.config.generation.fallback_model
+                if self._generator.used_fallback
+                else self.config.generation.model if self._generator.provider_used else None
+            ),
             "embedding_model": self.config.retrieval.embedding_model.value,
             "retrieved_chunks": state.stage_refs.get("retrieved_chunks", []),
             "aggregated_sections": state.stage_refs.get("aggregated_sections", []),

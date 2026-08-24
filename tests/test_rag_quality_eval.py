@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -14,15 +16,18 @@ from src.goldset.eval import (
     GoldsetQuestion,
     aggregate_items,
     artifact_paths,
+    borderline_question_ids,
     build_eval_scope,
     calibrate_judge_result,
     compare_with_baseline,
     config_fingerprint,
     derive_completion_status,
     deterministic_metrics,
+    judge_pass_rate_excluding,
     load_goldset_questions,
     parse_text_list,
     retrieved_doc_ids,
+    stage_retrieval_metrics,
     write_artifacts,
 )
 
@@ -53,6 +58,10 @@ def test_config_fingerprint_is_stable_and_changes_with_config() -> None:
 
     config_b.retrieval.initial_top_k = config_a.retrieval.initial_top_k + 1
     assert config_fingerprint(config_a) != config_fingerprint(config_b)
+    assert config_fingerprint(config_a, extra={"generator_system_prompt_sha": "a"}) != config_fingerprint(
+        config_a,
+        extra={"generator_system_prompt_sha": "b"},
+    )
 
 
 def test_aggregate_items_averages_available_metrics() -> None:
@@ -794,6 +803,21 @@ def test_derive_status_partial_errors_is_completed_with_errors() -> None:
     assert error == ""
 
 
+def test_derive_status_generator_fallback_is_failure_even_when_partial() -> None:
+    fallback = _item(error="generator fallback")
+    fallback.judge_result = {"status": "skipped", "reason": "generator_fallback"}
+
+    status, error = derive_completion_status(
+        [_item(), fallback],
+        judge_enabled=True,
+        ragas_enabled=False,
+        judge_votes=1,
+    )
+
+    assert status == "failed"
+    assert "generator fallback invalidated 1/2" in error
+
+
 def test_derive_status_all_clean_is_completed() -> None:
     status, error = derive_completion_status([_item(), _item()], judge_enabled=True, ragas_enabled=True)
     assert status == "completed"
@@ -1289,6 +1313,59 @@ def test_run_question_records_exact_generator_prompt_size() -> None:
     assert item.metadata["existing"] is True
 
 
+def test_run_question_rejects_generator_fallback_before_judge_and_ragas(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from src.goldset import eval as eval_module
+
+    class _FallbackPipe:
+        last_full_prompt = "user prompt"
+        last_system_prompt = "system"
+
+        def run_with_trace(self, *args, **kwargs):
+            return SimpleNamespace(
+                answer="fallback answer",
+                context_items=[],
+                sources=[],
+                timing={"response_length_tokens": 2},
+                metadata={
+                    "generator_provider": "albert",
+                    "generator_model": "deepseek-v4-flash",
+                    "generator_provider_used": "scaleway",
+                    "generator_model_used": "llama-3.1-70b-instruct",
+                    "generator_fallback_count": 1,
+                    "generator_used_fallback": True,
+                },
+            )
+
+    def fail_if_called(**kwargs):
+        raise AssertionError("judge/RAGAS must not run for a fallback answer")
+
+    monkeypatch.setattr(eval_module, "compute_ragas_metrics", fail_if_called)
+    monkeypatch.setattr(eval_module, "judge_answer_with_votes", fail_if_called)
+
+    item = eval_module.run_question(
+        pipe=_FallbackPipe(),
+        question=eval_module.GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[]),
+        run_ragas=True,
+        run_judge=True,
+        judge_model="judge",
+        judge_base_url="https://judge.invalid",
+        judge_api_key="key",
+        ragas_model="ragas",
+        scaleway_base_url="https://ragas.invalid",
+        scaleway_api_key="key",
+        reject_generator_fallback=True,
+    )
+
+    assert item.error is not None and "generator fallback" in item.error
+    assert item.judge_result == {"status": "skipped", "reason": "generator_fallback"}
+    assert item.ragas_metrics == {"status": "skipped", "reason": "generator_fallback"}
+    aggregate = eval_module.aggregate_items([item])
+    assert aggregate["judge_pass_rate"] is None
+    assert aggregate["judge_score_avg"] is None
+
+
 def test_judge_answer_openrouter_enforces_zdr(monkeypatch) -> None:
     """Revue #329 : data_collection=deny n'exclut que les providers qui
     collectent/entraînent — la ZDR est un attribut distinct chez OpenRouter,
@@ -1630,3 +1707,224 @@ def test_rag_quality_official_protocol_rejects_overrides(forbidden) -> None:
             target_environment="staging",
             **forbidden,
         )
+
+
+def _attempt_metadata() -> dict:
+    return {
+        "retrieval_attempts": [
+            {
+                "name": "initial",
+                "chunks_before_rerank": [
+                    {"doc_id": "gold-doc", "chunk_id": "c1"},
+                    {"doc_id": "noise-doc", "chunk_id": "c2"},
+                ],
+                "aggregated_sections": [
+                    {"section_id": "s-noise", "document_id": "noise-doc", "score": 0.9},
+                    {"section_id": "s-gold", "document_id": "gold-doc", "score": 0.8},
+                ],
+                "selector": {
+                    "decisions": {
+                        "kept": [{"idx": 0, "document_id": "noise-doc"}],
+                        "removed": [{"idx": 1, "document_id": "gold-doc"}],
+                    }
+                },
+                "context_items_ref": [{"doc_id": "noise-doc"}],
+            }
+        ]
+    }
+
+
+def test_stage_retrieval_metrics_localizes_gold_loss() -> None:
+    """Le funnel doit montrer où le gold est perdu (ici : au selector)."""
+    stages = stage_retrieval_metrics(_attempt_metadata(), ["gold-doc"])
+
+    initial = stages["initial"]
+    assert initial["pool"]["hit_rate"] == 1.0
+    assert initial["sections_top12"]["hit_rate"] == 1.0
+    assert initial["sections_top20"]["hit_rate"] == 1.0
+    assert initial["selector_kept"]["hit_rate"] == 0.0
+    assert initial["selector_kept"]["doc_recall"] == 0.0
+    assert initial["context_builder_output"]["hit_rate"] == 0.0
+
+
+def test_stage_retrieval_metrics_localizes_context_builder_loss() -> None:
+    metadata = _attempt_metadata()
+    attempt = metadata["retrieval_attempts"][0]
+    attempt["selector"]["decisions"]["kept"] = [{"document_id": "gold-doc"}]
+    attempt["context_items_ref"] = []
+
+    stages = stage_retrieval_metrics(metadata, ["gold-doc"])["initial"]
+
+    assert stages["selector_kept"]["hit_rate"] == 1.0
+    assert stages["context_builder_output"]["hit_rate"] == 0.0
+
+
+def test_stage_retrieval_metrics_context_builder_uses_legal_cid() -> None:
+    metadata = _attempt_metadata()
+    metadata["retrieval_attempts"][0]["context_items_ref"] = [{"cid": "LEGIARTI000044423797"}]
+
+    stage = stage_retrieval_metrics(metadata, ["LEGIARTI000044423797"])["initial"]["context_builder_output"]
+
+    assert stage == {"hit_rate": 1.0, "doc_recall": 1.0, "doc_count": 1}
+
+
+def test_stage_retrieval_metrics_kept_falls_back_to_idx() -> None:
+    metadata = _attempt_metadata()
+    kept = metadata["retrieval_attempts"][0]["selector"]["decisions"]["kept"]
+    kept[0] = {"idx": 1}  # entrée historique sans document_id
+    stages = stage_retrieval_metrics(metadata, ["gold-doc"])
+    assert stages["initial"]["selector_kept"]["hit_rate"] == 1.0
+
+
+def test_stage_retrieval_metrics_without_attempts() -> None:
+    assert stage_retrieval_metrics({}, ["gold-doc"]) == {}
+
+
+def test_stage_retrieval_metrics_records_present_empty_stages_as_zero() -> None:
+    metadata = {
+        "retrieval_attempts": [
+            {
+                "name": "empty",
+                "chunks_before_rerank": [],
+                "aggregated_sections": [],
+                "selector": {"decisions": {"kept": []}},
+                "context_items_ref": [],
+            }
+        ]
+    }
+
+    stages = stage_retrieval_metrics(metadata, ["gold-doc"])["empty"]
+
+    assert set(stages) == {"pool", "sections_top12", "sections_top20", "selector_kept", "context_builder_output"}
+    assert all(metrics == {"hit_rate": 0.0, "doc_recall": 0.0, "doc_count": 0} for metrics in stages.values())
+
+
+def test_stage_retrieval_metrics_omits_missing_stages() -> None:
+    assert stage_retrieval_metrics({"retrieval_attempts": [{"name": "missing"}]}, ["gold-doc"]) == {}
+
+
+def test_stage_doc_count_uses_raw_ids_before_alias_expansion() -> None:
+    metadata = {"retrieval_attempts": [{"name": "initial", "chunks_before_rerank": [{"doc_id": "doc-1"}]}]}
+    aliases = {"DOC-1": {"doc-short", "https://example.test/doc-1"}}
+
+    pool = stage_retrieval_metrics(metadata, ["doc-1"], aliases=aliases)["initial"]["pool"]
+
+    assert pool["hit_rate"] == 1.0
+    assert pool["doc_count"] == 1
+
+
+def test_aggregate_items_averages_stage_metrics() -> None:
+    def item(hit: float) -> EvalItem:
+        it = EvalItem(question_id=1, question="q", gold_answer="a", gold_sources=["g"])
+        it.deterministic_metrics = {
+            "hit_rate": hit,
+            "stages": {"initial": {"pool": {"hit_rate": hit, "doc_recall": hit, "doc_count": 2}}},
+        }
+        return it
+
+    aggregate = aggregate_items([item(1.0), item(0.0)])
+
+    pool = aggregate["stage_metrics"]["initial"]["pool"]
+    assert pool == {"n": 2, "hit_rate_avg": 0.5, "doc_recall_avg": 0.5}
+
+
+def test_borderline_double_read_helpers() -> None:
+    """La double lecture exclut les questions au juge instable sans toucher
+    au taux officiel (le gate reste sur le taux complet)."""
+    q_stable = GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[], tags=["baseline_v1"])
+    q_flaky = GoldsetQuestion(id=2, question="q", gold_answer="a", gold_sources=[], tags=["baseline_v1", "juge_borderline"])
+    assert borderline_question_ids([q_stable, q_flaky]) == [2]
+
+    def item(qid: int, ok: bool) -> EvalItem:
+        it = EvalItem(question_id=qid, question="q", gold_answer="a", gold_sources=[])
+        it.judge_result = {"status": "completed", "pass": ok}
+        return it
+
+    items = [item(1, True), item(2, False), item(3, False)]
+    assert judge_pass_rate_excluding(items, set()) == 1 / 3
+    assert judge_pass_rate_excluding(items, {2}) == 0.5
+    assert judge_pass_rate_excluding(items, {1, 2, 3}) is None
+
+
+def test_secret_backed_rag_eval_does_not_run_on_pull_request_heads() -> None:
+    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/rag-quality-eval.yml").read_text(encoding="utf-8")
+    triggers = workflow.split("permissions:", 1)[0]
+
+    assert "\n  push:" in triggers
+    assert "\n  pull_request:" not in triggers
+    assert "github.event.pull_request" not in workflow
+
+
+def test_secret_backed_rag_eval_relies_on_environment_branch_policy() -> None:
+    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/rag-quality-eval.yml").read_text(encoding="utf-8")
+
+    assert "validate-protected-ref" not in workflow
+    assert "environment: ${{" in workflow
+    assert "scaleway-production" in workflow
+    assert "scaleway-staging" in workflow
+    assert "both GitHub environments restrict deployments" in workflow
+
+
+def test_rag_eval_dispatch_strings_are_not_interpolated_in_shell() -> None:
+    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/rag-quality-eval.yml").read_text(encoding="utf-8")
+    resolve_step = workflow.split("      - name: Resolve eval parameters", 1)[1].split("      - name: Run RAG quality eval", 1)[0]
+    script = resolve_step.split("        run: |", 1)[1]
+
+    assert "${{ inputs." not in script
+    for variable in (
+        "GOLDSET_NAME_INPUT",
+        "GOLDSET_TAG_INPUT",
+        "LIMIT_INPUT",
+        "BASELINE_RUN_ID_INPUT",
+        "BASELINE_RUN_LABEL_INPUT",
+        "RUN_LABEL_SUFFIX_INPUT",
+    ):
+        assert variable in resolve_step
+
+
+@pytest.mark.parametrize(
+    "variable",
+    [
+        "GOLDSET_NAME_INPUT",
+        "GOLDSET_TAG_INPUT",
+        "LIMIT_INPUT",
+        "BASELINE_RUN_ID_INPUT",
+        "BASELINE_RUN_LABEL_INPUT",
+        "RUN_LABEL_SUFFIX_INPUT",
+    ],
+)
+def test_rag_eval_dispatch_rejects_shell_payloads(variable: str, tmp_path: Path) -> None:
+    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/rag-quality-eval.yml").read_text(encoding="utf-8")
+    resolve_step = workflow.split("      - name: Resolve eval parameters", 1)[1].split("      - name: Run RAG quality eval", 1)[0]
+    script = resolve_step.split("        run: |", 1)[1]
+    marker = tmp_path / "payload-executed"
+    github_env = tmp_path / "github-env"
+    env = {
+        **os.environ,
+        "EVENT_NAME": "workflow_dispatch",
+        "EVAL_MODE_INPUT": "smoke",
+        "TARGET_ENVIRONMENT_INPUT": "staging",
+        "GOLDSET_NAME_INPUT": "iteration2_V1",
+        "GOLDSET_TAG_INPUT": "iteration2",
+        "LIMIT_INPUT": "5",
+        "SKIP_RAGAS_INPUT": "true",
+        "SKIP_JUDGE_INPUT": "false",
+        "ANY_GOLDSET_INPUT": "false",
+        "BASELINE_RUN_ID_INPUT": "",
+        "BASELINE_RUN_LABEL_INPUT": "",
+        "JUDGE_PROVIDER_INPUT": "openrouter",
+        "RUN_LABEL_SUFFIX_INPUT": "",
+        "JUDGE_MODEL_INPUT": "",
+        "JUDGE_VOTES_INPUT": "1",
+        "GITHUB_SHA_INPUT": "a" * 40,
+        "GITHUB_REF_NAME_INPUT": "dev",
+        "DEFAULT_BASELINE_RUN_ID": "",
+        "DEFAULT_BASELINE_RUN_LABEL": "",
+        "GITHUB_ENV": str(github_env),
+    }
+    env[variable] = f"safe; touch {marker}"
+
+    completed = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, check=False)
+
+    assert completed.returncode != 0
+    assert not marker.exists()

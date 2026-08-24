@@ -60,6 +60,13 @@ interface ParseArgsResult {
 }
 
 type SectionAggregatorChunk = Parameters<typeof runSectionAggregator>[0]["chunks"][number];
+type SectionAggregatorConfig = NonNullable<Parameters<typeof runSectionAggregator>[0]["config"]>;
+
+interface ReplayManifest {
+	pipeline_config?: {
+		aggregation?: SectionAggregatorConfig;
+	};
+}
 
 function parseArgs(argv: string[]): ParseArgsResult {
 	const appRoot = fileURLToPath(new URL("../..", import.meta.url));
@@ -157,6 +164,20 @@ function readJsonlFixtures(path: string): QueryFixture[] {
 		.map((line) => line.trim())
 		.filter((line) => line.length > 0)
 		.map((line) => JSON.parse(line) as QueryFixture);
+}
+
+function loadReplayAggregationConfig(baselineDir: string): SectionAggregatorConfig {
+	const manifestPath = join(baselineDir, "manifest.json");
+	if (!existsSync(manifestPath)) {
+		throw new Error(`Missing replay baseline manifest: ${manifestPath}`);
+	}
+
+	const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as ReplayManifest;
+	const aggregationConfig = manifest.pipeline_config?.aggregation;
+	if (!aggregationConfig) {
+		throw new Error(`Missing pipeline_config.aggregation in replay manifest: ${manifestPath}`);
+	}
+	return aggregationConfig;
 }
 
 function normalizeSectionIds(rows: Array<{ section_id?: string | null }>): string[] {
@@ -311,6 +332,8 @@ async function main(): Promise<void> {
 	const workspaceRoot = fileURLToPath(new URL("../../../..", import.meta.url));
 
 	const fixtures = readJsonlFixtures(queriesFile);
+	const replayAggregationConfig =
+		mode === "replay" ? loadReplayAggregationConfig(baselineDir) : undefined;
 
 	const baselineLive =
 		mode === "live"
@@ -385,6 +408,7 @@ async function main(): Promise<void> {
 
 			const sectionAggregation = await runSectionAggregator({
 				chunks,
+				config: replayAggregationConfig,
 			});
 
 			const candidateSectionIds = sectionAggregation.sections
@@ -422,6 +446,7 @@ async function main(): Promise<void> {
 		generatedAt: new Date().toISOString(),
 		mode,
 		baselineDir: mode === "replay" ? baselineDir : null,
+		replayAggregationConfig: replayAggregationConfig ?? null,
 		queriesFile,
 		topK,
 		queryCount: fixtures.length,

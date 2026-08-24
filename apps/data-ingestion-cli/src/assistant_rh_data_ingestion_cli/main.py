@@ -11,6 +11,7 @@ class CommandSpec:
     module: str
     description: str
     default_args: tuple[str, ...] = ()
+    entrypoint: str = "main"
 
 
 COMMANDS: dict[tuple[str, str], CommandSpec] = {
@@ -21,10 +22,12 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
     ("service-public", "ingest"): CommandSpec(
         "assistant_rh_data_engineering.jobs.service_public_ingestion",
         "Ingest Service-Public gold artifacts into Postgres.",
+        entrypoint="run_cli",
     ),
     ("service-public", "ingestion"): CommandSpec(
         "assistant_rh_data_engineering.jobs.service_public_ingestion",
         "Alias for service-public ingest.",
+        entrypoint="run_cli",
     ),
     ("legifrance", "bulk-dump"): CommandSpec(
         "assistant_rh_data_engineering.jobs.legifrance_bulk_dump",
@@ -45,6 +48,10 @@ COMMANDS: dict[tuple[str, str], CommandSpec] = {
     ("legifrance", "url-backfill"): CommandSpec(
         "assistant_rh_data_engineering.jobs.legifrance_url_backfill",
         "Backfill Legifrance display URLs from silver artifacts.",
+    ),
+    ("legifrance", "r2-summaries"): CommandSpec(
+        "assistant_rh_data_engineering.jobs.r2_article_summaries",
+        "Plan, generate, or apply reviewed R2 legal article summaries.",
     ),
     ("mi", "medallion"): CommandSpec(
         "assistant_rh_data_engineering.jobs.pdf_sources_medallion",
@@ -149,7 +156,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     spec, job_args = resolved
     module = importlib.import_module(spec.module)
-    job_main: Callable[[], int] = getattr(module, "main")
+    job_main: Callable[[], int] = getattr(module, spec.entrypoint)
 
     previous_argv = sys.argv
     sys.argv = [f"data-ingestion {argv[0]} {argv[1]}", *job_args]

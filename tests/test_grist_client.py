@@ -17,10 +17,39 @@ from assistant_rh_data_engineering.utils.grist import (
     GristContractError,
     GristError,
     ManifestRow,
+    build_pdf_writeback_fields,
     fetch_validated_manifest,
     validate_manifest_columns,
     validate_manifest_records,
 )
+
+
+def test_build_pdf_writeback_fields_routes_by_environment() -> None:
+    prod = build_pdf_writeback_fields(
+        statut="ok",
+        nb_chunks=12,
+        hash_contenu="abc",
+        env="prod",
+        corpus_present=True,
+    )
+    assert prod["statut_ingestion"] == "ok"
+    assert prod["nb_chunks"] == 12
+    assert prod["hash_contenu"] == "abc"
+    assert prod["ingere_prod"] is True
+    assert "ingere_staging" not in prod
+    assert "derniere_ingestion" in prod
+
+    staging = build_pdf_writeback_fields(
+        statut="ok",
+        nb_chunks=12,
+        hash_contenu="abc",
+        env="staging",
+        corpus_present=True,
+    )
+    assert staging == {"ingere_staging": True}
+
+    assert build_pdf_writeback_fields(statut="erreur", env="staging", corpus_present=False) == {"ingere_staging": False}
+    assert build_pdf_writeback_fields(statut="erreur", env="staging", corpus_present=None) == {}
 
 
 class FakeResponse:
@@ -217,6 +246,25 @@ def test_validate_manifest_records_ignores_other_corpora_without_rejecting() -> 
 
 def test_validate_manifest_records_tolerates_missing_date_publication() -> None:
     records = [{"id": 1, "fields": manifest_fields(date_publication="")}]
+
+    result = validate_manifest_records(records, "mi")
+
+    assert result.ok
+    assert result.valid[0].date_publication is None
+
+
+def test_validate_manifest_records_normalizes_grist_date_timestamp() -> None:
+    records = [{"id": 1, "fields": manifest_fields(date_publication=1767225600)}]
+
+    result = validate_manifest_records(records, "mi")
+
+    assert result.ok
+    assert result.valid[0].date_publication == "2026-01-01"
+    assert json.loads(json.dumps({"publication_date": result.valid[0].date_publication})) == {"publication_date": "2026-01-01"}
+
+
+def test_validate_manifest_records_ignores_invalid_optional_date() -> None:
+    records = [{"id": 1, "fields": manifest_fields(date_publication="pas une date")}]
 
     result = validate_manifest_records(records, "mi")
 

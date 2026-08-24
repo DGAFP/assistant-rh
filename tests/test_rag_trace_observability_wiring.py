@@ -79,6 +79,7 @@ def test_streamlit_deploy_rejects_enabled_tracing_without_endpoint(monkeypatch: 
 def test_streamlit_deploy_passes_otlp_headers_as_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     required = _streamlit_required_secret_env()
     required["OTEL_EXPORTER_OTLP_HEADERS"] = "Authorization=Bearer token"
+    monkeypatch.setenv("GROUP_DEFAULT_PASSWORD", "runtime-only")
     for key, value in required.items():
         monkeypatch.setenv(key, value)
 
@@ -86,6 +87,7 @@ def test_streamlit_deploy_passes_otlp_headers_as_secret(monkeypatch: pytest.Monk
 
     assert env["OTEL_EXPORTER_OTLP_HEADERS"] == "Authorization=Bearer token"
     assert env["GRIST_API_KEY"] == "grist"
+    assert "GROUP_DEFAULT_PASSWORD" not in env
     assert env["SCW_ACCESS_KEY"] == "access"
     assert env["SCW_SECRET_KEY"] == "secret"
 
@@ -124,6 +126,8 @@ def test_streamlit_workflows_expose_source_import_configuration() -> None:
         assert "GRIST_DOC_ID" in workflow
         assert "GRIST_TABLE_ID" in workflow
         assert "SCW_BUCKET_SOURCES_PDF" in workflow
+        assert "GROUP_DEFAULT_PASSWORD: ${{ secrets.GROUP_DEFAULT_PASSWORD }}" not in workflow
+        assert "            GROUP_DEFAULT_PASSWORD\n" not in workflow
 
 
 def test_grafana_import_payload_requires_stable_dashboard_uid() -> None:

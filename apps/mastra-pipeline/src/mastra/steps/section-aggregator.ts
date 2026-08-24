@@ -159,7 +159,7 @@ function normalizeAggregationConfig(
 		weight_mean_score: 0.3,
 		weight_chunk_count: 0.2,
 		enable_section_reranker: true,
-		section_rerank_top_k: 10,
+		section_rerank_top_k: 20,
 	};
 
 	return {
