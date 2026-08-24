@@ -28,6 +28,11 @@ on:
       - dev
       - staging
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
     paths:
       - ".github/workflows/data-engineering-*.yml"
       - ".github/scripts/data_engineering_plan.py"
