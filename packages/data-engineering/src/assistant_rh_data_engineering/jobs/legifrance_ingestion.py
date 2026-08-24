@@ -362,6 +362,7 @@ def ingest_delta(
 
     detected_missing_toc_versions = tuple(sorted(live_candidates))
     materialized_live_versions: list[str] = []
+    materialized_live_uids: set[str] = set()
     failed_live_versions: list[str] = list(requested_resolution_failures)
     materialization_failures: dict[str, str] = dict(requested_resolution_failures)
     live_object_storage: dict[str, str] | None = None
@@ -417,6 +418,7 @@ def ingest_delta(
                     sections.extend(bundle.sections)
                     chunks.extend(bundle.chunks)
                     materialized_live_versions.append(canonical.version_id)
+                    materialized_live_uids.add(canonical_uid)
             except Exception as exc:  # noqa: BLE001 — échec isolé par article, aucune cascade de son texte
                 failed_live_versions.append(version_id)
                 materialization_failures[failure_uid] = str(exc)
@@ -490,6 +492,7 @@ def ingest_delta(
         extra_attributions=extra_attributions or None,
         extra_chroniques=extra_chroniques or None,
         silver_version_ids=silver_version_ids,
+        force_ingest=materialized_live_uids,
     )
     plan = lf_plan.plan
 

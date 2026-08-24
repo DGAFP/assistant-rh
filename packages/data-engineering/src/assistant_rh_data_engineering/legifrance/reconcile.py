@@ -266,6 +266,7 @@ def build_legifrance_plan(
     extra_attributions: Mapping[str, str] | None = None,
     extra_chroniques: Mapping[str, str] | None = None,
     silver_version_ids: Collection[str] | None = None,
+    force_ingest: Collection[str] = (),
 ) -> LegifrancePlan:
     """Adapte référentiel Grist + TOCs PISTE + état corpus au diff ``build_plan``.
 
@@ -288,6 +289,9 @@ def build_legifrance_plan(
     ``requested`` : sous-ensemble ``--uid`` — restreint manifest ET corpus.
     ``max_auto_stale`` : au-delà de ce volume de ``stale``, tous basculent en
     ``flagged`` — ``None`` désactive (migration délibérée).
+    ``force_ingest`` : identités dont une nouvelle version vient d'être
+    matérialisée. Elles passent en ``changed`` même si leur markdown (et donc
+    leur checksum) est inchangé, afin de propager les métadonnées de version.
     """
     requested_set: set[str] | None = None
     if requested is not None:
@@ -426,6 +430,24 @@ def build_legifrance_plan(
         retry_zero_chunk=retry_zero_chunk,
         guard_empty_manifest=effective_guard,
     )
+
+    # Le checksum silver couvre le markdown, pas les métadonnées juridiques
+    # (version, dates, liens, URL). Une version PISTE fraîchement matérialisée
+    # doit donc être réingérée même si son texte est byte-identique ; sinon le
+    # nouveau version_id est persisté dans le lake, le prochain run ne la
+    # rematérialise plus, et PostgreSQL reste définitivement sur l'ancien
+    # metadata. Ne promouvoir que les `unchanged` conserve les gardes
+    # protected/pending calculées par build_plan.
+    force_ingest_set = {str(uid).strip().upper() for uid in force_ingest}
+    forced_changed = force_ingest_set.intersection(plan.unchanged)
+    if forced_changed:
+        plan = ReconciliationPlan(
+            new=plan.new,
+            changed=tuple(sorted({*plan.changed, *forced_changed})),
+            unchanged=tuple(uid for uid in plan.unchanged if uid not in forced_changed),
+            removals=plan.removals,
+            acknowledged=plan.acknowledged,
+        )
 
     # Jumeaux de MIGRATION D'IDENTITÉ : un stale dont le contenu est repris à
     # l'identique par une chronique à ingérer (même checksum silver) N'EST PAS une
