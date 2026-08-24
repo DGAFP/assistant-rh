@@ -1069,7 +1069,7 @@ seul `v3_generator_model` passe à `deepseek-v4-flash`.
 
 ---
 
-## Run 226 — `candidate_dsv4flash_promoted_mistral_20260824` (24/08, en cours) — candidat officiel DeepSeek
+## Run 226 — `candidate_dsv4flash_promoted_mistral_20260824` (24/08, terminé) — candidat officiel DeepSeek
 
 **Protocole figé** : strictement identique au contrôle #225 — panel
 `baseline_v1` 98 questions, scope `per-question`, sélecteur
@@ -1087,4 +1087,31 @@ contre #225 se limite à `generation.model` : `openweight-large` →
 `openweight-large` et l'ajustement explicite
 `generator_model=deepseek-v4-flash`.
 
-**Résultats** : à compléter après le run.
+**Résultats** : 98/98 sans erreur technique, sans fallback générateur et sans
+échec juge ; coût juge 3,4451 € (294 appels Mistral, couverture complète). Trois
+réponses non conformes du sélecteur ont utilisé le fallback sûr top-5.
+
+| Mesure | #226 DeepSeek | #225 Openweight | Delta |
+|---|---:|---:|---:|
+| judge_pass (maj-3) | **0,6633** (65/98) | 0,6837 (67/98) | **−0,0204** |
+| judge_pass hors borderline | 0,6778 | 0,7000 | −0,0222 |
+| judge_score moyen | 0,6604 | 0,6854 | −0,0250 |
+| doc_recall | 0,7024 | 0,7024 | 0 |
+| hit_rate | 0,7755 | 0,7755 | 0 |
+| retrieval_gap_rate | 0,2245 | 0,2245 | 0 |
+
+Le gate de non-régression passe (`judge_pass` au-dessus de la tolérance −5 pts,
+retrieval strictement plat). Lecture appariée : **8 gains / 10 pertes**, 57
+double-pass et 23 double-échecs. Les réponses diffèrent sur 96/98 questions ;
+les contextes sur 23/98. Parmi les 18 flips, 5 ont un contexte différent
+(q1/q3/q20/q175/q926) et 13 gardent le même contexte. Par corpus, seul le lot
+`manual` porte le delta (35/55 vs 37/55) ; Service-Public, MATTE, synthetic,
+MSO et DGAFP sont tous à égalité en nombre de PASS.
+
+**Lecture** : DeepSeek satisfait le gate de non-régression mais ne démontre pas
+de supériorité sur ce tirage (−2 PASS). Avec le précédent #215 à +5 PASS sous le
+même juge, l'ensemble confirme surtout une variance de run de l'ordre de
+plusieurs points. Conserver DeepSeek en staging est défendable pour observation,
+mais une promotion production ne doit pas être fondée sur #226 seul : auditer
+les 18 flips, puis exiger un second run confirmatoire ou une preuve qualitative
+sur les gains/pertes stables.
