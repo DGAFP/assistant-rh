@@ -29,7 +29,7 @@ from typing import Any
 import psycopg
 from assistant_rh_rag_pipeline import PipelineResult, create_pipeline
 from assistant_rh_rag_pipeline.admin import get_rag_config, runtime_config_to_rag_config
-from assistant_rh_rag_pipeline.config import RAGConfig
+from assistant_rh_rag_pipeline.config import LLMProvider, RAGConfig
 from assistant_rh_rag_pipeline.db_helpers import get_prompt_content, list_prompts
 from assistant_rh_rag_pipeline.models import metadata_document_id
 from assistant_rh_rag_pipeline.query_processor import _fold as _fold_text
@@ -45,8 +45,12 @@ DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
 # était le backup validé du même spot-check (« comportement proche ») et
 # dispose d'un endpoint ZDR (xAI). claude-sonnet-4.5 (ZDR Bedrock) reste
 # écarté : over-strict ; glm-5.2 (ZDR AtlasCloud) : verdicts incohérents.
-# Surchargeable au run (--judge-model / OPENROUTER_JUDGE_MODEL).
-DEFAULT_JUDGE_PROVIDER = "openrouter"
+# Surchargeable au run (--judge-provider / --judge-model). Défaut SOUVERAIN :
+# scaleway/qwen3 — l'incident du run #189 (17/08/2026) a montré qu'un launcher
+# omettant les flags produisait un run jugé grok-4.5 single-shot, non
+# comparable aux baselines officielles (+5 pts de biais mesuré à réponses
+# identiques). OpenRouter reste disponible explicitement via --judge-provider.
+DEFAULT_JUDGE_PROVIDER = "scaleway"
 DEFAULT_JUDGE_MODEL = "x-ai/grok-4.5"
 DEFAULT_JUDGE_BASE_URL = "https://openrouter.ai/api/v1"
 # Bascule du 19/08/2026 (banc des juges, journal) : mistral-medium-3.5 —
@@ -612,7 +616,7 @@ def build_baseline_comparison(
         tags=tags,
         eval_scope=eval_scope,
     )
-    return compare_with_baseline(
+    comparison = compare_with_baseline(
         candidate_aggregate=candidate_aggregate,
         baseline_run=baseline_run,
         goldset_name=goldset_name,
@@ -621,6 +625,34 @@ def build_baseline_comparison(
         max_judge_pass_rate_drop=args.max_judge_pass_rate_drop,
         max_doc_recall_drop=args.max_doc_recall_drop,
     )
+    # Double lecture hors questions au juge instable (informative, pas un
+    # gate) : borne l'effet réel quand le delta complet est dans la bande de
+    # bruit. Le taux baseline est recalculé depuis ses items pour couvrir les
+    # runs antérieurs à cette clé d'agrégat.
+    # Row factory agnostique (la connexion du run est en dict_row).
+    excluded = [
+        row["id"] if isinstance(row, dict) else row[0]
+        for row in conn.execute("SELECT id FROM goldset_questions_v2 WHERE %s = ANY(tags)", (BORDERLINE_TAG,)).fetchall()
+    ]
+    baseline_run_id = baseline_run.get("id")
+    if excluded and baseline_run_id is not None:
+        row = conn.execute(
+            """SELECT count(*) FILTER (WHERE judge_result->>'pass' = 'true')::float
+                      / NULLIF(count(*) FILTER (WHERE judge_result->>'status' = 'completed'), 0) AS rate
+               FROM rag_quality_eval_items
+               WHERE run_id = %s AND NOT (question_id = ANY(%s))
+                 AND judge_result->>'status' = 'completed'""",
+            (baseline_run_id, excluded),
+        ).fetchone()
+        baseline_excl = (row.get("rate") if isinstance(row, dict) else row[0]) if row else None
+        candidate_excl = candidate_aggregate.get("judge_pass_rate_excl_borderline")
+        comparison["judge_borderline"] = {
+            "excluded_question_ids": sorted(excluded),
+            "candidate_pass_rate_excl": candidate_excl,
+            "baseline_pass_rate_excl": baseline_excl,
+            "delta_excl": (candidate_excl - baseline_excl) if candidate_excl is not None and baseline_excl is not None else None,
+        }
+    return comparison
 
 
 def baseline_gate_failed(args: argparse.Namespace, comparison: dict[str, Any]) -> bool:
@@ -1211,6 +1243,27 @@ def _judge_dimension_average(items: list[EvalItem], key: str) -> float | None:
     return sum(values) / len(values)
 
 
+BORDERLINE_TAG = "juge_borderline"
+
+
+def borderline_question_ids(questions: list[GoldsetQuestion]) -> list[int]:
+    """Questions marquées instables au juge (curation du 18/08/2026).
+
+    Le tag est posé sur les questions dont le verdict a flippé entre runs à
+    réponse quasi identique (bruit juge/générateur ~±2-3 flips par run, du
+    même ordre que les effets recherchés). La double lecture avec/sans ces
+    questions borne l'effet réel d'un changement ; le gate officiel reste sur
+    le taux complet."""
+    return sorted(q.id for q in questions if BORDERLINE_TAG in (q.tags or []))
+
+
+def judge_pass_rate_excluding(items: list[EvalItem], excluded_ids: set[int]) -> float | None:
+    judged = [item for item in items if item.judge_result.get("status") == "completed" and item.question_id not in excluded_ids]
+    if not judged:
+        return None
+    return sum(1 for item in judged if item.judge_result.get("pass") is True) / len(judged)
+
+
 def aggregate_items(items: list[EvalItem]) -> dict[str, Any]:
     judged = [item for item in items if item.judge_result.get("status") == "completed"]
     return {
@@ -1588,6 +1641,18 @@ DEFAULT_JUDGE_RUBRIC = JudgeRubric(
 def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any], rubric: JudgeRubric = DEFAULT_JUDGE_RUBRIC) -> dict[str, Any]:
     dimensions_raw = parsed.get("dimensions")
     dimensions = dimensions_raw if isinstance(dimensions_raw, dict) else {}
+    if os.getenv("JUDGE_DEBUG_PARSED"):
+        import json as _json
+
+        print("JUDGE_DEBUG parsed:", _json.dumps(parsed, ensure_ascii=False, default=str)[:600], flush=True)
+    if not dimensions:
+        # Repli tolérant : certains modèles (banc des juges du 18/08 —
+        # deepseek-v4-flash) rendent les dimensions À PLAT au lieu de les
+        # imbriquer sous "dimensions". Sans ce repli, toutes les dimensions
+        # valent 0 et le verdict est un quality_gate_failed artefactuel.
+        flat = {dim: parsed.get(dim) for dim in rubric.dimension_weights if parsed.get(dim) is not None}
+        if flat:
+            dimensions = flat
     normalized_dimensions = {dim: _dimension_score(dimensions, dim) for dim in rubric.dimension_weights}
     weighted_score = sum(normalized_dimensions[dim] * weight for dim, weight in rubric.dimension_weights.items())
     raw_model_score = _safe_float(parsed.get("score"))
@@ -1747,6 +1812,11 @@ def judge_answer(
         "(e.g. '25 jours ouvres' for a 5-day week EQUALS '5 semaines'; '6 semaines avant + 10 apres' EQUALS "
         "'16 semaines'): only report a contradiction when the facts are genuinely incompatible after normalization."
     )
+    # Amendements de rubrique injectables (banc des juges du 18-19/08) : permet
+    # de tester une rubrique corrigée sans toucher au protocole officiel.
+    rubric_addendum = os.getenv("JUDGE_RUBRIC_ADDENDUM", "").strip()
+    if rubric_addendum:
+        system = f"{system}\n{rubric_addendum}"
     usage = _TokenUsage()
     usage_captured = False
     try:
@@ -1773,6 +1843,16 @@ def judge_answer(
         usage_captured = usage.record(getattr(response, "usage", None))
         content = response.choices[0].message.content or "{}"
         parsed = _extract_json_object(content)
+        if not ({"score", "dimensions"} & set(parsed)):
+            # Certains modèles reasoning (banc du 18/08 : deepseek-v4-flash)
+            # rendent un objet vide/minimal sous response_format=json_object
+            # (décodage contraint vs raisonnement). Un retry SANS contrainte
+            # récupère le verdict complet ; le parse tolérant fait le reste.
+            create_kwargs.pop("response_format", None)
+            response = client.chat.completions.create(**create_kwargs)
+            usage_captured = usage.record(getattr(response, "usage", None)) or usage_captured
+            content = response.choices[0].message.content or "{}"
+            parsed = _extract_json_object(content)
         parsed["status"] = "completed"
         calibrated = calibrate_judge_result(parsed, deterministic_metrics)
         calibrated["usage"] = usage.as_dict(model, provider, capture_complete=usage_captured)
@@ -2130,9 +2210,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override du modèle du sélecteur (ex: mistral-medium-2508) sans toucher à la config runtime partagée.",
     )
     parser.add_argument(
+        "--selector-provider",
+        default="",
+        choices=["", "albert", "scaleway", "mistral"],
+        help="Override du provider du sélecteur (A/B de fournisseur sans muter la config partagée).",
+    )
+    parser.add_argument(
         "--generator-model",
         default="",
         help="Override du modèle générateur (ex: deepseek-v4-flash) sans toucher à la config runtime partagée.",
+    )
+    parser.add_argument(
+        "--generator-provider",
+        default="",
+        choices=["", "albert", "scaleway", "mistral"],
+        help="Override du provider du générateur.",
     )
     parser.add_argument(
         "--system-prompt-name",
@@ -2274,9 +2366,15 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.selector_model:
         pipeline_config.selector.model = args.selector_model
         config_adjustments.append(f"selector_model={args.selector_model}")
+    if args.selector_provider:
+        pipeline_config.selector.provider = LLMProvider(args.selector_provider)
+        config_adjustments.append(f"selector_provider={args.selector_provider}")
     if args.generator_model:
         pipeline_config.generation.model = args.generator_model
         config_adjustments.append(f"generator_model={args.generator_model}")
+    if args.generator_provider:
+        pipeline_config.generation.provider = LLMProvider(args.generator_provider)
+        config_adjustments.append(f"generator_provider={args.generator_provider}")
     if args.system_prompt_name:
         # load_prompt() retombe silencieusement sur generator.md quand le nom
         # est introuvable ou inactif sur le DSN cible : le run mesurerait le
@@ -2531,6 +2629,8 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 "dedupe_scope": args.dedupe_scope,
                 "eval_scope": eval_scope,
                 "judge_failed": sum(1 for item in items if item.judge_result.get("status") == "failed"),
+                "judge_borderline_ids": borderline_question_ids(questions),
+                "judge_pass_rate_excl_borderline": judge_pass_rate_excluding(items, set(borderline_question_ids(questions))),
                 "ragas_failed": sum(1 for item in items if item.ragas_metrics.get("status") == "failed"),
             }
         )

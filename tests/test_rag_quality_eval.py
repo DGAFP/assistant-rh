@@ -16,12 +16,14 @@ from src.goldset.eval import (
     GoldsetQuestion,
     aggregate_items,
     artifact_paths,
+    borderline_question_ids,
     build_eval_scope,
     calibrate_judge_result,
     compare_with_baseline,
     config_fingerprint,
     derive_completion_status,
     deterministic_metrics,
+    judge_pass_rate_excluding,
     load_goldset_questions,
     parse_text_list,
     retrieved_doc_ids,
@@ -1745,6 +1747,24 @@ def test_aggregate_items_averages_stage_metrics() -> None:
 
     pool = aggregate["stage_metrics"]["initial"]["pool"]
     assert pool == {"n": 2, "hit_rate_avg": 0.5, "doc_recall_avg": 0.5}
+
+
+def test_borderline_double_read_helpers() -> None:
+    """La double lecture exclut les questions au juge instable sans toucher
+    au taux officiel (le gate reste sur le taux complet)."""
+    q_stable = GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[], tags=["baseline_v1"])
+    q_flaky = GoldsetQuestion(id=2, question="q", gold_answer="a", gold_sources=[], tags=["baseline_v1", "juge_borderline"])
+    assert borderline_question_ids([q_stable, q_flaky]) == [2]
+
+    def item(qid: int, ok: bool) -> EvalItem:
+        it = EvalItem(question_id=qid, question="q", gold_answer="a", gold_sources=[])
+        it.judge_result = {"status": "completed", "pass": ok}
+        return it
+
+    items = [item(1, True), item(2, False), item(3, False)]
+    assert judge_pass_rate_excluding(items, set()) == 1 / 3
+    assert judge_pass_rate_excluding(items, {2}) == 0.5
+    assert judge_pass_rate_excluding(items, {1, 2, 3}) is None
 
 
 def test_secret_backed_rag_eval_does_not_run_on_pull_request_heads() -> None:
