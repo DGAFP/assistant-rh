@@ -1191,4 +1191,13 @@ ajouté aux deux prompts par le générateur : il n'est pas une variable de l'A/
 `v3_selector_model=openweight-large` et le prompt actif V6. Le smoke de
 promotion `staging-3363d35...` doit être terminé avant le lancement du contrôle.
 
+**Lancement du contrôle** : smoke #228 terminé 5/5 sans erreur ; contrôle **#229**
+démarré à 14:07 UTC depuis `f4285c4`. L'enregistrement confirme 98 questions,
+`generation=deepseek-v4-flash@albert`,
+`selector=openweight-large@albert`, prompt V6 (SHA
+`b36567631b561abab31b6d8d9ccc961eb10146525b237b7bfd617a6602643a0a`) et juge
+`mistral-medium-3.5-128b` maj-3. Un superviseur détaché ne lancera le candidat
+qu'après statut `completed` du contrôle ; tout statut `failed` ou `cancelled`
+arrête la chaîne.
+
 **Résultats** : à compléter après les deux runs.
