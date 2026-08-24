@@ -35,6 +35,11 @@ The expected source IDs come from the existing source manifests:
 - Service-Public: `config/service_public_fiches.json`
 - Legifrance: `config/legifrance_article_cids.json`
 
+`rag_chunks_legifrance` stores the legacy-text corpus rather than the article
+rows covered by `legifrance_article_cids.json`; it therefore uses an absolute
+non-empty `min_rows` check instead of article-ID coverage. Article coverage is
+enforced on `rag_chunks_dgafp`.
+
 ### Embedding coverage
 
 Embedding coverage is **not** part of this command. It is gated by the read-only
@@ -51,15 +56,19 @@ without loading models, calling APIs, or writing to the database.
 
 ## Workflow behavior
 
-All staging and production data-engineering workflows run the structural gate and
-publish JSON and Markdown reports. When an embeddings backfill was selected, a
-separate step runs `data-ingestion embeddings <source> --check-only` per source.
+Staging and production data-engineering workflows run the structural gate for
+configured Service-Public and Legifrance source chains, and publish JSON and
+Markdown reports. When an embeddings backfill was selected, a separate step runs
+`data-ingestion embeddings <source> --check-only` per source.
+The daily staging delta workflow runs both checks in each source-specific matrix
+cell after its medallion, ingestion, and embedding chain completes.
 
 Blocking is scoped to DB-writing runs:
 
-- ingestion jobs block on the structural gate (tables, coverage, text, freshness)
+- configured structural-source ingestion jobs block on tables, coverage, text, and freshness
 - embeddings jobs block on the separate embedding-coverage step
 - medallion-only / promotion runs publish reports without failing on the structural gate
 
 Reports (structural Markdown/JSON plus per-source embedding JSON) are uploaded as
-GitHub Actions artifacts and the structural summary is appended to the job summary.
+GitHub Actions artifacts with source-specific names, and the structural summary is
+appended to the job summary.

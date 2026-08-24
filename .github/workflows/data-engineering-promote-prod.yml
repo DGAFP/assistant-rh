@@ -227,7 +227,6 @@ jobs:
       DELTA_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.delta || false }}
       EMBEDDING_SOURCE: ${{ matrix.embedding_source }}
       EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
-      RUN_EMBEDDINGS: ${{ needs.plan.outputs.run_embeddings }}
       R2_REVIEWED_CACHE: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_reviewed_cache || false }}
       R2_CACHE_SOURCE_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_cache_source_env || 'staging' }}
       R2_LIMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_limit || 0 }}
@@ -287,29 +286,30 @@ jobs:
       # structural gate runs report-only here; embedding coverage below is the
       # blocking gate when a backfill ran.
       - name: Run production data quality gates
+        if: ${{ matrix.service_public == true || matrix.legifrance == true }}
         run: |
           set -euo pipefail
           mkdir -p artifacts/data-quality
 
           QUALITY_SOURCES=()
-          if [[ "${{ needs.plan.outputs.service_public }}" == "true" ]]; then
+          if [[ "${{ matrix.service_public }}" == "true" ]]; then
             QUALITY_SOURCES+=(--source service_public)
           fi
-          if [[ "${{ needs.plan.outputs.legifrance }}" == "true" ]]; then
+          if [[ "${{ matrix.legifrance }}" == "true" ]]; then
             QUALITY_SOURCES+=(--source legifrance)
           fi
 
           uv run --no-sync data-ingestion quality gates \
             --target-env prod \
             "${QUALITY_SOURCES[@]}" \
-            --json-output artifacts/data-quality/prod-promote-report.json \
-            --markdown-output artifacts/data-quality/prod-promote-summary.md
+            --json-output "artifacts/data-quality/prod-promote-${{ matrix.name }}-report.json" \
+            --markdown-output "artifacts/data-quality/prod-promote-${{ matrix.name }}-summary.md"
 
       # Embedding coverage is gated by the read-only audit shipped in
       # `data-ingestion embeddings <source> --check-only` (issue #133) so a single
       # implementation owns embedding-coverage logic (see issue #172).
       - name: Run production embedding coverage gate
-        if: ${{ env.RUN_EMBEDDINGS == 'true' }}
+        if: ${{ matrix.embeddings == true }}
         env:
           COVERAGE_MIN_PCT: "100"
         run: |
@@ -349,14 +349,14 @@ jobs:
       - name: Summarize production data quality gates
         if: always()
         run: |
-          if [[ -f artifacts/data-quality/prod-promote-summary.md ]]; then
-            cat artifacts/data-quality/prod-promote-summary.md >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f "artifacts/data-quality/prod-promote-${{ matrix.name }}-summary.md" ]]; then
+            cat "artifacts/data-quality/prod-promote-${{ matrix.name }}-summary.md" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload production data quality reports
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: data-quality-prod-promote-${{ github.run_attempt }}
+          name: data-quality-prod-promote-${{ matrix.name }}-${{ github.run_attempt }}
           path: artifacts/data-quality/
           if-no-files-found: ignore

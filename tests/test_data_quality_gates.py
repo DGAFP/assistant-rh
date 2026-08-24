@@ -136,6 +136,46 @@ def test_quality_gates_does_not_emit_embedding_checks(tmp_path: Path) -> None:
     assert not any(check["check"].startswith("embedding_coverage") for check in report["checks"])
 
 
+def test_quality_gates_support_absolute_minimum_for_non_article_table(tmp_path: Path) -> None:
+    config = _write_config(tmp_path)
+    config["sources"]["service_public"]["tables"] = [
+        {
+            "name": "rag_chunks_legifrance",
+            "min_rows": 1,
+            "text_columns": ["chunk_text"],
+            "freshness_column": "updated_at",
+        }
+    ]
+    db = FakeQualityDatabase()
+    db.columns["rag_chunks_legifrance"] = {"chunk_text", "updated_at"}
+    db.row_counts["rag_chunks_legifrance"] = 1
+    db.timestamps[("rag_chunks_legifrance", "updated_at")] = datetime.now(tz=UTC)
+
+    report = evaluate_quality_gates(
+        db,
+        config,
+        repo_root=tmp_path,
+        target_env="staging",
+        sources=["service_public"],
+        blocking=True,
+    )
+
+    min_rows = next(check for check in report["checks"] if check["check"] == "min_rows")
+    assert report["status"] == "pass"
+    assert min_rows["expected"] == 1
+    assert not any(check["check"] == "expected_id_coverage" for check in report["checks"])
+
+
+def test_legifrance_modern_table_does_not_apply_article_manifest() -> None:
+    config_path = Path(__file__).resolve().parents[1] / "config/data_quality_gates.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    modern_table = next(table for table in config["sources"]["legifrance"]["tables"] if table["name"] == "rag_chunks_legifrance")
+
+    assert modern_table["min_rows"] == 1
+    assert "id_column" not in modern_table
+    assert "min_rows_per_expected_id" not in modern_table
+
+
 def test_quality_gates_cli_route_is_registered() -> None:
     resolved = _resolve_command(["quality", "gates", "--target-env", "staging"])
 

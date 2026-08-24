@@ -360,15 +360,16 @@ jobs:
         run: uv sync --frozen
 
       - name: Run staging data quality gates
+        if: ${{ matrix.service_public == true || matrix.legifrance == true }}
         run: |
           set -euo pipefail
           mkdir -p artifacts/data-quality
 
           QUALITY_SOURCES=()
-          if [[ "${{ needs.plan.outputs.service_public }}" == "true" ]]; then
+          if [[ "${{ matrix.service_public }}" == "true" ]]; then
             QUALITY_SOURCES+=(--source service_public)
           fi
-          if [[ "${{ needs.plan.outputs.legifrance }}" == "true" ]]; then
+          if [[ "${{ matrix.legifrance }}" == "true" ]]; then
             QUALITY_SOURCES+=(--source legifrance)
           fi
 
@@ -381,14 +382,14 @@ jobs:
             --target-env staging \
             "${QUALITY_SOURCES[@]}" \
             "${BLOCKING_ARGS[@]}" \
-            --json-output artifacts/data-quality/staging-report.json \
-            --markdown-output artifacts/data-quality/staging-summary.md
+            --json-output "artifacts/data-quality/staging-${{ matrix.name }}-report.json" \
+            --markdown-output "artifacts/data-quality/staging-${{ matrix.name }}-summary.md"
 
       # Embedding coverage is gated separately by the read-only audit shipped in
       # `data-ingestion embeddings <source> --check-only` (issue #133) so a single
       # implementation owns embedding-coverage logic (see issue #172).
       - name: Run staging embedding coverage gate
-        if: ${{ env.RUN_EMBEDDINGS == 'true' }}
+        if: ${{ matrix.embeddings == true }}
         env:
           COVERAGE_MIN_PCT: "100"
         run: |
@@ -428,14 +429,14 @@ jobs:
       - name: Summarize staging data quality gates
         if: always()
         run: |
-          if [[ -f artifacts/data-quality/staging-summary.md ]]; then
-            cat artifacts/data-quality/staging-summary.md >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f "artifacts/data-quality/staging-${{ matrix.name }}-summary.md" ]]; then
+            cat "artifacts/data-quality/staging-${{ matrix.name }}-summary.md" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload staging data quality reports
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: data-quality-staging-${{ github.run_attempt }}
+          name: data-quality-staging-${{ matrix.name }}-${{ github.run_attempt }}
           path: artifacts/data-quality/
           if-no-files-found: ignore

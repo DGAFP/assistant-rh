@@ -445,7 +445,10 @@ def _evaluate_regular_table(
 ) -> list[CheckResult]:
     table = str(table_config["name"])
     id_column = str(table_config.get("id_column") or "")
-    min_rows = _minimum_expected(len(expected_ids), float(table_config.get("min_rows_per_expected_id", 1)))
+    if "min_rows" in table_config:
+        min_rows = int(table_config["min_rows"])
+    else:
+        min_rows = _minimum_expected(len(expected_ids), float(table_config.get("min_rows_per_expected_id", 1)))
     row_count = db.row_count(table, source_filter)
     checks = [_check(source_name, table, "min_rows", row_count >= min_rows, row_count, min_rows, "Table row count meets the minimum.")]
     if id_column:

@@ -410,6 +410,38 @@ def test_delta_cron_runs_sources_in_independent_matrix_cells() -> None:
     assert '--embedding-source "${{ matrix.embedding_source }}"' in workflow
 
 
+@pytest.mark.parametrize(
+    ("workflow_name", "step_name", "artifact_name"),
+    [
+        (
+            "data-engineering-preview-staging.yml",
+            "Run staging data quality gates",
+            "data-quality-staging-${{ matrix.name }}-${{ github.run_attempt }}",
+        ),
+        (
+            "data-engineering-promote-prod.yml",
+            "Run production data quality gates",
+            "data-quality-prod-promote-${{ matrix.name }}-${{ github.run_attempt }}",
+        ),
+    ],
+)
+def test_matrix_quality_gates_are_source_scoped_and_artifacts_are_unique(
+    workflow_name: str,
+    step_name: str,
+    artifact_name: str,
+) -> None:
+    workflow = (REPO_ROOT / ".github/workflows" / workflow_name).read_text(encoding="utf-8")
+    structural_step = workflow.split(f"- name: {step_name}", 1)[1].split("# Embedding coverage", 1)[0]
+
+    assert "if: ${{ matrix.service_public == true || matrix.legifrance == true }}" in structural_step
+    assert '${{ matrix.service_public }}' in structural_step
+    assert '${{ matrix.legifrance }}' in structural_step
+    assert "needs.plan.outputs.service_public" not in structural_step
+    assert "needs.plan.outputs.legifrance" not in structural_step
+    assert "if: ${{ matrix.embeddings == true }}" in workflow
+    assert f"name: {artifact_name}" in workflow
+
+
 def test_preview_staging_threads_plan_apply_mode() -> None:
     # Socle #288 : l'axe mode est câblé de bout en bout (input -> plan -> dispatch).
     # Défaut apply (comportement inchangé) ; plan neutralise ingestion + embeddings.
@@ -628,6 +660,11 @@ def test_cron_delta_workflow_chains_delta_on_staging() -> None:
     assert '--legifrance "${{ matrix.legifrance }}"' in workflow
     assert "fail-fast: false" in workflow
     assert "--run-ingestion true" in workflow and "--run-embeddings true" in workflow
+    assert "data-ingestion quality gates" in workflow
+    assert '--source service_public' in workflow and '--source legifrance' in workflow
+    assert "--blocking" in workflow
+    assert "--check-only" in workflow and '--coverage-min-pct "${COVERAGE_MIN_PCT}"' in workflow
+    assert "name: data-quality-cron-${{ matrix.name }}-${{ github.run_attempt }}" in workflow
     # Le cron fournit les creds Grist ET Légifrance/PISTE (jobs delta).
     assert "GRIST_API_KEY:" in workflow
     assert "LEGIFRANCE_CLIENT_ID:" in workflow and "LEGIFRANCE_CLIENT_SECRET:" in workflow
