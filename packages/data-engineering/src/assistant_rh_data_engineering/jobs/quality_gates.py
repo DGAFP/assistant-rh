@@ -38,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--schema", default="public")
     parser.add_argument("--dsn-env", default="", help="Env var holding the Postgres DSN. Overrides the canonical resolution.")
     parser.add_argument("--dsn", help="Postgres DSN. Takes precedence over --dsn-env and the canonical resolution.")
-    parser.add_argument("--source", action="append", default=[])
+    parser.add_argument("--source", action="append", default=[], required=True, help="Source to check (repeatable). Must exist in the config.")
     parser.add_argument("--blocking", action="store_true", help="Exit non-zero when any blocking quality check fails.")
     parser.add_argument("--json-output", default="", help="Write the machine-readable report to this path.")
     parser.add_argument("--markdown-output", default="", help="Write the GitHub-friendly summary to this path.")
@@ -91,28 +91,28 @@ def _resolve_dsn(args: argparse.Namespace) -> str:
         return ""
 
 
-def main() -> int:
-    load_dotenv(REPO_ROOT / ".env")
-    parser = build_parser()
-    args = parser.parse_args()
-    config = load_quality_config(REPO_ROOT / args.config)
-    validate_requested_sources(parser, args, config)
+def run_gates(args: argparse.Namespace, config: dict) -> dict:
+    """Evaluate the gates, converting expected failures into failing reports.
+
+    Configuration errors (bad or empty manifests) and database errors both
+    yield a failing report instead of a traceback, so report-only runs still
+    publish diagnostics. Database error detail goes to stderr only, keeping
+    DSN-adjacent strings out of the published report.
+    """
     dsn = _resolve_dsn(args)
     if not dsn:
-        report = build_error_report(
+        return build_error_report(
             config,
             f"Missing Postgres DSN: pass --dsn, set --dsn-env, or define one of {', '.join(DSN_ENV_KEYS)}.",
             target_env=args.target_env,
             sources=args.source,
             blocking=args.blocking,
         )
-        write_reports(report, args.json_output, args.markdown_output)
-        return 1 if args.blocking else 0
 
     try:
         with psycopg.connect(dsn, connect_timeout=10) as conn:
             db = PsycopgQualityDatabase(conn, schema=args.schema)
-            report = evaluate_quality_gates(
+            return evaluate_quality_gates(
                 db,
                 config,
                 repo_root=REPO_ROOT,
@@ -120,15 +120,35 @@ def main() -> int:
                 sources=args.source,
                 blocking=args.blocking,
             )
-    except (OSError, psycopg.Error) as exc:
-        report = build_error_report(
+    except (FileNotFoundError, ValueError) as exc:
+        return build_error_report(
             config,
-            f"Postgres quality gate could not connect or query the database: {exc.__class__.__name__}.",
+            f"Quality gate configuration error: {exc}",
+            target_env=args.target_env,
+            sources=args.source,
+            blocking=args.blocking,
+            category="config",
+            check_name="configuration",
+            expected="valid configuration",
+        )
+    except (OSError, psycopg.Error) as exc:
+        print(f"Postgres quality gate database error: {exc}", file=sys.stderr)
+        return build_error_report(
+            config,
+            f"Postgres quality gate could not connect or query the database: {exc.__class__.__name__} (see job log).",
             target_env=args.target_env,
             sources=args.source,
             blocking=args.blocking,
         )
 
+
+def main() -> int:
+    load_dotenv(REPO_ROOT / ".env")
+    parser = build_parser()
+    args = parser.parse_args()
+    config = load_quality_config(REPO_ROOT / args.config)
+    validate_requested_sources(parser, args, config)
+    report = run_gates(args, config)
     write_reports(report, args.json_output, args.markdown_output)
     return 1 if args.blocking and report["status"] == "fail" else 0
 

@@ -5,7 +5,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import psycopg
 import pytest
+from assistant_rh_data_engineering.jobs import quality_gates as quality_gates_job
 from assistant_rh_data_engineering.jobs.quality_gates import build_parser, validate_requested_sources
 from assistant_rh_data_engineering.quality_gates import TableSnapshot, evaluate_quality_gates, render_markdown_report, resolve_expected_ids
 from assistant_rh_data_ingestion_cli.main import _resolve_command
@@ -211,6 +213,79 @@ def test_resolve_expected_ids_rejects_null_json(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="resolved to null"):
         resolve_expected_ids(tmp_path, "custom", {"expected_ids": {"path": "ids.json", "field": "ids"}})
+
+
+def test_resolve_expected_ids_rejects_empty_id_list(tmp_path: Path) -> None:
+    path = tmp_path / "ids.json"
+    path.write_text(json.dumps({"ids": ["", "   "]}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="contains no usable IDs"):
+        resolve_expected_ids(tmp_path, "custom", {"expected_ids": {"path": "ids.json", "field": "ids"}})
+
+
+def test_evaluate_quality_gates_rejects_empty_source_selection(tmp_path: Path) -> None:
+    config = _write_config(tmp_path)
+
+    with pytest.raises(ValueError, match="No sources selected"):
+        evaluate_quality_gates(
+            FakeQualityDatabase(),
+            config,
+            repo_root=tmp_path,
+            target_env="staging",
+            sources=[],
+            blocking=True,
+        )
+
+
+def test_quality_gates_cli_requires_at_least_one_source() -> None:
+    parser = build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--target-env", "staging"])
+
+
+def test_run_gates_reports_config_errors_as_failing_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class FakeConnection:
+        def __enter__(self) -> FakeConnection:
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            return None
+
+    config = _write_config(tmp_path)
+    (tmp_path / "ids.json").write_text(json.dumps({"fiche_ids": []}), encoding="utf-8")
+    monkeypatch.setattr(quality_gates_job.psycopg, "connect", lambda *args, **kwargs: FakeConnection())
+    monkeypatch.setattr(quality_gates_job, "REPO_ROOT", tmp_path)
+    parser = build_parser()
+    args = parser.parse_args(["--target-env", "staging", "--source", "service_public", "--dsn", "postgresql://gate-test"])
+
+    report = quality_gates_job.run_gates(args, config)
+
+    assert report["status"] == "fail"
+    assert report["checks"][0]["id"] == "config.configuration"
+    assert "contains no usable IDs" in report["checks"][0]["message"]
+
+
+def test_run_gates_keeps_database_error_detail_out_of_report(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def explode(*args: object, **kwargs: object) -> None:
+        raise psycopg.OperationalError('connection failed: password authentication failed for user "gate"')
+
+    config = _write_config(tmp_path)
+    monkeypatch.setattr(quality_gates_job.psycopg, "connect", explode)
+    parser = build_parser()
+    args = parser.parse_args(["--target-env", "staging", "--source", "service_public", "--dsn", "postgresql://gate-test"])
+
+    report = quality_gates_job.run_gates(args, config)
+
+    assert report["status"] == "fail"
+    assert report["checks"][0]["id"] == "database.connection"
+    assert "OperationalError" in report["checks"][0]["message"]
+    assert "password authentication" not in json.dumps(report)
+    assert "password authentication" in capsys.readouterr().err
 
 
 def test_quality_gates_cli_accepts_config_driven_sources() -> None:

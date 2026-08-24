@@ -203,7 +203,12 @@ def resolve_expected_ids(repo_root: Path, source_name: str, source_config: dict[
     values = payload.get(field) if isinstance(payload, dict) else None
     if not isinstance(values, list):
         raise ValueError(f"Expected ID field {field!r} in {path} must be a list.")
-    return _normalize_ids(source_name, values)
+    ids = _normalize_ids(source_name, values)
+    if not ids:
+        # An empty manifest would make every coverage/row-count minimum zero
+        # and let the gates pass over an empty table.
+        raise ValueError(f"Expected ID field {field!r} in {path} contains no usable IDs.")
+    return ids
 
 
 def _normalize_ids(source_name: str, values: list[Any]) -> list[str]:
@@ -228,15 +233,16 @@ def evaluate_quality_gates(
     sources: list[str],
     blocking: bool,
 ) -> dict[str, Any]:
-    selected_sources = sources or sorted(config["sources"])
+    if not sources:
+        raise ValueError("No sources selected for quality gates; pass at least one configured source.")
     checks: list[Check] = []
-    for source_name in selected_sources:
+    for source_name in sources:
         source_config = config["sources"][source_name]
         expected_ids = resolve_expected_ids(repo_root, source_name, source_config)
         source_filter = _source_filter(source_config)
         for table_config in source_config.get("tables", []):
             checks.extend(_evaluate_table(db, source_name, source_config, table_config, expected_ids, source_filter, target_env))
-    return build_report(config, checks, target_env=target_env, sources=selected_sources, blocking=blocking)
+    return build_report(config, checks, target_env=target_env, sources=sources, blocking=blocking)
 
 
 def _evaluate_table(
@@ -358,8 +364,18 @@ def _freshness_check(
     )
 
 
-def build_error_report(config: dict[str, Any], message: str, *, target_env: str, sources: list[str], blocking: bool) -> dict[str, Any]:
-    check = _check("database", "-", "connection", False, "error", "connection ok", message, check_id="database.connection")
+def build_error_report(
+    config: dict[str, Any],
+    message: str,
+    *,
+    target_env: str,
+    sources: list[str],
+    blocking: bool,
+    category: str = "database",
+    check_name: str = "connection",
+    expected: str = "connection ok",
+) -> dict[str, Any]:
+    check = _check(category, "-", check_name, False, "error", expected, message, check_id=f"{category}.{check_name}")
     return build_report(config, [check], target_env=target_env, sources=sources, blocking=blocking)
 
 

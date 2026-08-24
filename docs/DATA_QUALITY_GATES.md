@@ -6,7 +6,9 @@ The gate is versioned in:
 
 - `config/data_quality_gates.json`
 
-The structural checker is exposed through the canonical ingestion CLI. The DSN is
+The structural checker is exposed through the canonical ingestion CLI. At least
+one `--source` is required — there is no implicit "all sources" default, so a
+blocking run can never silently widen its scope. The DSN is
 resolved from the environment by default (`SCW_POSTGRES_DSN` / `APP_POSTGRES_DSN` /
 `STREAMLIT_POSTGRES_DSN`); pass `--dsn` or `--dsn-env` only to override it:
 
@@ -39,6 +41,15 @@ The expected source IDs come from the existing source manifests:
 rows covered by `legifrance_article_cids.json`; it therefore uses an absolute
 non-empty `min_rows` check instead of article-ID coverage. Article coverage is
 enforced on `rag_chunks_dgafp`.
+
+### Error handling
+
+A manifest that resolves to zero usable IDs is a configuration error: the gate
+fails rather than trivially passing over an empty table. Configuration errors
+(bad or empty manifests) and database errors are both converted into a failing
+report so report-only runs still publish diagnostics; the command exits non-zero
+only in `--blocking` mode. Database error detail is printed to stderr (the job
+log) and kept out of the published report.
 
 ### Embedding coverage
 
