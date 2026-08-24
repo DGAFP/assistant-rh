@@ -86,6 +86,19 @@ def test_getarticle_projection_rekeys_jorfarti_and_preserves_2026_content() -> N
     assert payload["lien_modifications"][0]["linkType"] == "MODIFIE"
 
 
+def test_getarticle_projection_preserves_stable_jorfarti_for_loda_article() -> None:
+    response = _get_article_response()
+    response["article"]["cid"] = JORFARTI
+
+    canonical, payload = bronze_payload_from_response(_expected(), response)
+
+    assert canonical.cid == JORFARTI
+    assert canonical.version_id == VERSION_2026
+    assert {JORFARTI, VERSION_2026} <= set(canonical.alias_ids)
+    assert payload["cid"] == JORFARTI
+    assert payload["article_id"] == VERSION_2026
+
+
 def test_live_materializer_archives_raw_and_builds_silver_gold(tmp_path: Path) -> None:
     config = LegifrancePipelineConfig(paths=LakePaths(root_dir=tmp_path / "lake"))
     config.embeddings.enable_m3 = False

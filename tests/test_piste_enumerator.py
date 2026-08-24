@@ -7,6 +7,7 @@ structure et le filtre VIGUEUR sur un fixture représentatif.
 from __future__ import annotations
 
 from assistant_rh_data_engineering.legifrance.piste import (
+    PisteClient,
     articles_en_vigueur,
     walk_table_matieres,
 )
@@ -85,8 +86,8 @@ def test_walk_aggregates_versions_per_article_vigueur_wins() -> None:
 def test_walk_handles_jorfarti_cids_with_legiarti_version() -> None:
     # Revue #307 (P1 + P1 bis) : les arrêtés LODA portent cid=JORFARTI +
     # id=LEGIARTI. La marche pure ne doit pas jeter l'article ni prendre l'id
-    # de version comme identité ; getArticle résoudra ensuite le JORF provisoire
-    # vers son CID chronique LEGI.
+    # de version comme identité ; getArticle ne le remplace que lorsqu'il expose
+    # réellement un CID chronique LEGI distinct.
     payload = {
         "articles": [
             {"id": "LEGIARTI000024082428", "cid": "JORFARTI000024080293", "etat": "VIGUEUR", "num": "10"},
@@ -97,7 +98,7 @@ def test_walk_handles_jorfarti_cids_with_legiarti_version() -> None:
 
     assert len(articles) == 1
     article = articles[0]
-    assert article.cid == "JORFARTI000024080293"  # identité TOC provisoire
+    assert article.cid == "JORFARTI000024080293"  # identité TOC LODA stable
     assert article.etat == "VIGUEUR"
     assert article.version_id == "LEGIARTI000024082428"
     assert set(article.alias_ids) == {"JORFARTI000024080293", "LEGIARTI000024082428"}
@@ -122,3 +123,48 @@ def test_walk_jorfarti_identity_is_stable_across_versions() -> None:
     assert article.etat == "VIGUEUR"
     assert article.version_id == "LEGIARTI000050000001"
     assert {"LEGIARTI000024082428", "LEGIARTI000050000001"} <= set(article.alias_ids)
+
+
+def test_piste_client_refreshes_expired_oauth_token_once(monkeypatch) -> None:
+    class FakeResponse:
+        def __init__(self, status_code: int, payload: dict) -> None:
+            self.status_code = status_code
+            self.payload = payload
+
+        def raise_for_status(self) -> None:
+            if self.status_code >= 400:
+                raise RuntimeError(f"HTTP {self.status_code}")
+
+        def json(self) -> dict:
+            return self.payload
+
+    token_responses = iter(
+        [
+            FakeResponse(200, {"access_token": "expired-token"}),
+            FakeResponse(200, {"access_token": "fresh-token"}),
+        ]
+    )
+    consult_responses = iter(
+        [
+            FakeResponse(401, {}),
+            FakeResponse(200, {"article": {"id": "LEGIARTI000000000001"}}),
+        ]
+    )
+    authorization_headers: list[str] = []
+
+    def fake_post(url: str, **kwargs):
+        if url == "https://token.test":
+            return next(token_responses)
+        authorization_headers.append(kwargs["headers"]["Authorization"])
+        return next(consult_responses)
+
+    monkeypatch.setattr("assistant_rh_data_engineering.legifrance.piste.requests.post", fake_post)
+    client = PisteClient(
+        client_id="client",
+        client_secret="secret",
+        token_url="https://token.test",
+        base_url="https://piste.test",
+    )
+
+    assert client.get_article("LEGIARTI000000000001")["article"]["id"] == "LEGIARTI000000000001"
+    assert authorization_headers == ["Bearer expired-token", "Bearer fresh-token"]

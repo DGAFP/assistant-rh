@@ -83,8 +83,7 @@ def is_legifrance(fields: Mapping[str, Any]) -> bool:
 
 
 def is_article_uid(uid: str) -> bool:
-    """Un uid d'article — identité du corpus dgafp : cid chronique LEGIARTI,
-    ou ancien/provisoire JORFARTI accepté le temps de sa migration."""
+    """Un uid d'article — CID chronique LEGIARTI ou identité LODA stable JORFARTI."""
     return str(uid or "").upper().startswith(("LEGIARTI", "JORFARTI"))
 
 
@@ -323,7 +322,7 @@ def build_legifrance_plan(
         # Une chronique déjà présente en silver ne prouve pas que la VERSION
         # courante de la TOC a été matérialisée. C'est précisément le cas qui
         # figeait le contenu au dernier dump tout en laissant le delta au vert.
-        version_missing = track_versions and (version_id not in materialized_versions or uid.startswith("JORFARTI"))
+        version_missing = track_versions and version_id not in materialized_versions
         if version_missing:
             missing_toc_versions.add(version_id)
             if requested_set is None:

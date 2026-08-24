@@ -23,6 +23,7 @@ import pytest
 import requests
 from assistant_rh_data_engineering.jobs import legifrance_ingestion
 from assistant_rh_data_engineering.legifrance import reconcile
+from assistant_rh_data_engineering.legifrance.live import LiveArtifactBundle
 from assistant_rh_data_engineering.legifrance.piste import CodeArticle, PisteError
 from assistant_rh_data_engineering.reconciliation import Confidence
 from assistant_rh_data_engineering.service_public import reconcile as sp_reconcile
@@ -636,6 +637,21 @@ class _DeltaWriter:
         return {"chunks": len(cids), "sections": len(cids), "documents": len(cids)}
 
 
+class _FakeLiveMaterializer:
+    def __init__(self, bundle: LiveArtifactBundle | None = None, *, error: Exception | None = None) -> None:
+        self.bundle = bundle
+        self.error = error
+
+    def materialize(self, expected: CodeArticle, response: dict[str, Any]) -> LiveArtifactBundle:
+        if self.error is not None:
+            raise self.error
+        assert self.bundle is not None
+        return self.bundle
+
+    def sync(self) -> None:
+        return None
+
+
 def _artifacts() -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     documents = [
         {"short_id": "LEGIARTI002", "doc_id": "da2", "checksum": "h2"},
@@ -892,6 +908,44 @@ def test_ingest_delta_materializes_missing_version_and_rekeys_jorfarti(tmp_path:
     assert "un sixième" in silver_doc["doc_markdown"]
 
 
+def test_ingest_delta_accepts_materialized_current_version_with_stable_jorfarti() -> None:
+    """Un CID LODA JORF stable ne reste pas pending après matérialisation."""
+    jorfarti = "JORFARTI000039728052"
+    current_version = "LEGIARTI000054638420"
+    grist = _RecordingGrist([_rec(1, **_texte(JORF_D1))])
+    piste = _FakePiste({JORF_D1: [CodeArticle(jorfarti, "VIGUEUR", "2", current_version, (jorfarti, current_version))]})
+    writer = _DeltaWriter(_corpus(**{jorfarti: ("old-hash", 2)}))
+    documents = [
+        {
+            "short_id": jorfarti,
+            "doc_id": "stable-doc",
+            "checksum": "new-hash",
+            "metadata": {"cid": jorfarti, "article_id": current_version, "version_id": current_version},
+        }
+    ]
+    sections = [{"doc_id": "stable-doc", "section_id": "new-section", "section_index": 0}]
+    chunks = [{"cid": jorfarti, "chunk_id": f"{jorfarti}_0", "text": "Barème 2026.", "_targets": ["legacy"]}]
+
+    summary = legifrance_ingestion.ingest_delta(
+        writer,
+        grist,
+        piste,
+        documents,
+        sections,
+        chunks,
+        live_materializer=object(),
+        toc_date_millis=1000,
+    )
+
+    assert piste.article_calls == []
+    assert writer.article_bundles == [jorfarti]
+    assert summary["status"] == "ok"
+    assert summary["live_materialization"]["detected"] == 0
+    assert summary["plan"]["changed"]["sample"] == [jorfarti]
+    assert summary["plan"]["pending_artifact"]["count"] == 0
+    assert summary["applied"] == {"ingested": 1, "skipped": 0, "deleted": 0, "identity_migrations": 0, "failed": 0}
+
+
 def test_ingest_delta_targeted_jorf_alias_includes_resolved_chronical_id(tmp_path: Path) -> None:
     """--uid JORFARTI doit ingérer le LEGIARTI résolu dans le même run."""
     from assistant_rh_data_engineering.legifrance import LegifrancePipeline, LegifrancePipelineConfig
@@ -934,6 +988,145 @@ def test_ingest_delta_targeted_jorf_alias_includes_resolved_chronical_id(tmp_pat
 
     assert writer.article_bundles == [chronique]
     assert writer.article_cascades == [[jorfarti]]
+    assert summary["applied"]["ingested"] == 1
+
+
+def test_ingest_delta_targeted_canonical_resolves_provisional_jorf_before_filtering() -> None:
+    """--uid documenté en CID chronique ne doit jamais supprimer sans remplacement."""
+    jorfarti = "JORFARTI000039728025"
+    chronique = "LEGIARTI000039728025"
+    current_version = "LEGIARTI000054638420"
+    grist = _RecordingGrist([_rec(1, **_texte(JORF_D1))])
+    piste = _FakePiste({JORF_D1: [CodeArticle(jorfarti, "VIGUEUR", "2", current_version, (jorfarti, current_version))]})
+    response = {
+        "article": {
+            "id": current_version,
+            "cid": chronique,
+            "num": "2",
+            "etat": "VIGUEUR",
+            "texte": "Barème 2026.",
+            "textTitles": [{"cid": JORF_D1, "titre": "Décret n° 2019-1596", "nature": "DECRET"}],
+        }
+    }
+    piste.article_payloads[chronique] = response
+    writer = _DeltaWriter(_corpus(**{chronique: ("old-hash", 1)}))
+    canonical = CodeArticle(chronique, "VIGUEUR", "2", current_version, (jorfarti, chronique, current_version))
+    bundle = LiveArtifactBundle(
+        canonical,
+        {"short_id": chronique, "doc_id": "new-doc", "checksum": "new-hash", "metadata": {"cid": chronique, "article_id": current_version}},
+        [{"doc_id": "new-doc", "section_id": "new-section", "section_index": 0}],
+        [{"cid": chronique, "chunk_id": f"{chronique}_0", "text": "Barème 2026.", "_targets": ["legacy"]}],
+    )
+
+    summary = legifrance_ingestion.ingest_delta(
+        writer,
+        grist,
+        piste,
+        [],
+        [],
+        [],
+        requested={chronique},
+        live_materializer=_FakeLiveMaterializer(bundle),
+        toc_date_millis=1000,
+    )
+
+    assert piste.article_calls == [chronique]  # réponse préchargée puis réutilisée
+    assert writer.article_bundles == [chronique]
+    assert writer.article_cascades == []
+    assert summary["deleted"] == []
+    assert summary["plan"]["to_ingest"]["count"] == 1
+
+
+def test_ingest_delta_failed_jorf_materialization_marks_followed_row_error() -> None:
+    jorfarti = "JORFARTI000039728025"
+    chronique = "LEGIARTI000039728025"
+    current_version = "LEGIARTI000054638420"
+    grist = _RecordingGrist([_rec(1, **_texte(JORF_D1))])
+    piste = _FakePiste({JORF_D1: [CodeArticle(jorfarti, "VIGUEUR", "2", current_version, (jorfarti, current_version))]})
+    piste.article_payloads[current_version] = {
+        "article": {
+            "id": current_version,
+            "cid": chronique,
+            "num": "2",
+            "etat": "VIGUEUR",
+            "texte": "Barème 2026.",
+            "textTitles": [{"cid": JORF_D1}],
+        }
+    }
+    writer = _DeltaWriter(_corpus(**{jorfarti: ("old-hash", 1)}))
+    documents = [
+        {
+            "short_id": jorfarti,
+            "doc_id": "old-doc",
+            "checksum": "old-hash",
+            "metadata": {"cid": jorfarti, "article_id": chronique},
+        }
+    ]
+
+    summary = legifrance_ingestion.ingest_delta(
+        writer,
+        grist,
+        piste,
+        documents,
+        [],
+        [],
+        live_materializer=_FakeLiveMaterializer(error=RuntimeError("gold failed")),
+        toc_date_millis=1000,
+    )
+
+    assert summary["status"] == "partial"
+    assert summary["deferred_removals"] == [jorfarti]
+    assert summary["failed"] == {chronique: "gold failed"}
+    fields = dict(grist.writebacks)[1]
+    assert fields["statut"] == "erreur"
+    assert "gold failed" not in fields["erreur_ingestion"]  # message agrégé, sans détails internes
+
+
+def test_ingest_delta_live_replacement_discards_old_sections_and_chunks() -> None:
+    chronique = "LEGIARTI000039728025"
+    old_version = "LEGIARTI000039728025"
+    current_version = "LEGIARTI000054638420"
+    grist = _RecordingGrist([_rec(1, **_texte(JORF_D1))])
+    piste = _FakePiste({JORF_D1: [CodeArticle(chronique, "VIGUEUR", "2", current_version, (chronique, current_version))]})
+    piste.article_payloads[current_version] = {
+        "article": {"id": current_version, "cid": chronique, "num": "2", "etat": "VIGUEUR", "texte": "Nouveau barème."}
+    }
+    writer = _DeltaWriter(_corpus(**{chronique: ("old-hash", 2)}))
+    documents = [
+        {
+            "short_id": chronique,
+            "doc_id": "stable-doc",
+            "checksum": "old-hash",
+            "metadata": {"cid": chronique, "article_id": old_version},
+        }
+    ]
+    sections = [{"doc_id": "stable-doc", "section_id": "old-section", "section_index": 0}]
+    chunks = [
+        {"cid": chronique, "chunk_id": f"{chronique}_0", "text": "ancien 1", "_targets": ["legacy"]},
+        {"cid": chronique, "chunk_id": f"{chronique}_1", "text": "ancien 2", "_targets": ["legacy"]},
+    ]
+    canonical = CodeArticle(chronique, "VIGUEUR", "2", current_version, (chronique, current_version))
+    bundle = LiveArtifactBundle(
+        canonical,
+        {"short_id": chronique, "doc_id": "stable-doc", "checksum": "new-hash", "metadata": {"cid": chronique, "article_id": current_version}},
+        [{"doc_id": "stable-doc", "section_id": "new-section", "section_index": 0}],
+        [{"cid": chronique, "chunk_id": f"{chronique}_0", "text": "nouveau", "_targets": ["legacy"]}],
+    )
+
+    summary = legifrance_ingestion.ingest_delta(
+        writer,
+        grist,
+        piste,
+        documents,
+        sections,
+        chunks,
+        live_materializer=_FakeLiveMaterializer(bundle),
+        toc_date_millis=1000,
+    )
+
+    assert len(documents) == len(sections) == len(chunks) == 1
+    assert chunks[0]["text"] == "nouveau"
+    assert dict(grist.writebacks)[1]["nb_chunks"] == 1
     assert summary["applied"]["ingested"] == 1
 
 
