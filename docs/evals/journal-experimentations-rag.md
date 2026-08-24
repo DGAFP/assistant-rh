@@ -1155,3 +1155,40 @@ les réponses figées ou relancer l'A/B. Références juridiques contrôlées pe
 l'audit : [article 14 du décret 86-83](https://www.legifrance.gouv.fr/loda/id/JORFTEXT000000699956/2026-06-05),
 [article 49](https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000045662477)
 et [article 11-1](https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000045351577).
+
+---
+
+## Runs — A/B prompt persona gestionnaire RH (24/08, lancements planifiés)
+
+**Objet** : qualifier le prompt additif de la PR #423, sans l'activer dans la
+configuration partagée. Le candidat
+`system_prompt_persona_gestionnaire_rh.md` change uniquement la voix de la
+réponse (destinataire gestionnaire RH en SGCD, acteurs métier explicites,
+périmètre contractuels FPE) ; le volet « niveau de détail » a été exclu après
+l'ablation négative du run #165. La migration additive est arrivée en staging
+par le merge de promotion `3363d35` (#426) et la ligne est présente dans
+`system_prompts` ; le prompt actif partagé reste V6.
+
+Deux runs frais sont nécessaires après la promotion afin de ne pas comparer le
+candidat à un état antérieur de la base ou du code :
+
+1. contrôle `baseline_deepseek_v6_post_persona_20260824` : générateur
+   `deepseek-v4-flash`, sélecteur `openweight-large`, prompt
+   `system_prompt_V6_optimized_v2026-08-20.md` ;
+2. candidat `candidate_persona_gestionnaire_rh_deepseek_20260824` : même
+   configuration, seule surcharge =
+   `system_prompt_persona_gestionnaire_rh.md`.
+
+**Protocole figé** : panel `baseline_v1` (98 questions attendues), scope
+`per-question`, providers Albert pour le générateur et le sélecteur, juge
+Scaleway `mistral-medium-3.5-128b` maj-3 avec rubrique v2, RAGAS sauté,
+invalidation au moindre fallback générateur. Le candidat est gaté contre le
+contrôle frais sur `judge_pass_rate` (tolérance −5 pts) et `doc_recall_avg`.
+Le bloc legacy « Couverture des sources complémentaires » est automatiquement
+ajouté aux deux prompts par le générateur : il n'est pas une variable de l'A/B.
+
+**Préflight** : staging porte `v3_generator_model=deepseek-v4-flash`,
+`v3_selector_model=openweight-large` et le prompt actif V6. Le smoke de
+promotion `staging-3363d35...` doit être terminé avant le lancement du contrôle.
+
+**Résultats** : à compléter après les deux runs.
