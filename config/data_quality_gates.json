@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "description": "Post-ingestion quality gates for Scaleway staging/prod RAG tables.",
+  "sources": {
+    "service_public": {
+      "label": "Service-Public",
+      "expected_ids": {
+        "path": "config/service_public_fiches.json",
+        "field": "fiche_ids"
+      },
+      "source_filter": {
+        "column": "source",
+        "value": "service_public"
+      },
+      "freshness_max_age_hours": {
+        "default": 1080,
+        "staging": 1080,
+        "prod": 1080
+      },
+      "tables": [
+        {
+          "name": "rag_documents",
+          "id_column": "short_id",
+          "apply_source_filter": true,
+          "min_rows_per_expected_id": 1,
+          "min_distinct_expected_id_ratio": 1.0,
+          "text_columns": ["doc_markdown"],
+          "freshness_column": "updated_at"
+        },
+        {
+          "name": "rag_sections",
+          "kind": "sections",
+          "min_rows_per_expected_id": 1,
+          "min_distinct_expected_id_ratio": 1.0,
+          "text_columns": ["section_markdown"]
+        },
+        {
+          "name": "rag_chunks_service_public",
+          "id_column": "short_id",
+          "min_rows_per_expected_id": 1,
+          "min_distinct_expected_id_ratio": 1.0,
+          "text_columns": ["chunk_text"],
+          "freshness_column": "updated_at"
+        }
+      ]
+    },
+    "legifrance": {
+      "label": "Legifrance",
+      "expected_ids": {
+        "path": "config/legifrance_article_cids.json",
+        "field": "article_cids"
+      },
+      "source_filter": {
+        "column": "source",
+        "value": "legifrance"
+      },
+      "freshness_max_age_hours": {
+        "default": 1080,
+        "staging": 1080,
+        "prod": 1080
+      },
+      "tables": [
+        {
+          "name": "rag_documents",
+          "id_column": "short_id",
+          "apply_source_filter": true,
+          "min_rows_per_expected_id": 1,
+          "min_distinct_expected_id_ratio": 1.0,
+          "text_columns": ["doc_markdown"],
+          "freshness_column": "updated_at"
+        },
+        {
+          "name": "rag_sections",
+          "kind": "sections",
+          "min_rows_per_expected_id": 1,
+          "min_distinct_expected_id_ratio": 1.0,
+          "text_columns": ["section_markdown"]
+        },
+        {
+          "name": "rag_chunks_dgafp",
+          "id_column": "cid",
+          "min_rows_per_expected_id": 1,
+          "min_distinct_expected_id_ratio": 1.0,
+          "text_columns": ["chunk_text"],
+          "freshness_column": "updated_at"
+        },
+        {
+          "name": "rag_chunks_legifrance",
+          "min_rows": 1,
+          "text_columns": ["chunk_text"],
+          "freshness_column": "updated_at"
+        }
+      ]
+    }
+  }
+}

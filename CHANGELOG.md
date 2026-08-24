@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.9.0](https://github.com/DGAFP/assistant-rh/compare/v0.8.0...v0.9.0) (2026-08-24)
+
+
+### Features
+
+* add post-ingestion quality gates ([#114](https://github.com/DGAFP/assistant-rh/issues/114)) ([af84b7b](https://github.com/DGAFP/assistant-rh/commit/af84b7b5c0a06629f16ff7a3e89c2e21454483a8))
+* **ci:** make release PR the staging-to-main promotion ([#416](https://github.com/DGAFP/assistant-rh/issues/416)) ([c122e20](https://github.com/DGAFP/assistant-rh/commit/c122e200f110a460f306835e45d5e2f7f05aeb1e))
+* **data-eng:** orchestrate reviewed R2 summaries ([#411](https://github.com/DGAFP/assistant-rh/issues/411)) ([9d11030](https://github.com/DGAFP/assistant-rh/commit/9d11030920800d72ef6f9c21ac47b197800ac258))
+* **eval:** [#298](https://github.com/DGAFP/assistant-rh/issues/298) — rejeu campagne Suivi-Tests avec assertions de source par étape ([#304](https://github.com/DGAFP/assistant-rh/issues/304)) ([530dd68](https://github.com/DGAFP/assistant-rh/commit/530dd68a21ffbda9ef200cf0e20dd652343ecc8b))
+* **evals:** durcissement de l'eval — juge souverain par défaut, overrides de provider, double lecture borderline ([#372](https://github.com/DGAFP/assistant-rh/issues/372)) ([e88f509](https://github.com/DGAFP/assistant-rh/commit/e88f509d8c9c290d81a2a88e02e1ab88c5dffad7))
+* **evals:** overrides CLI générateur/prompt + banc local d'eval — campagne deepseek-v4-flash ([#417](https://github.com/DGAFP/assistant-rh/issues/417)) ([2664e54](https://github.com/DGAFP/assistant-rh/commit/2664e546cdc0e3e4b3f85f902e9efe1e3e9e9e0c))
+* **prompts:** persona gestionnaire RH — ligne additive candidate d'A/B ([#300](https://github.com/DGAFP/assistant-rh/issues/300)) ([#423](https://github.com/DGAFP/assistant-rh/issues/423)) ([c90f215](https://github.com/DGAFP/assistant-rh/commit/c90f215f0c9839c19315db219f648aec149826be))
+
+
+### Bug Fixes
+
+* **ci:** isolate manual R2 selection test ([#413](https://github.com/DGAFP/assistant-rh/issues/413)) ([207920e](https://github.com/DGAFP/assistant-rh/commit/207920eae1f63b33baf806aebf2756ed59d02a83))
+* **data-eng:** gardes R2 hors apply + batching --limit (suites revue Codex [#412](https://github.com/DGAFP/assistant-rh/issues/412)) ([#415](https://github.com/DGAFP/assistant-rh/issues/415)) ([600c8f5](https://github.com/DGAFP/assistant-rh/commit/600c8f5bad5f42c6d8edd972ba103735eb7df015))
+* **data-eng:** neutralise les mutations hors apply des runs R2 et débloque --limit ([600c8f5](https://github.com/DGAFP/assistant-rh/commit/600c8f5bad5f42c6d8edd972ba103735eb7df015))
+* **evals:** harden model override attribution ([#419](https://github.com/DGAFP/assistant-rh/issues/419)) ([ded03e3](https://github.com/DGAFP/assistant-rh/commit/ded03e3e639ed23ba2fda4b65732927de82d05b8))
+* harden live Legifrance updates and automate prod refresh ([#429](https://github.com/DGAFP/assistant-rh/issues/429)) ([ccaafc1](https://github.com/DGAFP/assistant-rh/commit/ccaafc1f0a71fb1ce5a7db7fe42ffd6c6aaf88de))
+* harden R2 summaries and quality gates ([#359](https://github.com/DGAFP/assistant-rh/issues/359)) ([454a9c0](https://github.com/DGAFP/assistant-rh/commit/454a9c0e4f8bea62472ea39df904e0502fbdc44d))
+* ingest live Legifrance article versions ([#428](https://github.com/DGAFP/assistant-rh/issues/428)) ([60812ed](https://github.com/DGAFP/assistant-rh/commit/60812ed113aa30e3f840f885be47f97dbb79dc6e))
+
+
+### Documentation
+
+* **agents:** use ~ convention for workspace path ([#315](https://github.com/DGAFP/assistant-rh/issues/315)) ([3b89fd1](https://github.com/DGAFP/assistant-rh/commit/3b89fd1799f801992fb29cc795142f62b6d450d6))
+* **evals:** record DeepSeek staging baseline audit ([#425](https://github.com/DGAFP/assistant-rh/issues/425)) ([adac78e](https://github.com/DGAFP/assistant-rh/commit/adac78e2e32d24fb7539265c74126b617b9eb3b7))
+* **quality:** dossier selector-optimization — synthèse de la campagne [#360](https://github.com/DGAFP/assistant-rh/issues/360) ([#368](https://github.com/DGAFP/assistant-rh/issues/368)) ([2cf5441](https://github.com/DGAFP/assistant-rh/commit/2cf5441fd0c0849d7c984121c8c1db1b66728649))
+
 ## [0.8.0](https://github.com/DGAFP/assistant-rh/compare/v0.7.0...v0.8.0) (2026-08-19)
 
 

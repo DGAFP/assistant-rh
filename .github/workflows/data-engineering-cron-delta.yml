@@ -98,3 +98,65 @@ jobs:
             --run-embeddings true \
             --embedding-source "${{ matrix.embedding_source }}" \
             --wait
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install Python dependencies
+        run: uv sync --frozen
+
+      - name: Run ${{ matrix.name }} structural quality gate
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/data-quality
+
+          QUALITY_SOURCES=()
+          if [[ "${{ matrix.service_public }}" == "true" ]]; then
+            QUALITY_SOURCES+=(--source service_public)
+          fi
+          if [[ "${{ matrix.legifrance }}" == "true" ]]; then
+            QUALITY_SOURCES+=(--source legifrance)
+          fi
+
+          uv run --no-sync data-ingestion quality gates \
+            --target-env staging \
+            "${QUALITY_SOURCES[@]}" \
+            --blocking \
+            --json-output "artifacts/data-quality/cron-${{ matrix.name }}-report.json" \
+            --markdown-output "artifacts/data-quality/cron-${{ matrix.name }}-summary.md"
+
+      - name: Run ${{ matrix.name }} embedding coverage gate
+        env:
+          COVERAGE_MIN_PCT: "100"
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/data-quality
+
+          case "${{ matrix.embedding_source }}" in
+            service_public) EMBEDDING_COMMAND=service-public ;;
+            legifrance) EMBEDDING_COMMAND=legifrance ;;
+            *) echo "Unsupported cron embedding source: ${{ matrix.embedding_source }}" >&2; exit 1 ;;
+          esac
+
+          uv run --no-sync data-ingestion embeddings "${EMBEDDING_COMMAND}" \
+            --check-only \
+            --coverage-min-pct "${COVERAGE_MIN_PCT}" \
+            > "artifacts/data-quality/cron-embeddings-${{ matrix.name }}.json"
+
+      - name: Summarize ${{ matrix.name }} data quality gates
+        if: always()
+        run: |
+          if [[ -f "artifacts/data-quality/cron-${{ matrix.name }}-summary.md" ]]; then
+            cat "artifacts/data-quality/cron-${{ matrix.name }}-summary.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload ${{ matrix.name }} data quality reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: data-quality-cron-${{ matrix.name }}-${{ github.run_attempt }}
+          path: artifacts/data-quality/
+          if-no-files-found: ignore

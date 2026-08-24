@@ -11,6 +11,11 @@ on:
       - dev
       - staging
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
   schedule:
     - cron: "17 4 * * 1"
   workflow_dispatch:

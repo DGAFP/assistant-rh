@@ -35,6 +35,9 @@ class BronzeRepository:
         self.legacy_texts_dir = ensure_dir(self.raw_dir / "legacy_texts")
         self.legacy_text_sources_dir = ensure_dir(self.raw_dir / "legacy_text_sources")
         self.bulk_articles_dir = ensure_dir(self.raw_dir / "legi_bulk" / "articles")
+        # Réponse PISTE brute, conservée telle que reçue pour audit/rejeu. Le
+        # JSON normalisé consommé par silver reste dans ``raw/articles``.
+        self.piste_articles_dir = ensure_dir(self.raw_dir / "piste" / "articles")
         self.manifest_dir = ensure_dir(self.root / "manifests")
 
     def article_json_paths(self) -> list[Path]:
@@ -51,6 +54,11 @@ class BronzeRepository:
 
     def save_article_payload(self, short_id: str, payload: dict[str, Any]) -> Path:
         path = self.articles_dir / f"{short_id}.json"
+        write_json(path, payload)
+        return path
+
+    def save_piste_article_payload(self, version_id: str, payload: dict[str, Any]) -> Path:
+        path = self.piste_articles_dir / f"{version_id}.json"
         write_json(path, payload)
         return path
 
@@ -146,6 +154,43 @@ class LegifranceBronzeBuilder:
         normalized["lien_concordes_count"] = normalized["lien_concordes_count"] or count_links(normalized["lien_concordes"])
         return normalized
 
+    def persist_article_payload(self, repository: BronzeRepository, payload: dict[str, Any]) -> BronzeAsset:
+        """Normalise puis persiste un article brut dans le contrat bronze.
+
+        Ce point d'entrée sert notamment au follow-live PISTE. La réponse API
+        originale est archivée séparément par l'appelant ; ce fichier est la
+        projection normalisée relue par le médaillon lors des runs suivants.
+        """
+        normalized = self._normalize_article_payload(payload)
+        payload_path = repository.save_article_payload(normalized["short_id"], normalized)
+        return BronzeAsset(
+            asset_type="article",
+            short_id=normalized["short_id"],
+            payload=normalized,
+            payload_path=payload_path,
+        )
+
+    @staticmethod
+    def _prefer_article_payloads(*groups: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+        """Déduplique par identité chronique en donnant priorité au live PISTE.
+
+        Un dump et un artefact PISTE peuvent porter deux ``article_id`` de
+        version différents pour le même ``short_id``. La source live doit alors
+        gagner, faute de quoi le prochain médaillon rétablirait silencieusement
+        le contenu figé du dump.
+        """
+        selected: dict[str, tuple[int, dict[str, Any]]] = {}
+        for group in groups:
+            for payload in group.values():
+                short_id = str(payload.get("short_id") or payload.get("cid") or payload.get("article_id") or "").strip().upper()
+                if not short_id:
+                    continue
+                priority = 1 if str(payload.get("origin") or "").startswith("piste") else 0
+                current = selected.get(short_id)
+                if current is None or priority >= current[0]:
+                    selected[short_id] = (priority, payload)
+        return sorted((item[1] for item in selected.values()), key=LegifranceBronzeBuilder._article_sort_key)
+
     def _load_article_payloads_from_json(self, repository: BronzeRepository) -> dict[str, dict[str, Any]]:
         payloads: dict[str, dict[str, Any]] = {}
         for path in repository.article_json_paths():
@@ -184,9 +229,14 @@ class LegifranceBronzeBuilder:
             return sorted(json_payloads.values(), key=self._article_sort_key)
 
         xml_payloads = self._load_article_payloads_from_xml(repository)
-        payloads = dict(json_payloads)
-        payloads.update(xml_payloads)
-        return sorted(payloads.values(), key=self._article_sort_key)
+        article_payloads = self._prefer_article_payloads(xml_payloads, json_payloads)
+        # ``_load_article_payloads_from_xml`` maintient la projection historique
+        # raw/articles et peut donc écraser le JSON live pendant son parsing.
+        # Réécrit la sélection finale afin que le choix PISTE survive aussi sur
+        # disque au prochain run, pas uniquement dans les assets en mémoire.
+        for payload in article_payloads:
+            repository.save_article_payload(payload["short_id"], payload)
+        return article_payloads
 
     def _load_legacy_text_payloads_from_sources(self, repository: BronzeRepository) -> list[dict[str, Any]]:
         payloads: list[dict[str, Any]] = []
@@ -353,20 +403,12 @@ class LegifranceBronzeBuilder:
         object_storage: Any,
         target_env: str,
     ) -> list[BronzeAsset]:
+        json_payloads = self._load_article_payloads_from_remote_json(object_storage, target_env)
         if self.config.prefer_raw_xml:
             xml_payloads = self._load_article_payloads_from_remote_xml(object_storage, target_env)
-            if xml_payloads:
-                article_payloads = sorted(xml_payloads.values(), key=self._article_sort_key)
-            else:
-                article_payloads = sorted(
-                    self._load_article_payloads_from_remote_json(object_storage, target_env).values(),
-                    key=self._article_sort_key,
-                )
+            article_payloads = self._prefer_article_payloads(xml_payloads, json_payloads)
         else:
-            article_payloads = sorted(
-                self._load_article_payloads_from_remote_json(object_storage, target_env).values(),
-                key=self._article_sort_key,
-            )
+            article_payloads = sorted(json_payloads.values(), key=self._article_sort_key)
         legacy_text_payloads = sorted(
             self._load_legacy_text_payloads_from_remote_json(object_storage, target_env),
             key=lambda payload: payload["short_id"],

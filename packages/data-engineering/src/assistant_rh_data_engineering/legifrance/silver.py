@@ -117,6 +117,7 @@ class LegifranceSilverBuilder:
         section_id = stable_uuid_from_parts(LEGIFRANCE_NAMESPACE, doc_id, "section", 0)
         metadata = {
             "article_id": payload.get("article_id"),
+            "version_id": payload.get("version_id") or payload.get("article_id"),
             "cid": payload.get("cid"),
             "num_article": num_article,
             "num_norm": payload.get("num_norm"),

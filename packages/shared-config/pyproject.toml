@@ -1,6 +1,6 @@
 [project]
 name = "assistant-rh-shared-config"
-version = "0.8.0"
+version = "0.9.0"
 description = "Shared configuration and database utilities for Assistant RH"
 requires-python = ">=3.12"
 
