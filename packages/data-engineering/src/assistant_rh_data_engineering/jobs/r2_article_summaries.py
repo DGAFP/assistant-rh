@@ -326,6 +326,32 @@ def remove_orphaned_summaries(
     return orphaned
 
 
+def remove_summaries_without_canonical_source(
+    conn: psycopg.Connection,
+    schema: str,
+    table: str,
+    *,
+    cids: list[str],
+) -> int:
+    """Delete legacy R2 rows whose source CID has no canonical article row.
+
+    Before canonical selection was enforced, the job could generate ``_r2s``
+    rows from an arbitrary tail fragment.  Merely excluding those CIDs from a
+    new plan leaves the old vectors searchable forever, so a reviewed apply
+    also retires their reserved summary rows.  Deletion by the exact reserved
+    ``{cid}_r2s`` identifier avoids touching ordinary article chunks.
+    """
+    normalized = list(dict.fromkeys(str(cid).strip() for cid in cids if str(cid).strip()))
+    if not normalized:
+        return 0
+    result = conn.execute(
+        sql.SQL("DELETE FROM {}.{} WHERE chunk_id = ANY(%s)").format(sql.Identifier(schema), sql.Identifier(table)),
+        ([summary_chunk_id(cid) for cid in normalized],),
+    )
+    conn.commit()
+    return int(result.rowcount or 0)
+
+
 def _load_uids(args: argparse.Namespace) -> list[str]:
     uids = [str(uid).strip() for uid in (args.uid or []) if str(uid).strip()]
     if args.uids_file:
@@ -422,6 +448,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "articles_in_scope": len(article_rows),
         "source_cids_without_canonical": len(missing_canonical),
         "source_cids_without_canonical_sample": list(missing_canonical)[:20],
+        "noncanonical_summaries_removed": 0,
         # « à jour » = hors manquants TOTAUX — jamais tronqué par --limit
         # (revue #332 : le rapport annonçait 4 107 à jour avec --limit 100).
         "summaries_up_to_date": len(article_rows) - missing_total,
@@ -582,6 +609,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             if orphaned:
                 report["orphans_detail"] = orphaned
         report["mode"] = "apply"
+
+    if mode == "apply" and missing_canonical:
+        with psycopg.connect(dsn) as cleanup_conn:
+            report["noncanonical_summaries_removed"] = remove_summaries_without_canonical_source(
+                cleanup_conn,
+                args.schema,
+                args.table,
+                cids=list(missing_canonical),
+            )
 
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return report

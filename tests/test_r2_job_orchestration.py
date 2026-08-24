@@ -341,3 +341,50 @@ def test_multichunk_canonical_selection_keeps_freshness_idempotent() -> None:
     assert missing == {}
     assert first_plan == []
     assert second_plan == []
+
+
+def test_apply_removes_existing_summary_when_canonical_source_is_missing(monkeypatch, tmp_path) -> None:
+    deleted_chunk_ids: list[str] = []
+
+    class _DeleteResult:
+        rowcount = 1
+
+    class _CleanupConn(_FakeConn):
+        def execute(self, query: Any, params: Any = None) -> Any:
+            if params and params[0] == ["C1_r2s"]:
+                deleted_chunk_ids.extend(params[0])
+                return _DeleteResult()
+            return super().execute(query, params)
+
+    monkeypatch.setenv("TEST_R2_DSN", "postgresql://fake")
+    monkeypatch.setattr(job, "fetch_article_rows", lambda *a, **k: [{"cid": "C1", "chunk_id": "C1_1", "chunk_text": "fragment"}])
+    monkeypatch.setattr(job, "fetch_existing_variants", lambda *a, **k: {"C1": "r2_summary/ancienne-version/checksum"})
+    monkeypatch.setattr(job, "_table_has_index_variant", lambda *a, **k: True)
+    monkeypatch.setattr(job.psycopg, "connect", lambda dsn, **k: _CleanupConn())
+    args = argparse.Namespace(
+        dsn_env="TEST_R2_DSN",
+        env_file=str(tmp_path / "absent.env"),
+        mode="apply",
+        generate=False,
+        apply=False,
+        reviewed_cache=True,
+        allow_cache_misses=False,
+        sync_object_storage=False,
+        target_env="staging",
+        cache_source_env="staging",
+        model="m-test",
+        cache_dir=str(tmp_path / "cache"),
+        uid=[],
+        uids_file=None,
+        schema="public",
+        table="rag_chunks_dgafp",
+        limit=None,
+        out=None,
+        max_workers=1,
+    )
+
+    report = job.run(args)
+
+    assert deleted_chunk_ids == ["C1_r2s"]
+    assert report["source_cids_without_canonical"] == 1
+    assert report["noncanonical_summaries_removed"] == 1
