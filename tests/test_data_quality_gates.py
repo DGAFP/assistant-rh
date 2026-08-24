@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 from assistant_rh_data_engineering.jobs.quality_gates import build_parser, validate_requested_sources
-from assistant_rh_data_engineering.quality_gates import evaluate_quality_gates, render_markdown_report, resolve_expected_ids
+from assistant_rh_data_engineering.quality_gates import TableSnapshot, evaluate_quality_gates, render_markdown_report, resolve_expected_ids
 from assistant_rh_data_ingestion_cli.main import _resolve_command
 
 
@@ -19,7 +19,6 @@ class FakeQualityDatabase:
             "rag_chunks_service_public": {"short_id", "chunk_text", "updated_at", "embedding_m3", "embedding_bge_scw"},
         }
         self.row_counts = {"rag_documents": 2, "rag_chunks_service_public": 2}
-        self.distinct_counts = {("rag_documents", "short_id"): 2, ("rag_chunks_service_public", "short_id"): 2}
         self.missing_ids: dict[tuple[str, str], list[str]] = {}
         self.blank_counts: dict[tuple[str, str], int] = {}
         self.timestamps = {
@@ -27,39 +26,34 @@ class FakeQualityDatabase:
             ("rag_chunks_service_public", "updated_at"): datetime.now(tz=UTC),
         }
         self.section_rows = 2
-        self.section_distinct = 2
         self.section_missing: list[str] = []
         self.section_blank_counts: dict[str, int] = {}
 
-    def table_columns(self, table: str) -> set[str]:
-        return self.columns.get(table, set())
+    def inspect_table(self, table_config: dict[str, Any], expected_ids: list[str], source_filter: Any) -> TableSnapshot | None:
+        table = str(table_config["name"])
+        columns = self.columns.get(table, set())
+        if not columns:
+            return None
+        if table_config.get("kind") == "sections":
+            observed_ids = set(expected_ids) - set(self.section_missing)
+            return TableSnapshot(
+                columns=columns,
+                row_count=self.section_rows,
+                observed_ids=observed_ids,
+                blank_counts={str(column): self.section_blank_counts.get(str(column), 0) for column in table_config.get("text_columns", [])},
+                max_timestamp=None,
+            )
 
-    def row_count(self, table: str, source_filter: Any = None) -> int:
-        return self.row_counts.get(table, 0)
-
-    def distinct_expected_count(self, table: str, id_column: str, expected_ids: list[str], source_filter: Any = None) -> int:
-        return self.distinct_counts.get((table, id_column), 0)
-
-    def missing_expected_ids(self, table: str, id_column: str, expected_ids: list[str], source_filter: Any = None) -> list[str]:
-        return self.missing_ids.get((table, id_column), [])
-
-    def blank_text_count(self, table: str, text_column: str, source_filter: Any = None) -> int:
-        return self.blank_counts.get((table, text_column), 0)
-
-    def max_timestamp(self, table: str, column: str, source_filter: Any = None) -> datetime | None:
-        return self.timestamps.get((table, column))
-
-    def section_row_count_for_documents(self, expected_ids: list[str], document_source: Any) -> int:
-        return self.section_rows
-
-    def section_distinct_document_count(self, expected_ids: list[str], document_source: Any) -> int:
-        return self.section_distinct
-
-    def missing_section_document_ids(self, expected_ids: list[str], document_source: Any) -> list[str]:
-        return self.section_missing
-
-    def blank_section_text_count(self, text_column: str, expected_ids: list[str], document_source: Any) -> int:
-        return self.section_blank_counts.get(text_column, 0)
+        id_column = str(table_config.get("id_column") or "")
+        missing_ids = set(self.missing_ids.get((table, id_column), []))
+        observed_ids = set(expected_ids) - missing_ids if id_column and id_column in columns else None
+        return TableSnapshot(
+            columns=columns,
+            row_count=self.row_counts.get(table, 0),
+            observed_ids=observed_ids,
+            blank_counts={str(column): self.blank_counts.get((table, str(column)), 0) for column in table_config.get("text_columns", [])},
+            max_timestamp=self.timestamps.get((table, str(table_config.get("freshness_column") or ""))),
+        )
 
 
 def test_quality_gates_pass_for_selected_source(tmp_path: Path) -> None:
@@ -76,13 +70,13 @@ def test_quality_gates_pass_for_selected_source(tmp_path: Path) -> None:
 
     assert report["status"] == "pass"
     assert report["summary"]["fail"] == 0
+    assert set(report["summary"]) == {"pass", "fail"}
     assert {check["table"] for check in report["checks"]} == {"rag_documents", "rag_sections", "rag_chunks_service_public"}
 
 
 def test_quality_gates_report_missing_expected_ids(tmp_path: Path) -> None:
     config = _write_config(tmp_path)
     db = FakeQualityDatabase()
-    db.distinct_counts[("rag_chunks_service_public", "short_id")] = 1
     db.missing_ids[("rag_chunks_service_public", "short_id")] = ["F2"]
 
     report = evaluate_quality_gates(
