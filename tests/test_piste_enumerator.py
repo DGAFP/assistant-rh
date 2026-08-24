@@ -84,9 +84,9 @@ def test_walk_aggregates_versions_per_article_vigueur_wins() -> None:
 
 def test_walk_handles_jorfarti_cids_with_legiarti_version() -> None:
     # Revue #307 (P1 + P1 bis) : les arrêtés LODA portent cid=JORFARTI +
-    # id=LEGIARTI. L'article ne doit pas être jeté, et l'identité stable est
-    # le cid JORFARTI (stable à travers les versions) — PAS l'id LEGIARTI de
-    # la version courante, qui churnerait à chaque modification.
+    # id=LEGIARTI. La marche pure ne doit pas jeter l'article ni prendre l'id
+    # de version comme identité ; getArticle résoudra ensuite le JORF provisoire
+    # vers son CID chronique LEGI.
     payload = {
         "articles": [
             {"id": "LEGIARTI000024082428", "cid": "JORFARTI000024080293", "etat": "VIGUEUR", "num": "10"},
@@ -97,7 +97,7 @@ def test_walk_handles_jorfarti_cids_with_legiarti_version() -> None:
 
     assert len(articles) == 1
     article = articles[0]
-    assert article.cid == "JORFARTI000024080293"  # identité stable = cid API
+    assert article.cid == "JORFARTI000024080293"  # identité TOC provisoire
     assert article.etat == "VIGUEUR"
     assert article.version_id == "LEGIARTI000024082428"
     assert set(article.alias_ids) == {"JORFARTI000024080293", "LEGIARTI000024082428"}

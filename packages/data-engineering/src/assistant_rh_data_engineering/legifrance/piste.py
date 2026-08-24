@@ -26,20 +26,20 @@ DEFAULT_BASE_URL = "https://api.piste.gouv.fr/dila/legifrance/lf-engine-app"
 class CodeArticle:
     """Un article d'un texte, agrégé depuis ``tableMatieres``/``lawDecree``.
 
-    ``cid`` = l'identité **stable** retenue pour le corpus : le cid chronique
-    LEGIARTI quand la réponse en porte un ; pour les articles dont le ``cid``
-    API est un JORFARTI (arrêtés/décrets non re-chroniqués côté LEGI), c'est
-    l'``id`` LEGIARTI de la version en vigueur. ``version_id`` = l'identifiant
-    LEGIARTI de la version courante. ``alias_ids`` = TOUS les identifiants vus
-    pour cet article (toutes versions + cid API) — le corpus historique étant
-    keyé par version, ils servent à l'attribution (migration d'identité).
+    ``cid`` = l'identité fournie par la TOC : CID chronique LEGIARTI lorsqu'il
+    est disponible, sinon JORFARTI provisoire. Le job follow-live résout ce
+    dernier par ``getArticle`` avant réconciliation et retient alors le CID
+    chronique LEGIARTI. ``version_id`` = l'identifiant LEGIARTI de la version
+    courante. ``alias_ids`` = TOUS les identifiants vus pour cet article
+    (toutes versions + cid API) — le corpus historique étant keyé par version,
+    ils servent à l'attribution et à la migration d'identité.
 
     L'API renvoie UN NŒUD PAR VERSION (revue #307 : le décret 86-83 art. 50 a
     un nœud VIGUEUR et un nœud ABROGE pour le même cid) : ``walk_table_matieres``
     agrège par article avec précédence VIGUEUR — jamais d'écrasement dernier-gagne.
     """
 
-    cid: str  # identité stable (LEGIARTI)
+    cid: str  # identité TOC (LEGIARTI chronique, ou JORFARTI provisoire)
     etat: str  # VIGUEUR | ABROGE | ...
     num: str | None = None  # numéro d'article (L1, R.331-7, ...)
     version_id: str = ""  # LEGIARTI... (version courante)
@@ -75,11 +75,9 @@ def walk_table_matieres(payload: dict) -> list[CodeArticle]:
     for key, nodes in groups.items():
         current = next((n for n in nodes if n["etat"].upper() == "VIGUEUR"), nodes[-1])
         aliases = tuple(sorted({ident for n in nodes for ident in (n["id"], n["cid"]) if ident}))
-        # Identité stable = le cid API, TOUJOURS (LEGIARTI chronique, ou
-        # JORFARTI pour les textes non re-chroniqués côté LEGI — lui aussi
-        # stable à travers les versions). Revue #307 bis : un fallback vers
-        # l'id LEGIARTI de la version courante recréerait le churn d'identité
-        # à chaque modification.
+        # La marche pure conserve le cid API. Un JORFARTI reste ici provisoire :
+        # seul getArticle permet de retrouver sans ambiguïté son CID chronique
+        # LEGIARTI, sans retomber sur l'ID de version courant (qui churnerait).
         found.append(
             CodeArticle(
                 cid=key,

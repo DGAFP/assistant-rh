@@ -451,6 +451,30 @@ def test_mass_stale_guard_still_fires_on_real_stale_alongside_migration_twins(ca
     assert len(lf_plan.plan.flagged_removals) == 51
 
 
+def test_mass_stale_guard_exempts_verified_jorf_to_legi_rekeys_with_changed_content(capsys: Any) -> None:
+    """Backfill #424 : >50 rekeys JORF vérifiés ne sont pas une purge."""
+    selection = _selection([_rec(1, **_code())])
+    articles = [
+        CodeArticle(
+            cid=f"LEGIARTI1{i:03d}",
+            etat="VIGUEUR",
+            version_id=f"LEGIARTI2{i:03d}",
+            alias_ids=(f"JORFARTI3{i:03d}", f"LEGIARTI2{i:03d}"),
+        )
+        for i in range(60)
+    ]
+    toc = {LEGITEXT: articles}
+    corpus = {f"JORFARTI3{i:03d}": {"doc_id": f"d{i}", "checksum": f"old{i}", "nb_chunks": 1} for i in range(60)}
+    silver = {f"LEGIARTI1{i:03d}": f"new{i}" for i in range(60)}
+
+    lf_plan = reconcile.build_legifrance_plan(selection, toc, silver, corpus, max_auto_stale=50)
+
+    assert lf_plan.mass_stale_guard is False
+    assert len(lf_plan.plan.auto_removals) == 60
+    assert all(f"JORFARTI3{i:03d}" in lf_plan.plan.auto_removals for i in range(60))
+    assert "max_auto_stale" not in capsys.readouterr().out
+
+
 def test_mass_stale_guard_not_bypassed_by_coincidental_checksum(capsys: Any) -> None:
     # P2 revue #317 : un stale dont le checksum matche PAR HASARD un nouvel article
     # auquel il n'est PAS lié (alias≠chronique) ne doit PAS être exempté du garde —
@@ -556,6 +580,7 @@ class _FakePiste:
         # Chronique de remplacement d'une ancienne version : uid -> cid chronique
         # (défaut = l'uid lui-même, comportement historique).
         self.article_chroniques: dict[str, str] = {}
+        self.article_payloads: dict[str, dict[str, Any]] = {}
         self.article_calls: list[str] = []
 
     def text_articles(self, text_uid: str, date_millis: int, *, kind: str = "code") -> list[CodeArticle]:
@@ -566,6 +591,8 @@ class _FakePiste:
 
     def get_article(self, article_id: str) -> dict[str, Any]:
         self.article_calls.append(article_id)
+        if article_id in self.article_payloads:
+            return self.article_payloads[article_id]
         parent = self.article_parents.get(article_id)
         if parent is None:
             raise requests.ConnectionError("getArticle down")
@@ -722,7 +749,14 @@ def test_ingest_delta_deferral_is_scoped_per_followed_text() -> None:
         }
     )
     writer = _DeltaWriter(_corpus(LEGIARTI_A1_OLD=("ha", 1), LEGIARTI_B1_OLD=("hb", 1)))
-    documents = [{"short_id": "LEGIARTI_B1", "doc_id": "db1", "checksum": "hb1"}]
+    documents = [
+        {
+            "short_id": "LEGIARTI_B1",
+            "doc_id": "db1",
+            "checksum": "hb1",
+            "metadata": {"cid": "LEGIARTI_B1", "article_id": "LEGIARTI_B1_OLD"},
+        }
+    ]
     sections = [{"doc_id": "db1", "section_index": 0, "section_id": "sb1"}]
     chunks = [{"cid": "LEGIARTI_B1", "chunk_id": "LEGIARTI_B1_0", "_targets": ["legacy"]}]
 
@@ -732,6 +766,175 @@ def test_ingest_delta_deferral_is_scoped_per_followed_text() -> None:
     assert writer.article_cascades == [["LEGIARTI_B1_OLD"]]  # le texte sain migre
     assert summary["deferred_removals"] == ["LEGIARTI_A1_OLD"]  # le texte instable attend
     assert summary["plan"]["pending_artifact"]["sample"] == ["LEGIARTI_A1"]
+
+
+def test_ingest_delta_reports_current_toc_version_missing_from_silver() -> None:
+    """Régression #424 : CID présent mais contenu silver sur l'ancienne version."""
+    current_version = "LEGIARTI000054638420"
+    grist = _RecordingGrist([_rec(1, **_texte(JORF_D1))])
+    piste = _FakePiste({JORF_D1: _arts(("LEGIARTI000039728025", "VIGUEUR", current_version))})
+    writer = _DeltaWriter(_corpus(LEGIARTI000039728025=("old-hash", 1)))
+    documents = [
+        {
+            "short_id": "LEGIARTI000039728025",
+            "doc_id": "old-doc",
+            "checksum": "old-hash",
+            "metadata": {"cid": "LEGIARTI000039728025", "article_id": "LEGIARTI000039728025"},
+        }
+    ]
+
+    summary = legifrance_ingestion.ingest_delta(writer, grist, piste, documents, [], [], dry_run=True, toc_date_millis=1000)
+
+    assert summary["plan"]["missing_toc_versions"] == {"count": 1, "sample": [current_version], "versions": [current_version]}
+    assert summary["plan"]["pending_toc_versions"] == {"count": 1, "sample": [current_version], "versions": [current_version]}
+    assert summary["plan"]["pending_artifact"]["sample"] == ["LEGIARTI000039728025"]
+
+
+def test_ingest_delta_dry_run_surfaces_getarticle_failure() -> None:
+    current_version = "LEGIARTI000054638420"
+    chronique = "LEGIARTI000039728025"
+    grist = _RecordingGrist([_rec(1, **_texte(JORF_D1))])
+    piste = _FakePiste({JORF_D1: _arts((chronique, "VIGUEUR", current_version))})
+    writer = _DeltaWriter(_corpus(**{chronique: ("old-hash", 1)}))
+    documents = [
+        {
+            "short_id": chronique,
+            "doc_id": "old-doc",
+            "checksum": "old-hash",
+            "metadata": {"cid": chronique, "article_id": chronique},
+        }
+    ]
+
+    summary = legifrance_ingestion.ingest_delta(
+        writer,
+        grist,
+        piste,
+        documents,
+        [],
+        [],
+        dry_run=True,
+        live_materializer=object(),
+        toc_date_millis=1000,
+    )
+
+    assert summary["status"] == "partial"
+    assert summary["live_materialization"]["failed_versions"] == [current_version]
+    assert chronique in summary["failed"]
+
+
+def test_ingest_delta_materializes_missing_version_and_rekeys_jorfarti(tmp_path: Path) -> None:
+    """Régression #424 : getArticle alimente le lake puis le plan standard."""
+    from assistant_rh_data_engineering.legifrance import LegifrancePipeline, LegifrancePipelineConfig
+    from assistant_rh_data_engineering.legifrance.config import LakePaths
+    from assistant_rh_data_engineering.legifrance.live import LegifranceLiveMaterializer
+
+    jorfarti = "JORFARTI000039728025"
+    chronique = "LEGIARTI000039728025"
+    current_version = "LEGIARTI000054638420"
+    grist = _RecordingGrist([_rec(1, **_texte(JORF_D1))])
+    piste = _FakePiste({JORF_D1: [CodeArticle(jorfarti, "VIGUEUR", "2", current_version, (jorfarti, current_version))]})
+    piste.article_payloads[current_version] = {
+        "article": {
+            "id": current_version,
+            "cid": chronique,
+            "num": "2",
+            "etat": "VIGUEUR",
+            "dateDebut": "2026-08-08",
+            "dateFin": "2999-01-01",
+            "texte": "Le minimum est un sixième, un cinquième, un quart puis un tiers de mois.",
+            "textTitles": [
+                {
+                    "id": "LEGITEXT000039728019",
+                    "cid": "LEGITEXT000039728019",
+                    "titre": "Décret n° 2019-1596",
+                    "titreLong": "Décret n° 2019-1596 du 31 décembre 2019",
+                    "nature": "DECRET",
+                }
+            ],
+        }
+    }
+    writer = _DeltaWriter(_corpus(**{jorfarti: ("2020-hash", 1)}))
+    config = LegifrancePipelineConfig(paths=LakePaths(root_dir=tmp_path / "lake"))
+    config.embeddings.enable_m3 = False
+    config.embeddings.enable_bge_scaleway = False
+    config.gold.export_parquet = False
+    config.gold.export_npy = False
+    materializer = LegifranceLiveMaterializer(LegifrancePipeline(config))
+
+    summary = legifrance_ingestion.ingest_delta(
+        writer,
+        grist,
+        piste,
+        [],
+        [],
+        [],
+        live_materializer=materializer,
+        toc_date_millis=1000,
+    )
+
+    assert piste.article_calls == [current_version]
+    assert writer.article_bundles == [chronique]
+    assert writer.article_cascades == [[jorfarti]]
+    assert summary["status"] == "ok"
+    assert summary["live_materialization"] == {
+        "detected": 1,
+        "materialized": 1,
+        "failed": 0,
+        "versions": [current_version],
+        "failed_versions": [],
+        "object_storage": None,
+    }
+    assert summary["plan"]["missing_toc_versions"]["sample"] == [current_version]
+    assert summary["plan"]["pending_toc_versions"]["count"] == 0
+    assert summary["plan"]["stale"]["sample"] == [jorfarti]
+    assert summary["applied"] == {"ingested": 1, "skipped": 0, "deleted": 1, "identity_migrations": 0, "failed": 0}
+    silver_doc = json.loads((tmp_path / "lake" / "silver" / "documents" / f"{chronique}.document.json").read_text(encoding="utf-8"))
+    assert "un sixième" in silver_doc["doc_markdown"]
+
+
+def test_ingest_delta_targeted_jorf_alias_includes_resolved_chronical_id(tmp_path: Path) -> None:
+    """--uid JORFARTI doit ingérer le LEGIARTI résolu dans le même run."""
+    from assistant_rh_data_engineering.legifrance import LegifrancePipeline, LegifrancePipelineConfig
+    from assistant_rh_data_engineering.legifrance.config import LakePaths
+    from assistant_rh_data_engineering.legifrance.live import LegifranceLiveMaterializer
+
+    jorfarti = "JORFARTI000039728025"
+    chronique = "LEGIARTI000039728025"
+    current_version = "LEGIARTI000054638420"
+    grist = _RecordingGrist([_rec(1, **_texte(JORF_D1))])
+    piste = _FakePiste({JORF_D1: [CodeArticle(jorfarti, "VIGUEUR", "2", current_version, (jorfarti, current_version))]})
+    piste.article_payloads[current_version] = {
+        "article": {
+            "id": current_version,
+            "cid": chronique,
+            "num": "2",
+            "etat": "VIGUEUR",
+            "texte": "Barème 2026.",
+            "textTitles": [{"cid": "LEGITEXT000039728019", "titre": "Décret n° 2019-1596", "nature": "DECRET"}],
+        }
+    }
+    writer = _DeltaWriter(_corpus(**{jorfarti: ("old", 1)}))
+    config = LegifrancePipelineConfig(paths=LakePaths(root_dir=tmp_path / "lake"))
+    config.embeddings.enable_m3 = False
+    config.embeddings.enable_bge_scaleway = False
+    config.gold.export_parquet = False
+    config.gold.export_npy = False
+
+    summary = legifrance_ingestion.ingest_delta(
+        writer,
+        grist,
+        piste,
+        [],
+        [],
+        [],
+        requested={jorfarti},
+        live_materializer=LegifranceLiveMaterializer(LegifrancePipeline(config)),
+        toc_date_millis=1000,
+    )
+
+    assert writer.article_bundles == [chronique]
+    assert writer.article_cascades == [[jorfarti]]
+    assert summary["applied"]["ingested"] == 1
 
 
 def test_ingest_delta_targeted_alias_swaps_atomically() -> None:
@@ -762,7 +965,14 @@ def test_ingest_delta_identity_migration_deletes_checksum_twin_before_ingest() -
     piste = _FakePiste({LEGITEXT: _arts(("LEGIARTI_NEW", "VIGUEUR", "LEGIARTI_OLD"))})
     # Le jumeau OLD est en base avec le MÊME checksum que le bundle chronique.
     writer = _DeltaWriter(_corpus(LEGIARTI_OLD=("same-hash", 1)))
-    documents = [{"short_id": "LEGIARTI_NEW", "doc_id": "dn", "checksum": "same-hash"}]
+    documents = [
+        {
+            "short_id": "LEGIARTI_NEW",
+            "doc_id": "dn",
+            "checksum": "same-hash",
+            "metadata": {"cid": "LEGIARTI_NEW", "article_id": "LEGIARTI_OLD"},
+        }
+    ]
     sections = [{"doc_id": "dn", "section_index": 0, "section_id": "sn"}]
     chunks = [{"cid": "LEGIARTI_NEW", "chunk_id": "LEGIARTI_NEW_0", "_targets": ["legacy"]}]
 
@@ -788,7 +998,14 @@ def test_ingest_delta_identity_migration_is_atomic_no_hole_on_insert_failure() -
     grist = _RecordingGrist([_rec(1, **_code())])
     piste = _FakePiste({LEGITEXT: _arts(("LEGIARTI_NEW", "VIGUEUR", "LEGIARTI_OLD"))})
     writer = _DeltaWriter(_corpus(LEGIARTI_OLD=("same-hash", 1)), raise_on_cascade_ingest=True)
-    documents = [{"short_id": "LEGIARTI_NEW", "doc_id": "dn", "checksum": "same-hash"}]
+    documents = [
+        {
+            "short_id": "LEGIARTI_NEW",
+            "doc_id": "dn",
+            "checksum": "same-hash",
+            "metadata": {"cid": "LEGIARTI_NEW", "article_id": "LEGIARTI_OLD"},
+        }
+    ]
     sections = [{"doc_id": "dn", "section_index": 0, "section_id": "sn"}]
     chunks = [{"cid": "LEGIARTI_NEW", "chunk_id": "LEGIARTI_NEW_0", "_targets": ["legacy"]}]
 
@@ -895,7 +1112,14 @@ def test_ingest_delta_incomplete_bundle_defers_stale_cascade() -> None:
     # autoritaire attribuable, mais le swap doit rester in-avant-out.
     piste = _FakePiste({LEGITEXT: _arts(("LEGIARTI_NEW", "VIGUEUR", "LEGIARTI_OLD"))})
     writer = _DeltaWriter(_corpus(LEGIARTI_OLD=("old", 4)))
-    documents = [{"short_id": "LEGIARTI_NEW", "doc_id": "new-doc", "checksum": "new"}]
+    documents = [
+        {
+            "short_id": "LEGIARTI_NEW",
+            "doc_id": "new-doc",
+            "checksum": "new",
+            "metadata": {"cid": "LEGIARTI_NEW", "article_id": "LEGIARTI_OLD"},
+        }
+    ]
     sections = [{"doc_id": "new-doc", "section_index": 0, "section_id": "new-section"}]
 
     summary = legifrance_ingestion.ingest_delta(
@@ -924,7 +1148,14 @@ def test_ingest_delta_rejects_article_chunks_for_wrong_target() -> None:
     grist = _RecordingGrist([_rec(1, **_code())])
     piste = _FakePiste({LEGITEXT: _arts(("LEGIARTI_NEW", "VIGUEUR", "LEGIARTI_OLD"))})
     writer = _DeltaWriter(_corpus(LEGIARTI_OLD=("old", 2)))
-    documents = [{"short_id": "LEGIARTI_NEW", "doc_id": "new-doc", "checksum": "new"}]
+    documents = [
+        {
+            "short_id": "LEGIARTI_NEW",
+            "doc_id": "new-doc",
+            "checksum": "new",
+            "metadata": {"cid": "LEGIARTI_NEW", "article_id": "LEGIARTI_OLD"},
+        }
+    ]
     sections = [{"doc_id": "new-doc", "section_index": 0, "section_id": "new-section"}]
     chunks = [{"cid": "LEGIARTI_NEW", "hash_id": "modern-only", "_targets": ["modern"]}]
 
