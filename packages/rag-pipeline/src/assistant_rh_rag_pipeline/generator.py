@@ -74,8 +74,30 @@ class StreamingGenerator:
         self.config = config
         self._llm: FallbackLLMClient | None = None
         self._base_prompt: str | None = None
+        self._request_provider_used: str | None = None
+        self._request_fallback_count: int = 0
         self.last_full_prompt: str = ""
         self.last_system_prompt: str = ""
+
+    def begin_request(self) -> None:
+        """Reset provider diagnostics for a new pipeline request."""
+        self._request_provider_used = None
+        self._request_fallback_count = 0
+
+    @property
+    def provider_used(self) -> str | None:
+        """Provider that served the current request, if generation ran."""
+        return self._request_provider_used
+
+    @property
+    def fallback_count(self) -> int:
+        """Fallback activations during the current request (normally 0 or 1)."""
+        return self._request_fallback_count
+
+    @property
+    def used_fallback(self) -> bool:
+        """Whether generation for the current request used the fallback."""
+        return self._request_fallback_count > 0
 
     @property
     def llm(self) -> FallbackLLMClient:
@@ -101,12 +123,19 @@ class StreamingGenerator:
         ministry: MinistrySource | None = None,
     ) -> Generator[str, None, None]:
         """Yield tokens one by one."""
+        self.begin_request()
         context_text = ContextBuilder.format_for_prompt(context_items)
         user_prompt = USER_PROMPT_TEMPLATE.format(context=context_text, question=query)
         self.last_full_prompt = user_prompt
         system_prompt = self._system_prompt_for(ministry)
         self.last_system_prompt = system_prompt
-        yield from self.llm.chat_stream(user_prompt, system_prompt=system_prompt, history=history)
+        llm = self.llm
+        fallbacks_before = llm.fallback_count
+        try:
+            yield from llm.chat_stream(user_prompt, system_prompt=system_prompt, history=history)
+        finally:
+            self._request_provider_used = llm.last_provider_used
+            self._request_fallback_count = max(0, llm.fallback_count - fallbacks_before)
 
     def generate(
         self,
@@ -115,12 +144,19 @@ class StreamingGenerator:
         ministry: MinistrySource | None = None,
     ) -> str:
         """Non-streaming variant (useful for evaluation)."""
+        self.begin_request()
         context_text = ContextBuilder.format_for_prompt(context_items)
         user_prompt = USER_PROMPT_TEMPLATE.format(context=context_text, question=query)
         self.last_full_prompt = user_prompt
         system_prompt = self._system_prompt_for(ministry)
         self.last_system_prompt = system_prompt
-        return self.llm.chat(user_prompt, system_prompt=system_prompt)
+        llm = self.llm
+        fallbacks_before = llm.fallback_count
+        try:
+            return llm.chat(user_prompt, system_prompt=system_prompt)
+        finally:
+            self._request_provider_used = llm.last_provider_used
+            self._request_fallback_count = max(0, llm.fallback_count - fallbacks_before)
 
     def _base_system_prompt(self) -> str:
         """Load the (unrendered) system prompt template, cached per instance."""

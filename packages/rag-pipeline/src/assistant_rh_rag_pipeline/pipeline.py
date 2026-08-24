@@ -221,6 +221,7 @@ class Pipeline:
         trace_id: str | None = None,
         retrieval_scope: RetrievalScope | None = None,
     ) -> PipelineResult:
+        self._generator.begin_request()
         state = _RunState(turn_id=turn_id or "", trace_id=normalize_trace_id(trace_id))
         _record_scope(state, retrieval_scope)
         ministry = resolve_ministry(retrieval_scope)
@@ -343,6 +344,7 @@ class Pipeline:
         *on_status* is an optional callback invoked at each pipeline stage
         (useful for updating a Streamlit loader).
         """
+        self._generator.begin_request()
         state = _RunState(turn_id=turn_id or "", trace_id=normalize_trace_id(trace_id))
         _record_scope(state, retrieval_scope)
         ministry = resolve_ministry(retrieval_scope)
@@ -782,6 +784,18 @@ class Pipeline:
             "selector_enabled": self.config.selector.enabled,
             "generator_model": self.config.generation.model,
             "generator_provider": self.config.generation.provider.value,
+            # Provider effectivement utilisé (≠ generator_provider si le
+            # FallbackLLMClient a basculé) : sans cette trace, une réponse
+            # servie par le modèle de fallback est indétectable dans les
+            # artefacts et créditée au modèle configuré (revue PR #417).
+            "generator_provider_used": self._generator.provider_used,
+            "generator_fallback_count": self._generator.fallback_count,
+            "generator_used_fallback": self._generator.used_fallback,
+            "generator_model_used": (
+                self.config.generation.fallback_model
+                if self._generator.used_fallback
+                else self.config.generation.model if self._generator.provider_used else None
+            ),
             "embedding_model": self.config.retrieval.embedding_model.value,
             "retrieved_chunks": state.stage_refs.get("retrieved_chunks", []),
             "aggregated_sections": state.stage_refs.get("aggregated_sections", []),

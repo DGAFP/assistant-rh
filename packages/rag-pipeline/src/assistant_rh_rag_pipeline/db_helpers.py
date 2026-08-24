@@ -164,8 +164,13 @@ PROMPT_TYPES = {
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 
-def get_prompt_content(name: str) -> Optional[str]:
-    """Load a prompt by name: try DB first, then local ``prompts/`` folder."""
+def get_prompt_content(name: str, *, render_today: bool = True) -> Optional[str]:
+    """Load a prompt by name: try DB first, then local ``prompts/`` folder.
+
+    ``render_today=False`` returns the raw content without substituting the
+    ``{today}`` placeholder — required by callers that hash the content into a
+    day-stable identity (eval config fingerprint).
+    """
     conn = _db_conn()
     if conn:
         try:
@@ -174,7 +179,7 @@ def get_prompt_content(name: str) -> Optional[str]:
                 row = cur.fetchone()
                 if row:
                     content: str = row[0]
-                    return content.replace("{today}", datetime.now().strftime("%Y-%m-%d"))
+                    return content.replace("{today}", datetime.now().strftime("%Y-%m-%d")) if render_today else content
         except psycopg.Error as exc:
             logger.debug("Prompt DB lookup failed for %s, falling back to local prompt: %s", name, exc)
         finally:
@@ -183,7 +188,7 @@ def get_prompt_content(name: str) -> Optional[str]:
     local = _PROMPTS_DIR / name
     if local.exists():
         content = local.read_text(encoding="utf-8")
-        return content.replace("{today}", datetime.now().strftime("%Y-%m-%d"))
+        return content.replace("{today}", datetime.now().strftime("%Y-%m-%d")) if render_today else content
 
     return None
 

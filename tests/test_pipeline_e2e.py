@@ -307,6 +307,18 @@ class TestPipelineE2E:
         MockContextBuilder.return_value.last_legal_refs_found = 0
         MockContextBuilder.return_value.last_legal_refs_total = 0
 
+        mock_gen = MockGenerator.return_value
+        mock_gen.provider_used = "scaleway"
+        mock_gen.fallback_count = 1
+        mock_gen.used_fallback = True
+
+        def reset_generator_diagnostics() -> None:
+            mock_gen.provider_used = None
+            mock_gen.fallback_count = 0
+            mock_gen.used_fallback = False
+
+        mock_gen.begin_request.side_effect = reset_generator_diagnostics
+
         config = RAGConfig()
         config.selector = SelectorConfig(enabled=True)
         from assistant_rh_rag_pipeline.pipeline import Pipeline
@@ -350,8 +362,12 @@ class TestPipelineE2E:
         assert result.metadata["trace_id"]
         assert [event["stage"] for event in trace_events].count("retriever") == 2
         assert any(event["stage"] == "generator" and event["status"] == "skipped_no_context" for event in trace_events)
+        assert result.metadata["generator_provider_used"] is None
+        assert result.metadata["generator_fallback_count"] == 0
+        assert result.metadata["generator_used_fallback"] is False
         # Generator should NOT have been called
         MockGenerator.return_value.generate.assert_not_called()
+        mock_gen.begin_request.assert_called_once_with()
         assert MockRetriever.return_value.retrieve.call_count == 2
         assert MockAggregator.return_value.aggregate_with_diagnostics.call_count == 2
         assert mock_sel.select.call_count == 2
