@@ -110,19 +110,20 @@ class LegifranceGoldBuilder:
 
     @staticmethod
     def _normalize_legacy_link_item(link: dict[str, Any]) -> dict[str, Any]:
-        article_id = link.get("id") if str(link.get("id") or "").startswith("LEGIARTI") else None
+        raw_article_id = link.get("articleId") or link.get("id")
+        article_id = raw_article_id if str(raw_article_id or "").startswith("LEGIARTI") else None
         return {
-            "textCid": link.get("cidtexte"),
-            "linkType": link.get("typelien"),
-            "numTexte": link.get("numtexte"),
+            "textCid": link.get("textCid") or link.get("cidtexte"),
+            "linkType": link.get("linkType") or link.get("typelien"),
+            "numTexte": link.get("numTexte") or link.get("numtexte"),
             "articleId": article_id,
-            "dateDebut": None,
-            "datePubli": None,
-            "parentCid": None,
-            "textTitle": link.get("label"),
-            "articleNum": link.get("num"),
-            "natureText": link.get("naturetexte"),
-            "linkOrientation": link.get("sens"),
+            "dateDebut": link.get("dateDebut"),
+            "datePubli": link.get("datePubli"),
+            "parentCid": link.get("parentCid"),
+            "textTitle": link.get("textTitle") or link.get("label"),
+            "articleNum": link.get("articleNum") or link.get("num"),
+            "natureText": link.get("natureText") or link.get("naturetexte"),
+            "linkOrientation": link.get("linkOrientation") or link.get("sens"),
         }
 
     @classmethod
@@ -132,7 +133,7 @@ class LegifranceGoldBuilder:
         normalized = [
             cls._normalize_legacy_link_item(link)
             for link in value
-            if isinstance(link, dict) and str(link.get("typelien") or "").upper() != "TXT_SOURCE"
+            if isinstance(link, dict) and str(link.get("linkType") or link.get("typelien") or "").upper() != "TXT_SOURCE"
         ]
         return normalized or None
 
