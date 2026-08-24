@@ -349,3 +349,94 @@ jobs:
             --service-public-fiche-config "${SERVICE_PUBLIC_FICHE_CONFIG}" \
             --legifrance-article-ids-json "${LEGIFRANCE_ARTICLE_IDS_JSON}" \
             --wait
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install Python dependencies
+        run: uv sync --frozen
+
+      - name: Run staging data quality gates
+        if: ${{ matrix.service_public == true || matrix.legifrance == true }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/data-quality
+
+          QUALITY_SOURCES=()
+          if [[ "${{ matrix.service_public }}" == "true" ]]; then
+            QUALITY_SOURCES+=(--source service_public)
+          fi
+          if [[ "${{ matrix.legifrance }}" == "true" ]]; then
+            QUALITY_SOURCES+=(--source legifrance)
+          fi
+
+          BLOCKING_ARGS=()
+          if [[ "${RUN_INGESTION}" == "true" ]]; then
+            BLOCKING_ARGS+=(--blocking)
+          fi
+
+          uv run --no-sync data-ingestion quality gates \
+            --target-env staging \
+            "${QUALITY_SOURCES[@]}" \
+            "${BLOCKING_ARGS[@]}" \
+            --json-output "artifacts/data-quality/staging-${{ matrix.name }}-report.json" \
+            --markdown-output "artifacts/data-quality/staging-${{ matrix.name }}-summary.md"
+
+      # Embedding coverage is gated separately by the read-only audit shipped in
+      # `data-ingestion embeddings <source> --check-only` (issue #133) so a single
+      # implementation owns embedding-coverage logic (see issue #172).
+      - name: Run staging embedding coverage gate
+        if: ${{ matrix.embeddings == true }}
+        env:
+          COVERAGE_MIN_PCT: "100"
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/data-quality
+
+          EMBED_CMDS=()
+          case "${EMBEDDING_SOURCE}" in
+            all) EMBED_CMDS=(service-public legifrance) ;;
+            service_public) EMBED_CMDS=(service-public) ;;
+            legifrance) EMBED_CMDS=(legifrance) ;;
+            matte) EMBED_CMDS=(matte) ;;
+            mi) EMBED_CMDS=(mi) ;;
+            masa) EMBED_CMDS=(masa) ;;
+            mso) EMBED_CMDS=(mso) ;;
+            *) echo "Unknown EMBEDDING_SOURCE='${EMBEDDING_SOURCE}'; skipping embedding gate"; EMBED_CMDS=() ;;
+          esac
+
+          ONLY_COLUMN_ARGS=()
+          if [[ -n "${EMBEDDING_ONLY_COLUMN}" ]]; then
+            ONLY_COLUMN_ARGS+=(--only-column "${EMBEDDING_ONLY_COLUMN}")
+          fi
+
+          status=0
+          for cmd in "${EMBED_CMDS[@]}"; do
+            echo "::group::Embedding coverage gate — ${cmd}"
+            if ! uv run --no-sync data-ingestion embeddings "${cmd}" \
+                  --check-only --coverage-min-pct "${COVERAGE_MIN_PCT}" \
+                  "${ONLY_COLUMN_ARGS[@]}" \
+                  > "artifacts/data-quality/staging-embeddings-${cmd}.json"; then
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "${status}"
+
+      - name: Summarize staging data quality gates
+        if: always()
+        run: |
+          if [[ -f "artifacts/data-quality/staging-${{ matrix.name }}-summary.md" ]]; then
+            cat "artifacts/data-quality/staging-${{ matrix.name }}-summary.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload staging data quality reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: data-quality-staging-${{ matrix.name }}-${{ github.run_attempt }}
+          path: artifacts/data-quality/
+          if-no-files-found: ignore
