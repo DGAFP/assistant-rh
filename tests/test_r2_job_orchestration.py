@@ -29,8 +29,8 @@ class _FakeConn:
         # l'article C1 est toujours présent et intact au snapshot post-commit.
         class _Res:
             @staticmethod
-            def fetchall() -> list[tuple[str, str]]:
-                return [("C1", "texte un")]
+            def fetchall() -> list[tuple[str, str, str]]:
+                return [("C1", "C1_0", "texte un")]
 
         return _Res()
 
@@ -216,9 +216,9 @@ def test_generate_limit_advances_past_cached_articles(monkeypatch, tmp_path) -> 
 
 def test_run_limit_report_and_stale_skip(monkeypatch, tmp_path, capsys) -> None:
     articles = [
-        {"cid": "C1", "chunk_text": "texte un"},
-        {"cid": "C2", "chunk_text": "texte deux"},
-        {"cid": "C3", "chunk_text": "texte trois"},
+        {"cid": "C1", "chunk_id": "C1_0", "chunk_text": "texte un"},
+        {"cid": "C2", "chunk_id": "C2_0", "chunk_text": "texte deux"},
+        {"cid": "C3", "chunk_id": "C3_0", "chunk_text": "texte trois"},
     ]
     # État de la base au moment de l'APPLY : C2 modifié par une ingestion
     # concurrente pendant la génération, C1 intact.
@@ -233,7 +233,7 @@ def test_run_limit_report_and_stale_skip(monkeypatch, tmp_path, capsys) -> None:
             events.append("fetch_for_update")
         if uids is None:
             return [dict(r) for r in articles]
-        return [{"cid": c, "chunk_text": current_after[c]} for c in uids if c in current_after]
+        return [{"cid": c, "chunk_id": f"{c}_0", "chunk_text": current_after[c]} for c in uids if c in current_after]
 
     monkeypatch.setenv("TEST_R2_DSN", "postgresql://fake")
     monkeypatch.setenv("ALBERT_API_KEY", "clef-test")
@@ -311,3 +311,80 @@ def test_run_limit_report_and_stale_skip(monkeypatch, tmp_path, capsys) -> None:
     # transaction FOR UPDATE, sinon son ALTER attend derrière les verrous du
     # job lui-même (auto-deadlock du 23/07 qui a gelé le retrieval staging).
     assert events == ["ensure_ddl", "fetch_for_update"]
+
+
+def test_select_canonical_article_rows_ignores_tail_chunks_and_reports_missing_zero() -> None:
+    rows = [
+        {"cid": "C1", "chunk_id": "C1_0", "chunk_text": "texte canonique"},
+        {"cid": "C1", "chunk_id": "C1_1", "chunk_text": "fragment final"},
+        {"cid": "C2", "chunk_id": "C2_1", "chunk_text": "fragment sans canonique"},
+    ]
+
+    canonical, missing = job._select_canonical_article_rows(rows)
+
+    assert canonical == [rows[0]]
+    assert missing == {"C2": ["C2_1"]}
+
+
+def test_multichunk_canonical_selection_keeps_freshness_idempotent() -> None:
+    version = "r2s-test"
+    rows = [
+        {"cid": "C1", "chunk_id": "C1_0", "chunk_text": "texte canonique"},
+        {"cid": "C1", "chunk_id": "C1_1", "chunk_text": "fragment final"},
+    ]
+    canonical, missing = job._select_canonical_article_rows(rows)
+    existing = {"C1": job.build_index_variant(version, "texte canonique", embed_model="emb-test")}
+
+    first_plan = job.plan_missing_summaries(canonical, existing, version, embed_model="emb-test")
+    second_plan = job.plan_missing_summaries(canonical, existing, version, embed_model="emb-test")
+
+    assert missing == {}
+    assert first_plan == []
+    assert second_plan == []
+
+
+def test_apply_removes_existing_summary_when_canonical_source_is_missing(monkeypatch, tmp_path) -> None:
+    deleted_chunk_ids: list[str] = []
+
+    class _DeleteResult:
+        rowcount = 1
+
+    class _CleanupConn(_FakeConn):
+        def execute(self, query: Any, params: Any = None) -> Any:
+            if params and params[0] == ["C1_r2s"]:
+                deleted_chunk_ids.extend(params[0])
+                return _DeleteResult()
+            return super().execute(query, params)
+
+    monkeypatch.setenv("TEST_R2_DSN", "postgresql://fake")
+    monkeypatch.setattr(job, "fetch_article_rows", lambda *a, **k: [{"cid": "C1", "chunk_id": "C1_1", "chunk_text": "fragment"}])
+    monkeypatch.setattr(job, "fetch_existing_variants", lambda *a, **k: {"C1": "r2_summary/ancienne-version/checksum"})
+    monkeypatch.setattr(job, "_table_has_index_variant", lambda *a, **k: True)
+    monkeypatch.setattr(job.psycopg, "connect", lambda dsn, **k: _CleanupConn())
+    args = argparse.Namespace(
+        dsn_env="TEST_R2_DSN",
+        env_file=str(tmp_path / "absent.env"),
+        mode="apply",
+        generate=False,
+        apply=False,
+        reviewed_cache=True,
+        allow_cache_misses=False,
+        sync_object_storage=False,
+        target_env="staging",
+        cache_source_env="staging",
+        model="m-test",
+        cache_dir=str(tmp_path / "cache"),
+        uid=[],
+        uids_file=None,
+        schema="public",
+        table="rag_chunks_dgafp",
+        limit=None,
+        out=None,
+        max_workers=1,
+    )
+
+    report = job.run(args)
+
+    assert deleted_chunk_ids == ["C1_r2s"]
+    assert report["source_cids_without_canonical"] == 1
+    assert report["noncanonical_summaries_removed"] == 1

@@ -12,6 +12,7 @@ on:
       - "src/goldset/**"
       - "scripts/run_rag_quality_eval.py"
       - "scripts/prepare_goldset.py"
+      - ".github/scripts/rag_quality_protocol.py"
       - "supabase/migrations/**rag_quality_eval**.sql"
       - "pyproject.toml"
       - "uv.lock"

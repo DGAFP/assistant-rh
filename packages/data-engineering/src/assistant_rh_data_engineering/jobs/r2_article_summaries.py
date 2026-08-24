@@ -178,6 +178,45 @@ def _table_has_index_variant(conn: psycopg.Connection, schema: str, table: str) 
     return row is not None
 
 
+def _select_canonical_article_rows(article_rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
+    """Retain one authoritative source row per legal article (CID).
+
+    Legacy imports may contain several chunks for the same CID.  R2 indexes
+    one article per CID, so allowing the later ``rows_by_cid`` dict to choose
+    a row would silently make the lexicographically last chunk authoritative.
+    The ``{cid}_0`` row is retained when present.  A single row without any
+    ``chunk_id`` is also trusted : reduced fetches (doubles de test, tables
+    minimales) ne transportent pas la colonne, et sans fragments concurrents
+    il n'y a pas d'ambiguïté.  A row carrying an explicit non-``_0`` chunk_id
+    is a tail fragment : its CID is returned separately so the plan reports it
+    instead of generating from an arbitrary fragment.
+    """
+    rows_by_cid: dict[str, list[dict[str, Any]]] = {}
+    cid_order: list[str] = []
+
+    for row in article_rows:
+        cid = str(row.get("cid") or "").strip()
+        if not cid:
+            continue
+        if cid not in rows_by_cid:
+            cid_order.append(cid)
+            rows_by_cid[cid] = []
+        rows_by_cid[cid].append(row)
+
+    canonical: list[dict[str, Any]] = []
+    missing_canonical: dict[str, list[str]] = {}
+    for cid in cid_order:
+        rows = rows_by_cid[cid]
+        chosen = next((r for r in rows if str(r.get("chunk_id") or "").strip() == f"{cid}_0"), None)
+        if chosen is None and len(rows) == 1 and not str(rows[0].get("chunk_id") or "").strip():
+            chosen = rows[0]
+        if chosen is not None:
+            canonical.append(chosen)
+        else:
+            missing_canonical[cid] = [str(r.get("chunk_id") or "").strip() for r in rows]
+    return canonical, missing_canonical
+
+
 def fetch_article_rows(
     conn: psycopg.Connection,
     schema: str,
@@ -259,15 +298,24 @@ def remove_orphaned_summaries(
     en cours, la vérification BLOQUE derrière ses verrous et ne lit qu'après
     son commit — jamais un snapshot d'avant-suppression qui conclurait à tort
     « article présent »."""
-    conditions = [sql.SQL("UPPER(TRIM(cid)) = ANY(%s)"), sql.SQL("chunk_id NOT LIKE %s")]
+    conditions = [
+        sql.SQL("UPPER(TRIM(cid)) = ANY(%s)"),
+        sql.SQL("chunk_id NOT LIKE %s"),
+    ]
     params: list[Any] = [[str(c).strip().upper() for c in cids], f"%{SUMMARY_CHUNK_SUFFIX}"]
     if has_index_variant:
         conditions.append(sql.SQL("index_variant IS NULL"))
-    query = sql.SQL("SELECT cid, chunk_text FROM {}.{} WHERE {} FOR UPDATE").format(
+    query = sql.SQL("SELECT cid, chunk_id, chunk_text FROM {}.{} WHERE {} FOR UPDATE").format(
         sql.Identifier(schema), sql.Identifier(table), sql.SQL(" AND ").join(conditions)
     )
     current = conn.execute(query, params).fetchall()
-    texts = {str(cid).strip(): str(chunk_text or "") for cid, chunk_text in current}
+    # Même règle de canonicité que le plan : une ligne unique fait foi, en
+    # présence de fragments concurrents seule la ligne ``{cid}_0`` compte —
+    # sinon la vérification conclurait « présent » sur un fragment arbitraire.
+    canonical_rows, _ = _select_canonical_article_rows(
+        [{"cid": cid, "chunk_id": chunk_id, "chunk_text": chunk_text} for cid, chunk_id, chunk_text in current]
+    )
+    texts = {str(row["cid"]).strip(): str(row.get("chunk_text") or "") for row in canonical_rows}
     _, orphaned = split_stale_sources({cid: source_shas[cid] for cid in cids}, texts)
     if orphaned:
         conn.execute(
@@ -276,6 +324,32 @@ def remove_orphaned_summaries(
         )
         conn.commit()
     return orphaned
+
+
+def remove_summaries_without_canonical_source(
+    conn: psycopg.Connection,
+    schema: str,
+    table: str,
+    *,
+    cids: list[str],
+) -> int:
+    """Delete legacy R2 rows whose source CID has no canonical article row.
+
+    Before canonical selection was enforced, the job could generate ``_r2s``
+    rows from an arbitrary tail fragment.  Merely excluding those CIDs from a
+    new plan leaves the old vectors searchable forever, so a reviewed apply
+    also retires their reserved summary rows.  Deletion by the exact reserved
+    ``{cid}_r2s`` identifier avoids touching ordinary article chunks.
+    """
+    normalized = list(dict.fromkeys(str(cid).strip() for cid in cids if str(cid).strip()))
+    if not normalized:
+        return 0
+    result = conn.execute(
+        sql.SQL("DELETE FROM {}.{} WHERE chunk_id = ANY(%s)").format(sql.Identifier(schema), sql.Identifier(table)),
+        ([summary_chunk_id(cid) for cid in normalized],),
+    )
+    conn.commit()
+    return int(result.rowcount or 0)
 
 
 def _load_uids(args: argparse.Namespace) -> list[str]:
@@ -350,7 +424,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     with psycopg.connect(dsn) as conn:
         conn.read_only = mode != "apply"
         has_variant_col = _table_has_index_variant(conn, args.schema, args.table)
-        article_rows = fetch_article_rows(conn, args.schema, args.table, uids=uids or None, has_index_variant=has_variant_col)
+        fetched_article_rows = fetch_article_rows(conn, args.schema, args.table, uids=uids or None, has_index_variant=has_variant_col)
+        article_rows, missing_canonical = _select_canonical_article_rows(fetched_article_rows)
         existing = fetch_existing_variants(conn, args.schema, args.table, has_index_variant=has_variant_col)
 
     missing = plan_missing_summaries(article_rows, existing, summarizer.version, embed_model=embed_model)
@@ -371,6 +446,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": summarizer.model,
         "embed_model": embed_model,
         "articles_in_scope": len(article_rows),
+        "source_cids_without_canonical": len(missing_canonical),
+        "source_cids_without_canonical_sample": list(missing_canonical)[:20],
+        "noncanonical_summaries_removed": 0,
         # « à jour » = hors manquants TOTAUX — jamais tronqué par --limit
         # (revue #332 : le rapport annonçait 4 107 à jour avec --limit 100).
         "summaries_up_to_date": len(article_rows) - missing_total,
@@ -484,7 +562,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             # commit — une ingestion concurrente (DELETE/UPDATE par cid) bloque
             # derrière le verrou au lieu de s'intercaler entre la revalidation
             # et l'upsert (revue #332, round 2).
-            current_rows = fetch_article_rows(
+            fetched_current_rows = fetch_article_rows(
                 apply_conn,
                 args.schema,
                 args.table,
@@ -492,6 +570,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 has_index_variant=has_variant_col,
                 for_update=True,
             )
+            current_rows, _missing_current_canonical = _select_canonical_article_rows(fetched_current_rows)
             current_texts = {str(r["cid"]).strip(): str(r.get("chunk_text") or "") for r in current_rows}
             fresh_cids, stale = split_stale_sources({item.uid: source_shas[item.uid] for item in accepted}, current_texts)
             fresh_set = set(fresh_cids)
@@ -530,6 +609,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             if orphaned:
                 report["orphans_detail"] = orphaned
         report["mode"] = "apply"
+
+    if mode == "apply" and missing_canonical:
+        with psycopg.connect(dsn) as cleanup_conn:
+            report["noncanonical_summaries_removed"] = remove_summaries_without_canonical_source(
+                cleanup_conn,
+                args.schema,
+                args.table,
+                cids=list(missing_canonical),
+            )
 
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return report

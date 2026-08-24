@@ -3,21 +3,156 @@ name: Release Please
 on:
   push:
     branches:
+      - staging
       - main
-  workflow_dispatch:
 
 permissions:
+  actions: read
   contents: write
   pull-requests: write
   issues: write
 
+concurrency:
+  group: release-please-${{ github.ref_name }}
+  cancel-in-progress: ${{ github.ref_name == 'staging' }}
+
 jobs:
-  release-please:
+  prepare-promotion:
+    if: ${{ github.ref_name == 'staging' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      has_release_pr: ${{ steps.finalize.outputs.has_release_pr }}
+      main_sha: ${{ steps.prepare.outputs.main_sha }}
+      staging_sha: ${{ steps.prepare.outputs.staging_sha }}
+      pr_number: ${{ steps.finalize.outputs.pr_number }}
+      pr_url: ${{ steps.finalize.outputs.pr_url }}
+      head_ref: ${{ steps.finalize.outputs.head_ref }}
     steps:
-      - name: Run release-please
+      - name: Validate release automation token
+        env:
+          RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: test -n "$RELEASE_PLEASE_TOKEN"
+
+      - name: Checkout protected staging revision
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Prepare main + staging release candidate
+        id: prepare
+        env:
+          # The GitHub App token makes GitHub API commits verified, which is
+          # required by the main branch ruleset.
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/release_promotion.py prepare
+
+      - name: Prepare or update Release Please PR
+        id: release
         uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          # Keep generated release commits GitHub-signed. The PAT is used only
+          # by later PR state changes and release publication.
+          token: ${{ github.token }}
+          target-branch: release-candidate
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          skip-github-release: true
+
+      - name: Retarget release PR to main
+        id: finalize
+        if: ${{ always() && steps.prepare.outcome == 'success' && steps.release.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          python3 .github/scripts/release_promotion.py finalize \
+            --staging-sha "${{ steps.prepare.outputs.staging_sha }}" \
+            --main-sha "${{ steps.prepare.outputs.main_sha }}"
+
+  validate-staging:
+    if: ${{ needs.prepare-promotion.outputs.has_release_pr == 'true' }}
+    needs: prepare-promotion
+    runs-on: ubuntu-latest
+    timeout-minutes: 190
+    steps:
+      - name: Checkout protected staging revision
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare-promotion.outputs.staging_sha }}
+
+      - name: Wait for staging workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 .github/scripts/release_promotion.py wait \
+            --staging-sha "${{ needs.prepare-promotion.outputs.staging_sha }}" \
+            --pull-number "${{ needs.prepare-promotion.outputs.pr_number }}" \
+            --run-id "${{ github.run_id }}"
+
+      - name: Checkout release PR branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare-promotion.outputs.head_ref }}
+          path: release-pr
+          token: ${{ github.token }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Refresh release lockfile
+        working-directory: release-pr
+        run: uv lock
+
+      - name: Commit signed lockfile update through GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 .github/scripts/release_promotion.py update-file \
+            --branch "${{ needs.prepare-promotion.outputs.head_ref }}" \
+            --file uv.lock \
+            --source release-pr/uv.lock \
+            --message "chore: update uv lockfile for release"
+
+      - name: Mark release PR ready and trigger main checks
+        env:
+          # PR events emitted by github.token do not start downstream
+          # workflows, so the release token is deliberately used here.
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          python3 .github/scripts/release_promotion.py refresh-checks \
+            --pull-number "${{ needs.prepare-promotion.outputs.pr_number }}" \
+            --staging-sha "${{ needs.prepare-promotion.outputs.staging_sha }}"
+
+  publish-release:
+    if: ${{ github.ref_name == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate release automation token
+        env:
+          RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: test -n "$RELEASE_PLEASE_TOKEN"
+
+      - name: Checkout main revision
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Publish merged Release Please PR
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-pull-request: true
+
+      - name: Back-merge main into dev
+        env:
+          # The PAT lets the fallback back-merge PR trigger the dev checks;
+          # dev does not require GitHub-verified commits.
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: python3 .github/scripts/release_promotion.py back-merge --base dev --head main

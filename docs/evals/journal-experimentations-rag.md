@@ -951,3 +951,207 @@ convertit qu'1 cible sur 3, et le vrai fix de q13 est goldset, pas prompt.
 Le garde-fou « chiffres verbatim » reste défendable sur le principe mais n'a
 rien démontré ici. (3) Prochain levier réel : curation goldset post
 ré-ingestion, avant tout nouveau tuning de prompt.
+
+---
+
+## Run 222 — `baseline_openweight_promoted_20260824` (24/08, terminé, diagnostic uniquement) — contrôle Qwen post-promotion
+
+**Objet** : établir le contrôle apparié avant la bascule staging du générateur
+vers `deepseek-v4-flash`. Le code de #417, #419 et #372 est promu sur staging
+par le merge commit `b3603048`; les workflows de promotion doivent être verts
+avant le lancement. Le smoke automatique #221 (5 questions) ne constitue pas
+une baseline d'adoption.
+
+**Protocole exécuté** : panel `baseline_v1` (98 questions attendues), scope
+`per-question`, config live staging, prompt
+`system_prompt_V6_optimized_v2026-08-20.md`, sélecteur `openweight-large` et
+générateur explicitement fixé à `openweight-large`. Le launcher a fixé par
+erreur l'ancien juge Scaleway `qwen3-235b-a22b-instruct-2507`, vote majoritaire
+à 3, au lieu du souverain courant `mistral-medium-3.5-128b` adopté par #385 ;
+RAGAS sauté. L'override
+générateur identique à la config active les nouvelles gardes de #419 : tout
+fallback invalide le run au lieu d'être crédité au candidat.
+
+**Comparabilité** : #206 utilise le bon juge Mistral maj-3 mais un corpus
+antérieur à la ré-ingestion Service-Public ; #112 utilise Qwen sur 99 questions
+et l'ancien protocole single-shot. Le #222 décrit utilement le pipeline et le
+funnel post-promotion, mais **ne peut pas servir de baseline d'adoption** : le
+contrôle doit être rejoué sous Mistral maj-3.
+
+**Résultats** : 98/98 sans erreur technique, sans fallback générateur et sans
+échec juge ; coût juge 1,7353 € (294 appels Qwen, couverture complète).
+
+| Mesure | Run #222 |
+|---|---:|
+| judge_pass (maj-3) | **0,6327** (62/98) |
+| judge_score moyen | 0,6551 |
+| doc_recall | 0,7024 |
+| hit_rate | 0,7755 |
+| retrieval_gap_rate | 0,2245 |
+
+Le profil temporel n'est pas une panne : les 40 premières questions font
+26/40, contre 25/40, 26/40 et 25/40 aux runs récents #206/#215/#217 sur le
+même ordre. Le creux 61–70 fait 2/10, dans la plage historique 2–6/10 : le
+panel non mélangé regroupe des questions difficiles au milieu du run.
+
+Diagnostic du funnel sur les échecs observés en cours de run : les pertes se
+répartissent entre documents absents du pool initial, documents perdus au
+reranking de sections, golds explicitement retirés par le sélecteur, et
+réponses incomplètes malgré un gold présent dans le contexte final. Deux
+causes concrètes ont été reproduites : (1) q29 MSO est un near-miss ANN à la
+config courante ; un replay isolé le retrouve avec davantage de probes, mais
+**ce n'est pas un levier à rouvrir** : l'ablation consolidée a déjà rejeté
+`ivfflat_probes` 5→15/20 (sur-bruit global pour un gain isolé) ; (2) q181 est
+classée à tort `document_request`, ce qui court-circuite le RAG. À traiter
+séparément de l'A/B générateur afin de ne pas confondre les variables. La q177
+est un faux négatif gold/juge : la réponse candidate restitue correctement
+l'exception sourcée des naissances multiples, absente de la gold.
+
+**Lecture corrigée** : exécution techniquement valide, mais protocole juge
+obsolète. Le score Qwen ne doit pas piloter la décision DeepSeek. Conserver le
+run comme diagnostic de funnel et rejouer le couple contrôle/candidat avec le
+juge souverain Mistral maj-3.
+
+---
+
+## Run 224 — `candidate_dsv4flash_promoted_20260824` (24/08, annulé à 47/98) — candidat Qwen invalide
+
+**Objet** : après réussite du contrôle #222, basculer uniquement
+`rag_config.v3_generator_model` de `openweight-large` vers
+`deepseek-v4-flash`, puis mesurer le générateur adopté sur le même état staging.
+Le sélecteur et le prompt restent respectivement `openweight-large` et
+`system_prompt_V6_optimized_v2026-08-20.md`.
+
+**Protocole exécuté** : strictement identique au contrôle #222, donc avec le
+même override Qwen obsolète, et pour seule variable le générateur
+`deepseek-v4-flash`.
+
+**Résultats** : arrêté à 47/98 dès identification de l'erreur de protocole et
+marqué `cancelled` en base ; 31 PASS / 16 FAIL partiels, zéro fallback
+générateur. Ces verdicts partiels ne participent à aucune décision ni gate.
+
+---
+
+## Run 225 — `baseline_openweight_promoted_mistral_20260824` (24/08, terminé) — contrôle officiel post-promotion
+
+**Protocole figé** : panel `baseline_v1` 98 questions, scope `per-question`,
+config live staging, générateur `openweight-large`, sélecteur
+`openweight-large`, prompt `system_prompt_V6_optimized_v2026-08-20.md`, juge
+souverain Scaleway `mistral-medium-3.5-128b` maj-3 avec rubrique v2, RAGAS
+sauté. Il devient la baseline appariée du candidat DeepSeek rejoué ensuite.
+
+**Résultats** : 98/98 sans erreur technique, sans fallback générateur et sans
+échec juge ; coût juge 3,2891 € (294 appels Mistral, couverture complète).
+
+| Mesure | Run #225 |
+|---|---:|
+| judge_pass (maj-3) | **0,6837** (67/98) |
+| judge_score moyen | 0,6854 |
+| doc_recall | 0,7024 |
+| hit_rate | 0,7755 |
+| retrieval_gap_rate | 0,2245 |
+| judge_pass hors borderline | 0,7000 |
+
+Les agrégats retrieval sont identiques au diagnostic Qwen #222
+(`doc_recall=0,7024`, `hit_rate=0,7755`), mais les sorties ne sont pas figées :
+les 19 flips de verdict portent tous une réponse différente et 9 ont aussi des
+contextes/sources différents. Le +5 PASS ne mesure donc pas isolément le
+changement de juge ; il confirme seulement que #222 ne peut piloter l'adoption.
+L'audit des 7 pertes Mistral trouve 1 échec net justifié (q20), 5 faux négatifs
+probables par exigence de complétude excessive (q1/q176/q186/q660/q926), et un
+cas mixte avec raisonnement de contradiction défectueux (q206). Quatre réponses
+non conformes du sélecteur ont déclenché le fallback sûr top-5 ; aucun item n'a
+échoué techniquement.
+
+**Lecture** : baseline officielle valide pour l'A/B apparié. Le candidat doit
+conserver exactement ce juge Mistral maj-3, le même panel et le même funnel ;
+seul `v3_generator_model` passe à `deepseek-v4-flash`.
+
+---
+
+## Run 226 — `candidate_dsv4flash_promoted_mistral_20260824` (24/08, terminé) — candidat officiel DeepSeek
+
+**Protocole figé** : strictement identique au contrôle #225 — panel
+`baseline_v1` 98 questions, scope `per-question`, sélecteur
+`openweight-large`, prompt V6, juge Scaleway
+`mistral-medium-3.5-128b` maj-3 avec rubrique v2, RAGAS sauté — avec pour
+seule variable le générateur `deepseek-v4-flash`. Baseline appariée : **#225** ;
+gates intégrés sur `judge_pass_rate` et `doc_recall_avg`, et invalidation au
+moindre fallback générateur.
+
+**Lancement** : démarré à 11:44 UTC depuis le commit `530dd68` (même code
+évalué que #225). Le préflight config en base confirme que le diff complet
+contre #225 se limite à `generation.model` : `openweight-large` →
+`deepseek-v4-flash`. Le run enregistré porte bien `judge_provider=scaleway`,
+`judge_model=mistral-medium-3.5-128b`, `judge_votes=3`, sélecteur
+`openweight-large` et l'ajustement explicite
+`generator_model=deepseek-v4-flash`.
+
+**Résultats** : 98/98 sans erreur technique, sans fallback générateur et sans
+échec juge ; coût juge 3,4451 € (294 appels Mistral, couverture complète). Trois
+réponses non conformes du sélecteur ont utilisé le fallback sûr top-5.
+
+| Mesure | #226 DeepSeek | #225 Openweight | Delta |
+|---|---:|---:|---:|
+| judge_pass (maj-3) | **0,6633** (65/98) | 0,6837 (67/98) | **−0,0204** |
+| judge_pass hors borderline | 0,6778 | 0,7000 | −0,0222 |
+| judge_score moyen | 0,6604 | 0,6854 | −0,0250 |
+| doc_recall | 0,7024 | 0,7024 | 0 |
+| hit_rate | 0,7755 | 0,7755 | 0 |
+| retrieval_gap_rate | 0,2245 | 0,2245 | 0 |
+
+Le gate de non-régression passe (`judge_pass` au-dessus de la tolérance −5 pts,
+retrieval strictement plat). Lecture appariée : **8 gains / 10 pertes**, 57
+double-pass et 23 double-échecs. Les réponses diffèrent sur 96/98 questions ;
+les contextes sur 23/98. Parmi les 18 flips, 5 ont un contexte différent
+(q1/q3/q20/q175/q926) et 13 gardent le même contexte. Par corpus, seul le lot
+`manual` porte le delta (35/55 vs 37/55) ; Service-Public, MATTE, synthetic,
+MSO et DGAFP sont tous à égalité en nombre de PASS.
+
+**Audit humain des 18 flips** : le décompte brut 8 gains / 10 pertes surestime
+la différence entre modèles. Cinq flips sont des artefacts du juge ou du gold,
+et trois autres ne représentent qu'un écart mineur ou ambigu.
+
+| Question | Flip brut | Contexte | Audit | Motif principal |
+|---|---|---|---|---|
+| q1 | gain DeepSeek | différent | avantage DeepSeek mineur | DeepSeek explicite mieux l'automaticité du CDI et l'avenant ; la réponse Openweight restait substantiellement acceptable. |
+| q20 | gain DeepSeek | différent | **gain DeepSeek net** | Openweight omet les cas de temps partiel de droit et leurs quotités ; DeepSeek les couvre. |
+| q33 | gain DeepSeek | identique | **gain DeepSeek net** | Réponse plus complète sur la procédure de licenciement pour insuffisance professionnelle. |
+| q176 | gain DeepSeek | identique | artefact juge/gold | Le FAIL Openweight impose à tort aux fonctionnaires la condition d'ancienneté applicable aux contractuels ; les deux réponses sont adéquates dans le scope. |
+| q183 | gain DeepSeek | identique | **gain DeepSeek net** | DeepSeek distingue correctement besoin temporaire (12/18 mois) et saisonnier (6/12 mois). |
+| q186 | gain DeepSeek | identique | artefact juge | Les deux réponses donnent la même conclusion ; Mistral reproche seulement à Openweight une réserve sur les motifs illégaux, également absente chez DeepSeek. |
+| q206 | gain DeepSeek | identique | **gain DeepSeek net** | DeepSeek sépare correctement le délai général du régime des contrats de projet ; la justification du FAIL Openweight contient en plus des contradictions factuelles. |
+| q926 | gain DeepSeek | différent | **gain DeepSeek net** | Réponse TPT plus complète et cohérente ; Openweight mélange des règles du temps partiel ordinaire. |
+| q3 | perte DeepSeek | différent | **perte DeepSeek nette** | DeepSeek refuse de conclure alors que les sources permettent de répondre sur l'indemnité de fin de contrat. |
+| q4 | perte DeepSeek | identique | **perte DeepSeek nette** | DeepSeek expose les deux régimes mais refuse la conclusion attendue sur l'absence de droit à l'égalité de rémunération. |
+| q18 | perte DeepSeek | identique | avantage Openweight mineur | DeepSeek couvre le fond mais n'explicite pas aussi nettement le caractère « de droit » et l'assimilation à du travail effectif. |
+| q19 | perte DeepSeek | identique | avantage Openweight mineur | DeepSeek décrit surtout les modalités et omet l'objectif central de la formation statutaire ; le seuil de complétude reste appliqué de façon inégale. |
+| q175 | perte DeepSeek | différent | **perte DeepSeek nette** | DeepSeek omet les exceptions essentielles à la protection contre le licenciement pendant la maternité. |
+| q188 | perte DeepSeek | identique | artefact juge/gold | La question demande uniquement la durée minimale et maximale, correctement donnée par DeepSeek ; le FAIL sanctionne l'absence d'une précision hors question sur le CDI. |
+| q189 | perte DeepSeek | identique | **perte DeepSeek nette** | DeepSeek répond sur le CDI mais refuse de conclure sur la titularisation. |
+| q205 | perte DeepSeek | identique | artefact juge | Les deux réponses contiennent textuellement les quatre délais du gold ; Openweight passe et DeepSeek reçoit pourtant un score nul. |
+| q213 | perte DeepSeek | identique | artefact gold/juge | Le gold affirme un plein traitement pendant toute l'absence, alors que l'article 14 du décret 86-83 le borne à 1, 2 ou 3 mois selon l'ancienneté ; les deux modèles donnent cette règle. |
+| q227 | perte DeepSeek | identique | **perte DeepSeek nette** | DeepSeek refuse l'inférence opérationnelle sur l'absence de preuve d'aptitude malgré le caractère obligatoire du contrôle. |
+
+Bilan audité : **5 gains nets DeepSeek / 5 pertes nettes**, 1 avantage mineur
+DeepSeek / 2 avantages mineurs Openweight et **5 artefacts juge/gold**. Les
+contextes différents sont équilibrés entre les deux sens (q1/q20/q926 en faveur
+de DeepSeek, q3/q175 en faveur d'Openweight) et n'expliquent donc pas le delta.
+
+Le signal qualitatif important est reproductible par rapport à #215 : DeepSeek
+gagne encore sur la complétude (q20/q33/q206), mais reproduit les refus de
+conclure déjà observés sur q3/q4/q227 ; q189 relève du même mécanisme. q19 reste
+également une faiblesse récurrente. Cette stabilité invalide l'hypothèse d'une
+simple variance de run : les deux modèles sont globalement à parité, avec un
+léger avantage Openweight sur les cas exigeant une inférence juridique prudente
+mais nécessaire.
+
+**Décision corrigée après audit** : le gate automatique de non-régression passe,
+mais #226 ne justifie pas une promotion production de DeepSeek. Le conserver en
+staging reste possible pour observation. Un second run strictement inchangé
+aurait peu de valeur avant de corriger le comportement d'abstention ou de
+recalibrer le gold/juge sur q176/q186/q188/q205/q213 ; il faut ensuite rejuger
+les réponses figées ou relancer l'A/B. Références juridiques contrôlées pendant
+l'audit : [article 14 du décret 86-83](https://www.legifrance.gouv.fr/loda/id/JORFTEXT000000699956/2026-06-05),
+[article 49](https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000045662477)
+et [article 11-1](https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000045351577).
