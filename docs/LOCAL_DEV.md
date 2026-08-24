@@ -26,36 +26,52 @@ conteneur local n'a pas de TLS.
 ## 2. Seed depuis staging
 
 Le schéma complet ne vit pas dans `supabase/migrations/` (les tables corpus
-historiques prédatent les migrations) — le seed de référence est un
-`pg_dump` de staging :
+historiques prédatent les migrations). Le seed utilise donc une **liste
+blanche** de tables nécessaires aux evals, jamais un dump général de staging.
+Les conversations, feedbacks, identifiants de session et données
+d'authentification ne doivent pas quitter l'environnement partagé.
 
 ```bash
 DSN_STAGING=$(grep '^SCW_POSTGRES_DSN_STAGING' .env | cut -d= -f2- | tr -d '"')
-pg_dump "$DSN_STAGING" -Fc --no-owner --no-privileges \
-  --exclude-table-data='public.rag_quality_eval_items' \
-  --exclude-table-data='public.chat_runs' \
-  --exclude-table-data='public.rag_trace_events' \
-  --exclude-table-data='public.documents' \
-  --exclude-table-data='public.*_scalingo' \
-  --exclude-table-data='public.*_scw' \
-  --exclude-table-data='public.*legacy*' \
-  -f data/dumps/staging_$(date +%Y%m%d).dump
+LOCAL_EVAL_DSN="${SCW_POSTGRES_DSN_LOCAL:-postgresql://assistant_rh:assistant_rh@localhost:55432/assistant_rh?sslmode=disable}"
+EVAL_DUMP_DATE=$(date +%Y%m%d)
+mkdir -p data/dumps
 
-pg_restore -d "postgresql://assistant_rh:assistant_rh@localhost:55432/assistant_rh" \
+SAFE_EVAL_TABLES=(
+  rag_chunks_matte rag_chunks_service_public rag_chunks_dgafp rag_chunks_rgrh
+  rag_chunks_mso rag_chunks_mi rag_chunks_masa
+  rag_documents rag_sections goldset_questions_v2
+  rag_config system_prompts acronyms rag_quality_eval_runs
+)
+PG_DUMP_TABLE_ARGS=()
+for table in "${SAFE_EVAL_TABLES[@]}"; do
+  PG_DUMP_TABLE_ARGS+=(--table="public.${table}")
+done
+
+# Le schéma du goldset est inclus dans le dump, mais ses lignes sont exportées
+# séparément afin d'écarter les questions auto-enrichies depuis des sessions.
+pg_dump "$DSN_STAGING" -Fc --strict-names --no-owner --no-privileges \
+  "${PG_DUMP_TABLE_ARGS[@]}" \
+  --exclude-table-data='public.goldset_questions_v2' \
+  -f "data/dumps/staging_eval_${EVAL_DUMP_DATE}.dump"
+psql "$DSN_STAGING" -v ON_ERROR_STOP=1 -c \
+  "\copy (SELECT * FROM public.goldset_questions_v2 WHERE source IS DISTINCT FROM 'user' AND original_turn_id IS NULL) TO 'data/dumps/goldset_${EVAL_DUMP_DATE}.csv' WITH (FORMAT csv, HEADER true)"
+
+psql "$LOCAL_EVAL_DSN" -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS vector'
+pg_restore -d "$LOCAL_EVAL_DSN" \
   --no-owner --no-privileges --clean --if-exists \
-  data/dumps/staging_$(date +%Y%m%d).dump
+  "data/dumps/staging_eval_${EVAL_DUMP_DATE}.dump"
+psql "$LOCAL_EVAL_DSN" -v ON_ERROR_STOP=1 -c \
+  "\copy public.goldset_questions_v2 FROM 'data/dumps/goldset_${EVAL_DUMP_DATE}.csv' WITH (FORMAT csv, HEADER true)"
 ```
 
-Les exclusions (schéma conservé, données non copiées) :
-- `rag_quality_eval_items` (~3,4 Go d'historique d'evals — inutile en local ;
-  `rag_quality_eval_runs` est gardé pour lire les baselines) ;
-- `chat_runs`, `rag_trace_events`, `documents` (logs/legacy) ;
-- tables mortes `*_scalingo`, `*_scw`, `*legacy*`.
-
 Ce qui est copié : les corpus `rag_chunks_*` actifs (matte, mso, mi, masa,
-service_public, dgafp, rgrh), `rag_documents`, `rag_sections`,
-`goldset_questions_v2`, `rag_config`, `system_prompts`, `acronyms`,
-`user_groups`.
+service_public, dgafp, rgrh), `rag_documents`, `rag_sections`, le goldset hors
+lignes issues des utilisateurs ou liées à leurs sessions, `rag_config`, `system_prompts`,
+`acronyms` et `rag_quality_eval_runs` pour les baselines. Aucune table
+`chat_*`, trace, feedback ou authentification (`user_groups`) n'est incluse.
+Toute extension de `SAFE_EVAL_TABLES` doit faire l'objet d'une revue des
+données potentiellement personnelles avant ajout.
 
 Réseau : si les ports DB Scaleway sont bloqués (réseau pro), passer par le
 pont `ssh dev@assistant-rh` (dump sur la VM puis `scp`).

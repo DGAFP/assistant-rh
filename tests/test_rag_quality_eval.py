@@ -56,6 +56,10 @@ def test_config_fingerprint_is_stable_and_changes_with_config() -> None:
 
     config_b.retrieval.initial_top_k = config_a.retrieval.initial_top_k + 1
     assert config_fingerprint(config_a) != config_fingerprint(config_b)
+    assert config_fingerprint(config_a, extra={"generator_system_prompt_sha": "a"}) != config_fingerprint(
+        config_a,
+        extra={"generator_system_prompt_sha": "b"},
+    )
 
 
 def test_aggregate_items_averages_available_metrics() -> None:
@@ -797,6 +801,21 @@ def test_derive_status_partial_errors_is_completed_with_errors() -> None:
     assert error == ""
 
 
+def test_derive_status_generator_fallback_is_failure_even_when_partial() -> None:
+    fallback = _item(error="generator fallback")
+    fallback.judge_result = {"status": "skipped", "reason": "generator_fallback"}
+
+    status, error = derive_completion_status(
+        [_item(), fallback],
+        judge_enabled=True,
+        ragas_enabled=False,
+        judge_votes=1,
+    )
+
+    assert status == "failed"
+    assert "generator fallback invalidated 1/2" in error
+
+
 def test_derive_status_all_clean_is_completed() -> None:
     status, error = derive_completion_status([_item(), _item()], judge_enabled=True, ragas_enabled=True)
     assert status == "completed"
@@ -1290,6 +1309,59 @@ def test_run_question_records_exact_generator_prompt_size() -> None:
 
     assert item.metadata["generator_prompt_chars"] == len("user promptsystem")
     assert item.metadata["existing"] is True
+
+
+def test_run_question_rejects_generator_fallback_before_judge_and_ragas(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from src.goldset import eval as eval_module
+
+    class _FallbackPipe:
+        last_full_prompt = "user prompt"
+        last_system_prompt = "system"
+
+        def run_with_trace(self, *args, **kwargs):
+            return SimpleNamespace(
+                answer="fallback answer",
+                context_items=[],
+                sources=[],
+                timing={"response_length_tokens": 2},
+                metadata={
+                    "generator_provider": "albert",
+                    "generator_model": "deepseek-v4-flash",
+                    "generator_provider_used": "scaleway",
+                    "generator_model_used": "llama-3.1-70b-instruct",
+                    "generator_fallback_count": 1,
+                    "generator_used_fallback": True,
+                },
+            )
+
+    def fail_if_called(**kwargs):
+        raise AssertionError("judge/RAGAS must not run for a fallback answer")
+
+    monkeypatch.setattr(eval_module, "compute_ragas_metrics", fail_if_called)
+    monkeypatch.setattr(eval_module, "judge_answer_with_votes", fail_if_called)
+
+    item = eval_module.run_question(
+        pipe=_FallbackPipe(),
+        question=eval_module.GoldsetQuestion(id=1, question="q", gold_answer="a", gold_sources=[]),
+        run_ragas=True,
+        run_judge=True,
+        judge_model="judge",
+        judge_base_url="https://judge.invalid",
+        judge_api_key="key",
+        ragas_model="ragas",
+        scaleway_base_url="https://ragas.invalid",
+        scaleway_api_key="key",
+        reject_generator_fallback=True,
+    )
+
+    assert item.error is not None and "generator fallback" in item.error
+    assert item.judge_result == {"status": "skipped", "reason": "generator_fallback"}
+    assert item.ragas_metrics == {"status": "skipped", "reason": "generator_fallback"}
+    aggregate = eval_module.aggregate_items([item])
+    assert aggregate["judge_pass_rate"] is None
+    assert aggregate["judge_score_avg"] is None
 
 
 def test_judge_answer_openrouter_enforces_zdr(monkeypatch) -> None:
