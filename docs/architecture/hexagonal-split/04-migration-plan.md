@@ -1,102 +1,152 @@
-# Plan de migration — séquence de PRs
+# Plan de migration — remplacement parallèle et réversible
 
-> Référence : [00-overview.md](00-overview.md) (décisions D7, D8, D9). Avancement tenu au [LEDGER.md](LEDGER.md).
+> Référence : [00-overview.md](00-overview.md) (décisions D7, D8, D9, D14). Avancement tenu au [LEDGER.md](LEDGER.md).
 
 ## Modèle de livraison
 
-- Branche d'intégration **`feat/hexagonal-api`**, créée depuis `dev`. Toutes les PRs du chantier la ciblent ; revue PR par PR.
-- `dev` / `staging` / `main` continuent de faire tourner l'existant, intact, jusqu'au merge final.
-- Merge final : **merge-commit** (jamais squash) de `feat/hexagonal-api` → `dev`, une fois la parité prouvée (jalon M3). Bascule des consommateurs après septembre 2026.
-- Reconstruction **iso-fonctionnelle** : aucune amélioration de pipeline dans ce chantier ; les idées notées au LEDGER pour après.
+- Les PRs additives ciblent **`dev`** selon le flux Git habituel. `packages/rag-core` et `apps/api` peuvent donc suivre la CI, staging et les déploiements sans devenir immédiatement le chemin de production.
+- `packages/rag-pipeline` et le Streamlit direct restent fonctionnels et sélectionnés par défaut pendant toute la reconstruction.
+- L'API est construite, déployée dark et observée à côté de l'existant. Streamlit ne passe en HTTP que derrière un feature flag réversible.
+- La suppression de l'ancien package, des imports directs et de l'accès DB Streamlit est une phase de nettoyage **postérieure** à une fenêtre de stabilité en production.
+- Reconstruction iso-fonctionnelle : aucune amélioration de qualité pipeline dans le portage. Les idées sont consignées au LEDGER pour après.
 
-## Règles invariantes (toutes les PRs)
+## Règles invariantes
 
-1. **Move-only ≠ comportement** : une PR déplace du code sans changer la logique, ou change du comportement — jamais les deux.
-2. **pytest vert à chaque PR** ; les tests migrent avec le code qu'ils couvrent.
-3. La garde de frontière d'imports (import-linter, posée en A2) passe à chaque PR.
-4. Chaque PR amende le [LEDGER.md](LEDGER.md) (section Avancement).
-5. Format PR : `## Problème` / `## Solution` (+ mermaid si utile).
+1. Une PR porte une seule intention reviewable : squelette, inventaire/port, adaptateur, endpoint ou bascule — jamais un déplacement massif mêlé à un changement qualité.
+2. Le chemin de production existant et ses tests restent verts tant que le feature flag pointe dessus ; les tests du nouveau chemin s'ajoutent sans remplacer prématurément les anciens.
+3. La frontière `rag-core` est gardée dès sa création. Les interdictions DB/pipeline dans Streamlit ne deviennent bloquantes qu'au nettoyage final.
+4. Chaque PR qui porte ou compare du comportement amende le [LEDGER.md](LEDGER.md).
+5. Format PR : `## Problème` / `## Solution` (+ mermaid si utile), tests exécutés et preuve de parité concernée.
+6. Les migrations DB sont versionnées, idempotentes et testées sur une base locale synthétique avant staging.
 
-## Politique de synchronisation avec `dev` (D8)
+## Politique de synchronisation avec le pipeline existant
 
-- Sync **à la demande** (pas de cadence imposée) : merge de `dev` dans `feat/hexagonal-api` quand un changement structurant atterrit sur `dev`.
-- Tout changement de `packages/rag-pipeline` ou `src/ui` mergé sur `dev` pendant le chantier est **reporté à la main** vers l'arborescence `apps/api` et **noté** dans le LEDGER (section Reports depuis dev). Un report non fait = dette de parité visible.
-- **Gel final** : 5 jours ouvrés avant l'éval de parité M3, gel des changements pipeline sur `dev` (les campagnes qualité atterrissent avant ou attendent).
+- Tout changement comportemental de `packages/rag-pipeline` ou du chemin chat Streamlit atterrissant pendant le chantier est inscrit dans **Reports depuis le runtime existant**.
+- Le report vers `packages/rag-core` cite le commit source, les tests portés et le résultat de conformance. Un report non fait reste une dette visible.
+- Les corrections urgentes continuent normalement sur l'ancien runtime ; la reconstruction ne bloque pas la production.
+- Gel final court : 5 jours ouvrés avant M3, les changements qualité pipeline attendent ou sont reportés avant de relancer les preuves.
 
 ---
 
-## Phase 0 — préparation (sur `dev`)
+## Phase 0 — baseline et spikes bloquants
 
 | PR / action | Contenu | Sortie de phase |
 |---|---|---|
-| **PR 0** (celle-ci) | Docs du plan (`docs/architecture/hexagonal-split/`) → `dev` | Plan visible et amendable |
-| **Jalon M0** | **Re-baseline goldset** sur `dev` (direct-core actuel, config staging), consignée au journal d'expérimentations | La référence de parité du chantier |
-| Action | Créer `feat/hexagonal-api` depuis `dev` ; vérifier que la CI tourne sur les PRs ciblant cette branche (ajuster les triggers sinon) | Branche prête |
+| **PR 0** (celle-ci) | Plan amendé (`docs/architecture/hexagonal-split/`) → `dev` | Stratégie parallèle, réversible et vérifiable |
+| **M0a** | Baseline goldset live du runtime existant, config et snapshot corpus identifiés, consignée au journal | Référence de qualité, avec métriques/tolérances plutôt qu'égalité textuelle |
+| **M0b** | Capturer les fixtures/replays et sorties d'étapes déterministes nécessaires à la conformance | Référence exacte pour le portage |
+| **A1** | Supprimer `apps/mastra-pipeline`, ses scripts strictement Mastra et les références moon/pnpm/CI devenues mortes | Nettoyage indépendant, tests Python inchangés |
+| **A2** | Spike contrat : serveur minimal Chat Completions + SDK OpenAI + vraie instance `conversations` ; valider messages, modèles, erreurs, SSE, `[DONE]`, sources et auth backend → API | Contrat supporté documenté et tests d'intégration conservés |
+| **A3** | Spike Scaleway précoce : container éphémère avec retrieval simulé lent, pings SSE, worker, déconnexion et erreur post-headers | Go/no-go sur l'architecture de streaming serverless |
 
-## Phase A — nettoyage + squelette
+On ne commence pas le portage massif avant A2/A3 : une contrainte client ou plateforme doit pouvoir modifier le contrat à faible coût.
 
-| PR | Contenu | Type |
-|---|---|---|
-| **A1** | Suppression `apps/mastra-pipeline`, `scripts/run_mastra_conformance.py`, références moon/pnpm/CI | delete |
-| **A2** | Squelette `apps/api` (membre workspace uv, FastAPI minimal, `/healthz`, `moon.yml`, `Dockerfile.api`) + **import-linter en CI** (les 5 règles de [01-target-architecture.md](01-target-architecture.md)) + `LEDGER.md` initialisé | structure |
-
-## Phase B — migration du moteur (move-only par étape, `packages/rag-pipeline` → `apps/api`)
-
-Ordre choisi pour que chaque PR laisse un état importable et testé ; pendant la phase B, `packages/rag-pipeline` continue d'exister côté Streamlit — la suppression n'arrive qu'en D2.
-
-| PR | Contenu | Découpe |
-|---|---|---|
-| **B1** | `core/` : `models.py`, `config.py`, `ministry_scope.py`, `prompts/`, `ports.py` (nouveaux Protocol) | move + création ports |
-| **B2** | `db/` : `dsn.py`, helpers bas niveau (`db_helpers`), `user_groups.py` (depuis `src/ui/user_groups_store.py`) | move |
-| **B3** | **Découpe `retriever.py`** : SQL → `db/search.py`, orchestration/fusion/anti-redondance → `core/steps/retrieval.py` (voir règle de partage en [01](01-target-architecture.md)) | découpe délicate — revue renforcée |
-| **B4** | `gateways/` : `albert.py` (llm_client + embedder), `reranker.py` ; les seuils/gates restent en `core` | découpe |
-| **B5** | `core/steps/` : `query_processor`, `context_builder`, `context_selector`, `section_aggregator`, `generator`, `citation_extractor` | move |
-| **B6** | `db/chat_run_store.py` (chat_logger + tracing) derrière `ChatRunStorePort` ; `db/config_store.py` + validation dans `core/config.py` (ex `admin.py`) | découpe |
-| **B7** | `core/pipeline.py` + `core/chat_service.py` (résolution scope sortie de `src/ui`) ; `src/goldset` repointé sur `apps/api` (runner **direct-core**) | assemblage |
-
-**Jalon M1 — parité moteur** : éval goldset direct-core sur la nouvelle arborescence vs baseline M0. Écart attendu = nul (mêmes algorithmes déplacés). Consigné au journal + LEDGER. On ne passe pas en phase C sans M1 au vert.
-
-## Phase C — l'API
+## Phase A — fondations et arbitrages produit
 
 | PR | Contenu |
 |---|---|
-| **C1** | Migration SQL `user_groups.api_token_hash` + `handlers/auth.py` (bearer → groupe, `ADMIN_TOKEN`) + `GET /v1/models` |
-| **C2** | `POST /v1/chat/completions` non-stream : mapping messages → (question, historique), routage model → ministère, assemblage sources (bloc markdown + `x_assistant_rh`), log `chat_runs` |
-| **C3** | Streaming SSE (chunks OpenAI, keep-alive retrieval, chunk sources final) |
-| **C4** | `POST /v1/feedback` + `/healthz` complet |
-| **C5** | `/admin/*` : rag-config (GET/PUT + validation), user-groups (CRUD + rotate-token), chat-runs (liste/détail), feedback/stats |
-| **C6** | **Runner éval via-API** (livrable D9) : goldset → `/v1/chat/completions`, comparaison aux sorties direct-core à config figée |
+| **A4** | Squelettes `packages/rag-core` et `apps/api` (workspace uv/moon), FastAPI minimal, `/healthz`, `Dockerfile.api`, import-linter pour core/adaptateurs, tests de packaging |
+| **A5** | Schéma runtime local complet et synthétique : migrations/fixtures pour auth, config, prompts, acronymes, chat runs, traces et feedback, sans copier de données personnelles de staging |
+| **A6** | ADR auth/cutover : implémentation lookup/rotation des bearers, provisioning secret côté serveur Streamlit, rotation testée sans exposition navigateur ; cette ADR est un prérequis de D1, pas du déploiement dark |
+| **A7** | Matrice de parité Streamlit ci-dessous, arbitrée avec le produit ; endpoints étroits listés pour chaque page conservée |
 
-**Jalon M2 — fidélité de l'adaptateur** : runner via-API sur la VM homelab contre la DB staging (runs tagués `source=api-vm`), comparé au direct-core même config. Tout écart = bug d'adaptateur à corriger avant la phase D.
+### Matrice de parité Streamlit
 
-## Phase D — Streamlit client HTTP
+| Page/fonction | Cible proposée | Décision requise avant |
+|---|---|---|
+| `01_Chatbot` | Client Chat Completions SSE sous feature flag, ancien chemin en rollback | D1 |
+| `02_Chat_Logs` | `/admin/chat-runs` liste/détail | D2 |
+| `03_Feedback_Dashboard` | `/admin/feedback`, stats, analyse et exports reconstruits côté client | D2 |
+| `04_Admin_Config` | RAG config + CRUD prompts + CRUD acronymes + health via API | D2 |
+| `05_DB_Explorer` | Endpoint document/chunk étroit, maintien temporaire ou archivage approuvé — jamais SQL générique | A7 |
+| `06_Goldset_Explorer` | API goldset dédiée, outil séparé ou maintien temporaire | A7 |
+| `08`, `09`, `10` évals | CLI/outils dédiés, maintien temporaire ou archivage approuvé | A7 |
+| `12_Pipeline_Timeline` | Détail run + `/trace` | D2 |
+| `13_admin` | Redirection conservée vers la page admin cible | D2 |
+| `14_User_Groups` | CRUD complet, reset password, suppression protégée, rotation bearer | D2 |
+| `15_Import_Sources` | Inchangé (Grist + S3), hors frontière DB RAG | — |
+| `_PDF_Viewer` | Endpoint document/PDF étroit ou URL signée ; sinon retrait approuvé | A7 |
+
+## Phase B — construction parallèle du moteur
+
+Le nouveau core est écrit dans `packages/rag-core`. Aucun fichier de `packages/rag-pipeline` n'est supprimé ni transformé en façade pendant cette phase ; l'ancien runtime reste la référence servie.
+
+| PR | Contenu | Preuve minimale |
+|---|---|---|
+| **B0** | Inventaire exhaustif I/O/état/consommateurs : SQL, DSN, prompts, acronymes, config, providers, tracing, caches, `last_*`, scripts, workflows et pages Streamlit. Pour chaque dépendance : port, donnée pure, `RunContext`, adaptateur ou retrait approuvé | Inventaire reviewé et reporté dans le mapping cible |
+| **B1** | Modèles domaine, config pure, ministère, `RunContext`, identifiants/horloge injectables et premiers ports issus de B0 | Tests purs + import-linter |
+| **B2** | Adaptateurs de lecture : recherche vector/lexicale, documents, sections et références juridiques | Tests SQL contractuels sur DB synthétique |
+| **B3** | Retrieval : orchestration/fusion/gates dans core, SQL dans adaptateurs | Fixtures d'étape exactes + déterminisme des égalités |
+| **B4** | Query processor : logique dans core, prompts/acronymes/LLM derrière ports | Replays intent/reformulation exacts |
+| **B5** | Section aggregator + context builder : logique qualité dans core, accès sections/documents/références derrière `ContentStorePort` | Fixtures agrégation/contexte exactes |
+| **B6** | Gateways LLM, embeddings et reranker ; fallback et diagnostics rendus dans `RunContext`, aucun `last_*` partagé | Tests provider/fallback/concurrence |
+| **B7** | Context selector + generator, prompts injectés/révisionnés | Replays + tests anti-hallucination/no-answer |
+| **B8** | `Pipeline`/`ChatService`, logging/tracing via ports, runner direct-core et repointage du skill d'éval vers la nouvelle bibliothèque | Conformance bout en bout déterministe |
+
+**Jalon M1 — parité moteur** :
+
+- conformance déterministe ancien runtime → nouveau core : sorties d'étapes et résultat structuré exacts sur les fixtures M0b ;
+- goldset live apparié nouveau core vs baseline M0a : pas de régression au-delà des tolérances décidées et écarts expliqués ;
+- tests de concurrence prouvant que deux ministères/runs simultanés ne mélangent ni résultat, ni prompt, ni trace.
+
+On ne passe pas en phase C si M1 n'est pas consigné et vert.
+
+## Phase C — API parallèle puis déploiement dark
 
 | PR | Contenu |
 |---|---|
-| **D1** | `01_Chatbot.py` → client SSE de l'API (plus aucun import du pipeline) ; pages éval/debug non fonctionnelles → `archive/` |
-| **D2** | Pages admin (`04`, `13`, `14`, `02`, `03`) → clientes `/admin/*` ; suppression de l'accès Postgres de Streamlit ; **suppression de `packages/rag-pipeline`** et des `src/ui/chatbot_*` résiduels ; balayage final des imports |
+| **C1** | Migration auth API + `handlers/auth.py` + `GET /v1/models` ; lookup/rotation bornés et tests d'isolation groupe/ministère |
+| **C2** | `POST /v1/chat/completions` non-stream : validation, fenêtre d'historique 5 tours, retrait des blocs sources, routage modèle, réponse/sources/log durable |
+| **C3** | Streaming SSE : worker borné, file async, pings, erreurs post-headers, annulation et persistance avant `[DONE]` |
+| **C4** | `POST /v1/feedback` : ownership groupe/run, raisons structurées, enrichissement goldset et déclenchement durable de l'analyse |
+| **C5** | Admin config : rag-config, prompts, acronymes, groupes, reset password et rotation bearer |
+| **C6** | Admin observabilité : chat-runs, traces, feedback détaillé/stats/analyse, plus endpoints décidés en A7 |
+| **C7** | Runner via-API : conformance déterministe de l'enveloppe/adaptateur + mode goldset live séparé ; tests SDK OpenAI/`conversations` conservés |
+| **C8** | Workflow de déploiement API dark staging ; API joignable seulement par les testeurs/clients autorisés, aucun trafic Streamlit par défaut |
 
-## Phase E — pré-merge
+**Jalon M2 — fidélité API et opérabilité** :
+
+- exactitude core ↔ API en mode déterministe ;
+- qualité live dans les tolérances M1 ;
+- streaming réel, erreurs, déconnexions, logs et feedback testés sur l'API dark ;
+- métriques de latence, erreurs, connexions DB et fallback provider visibles avant tout client de production.
+
+## Phase D — Streamlit sous feature flags
+
+| PR / étape | Contenu |
+|---|---|
+| **D1** | Client Chat Completions SSE + provisioning serveur des bearers ; `RAG_CHAT_BACKEND=direct|api`, défaut `direct` ; tests des deux chemins |
+| **D2** | Clients admin HTTP selon la matrice A7 ; accès DB existant conservé uniquement derrière le mode de rollback, pas de suppression |
+| **D3** | Déployer le Streamlit dual-path à côté de l'API dark en staging ; activer `api` pour un canary borné, comparer qualité, satisfaction, erreurs, latence et complétude des logs |
+| **D4** | Fenêtre de stabilité staging de 5 jours ouvrés minimum ; exercices de rollback `api → direct` et rotation de tokens |
+
+**Jalon M3 — autorisation de bascule production** : M2 toujours vert, canary sans régression inexpliquée, fonctions admin retenues disponibles, rollback testé, dette de report LEDGER à zéro.
+
+## Phase E — production, stabilité, puis nettoyage
 
 | Étape | Contenu |
 |---|---|
-| **E1** (PR) | Workflow `workflow_dispatch` de déploiement smoke Scaleway (container éphémère) ; valider cold start, mémoire, **timeouts SSE serverless** ; corrections éventuelles ; extinction |
-| **E2** | Gel `dev` (5 j ouvrés) + sync finale + reports soldés (LEDGER à zéro dette) |
-| **Jalon M3 — parité finale** | Éval goldset via-API **et** direct-core vs baseline M0 (re-jouée si `dev` a bougé) ; consignation journal + LEDGER |
-| **E3** | Merge-commit `feat/hexagonal-api` → `dev` ; puis promotion staging habituelle ; mise en service Scaleway (API min-scale=1, Streamlit scale-to-zero) |
+| **E1** | Promouvoir l'API et le Streamlit dual-path en production avec le défaut encore sur `direct` ; smoke API dark production |
+| **E2** | Activer `RAG_CHAT_BACKEND=api` par configuration ; conserver `direct` pendant la fenêtre de stabilité convenue et monitorer les mêmes métriques que D3 |
+| **E3** | Après validation explicite de stabilité : supprimer `packages/rag-pipeline`, le chemin direct, les accès DB Streamlit, CSV fallbacks obsolètes et les flags de rollback ; archiver uniquement les pages approuvées en A7 |
+| **E4** | Activer la garde finale interdisant DB/pipeline dans Streamlit ; balayage imports/usages dans apps, packages, `src`, tests, scripts, docs et workflows |
+| **M4 — cible atteinte** | Conformance + goldset final, admin smoke, frontières CI et déploiement standard verts ; consignation finale journal + LEDGER |
 
-## Après le chantier (hors périmètre, pour mémoire)
+## Après le chantier
 
-- Bascule temps 2 : fork `conversations` (feedback → `/v1/feedback`, ProConnect) ; prérequis : spike d'intégration + décision DINUM/DGAFP.
-- Suppression du chat Streamlit ; Streamlit = admin pur.
-- Tokens admin en DB avec rôle (fin de l'`ADMIN_TOKEN` statique).
+- Temps 2 : fork `conversations` complet avec ProConnect et feedback ; le spike A2 réduit le risque technique mais ne remplace pas la décision DINUM/DGAFP.
+- Suppression du chat Streamlit ; Streamlit devient admin pur.
+- Tokens admin en DB avec rôles, fin de l'`ADMIN_TOKEN` statique.
 - Améliorations pipeline notées au LEDGER pendant la reconstruction.
 
 ## Récapitulatif des jalons
 
 ```mermaid
 flowchart LR
-    M0[M0<br/>re-baseline goldset] --> A[Phase A<br/>squelette] --> B[Phase B<br/>moteur] --> M1{M1<br/>parité moteur}
-    M1 --> C[Phase C<br/>API] --> M2{M2<br/>fidélité adaptateur} --> D[Phase D<br/>Streamlit client] --> E1[E1 smoke Scaleway]
-    E1 --> E2[E2 gel + sync] --> M3{M3<br/>parité finale} --> E3[Merge → dev<br/>bascule post-septembre]
+    M0[M0<br/>baseline live + fixtures] --> S[Phase 0<br/>spikes client/SSE]
+    S --> A[Phase A<br/>fondations + arbitrages] --> B[Phase B<br/>core parallèle]
+    B --> M1{M1<br/>parité moteur} --> C[Phase C<br/>API dark]
+    C --> M2{M2<br/>fidélité + opérabilité} --> D[Phase D<br/>Streamlit canary]
+    D --> M3{M3<br/>go production} --> E[Phase E<br/>bascule + stabilité]
+    E --> CLEAN[Nettoyage ancien chemin] --> M4{M4<br/>frontière cible}
 ```

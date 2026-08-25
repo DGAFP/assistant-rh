@@ -1,6 +1,6 @@
 # Chantier hexagonal-split — Vue d'ensemble
 
-> Statut : plan validé (grilling du 2026-08-21, sur la base du grilling du 2026-07-03).
+> Statut : plan amendé (grilling du 2026-08-21, revue d'architecture et clarification du 2026-08-25, sur la base du grilling du 2026-07-03).
 > Portée : transformation du monolithe en architecture front & back hexagonale, contrat public OpenAI-compatible.
 > Documents du dossier : [architecture cible](01-target-architecture.md) · [contrat API](02-api-contract.md) · [diagrammes de séquence](03-sequence-diagrams.md) · [plan de migration](04-migration-plan.md) · [environnements](05-environments.md) · [LEDGER](LEDGER.md)
 
@@ -10,15 +10,17 @@ Le repo est un monolithe Streamlit : `packages/rag-pipeline` mélange métier et
 
 ## Solution en deux temps
 
-**Temps 1 (ce chantier)** — extraire un backend `apps/api` hexagonal exposant un contrat OpenAI-compatible ; `01_Chatbot.py` devient client HTTP de l'API ; les pages admin Streamlit deviennent clientes d'endpoints `/admin/*` ; Streamlit ne touche plus jamais Postgres.
+**Temps 1 (ce chantier)** — construire en parallèle un core hexagonal dans `packages/rag-core` et un backend `apps/api` exposant un contrat OpenAI-compatible, sans modifier le chemin de production existant pendant la reconstruction ; déployer l'API à côté de Streamlit ; basculer ensuite `01_Chatbot.py` et les pages admin derrière des feature flags ; supprimer l'ancien chemin direct seulement après une période de stabilité prouvée.
 
 **Temps 2 (chantier ultérieur)** — un fork de [suitenumerique/conversations](https://github.com/suitenumerique/conversations) (adapté à nos besoins, dont le feedback) remplace le chat Streamlit ; Streamlit devient une pure interface d'admin ; ProConnect vit dans le front, jamais dans l'API RAG.
 
 ```mermaid
 flowchart LR
     subgraph "Temps 1"
-        ST1[Streamlit chat + admin] -->|HTTP| API1[apps/api]
+        ST1[Streamlit chat + admin] -->|feature flag HTTP| API1[apps/api dark puis canary]
+        ST1 -.->|rollback temporaire| OLD[packages/rag-pipeline]
         API1 --> DB1[(Postgres)]
+        OLD --> DB1
     end
     subgraph "Temps 2"
         CONV[fork conversations + ProConnect] -->|OpenAI-compat| API2[apps/api]
@@ -33,33 +35,39 @@ flowchart LR
 |---|---|---|
 | D1 | **Contrat public = OpenAI-compat** (`/v1/chat/completions`, `/v1/models`), pas MCP | Le consommateur v1 est un front de chat (`conversations`) qui ne parle que ça ; un MCP retrieval céderait la génération au client et invaliderait toute la boucle qualité (évals goldset, satisfaction 3,73). Un adaptateur MCP reste possible en v2 grâce à l'hexagone. |
 | D2 | **Routage ministère par le nom de modèle** : un « modèle » par ministère autorisé (`assistant-rh-matte`, …), `/v1/models` filtré par le token, fallback `default_ministry` | 100 % dans le contrat OpenAI ; `conversations` affiche nativement un sélecteur de modèle ; aucun header custom fragile. |
-| D3 | **Restructuration complète** : l'hexagone vit entièrement dans `apps/api/` (`core`/`db`/`gateways`/`handlers`) ; `packages/rag-pipeline` disparaît | Choix assumé de faire propre plutôt que strangler ; le coût de conflit est contenu par la stratégie de grosse branche (D7). |
+| D3 | **Reconstruction parallèle** : le domaine pur vit dans `packages/rag-core` ; `apps/api` porte les handlers, le wiring et les adaptateurs DB/provider. `packages/rag-pipeline` reste le chemin de production jusqu'à la fin de la bascule, puis disparaît | Le core est une bibliothèque consommable par l'API et le runner d'éval, jamais l'inverse. Le parallèle permet une comparaison déterministe et un rollback sans faire dépendre Streamlit d'une arborescence en cours de découpe. |
 | D4 | **Le core garde l'orchestration du retrieval** (fusion, gates, sélection) ; `db` ne porte que l'accès données derrière des ports étroits | C'est la logique que les campagnes qualité optimisent — elle doit rester dans le domaine, visible et testable sans infra. |
-| D5 | **Streamlit ne touche plus Postgres** : chat client HTTP, admin cliente `/admin/*` | Frontière totale : seul `apps/api/db` connaît SQL. Exception hors DB : `15_Import_Sources` parle Grist + S3 (domaine ingestion, monde séparé). |
+| D5 | **À l'état cible, Streamlit ne touche plus Postgres** : chat client HTTP, admin cliente `/admin/*` | La frontière est atteinte après la période de double chemin. Pendant la bascule, l'ancien chemin DB reste disponible uniquement comme rollback. `15_Import_Sources` parle Grist + S3 (domaine ingestion séparé). |
 | D6 | **Auth** : bearer par groupe (nouvelle colonne `user_groups.api_token_hash`, PBKDF2) pour le public ; `ADMIN_TOKEN` statique en env pour `/admin/*` (v1) | Minimal ; rotation admin = redeploy. Dette assumée : tokens admin en DB avec rôle à l'arrivée de ProConnect. |
-| D7 | **Grosse branche d'intégration** (`feat/hexagonal-api`, créée depuis `dev`) ; `dev`/`staging`/`main` gardent l'existant intact ; merge final en merge-commit une fois la parité prouvée ; bascule après septembre 2026 | Reconstruire iso-fonctionnel d'abord, améliorer ensuite. Pas de cohabitation de deux arborescences sur `dev`. |
-| D8 | **Sync minimale** : les changements structurants faits sur `dev` pendant le chantier sont reportés à la main sur la branche et notés au [LEDGER](LEDGER.md) ; court gel du pipeline sur `dev` avant l'éval de parité finale | Pas d'outillage lourd ; le LEDGER est le point de vérité de la dérive. |
-| D9 | **Deux runners d'éval** : direct-core = outil de science (campagnes, overrides CLI) ; via-API = test de fidélité de l'adaptateur, exécuté aux portes (avant merge, avant bascule) | On n'évalue pas l'API pour optimiser, on l'évalue pour vérifier qu'elle est transparente. Tout écart via-API vs direct-core = bug d'adaptateur. |
-| D10 | **Environnements** : dev quotidien en full local (compose API + pgvector seedé) ; parité + intégration `conversations` sur la VM homelab contre la DB staging (runs tagués `api-vm`) ; un unique déploiement smoke Scaleway avant merge | Zéro infra cloud persistante pendant le chantier ; le smoke valide Dockerfile + timeouts SSE serverless avant qu'il ne soit trop tard. |
+| D7 | **PRs additives vers `dev`** : le nouveau package et l'API atterrissent par petites PRs sans devenir consommateurs de production ; l'ancien runtime reste inchangé jusqu'à la bascule | Le code parallèle peut suivre le flux CI et de promotion habituel, être déployé « dark » et éviter une grosse branche durable. Chaque PR reste reviewable et réversible. |
+| D8 | **Parité suivie au LEDGER** : tout changement comportemental du pipeline existant est reporté dans le nouveau core et noté au [LEDGER](LEDGER.md) ; court gel avant M3 | Le LEDGER reste le point de vérité de la dérive entre les deux implémentations qui cohabitent temporairement sur `dev`. |
+| D9 | **Deux niveaux de preuve** : conformance déterministe (ports fake/replay, sorties d'étapes et enveloppes API exactes) ; éval goldset live (qualité appariée avec tolérances) | L'égalité exacte n'est valable que sur des dépendances figées. Les appels LLM live sont non déterministes et servent à prouver la non-régression qualité, pas l'identité octet par octet. |
+| D10 | **Environnements** : dev quotidien full local avec schéma runtime synthétique ; spike `conversations` + SSE Scaleway dès la phase 0 ; parité sur VM homelab ; API déployée « dark » à côté de Streamlit avant toute bascule | Les inconnues de compatibilité client et de streaming serverless sont levées tôt. Le déploiement parallèle permet un canary et un rollback du consommateur. |
 | D11 | **Feedback** : `POST /v1/feedback`, l'id de completion = le `turn_id` du `chat_run` | La métrique produit centrale survit à la séparation sans état serveur supplémentaire. Au temps 2, le fork `conversations` appellera cet endpoint. |
-| D12 | **mastra-pipeline supprimé en PR 1** | Obsolète ; le pipeline Python est la seule implémentation. |
+| D12 | **mastra-pipeline supprimé en PR 1** | Confirmé comme code mort, sans consommateur ni déploiement ; sa suppression est indépendante de la bascule du pipeline Python. |
+| D13 | **État par requête explicite** : aucun `last_*` mutable partagé entre requêtes ; ressources partagées limitées aux pools, clients HTTP et caches thread-safe | FastAPI introduit de la concurrence que le chemin Streamlit actuel n'exerce pas. L'isolation de requête protège résultats, traces et données de ministère. |
+| D14 | **Bascule réversible** : API dark → Streamlit sous feature flag → canary/stabilité → suppression de l'ancien chemin | Le déploiement de l'API et le retrait de `packages/rag-pipeline` ne sont jamais dans la même étape opérationnelle. |
 
 ## Inventaire de fin de chantier
 
-**Supprimé** : `apps/mastra-pipeline` (+ scripts de conformance associés) · `packages/rag-pipeline` (migré) · les modules `src/ui/chatbot_*` du chemin direct-import · l'accès DB direct de Streamlit.
+**À supprimer dès A1 car mort** : `apps/mastra-pipeline` (+ scripts de conformance strictement Mastra).
 
-**Créé** : `apps/api/` (handlers, core, db, gateways) · `Dockerfile.api` · runner d'éval via-API · garde CI de frontière d'imports · migration `api_token_hash`.
+**À supprimer seulement après stabilité de la bascule** : `packages/rag-pipeline` · les modules `src/ui/chatbot_*` du chemin direct-import · l'accès DB direct de Streamlit · les flags de rollback.
 
-**Conservé / adapté** : `apps/streamlit-ui` (chat client HTTP, admin cliente `/admin/*`, `15_Import_Sources` inchangé, pages éval/debug non fonctionnelles → `archive/`) · `src/goldset` + skill `run-rag-eval` repointés sur `apps/api/core` en bibliothèque · `packages/data-engineering` + `apps/data-ingestion-cli` intouchés · `packages/shared-config` conservé (data-engineering en dépend).
+**Créé** : `packages/rag-core/` (domaine + ports) · `apps/api/` (handlers, wiring, db, gateways) · `Dockerfile.api` · runners de conformance déterministe et d'éval via-API · garde CI de frontière d'imports · migration d'auth API · fixtures runtime locales sans données personnelles.
+
+**Conservé / adapté** : `apps/streamlit-ui` (ancien chemin conservé pendant le canary, puis chat/admin clients HTTP ; `15_Import_Sources` inchangé) · `src/goldset` + skill `run-rag-eval` repointés sur `packages/rag-core` avec adaptateurs explicites · `packages/data-engineering` + `apps/data-ingestion-cli` intouchés · `packages/shared-config` conservé.
 
 ## Risques principaux
 
-1. **Régression qualité silencieuse pendant les déplacements** → PRs move-only strictes, pytest vert à chaque PR, évals aux jalons (voir [plan de migration](04-migration-plan.md)).
-2. **Dérive `dev` ↔ branche** (les campagnes qualité touchent `retriever.py`/`pipeline.py`) → reports notés au LEDGER, gel final court.
-3. **Timeouts / comportement SSE sur Scaleway serverless** → découvert par le smoke pré-merge, pas après.
-4. **Perte de la collecte de satisfaction à la bascule temps 2** → traité par le fork `conversations` (feedback branché sur `/v1/feedback`) ; prérequis de bascule, hors chantier.
+1. **Inventaire d'I/O incomplet** (SQL, prompts, acronymes, caches, provider, état mutable au-delà de `retriever.py`) → audit B0 systématique avant les découpes ; chaque dépendance devient un port ou une donnée de requête.
+2. **Régression qualité silencieuse pendant la reconstruction parallèle** → conformance déterministe à chaque PR, pytest vert, évals live aux jalons (voir [plan de migration](04-migration-plan.md)).
+3. **Dérive entre ancien et nouveau core** → reports notés au LEDGER, gel final court, aucune amélioration opportuniste dans le portage.
+4. **Timeouts / comportement SSE sur Scaleway serverless ou incompatibilité `conversations`** → spikes en phase 0, puis smoke du vrai container avant bascule.
+5. **Bascule API + Streamlit couplée** → API dark et observable d'abord ; feature flag et ancien chemin conservé pendant la fenêtre de stabilité.
+6. **Perte de fonctions admin/feedback** → matrice de parité page par page ; aucune page fonctionnelle n'est archivée sans décision produit explicite.
 
-## Points ouverts (non bloquants)
+## Points ouverts
 
-- Validation DINUM/DGAFP du mode de déploiement du fork `conversations` et de l'auth fork → API.
-- Sort définitif des pages éval/debug archivées (réintégration via API ou abandon).
+- Validation DINUM/DGAFP du mode de déploiement du fork `conversations` et de l'auth fork → API ; le spike technique est bloquant en phase 0, la décision organisationnelle peut suivre.
+- Sort définitif des pages DB/éval/debug : réintégration via API, maintien temporaire ou archivage approuvé (matrice en phase A).
