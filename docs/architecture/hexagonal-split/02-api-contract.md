@@ -150,7 +150,7 @@ Hors spec OpenAI. Rattache une note utilisateur au run identifié par l'id de co
 
 - `completion_id` : accepté avec ou sans préfixe `chatcmpl-`.
 - `rating` : `"up"` | `"down"`.
-- `stars` : entier **1–5** ou `null`. ⚠️ Le widget Streamlit historique produit 0–4 ; la conversion **+1 est à la charge du client** — l'API stocke l'échelle 1–5 (voir mémoire `satisfaction-baselines`).
+- `stars` : entier **1–5** ou `null`. Le widget Streamlit historique produit 0–4 ; la conversion **+1 est à la charge du client** — l'API stocke l'échelle 1–5.
 - `reasons_positive` / `reasons_negative` : listes optionnelles de libellés issus du catalogue produit, conservées pour la parité du dashboard et de l'analyse des feedbacks.
 - `comment` : optionnel.
 
@@ -167,7 +167,7 @@ Sans auth (probe). **200** `{ "status": "ok", "db": "ok", "config_loaded": true 
 ### `GET /admin/rag-config` · `PUT /admin/rag-config`
 
 - `GET` → l'objet de config runtime complet (clés `v3_*` : `v3_initial_top_k`, `v3_rerank_top_k`, `v3_rerank_input_k`, gates, prompts actifs, …) + métadonnées (`updated_at`, version).
-- `PUT` avec un objet **partiel** → merge et validation par le schéma `assistant_rh_api.core.config` ; 422 si clé inconnue ou valeur invalide (protège du piège des clés legacy v1/v2 mortes — mémoire `rag-config-legacy-keys-trap`).
+- `PUT` avec un objet **partiel** → merge et validation par `assistant_rh_api.core.config` ; 422 si clé inconnue ou valeur invalide, notamment les anciennes clés v1/v2.
 
 ### `/admin/system-prompts/*` · `/admin/acronyms/*`
 
@@ -203,7 +203,7 @@ Génère un nouveau token API pour le groupe, stocke son hash, retourne le token
 
 ### Documents et pages DB/éval
 
-La phase 0 produit en A3 une matrice de décision pour DB Explorer, Goldset Explorer, les pages d'éval et `_PDF_Viewer`. Une page conservée reçoit un endpoint étroit (par exemple détail document/PDF ou opérations goldset) ; aucune API SQL générique n'est exposée. Une page abandonnée est archivée seulement après validation produit.
+La matrice A3 fixe le sort de DB Explorer, Goldset Explorer, des pages d'éval et de `_PDF_Viewer` avant les endpoints concernés. Une page conservée reçoit un endpoint métier étroit, jamais une API SQL générique. L'archivage exige une validation produit.
 
 ---
 

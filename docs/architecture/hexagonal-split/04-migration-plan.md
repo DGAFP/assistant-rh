@@ -2,68 +2,29 @@
 
 > Référence : [décisions de migration D7 à D10, D12 et D14](06-decisions.md). Avancement tenu au [LEDGER.md](LEDGER.md).
 
-## Modèle de livraison
+## Règles de livraison
 
-- Les PRs additives ciblent `dev` selon le flux Git habituel. `apps/api` atterrit progressivement sans devenir immédiatement le chemin de production.
-- `packages/rag-pipeline` et le Streamlit direct restent fonctionnels et sélectionnés par défaut pendant toute la reconstruction.
-- Les fondations DB et les adaptateurs sont construits avant l'extraction métier.
-- L'extraction avance ensuite par slices observables : auth, `/v1/models`, contrat de completion, query processor, retrieval, construction de contexte, génération et streaming.
-- L'API est déployée dark sur Scaleway seulement lorsqu'elle est complète sur la VM homelab. Streamlit passe en HTTP derrière un feature flag réversible.
-- L'ancien package et l'accès DB Streamlit ne sont supprimés qu'après une fenêtre de stabilité en production.
+- PRs additives vers `dev`. Le runtime historique reste servi ; l'API est construite et déployée à côté, puis Streamlit bascule sous feature flag.
+- Extraire les règles derrière des ports, sans déplacer les fonctions couplées telles quelles ni améliorer la qualité au passage. Les tests historiques restent verts, les nouveaux s'ajoutent.
+- Frontières d'import du core actives dès le squelette. L'interdiction DB/pipeline dans Streamlit attend le retrait du rollback, après stabilité en production.
+- Migrations versionnées, idempotentes et testées sur DB locale synthétique avant staging.
 
-## Règles invariantes
+Les changements comportementaux de l'ancien runtime sont reportés et suivis au [LEDGER](LEDGER.md), avec commit source et preuve de parité. Les correctifs urgents restent possibles ; pendant les cinq jours ouvrés avant M3, les changements qualité attendent ou imposent de rejouer les preuves.
 
-1. **Extraire, pas déplacer** : on caractérise le comportement existant, on écrit la règle pure dans `assistant_rh_api.core` avec ses ports, puis on prouve la parité. Une fonction historique couplée à SQL, à un provider ou à un champ `last_*` n'est jamais copiée telle quelle dans le core.
-2. Une PR porte une slice reviewable : contrat/fixture, adaptateur, règle métier ou handler. Elle ne mélange pas extraction et amélioration qualité.
-3. Le chemin de production existant et ses tests restent verts tant que le feature flag pointe dessus. Les nouveaux tests s'ajoutent sans remplacer prématurément les anciens.
-4. La frontière `assistant_rh_api.core` est gardée dès sa création. L'interdiction DB/pipeline dans Streamlit ne devient bloquante qu'au nettoyage final.
-5. Chaque PR qui porte ou compare du comportement amende le [LEDGER.md](LEDGER.md).
-6. Les migrations DB sont versionnées, idempotentes et testées sur une base locale synthétique avant la VM/staging.
+## Préparation — phases 0 et A
 
-## Synchronisation avec le runtime existant
+Ces livrables peuvent être regroupés dans les premières PRs, pas une PR obligatoire par ligne. L'inventaire et les fixtures sont complétés module par module avant extraction. Le spike client et les arbitrages produit peuvent avancer en parallèle des adaptateurs, aux échéances indiquées.
 
-- Tout changement comportemental de `packages/rag-pipeline` ou du chemin chat Streamlit est inscrit dans **Reports depuis le runtime existant**.
-- Le report vers `assistant_rh_api.core` cite le commit source, la slice concernée, les tests de caractérisation et la conformance.
-- Les corrections urgentes continuent normalement sur l'ancien runtime ; elles ne sont jamais bloquées par la reconstruction.
-- Pendant les 5 jours ouvrés avant M3, les changements qualité attendent ou sont reportés avant de relancer les preuves.
-
-## Phase 0 — références et contrat
-
-| PR / action | Contenu | Sortie |
+| Repère | Livrable | Échéance |
 |---|---|---|
-| **PR 0** (celle-ci) | Plan amendé et décisions séparées | Séquence et frontières reviewables |
-| **M0a** | Baseline goldset live du runtime existant, avec config et snapshot corpus identifiés | Référence de qualité comparée par métriques/tolérances |
-| **M0b** | Fixtures/replays et sorties d'étapes déterministes du runtime existant | Référence exacte pour chaque extraction |
-| **A1** | Supprimer `apps/mastra-pipeline`, ses scripts strictement Mastra et ses références CI/moon/pnpm mortes | Nettoyage indépendant |
-| **A2** | Spike local/homelab : serveur minimal Chat Completions testé avec SDK OpenAI et vraie instance `conversations` | Sous-ensemble du contrat, erreurs, SSE, sources et auth documentés |
-| **A3** | Matrice de parité Streamlit ci-dessous, arbitrée avec le produit | Sort explicite de chaque page et endpoints étroits à construire |
+| **A1** | Supprimer Mastra et ses références devenues mortes | Indépendant, dès le début |
+| **A4 / A6** | Squelette `apps/api`, packaging, `/healthz`, `Dockerfile.api`, gardes d'import et DB runtime synthétique | Avec les premières PRs DB B1/B2 |
+| **A5** | Inventaire initial I/O, état mutable et consommateurs ; compléter pour chaque module | Avant l'extraction concernée |
+| **M0a / M0b** | Baseline goldset live et fixtures/replays exacts, config/corpus identifiés, résultats consignés | Avant l'extraction métier |
+| **A2** | Essai du contrat avec SDK OpenAI et `conversations`, en local/homelab : messages, auth, erreurs et SSE | Avant le handler completion C1 |
+| **A3** | Arbitrages de la [matrice Streamlit](#matrice-de-parité-streamlit) et liste des endpoints à conserver | Avant les endpoints admin concernés, puis la bascule |
 
-Le spike A2 utilise uniquement le local et la VM homelab. Il valide notre implémentation SSE ; les particularités du proxy Scaleway sont validées lors du premier déploiement dark, pas dans un troisième environnement temporaire.
-
-### Matrice de parité Streamlit
-
-| Page/fonction | Cible proposée | Décision requise avant |
-|---|---|---|
-| `01_Chatbot` | Client Chat Completions SSE sous feature flag, ancien chemin en rollback | E1 |
-| `02_Chat_Logs` | `/admin/chat-runs` liste/détail | PR D2 |
-| `03_Feedback_Dashboard` | `/admin/feedback`, stats, analyse et exports reconstruits côté client | PR D2 |
-| `04_Admin_Config` | RAG config + CRUD prompts + CRUD acronymes + health via API | PR D2 |
-| `05_DB_Explorer` | Endpoint document/chunk étroit, maintien temporaire ou archivage approuvé — jamais SQL générique | A3 |
-| `06_Goldset_Explorer` | API goldset dédiée, outil séparé ou maintien temporaire | A3 |
-| `08`, `09`, `10` évals | CLI/outils dédiés, maintien temporaire ou archivage approuvé | A3 |
-| `12_Pipeline_Timeline` | Détail run + `/trace` | PR D2 |
-| `13_admin` | Redirection vers la page admin cible | PR D2 |
-| `14_User_Groups` | CRUD, reset password, suppression protégée, rôles et rotation bearer | PR D2 |
-| `15_Import_Sources` | Inchangé (Grist + S3), hors frontière DB RAG | — |
-| `_PDF_Viewer` | Endpoint document/PDF étroit ou URL signée ; sinon retrait approuvé | A3 |
-
-## Phase A — squelette et inventaire
-
-| PR | Contenu | Preuve minimale |
-|---|---|---|
-| **A4** | Squelette unique `apps/api` avec `assistant_rh_api/{core,handlers,db,gateways}`, `/healthz`, packaging uv/moon et `Dockerfile.api` | Import du core sans création FastAPI ; build local |
-| **A5** | Inventaire exhaustif I/O/état/consommateurs : SQL, DSN, prompts, acronymes, config, providers, tracing, caches, `last_*`, scripts, workflows et pages | Chaque dépendance classée : donnée pure, port, adaptateur, `RunContext` ou retrait approuvé |
-| **A6** | Schéma runtime local synthétique : config, prompts, acronymes, groupes/tokens/rôles, chat runs, traces et feedback | Migrations sur DB vierge + fixtures sans données personnelles |
+Le proxy Scaleway reste testé au premier déploiement dark D4 ; aucun environnement cloud supplémentaire n'est créé pendant la préparation.
 
 ## Phase B — DB, adaptateurs, auth puis modèles
 
@@ -112,7 +73,7 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 
 | PR / étape | Contenu |
 |---|---|
-| **E1** | Client Chat Completions SSE et provisioning serveur des bearers ; `RAG_CHAT_BACKEND=direct|api`, défaut `direct` |
+| **E1** | Client Chat Completions SSE et provisioning serveur des bearers ; `RAG_CHAT_BACKEND=direct\|api`, défaut `direct` |
 | **E2** | Clients admin HTTP selon A3 ; accès DB existant conservé seulement dans le mode de rollback |
 | **E3** | Activer `api` pour un canary staging borné ; comparer qualité, satisfaction, erreurs, latence et complétude des logs |
 | **E4** | Fenêtre de stabilité staging de 5 jours ouvrés minimum ; exercices `api → direct` et rotation de tokens |
@@ -129,6 +90,23 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 | **F4** | Activer la garde finale interdisant DB/pipeline dans Streamlit ; balayer apps, packages, `src`, tests, scripts, docs et workflows |
 | **M4 — cible atteinte** | Conformance + goldset final, admin smoke, frontières CI et déploiement standard verts ; journal + LEDGER consignés |
 
+## Matrice de parité Streamlit
+
+| Page/fonction | Cible proposée | Décision requise avant |
+|---|---|---|
+| `01_Chatbot` | Client Chat Completions SSE sous feature flag, ancien chemin en rollback | E1 |
+| `02_Chat_Logs` | `/admin/chat-runs` liste/détail | PR D2 |
+| `03_Feedback_Dashboard` | `/admin/feedback`, stats, analyse et exports reconstruits côté client | PR D2 |
+| `04_Admin_Config` | RAG config + CRUD prompts + CRUD acronymes + health via API | PR D2 |
+| `05_DB_Explorer` | Endpoint document/chunk étroit, maintien temporaire ou archivage approuvé — jamais SQL générique | A3 |
+| `06_Goldset_Explorer` | API goldset dédiée, outil séparé ou maintien temporaire | A3 |
+| `08`, `09`, `10` évals | CLI/outils dédiés, maintien temporaire ou archivage approuvé | A3 |
+| `12_Pipeline_Timeline` | Détail run + `/trace` | PR D2 |
+| `13_admin` | Redirection vers la page admin cible | PR D2 |
+| `14_User_Groups` | CRUD, reset password, suppression protégée, rôles et rotation bearer | PR D2 |
+| `15_Import_Sources` | Inchangé (Grist + S3), hors frontière DB RAG | — |
+| `_PDF_Viewer` | Endpoint document/PDF étroit ou URL signée ; sinon retrait approuvé | A3 |
+
 ## Après le chantier
 
 - Temps 2 : fork `conversations` complet avec ProConnect et feedback ; le spike A2 réduit le risque technique mais ne remplace pas la décision DINUM/DGAFP.
@@ -140,8 +118,7 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 
 ```mermaid
 flowchart LR
-    M0[M0<br/>baseline + fixtures] --> A[Phase A<br/>squelette + inventaire]
-    A --> B[Phase B<br/>DB/adaptateurs → auth → models]
+    A[Préparation<br/>squelette + inventaire + M0] --> B[Phase B<br/>DB/adaptateurs → auth → models]
     B --> C[Phase C<br/>completion par étapes] --> M1{M1<br/>parité moteur}
     M1 --> D[Phase D<br/>API complète + Scaleway dark] --> M2{M2<br/>fidélité + opérabilité}
     M2 --> E[Phase E<br/>Streamlit canary] --> M3{M3<br/>go production}

@@ -35,7 +35,7 @@ Usage : intégrations longues et réalistes avant tout déploiement cloud.
 
 ## Premier déploiement : Scaleway staging dark
 
-L'étape D4 du plan est la première création de l'API sur Scaleway. Ce n'est pas un troisième environnement de développement ou un smoke éphémère : c'est le futur service staging, encore sans trafic Streamlit par défaut.
+En D4, le service API staging est déployé sans trafic Streamlit par défaut. Aucun environnement cloud temporaire supplémentaire.
 
 Il valide ce qui ne peut pas être prouvé localement ou sur la VM :
 
@@ -57,18 +57,6 @@ Seuls les smoke tests, le runner via-API et les clients explicitement autorisés
 
 ## Production et nettoyage
 
-1. Déployer API + Streamlit dual-path avec `direct` encore actif.
-2. Exécuter le smoke de l'API dark production.
-3. Activer `api` par configuration.
-4. Conserver `direct` comme rollback pendant la fenêtre convenue.
-5. Supprimer l'ancien chemin dans une promotion ultérieure ; seulement alors retirer le DSN et les autres secrets DB du container Streamlit.
+La [phase F du plan](04-migration-plan.md#phase-f--production-stabilité-puis-nettoyage) prévoit le smoke production, l'activation API et une fenêtre de rollback vers `direct`.
 
-## Matrice récapitulative
-
-| Étape | Environnement/cible | Données | Trafic | Sortie attendue |
-|---|---|---|---|---|
-| Construction | Local | Corpus seedé + runtime synthétique | Développeurs/CI | Tests rapides et reproductibles |
-| Intégration pré-déploiement | VM homelab | Staging, runs tagués | Runners et clients de test | Parité, providers réels, container complet |
-| Premier déploiement | Scaleway staging dark | Staging, runs tagués | Tests autorisés uniquement | Contraintes réelles de plateforme validées |
-| Canary | Scaleway staging | Staging | Streamlit sous flag | Parité produit + rollback |
-| Bascule | Scaleway production | Production | Dual-path puis API | Stabilité avant nettoyage |
+Le DSN et les secrets DB de Streamlit ne sont retirés qu'avec l'ancien chemin, dans une promotion ultérieure après stabilité.

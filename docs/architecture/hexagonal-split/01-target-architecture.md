@@ -42,14 +42,7 @@ Le test de frontière est le suivant : **une éval goldset doit pouvoir importer
 
 ### Pourquoi le core reste dans l'application API
 
-Le core est une frontière logique, pas nécessairement un package distribuable. Dans ce chantier :
-
-- l'API est son seul produit et son seul cycle de release ;
-- le runner goldset vit dans le même repo et peut importer un sous-module Python ;
-- un deuxième `pyproject.toml`, une dépendance workspace et une publication/version séparée n'apporteraient pas d'isolation supplémentaire ;
-- les contrats d'import et les tests garantissent déjà que le core reste indépendant de FastAPI, SQL et des providers.
-
-Si un second service doit un jour consommer et versionner ce core indépendamment, `assistant_rh_api/core` pourra alors être extrait vers `packages/rag-core` sans changer ses ports.
+L'API et le runner goldset partagent le même repo et le même cycle de release. Un package séparé n'est donc pas nécessaire : les règles d'import isolent le core. Une extraction en bibliothèque restera possible si un consommateur indépendant apparaît.
 
 ## Arborescence cible
 
@@ -98,7 +91,7 @@ apps/api/
 
 ## Mapping existant → cible
 
-Le tableau décrit une **extraction de comportement**. Il ne demande pas de déplacer les fonctions existantes telles quelles : chaque slice caractérise d'abord le comportement historique, réimplémente la règle pure derrière des ports, puis prouve la parité. L'ancien fichier reste intact tant que le chemin direct sert de rollback.
+Chaque ligne décrit une **extraction de comportement** derrière des ports, validée par les tests de parité. Les fonctions couplées ne sont pas déplacées telles quelles ; l'ancien chemin reste disponible jusqu'à la fin de la bascule.
 
 | Aujourd'hui | Cible | Travail |
 |---|---|---|
@@ -122,7 +115,7 @@ Le tableau décrit une **extraction de comportement**. Il ne demande pas de dép
 
 ## Audit d'isolation A5
 
-`retriever.py` n'est pas présumé être la seule découpe non mécanique. Avant l'extraction, A5 inventorie pour chaque module :
+L'isolation imparfaite est présumée dans tout le pipeline. A5 établit l'inventaire initial, complété avant l'extraction de chaque module :
 
 - SQL et résolution de DSN ;
 - prompts/config/acronymes dynamiques ;
@@ -133,13 +126,7 @@ Le tableau décrit une **extraction de comportement**. Il ne demande pas de dép
 
 Chaque dépendance devient une donnée pure, un port, un adaptateur ou un élément du `RunContext`. Le [LEDGER](LEDGER.md) consigne les écarts découverts.
 
-### Exemple : extraction du retrieval
-
-- **`db/search.py`** exécute les requêtes SQL et retourne des chunks scorés bruts.
-- **`core/steps/retrieval.py`** combine les tables, fusionne, normalise, applique les seuils et déduplique.
-- Les tests caractérisent l'ancien comportement avant d'écrire la nouvelle règle ; aucun helper SQL historique n'est copié dans le core.
-
-Si l'éval goldset peut détecter le changement d'une règle, cette règle appartient au core. Si la ligne ne fait que parler à Postgres ou à un provider, elle appartient à un adaptateur.
+Exemple retrieval : `db/search.py` retourne des chunks scorés bruts ; `core/steps/retrieval.py` porte fusion, normalisation, seuils et déduplication. Les tests caractérisent ce comportement avant extraction.
 
 ## Règles de frontière gardées par la CI
 

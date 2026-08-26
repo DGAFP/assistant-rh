@@ -1,16 +1,16 @@
 # Chantier hexagonal-split — Vue d'ensemble
 
-> Statut : plan amendé (grilling du 2026-08-21, revue d'architecture et clarification du 2026-08-25, sur la base du grilling du 2026-07-03).
+> Statut : plan amendé après revue, mise à jour du 2026-08-26.
 > Portée : transformation du monolithe en architecture front & back hexagonale, contrat public OpenAI-compatible.
 > Documents du dossier : [décisions](06-decisions.md) · [architecture cible](01-target-architecture.md) · [contrat API](02-api-contract.md) · [diagrammes de séquence](03-sequence-diagrams.md) · [plan de migration](04-migration-plan.md) · [environnements](05-environments.md) · [LEDGER](LEDGER.md)
 
 ## Problème
 
-Le repo est un monolithe Streamlit : `packages/rag-pipeline` mélange métier et accès DB dans les mêmes fichiers (`pipeline.py`, `chat_logger.py`, `admin.py`), `src/ui` porte 6 000 lignes de logique couplée à Streamlit, et le seul chemin d'accès au RAG est l'import Python direct depuis `01_Chatbot.py`. Aucun consommateur externe ne peut se brancher, et le futur front (La Suite `conversations`) parle OpenAI, pas Python.
+Le runtime actuel est couplé à Streamlit : `packages/rag-pipeline` mêle métier, SQL et appels providers, et `src/ui` porte une partie de l'orchestration. Le chat utilise des imports Python directs. Le futur front, La Suite `conversations`, a besoin d'un contrat HTTP OpenAI-compatible.
 
 ## Solution en deux temps
 
-**Temps 1 (ce chantier)** — construire en parallèle un backend `apps/api` hexagonal exposant un contrat OpenAI-compatible, sans modifier le chemin de production existant pendant la reconstruction. Dans l'API, les adaptateurs DB/provider sont construits d'abord, puis la logique est extraite du package historique étape par étape vers `assistant_rh_api/core` sans déplacer les fonctions couplées telles quelles. L'API est ensuite déployée à côté de Streamlit ; `01_Chatbot.py` et les pages admin basculent derrière des feature flags ; l'ancien chemin direct n'est supprimé qu'après une période de stabilité prouvée.
+**Temps 1 (ce chantier)** — construire `apps/api` à côté du runtime existant : DB/adaptateurs d'abord, puis extraction progressive de la logique vers `assistant_rh_api/core`. Déployer l'API, adapter le chat et l'admin Streamlit sous feature flags, puis retirer l'ancien chemin après stabilité.
 
 **Temps 2 (chantier ultérieur)** — un fork de [suitenumerique/conversations](https://github.com/suitenumerique/conversations) (adapté à nos besoins, dont le feedback) remplace le chat Streamlit ; Streamlit devient une pure interface d'admin ; ProConnect vit dans le front, jamais dans l'API RAG.
 
@@ -31,11 +31,7 @@ flowchart LR
 
 ## Décisions actées
 
-Les décisions et leur justification sont regroupées par catégorie dans [06-decisions.md](06-decisions.md) :
-
-- architecture et contrat : D1 à D6 ;
-- migration et livraison : D7 à D10, D12 et D14 ;
-- exécution et données produit : D11 et D13.
+Voir [06-decisions.md](06-decisions.md), organisé en architecture/contrat, migration/livraison et exécution/données produit.
 
 ## Inventaire de fin de chantier
 
@@ -58,5 +54,5 @@ Les décisions et leur justification sont regroupées par catégorie dans [06-de
 
 ## Points ouverts
 
-- Validation DINUM/DGAFP du mode de déploiement du fork `conversations` et de l'auth fork → API ; le spike technique est bloquant en phase 0, la décision organisationnelle peut suivre.
-- Sort définitif des pages DB/éval/debug : réintégration via API, maintien temporaire ou archivage approuvé (matrice A3 en phase 0).
+- Validation DINUM/DGAFP du déploiement du fork `conversations` et de l'auth fork → API. Le spike technique A2 précède le handler completion ; la décision organisationnelle peut suivre.
+- Sort des pages DB/éval/debug : réintégration via API, maintien temporaire ou archivage approuvé (matrice A3, avant les endpoints concernés).

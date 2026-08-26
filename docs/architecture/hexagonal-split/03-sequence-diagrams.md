@@ -27,7 +27,7 @@ sequenceDiagram
     UG-->>A: groupe {allowed_ministries, default_ministry}
     A-->>H: 401 si inconnu
     H->>H: model → ministère (403 si hors allowed, fallback default si "assistant-rh")
-    H->>H: messages → (question, historique) ; system ignorés
+    H->>H: messages → (question, historique), system ignorés
     H->>H: borner historique (5 tours), retirer blocs sources
     H->>CS: créer requête(question, historique, ministère, conversation_id)
     CS->>CFG: config runtime (cache TTL ~15 s)
