@@ -1,13 +1,13 @@
 # Contrat API v1
 
-> Référence : [00-overview.md](00-overview.md) (décisions D1, D2, D6, D11). Diagrammes : [03-sequence-diagrams.md](03-sequence-diagrams.md).
+> Référence : [décisions D1, D2, D6 et D11](06-decisions.md). Diagrammes : [03-sequence-diagrams.md](03-sequence-diagrams.md).
 
 ## Conventions générales
 
 - Base : `https://<host>` ; toutes les réponses en JSON UTF-8.
-- **Auth publique** : `Authorization: Bearer <token de groupe>`. Le token (PBKDF2, colonne `user_groups.api_token_hash` — migration incluse au chantier) identifie un groupe → `allowed_ministries` + `default_ministry`.
-- **Auth admin** : `Authorization: Bearer <ADMIN_TOKEN>` (variable d'env de l'API, v1). Un token de groupe n'accède jamais à `/admin/*` ; l'`ADMIN_TOKEN` n'est pas accepté sur `/v1/*` (sauf `/v1/models` : non — séparation stricte).
-- **Bascule Streamlit** : l'API peut être déployée dark sans que Streamlit détienne ces tokens. Avant d'activer le client HTTP, l'étape D1 livre et teste le mécanisme de provisioning/rotation des tokens de groupe côté serveur Streamlit ; aucun token n'est exposé au navigateur.
+- **Auth unique** : `Authorization: Bearer <token de groupe>`. Le token hashé (PBKDF2, colonne `user_groups.api_token_hash`) identifie un groupe avec `allowed_ministries`, `default_ministry` et `is_admin`.
+- **Autorisation admin** : `/admin/*` utilise le même resolver de bearer puis exige `is_admin=true`. Il n'existe pas d'`ADMIN_TOKEN` statique séparé. Une commande de bootstrap DB crée ou réinitialise le premier groupe admin et affiche son token une seule fois.
+- **Bascule Streamlit** : l'API peut être déployée dark sans que Streamlit détienne ces tokens. Avant d'activer le client HTTP, l'étape E1 livre et teste le provisioning/rotation côté serveur Streamlit ; aucun token n'est exposé au navigateur.
 - **Erreurs** : format OpenAI sur `/v1/*` :
 
 ```json
@@ -17,7 +17,7 @@
 | HTTP | Cas |
 |---|---|
 | 401 | token absent/invalide |
-| 403 | modèle demandé hors `allowed_ministries` du token |
+| 403 | modèle demandé hors `allowed_ministries` ou route admin appelée sans rôle `is_admin` |
 | 404 | modèle inconnu, `completion_id`/ressource inexistante |
 | 422 | body invalide (validation pydantic) |
 | 500 | erreur survenue avant le démarrage d'une réponse non-stream ou SSE |
@@ -72,7 +72,7 @@ Règles de mapping :
 - Le serveur retire de l'historique les blocs de sources qu'il a lui-même ajoutés aux réponses précédentes, grâce à un marqueur interne stable, avant de passer l'historique au core.
 - `temperature`, `top_p`, `max_tokens`, `n`, `user` : acceptés et ignorés en v1 (la config générateur vient de `rag_config`). `n > 1` → 422.
 - Champ d'extension optionnel `metadata.conversation_id` (corrélation côté client, logué dans `chat_runs` comme aujourd'hui).
-- Des limites numériques, arrêtées par A2 avant C2, s'appliquent à la taille HTTP totale, au nombre de messages et à la taille de chaque `content`. Elles sont alignées entre FastAPI, le proxy Scaleway et les clients, puis ajoutées à ce contrat ; dépassement → 422/413 avant démarrage du stream.
+- Des limites numériques, arrêtées par A2 avant C1, s'appliquent à la taille HTTP totale, au nombre de messages et à la taille de chaque `content`. Elles sont alignées entre FastAPI, le proxy Scaleway et les clients, puis ajoutées à ce contrat ; dépassement → 422/413 avant démarrage du stream.
 
 **Réponse 200 (non-stream, `stream` absent ou `false`)**
 
@@ -162,12 +162,12 @@ Sans auth (probe). **200** `{ "status": "ok", "db": "ok", "config_loaded": true 
 
 ---
 
-## Surface admin (`ADMIN_TOKEN`)
+## Surface admin (bearer d'un groupe `is_admin`)
 
 ### `GET /admin/rag-config` · `PUT /admin/rag-config`
 
 - `GET` → l'objet de config runtime complet (clés `v3_*` : `v3_initial_top_k`, `v3_rerank_top_k`, `v3_rerank_input_k`, gates, prompts actifs, …) + métadonnées (`updated_at`, version).
-- `PUT` avec un objet **partiel** → merge et validation par le schéma `assistant_rh_rag_core.config` ; 422 si clé inconnue ou valeur invalide (protège du piège des clés legacy v1/v2 mortes — mémoire `rag-config-legacy-keys-trap`).
+- `PUT` avec un objet **partiel** → merge et validation par le schéma `assistant_rh_api.core.config` ; 422 si clé inconnue ou valeur invalide (protège du piège des clés legacy v1/v2 mortes — mémoire `rag-config-legacy-keys-trap`).
 
 ### `/admin/system-prompts/*` · `/admin/acronyms/*`
 
@@ -203,7 +203,7 @@ Génère un nouveau token API pour le groupe, stocke son hash, retourne le token
 
 ### Documents et pages DB/éval
 
-La phase A produit une matrice de décision pour DB Explorer, Goldset Explorer, les pages d'éval et `_PDF_Viewer`. Une page conservée reçoit un endpoint étroit (par exemple détail document/PDF ou opérations goldset) ; aucune API SQL générique n'est exposée. Une page abandonnée est archivée seulement après validation produit.
+La phase 0 produit en A3 une matrice de décision pour DB Explorer, Goldset Explorer, les pages d'éval et `_PDF_Viewer`. Une page conservée reçoit un endpoint étroit (par exemple détail document/PDF ou opérations goldset) ; aucune API SQL générique n'est exposée. Une page abandonnée est archivée seulement après validation produit.
 
 ---
 
@@ -212,5 +212,5 @@ La phase A produit une matrice de décision pour DB Explorer, Goldset Explorer, 
 - ProConnect / OIDC (temps 2, dans le front).
 - Rate limiting au-delà de l'auth (suivi des coûts via `chat_runs`).
 - Import de sources (reste Streamlit → Grist + S3, domaine ingestion).
-- API SQL générique et endpoints d'éval/debug non décidés par la matrice A7. Les outils conservés reçoivent uniquement des endpoints métier étroits.
+- API SQL générique et endpoints d'éval/debug non décidés par la matrice A3. Les outils conservés reçoivent uniquement des endpoints métier étroits.
 - MCP.

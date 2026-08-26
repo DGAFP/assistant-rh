@@ -13,10 +13,10 @@ sequenceDiagram
     participant H as handlers/openai_compat
     participant A as handlers/auth
     participant UG as db/user_groups
-    participant CS as rag-core/ChatService
+    participant CS as assistant_rh_api.core/ChatService
     participant W as worker borné + RunContext
     participant CFG as db/config_store
-    participant P as rag-core/pipeline (steps)
+    participant P as assistant_rh_api.core/pipeline (steps)
     participant S as db/search
     participant GW as gateways (Albert, reranker)
     participant CR as db/chat_run_store
@@ -41,6 +41,8 @@ sequenceDiagram
     S-->>P: chunks scorés bruts
     P->>P: fusion, dédup, anti-redondance (core)
     P->>GW: rerank(candidats) puis gate/seuils (core)
+    P->>CFG: charger template du ministère via PromptStorePort
+    P->>P: composer prompt ministère + contexte (core)
     P->>GW: chat_stream(prompt ministère, contexte, historique)
     loop tokens
         GW-->>P: token
@@ -100,11 +102,16 @@ sequenceDiagram
     autonumber
     participant ST as Streamlit admin
     participant H as handlers/admin
-    participant CORE as rag-core/config (schéma)
+    participant A as handlers/auth
+    participant UG as db/user_groups
+    participant CORE as assistant_rh_api.core/config (schéma)
     participant CFG as db/config_store
 
-    ST->>H: PUT /admin/rag-config {v3_rerank_input_k: 40} (ADMIN_TOKEN)
-    H->>H: vérifier ADMIN_TOKEN (401 sinon)
+    ST->>H: PUT /admin/rag-config {v3_rerank_input_k: 40} (bearer)
+    H->>A: authentifier(bearer)
+    A->>UG: résoudre token → groupe
+    UG-->>A: groupe {is_admin}
+    A-->>H: 401 si inconnu · 403 si is_admin=false
     H->>CFG: lire config courante
     H->>CORE: valider merge (clé connue ? valeur valide ?)
     CORE-->>H: 422 si clé inconnue (piège clés legacy)
@@ -120,7 +127,7 @@ sequenceDiagram
     autonumber
     participant R as runner éval via-API
     participant API as apps/api de test (adaptateurs replay)
-    participant CORE as runner rag-core (mêmes ports replay)
+    participant CORE as runner assistant_rh_api.core (mêmes ports replay)
     participant J as journal d'expérimentations
 
     R->>CORE: fixtures → sorties de référence déterministes
@@ -150,4 +157,4 @@ sequenceDiagram
     F->>API: /v1/feedback
 ```
 
-Pendant le canary du temps 1, un rollback de configuration renvoie Streamlit vers le pipeline direct sans rebuild. Cette branche disparaît uniquement après la fenêtre de stabilité de la phase E.
+Pendant le canary du temps 1, un rollback de configuration renvoie Streamlit vers le pipeline direct sans rebuild. Cette branche disparaît uniquement après la fenêtre de stabilité de la phase F.

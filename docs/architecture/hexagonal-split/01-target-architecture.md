@@ -1,25 +1,24 @@
-# Architecture cible — `packages/rag-core` + `apps/api`
+# Architecture cible — core interne à `apps/api`
 
-> Référence : [00-overview.md](00-overview.md) (décisions D3, D4, D5).
+> Référence : [décisions D3, D4 et D5](06-decisions.md).
 
 ## Vue d'ensemble
 
 ```mermaid
 flowchart TB
-    subgraph drivers ["Adaptateurs d'entrée (drivers)"]
+    ST[Streamlit<br/>client HTTP pur]
+    EV[éval goldset<br/>src/goldset — driver direct-core]
+
+    subgraph api ["apps/api — application déployable"]
         H[handlers/ — FastAPI<br/>openai_compat · admin · health]
-        EV[éval goldset<br/>src/goldset — direct-core]
-        ST[Streamlit<br/>client HTTP pur]
-    end
 
-    subgraph core ["packages/rag-core — domaine pur"]
-        CS[ChatService<br/>orchestration requête]
-        P[pipeline & steps<br/>query_processor · fusion retrieval<br/>gates reranker · context builder/selector<br/>section aggregator · generator]
-        PR[prompts ministère]
-        PO[ports :<br/>SearchPort · ContentStorePort<br/>PromptStorePort · AcronymStorePort<br/>RerankerPort · LLMPort · EmbeddingPort<br/>ChatRunStorePort · ConfigStorePort]
-    end
+        subgraph core ["assistant_rh_api/core — logique métier pure"]
+            CS[ChatService<br/>orchestration requête]
+            P[pipeline & steps<br/>query_processor · retrieval<br/>section aggregator · context builder/selector · generator]
+            PP[composition du prompt ministère]
+            PO[ports :<br/>SearchPort · ContentStorePort<br/>PromptStorePort · AcronymStorePort<br/>RerankerPort · LLMPort · EmbeddingPort<br/>ChatRunStorePort · ConfigStorePort]
+        end
 
-    subgraph driven ["apps/api — adaptateurs de sortie + wiring"]
         DB[db/ — psycopg<br/>recherche · documents/sections · prompts/acronymes<br/>chat_runs · rag_config · user_groups · feedback]
         GW[gateways/ — httpx<br/>Albert/Scaleway LLM/embeddings · reranker]
     end
@@ -28,83 +27,102 @@ flowchart TB
     H --> CS
     EV --> CS
     CS --> P
+    P --> PP
     P --> PO
+    PP --> PO
     PO --> DB
     PO --> GW
     DB --> PG[(Postgres pgvector)]
     GW --> ALB[Albert API]
 ```
 
-Le test de la frontière : **une éval goldset doit pouvoir importer `packages/rag-core` et brancher ses propres adaptateurs sans importer `apps/api`, FastAPI ni Streamlit**. `apps/api` dépend du core ; le core et les autres drivers ne dépendent jamais de l'application HTTP.
+La composition du prompt ministère est une règle du core : elle reçoit le template et la configuration via `PromptStorePort`, puis produit le prompt transmis au générateur. Le stockage et le chargement des templates restent dans `db/`.
+
+Le test de frontière est le suivant : **une éval goldset doit pouvoir importer `assistant_rh_api.core`, construire le `ChatService` avec ses propres adaptateurs et exécuter le pipeline sans créer l'application FastAPI**. Le module `core` n'importe jamais `handlers`, `db` ou `gateways`.
+
+### Pourquoi le core reste dans l'application API
+
+Le core est une frontière logique, pas nécessairement un package distribuable. Dans ce chantier :
+
+- l'API est son seul produit et son seul cycle de release ;
+- le runner goldset vit dans le même repo et peut importer un sous-module Python ;
+- un deuxième `pyproject.toml`, une dépendance workspace et une publication/version séparée n'apporteraient pas d'isolation supplémentaire ;
+- les contrats d'import et les tests garantissent déjà que le core reste indépendant de FastAPI, SQL et des providers.
+
+Si un second service doit un jour consommer et versionner ce core indépendamment, `assistant_rh_api/core` pourra alors être extrait vers `packages/rag-core` sans changer ses ports.
 
 ## Arborescence cible
 
-```
-packages/rag-core/
-├── pyproject.toml            # membre du workspace uv
-├── moon.yml                  # layer: library
-└── src/assistant_rh_rag_core/
-    ├── chat_service.py       # cas d'usage, orchestration d'une requête
-    ├── pipeline.py           # orchestration des étapes
-    ├── run_context.py        # état strictement local à une requête
-    ├── steps/                # query_processor, retrieval, aggregation, selector,
-    │                         # context_builder, generator
-    ├── ports.py              # Protocol des dépendances sortantes
-    ├── models.py             # dataclasses domaine
-    ├── config.py             # schéma de config pipeline
-    ├── ministry_scope.py     # catalogue ministères, RetrievalScope
-    └── prompts/              # templates versionnés + rendu ministère
-
+```text
 apps/api/
-├── pyproject.toml            # membre du workspace uv, dépend de rag-core
-├── moon.yml                  # layer: application
+├── pyproject.toml            # membre du workspace uv
+├── moon.yml                  # application déployable
 ├── src/assistant_rh_api/
+│   ├── __init__.py           # sans création d'app ni effet de bord
+│   ├── core/                 # logique métier ; aucun import handlers/db/gateways
+│   │   ├── chat_service.py   # cas d'usage, orchestration d'une requête
+│   │   ├── pipeline.py       # orchestration des étapes
+│   │   ├── run_context.py    # état strictement local à une requête
+│   │   ├── steps/            # query_processor, retrieval, aggregation, selector,
+│   │   │                     # context_builder, generator
+│   │   ├── ports.py          # Protocol des dépendances sortantes
+│   │   ├── models.py         # dataclasses domaine
+│   │   ├── config.py         # schéma de config pipeline
+│   │   ├── ministry_scope.py # catalogue ministères, RetrievalScope
+│   │   └── prompt_policy.py  # composition pure du prompt ministère
 │   ├── handlers/             # FastAPI uniquement — aucun SQL, aucun httpx métier
 │   │   ├── app.py            # création de l'app, wiring des dépendances
 │   │   ├── openai_compat.py  # /v1/chat/completions, /v1/models
 │   │   ├── feedback.py       # /v1/feedback
 │   │   ├── admin.py          # /admin/*
 │   │   ├── health.py         # /healthz
-│   │   └── auth.py           # bearer → groupe ; ADMIN_TOKEN
+│   │   └── auth.py           # bearer → groupe ; is_admin → routes admin
 │   ├── db/                   # adaptateurs SQL du runtime API
-│   │   ├── search.py         # VectorSearchPort + LexicalSearchPort (SQL pgvector ex retriever.py)
-│   │   ├── content_store.py  # documents entiers, sections, références juridiques
-│   │   ├── chat_run_store.py # ex chat_logger.py (écriture chat_runs, rag_trace_events)
+│   │   ├── search.py         # recherche vectorielle/lexicale
+│   │   ├── content_store.py  # documents, sections, références juridiques
+│   │   ├── chat_run_store.py # chat_runs, rag_trace_events
 │   │   ├── config_store.py   # rag_config, prompts, acronymes ; révisions/cache
-│   │   ├── user_groups.py    # ex user_groups_store.py + api_token_hash
-│   │   ├── feedback_store.py # écriture/lecture feedback + agrégats dashboards
-│   │   └── dsn.py            # résolution DSN (consomme packages/shared-config)
-│   └── gateways/             # HTTP externes
-│       ├── albert.py         # LLM (chat_stream), embeddings — ex llm_client.py/embedder.py
-│       └── reranker.py       # ex reranker.py
-└── tests/                    # migrés avec le code qu'ils couvrent
+│   │   ├── user_groups.py    # groupes, rôles et api_token_hash
+│   │   ├── feedback_store.py # feedback + agrégats dashboards
+│   │   └── dsn.py            # résolution DSN via shared-config
+│   └── gateways/             # adaptateurs HTTP externes
+│       ├── albert.py         # LLM et embeddings
+│       ├── scaleway.py       # fallback LLM et embeddings
+│       └── reranker.py
+└── tests/
+    ├── core/                 # tests purs et conformance par étape
+    ├── db/                   # tests contractuels sur DB synthétique
+    ├── handlers/             # contrat HTTP avec core fake/replay
+    └── integration/          # assemblage complet
 ```
 
 ## Mapping existant → cible
 
-| Aujourd'hui | Cible | Nature |
+Le tableau décrit une **extraction de comportement**. Il ne demande pas de déplacer les fonctions existantes telles quelles : chaque slice caractérise d'abord le comportement historique, réimplémente la règle pure derrière des ports, puis prouve la parité. L'ancien fichier reste intact tant que le chemin direct sert de rollback.
+
+| Aujourd'hui | Cible | Travail |
 |---|---|---|
-| `packages/rag-pipeline/.../pipeline.py` | `rag-core/pipeline.py` + état par requête + logging via `ChatRunStorePort` | découpe |
-| `.../retriever.py` (35K) | orchestration fusion/scores → `rag-core/steps/retrieval.py` ; SQL → `apps/api/db/search.py` | découpe délicate |
-| `.../query_processor.py` | logique → `rag-core/steps/query_processor.py` ; prompts/acronymes DB → ports de configuration | découpe |
-| `.../context_builder.py` | budget/triangulation → core ; documents entiers/références SQL → `ContentStorePort` | découpe |
-| `.../section_aggregator.py` | agrégation/ranking → core ; chargement sections SQL → `ContentStorePort` | découpe |
-| `.../context_selector.py`, `generator.py` | logique → core ; prompts/LLM → ports injectés | découpe |
-| `.../reranker.py`, `llm_client.py`, `embedder.py` | `apps/api/gateways/` (le seuil/gate du reranker reste dans `rag-core`) | découpe |
-| `.../chat_logger.py`, `tracing.py` | `apps/api/db/chat_run_store.py` derrière `ChatRunStorePort` | découpe + port |
-| `.../admin.py` | adaptateurs admin/config dans l'API + schéma dans `rag-core/config.py` | découpe |
-| `.../models.py`, `config.py`, `ministry_scope.py`, `prompts/` | `rag-core/` après retrait de tous les re-exports I/O | découpe légère |
-| `.../citation_extractor.py`, `conformance.py`, `db_helpers.py` | core (citation/conformance) ; adaptateurs API (helpers DB) | découpe |
-| `.../feedback_analyzer.py` | service applicatif/API + lectures via `FeedbackStorePort` | découpe |
-| `src/ui/user_groups_store.py`, `groups.py` | `apps/api/db/user_groups.py` + résolution scope dans `rag-core/chat_service.py` | découpe |
-| `src/ui/chatbot_logging.py`, `chatbot_llm.py`, `chatbot_sources.py`, `citation_deduplicator.py`, `db_utils.py`, `llm_selector.py` | conservés pour l'ancien chemin jusqu'à la stabilité ; ensuite absorbés ou supprimés | découpe tardive |
-| `src/ui/source_import.py`, `private_datasets.py` | **inchangés** (Grist + S3, domaine ingestion) | — |
-| `src/goldset/` | inchangé d'emplacement, imports repointés sur `packages/rag-core` + adaptateurs d'éval | repoint |
-| `apps/mastra-pipeline` | supprimé | delete |
+| `packages/rag-pipeline/.../pipeline.py` | `assistant_rh_api/core/pipeline.py` + `RunContext` + `ChatRunStorePort` | extraire l'orchestration, sans état `last_*` |
+| `.../retriever.py` | logique de fusion/gates → `core/steps/retrieval.py` ; SQL → `db/search.py` | caractériser puis réimplémenter séparément |
+| `.../query_processor.py` | règles → `core/steps/query_processor.py` ; prompts/acronymes/LLM → ports | extraction comportementale |
+| `.../context_builder.py` | budget/triangulation → core ; documents/références SQL → `ContentStorePort` | extraction comportementale |
+| `.../section_aggregator.py` | agrégation/ranking → core ; chargement sections → `ContentStorePort` | extraction comportementale |
+| `.../context_selector.py`, `generator.py` | décisions → core ; prompts/LLM → ports injectés | extraction comportementale |
+| `.../reranker.py`, `llm_client.py`, `embedder.py` | `gateways/` ; seuils/gates dans le core | adaptateurs puis extraction des règles |
+| `.../chat_logger.py`, `tracing.py` | `db/chat_run_store.py` derrière `ChatRunStorePort` | adaptateur DB |
+| `.../admin.py` | adaptateurs/services admin + schéma dans `core/config.py` | séparer I/O et validation |
+| `.../models.py`, `config.py`, `ministry_scope.py` | `core/` sans re-export ni initialisation I/O | extraction légère |
+| `.../citation_extractor.py`, `conformance.py`, `db_helpers.py` | core pour les règles ; `db/` pour les helpers SQL | séparation |
+| `.../feedback_analyzer.py` | service applicatif + `FeedbackStorePort` | séparation |
+| `src/ui/user_groups_store.py`, `groups.py` | `db/user_groups.py`, auth handler et scope dans `core/chat_service.py` | première slice verticale |
+| `src/ui/chatbot_*`, `citation_deduplicator.py`, `db_utils.py`, `llm_selector.py` | conservés pour le rollback, puis absorbés ou supprimés | nettoyage tardif |
+| `src/ui/source_import.py`, `private_datasets.py` | **inchangés** (Grist + S3) | hors chantier RAG |
+| `src/goldset/` | imports vers `assistant_rh_api.core` + adaptateurs d'éval | repointage après parité |
+| `apps/mastra-pipeline` | supprimé | suppression immédiate |
 
-### Audit d'isolation B0
+## Audit d'isolation A5
 
-`retriever.py` n'est pas présumé être la seule découpe non mécanique. Avant tout portage, B0 inventorie pour chaque module :
+`retriever.py` n'est pas présumé être la seule découpe non mécanique. Avant l'extraction, A5 inventorie pour chaque module :
 
 - SQL et résolution de DSN ;
 - prompts/config/acronymes dynamiques ;
@@ -113,38 +131,36 @@ apps/api/
 - état mutable `last_*`, diagnostics et données nécessaires au logging ;
 - consommateurs dans les apps, `src/`, tests, scripts et workflows.
 
-Chaque dépendance devient soit une donnée pure passée au core, soit un port étroit, soit un état du `RunContext`. Le [LEDGER](LEDGER.md) consigne les écarts découverts et leur traitement.
+Chaque dépendance devient une donnée pure, un port, un adaptateur ou un élément du `RunContext`. Le [LEDGER](LEDGER.md) consigne les écarts découverts.
 
-### La découpe `retriever.py`
+### Exemple : extraction du retrieval
 
-`retriever.py` reste une découpe particulièrement sensible, mais n'est plus considéré comme l'unique découpe non mécanique. Règle de partage :
+- **`db/search.py`** exécute les requêtes SQL et retourne des chunks scorés bruts.
+- **`core/steps/retrieval.py`** combine les tables, fusionne, normalise, applique les seuils et déduplique.
+- Les tests caractérisent l'ancien comportement avant d'écrire la nouvelle règle ; aucun helper SQL historique n'est copié dans le core.
 
-- **`apps/api/db/search.py`** : les requêtes SQL (similarité vectorielle, recherche lexicale/heading, accès `rag_chunks_*` par `table_key`) — signature du port : entrée (embedding | termes, `table_keys`, `top_k`), sortie (liste de chunks scorés bruts).
-- **`packages/rag-core/.../steps/retrieval.py`** : tout ce que les campagnes qualité mesurent — combinaison multi-tables, fusion des listes, normalisation des scores, seuils, dédup, anti-redondance, décisions de coupure.
+Si l'éval goldset peut détecter le changement d'une règle, cette règle appartient au core. Si la ligne ne fait que parler à Postgres ou à un provider, elle appartient à un adaptateur.
 
-Si un doute survient sur la position d'une ligne : *si l'éval goldset peut détecter son changement, c'est du core.*
+## Règles de frontière gardées par la CI
 
-## Règles de frontière (gardées par la CI)
-
-1. `packages/rag-core` n'importe **ni** `psycopg`, **ni** `fastapi`, **ni** `httpx`, **ni** `streamlit`, **ni** `boto3`, ni `apps/api` — uniquement stdlib + pydantic/dataclasses + ses propres modules.
-2. `handlers/` n'importe pas `psycopg` ; il parle au `ChatService` et aux services admin applicatifs.
-3. `db/` et `gateways/` n'importent pas `handlers` ; ils implémentent les `Protocol` de `assistant_rh_rag_core.ports`.
-4. À l'état cible, `apps/streamlit-ui` n'importe ni `psycopg` ni les packages Python de l'API (client HTTP pur) — exceptions : `source_import`/`private_datasets` (boto3 + Grist). Ce contrat est activé après le canary, au retrait du chemin de rollback.
-5. Le wiring (quel adaptateur pour quel port) vit uniquement dans `handlers/app.py` (API) et dans le runner d'éval (direct-core).
-6. `src/goldset` et les scripts peuvent dépendre de `packages/rag-core`, jamais de `apps/api`.
-
-Mise en œuvre progressive : les contrats du core et des adaptateurs sont activés dès la PR de squelette ; le contrat interdisant DB/pipeline dans Streamlit n'est rendu bloquant qu'à la PR de nettoyage final — voir [04-migration-plan.md](04-migration-plan.md).
+1. `assistant_rh_api.core` n'importe ni `handlers`, ni `db`, ni `gateways`, ni `psycopg`, `fastapi`, `httpx`, `streamlit` ou `boto3`.
+2. `handlers/` n'importe pas `psycopg` et ne contient pas de logique métier ; il valide le transport puis appelle un cas d'usage.
+3. `db/` et `gateways/` n'importent pas `handlers` ; ils implémentent les `Protocol` de `assistant_rh_api.core.ports`.
+4. `assistant_rh_api/__init__.py` reste sans effet de bord afin que `src/goldset` importe le core sans créer FastAPI ni ouvrir de connexion.
+5. Le wiring vit dans `handlers/app.py` pour l'API et dans le runner direct-core pour l'éval.
+6. À l'état cible, Streamlit n'importe ni `psycopg` ni le package Python API ; il utilise HTTP. Cette garde n'est activée qu'après le canary et le retrait du rollback.
 
 ## Isolation et cycle de vie d'une requête
 
-- `RunContext` contient `turn_id`, `trace_id`, timings, diagnostics provider/reranker/selector, références résolues et résultat final. Il n'est jamais partagé.
-- Les services/steps sont soit créés par requête, soit immuables et reçoivent tout état via `RunContext`. Aucun handler ne lit un `last_result` partagé.
-- Seuls les pools DB, clients HTTP et caches explicitement thread-safe vivent au niveau application. Leur taille, leurs timeouts et leur fermeture sont gérés au lifespan FastAPI.
-- Le pipeline Python restant synchrone au début, le handler SSE l'exécute dans un worker borné et reçoit statuts/tokens via une file async. L'event loop reste libre pour les pings, la détection de déconnexion et les autres requêtes.
-- Une déconnexion annule le travail quand c'est sûr et finalise un `chat_run` `cancelled`/partiel. Un succès est persisté avant le chunk terminal et `[DONE]`.
+- Un nouveau `RunContext` est créé pour chaque appel HTTP. Il contient le ministère, `turn_id`, `trace_id`, timings, diagnostics, sources et résultat final.
+- Les étapes retournent leurs résultats explicitement ; elles n'écrivent jamais dans un champ partagé comme `last_result`.
+- Seuls les pools DB, clients HTTP et caches explicitement thread-safe sont partagés au niveau application ; ils ne contiennent aucune donnée utilisateur/ministère/run.
+- Le pipeline synchrone s'exécute dans un worker borné et transmet ses événements à une file async. Le handler SSE reste disponible pour les pings et la détection de déconnexion.
+- Une déconnexion finalise le run en `cancelled`/partiel quand cela est possible. Un succès est persisté avant le chunk terminal et `[DONE]`.
 
-## Ce que l'hexagone rend possible ensuite (hors chantier)
+## Ce que l'hexagone rend possible ensuite
 
-- Adaptateur MCP retrieval (`handlers/mcp.py`) si un ministère veut le corpus comme outil — ~1 PR.
-- Remplacement d'Albert par un autre fournisseur = 1 gateway.
-- Tests de charge du retrieval sur `db/search.py` isolément.
+- extraction de `core/` en package autonome si un second produit en a réellement besoin ;
+- adaptateur MCP retrieval sans modifier le domaine ;
+- remplacement d'Albert par un autre gateway ;
+- tests de charge de `db/search.py` indépendants des handlers.
