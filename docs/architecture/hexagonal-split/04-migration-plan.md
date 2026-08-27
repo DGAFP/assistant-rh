@@ -124,3 +124,42 @@ flowchart LR
     M2 --> E[Phase E<br/>Streamlit canary] --> M3{M3<br/>go production}
     M3 --> F[Phase F<br/>bascule + stabilité] --> CLEAN[nettoyage ancien chemin] --> M4{M4<br/>frontière cible}
 ```
+
+## Mapping existant → cible
+
+Chaque ligne décrit une **extraction de comportement** derrière des ports, validée par les tests de parité. Les fonctions couplées ne sont pas déplacées telles quelles ; l'ancien chemin reste disponible jusqu'à la fin de la bascule.
+
+| Aujourd'hui | Cible | Travail |
+|---|---|---|
+| `packages/rag-pipeline/.../pipeline.py` | `assistant_rh_api/core/pipeline/orchestration.py` + `RunContext` + `ChatRunStorePort` | extraire l'orchestration, sans état `last_*` |
+| `.../retriever.py` | logique de fusion/gates → `core/pipeline/steps/retrieval.py` ; SQL → `db/search.py` | caractériser puis réimplémenter séparément |
+| `.../query_processor.py` | règles → `core/pipeline/steps/query_processor.py` ; prompts/acronymes/LLM → ports | extraction comportementale |
+| `.../context_builder.py` | budget/triangulation → core ; documents/références SQL → `ContentStorePort` | extraction comportementale |
+| `.../section_aggregator.py` | agrégation/ranking → core ; chargement sections → `ContentStorePort` | extraction comportementale |
+| `.../context_selector.py`, `generator.py` | décisions → core ; prompts/LLM → ports injectés | extraction comportementale |
+| `.../reranker.py`, `llm_client.py`, `embedder.py` | `gateways/` ; seuils/gates dans le core | adaptateurs puis extraction des règles |
+| `.../chat_logger.py`, `tracing.py` | `db/chat_run_store.py` derrière `ChatRunStorePort` | adaptateur DB |
+| `.../admin.py` | adaptateurs/services admin + schéma dans `core/config.py` | séparer I/O et validation |
+| `.../models.py`, `config.py`, `ministry_scope.py` | `core/` sans re-export ni initialisation I/O | extraction légère |
+| `.../citation_extractor.py`, `conformance.py`, `db_helpers.py` | core pour les règles ; `db/` pour les helpers SQL | séparation |
+| `.../feedback_analyzer.py` | service applicatif + `FeedbackStorePort` | séparation |
+| `src/ui/user_groups_store.py`, `groups.py` | `db/user_groups.py`, auth handler et scope dans `core/chat_service.py` | première slice verticale |
+| `src/ui/chatbot_*`, `citation_deduplicator.py`, `db_utils.py`, `llm_selector.py` | conservés pour le rollback, puis absorbés ou supprimés | nettoyage tardif |
+| `src/ui/source_import.py`, `private_datasets.py` | **inchangés** (Grist + S3) | hors chantier RAG |
+| `src/goldset/` | imports vers `assistant_rh_api.core` + adaptateurs d'éval | repointage après parité |
+| `apps/mastra-pipeline` | supprimé | suppression immédiate |
+
+## Audit d'isolation A5
+
+L'isolation imparfaite est présumée dans tout le pipeline. A5 établit l'inventaire initial, complété avant l'extraction de chaque module :
+
+- SQL et résolution de DSN ;
+- prompts/config/acronymes dynamiques ;
+- appels LLM, embeddings, reranker et observabilité ;
+- caches, pools, horloges et génération d'identifiants ;
+- état mutable `last_*`, diagnostics et données nécessaires au logging ;
+- consommateurs dans les apps, `src/`, tests, scripts et workflows.
+
+Chaque dépendance devient une donnée pure, un port, un adaptateur ou un élément du `RunContext`. Le [LEDGER](LEDGER.md) consigne les écarts découverts.
+
+Exemple retrieval : `db/search.py` retourne des chunks scorés bruts ; `core/pipeline/steps/retrieval.py` porte fusion, normalisation, seuils et déduplication. Les tests caractérisent ce comportement avant extraction.
