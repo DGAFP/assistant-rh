@@ -8,7 +8,7 @@ via son source (la page ne s'importe pas sans session Streamlit).
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from src.ui.feedback_dashboard import (
@@ -18,11 +18,15 @@ from src.ui.feedback_dashboard import (
     PERIOD_ALL,
     PERIOD_BETA,
     PERIOD_CUSTOM,
+    PERIOD_LAST_MONTH,
     PERIOD_MODE_LABELS,
     PERIOD_MODE_OPTIONS,
+    current_paris_date,
     ministry_display_label,
     period_caption,
+    previous_calendar_month,
     resolve_period,
+    visible_available_groups,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +55,16 @@ class TestResolvePeriod:
     def test_beta_preset_is_fixed_window(self):
         assert resolve_period(PERIOD_BETA) == (BETA_START, BETA_END)
         assert resolve_period(PERIOD_BETA) == (date(2026, 1, 8), date(2026, 2, 6))
+
+    def test_last_month_is_previous_calendar_month(self):
+        assert resolve_period(PERIOD_LAST_MONTH, reference_date=date(2026, 8, 31)) == (date(2026, 7, 1), date(2026, 7, 31))
+
+    def test_last_month_crosses_year_boundary(self):
+        assert previous_calendar_month(date(2026, 1, 10)) == (date(2025, 12, 1), date(2025, 12, 31))
+
+    def test_current_date_uses_paris_timezone_at_utc_month_boundary(self):
+        utc_instant = datetime(2026, 8, 31, 22, 30, tzinfo=timezone.utc)
+        assert current_paris_date(utc_instant) == date(2026, 9, 1)
 
     def test_custom_range_is_stable_across_reruns(self):
         chosen = (date(2026, 6, 1), date(2026, 6, 30))
@@ -99,6 +113,12 @@ class TestPeriodCaption:
         caption = period_caption(PERIOD_BETA, (BETA_START, BETA_END))
         assert "Beta-test" in caption
 
+    def test_last_month_mode_labelled(self):
+        caption = period_caption(PERIOD_LAST_MONTH, (date(2026, 7, 1), date(2026, 7, 31)))
+        assert "Mois dernier" in caption
+        assert "01/07/2026" in caption
+        assert "31/07/2026" in caption
+
     def test_custom_incomplete_is_not_announced_as_tout(self):
         caption = period_caption(PERIOD_CUSTOM, None, date(2026, 1, 8), date(2026, 7, 23))
         assert "Tout" not in caption
@@ -124,6 +144,22 @@ class TestMinistryDisplayLabel:
 
     def test_unknown_id_passes_through_without_guessing(self):
         assert ministry_display_label("eval_all_ministries") == "eval_all_ministries"
+
+
+class TestVisibleAvailableGroups:
+    def test_hidden_groups_are_excluded_from_dashboard_filter(self):
+        configured = [
+            {"slug": "visible-group", "visible": True},
+            {"slug": "hidden-group", "visible": False},
+        ]
+
+        assert visible_available_groups(["hidden-group", "historical-group", "visible-group"], configured) == [
+            "historical-group",
+            "visible-group",
+        ]
+
+    def test_missing_visible_flag_defaults_to_visible(self):
+        assert visible_available_groups(["legacy-group"], [{"slug": "legacy-group"}]) == ["legacy-group"]
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -153,6 +189,11 @@ class TestDashboardSource:
         assert "resolve_period(" in source
         assert "period_caption(" in source
         assert "fb_period_mode" in source
+
+    def test_group_filter_uses_admin_visibility(self):
+        source = _dashboard_source()
+        assert "visible_available_groups(" in source
+        assert "list_groups()" in source
 
     def test_grid_receives_datetimes_not_preformatted_strings(self):
         # Une chaîne "17/07/2026 …" passée à une DatetimeColumn est re-parsée
