@@ -10,7 +10,7 @@ This runbook covers deployment and rollback for the Streamlit application on Sca
 ## Deployment strategy
 
 - **Staging** deploys automatically on every push/merge to `staging`.
-- **Production** deploys after a published GitHub Release, following the release-please PR.
+- **Production** deploys after Release Please succeeds on `main` and the workflow verifies the published release tag.
 - **Rollback** can be performed by redeploying a previous image tag via `workflow_dispatch` on the production workflow.
 
 The canonical branch and release procedure is documented in `docs/git_flow.md`.
@@ -21,7 +21,7 @@ The canonical branch and release procedure is documented in `docs/git_flow.md`.
 - Trigger: push to protected `staging` to prepare the PR, then push to `main` to publish the merged release
 - Config: `release-please-config.json` + `.release-please-manifest.json`
 - Strategy: `release-type=python` + `extra-files` so release PRs also bump version fields in the package `pyproject.toml` files
-- Auth token: `RELEASE_PLEASE_TOKEN` secret (PAT/GitHub App token). This is required so release-please-created tags/releases can trigger downstream workflows (production deploy on `release.published`).
+- Auth token: `RELEASE_PLEASE_TOKEN` secret (PAT/GitHub App token). This is required for release publication and for PR state changes that must trigger downstream checks.
 - Required token repository permissions: `actions: read`, `contents: write`, `pull-requests: write`, `issues: write`.
 - Commit signatures: candidate, version and lockfile commits use the built-in GitHub Actions app token so GitHub marks them verified. `RELEASE_PLEASE_TOKEN` is reserved for PR state changes that must trigger checks and for release publication.
 
@@ -33,7 +33,7 @@ Flow:
 4. Merge the Release Please PR with a merge commit. This is also the `staging -> main` promotion; do not open a separate promotion PR.
 5. The resulting `main` push publishes the tag + GitHub Release (for example `v0.8.1`) without creating another PR.
 6. The same `main` push back-merges `main` into `dev` (fallback: an automatic `chore(release): back-merge main into dev` PR when the direct merge is blocked) so the release commit returns to the integration branch.
-7. The published release event triggers production migrations, then the production deployment workflow.
+7. A successful Release Please run on `main` triggers production migrations after checking that the exact commit has a published `vX.Y.Z` release; successful migrations then trigger the production deployment workflow.
 
 Versioning rules:
 
@@ -152,7 +152,7 @@ After deployment (or rollback):
 ```text
 Date/Time:
 Environment: staging|production
-Trigger: staging push | release published | manual rollback
+Trigger: staging push | verified release workflow | manual rollback
 Image tag:
 Observed issue:
 Rollback tag (if any):
