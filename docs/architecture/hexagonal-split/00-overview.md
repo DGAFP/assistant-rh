@@ -12,7 +12,7 @@ Le runtime actuel est couplé à Streamlit : `packages/rag-pipeline` mêle méti
 
 **Temps 1 (ce chantier)** — construire `apps/api` à côté du runtime existant : DB/adaptateurs d'abord, puis extraction progressive de la logique vers `assistant_rh_api/core`. Déployer l'API, adapter le chat et l'admin Streamlit sous feature flags, puis retirer l'ancien chemin après stabilité.
 
-**Temps 2 (chantier ultérieur)** — un fork de [suitenumerique/conversations](https://github.com/suitenumerique/conversations) (adapté à nos besoins, dont le feedback) remplace le chat Streamlit ; Streamlit devient une pure interface d'admin ; ProConnect vit dans le front, jamais dans l'API RAG.
+**Temps 2 (chantier ultérieur)** — un fork de [suitenumerique/conversations](https://github.com/suitenumerique/conversations) (adapté à nos besoins, dont le feedback) remplace le chat Streamlit ;‡ Streamlit devient une pure interface d'admin ; ProConnect vit dans le front, jamais dans l'API RAG.
 
 ```mermaid
 flowchart LR

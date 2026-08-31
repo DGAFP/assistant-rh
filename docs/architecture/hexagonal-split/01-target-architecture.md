@@ -41,6 +41,7 @@ flowchart TB
     PO --> GW
     DB --> PG[(Postgres pgvector)]
     GW --> ALB[Albert API]
+    GW --> SCW[Scaleway API]
     H --> FS
     FS --> PO
     H --> AS
@@ -74,7 +75,7 @@ apps/api/
 │   │   │       ├── context_selector.py
 │   │   │       ├── context_builder.py
 │   │   │       └── generator.py
-│   │   ├── ports.py          # Protocol des dépendances sortantes
+│   │   ├── ports.py          # Protocole des dépendances sortantes
 │   │   ├── models.py         # dataclasses domaine
 │   │   ├── config.py         # schéma de config pipeline
 │   │   ├── ministry_scope.py # catalogue ministères, RetrievalScope
