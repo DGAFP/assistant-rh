@@ -14,6 +14,7 @@ flowchart TB
 
         subgraph core ["assistant_rh_api/core — logique métier pure"]
             CS[ChatService<br/>orchestration requête]
+            MS[ModelService]
             P[pipeline & steps<br/>· query_processor <br>· retrieval <br/> · section aggregator  <br/> · context builder/selector <br/> · generator]
             PP[composition du prompt ministère]
             PO[ports :<br/>· SearchPort <br/>· ContentStorePort<br/>· PromptStorePort <br/>· AcronymStorePort<br/>· RerankerPort <br/>· LLMPort <br/>· EmbeddingPort<br/>· ChatRunStorePort <br/>· ConfigStorePort<br/>· FeedbackStorePort<br/>· UserGroupStorePort]
@@ -35,6 +36,8 @@ flowchart TB
     EV --> CS
     CS --> P
     P --> PP
+    H --> MS
+    MS --> PO
     P --> PO
     PP --> PO
     PO --> DB
@@ -50,24 +53,23 @@ flowchart TB
     AU --> PO
 ```
 
-Le test de frontière est le suivant : **une éval goldset doit pouvoir importer `assistant_rh_api.core`, construire le `ChatService` avec ses propres adaptateurs et exécuter le pipeline sans créer l'application FastAPI**. Le module `core` n'importe jamais `handlers`, `db` ou `gateways`.
-
 ## Arborescence cible
 
 ```text
 apps/api/
-├── pyproject.toml            # membre du workspace uv
-├── moon.yml                  # application déployable
+├── pyproject.toml            
+├── moon.yml                  
 ├── src/assistant_rh_api/
-│   ├── __init__.py           # sans création d'app ni effet de bord
-│   ├── core/                 # logique métier ; aucun import handlers/db/gateways
-│   │   ├── chat_service.py   # cas d'usages conversations
-│   │   ├── feedback_service.py # cas d'usage feedback
-│   │   ├── admin_service.py # cas d'usage admin rag
-│   │   ├── auth_service.py # cas d'usage auth
+│   ├── __init__.py           
+│   ├── core/                 
+│   │   ├── chat_service.py   
+│   │   ├── feedback_service.py 
+│   │   ├── admin_service.py 
+│   │   ├── model_service.py 
+│   │   ├── auth_service.py 
 │   │   ├── pipeline/
 │   │   │   ├── __init__.py
-│   │   │   ├── orchestration.py  # orchestration des étapes
+│   │   │   ├── orchestration.py  
 │   │   │   └── steps/
 │   │   │       ├── query_processor.py
 │   │   │       ├── retrieval.py
@@ -75,34 +77,34 @@ apps/api/
 │   │   │       ├── context_selector.py
 │   │   │       ├── context_builder.py
 │   │   │       └── generator.py
-│   │   ├── ports.py          # Protocole des dépendances sortantes
-│   │   ├── models.py         # dataclasses domaine
-│   │   ├── config.py         # schéma de config pipeline
-│   │   ├── ministry_scope.py # catalogue ministères, RetrievalScope
-│   │   └── prompt_policy.py  # composition pure du prompt ministère
-│   ├── handlers/             # FastAPI uniquement — aucun SQL, aucun httpx métier
-│   │   ├── app.py            # création de l'app, wiring des dépendances
-│   │   ├── chat_completions.py  # /v1/chat/completions
-│   │   ├── models.py  # /v1/models
-│   │   ├── feedback.py       # /v1/feedback
-│   │   ├── admin.py          # /admin/*
-│   │   ├── health.py         # /healthz
-│   │   └── auth.py           # bearer → groupe ; is_admin → routes admin
-│   ├── db/                   # adaptateurs SQL du runtime API
-│   │   ├── search.py         # recherche vectorielle/lexicale
-│   │   ├── content_store.py  # documents, sections, références juridiques
-│   │   ├── chat_run_store.py # chat_runs, rag_trace_events
-│   │   ├── config_store.py   # rag_config, prompts, acronymes ; révisions/cache
-│   │   ├── user_groups.py    # groupes, rôles et api_token_hash
-│   │   ├── feedback_store.py # feedback + agrégats dashboards
-│   │   └── dsn.py            # résolution DSN via shared-config
-│   └── gateways/             # adaptateurs HTTP externes
-│       ├── albert.py         # LLM et embeddings
-│       ├── scaleway.py       # fallback LLM et embeddings
+│   │   ├── ports.py          
+│   │   ├── models.py         
+│   │   ├── config.py         
+│   │   ├── ministry_scope.py 
+│   │   └── prompt_policy.py  
+│   ├── handlers/             
+│   │   ├── app.py            
+│   │   ├── chat_completions.py  
+│   │   ├── models.py          
+│   │   ├── feedback.py          
+│   │   ├── admin.py          
+│   │   ├── health.py         
+│   │   └── auth.py           
+│   ├── db/                   
+│   │   ├── search.py         
+│   │   ├── content_store.py  
+│   │   ├── chat_run_store.py 
+│   │   ├── config_store.py   
+│   │   ├── user_groups.py    
+│   │   ├── feedback_store.py 
+│   │   └── dsn.py            
+│   └── gateways/             
+│       ├── albert.py         
+│       ├── scaleway.py         
 │       └── reranker.py
 └── tests/
-    ├── core/                 # tests purs et conformance par étape
-    ├── db/                   # tests contractuels sur DB synthétique
-    ├── handlers/             # contrat HTTP avec core fake/replay
-    └── integration/          # assemblage complet
+    ├── core/                 
+    ├── db/                   
+    ├── handlers/             
+    └── integration/          
 ```
