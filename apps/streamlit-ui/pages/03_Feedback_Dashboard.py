@@ -25,8 +25,9 @@ from src.ui.feedback_dashboard import (
     ministry_display_label,
     period_caption,
     resolve_period,
+    visible_available_groups,
 )
-from src.ui.user_groups_store import group_chart_maps
+from src.ui.user_groups_store import group_chart_maps, list_groups
 
 try:
     st.set_page_config(page_title="Feedback Dashboard", page_icon="📊", layout="wide")
@@ -320,16 +321,14 @@ if df_questions.empty and df_feedbacks.empty:
 with st.sidebar:
     st.subheader("🎯 Filtre par groupe")
 
-    # Get available groups from questions data
-    available_groups = sorted([g for g in df_questions["user_group"].unique() if g and g != "unknown"])
+    # Only include groups that both occur in the data and remain visible in the
+    # User Groups admin. Hidden groups stay persisted but leave this selector.
+    available_groups = visible_available_groups(df_questions["user_group"].unique(), list_groups())
 
     # Beta test groups first
     beta_groups = ["betatest-jan26", "mattebeta-jan26", "specloiret"]
     group_options = [g for g in beta_groups if g in available_groups]
     group_options += [g for g in available_groups if g not in beta_groups]
-
-    if not group_options:
-        group_options = ["default"]
 
     # Default: only betatest-jan26 selected
     default_group = ["betatest-jan26"] if "betatest-jan26" in group_options else group_options[:1]
@@ -350,7 +349,7 @@ with st.sidebar:
         options=list(PERIOD_MODE_OPTIONS),
         format_func=PERIOD_MODE_LABELS.get,
         key="fb_period_mode",
-        help="« Tout » suit automatiquement les nouvelles données ; seule une période personnalisée conserve des bornes figées.",
+        help="« Tout » suit les nouvelles données ; « Mois dernier » et « Beta-test » sont des périodes prédéfinies ; la période personnalisée conserve vos bornes.",
     )
 
     data_min = data_max = None
