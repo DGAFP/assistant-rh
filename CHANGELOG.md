@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.1](https://github.com/DGAFP/assistant-rh/compare/v0.9.0...v0.9.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* improve feedback dashboard filters ([#434](https://github.com/DGAFP/assistant-rh/issues/434)) ([264f844](https://github.com/DGAFP/assistant-rh/commit/264f8444d02c0ffe659e74f3ad8102bca886c879))
+* sync uv lockfile with release version ([#432](https://github.com/DGAFP/assistant-rh/issues/432)) ([e903d10](https://github.com/DGAFP/assistant-rh/commit/e903d1004ef2fddd48d692535f124c3b3adfc044))
+
 ## [0.9.0](https://github.com/DGAFP/assistant-rh/compare/v0.8.0...v0.9.0) (2026-08-24)
 
 
