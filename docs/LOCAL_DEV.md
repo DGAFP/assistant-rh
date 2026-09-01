@@ -147,3 +147,31 @@ uv run --no-sync python scripts/run_rag_quality_eval.py \
 
 Rejouer le § 2 (le `--clean --if-exists` remplace les objets existants), ou
 `docker compose -f docker-compose.local.yml down -v` pour repartir de zéro.
+
+## Base runtime synthétique de l'API
+
+L'API utilise un second service pgvector, un port et un volume séparés du banc
+d'eval. Cette séparation est volontaire : les tests API ne doivent jamais lire
+le dump staging ni aucune table contenant des conversations, feedbacks ou
+identifiants d'utilisateurs.
+
+```bash
+docker compose -f docker-compose.local.yml up -d --wait api-postgres
+export API_SYNTHETIC_POSTGRES_DSN="postgresql://assistant_rh_api:assistant_rh_api@localhost:55433/assistant_rh_api_test?sslmode=disable"
+export SCW_POSTGRES_DSN="$API_SYNTHETIC_POSTGRES_DSN"
+
+uv run --package assistant-rh-api --group dev assistant-rh-api
+curl --fail http://127.0.0.1:8000/healthz
+uv run --package assistant-rh-api --group dev python -m pytest apps/api/tests -v
+```
+
+Le schéma et les valeurs minimales viennent uniquement de
+`apps/api/tests/fixtures/runtime.sql`. Pour réinitialiser cette base sans
+toucher au volume d'eval :
+
+```bash
+docker compose -f docker-compose.local.yml stop api-postgres
+docker compose -f docker-compose.local.yml rm -f -v api-postgres
+docker volume rm assistant-rh-api-local-pgdata
+docker compose -f docker-compose.local.yml up -d --wait api-postgres
+```
