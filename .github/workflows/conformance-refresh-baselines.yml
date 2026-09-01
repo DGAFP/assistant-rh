@@ -151,11 +151,13 @@ jobs:
               "${goldset_args[@]}" \
               "${limit_args[@]}" \
               --output-dir "$BASELINE_DIR" \
+              --replace-output-dir \
               --resolved-queries-out "$RESOLVED_QUERIES_PATH"
           else
             uv run python scripts/dump_stage_baselines.py \
               --queries-file "$QUERIES_FILE" \
               --output-dir "$BASELINE_DIR" \
+              --replace-output-dir \
               --resolved-queries-out "$RESOLVED_QUERIES_PATH"
           fi
 

@@ -12,7 +12,6 @@ import argparse
 import hashlib
 import json
 import os
-import subprocess
 from collections import Counter
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -23,6 +22,11 @@ import psycopg
 from dotenv import load_dotenv
 from psycopg import sql
 from psycopg.rows import dict_row
+
+try:
+    from scripts.parity_revision import assert_runtime_revision_compatible, get_git_sha
+except ModuleNotFoundError:  # Direct execution: python scripts/capture_rag_parity_evidence.py
+    from parity_revision import assert_runtime_revision_compatible, get_git_sha
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_PROMPTS_DIR = REPO_ROOT / "packages/rag-pipeline/src/assistant_rh_rag_pipeline/prompts"
@@ -51,17 +55,6 @@ def _file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(64 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def _git_sha() -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=REPO_ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip()
 
 
 def _table_columns(conn: psycopg.Connection[Any], table_name: str) -> set[str]:
@@ -356,7 +349,7 @@ def _models_and_providers(config: dict[str, Any]) -> dict[str, Any]:
 def capture_evidence(
     conn: psycopg.Connection[Any],
     run_id: int,
-    expected_git_sha: str | None,
+    expected_runtime_git_sha: str | None,
     paired_baseline_run_id: int | None,
     allow_incomplete: bool = False,
 ) -> dict[str, Any]:
@@ -376,11 +369,13 @@ def capture_evidence(
     run = dict(run)
     if run.get("status") != "completed" and not allow_incomplete:
         raise RuntimeError(f"RAG evaluation run {run_id} is {run.get('status')!r}, not completed")
-    repository_git_sha = _git_sha()
-    if expected_git_sha and repository_git_sha != expected_git_sha:
-        raise RuntimeError(f"Expected repository Git SHA {expected_git_sha}, got {repository_git_sha}")
-    if run.get("git_sha") != repository_git_sha:
-        raise RuntimeError(f"Run Git SHA {run.get('git_sha')} does not match repository Git SHA {repository_git_sha}")
+    recorder_git_sha = get_git_sha(REPO_ROOT)
+    runtime_git_sha = str(run.get("git_sha") or "")
+    if not runtime_git_sha:
+        raise RuntimeError(f"RAG evaluation run {run_id} has no Git revision")
+    if expected_runtime_git_sha and runtime_git_sha != expected_runtime_git_sha:
+        raise RuntimeError(f"Expected runtime Git SHA {expected_runtime_git_sha}, got {runtime_git_sha}")
+    assert_runtime_revision_compatible(REPO_ROOT, runtime_git_sha, recorder_git_sha)
 
     metadata = dict(run.get("metadata") or {})
     eval_scope = dict(metadata.get("eval_scope") or {})
@@ -393,7 +388,7 @@ def capture_evidence(
         "schema_version": "m0-parity-evidence-v1",
         "captured_at": datetime.now(tz=UTC).isoformat(),
         "environment": "scaleway-staging",
-        "repository": {"git_sha": repository_git_sha},
+        "repository": {"git_sha": runtime_git_sha, "recorder_git_sha": recorder_git_sha},
         "run": run,
         "models_and_providers": _models_and_providers(config),
         "prompts": {
@@ -417,8 +412,14 @@ def capture_evidence(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Capture reproducible, non-secret evidence for a recorded RAG evaluation.")
     parser.add_argument("--run-id", type=int, required=True)
-    parser.add_argument("--dsn-env", default="SCW_POSTGRES_DSN_STAGING")
-    parser.add_argument("--expected-git-sha", default="")
+    parser.add_argument("--dsn-env", default="SCW_POSTGRES_DSN")
+    parser.add_argument(
+        "--expected-runtime-git-sha",
+        "--expected-git-sha",
+        dest="expected_runtime_git_sha",
+        default="",
+        help="Expected Git revision recorded by the eval run; --expected-git-sha is a compatibility alias.",
+    )
     parser.add_argument("--paired-baseline-run-id", type=int, default=None)
     parser.add_argument("--allow-incomplete", action="store_true", help="Allow a diagnostic snapshot of a non-completed run.")
     parser.add_argument("--output", type=Path, required=True)
@@ -437,7 +438,7 @@ def main() -> int:
         evidence = capture_evidence(
             conn,
             args.run_id,
-            args.expected_git_sha or None,
+            args.expected_runtime_git_sha or None,
             args.paired_baseline_run_id,
             allow_incomplete=args.allow_incomplete,
         )

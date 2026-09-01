@@ -14,7 +14,8 @@ data.
   (run #240; the failed partial attempt #238 is recorded in the experiment
   journal)
 - Live snapshot: `docs/evals/evidence/m0a_api_parity_dev_20260901.json`
-- Runtime config fingerprint: `51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce`
+- Eval-run config fingerprint: `51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce`
+- Normalized pipeline config fingerprint: `87ab8ddbb104703787c3d9dfe00ddff103350c3ef7691736f98d8ce6ebc74920`
 - Replay fingerprint: `f5e9ffefe588248a352d7ac18a556df7bff6270a2879e7ddd32acc128733e02b`
 
 The bundle contains `00_input.json`, one exact JSON input/output contract for
@@ -26,17 +27,25 @@ the overall replay fingerprint are stored in `manifest.json`.
 
 ## Record on the frozen live runtime
 
-This command requires the staging DB and provider credentials. It refuses to
-record from another Git revision and fails when an observed branch differs from
-the fixture's declared expectation.
+This command requires the staging DB and provider credentials. The recorder may
+live in a later tooling-only commit, but it verifies that the versioned RAG
+runtime paths are unchanged from the declared source revision. It also fails
+when an observed branch differs from the fixture's declared expectation. Record
+into a fresh temporary directory so the committed reference is never
+overwritten implicitly.
 
 ```bash
+M0B_OUTPUT_DIR="$(mktemp -d)"
 uv run python scripts/dump_stage_baselines.py \
   --queries-file tests/conformance/queries.m0-api-parity.jsonl \
-  --output-dir tests/conformance/baselines/m0-api-parity-dev-9bf1cf0 \
-  --expected-git-sha 9bf1cf0cb92420e9e551f811edadb1d7129244b1 \
+  --output-dir "$M0B_OUTPUT_DIR" \
+  --runtime-git-sha 9bf1cf0cb92420e9e551f811edadb1d7129244b1 \
   --reference-run-id 240 \
   --source-environment scaleway-staging
+
+uv run python scripts/verify_stage_baselines.py \
+  --baseline-dir tests/conformance/baselines/m0-api-parity-dev-9bf1cf0 \
+  --actual-dir "$M0B_OUTPUT_DIR"
 ```
 
 Refreshing the reference is an explicit milestone decision. Do not overwrite
@@ -66,8 +75,9 @@ equality is the extraction contract; live quality remains the separate M0a
 gate.
 
 The verifier also checks JSON Schemas, artifact SHA-256 hashes, bundle
-fingerprint integrity, fixture completeness, declared branch coverage, safe
-relative paths, and the input personal-data guard.
+fingerprint integrity, fixture completeness, the candidate's exact artifact
+inventory and JSON value types, declared branch coverage, safe relative paths,
+and the input personal-data guard.
 
 ## Branch matrix
 

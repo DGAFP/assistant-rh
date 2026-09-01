@@ -1214,7 +1214,8 @@ variance attendue du juge :
 **Snapshot reproductible** : la preuve versionnée est
 [`evidence/m0a_api_parity_dev_20260901.json`](evidence/m0a_api_parity_dev_20260901.json),
 fingerprint `ead6beec5b911d1ca8578823bec7c97ea79ddb3e1f7625092d93e1b140d49896`.
-Elle enregistre le commit, la config normalisée (`51d6256b…`), les modèles et
+Elle enregistre le commit, l'empreinte de configuration du runner
+(`51d6256b…`), la config pipeline normalisée (`87ab8ddb…`), les modèles et
 fallbacks, les hashes des 36 prompts actifs en base et des 4 fallbacks locaux,
 le panel et ses 98 IDs, les résultats et la comparaison #230. Les fingerprints
 prompts base `bca512ab…`, prompts locaux `e6ad05de…`, panel `e25691b1…` et

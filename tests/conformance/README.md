@@ -58,11 +58,14 @@ Optional fields:
 ```bash
 uv run python scripts/dump_stage_baselines.py \
   --queries-file tests/conformance/queries.sample.jsonl \
-  --output-dir tests/conformance/baselines/queries-sample
+  --output-dir tests/conformance/baselines/queries-sample \
+  --replace-output-dir
 ```
 
 This generates per-query stage files (`00_input.json` → `06_generator.json`)
 plus a `manifest.json` including git SHA, config snapshot, and prompt hashes.
+Replacement is explicit and is refused unless the target already contains a
+replay manifest; otherwise choose an empty output directory.
 
 ### 0.5) Run Mastra stage conformance in replay mode (no live Python)
 

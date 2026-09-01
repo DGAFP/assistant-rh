@@ -4,7 +4,8 @@ Example:
 
   uv run python scripts/dump_stage_baselines.py \
     --queries-file tests/conformance/queries.sample.jsonl \
-    --output-dir tests/conformance/baselines/queries-sample
+    --output-dir tests/conformance/baselines/queries-sample \
+    --runtime-git-sha "$RUNTIME_GIT_SHA"
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +28,11 @@ from assistant_rh_rag_pipeline.db_helpers import get_dsn
 from assistant_rh_rag_pipeline.ministry_scope import build_retrieval_scope, known_ministry_ids
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
+
+try:
+    from scripts.parity_revision import assert_runtime_revision_compatible, get_git_sha
+except ModuleNotFoundError:  # Direct execution: python scripts/dump_stage_baselines.py
+    from parity_revision import assert_runtime_revision_compatible, get_git_sha
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROMPTS_DIR = REPO_ROOT / "packages/rag-pipeline/src/assistant_rh_rag_pipeline/prompts"
@@ -168,8 +175,9 @@ def _load_queries_from_goldset(goldset_names: list[str], limit: int | None) -> l
             cur.execute(sql, params)
             rows = cur.fetchall()
 
-    return [
-        {
+    queries = []
+    for row in rows:
+        item = {
             "id": f"goldset-{row['id']}",
             "query": row["question"],
             "conversation_history": [],
@@ -177,22 +185,9 @@ def _load_queries_from_goldset(goldset_names: list[str], limit: int | None) -> l
             "ministry": None,
             "expected": {},
         }
-        for row in rows
-    ]
-
-
-def _git_commit_sha(repo_root: Path) -> str | None:
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=repo_root,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        return None
-    return out.stdout.strip() or None
+        _assert_no_personal_data(item)
+        queries.append(item)
+    return queries
 
 
 def _hash_file(path: Path) -> str:
@@ -283,6 +278,8 @@ def _reference_run_snapshot(run_id: int) -> dict[str, Any]:
         ).fetchone()
     if row is None:
         raise RuntimeError(f"Reference eval run {run_id} does not exist")
+    if row.get("status") != "completed":
+        raise RuntimeError(f"Reference eval run {run_id} is {row.get('status')!r}, not completed")
     config = dict(row.get("config") or {})
     metadata = dict(row.get("metadata") or {})
     return {
@@ -295,6 +292,38 @@ def _reference_run_snapshot(run_id: int) -> dict[str, Any]:
         "generator_system_prompt_sha": metadata.get("generator_system_prompt_sha"),
         "eval_scope": metadata.get("eval_scope") or {},
     }
+
+
+def _prepare_output_dir(output_dir: Path, *, replace: bool) -> None:
+    if output_dir.exists() and not output_dir.is_dir():
+        raise SystemExit(f"Replay output path is not a directory: {output_dir}")
+    if output_dir.exists() and any(output_dir.iterdir()):
+        if not replace:
+            raise SystemExit(
+                f"Replay output directory is not empty: {output_dir}. "
+                "Choose an empty directory or pass --replace-output-dir for an existing replay bundle."
+            )
+        resolved_output_dir = output_dir.resolve()
+        protected_paths = {
+            Path("/").resolve(),
+            Path("/tmp").resolve(),
+            Path.home().resolve(),
+            REPO_ROOT.resolve(),
+            REPO_ROOT.parent.resolve(),
+        }
+        if resolved_output_dir in protected_paths:
+            raise SystemExit(f"Refusing to replace protected directory: {output_dir}")
+        manifest_path = output_dir / "manifest.json"
+        if not manifest_path.is_file():
+            raise SystemExit(f"Refusing to replace nonempty directory without a replay manifest: {output_dir}")
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SystemExit(f"Refusing to replace directory with an invalid replay manifest: {output_dir}") from exc
+        if not isinstance(manifest, dict) or not isinstance(manifest.get("query_count"), int):
+            raise SystemExit(f"Refusing to replace directory with an invalid replay manifest: {output_dir}")
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
 
 def _write_query_stage_files(
@@ -392,18 +421,38 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional JSONL output of the resolved query set used for this run.",
     )
-    parser.add_argument("--expected-git-sha", default="", help="Fail unless the current checkout is this exact revision.")
+    parser.add_argument(
+        "--runtime-git-sha",
+        "--expected-git-sha",
+        dest="runtime_git_sha",
+        default="",
+        help=(
+            "Git revision of the runtime being recorded. This may differ from the recorder checkout; "
+            "--expected-git-sha is retained as a compatibility alias."
+        ),
+    )
     parser.add_argument("--reference-run-id", type=int, default=None, help="Recorded live eval run linked to this replay bundle.")
     parser.add_argument("--source-environment", default="scaleway-staging", help="Non-secret label for the live recording source.")
+    parser.add_argument(
+        "--replace-output-dir",
+        action="store_true",
+        help="Replace a nonempty output directory only when it already contains a replay manifest.",
+    )
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
 
-    git_commit_sha = _git_commit_sha(REPO_ROOT)
-    if args.expected_git_sha and git_commit_sha != args.expected_git_sha:
-        raise SystemExit(f"Expected Git SHA {args.expected_git_sha}, got {git_commit_sha}")
+    try:
+        recorder_git_sha = get_git_sha(REPO_ROOT)
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        raise SystemExit(f"Cannot determine the recorder checkout Git revision: {exc}") from exc
+    runtime_git_sha = args.runtime_git_sha or recorder_git_sha
+    try:
+        assert_runtime_revision_compatible(REPO_ROOT, runtime_git_sha, recorder_git_sha)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
 
     if not args.queries_file and not args.goldset_name:
         raise SystemExit("Provide --queries-file or at least one --goldset-name")
@@ -433,15 +482,16 @@ def main() -> int:
     normalized_pipeline_config = pipe.config.to_dict()
     reference_run = _reference_run_snapshot(args.reference_run_id) if args.reference_run_id is not None else None
     if reference_run is not None:
-        if reference_run["git_sha"] != git_commit_sha:
+        if reference_run["git_sha"] != runtime_git_sha:
             raise RuntimeError(
-                f"Reference run Git SHA {reference_run['git_sha']} does not match checkout {git_commit_sha}"
+                f"Reference run Git SHA {reference_run['git_sha']} does not match declared runtime {runtime_git_sha}"
             )
         if reference_run["pipeline_config_fingerprint"] != _json_sha256(normalized_pipeline_config):
             raise RuntimeError("Reference run pipeline configuration does not match the normalized runtime configuration")
 
     output_dir: Path = args.output_dir
-    output_dir.mkdir(parents=True, exist_ok=True)
+    _prepare_output_dir(output_dir, replace=args.replace_output_dir)
+
     resolved_queries_out: Path | None = None
 
     if args.resolved_queries_out:
@@ -533,7 +583,8 @@ def main() -> int:
         "coverage_errors": coverage_errors,
         "coverage": coverage,
         "query_contract_fingerprint": _json_sha256(query_contract),
-        "git_commit_sha": git_commit_sha,
+        "git_commit_sha": runtime_git_sha,
+        "recorder_git_sha": recorder_git_sha,
         "pipeline_config": normalized_pipeline_config,
         "pipeline_config_fingerprint": _json_sha256(normalized_pipeline_config),
         "models": {

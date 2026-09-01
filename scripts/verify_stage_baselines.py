@@ -122,15 +122,27 @@ def _verify_declared_coverage(manifest: dict[str, Any], input_payloads: dict[str
 
 def _compare_actual(expected_dir: Path, actual_dir: Path, artifact_paths: list[str]) -> None:
     differences = []
+    expected_inventory = set(artifact_paths)
+    actual_inventory = {
+        path.relative_to(actual_dir).as_posix()
+        for path in actual_dir.rglob("*.json")
+        if path != actual_dir / "manifest.json"
+    }
+    missing_paths = sorted(expected_inventory - actual_inventory)
+    unexpected_paths = sorted(actual_inventory - expected_inventory)
+    differences.extend(f"missing {path}" for path in missing_paths)
+    differences.extend(f"unexpected {path}" for path in unexpected_paths)
+
     for relative_path in artifact_paths:
         expected_path = _safe_artifact_path(expected_dir, relative_path)
         actual_path = _safe_artifact_path(actual_dir, relative_path)
         if not actual_path.is_file():
-            differences.append(f"missing {relative_path}")
             continue
         expected_payload = _load_json(expected_path)
         actual_payload = _load_json(actual_path)
-        if actual_payload != expected_payload:
+        expected_json = json.dumps(expected_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        actual_json = json.dumps(actual_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        if actual_json != expected_json:
             differences.append(relative_path)
     if differences:
         raise ReplayVerificationError("Exact replay comparison failed: " + ", ".join(differences[:20]))
@@ -149,13 +161,19 @@ def verify_baseline(baseline_dir: Path, actual_dir: Path | None = None) -> dict[
     if manifest.get("errors") or manifest.get("coverage_errors") or manifest.get("failed_count"):
         raise ReplayVerificationError("Replay manifest records generation or coverage errors")
 
+    reference_run_id = manifest.get("reference_run_id")
     reference_run = manifest.get("reference_run")
-    if not isinstance(reference_run, dict) or reference_run.get("id") != manifest.get("reference_run_id"):
-        raise ReplayVerificationError("Replay manifest has no consistent live reference run")
-    if reference_run.get("git_sha") != manifest.get("git_commit_sha"):
-        raise ReplayVerificationError("Live reference run and replay bundle use different Git revisions")
-    if reference_run.get("pipeline_config_fingerprint") != manifest.get("pipeline_config_fingerprint"):
-        raise ReplayVerificationError("Live reference run and replay bundle use different pipeline configurations")
+    if reference_run_id is None and reference_run is None:
+        pass
+    elif not isinstance(reference_run, dict) or reference_run.get("id") != reference_run_id:
+        raise ReplayVerificationError("Replay manifest has an inconsistent live reference run")
+    else:
+        if reference_run.get("status") != "completed":
+            raise ReplayVerificationError("Replay manifest live reference run is not completed")
+        if reference_run.get("git_sha") != manifest.get("git_commit_sha"):
+            raise ReplayVerificationError("Live reference run and replay bundle use different Git revisions")
+        if reference_run.get("pipeline_config_fingerprint") != manifest.get("pipeline_config_fingerprint"):
+            raise ReplayVerificationError("Live reference run and replay bundle use different pipeline configurations")
 
     artifact_hashes = manifest.get("artifact_hashes")
     if not isinstance(artifact_hashes, dict) or not artifact_hashes:
