@@ -10,6 +10,7 @@ data.
 - Queries: `tests/conformance/queries.m0-api-parity.jsonl`
 - Baseline: `tests/conformance/baselines/m0-api-parity-dev-9bf1cf0/`
 - Source revision: `9bf1cf0cb92420e9e551f811edadb1d7129244b1`
+- Recorder revision: `0bd3799b74eca9260e55ac89d6ca3c189b84f73b`
 - Related live reference: M0a run `m0a_api_parity_dev_20260901_rerun1`
   (run #240; the failed partial attempt #238 is recorded in the experiment
   journal)
@@ -32,7 +33,8 @@ live in a later tooling-only commit, but it verifies that the versioned RAG
 runtime paths are unchanged from the declared source revision. It also fails
 when an observed branch differs from the fixture's declared expectation. Record
 into a fresh temporary directory so the committed reference is never
-overwritten implicitly.
+overwritten implicitly. Run it from the recorder revision pinned above, not
+from a later `dev` checkout whose runtime may have changed.
 
 ```bash
 M0B_OUTPUT_DIR="$(mktemp -d)"
