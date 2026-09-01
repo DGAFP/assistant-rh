@@ -207,8 +207,7 @@ rg -n \
   "golden_beta_judge|src/_archive|postgresql://|hf_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|print\\(os\\.environ\\[\\\"DATABASE_URL\\\"\\]\\)" \
   . \
   --glob '!uv.lock' \
-  --glob '!package-lock.json' \
-  --glob '!pnpm-lock.yaml'
+  --glob '!package-lock.json'
 
 # Secret scanner on the current tree only.
 gitleaks detect --no-git --redact

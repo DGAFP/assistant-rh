@@ -46,7 +46,7 @@ This repository is normally used as a bare/worktree workspace under `~/Code/alli
 
 ## Local setup and commands
 
-Python uses uv. The JavaScript dependency security scan uses pnpm.
+Python uses uv.
 
 ```bash
 # Install Python dependencies, including dev tools
