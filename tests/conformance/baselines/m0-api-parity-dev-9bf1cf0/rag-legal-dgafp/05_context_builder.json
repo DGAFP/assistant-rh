@@ -1,0 +1,29 @@
+{
+  "input": {
+    "selected_section_ids": [],
+    "selector_retry_triggered": false
+  },
+  "output": {
+    "context_items_ref": [
+      {
+        "section_id": "",
+        "doc_id": "LEGIARTI000006486524",
+        "heading": "",
+        "publisher": "DGAFP",
+        "tokens": 308,
+        "score": 0.9538,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "",
+        "doc_id": "LEGIARTI000006486502",
+        "heading": "",
+        "publisher": "DGAFP",
+        "tokens": 773,
+        "score": 0.8212,
+        "is_doc_entire": false
+      }
+    ],
+    "context_text_hash": "ff1ec5999b219d41fe5f8262575e59aada7d65657da4980addeb422ef7a883e1"
+  }
+}

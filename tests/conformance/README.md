@@ -16,6 +16,12 @@ The retired TypeScript candidate-specific workflows, replay cache, thresholds,
 and stage-report summarizer were removed. The Python baseline dumper and generic
 comparison runner remain available for the next API implementation.
 
+## Current hexagonal API reference
+
+The versioned M0b Python-runtime reference for the hexagonal API extraction is
+documented in [M0_REPLAYS.md](M0_REPLAYS.md). It uses strict offline replay
+verification and is independent of any candidate implementation.
+
 ## Generate Python stage baselines
 
 This command needs the configured database and model providers:
@@ -23,8 +29,13 @@ This command needs the configured database and model providers:
 ```bash
 uv run python scripts/dump_stage_baselines.py \
   --queries-file tests/conformance/queries.sample.jsonl \
-  --output-dir tests/conformance/baselines/queries-sample
+  --output-dir tests/conformance/baselines/queries-sample \
+  --replace-output-dir
 ```
+
+The recorder accepts optional `ministry` and `expected` fields in query JSONL.
+Replacement is explicit and is refused unless the target already contains a
+replay manifest; otherwise choose an empty output directory.
 
 ## Compare with an OpenAI-compatible candidate
 

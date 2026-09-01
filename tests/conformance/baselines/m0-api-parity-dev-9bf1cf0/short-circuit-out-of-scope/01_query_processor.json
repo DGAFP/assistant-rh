@@ -1,0 +1,17 @@
+{
+  "input": {
+    "query": "Quel temps fera-t-il demain à Paris ?",
+    "conversation_history": []
+  },
+  "output": {
+    "intent": "out_of_scope",
+    "theme": null,
+    "needs_legal_search": false,
+    "needs_legal_search_llm": false,
+    "should_proceed": false,
+    "processed_query": "Quel temps fera-t-il demain à Paris ?",
+    "enriched_query": "",
+    "query_for_retrieval": "Quel temps fera-t-il demain à Paris ?",
+    "search_terms": []
+  }
+}

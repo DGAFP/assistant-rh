@@ -1,0 +1,19 @@
+{
+  "id": "rag-legal-dgafp",
+  "query": "Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel en congé de maladie, maternité, paternité, adoption ou accident du travail ?",
+  "conversation_history": [],
+  "tags": [
+    "m0b",
+    "rag",
+    "legal-search",
+    "dgafp"
+  ],
+  "ministry": "matte",
+  "expected": {
+    "intent": "rag_query",
+    "should_proceed": true,
+    "needs_legal_search": true,
+    "selected_ministry": "matte",
+    "generator_used_fallback": false
+  }
+}

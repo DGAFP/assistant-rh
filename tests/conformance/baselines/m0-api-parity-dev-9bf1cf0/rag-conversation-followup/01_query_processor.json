@@ -1,0 +1,26 @@
+{
+  "input": {
+    "query": "Et quelles sont les règles lors de son renouvellement ?",
+    "conversation_history": [
+      {
+        "role": "user",
+        "content": "Je souhaite comprendre la durée d'un CDD dans la fonction publique d'État."
+      },
+      {
+        "role": "assistant",
+        "content": "Un CDD est conclu pour une durée liée au fondement du recrutement et peut être renouvelé sous conditions."
+      }
+    ]
+  },
+  "output": {
+    "intent": "rag_query",
+    "theme": "typologie_contrats",
+    "needs_legal_search": false,
+    "needs_legal_search_llm": false,
+    "should_proceed": true,
+    "processed_query": "Et quelles sont les règles lors de son renouvellement ?",
+    "enriched_query": "Quelles sont les règles de renouvellement d'un CDD dans la fonction publique d'État ?",
+    "query_for_retrieval": "Quelles sont les règles de renouvellement d'un CDD dans la fonction publique d'État ?",
+    "search_terms": []
+  }
+}

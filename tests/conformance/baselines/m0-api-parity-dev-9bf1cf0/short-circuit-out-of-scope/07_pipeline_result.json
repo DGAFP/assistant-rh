@@ -1,0 +1,11 @@
+{
+  "query": "Quel temps fera-t-il demain à Paris ?",
+  "answer": "Je suis specialise sur les questions liees aux contractuels de la fonction publique d'Etat (FPE). Puis-je vous aider sur un sujet RH (contrats, conges, remuneration, fin de contrat...) ?",
+  "sources": [],
+  "metadata": {
+    "intent": "out_of_scope",
+    "retrieval_scope": null,
+    "selected_ministry": null,
+    "scoped_table_keys": []
+  }
+}

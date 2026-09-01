@@ -1,0 +1,40 @@
+{
+  "input": {
+    "selected_section_ids": [
+      "d247a7b3-2bc1-5fff-89aa-b5ff527c611c"
+    ],
+    "selector_retry_triggered": false
+  },
+  "output": {
+    "context_items_ref": [
+      {
+        "section_id": "",
+        "doc_id": "LEGIARTI000006486578",
+        "heading": "",
+        "publisher": "DGAFP",
+        "tokens": 322,
+        "score": 0.9777,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "d247a7b3-2bc1-5fff-89aa-b5ff527c611c",
+        "doc_id": "35666bbf-7349-51e6-8809-01f29dd9968c",
+        "heading": "10. Le congé de mobilité",
+        "publisher": "Ministères sociaux",
+        "tokens": 213,
+        "score": 0.9739,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "",
+        "doc_id": "f663dfdc-71dc-4348-b61f-aeac64a4b413",
+        "heading": "Conditions d'emploi d'un contractuel dans la fonction publique",
+        "publisher": "Service-Public",
+        "tokens": 6628,
+        "score": 0.9222,
+        "is_doc_entire": true
+      }
+    ],
+    "context_text_hash": "e3db29236689ca60da43f948488d9c7c7f15b0f78d5096b1dd3ef618a4ba0917"
+  }
+}

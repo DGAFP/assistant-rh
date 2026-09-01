@@ -1155,3 +1155,96 @@ les réponses figées ou relancer l'A/B. Références juridiques contrôlées pe
 l'audit : [article 14 du décret 86-83](https://www.legifrance.gouv.fr/loda/id/JORFTEXT000000699956/2026-06-05),
 [article 49](https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000045662477)
 et [article 11-1](https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000045351577).
+
+---
+
+## Run 240 — `m0a_api_parity_dev_20260901_rerun1` (01/09/2026, terminé) — références M0a/M0b du chantier API
+
+**Objet et changements avant lancement** : figer la référence de parité avant
+l'extraction hexagonale (#439), sans aucun réglage qualité. Le code mesuré est
+la révision `dev` `9bf1cf0cb92420e9e551f811edadb1d7129244b1`. La configuration
+staging a été consommée telle quelle, sans override : intent
+`openweight-medium`/Albert, générateur `deepseek-v4-flash`/Albert avec fallback
+Scaleway `llama-3.1-70b-instruct`, sélecteur `openweight-large`/Albert,
+embeddings Albert `openweight-embeddings` avec fallback Scaleway
+`bge-multilingual-gemma2`, et prompt
+`system_prompt_persona_gestionnaire_rh.md` (SHA-256 `108979e4…`). Le champ
+legacy `system_prompt_name=system_prompt_V6_optimized_v2026-08-20.md` reste
+présent dans la ligne `rag_config`, mais n'est pas le prompt résolu par le
+runtime normalisé.
+
+**Protocole M0a** : panel tagué `baseline_v1` de **98 questions**, sélection
+cross-goldset (`--any-goldset`) et scope ministère `per-question` ; juge
+souverain Scaleway `mistral-medium-3.5-128b` en vote majoritaire à 3 ; RAGAS
+sauté ; enregistrement DB et déduplication par configuration. Le run apparié
+officiel est **#230** `candidate_persona_gestionnaire_rh_deepseek_20260824` :
+même fingerprint `51d6256b…`, même prompt, même panel et même protocole juge.
+Le run #234 est exclu car il surcharge le prompt persona v2.
+
+Le premier processus détaché **#238** s'est arrêté extérieurement après 25/98,
+sans erreur dans les items persistés ; il a été marqué `failed` et remplacé par
+le rerun propre #240. Le launcher avait aussi reçu par erreur
+`--baseline-run-id 226` : cette comparaison embarquée, qui passe, reste un
+diagnostic. La preuve officielle ci-dessous recalcule l'appariement contre
+#230 ; ce choix de référence n'affecte aucune exécution ni aucun jugement.
+
+**Résultats M0a** : 98/98, zéro erreur d'item, zéro échec juge, zéro fallback
+générateur ; 294 appels juge pour 3,2243 €.
+
+| Mesure | #240 | #230 apparié | Delta |
+|---|---:|---:|---:|
+| judge_pass (maj-3) | **0,6531** (64/98) | 0,6531 | **0** |
+| doc_recall | 0,7243 | 0,7243 | **0** |
+| hit_rate | 0,8061 | 0,8061 | **0** |
+| retrieval_gap_rate | 0,1939 | 0,1939 | **0** |
+
+La retrieval est identique dans chaque corpus. Le juge déplace un PASS de
+`synthetic` vers MATTE, sans changer le total global, ce qui matérialise la
+variance attendue du juge :
+
+| Corpus | n | judge #240 | judge #230 | hit_rate #240 | doc_recall #240 |
+|---|---:|---:|---:|---:|---:|
+| DGAFP | 2 | 1,0000 | 1,0000 | 0,5000 | 0,0349 |
+| MATTE | 12 | 0,5833 | 0,5000 | 0,9167 | 0,7907 |
+| MSO | 4 | 0,5000 | 0,5000 | 0,5000 | 0,3452 |
+| Service-Public | 14 | 0,6429 | 0,6429 | 1,0000 | 1,0000 |
+| manual | 55 | 0,6545 | 0,6545 | 0,7455 | 0,6553 |
+| synthetic | 11 | 0,7273 | 0,8182 | 0,9091 | 0,9091 |
+
+**Snapshot reproductible** : la preuve versionnée est
+[`evidence/m0a_api_parity_dev_20260901.json`](evidence/m0a_api_parity_dev_20260901.json),
+fingerprint `ead6beec5b911d1ca8578823bec7c97ea79ddb3e1f7625092d93e1b140d49896`.
+Elle enregistre le commit, l'empreinte de configuration du runner
+(`51d6256b…`), la config pipeline normalisée (`87ab8ddb…`), les modèles et
+fallbacks, les hashes des 36 prompts actifs en base et des 4 fallbacks locaux,
+le panel et ses 98 IDs, les résultats et la comparaison #230. Les fingerprints
+prompts base `bca512ab…`, prompts locaux `e6ad05de…`, panel `e25691b1…` et
+corpus `f1ebccbe…` sont restés identiques entre le snapshot intermédiaire et la
+fin du run. Le corpus figé compte 4 883 documents, 10 505 sections et les chunks
+MATTE 2 455, Service-Public 4 993, DGAFP 8 592, RGRH 324, MSO 7 617, MI 707 et
+MASA 1 216.
+
+Les questions **q214** et **q676** restent incluses sans modification malgré
+la dette connue #421 ; le panel complet et leurs empreintes individuelles sont
+dans la preuve. Un `502` Albert sur q180 a exercé l'intent par défaut et le
+fallback embeddings Scaleway ; q180 conserve néanmoins exactement les mêmes
+`doc_recall=0`, `hit_rate=0` et verdict PASS que #230. Deux réponses sélecteur
+non parseables ont exercé le fallback sûr top-5. Aucun de ces événements n'a
+produit d'erreur d'item ou de fallback générateur.
+
+**Référence M0b déterministe** : 7 fixtures synthétiques/publiques sans donnée
+personnelle, 56 artefacts d'étape/résultat, 7/7 contrats de branche validés et
+zéro fallback générateur. Le bundle
+`tests/conformance/baselines/m0-api-parity-dev-9bf1cf0/` porte le fingerprint
+`f5e9ffefe588248a352d7ac18a556df7bff6270a2879e7ddd32acc128733e02b` et
+la même config normalisée que #240. Il couvre le chemin RAG, expansion
+d'acronyme, legal-search/DGAFP, historique, scopes MATTE/MSO et les sorties
+courtes chit-chat/document/hors périmètre. Le vérificateur offline impose les
+schémas JSON, hashes, inventaire exact, garde données personnelles, couverture
+déclarée et comparaison JSON exacte. Le rejet/retry sélecteur n'a pas de
+fixture dédiée : il n'est pas produit de manière fiable par la config figée et
+ne doit pas être forcé par un réglage qualité.
+
+**Décision** : M0a et M0b sont figés comme références du chantier API. Aucune
+curation goldset ni amélioration pipeline n'a été introduite ; #421 reste une
+dette distincte à traiter hors de ce jalon.
