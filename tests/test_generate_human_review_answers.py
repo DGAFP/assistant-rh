@@ -54,21 +54,21 @@ def test_build_row_serializes_review_columns_as_json():
         sources=[{"title": "Source A"}],
         timing={"pipeline_total_ms": 12.3},
     )
-    mastra_run = PipelineRun(
-        answer="Réponse Mastra",
+    candidate_run = PipelineRun(
+        answer="Réponse candidate",
         metadata={"model": "openweight-medium"},
         sources=[],
         timing={"pipeline_total_ms": 45.6},
     )
 
-    row = build_row(question, python_run, mastra_run)
+    row = build_row(question, python_run, candidate_run)
 
     assert row["question"] == "Question ?"
     assert row["python_answer"] == "Réponse Python"
     assert json.loads(row["python_metadata_json"]) == {"intent": "rag_query"}
     assert json.loads(row["python_sources_json"]) == [{"title": "Source A"}]
-    assert row["mastra_answer"] == "Réponse Mastra"
-    assert json.loads(row["mastra_metadata_json"]) == {"model": "openweight-medium"}
+    assert row["candidate_answer"] == "Réponse candidate"
+    assert json.loads(row["candidate_metadata_json"]) == {"model": "openweight-medium"}
 
 
 def test_write_csv_outputs_human_review_columns(tmp_path: Path):
@@ -87,7 +87,7 @@ def test_write_csv_outputs_human_review_columns(tmp_path: Path):
     assert rows[0]["id"] == "q001"
     assert rows[0]["question"] == "Question ?"
     assert rows[0]["python_answer"] == "Python"
-    assert "mastra_answer" in rows[0]
+    assert "candidate_answer" in rows[0]
 
 
 def test_validate_python_provider_environment_requires_provider_urls(monkeypatch):

@@ -41,23 +41,3 @@ jobs:
           from assistant_rh_rag_pipeline.config import RAGConfig
           print('All pipeline imports OK')
           "
-
-  biome:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Biome lint & format check
-        run: pnpm exec biome check apps/mastra-pipeline/src apps/mastra-pipeline/scripts

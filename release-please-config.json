@@ -35,11 +35,6 @@
           "type": "toml",
           "path": "packages/shared-config/pyproject.toml",
           "jsonpath": "$.project.version"
-        },
-        {
-          "type": "json",
-          "path": "apps/mastra-pipeline/package.json",
-          "jsonpath": "$.version"
         }
       ]
     }

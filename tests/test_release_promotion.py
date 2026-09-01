@@ -52,9 +52,9 @@ def test_latest_runs_ignores_current_release_workflow_and_uses_latest_attempt() 
 
 @pytest.mark.parametrize("conclusion", ["failure", "cancelled", "timed_out", "action_required"])
 def test_failed_workflows_rejects_non_successful_conclusions(conclusion: str) -> None:
-    runs = {"Conformance": {"status": "completed", "conclusion": conclusion}}
+    runs = {"CI Tests": {"status": "completed", "conclusion": conclusion}}
 
-    assert release_promotion.failed_workflows(runs) == [f"Conformance ({conclusion})"]
+    assert release_promotion.failed_workflows(runs) == [f"CI Tests ({conclusion})"]
 
 
 class _FakeClient:

@@ -1,5 +1,9 @@
 # Moonrepo Monorepo Migration Plan
 
+> **Statut historique.** Ce plan préparatoire est remplacé par la configuration
+> Moon actuelle. Les références au candidat TypeScript retiré par
+> [#440](https://github.com/DGAFP/assistant-rh/issues/440) sont conservées comme trace.
+
 ## Executive Summary
 
 This document outlines a comprehensive migration strategy to restructure the assistant-rh repository into a moonrepo-managed monorepo. The migration aims to:

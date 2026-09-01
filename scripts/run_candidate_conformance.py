@@ -1,18 +1,18 @@
-"""Run conformance checks between Python v3 pipeline and Mastra candidate.
+"""Run conformance checks between the Python pipeline and an API candidate.
 
 Usage examples:
 
   # 1) Generate Python baseline snapshots only
-  uv run python scripts/run_mastra_conformance.py \
+  uv run python scripts/run_candidate_conformance.py \
     --queries-file tests/conformance/queries.sample.jsonl \
     --output tests/conformance/reports/python_baseline.json
 
-  # 2) Compare against Mastra OpenAI-compatible endpoint
-  uv run python scripts/run_mastra_conformance.py \
+  # 2) Compare against an OpenAI-compatible candidate endpoint
+  uv run python scripts/run_candidate_conformance.py \
     --queries-file tests/conformance/queries.sample.jsonl \
     --candidate-base-url http://localhost:4111 \
     --candidate-model assistant-rh \
-    --output tests/conformance/reports/python_vs_mastra.json
+    --output tests/conformance/reports/python_vs_candidate.json
 """
 
 from __future__ import annotations
@@ -228,13 +228,13 @@ def _check_thresholds(summary: dict[str, Any], thresholds: dict[str, float]) -> 
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Conformance runner for Python v3 vs Mastra candidate.")
+    parser = argparse.ArgumentParser(description="Conformance runner for the Python pipeline versus an API candidate.")
     parser.add_argument("--queries-file", type=Path, help="JSONL file of queries.")
     parser.add_argument("--goldset-name", action="append", default=[], help="goldset_questions_v2.goldset_name filter (repeatable).")
     parser.add_argument("--limit", type=int, default=None, help="Maximum number of queries to run.")
     parser.add_argument("--output", type=Path, required=True, help="Path to output report JSON.")
     parser.add_argument("--top-k", type=int, default=10, help="Top-k for overlap metrics.")
-    parser.add_argument("--candidate-base-url", type=str, default=None, help="Mastra/OpenAI-compatible base URL.")
+    parser.add_argument("--candidate-base-url", type=str, default=None, help="OpenAI-compatible candidate base URL.")
     parser.add_argument("--candidate-model", type=str, default="assistant-rh", help="Model name for /chat/completions calls.")
     parser.add_argument("--candidate-api-key", type=str, default=None, help="API key for candidate endpoint. Defaults to OPENAI_API_KEY.")
     parser.add_argument("--temperature", type=float, default=0.0, help="Candidate generation temperature.")

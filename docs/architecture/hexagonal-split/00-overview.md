@@ -35,7 +35,7 @@ Voir [06-decisions.md](06-decisions.md), organisé en architecture/contrat, migr
 
 ## Inventaire de fin de chantier
 
-**À supprimer dès A1 car mort** : `apps/mastra-pipeline` (+ scripts de conformance strictement Mastra).
+**Supprimé en A1 ([#440](https://github.com/DGAFP/assistant-rh/issues/440))** : l'ancien pipeline TypeScript, ses workflows et ses scripts de conformance dédiés.
 
 **À supprimer seulement après stabilité de la bascule** : `packages/rag-pipeline` · les modules `src/ui/chatbot_*` du chemin direct-import · l'accès DB direct de Streamlit · les flags de rollback.
 

@@ -1,4 +1,4 @@
-"""Conformance helpers for Python v3 vs Mastra candidate comparisons.
+"""Conformance helpers for Python reference versus candidate comparisons.
 
 This module is intentionally lightweight and dependency-free so it can be
 used in scripts and CI runners.
@@ -101,7 +101,7 @@ class QueryConformance:
     theme_match: bool | None
     needs_legal_search_match: bool | None
     # LLM-only comparison: Python's pre-heuristic `needs_legal_search_llm`
-    # vs Mastra's (LLM-only) `needs_legal_search`. Separates LLM agreement
+    # vs the candidate's `needs_legal_search`. Separates LLM agreement
     # from heuristic-driven divergence.
     needs_legal_search_llm_match: bool | None
     retrieval_overlap_topk: float | None
@@ -153,7 +153,7 @@ def compare_query_runs(
     ca_needs_legal = ca_meta.get("needs_legal_search")
     # End-to-end (merged) gating parity: Python's FINAL needs_legal_search
     # (LLM ∪ deterministic heuristic) vs the candidate's. Against an LLM-only
-    # candidate (Mastra has no heuristic) a mismatch here legitimately reflects
+    # candidate, a mismatch here legitimately reflects
     # heuristic-driven divergence, NOT an LLM disagreement — read
     # needs_legal_search_llm_match below to isolate whether the underlying
     # classifiers actually disagree.
