@@ -1,0 +1,18 @@
+{
+  "id": "short-circuit-out-of-scope",
+  "query": "Quel temps fera-t-il demain à Paris ?",
+  "conversation_history": [],
+  "tags": [
+    "m0b",
+    "short-circuit",
+    "out-of-scope",
+    "weather"
+  ],
+  "ministry": null,
+  "expected": {
+    "intent": "out_of_scope",
+    "should_proceed": false,
+    "needs_legal_search": false,
+    "generator_used_fallback": false
+  }
+}

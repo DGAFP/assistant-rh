@@ -1,0 +1,11 @@
+{
+  "query": "Peux-tu me donner le texte intégral du décret n°86-83 ?",
+  "answer": "Je ne suis pas en mesure de vous donner directement acces aux documents. Posez-moi plutot une question RH et je pourrai vous guider vers les bonnes sources.",
+  "sources": [],
+  "metadata": {
+    "intent": "document_request",
+    "retrieval_scope": null,
+    "selected_ministry": null,
+    "scoped_table_keys": []
+  }
+}

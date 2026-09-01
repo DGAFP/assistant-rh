@@ -1,0 +1,188 @@
+{
+  "input": {
+    "query": "Au ministère chargé des affaires sociales, un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+    "aggregated_section_ids": [
+      "",
+      "d247a7b3-2bc1-5fff-89aa-b5ff527c611c",
+      "4f3eb776-ea29-4a3d-a3ef-09b2b368b63a",
+      "cdb3dba6-e107-5e6b-998d-fcc9ec6ad60c",
+      "",
+      "a7af9751-a652-575c-b2d9-6d8937a9dc6e",
+      "",
+      "df63da32-4462-59a0-b65f-12a78243c6fb",
+      "",
+      "54209894-cef1-5c98-b813-f43ec62b44dd",
+      "fe583479-30d9-58a9-a24e-5bcb4708d057",
+      "",
+      "304531a1-46d0-537f-ac8c-4421595b7fe0",
+      "d15c16b2-9b4c-55b5-84dc-c09aec785745",
+      "7769a066-efac-58d6-85e9-a99f7dfdc5f1",
+      "e59d0f35-2aea-4357-b531-fde6697648aa",
+      "6e4e673d-db05-44f7-8e30-5751f555895c",
+      "66501190-0350-5a9a-aaa6-034db5489015",
+      "a50db88f-242f-5cf3-a452-66815dbd1f5d",
+      "46b90002-1e5e-549e-a0f0-3048ad612f75"
+    ]
+  },
+  "output": {
+    "selector_enabled": true,
+    "selector_all_rejected": false,
+    "selector_items_before": 20,
+    "selector_items_after": 4,
+    "selector_decisions": {
+      "kept": [
+        {
+          "idx": 0,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486578"
+        },
+        {
+          "idx": 1,
+          "heading": "10. Le congé de mobilité",
+          "publisher": "Ministères sociaux",
+          "section_id": "d247a7b3-2bc1-5fff-89aa-b5ff527c611c",
+          "document_id": "35666bbf-7349-51e6-8809-01f29dd9968c"
+        },
+        {
+          "idx": 2,
+          "heading": "Quelles sont les possibilités de mobilité d'un contractuel?",
+          "publisher": "Service-Public",
+          "section_id": "4f3eb776-ea29-4a3d-a3ef-09b2b368b63a",
+          "document_id": "f663dfdc-71dc-4348-b61f-aeac64a4b413"
+        },
+        {
+          "idx": 16,
+          "heading": "Mobilité sur un emploi de direction de l'État",
+          "publisher": "Service-Public",
+          "section_id": "6e4e673d-db05-44f7-8e30-5751f555895c",
+          "document_id": "f663dfdc-71dc-4348-b61f-aeac64a4b413"
+        }
+      ],
+      "removed": [
+        {
+          "idx": 3,
+          "heading": "Indemnité compensatrice de congés payés",
+          "publisher": "Ministères sociaux",
+          "section_id": "cdb3dba6-e107-5e6b-998d-fcc9ec6ad60c",
+          "document_id": "35666bbf-7349-51e6-8809-01f29dd9968c"
+        },
+        {
+          "idx": 4,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000042646047"
+        },
+        {
+          "idx": 5,
+          "heading": "5. Le congé sans rémunération",
+          "publisher": "Ministères sociaux",
+          "section_id": "a7af9751-a652-575c-b2d9-6d8937a9dc6e",
+          "document_id": "35666bbf-7349-51e6-8809-01f29dd9968c"
+        },
+        {
+          "idx": 6,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486547"
+        },
+        {
+          "idx": 7,
+          "heading": "D. La mise à disposition",
+          "publisher": "Ministères sociaux",
+          "section_id": "df63da32-4462-59a0-b65f-12a78243c6fb",
+          "document_id": "35666bbf-7349-51e6-8809-01f29dd9968c"
+        },
+        {
+          "idx": 8,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486544"
+        },
+        {
+          "idx": 9,
+          "heading": "8. Le congé de proche aidant",
+          "publisher": "Ministères sociaux",
+          "section_id": "54209894-cef1-5c98-b813-f43ec62b44dd",
+          "document_id": "35666bbf-7349-51e6-8809-01f29dd9968c"
+        },
+        {
+          "idx": 10,
+          "heading": "6. Le congé sans solde pour convenances personnelles",
+          "publisher": "Ministères sociaux",
+          "section_id": "fe583479-30d9-58a9-a24e-5bcb4708d057",
+          "document_id": "35666bbf-7349-51e6-8809-01f29dd9968c"
+        },
+        {
+          "idx": 11,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486560"
+        },
+        {
+          "idx": 12,
+          "heading": "7. Le congé de présence parentale",
+          "publisher": "Ministères sociaux",
+          "section_id": "304531a1-46d0-537f-ac8c-4421595b7fe0",
+          "document_id": "35666bbf-7349-51e6-8809-01f29dd9968c"
+        },
+        {
+          "idx": 13,
+          "heading": "À quelle condition un agent contractuel de la fonction publique d’État peut-il b",
+          "publisher": "Service-Public",
+          "section_id": "d15c16b2-9b4c-55b5-84dc-c09aec785745",
+          "document_id": "4c61818f-2ede-4148-84bb-faf69a403b89"
+        },
+        {
+          "idx": 14,
+          "heading": "4. Le congé de solidarité familiale",
+          "publisher": "Ministères sociaux",
+          "section_id": "7769a066-efac-58d6-85e9-a99f7dfdc5f1",
+          "document_id": "35666bbf-7349-51e6-8809-01f29dd9968c"
+        },
+        {
+          "idx": 15,
+          "heading": "Le contractuel a-t-il droit à une indemnité compensatrice de congés annuels lors",
+          "publisher": "Service-Public",
+          "section_id": "e59d0f35-2aea-4357-b531-fde6697648aa",
+          "document_id": "958d8571-74a7-4d5c-bb13-42fe4e3d224b"
+        },
+        {
+          "idx": 17,
+          "heading": "4. Le remboursement domicile-travail",
+          "publisher": "Ministères sociaux",
+          "section_id": "66501190-0350-5a9a-aaa6-034db5489015",
+          "document_id": "35666bbf-7349-51e6-8809-01f29dd9968c"
+        },
+        {
+          "idx": 18,
+          "heading": "Quels sont les effets du congé pour accident du travail ou maladie professionnel",
+          "publisher": "Service-Public",
+          "section_id": "a50db88f-242f-5cf3-a452-66815dbd1f5d",
+          "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+        },
+        {
+          "idx": 19,
+          "heading": "Instructions et circulaires applicables à l'embauche d'un agent contractuel",
+          "publisher": "Ministères sociaux",
+          "section_id": "46b90002-1e5e-549e-a0f0-3048ad612f75",
+          "document_id": "a471501b-3ca3-5d0b-ba8e-d23cbe8b34e3"
+        }
+      ],
+      "reason": "Ces sections décrivent le droit du contractuel à un congé de mobilité, les conditions d’éligibilité (CDI, nécessité de service, durée) et précisent le cas particulier du congé de mobilité pour un emploi de direction de l’État, répondant ainsi à la question."
+    },
+    "selector_decision": "selected",
+    "selector_retry_triggered": false,
+    "selector_retry_succeeded": false,
+    "rejection_reason": "",
+    "reason": "Ces sections décrivent le droit du contractuel à un congé de mobilité, les conditions d’éligibilité (CDI, nécessité de service, durée) et précisent le cas particulier du congé de mobilité pour un emploi de direction de l’État, répondant ainsi à la question.",
+    "selected_section_ids": [
+      "d247a7b3-2bc1-5fff-89aa-b5ff527c611c"
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-"""Dump per-stage Python baselines for Mastra parity replay.
+"""Dump per-stage Python baselines for deterministic parity replay.
 
 Example:
 
@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 from datetime import UTC, datetime
@@ -20,7 +21,9 @@ from typing import Any
 
 import psycopg
 from assistant_rh_rag_pipeline import Pipeline, create_pipeline
+from assistant_rh_rag_pipeline.admin import get_rag_config, runtime_config_to_rag_config
 from assistant_rh_rag_pipeline.db_helpers import get_dsn
+from assistant_rh_rag_pipeline.ministry_scope import build_retrieval_scope, known_ministry_ids
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
@@ -38,6 +41,53 @@ STAGE_FILE_MAPPING: list[tuple[str, str | None]] = [
     ("05_context_builder.json", "context-builder"),
     ("06_generator.json", "generator"),
 ]
+
+REPLAY_SCHEMA_VERSION = "m0-replay-v1"
+PIPELINE_METADATA_KEYS = (
+    "original_query",
+    "intent",
+    "intent_confidence",
+    "theme",
+    "was_expanded",
+    "expanded_acronyms",
+    "enriched_query",
+    "query_for_retrieval",
+    "needs_legal_search",
+    "needs_legal_search_llm",
+    "tables_searched",
+    "retrieval_scope",
+    "selected_ministry",
+    "scoped_table_keys",
+    "selector_enabled",
+    "generator_model",
+    "generator_provider",
+    "generator_provider_used",
+    "generator_fallback_count",
+    "generator_used_fallback",
+    "generator_model_used",
+    "embedding_model",
+    "retrieved_chunks",
+    "aggregated_sections",
+    "context_items_ref",
+    "selector_decisions",
+    "selector_reasoning",
+    "selector_rejection_reason",
+    "selector_items_before",
+    "selector_items_after",
+    "sections_before_rerank",
+    "sections_after_rerank",
+    "selector_all_rejected",
+    "selector_retry_triggered",
+    "selector_retry_succeeded",
+    "selector_decision",
+    "reranker_status",
+)
+
+PERSONAL_DATA_PATTERNS = {
+    "email": re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE),
+    "french_phone": re.compile(r"(?<!\d)(?:\+33|0)[1-9](?:[ .-]?\d{2}){4}(?!\d)"),
+    "nir": re.compile(r"(?<!\d)[12]\s?\d{2}\s?(?:0[1-9]|1[0-2])\s?\d{2}\s?\d{3}\s?\d{3}\s?\d{2}(?!\d)"),
+}
 
 
 def _now_iso() -> str:
@@ -75,14 +125,19 @@ def _parse_queries_file(path: Path) -> list[dict[str, Any]]:
             if not query:
                 raise ValueError(f"Missing 'query' at {path}:{idx}")
             query_id = str(obj.get("id") or f"q{len(queries) + 1}")
-            queries.append(
-                {
-                    "id": query_id,
-                    "query": query,
-                    "conversation_history": obj.get("conversation_history") or [],
-                    "tags": obj.get("tags") or [],
-                }
-            )
+            ministry = str(obj.get("ministry") or "").strip().lower()
+            if ministry and ministry not in known_ministry_ids():
+                raise ValueError(f"Unknown ministry {ministry!r} at {path}:{idx}")
+            item = {
+                "id": query_id,
+                "query": query,
+                "conversation_history": obj.get("conversation_history") or [],
+                "tags": obj.get("tags") or [],
+                "ministry": ministry or None,
+                "expected": obj.get("expected") or {},
+            }
+            _assert_no_personal_data(item)
+            queries.append(item)
     return queries
 
 
@@ -119,6 +174,8 @@ def _load_queries_from_goldset(goldset_names: list[str], limit: int | None) -> l
             "query": row["question"],
             "conversation_history": [],
             "tags": (row.get("tags") or []) + ([row.get("goldset_name")] if row.get("goldset_name") else []),
+            "ministry": None,
+            "expected": {},
         }
         for row in rows
     ]
@@ -146,6 +203,39 @@ def _hash_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _json_sha256(value: Any) -> str:
+    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _assert_no_personal_data(query_item: dict[str, Any]) -> None:
+    values = [str(query_item.get("query") or "")]
+    for message in query_item.get("conversation_history") or []:
+        if isinstance(message, dict):
+            values.append(str(message.get("content") or ""))
+    text = "\n".join(values)
+    matches = [name for name, pattern in PERSONAL_DATA_PATTERNS.items() if pattern.search(text)]
+    if matches:
+        raise ValueError(f"Fixture {query_item['id']!r} contains possible personal data: {', '.join(matches)}")
+
+
+def _stable_pipeline_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    return {key: metadata[key] for key in PIPELINE_METADATA_KEYS if key in metadata}
+
+
+def _stable_stage_payload(payload: Any) -> Any:
+    if not isinstance(payload, dict):
+        return payload
+    stable = dict(payload)
+    stage_input = stable.get("input")
+    if isinstance(stage_input, dict):
+        stable["input"] = {key: value for key, value in stage_input.items() if key != "attempts"}
+    stage_output = stable.get("output")
+    if isinstance(stage_output, dict):
+        stable["output"] = {key: value for key, value in stage_output.items() if key != "attempts"}
+    return stable
+
+
 def _prompt_hashes() -> dict[str, str]:
     if not PROMPTS_DIR.exists():
         return {}
@@ -157,6 +247,54 @@ def _prompt_hashes() -> dict[str, str]:
         hashes[prompt_path.name] = _hash_file(prompt_path)
 
     return hashes
+
+
+def _database_prompt_hashes() -> dict[str, dict[str, Any]]:
+    dsn = get_dsn()
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        rows = conn.execute(
+            """
+            SELECT name, prompt_type, content, updated_at
+            FROM system_prompts
+            WHERE is_active IS TRUE
+            ORDER BY name
+            """
+        ).fetchall()
+    return {
+        str(row["name"]): {
+            "prompt_type": row["prompt_type"],
+            "sha256": hashlib.sha256(str(row["content"] or "").encode("utf-8")).hexdigest(),
+            "updated_at": str(row["updated_at"]),
+        }
+        for row in rows
+    }
+
+
+def _reference_run_snapshot(run_id: int) -> dict[str, Any]:
+    dsn = get_dsn()
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        row = conn.execute(
+            """
+            SELECT id, status, run_label, git_sha, config_fingerprint, config, metadata
+            FROM rag_quality_eval_runs
+            WHERE id = %s
+            """,
+            (run_id,),
+        ).fetchone()
+    if row is None:
+        raise RuntimeError(f"Reference eval run {run_id} does not exist")
+    config = dict(row.get("config") or {})
+    metadata = dict(row.get("metadata") or {})
+    return {
+        "id": int(row["id"]),
+        "status": row["status"],
+        "run_label": row["run_label"],
+        "git_sha": row["git_sha"],
+        "config_fingerprint": row["config_fingerprint"],
+        "pipeline_config_fingerprint": _json_sha256(config),
+        "generator_system_prompt_sha": metadata.get("generator_system_prompt_sha"),
+        "eval_scope": metadata.get("eval_scope") or {},
+    }
 
 
 def _write_query_stage_files(
@@ -181,21 +319,55 @@ def _write_query_stage_files(
                 "query": query_item["query"],
                 "conversation_history": query_item.get("conversation_history") or [],
                 "tags": query_item.get("tags") or [],
+                "ministry": query_item.get("ministry"),
+                "expected": query_item.get("expected") or {},
             }
         else:
-            payload = stage_rows.get(stage_name) or {"input": None, "output": None}
+            payload = _stable_stage_payload(stage_rows.get(stage_name) or {"input": None, "output": None})
 
         _write_json(query_dir / filename, payload)
 
     _write_json(
         query_dir / "07_pipeline_result.json",
         {
+            "query": query_item["query"],
             "answer": run_result.get("answer", ""),
-            "timing": run_result.get("timing") or {},
             "sources": run_result.get("sources") or [],
-            "metadata": run_result.get("metadata") or {},
+            "metadata": _stable_pipeline_metadata(run_result.get("metadata") or {}),
         },
     )
+
+
+def _observed_coverage(query_item: dict[str, Any], run_result: dict[str, Any]) -> dict[str, Any]:
+    metadata = run_result.get("metadata") or {}
+    stage_trace = run_result.get("stage_trace") or {}
+    stages = stage_trace.get("stages") or {}
+    query_output = (stages.get("query-processor") or {}).get("output") or {}
+    return {
+        "id": query_item["id"],
+        "expected": query_item.get("expected") or {},
+        "observed": {
+            "intent": query_output.get("intent"),
+            "should_proceed": query_output.get("should_proceed"),
+            "needs_legal_search": query_output.get("needs_legal_search"),
+            "selector_decision": metadata.get("selector_decision", "not_run"),
+            "selector_retry_triggered": bool(metadata.get("selector_retry_triggered", False)),
+            "selector_retry_succeeded": bool(metadata.get("selector_retry_succeeded", False)),
+            "selected_ministry": metadata.get("selected_ministry"),
+            "tables_searched": metadata.get("tables_searched") or [],
+            "generator_used_fallback": bool(metadata.get("generator_used_fallback", False)),
+        },
+    }
+
+
+def _validate_expected_coverage(coverage: dict[str, Any]) -> list[str]:
+    expected = coverage.get("expected") or {}
+    observed = coverage.get("observed") or {}
+    errors = []
+    for key, expected_value in expected.items():
+        if observed.get(key) != expected_value:
+            errors.append(f"{coverage['id']}: expected {key}={expected_value!r}, got {observed.get(key)!r}")
+    return errors
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -220,11 +392,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional JSONL output of the resolved query set used for this run.",
     )
+    parser.add_argument("--expected-git-sha", default="", help="Fail unless the current checkout is this exact revision.")
+    parser.add_argument("--reference-run-id", type=int, default=None, help="Recorded live eval run linked to this replay bundle.")
+    parser.add_argument("--source-environment", default="scaleway-staging", help="Non-secret label for the live recording source.")
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
+
+    git_commit_sha = _git_commit_sha(REPO_ROOT)
+    if args.expected_git_sha and git_commit_sha != args.expected_git_sha:
+        raise SystemExit(f"Expected Git SHA {args.expected_git_sha}, got {git_commit_sha}")
 
     if not args.queries_file and not args.goldset_name:
         raise SystemExit("Provide --queries-file or at least one --goldset-name")
@@ -242,11 +421,25 @@ def main() -> int:
         raise SystemExit("No queries loaded")
 
     try:
-        _ = get_dsn()
+        dsn = get_dsn()
     except Exception as exc:  # pragma: no cover - environment-dependent
         raise SystemExit(f"Baseline dump requires DB DSN configuration: {exc}") from exc
 
-    pipe: Pipeline = create_pipeline()
+    # Record the exact runtime configuration used by Streamlit and the live
+    # evaluation runner. ``create_pipeline()`` alone would silently use the
+    # package defaults, which are not a valid parity reference for staging.
+    pipeline_config = runtime_config_to_rag_config(get_rag_config())
+    pipe: Pipeline = create_pipeline(config=pipeline_config, dsn=dsn)
+    normalized_pipeline_config = pipe.config.to_dict()
+    reference_run = _reference_run_snapshot(args.reference_run_id) if args.reference_run_id is not None else None
+    if reference_run is not None:
+        if reference_run["git_sha"] != git_commit_sha:
+            raise RuntimeError(
+                f"Reference run Git SHA {reference_run['git_sha']} does not match checkout {git_commit_sha}"
+            )
+        if reference_run["pipeline_config_fingerprint"] != _json_sha256(normalized_pipeline_config):
+            raise RuntimeError("Reference run pipeline configuration does not match the normalized runtime configuration")
+
     output_dir: Path = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     resolved_queries_out: Path | None = None
@@ -261,21 +454,26 @@ def main() -> int:
                 "query": item["query"],
                 "conversation_history": item.get("conversation_history") or [],
                 "tags": item.get("tags") or [],
+                "ministry": item.get("ministry"),
+                "expected": item.get("expected") or {},
             }
             for item in queries
         ]
         _write_jsonl(resolved_queries_out, resolved_rows)
 
     errors: list[dict[str, str]] = []
+    coverage: list[dict[str, Any]] = []
     succeeded = 0
 
     for item in queries:
         query_id = str(item["id"])
         query = str(item["query"])
         history = item.get("conversation_history") or []
+        ministry = item.get("ministry")
+        retrieval_scope = build_retrieval_scope(ministry) if ministry else None
 
         try:
-            result = pipe.run_with_trace(query, conversation_history=history)
+            result = pipe.run_with_trace(query, conversation_history=history, retrieval_scope=retrieval_scope)
             run_result = {
                 "answer": result.answer,
                 "timing": result.timing,
@@ -288,6 +486,7 @@ def main() -> int:
                 run_result=run_result,
                 output_dir=output_dir,
             )
+            coverage.append(_observed_coverage(item, run_result))
             succeeded += 1
         except Exception as exc:  # pragma: no cover - defensive path
             err = {"id": query_id, "query": query, "error": str(exc)}
@@ -295,22 +494,69 @@ def main() -> int:
             if args.fail_fast:
                 break
 
+    coverage_errors = [error for item in coverage for error in _validate_expected_coverage(item)]
+
+    artifact_hashes: dict[str, str] = {}
+    for item in queries:
+        query_dir = output_dir / _safe_slug(str(item["id"]))
+        for filename, _stage_name in STAGE_FILE_MAPPING:
+            path = query_dir / filename
+            if path.exists():
+                artifact_hashes[path.relative_to(output_dir).as_posix()] = _hash_file(path)
+        result_path = query_dir / "07_pipeline_result.json"
+        if result_path.exists():
+            artifact_hashes[result_path.relative_to(output_dir).as_posix()] = _hash_file(result_path)
+
+    query_contract = [
+        {
+            "id": item["id"],
+            "query": item["query"],
+            "conversation_history": item.get("conversation_history") or [],
+            "tags": item.get("tags") or [],
+            "ministry": item.get("ministry"),
+            "expected": item.get("expected") or {},
+        }
+        for item in queries
+    ]
+    database_prompt_hashes = _database_prompt_hashes()
+
     manifest = {
+        "schema_version": REPLAY_SCHEMA_VERSION,
         "generated_at": _now_iso(),
+        "source_environment": args.source_environment,
+        "reference_run_id": args.reference_run_id,
+        "reference_run": reference_run,
         "query_count": len(queries),
         "succeeded_count": succeeded,
         "failed_count": len(errors),
         "errors": errors,
-        "git_commit_sha": _git_commit_sha(REPO_ROOT),
-        "pipeline_config": pipe.config.to_dict(),
+        "coverage_errors": coverage_errors,
+        "coverage": coverage,
+        "query_contract_fingerprint": _json_sha256(query_contract),
+        "git_commit_sha": git_commit_sha,
+        "pipeline_config": normalized_pipeline_config,
+        "pipeline_config_fingerprint": _json_sha256(normalized_pipeline_config),
         "models": {
             "intent_model": pipe.config.query_processor.intent_model,
+            "intent_provider": "albert",
             "generation_model": pipe.config.generation.model,
             "generation_provider": pipe.config.generation.provider.value,
+            "generation_fallback_model": pipe.config.generation.fallback_model,
+            "generation_fallback_provider": pipe.config.generation.fallback_provider.value,
+            "selector_model": pipe.config.selector.model,
+            "selector_provider": pipe.config.selector.provider.value,
             "embedding_model": pipe.config.retrieval.embedding_model.value,
+            "embedding_primary_model": os.getenv("ALBERT_EMBED_MODEL", "openweight-embeddings"),
+            "embedding_fallback": "bge_scaleway",
+            "embedding_fallback_model": "bge-multilingual-gemma2",
         },
         "prompt_hashes": _prompt_hashes(),
+        "database_prompt_hashes": database_prompt_hashes,
+        "database_prompt_fingerprint": _json_sha256(database_prompt_hashes),
+        "artifact_hashes": dict(sorted(artifact_hashes.items())),
     }
+    replay_fingerprint_payload = {key: value for key, value in manifest.items() if key not in {"generated_at", "replay_fingerprint"}}
+    manifest["replay_fingerprint"] = _json_sha256(replay_fingerprint_payload)
     _write_json(output_dir / "manifest.json", manifest)
 
     print(
@@ -328,7 +574,7 @@ def main() -> int:
         )
     )
 
-    return 1 if errors else 0
+    return 1 if errors or coverage_errors else 0
 
 
 if __name__ == "__main__":

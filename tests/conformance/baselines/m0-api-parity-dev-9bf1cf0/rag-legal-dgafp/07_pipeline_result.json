@@ -1,0 +1,1828 @@
+{
+  "query": "Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel en congé de maladie, maternité, paternité, adoption ou accident du travail ?",
+  "answer": "D'après l'article 2 du décret n° 86-83 du 17 janvier 1986, l'administration est subrogée à l'agent contractuel dans ses droits aux indemnités journalières (maladie, maternité, paternité, adoption, accidents du travail et maladies professionnelles, temps partiel pour raison thérapeutique) lorsque la rémunération maintenue durant les congés prévus aux articles 11-1 à 15 est **au moins égale au montant des indemnités journalières**.\n\nEn pratique, cette subrogation s'applique donc lorsque l'administration maintient tout ou partie du traitement de l'agent pendant son congé, et que ce maintien atteint ou dépasse le montant des indemnités journalières versées par la sécurité sociale. Dans ce cas, l'administration perçoit directement ces indemnités en lieu et place de l'agent.",
+  "sources": [
+    {
+      "heading": "",
+      "publisher": "DGAFP",
+      "document_title": "",
+      "document_url": "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000045662715",
+      "score": 0.95379424
+    }
+  ],
+  "metadata": {
+    "original_query": "Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel en congé de maladie, maternité, paternité, adoption ou accident du travail ?",
+    "intent": "rag_query",
+    "intent_confidence": 0.95,
+    "theme": "conges",
+    "was_expanded": false,
+    "expanded_acronyms": [],
+    "enriched_query": "",
+    "query_for_retrieval": "Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel en congé de maladie, maternité, paternité, adoption ou accident du travail ?",
+    "needs_legal_search": true,
+    "needs_legal_search_llm": false,
+    "tables_searched": [
+      "matte",
+      "service_public",
+      "dgafp"
+    ],
+    "retrieval_scope": {
+      "selected_ministry": "matte",
+      "table_keys": [
+        "matte",
+        "service_public",
+        "dgafp"
+      ]
+    },
+    "selected_ministry": "matte",
+    "scoped_table_keys": [
+      "matte",
+      "service_public",
+      "dgafp"
+    ],
+    "selector_enabled": true,
+    "generator_model": "deepseek-v4-flash",
+    "generator_provider": "albert",
+    "generator_provider_used": "albert",
+    "generator_fallback_count": 0,
+    "generator_used_fallback": false,
+    "generator_model_used": "deepseek-v4-flash",
+    "embedding_model": "albert",
+    "retrieved_chunks": [
+      {
+        "chunk_id": "eb783c01538e161658103733a430e7943825225e",
+        "table": "Service-Public",
+        "score": 0.3768,
+        "section_id": "ab83d951-a9e0-58fb-8b7a-af766fdc4785",
+        "preview": "Quelles sont les obligations de l’agent contractuel pendant un congé pour accident du travail ou maladie professionnelle?",
+        "retrieval_path": "chunk+heading",
+        "heading_search": true,
+        "heading_match_score": 0.498235294117647
+      },
+      {
+        "chunk_id": "47c40df9de36913b790e339e9ca97563322d5613",
+        "table": "Service-Public",
+        "score": 0.3762,
+        "section_id": "85b1bca6-97b9-5113-943a-83f7dff2b6e8",
+        "preview": "Dans quel cas le contractuel est-il placé en congé pour accident du travail ou maladie professionnelle?",
+        "retrieval_path": "chunk+heading",
+        "heading_search": true,
+        "heading_match_score": 0.498235294117647
+      },
+      {
+        "chunk_id": "e3f2cdd970aeb1bbe16300c715cd1e5b7066fd74",
+        "table": "MATTE",
+        "score": 0.3757,
+        "section_id": "f5684ffe-e918-5be5-8f7a-141ecbd0b6f7",
+        "preview": "Q: Quelle est la durée du marché attribué à Alan ? R: [PAGE 11] Dans le cas du décès/de la disparition de l'agent (actif ou retraité), le conjoint survivant et/ou l'enfant orphelin, conserve, à sa demande, la qualité de bénéficiaire ayan...",
+        "retrieval_path": "chunk+heading",
+        "heading_search": true,
+        "heading_match_score": 0.1595294117647059
+      },
+      {
+        "chunk_id": "14a1895bdf6a8ac9db971cb013865d7c47048ee9",
+        "table": "Service-Public",
+        "score": 0.3711,
+        "section_id": "a50db88f-242f-5cf3-a452-66815dbd1f5d",
+        "preview": "Quels sont les effets du congé pour accident du travail ou maladie professionnelle sur la situation administrative de l’agent contractuel?",
+        "retrieval_path": "chunk+heading",
+        "heading_search": true,
+        "heading_match_score": 0.47914438502673795
+      },
+      {
+        "chunk_id": "fb26a76a03b3513b07726d5a9b9a8761a1767099",
+        "table": "MATTE",
+        "score": 0.3489,
+        "section_id": "f5684ffe-e918-5be5-8f7a-141ecbd0b6f7",
+        "preview": "Q: Quelle est la durée du marché attribué à Alan ? R: Cas du stagiaire : si le stagiaire est employé et rémunéré, alors il a obligation de rejoindre le dispositif. Seuls les stagiaires touchant une gratification sont hors du périmètre. C...",
+        "retrieval_path": "chunk+heading",
+        "heading_search": true,
+        "heading_match_score": 0.1595294117647059
+      },
+      {
+        "chunk_id": "7efe267ed2fc43e53e07825646f846ea9da1aa91",
+        "table": "Service-Public",
+        "score": 0.3161,
+        "section_id": "201d2601-9695-56c7-b235-312bfabca940",
+        "preview": "Quels sont les effets du congé d'adoption sur la situation administrative de l'agent contractuel?",
+        "retrieval_path": "chunk+heading",
+        "heading_search": true,
+        "heading_match_score": 0.3361344537815126
+      },
+      {
+        "chunk_id": "7032d64389f54277db0e1e04bb5fcf9ac42437cc",
+        "table": "Service-Public",
+        "score": 0.2843,
+        "section_id": "21731610-d322-59ac-b07c-82ef1a4736cf",
+        "preview": "Quels sont les effets du congé de maladie sur la situation administrative du contractuel?",
+        "retrieval_path": "chunk+heading",
+        "heading_search": true,
+        "heading_match_score": 0.2735294117647059
+      },
+      {
+        "chunk_id": "2e63e2a4db2ecfc28a5340576bdba5b13b68f967",
+        "table": "Service-Public",
+        "score": 0.2,
+        "section_id": "ab83d951-a9e0-58fb-8b7a-af766fdc4785",
+        "preview": "Q: Quelles sont les obligations de l’agent contractuel pendant un congé pour accident du travail ou maladie professionnelle? R: Ce contrôle porte sur votre présence à votre domicile, ou à votre lieu de repos s'il est différent, lorsque l...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.498235294117647
+      },
+      {
+        "chunk_id": "4e38edd22aa670378fff5a788f38b85116561d8f",
+        "table": "MATTE",
+        "score": 0.2,
+        "section_id": "f5684ffe-e918-5be5-8f7a-141ecbd0b6f7",
+        "preview": "Q: Quelle est la durée du marché attribué à Alan ? R: Alan a été sélectionné pour déployer une couverture santé collective à adhésion obligatoire pour six ans, jusqu'en 2031 (inclus). Qu'en est-il des garanties associées à un arrêt malad...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1595294117647059
+      },
+      {
+        "chunk_id": "LEGIARTI000006486547_r2s",
+        "table": "DGAFP",
+        "score": 0.2,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre V : Congés non rémunérés pour raisons familiales ou personnelles Article 20 bis I.-L'agent contractuel bénéficie, s...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "66f4f6fb15534f6441e566cced138c84f5defcec",
+        "table": "MATTE",
+        "score": 0.2,
+        "section_id": "08c595b2-46dd-5bcd-8319-b47c9c30b1e6",
+        "preview": "Q: Quel contrat choisir et pour quelle durée selon la situation ? R: Si la continuité du service l'exige, il est possible, à condition de disposer des ETPT, de recruter des agents contractuels pour assurer le remplacement momentané d'age...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "548e67b02791fb1654964a93f3b5863fac6a1aef",
+        "table": "MATTE",
+        "score": 0.1968,
+        "section_id": "f5684ffe-e918-5be5-8f7a-141ecbd0b6f7",
+        "preview": "Q: Quelle est la durée du marché attribué à Alan ? R: Alan a été sélectionné pour déployer une couverture santé collective à adhésion obligatoire pour six ans, jusqu'en 2031 (inclus). Qu'en est-il des garanties associées à un arrêt malad...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1595294117647059
+      },
+      {
+        "chunk_id": "LEGIARTI000006486502_0",
+        "table": "DGAFP",
+        "score": 0.1968,
+        "section_id": "",
+        "preview": "Décret n°86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents non titulaires de l'Etat pris pour l'application de l'article 7 de la loi n° 84-16 du 11 janvier 1984 portant dispositions statutaires relatives ...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "9e36c3c7e379105aa47482a4d765b839b804ea27",
+        "table": "MATTE",
+        "score": 0.1968,
+        "section_id": "00d101c1-2c20-5bb2-80da-62cc24166afb",
+        "preview": "Q: Article 2 R: Les agents non titulaires de droit public employés à durée indéterminée relevant de catégories assimilables aux corps cités à l'alinéa précédent et exerçant des fonctions équivalentes peuvent bénéficier d'une indemnité d'...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "623af189092928e2d7d900b1840200b09e9d8722",
+        "table": "Service-Public",
+        "score": 0.1937,
+        "section_id": "ab83d951-a9e0-58fb-8b7a-af766fdc4785",
+        "preview": "Q: Quelles sont les obligations de l’agent contractuel pendant un congé pour accident du travail ou maladie professionnelle? R: Pendant votre congé pour accident du travail ou maladie professionnelle, votre administration employeur peut ...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.498235294117647
+      },
+      {
+        "chunk_id": "5669f489b073343147ad763e2bb2872705cdec4d",
+        "table": "MATTE",
+        "score": 0.1937,
+        "section_id": "f5684ffe-e918-5be5-8f7a-141ecbd0b6f7",
+        "preview": "Quelle est la durée du marché attribué à Alan ?",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1595294117647059
+      },
+      {
+        "chunk_id": "LEGIARTI000006486531_r2s",
+        "table": "DGAFP",
+        "score": 0.1937,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre IV : Congés pour raison de santé > Titre IV : Temps partiel pour raison thérapeutique et congés pour raison de sant...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "322f2a2e00ccbb52ff9fe558e139f2d429583716",
+        "table": "Service-Public",
+        "score": 0.1937,
+        "section_id": "22232d60-192c-4755-945e-9cb5a880d59b",
+        "preview": "Dans quels cas les autorisations d'absence pour soins ou garde d'enfant sont-elles accordées à un agent public?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "8533ed3b7e0ba2e0f5338dcdbc15ee1a43bf3f22",
+        "table": "Service-Public",
+        "score": 0.1906,
+        "section_id": "85b1bca6-97b9-5113-943a-83f7dff2b6e8",
+        "preview": "Q: Dans quel cas le contractuel est-il placé en congé pour accident du travail ou maladie professionnelle? R: Lorsque vous êtes en activité, vous bénéficiez, en cas d' [accident du travail](F178) ou de [maladie professionnelle](F31880), ...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.498235294117647
+      },
+      {
+        "chunk_id": "5ce4d4b69d4e31fe345f4269d5f02ded28d88a36",
+        "table": "MATTE",
+        "score": 0.1906,
+        "section_id": "f5684ffe-e918-5be5-8f7a-141ecbd0b6f7",
+        "preview": "Q: Quelle est la durée du marché attribué à Alan ? R: Si mon conjoint travaille également au MTECT, doit-il s'affilier directement ou bien doit-il se dispenser afin que je le déclare en ayant droit ? Si vous et votre conjoint travaillez ...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1595294117647059
+      },
+      {
+        "chunk_id": "LEGIARTI000006486538_0",
+        "table": "DGAFP",
+        "score": 0.1906,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre V : Congés non rémunérés pour raisons familiales ou personnelles Article 19 I. - L'agent contractuel qui justifie d...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "aba19bb32da6edf6ff57631f8bc13c3af129fa24",
+        "table": "MATTE",
+        "score": 0.1906,
+        "section_id": "7e4cf875-781e-5a9f-83e2-1b43d69d9603",
+        "preview": "Q: Quand dois-je résilier mon contrat santé actuel ? R: Je suis en Position Normale d'Activité (PNA) au MTECT et je viens d'un autre Ministère. L'adhésion obligatoire s'applique-t-elle à moi également ? Si vous êtes en position normale d...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "5b22742aff35bb16be467c385439ce9ad9ed4ca6",
+        "table": "Service-Public",
+        "score": 0.1906,
+        "section_id": "0b13ad4c-c491-4cd2-b19c-ceb4c1147fc9",
+        "preview": "L'agent a-t-il droit à une indemnité compensatrice de congés annuels?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "8b9b74779a90b20fbfbc54262f78ff6f3f9c454b",
+        "table": "Service-Public",
+        "score": 0.1877,
+        "section_id": "dbb20567-1b53-5e9d-8778-cb9c2f7db111",
+        "preview": "## Quelle est la situation de l’agent contractuel à la fin du congé pour accident du travail ou maladie professionnelle? ### Aptitude à la reprise des fonctions Si vous êtes apte à reprendre vos fonctions à la fin de votre congé pour acc...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.498235294117647
+      },
+      {
+        "chunk_id": "b598eff3ecb88a3b21b8786b8d02aebb494d535e",
+        "table": "MATTE",
+        "score": 0.1877,
+        "section_id": "f5684ffe-e918-5be5-8f7a-141ecbd0b6f7",
+        "preview": "Q: Quelle est la durée du marché attribué à Alan ? R: [PAGE 9] Au 1er janvier 2025, vous serez couvert par le contrat santé d'Alan (hors cas de dispense). Pour la prévoyance, vous pourrez renouveler votre couverture actuelle ou basculer ...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1595294117647059
+      },
+      {
+        "chunk_id": "LEGIARTI000006486527_0",
+        "table": "DGAFP",
+        "score": 0.1877,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre IV : Congés pour raison de santé > Titre IV : Temps partiel pour raison thérapeutique et congés pour raison de sant...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "3880bfdb64289e4e54787277efd3bdc7b85d22a7",
+        "table": "MATTE",
+        "score": 0.1877,
+        "section_id": "77af7a0b-96ad-5187-9573-ca53910640cf",
+        "preview": "Q: V- L'indemnité de fin de contrat R: [PAGE 7] Recrutement et gestion des agents contractuels relevant du ministère de la transition écologique et de la cohésion des territoires et du secrétariat d'Etat chargé de la mer et de la biodive...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "c176edc7be132bf76caeb0be6c17616a9d8a2eb2",
+        "table": "Service-Public",
+        "score": 0.1877,
+        "section_id": "0b13ad4c-c491-4cd2-b19c-ceb4c1147fc9",
+        "preview": "L'agent a-t-il droit à une indemnité compensatrice de congés annuels?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "92670e0a528704f893feb463750ac74adab3de4c",
+        "table": "Service-Public",
+        "score": 0.1848,
+        "section_id": "85b1bca6-97b9-5113-943a-83f7dff2b6e8",
+        "preview": "Q: Dans quel cas le contractuel est-il placé en congé pour accident du travail ou maladie professionnelle? R: Lorsque vous êtes en activité, vous bénéficiez, en cas d' [accident du travail](F178) ou de [maladie professionnelle](F31880), ...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.498235294117647
+      },
+      {
+        "chunk_id": "db999308498989ada7d72fb307b6fc66ed2a22fc",
+        "table": "MATTE",
+        "score": 0.1848,
+        "section_id": "f5684ffe-e918-5be5-8f7a-141ecbd0b6f7",
+        "preview": "Q: Quelle est la durée du marché attribué à Alan ? R: - le conjoint (non divorcé ou non séparé de corps) de l'agent (actif ou retraité) ; - la personne liée par un PACS à l'agent (actif ou retraité) ; - la personne vivant en concubinage ...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1595294117647059
+      },
+      {
+        "chunk_id": "LEGIARTI000006486594_r2s",
+        "table": "DGAFP",
+        "score": 0.1848,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre IX : Travail à temps partiel Article 40 Les services à temps partiel sont assimilés à des services à temps plein po...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "2f630d25122e28906f09c056ce04e9d66938ada7",
+        "table": "MATTE",
+        "score": 0.1848,
+        "section_id": "9a5c9221-b97c-5e9e-ad24-6939cd3c8b16",
+        "preview": "Q: Titre II : MODALITÉS DE COMPENSATION OU DE RÉMUNÉRATION DES INTERVENTIONS EFFECTUÉES SOUS ASTREINTE (Articles 4 à 6) R: Article 4 Les interventions effectuées à l'occasion d'une période d'astreinte peuvent donner lieu à une compensati...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "cb68bf2d10593eca949b4bca8fe9bc3f390b104a",
+        "table": "Service-Public",
+        "score": 0.1848,
+        "section_id": "0b13ad4c-c491-4cd2-b19c-ceb4c1147fc9",
+        "preview": "L'agent a-t-il droit à une indemnité compensatrice de congés annuels?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "927aaa87331a0deb51f26d6270ba500502e4f371",
+        "table": "Service-Public",
+        "score": 0.1821,
+        "section_id": "ab83d951-a9e0-58fb-8b7a-af766fdc4785",
+        "preview": "Q: Quelles sont les obligations de l’agent contractuel pendant un congé pour accident du travail ou maladie professionnelle? R: Pendant votre congé pour accident du travail ou maladie professionnelle, votre administration employeur peut ...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.498235294117647
+      },
+      {
+        "chunk_id": "LEGIARTI000006486524_0",
+        "table": "DGAFP",
+        "score": 0.1821,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre IV : Congés pour raison de santé > Titre IV : Temps partiel pour raison thérapeutique et congés pour raison de sant...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "392825521bdf0141e22c17116c9291b74d2086d1",
+        "table": "MATTE",
+        "score": 0.1821,
+        "section_id": "9a5c9221-b97c-5e9e-ad24-6939cd3c8b16",
+        "preview": "Q: Titre II : MODALITÉS DE COMPENSATION OU DE RÉMUNÉRATION DES INTERVENTIONS EFFECTUÉES SOUS ASTREINTE (Articles 4 à 6) R: Article 4 Les interventions effectuées à l'occasion d'une période d'astreinte peuvent donner lieu à une compensati...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "2f992cd63805470e33d7a5af154df53e8ee08660",
+        "table": "Service-Public",
+        "score": 0.1821,
+        "section_id": "6123dd92-f5df-4e7a-80fc-77689f38c6c0",
+        "preview": "Comment sont accordées les autorisations d'absence pour soins ou garde d'enfant à un agent public?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "da717e85b3273edfc5dde6b32e5df167731c855f",
+        "table": "Service-Public",
+        "score": 0.1794,
+        "section_id": "dbb20567-1b53-5e9d-8778-cb9c2f7db111",
+        "preview": "Votre demande de reclassement est examinée si vous avez été recruté sur un emploi permanent en CDI ou, en CDD si la fin de votre CDD est postérieure à la date de votre demande de reclassement. L'emploi de reclassement est alors proposé p...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.498235294117647
+      },
+      {
+        "chunk_id": "LEGIARTI000006486535_0",
+        "table": "DGAFP",
+        "score": 0.1794,
+        "section_id": "",
+        "preview": "Décret n°86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents non titulaires de l'Etat pris pour l'application de l'article 7 de la loi n° 84-16 du 11 janvier 1984 portant dispositions statutaires relatives ...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "b9b0f68814ca28d99f620f36c23d3b9d251ff97b",
+        "table": "MATTE",
+        "score": 0.1794,
+        "section_id": "59215662-a968-5c51-a92b-2983cd68eabe",
+        "preview": "Q: TITRE Ier : DISPOSITIONS APPLICABLES AUX ACTIVITÉS RELEVANT D'UNE ORGANISATION DU TRAVAIL PROGRAMMÉE. (Articles 1 à 2) R: En contrepartie des sujétions qui leur sont imposées, les agents qui exercent les activités mentionnées à l'arti...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "20a259afdecbbcc7c85d9f1d6a2ce321267aa2e1",
+        "table": "MATTE",
+        "score": 0.1768,
+        "section_id": "90c633a0-c440-53e5-9734-d50c6e46331e",
+        "preview": "Q: Quels agents sont concernés par l'adhésion obligatoire à la PSC santé ? R: Vous pouvez souscrire à l'une des trois options disponibles en plus des garanties de base afin d'améliorer vos garanties de santé. Quelques points importants à...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1568627450980392
+      },
+      {
+        "chunk_id": "LEGIARTI000041655878_r2s",
+        "table": "DGAFP",
+        "score": 0.1768,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat pris pour l'application des articles 7 et 7 bis de la loi n° 84-16 du 11 janvier 1984 portant dispositions statutaires re...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "73eefc034e980b2b682ea595f3b7b67ed408779f",
+        "table": "MATTE",
+        "score": 0.1768,
+        "section_id": "77af7a0b-96ad-5187-9573-ca53910640cf",
+        "preview": "Q: V- L'indemnité de fin de contrat R: [PAGE 7] Recrutement et gestion des agents contractuels relevant du ministère de la transition écologique et de la cohésion des territoires et du secrétariat d'Etat chargé de la mer et de la biodive...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "cbfb1aff23ba457ab8c1ef67feb3157e810d5d1e",
+        "table": "Service-Public",
+        "score": 0.1768,
+        "section_id": "ba06ea73-f764-5fe0-8da3-4ce232397929",
+        "preview": "Le contractuel a-t-il droit à une indemnité compensatrice de congés annuels?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "2eda886111f7ffbf97cef722f2eeafe7e136a329",
+        "table": "MATTE",
+        "score": 0.1743,
+        "section_id": "626d4e4e-4b95-54d3-920f-54b955f573dd",
+        "preview": "Q: Comment vais-je payer ma cotisation ? R: La part des cotisations de base à la charge de l'agent sera prélevée sur le salaire. Les cotisations relatives aux ayants droit, aux options et aux garanties de base pour les agents sans rémuné...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1568627450980392
+      },
+      {
+        "chunk_id": "LEGIARTI000006486581_0",
+        "table": "DGAFP",
+        "score": 0.1743,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre IX : Travail à temps partiel Article 34 bis L'autorisation d'accomplir un service à temps partiel selon les quotité...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "b32f08a8bef48b3c01060efa185eb0b193adcf90",
+        "table": "MATTE",
+        "score": 0.1743,
+        "section_id": "27de9855-12a1-53ad-84f2-e47b713412c4",
+        "preview": "Q: 2. Caractère forfaitaire de l'indemnité de sujétions horaires R: D'autre part, certains agents affectés habituellement dans une unité pratiquant un horaire régulier peuvent être conduits occasionnellement à remplacer des agents absent...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "1ae905e41ccf4bb4e1b48257c50a24bdecac4df7",
+        "table": "Service-Public",
+        "score": 0.1718,
+        "section_id": "a50db88f-242f-5cf3-a452-66815dbd1f5d",
+        "preview": "Q: Quels sont les effets du congé pour accident du travail ou maladie professionnelle sur la situation administrative de l’agent contractuel? R: Si vous ne pouvez pas bénéficier de vos congés annuels en raison d’un congé pour accident du...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.47914438502673795
+      },
+      {
+        "chunk_id": "32655afc2e036a767b1a21d9094b34c0b390e3ea",
+        "table": "MATTE",
+        "score": 0.1718,
+        "section_id": "90c633a0-c440-53e5-9734-d50c6e46331e",
+        "preview": "Q: Quels agents sont concernés par l'adhésion obligatoire à la PSC santé ? R: Il est toutefois possible de souscrire à une option offrant des garanties supérieures avant la fin de cette période d'engagement minimale de 12 mois. En revanc...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1568627450980392
+      },
+      {
+        "chunk_id": "JORFARTI000045641254_0",
+        "table": "DGAFP",
+        "score": 0.1718,
+        "section_id": "",
+        "preview": "Décret n° 2022-633 du 22 avril 2022 relatif à la protection sociale complémentaire en matière de couverture des frais occasionnés par une maternité, une maladie ou un accident dans la fonction publique de l'Etat Chapitre Ier : Champ d'ap...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "d3a128c584a239455a65da508f3b6cac58f0243f",
+        "table": "MATTE",
+        "score": 0.1718,
+        "section_id": "00d101c1-2c20-5bb2-80da-62cc24166afb",
+        "preview": "Q: Article 2 R: Modifié par Décret n°2024-564 du 19 juin 2024 - art. 4 Un arrêté conjoint des ministres chargés du développement durable, du budget et de la fonction publique fixe les montants de l'indemnité d'astreinte et précise les ac...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "d943739ac6d503b7be26791a2ab61dec1906422c",
+        "table": "Service-Public",
+        "score": 0.1718,
+        "section_id": "423e5ff0-9941-4fa9-9bbf-ff96170f7cf0",
+        "preview": "Le contractuel a-t-il droit à une indemnité compensatrice de congés annuels en cas de licenciement pour suppression de son emploi?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "7d3dc9bf74c1453f0bed0d8f0abeb8d5c2f04126",
+        "table": "Service-Public",
+        "score": 0.1694,
+        "section_id": "a50db88f-242f-5cf3-a452-66815dbd1f5d",
+        "preview": "Q: Quels sont les effets du congé pour accident du travail ou maladie professionnelle sur la situation administrative de l’agent contractuel? R: Le congé pour accident du travail ou maladie professionnelle est sans effet sur les droits à...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.47914438502673795
+      },
+      {
+        "chunk_id": "772371cab90f4f7366ea4589c560925461184545",
+        "table": "MATTE",
+        "score": 0.1694,
+        "section_id": "626d4e4e-4b95-54d3-920f-54b955f573dd",
+        "preview": "Comment vais-je payer ma cotisation ?",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1568627450980392
+      },
+      {
+        "chunk_id": "JORFARTI000030645289_0",
+        "table": "DGAFP",
+        "score": 0.1694,
+        "section_id": "",
+        "preview": "Décret n° 2015-580 du 28 mai 2015 permettant à un agent public civil le don de jours de repos à un autre agent public Article 8 Statut: VIGUEUR L'agent bénéficiaire d'un ou de plusieurs jours de congé ainsi donnés a droit au maintien de ...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "6128f742f3eab468ab21d06eba74833bf583bf9c",
+        "table": "Service-Public",
+        "score": 0.1694,
+        "section_id": "6b8259ac-93c8-4fa4-a8c0-4fa8f4a7b84a",
+        "preview": "Combien de jours d'absence pour soins ou garde d'enfant peuvent être accordés à un agent public?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "de91133227e0345ce6e283aa7d1c2a84c7e5ea9e",
+        "table": "Service-Public",
+        "score": 0.1671,
+        "section_id": "a50db88f-242f-5cf3-a452-66815dbd1f5d",
+        "preview": "Q: Quels sont les effets du congé pour accident du travail ou maladie professionnelle sur la situation administrative de l’agent contractuel? R: Le congé pour accident du travail ou maladie professionnelle est sans effet sur les droits à...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.47914438502673795
+      },
+      {
+        "chunk_id": "8eef4502fffbaec3ced755b984d24dfbb8e55228",
+        "table": "MATTE",
+        "score": 0.1671,
+        "section_id": "90c633a0-c440-53e5-9734-d50c6e46331e",
+        "preview": "Q: Quels agents sont concernés par l'adhésion obligatoire à la PSC santé ? R: Fiche - La PSC en santé obligatoire pour les personnels militaires gérés et payés par le MTECT (format pdf - 822.9 ko - 06/08/2024) Autres ressources pour appr...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1568627450980392
+      },
+      {
+        "chunk_id": "LEGIARTI000050546563_0",
+        "table": "DGAFP",
+        "score": 0.1671,
+        "section_id": "",
+        "preview": "Code général de la fonction publique PARTIE RÉGLEMENTAIRE > Livre Ier : DROITS, OBLIGATIONS ET PROTECTIONS > Titre III : PROTECTIONS ET GARANTIES > Chapitre II : ÉGALITÉ PROFESSIONNELLE ENTRE LES FEMMES ET LES HOMMES > Section 2 : Nomina...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "a332691a99c5aefe4f3166657947312bcffa1333",
+        "table": "MATTE",
+        "score": 0.1671,
+        "section_id": "fd547194-90e7-5eb5-9cf8-93eef01b09ee",
+        "preview": "Q: VI.1 Régime de versement des allocations d'aide au retour à l'emploi R: Il est demandé aux services d'apporter une attention toute particulière au respect des différentes durées de contrat rappelées ci-dessus et de tenir compte des rè...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "23bda0bc14fed0871f61788be614c85d93f59964",
+        "table": "Service-Public",
+        "score": 0.1671,
+        "section_id": "29991fb1-5fde-46f7-bcbc-781c5e4d4d43",
+        "preview": "L'agent a-t-il droit à une indemnité de licenciement?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "2414e9cac0949c72ac69e3fe8c0b1170586cf07c",
+        "table": "Service-Public",
+        "score": 0.1649,
+        "section_id": "4c7e6f20-d8ac-5e20-b88c-c0aa400cf095",
+        "preview": "Q: Aptitude à la reprise des fonctions R: Si vous êtes apte à reprendre vos fonctions à la fin de votre congé pour accident du travail ou maladie professionnelle, vous êtes réemployé sur votre emploi précédent dans la mesure permise par ...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.44977375565610855
+      },
+      {
+        "chunk_id": "952d2c451c16488d11beb4d751532932069f4746",
+        "table": "MATTE",
+        "score": 0.1649,
+        "section_id": "90c633a0-c440-53e5-9734-d50c6e46331e",
+        "preview": "Q: Quels agents sont concernés par l'adhésion obligatoire à la PSC santé ? R: L'article 2 du décret du 22 avril 2022 prévoit que les agents actifs tenus d'adhérer au contrat collectif souscrit par un employeur public, modulo cas de dispe...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1568627450980392
+      },
+      {
+        "chunk_id": "LEGIARTI000042646047_0",
+        "table": "DGAFP",
+        "score": 0.1649,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre V : Congés non rémunérés pour raisons familiales ou personnelles Article 20 ter I.-L'agent contractuel a droit, sur...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "12a6c62f679409ec8932d9b2691428f62230f9ce",
+        "table": "MATTE",
+        "score": 0.1649,
+        "section_id": "00d101c1-2c20-5bb2-80da-62cc24166afb",
+        "preview": "Q: Article 2 R: 4° L'indemnité d'astreinte de continuité des dispositifs de communication de crise ou d'urgence qui peut être allouée aux agents de toutes catégories exerçant leurs fonctions au sein de la direction chargée de la communic...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "cadead47f1dc504e45d20bf14cefabf948f3125c",
+        "table": "Service-Public",
+        "score": 0.1649,
+        "section_id": "29991fb1-5fde-46f7-bcbc-781c5e4d4d43",
+        "preview": "L'agent a-t-il droit à une indemnité de licenciement?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "3f0a1217a58f285be201bca5f2dd9b27b650a406",
+        "table": "Service-Public",
+        "score": 0.1627,
+        "section_id": "4c7e6f20-d8ac-5e20-b88c-c0aa400cf095",
+        "preview": "Aptitude à la reprise des fonctions",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.44977375565610855
+      },
+      {
+        "chunk_id": "ac52f5829ca761bd8fe73acddc02eb364dc555d6",
+        "table": "MATTE",
+        "score": 0.1627,
+        "section_id": "90c633a0-c440-53e5-9734-d50c6e46331e",
+        "preview": "Q: Quels agents sont concernés par l'adhésion obligatoire à la PSC santé ? R: À partir du 1er janvier 2025, les militaires (administrateurs des affaires maritimes, professeurs de l'enseignement maritime, ingénieurs de l'armement) et les ...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1568627450980392
+      },
+      {
+        "chunk_id": "LEGIARTI000006486544_0",
+        "table": "DGAFP",
+        "score": 0.1627,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre V : Congés non rémunérés pour raisons familiales ou personnelles Article 19 ter I.-L'agent contractuel en activité ...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "2fbfe02145f2b452d1b4c733855558cf030c90b0",
+        "table": "MATTE",
+        "score": 0.1627,
+        "section_id": "fd547194-90e7-5eb5-9cf8-93eef01b09ee",
+        "preview": "Q: VI.1 Régime de versement des allocations d'aide au retour à l'emploi R: Il est demandé aux services d'apporter une attention toute particulière au respect des différentes durées de contrat rappelées ci-dessus et de tenir compte des rè...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "cdc037901b9f2ecd30b5a621139a354729c4ba1f",
+        "table": "Service-Public",
+        "score": 0.1627,
+        "section_id": "29991fb1-5fde-46f7-bcbc-781c5e4d4d43",
+        "preview": "L'agent a-t-il droit à une indemnité de licenciement?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "1147934907f0fa16477a519ab36f6eb3334c8ba1",
+        "table": "Service-Public",
+        "score": 0.1605,
+        "section_id": "793bc83f-9d43-5848-b462-592530b511ab",
+        "preview": "Q: Inaptitude définitive à la reprise de fonctions R: À la fin de votre congé pour accident du travail ou maladie professionnelle, s’il est médicalement constaté par un médecin agréé (Médecin généraliste ou spécialiste figurant sur une l...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.43823529411764706
+      },
+      {
+        "chunk_id": "be14e61adadca71fd403b7327eb394f91142558f",
+        "table": "MATTE",
+        "score": 0.1605,
+        "section_id": "90c633a0-c440-53e5-9734-d50c6e46331e",
+        "preview": "Q: Quels agents sont concernés par l'adhésion obligatoire à la PSC santé ? R: L'article 2 du décret du 22 avril 2022 prévoit que les agents actifs tenus d'adhérer au contrat collectif souscrit par un employeur public, modulo cas de dispe...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1568627450980392
+      },
+      {
+        "chunk_id": "LEGIARTI000050546679_0",
+        "table": "DGAFP",
+        "score": 0.1605,
+        "section_id": "",
+        "preview": "Code général de la fonction publique PARTIE RÉGLEMENTAIRE > Livre Ier : DROITS, OBLIGATIONS ET PROTECTIONS > Titre III : PROTECTIONS ET GARANTIES > Chapitre II : ÉGALITÉ PROFESSIONNELLE ENTRE LES FEMMES ET LES HOMMES > Section 4 : Rappor...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "208a365a0ec370cdc597bc9a8364e5940d3ca7f0",
+        "table": "MATTE",
+        "score": 0.1605,
+        "section_id": "f17eefdb-97f9-54e2-a64b-8c6979f3d1d7",
+        "preview": "Q: 11 - OBLIGATIONS DIVERSES R: L'article 9 du décret n° 2000-815 du 25 août 2000 modifié prévoit qu'un arrêté du ministre intéressé, du ministre chargé de la fonction publique et du ministre chargé du budget peut définir les situations ...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "867514c0d51e41c90f40829563aadd3ec49b0c26",
+        "table": "Service-Public",
+        "score": 0.1605,
+        "section_id": "695e67c1-a2dd-5013-beef-1c4cfdb8e38d",
+        "preview": "Quels sont les effets du congé de paternité et d'accueil de l'enfant sur la situation administrative du contractuel?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "44cd91c38ff4ac567bbed5b4d7b176d7c39b3a66",
+        "table": "Service-Public",
+        "score": 0.1584,
+        "section_id": "793bc83f-9d43-5848-b462-592530b511ab",
+        "preview": "Q: Inaptitude définitive à la reprise de fonctions R: À la fin de votre congé pour accident du travail ou maladie professionnelle, s’il est médicalement constaté par un médecin agréé (Médecin généraliste ou spécialiste figurant sur une l...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.43823529411764706
+      },
+      {
+        "chunk_id": "d033adf7e0bfcc90adac2c91bcefbc4f59de3d0e",
+        "table": "MATTE",
+        "score": 0.1584,
+        "section_id": "90c633a0-c440-53e5-9734-d50c6e46331e",
+        "preview": "Quels agents sont concernés par l'adhésion obligatoire à la PSC santé ?",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1568627450980392
+      },
+      {
+        "chunk_id": "JORFARTI000045641257_0",
+        "table": "DGAFP",
+        "score": 0.1584,
+        "section_id": "",
+        "preview": "Décret n° 2022-633 du 22 avril 2022 relatif à la protection sociale complémentaire en matière de couverture des frais occasionnés par une maternité, une maladie ou un accident dans la fonction publique de l'Etat Chapitre Ier : Champ d'ap...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "7e65aadecc85579fbe5ee486d8b4e7023ad2fd90",
+        "table": "MATTE",
+        "score": 0.1584,
+        "section_id": "f17eefdb-97f9-54e2-a64b-8c6979f3d1d7",
+        "preview": "Q: 11 - OBLIGATIONS DIVERSES R: L'article 9 du décret n° 2000-815 du 25 août 2000 modifié prévoit qu'un arrêté du ministre intéressé, du ministre chargé de la fonction publique et du ministre chargé du budget peut définir les situations ...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "b9fbe80264d00b5bf3d42af8c5d14d9488836d3a",
+        "table": "Service-Public",
+        "score": 0.1584,
+        "section_id": "ebd4212c-632b-462b-9384-b0ef2aba7a73",
+        "preview": "Sous quelles conditions un fonctionnaire peut-il bénéficier d'un congé de paternité et d'accueil de l'enfant?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "4ee5d10b6feaddcb6a922fe8774f16af97837775",
+        "table": "Service-Public",
+        "score": 0.1564,
+        "section_id": "1bfbc35d-3cc3-5662-b2c1-faecfbda6956",
+        "preview": "Q: Quelle est la démarche de mise en congé pour accident du travail ou maladie professionnelle? R: En tant que contractuel, vous relevez de l’Assurance maladie de la Sécurité sociale et êtes soumis aux mêmes démarches qu'un salarié du se...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.39338235294117646
+      },
+      {
+        "chunk_id": "f2d763e84608520c4ec1c192c6f4fa7b4f0baee5",
+        "table": "MATTE",
+        "score": 0.1564,
+        "section_id": "626d4e4e-4b95-54d3-920f-54b955f573dd",
+        "preview": "Q: Comment vais-je payer ma cotisation ? R: La part des cotisations de base à la charge de l'agent sera prélevée sur le salaire. Les cotisations relatives aux ayants droit, aux options et aux garanties de base pour les agents sans rémuné...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1568627450980392
+      },
+      {
+        "chunk_id": "LEGIARTI000029705168_0",
+        "table": "DGAFP",
+        "score": 0.1564,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre XI : Fin du contrat - Licenciement > Titre XI : Fin du contrat - Licenciement - Mesures d'accompagnement des agents...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "580b0058c56a7ff71bd74ab971ce445bdea38f04",
+        "table": "MATTE",
+        "score": 0.1564,
+        "section_id": "687967d6-5c80-5ad8-a207-16a1f17c1a11",
+        "preview": "Q: Article 1 R: Une indemnité de contraintes de service non soumise à retenue pour pension est allouée à certains agents titulaires, contractuels à durée indéterminée, et ouvriers des parcs et ateliers du ministère de l'écologie, du déve...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "a8a2a200fcac6772a754b60912211236570fb99d",
+        "table": "Service-Public",
+        "score": 0.1564,
+        "section_id": "d053c375-0a10-5a87-b0be-696728c9e820",
+        "preview": "Le contractuel a-t-il droit à une indemnité de licenciement?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "862ae0fb42edd2d77d91b1fa3db30fc4a84eba85",
+        "table": "Service-Public",
+        "score": 0.1544,
+        "section_id": "1bfbc35d-3cc3-5662-b2c1-faecfbda6956",
+        "preview": "Q: Quelle est la démarche de mise en congé pour accident du travail ou maladie professionnelle? R: En tant que contractuel, vous relevez de l’Assurance maladie de la Sécurité sociale et êtes soumis aux mêmes démarches qu'un salarié du se...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.39338235294117646
+      },
+      {
+        "chunk_id": "3b841aeb4120a1f10d963b3a81d6385acfe77e27",
+        "table": "MATTE",
+        "score": 0.1544,
+        "section_id": "b00b8045-1d83-5dc7-928a-f271c7c2b89a",
+        "preview": "Q: Quel est le montant brut à utiliser dans le simulateur : avec ou sans primes ? Doit-on inclure les astreintes ? R: Le montant retenu par l'administration correspond à la rémunération brute soumise à la Contribution Sociale Généralisée...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1535294117647059
+      },
+      {
+        "chunk_id": "LEGIARTI000051962198_r2s",
+        "table": "DGAFP",
+        "score": 0.1544,
+        "section_id": "",
+        "preview": "Code général de la fonction publique PARTIE RÉGLEMENTAIRE > Livre III : RECRUTEMENT > Titre II : RECRUTEMENT DES FONCTIONNAIRES > Chapitre VI : AUTRES MODALITÉS D'ACCÈS AUX FONCTIONS PUBLIQUES > Section 2 : Parcours d'accès aux carrières...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "e1b7de736b2445d058cfbab84e9d1b771778b0f7",
+        "table": "MATTE",
+        "score": 0.1544,
+        "section_id": "687967d6-5c80-5ad8-a207-16a1f17c1a11",
+        "preview": "Q: Article 1 R: Une indemnité de contraintes de service non soumise à retenue pour pension est allouée à certains agents titulaires, contractuels à durée indéterminée, et ouvriers des parcs et ateliers du ministère de l'écologie, du déve...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "99af5e5de39b98cc3c7ed022c4ab8ed11f347e27",
+        "table": "Service-Public",
+        "score": 0.1544,
+        "section_id": "128eca4b-0f1d-50a0-b861-a77524043f06",
+        "preview": "Dans quel cas un contractuel est-t-il placé en congé de maladie?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "e9c4400f48782a85199ba60c3473de9698209cd5",
+        "table": "Service-Public",
+        "score": 0.1525,
+        "section_id": "1bfbc35d-3cc3-5662-b2c1-faecfbda6956",
+        "preview": "Quelle est la démarche de mise en congé pour accident du travail ou maladie professionnelle?",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.39338235294117646
+      },
+      {
+        "chunk_id": "506d713b1f16139d372d0d28eba5fe6d981fea70",
+        "table": "MATTE",
+        "score": 0.1525,
+        "section_id": "b5f6cc5f-803e-5cab-acf1-9ad3336dc98c",
+        "preview": "Comment puis-je demander une dispense d'affiliation au contrat collectif obligatoire ?",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1535294117647059
+      },
+      {
+        "chunk_id": "LEGIARTI000006486545_0",
+        "table": "DGAFP",
+        "score": 0.1525,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre V : Congés non rémunérés pour raisons familiales ou personnelles Article 20 L'agent contractuel employé depuis plus...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "b241d4592ce7b5d1566b63eb20090f6ca7445b16",
+        "table": "MATTE",
+        "score": 0.1525,
+        "section_id": "5a521d33-897f-5e84-a96c-cc7027372f2b",
+        "preview": "Q: 8 – GESTION DES CONGÉS ANNUELS R: Le congé annuel est un droit statutaire de l'agent (fonctionnaire, non titulaire ou OPA), accordé conformément à l'article 1er du décret n°84-972 relatifs aux congés annuels des fonctionnaires de l'Ét...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "e09a9f4620d087c555b3ab4d21f68828f5dcbb3a",
+        "table": "Service-Public",
+        "score": 0.1525,
+        "section_id": "",
+        "preview": "Don de jours de congé entre agents publics: dans quels cas est-ce possible?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "27935d5518ccc9ff99cc76130dac31ebd92b6e73",
+        "table": "Service-Public",
+        "score": 0.1506,
+        "section_id": "88274202-850d-5d55-94cb-1c3ecb8b7d5f",
+        "preview": "Q: Comment le congé pour accident du travail ou maladie professionnelle est-il rémunéré? R: Pendant votre congé, vous avez droit aux **indemnités journalières (IJ)** pour [accident ou travail](F175) ou [maladie professionnelle](F32148) d...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.37254901960784315
+      },
+      {
+        "chunk_id": "597a0a2209995a0877ebf6e272fd31dc4e537b32",
+        "table": "MATTE",
+        "score": 0.1506,
+        "section_id": "b5f6cc5f-803e-5cab-acf1-9ad3336dc98c",
+        "preview": "Q: Comment puis-je demander une dispense d'affiliation au contrat collectif obligatoire ? R: Vous pourrez nous envoyer votre demande et vos preuves de dispense lors de la phase de pré-affiliation en ligne. Toutefois, nous voulons accompa...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1535294117647059
+      },
+      {
+        "chunk_id": "LEGIARTI000006486577_0",
+        "table": "DGAFP",
+        "score": 0.1506,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre VIII bis : Mise à disposition et mobilité. > Titre VIII bis : Mobilité Article 33-1 I.-L'agent contractuel employé ...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "c7ed993d20a074aa6e800be04656c67797b12217",
+        "table": "MATTE",
+        "score": 0.1506,
+        "section_id": "5a521d33-897f-5e84-a96c-cc7027372f2b",
+        "preview": "Q: 8 – GESTION DES CONGÉS ANNUELS R: Le congé annuel est un droit statutaire de l'agent (fonctionnaire, non titulaire ou OPA), accordé conformément à l'article 1er du décret n°84-972 relatifs aux congés annuels des fonctionnaires de l'Ét...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "c5d28be35808210df76ad1e31d4795d14ada924f",
+        "table": "Service-Public",
+        "score": 0.1506,
+        "section_id": "1093ee75-d3ac-4385-9342-38582767b251",
+        "preview": "Le contractuel a-t-il droit à une indemnité en cas de licenciement pour suppression de son emploi?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "bb18a110bbcd1d8a27a4cbd404cd888a6a9f3172",
+        "table": "Service-Public",
+        "score": 0.1488,
+        "section_id": "88274202-850d-5d55-94cb-1c3ecb8b7d5f",
+        "preview": "Q: Comment le congé pour accident du travail ou maladie professionnelle est-il rémunéré? R: Pendant votre congé, vous avez droit aux **indemnités journalières (IJ)** pour [accident ou travail](F175) ou [maladie professionnelle](F32148) d...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.37254901960784315
+      },
+      {
+        "chunk_id": "59e5283aad6c1c95dfcc36fdf448d6523da81cb7",
+        "table": "MATTE",
+        "score": 0.1488,
+        "section_id": "b00b8045-1d83-5dc7-928a-f271c7c2b89a",
+        "preview": "Q: Quel est le montant brut à utiliser dans le simulateur : avec ou sans primes ? Doit-on inclure les astreintes ? R: Le montant retenu par l'administration correspond à la rémunération brute soumise à la Contribution Sociale Généralisée...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1535294117647059
+      },
+      {
+        "chunk_id": "JORFARTI000002245804_r2s",
+        "table": "DGAFP",
+        "score": 0.1488,
+        "section_id": "",
+        "preview": "Décret n°2006-781 du 3 juillet 2006 fixant les conditions et les modalités de règlement des frais occasionnés par les déplacements temporaires des personnels civils de l'Etat Article 8 Statut: VIGUEUR L'agent en mission, en intérim ou en...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "153d49b6e95638d351301bb4a8f5072be412c02c",
+        "table": "MATTE",
+        "score": 0.1488,
+        "section_id": "fd547194-90e7-5eb5-9cf8-93eef01b09ee",
+        "preview": "Q: VI.1 Régime de versement des allocations d'aide au retour à l'emploi R: Ainsi, sur la période de référence, lorsque la durée totale d'emploi accomplie pour le compte d'un ou plusieurs employeurs privés ou publics ayant adhéré au régim...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "dad47ee21989876d585e39523c66abee899faf1b",
+        "table": "Service-Public",
+        "score": 0.147,
+        "section_id": "88274202-850d-5d55-94cb-1c3ecb8b7d5f",
+        "preview": "Q: Comment le congé pour accident du travail ou maladie professionnelle est-il rémunéré? R: Les indemnités journalières vous sont dues par votre [CPAM](R15469) si vous êtes employé à temps incomplet ou par contrat d’une durée inférieure ...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.37254901960784315
+      },
+      {
+        "chunk_id": "7a93f799c7906b601a49858208d6921cf61e7db3",
+        "table": "MATTE",
+        "score": 0.147,
+        "section_id": "b00b8045-1d83-5dc7-928a-f271c7c2b89a",
+        "preview": "Q: Quel est le montant brut à utiliser dans le simulateur : avec ou sans primes ? Doit-on inclure les astreintes ? R: Oui, plusieurs permanences physiques seront organisées sur différents sites du pôle ministériel et des établissements p...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1535294117647059
+      },
+      {
+        "chunk_id": "LEGIARTI000044424075_r2s",
+        "table": "DGAFP",
+        "score": 0.147,
+        "section_id": "",
+        "preview": "Code général de la fonction publique PARTIE LÉGISLATIVE > Livre VIII : PRÉVENTION ET PROTECTION EN MATIÈRE DE SANTÉ ET DE SÉCURITÉ AU TRAVAIL > Titre II : PROTECTIONS LIÉES À LA MALADIE, À L'ACCIDENT, À L'INVALIDITÉ OU AU DÉCÈS > Chapitr...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "033d8376cd8b6aeaf8cbbea1e82d395e01d19e7d",
+        "table": "MATTE",
+        "score": 0.147,
+        "section_id": "0d766d3a-8416-5c42-832b-1d7718748f91",
+        "preview": "Q: le congé de formation syndicale. R: D'autres temps, sans être du temps de travail effectif, sont compensés ou indemnisés : - les temps d'astreinte définis à l'article 5 du décret 2000-815 du 25 août 2000 modifié. Les temps d'astreinte...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "b8e09841098bf2fd91a3ab4d7e404a7336e433a5",
+        "table": "Service-Public",
+        "score": 0.147,
+        "section_id": "de412526-122b-5ee7-a2f4-caf1a3420730",
+        "preview": "Quels sont les effets du congé parental sur la situation administrative du contractuel?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "f38871806b1cabb25571d34bc51aa50071b1bc38",
+        "table": "Service-Public",
+        "score": 0.1452,
+        "section_id": "88274202-850d-5d55-94cb-1c3ecb8b7d5f",
+        "preview": "Comment le congé pour accident du travail ou maladie professionnelle est-il rémunéré?",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.37254901960784315
+      },
+      {
+        "chunk_id": "7b7a87bca83c99df72e7b55b145c7f1dfc3ce246",
+        "table": "MATTE",
+        "score": 0.1452,
+        "section_id": "b5f6cc5f-803e-5cab-acf1-9ad3336dc98c",
+        "preview": "Q: Comment puis-je demander une dispense d'affiliation au contrat collectif obligatoire ? R: Vous pourrez nous envoyer votre demande et vos preuves de dispense lors de la phase de pré-affiliation en ligne. Toutefois, nous voulons accompa...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1535294117647059
+      },
+      {
+        "chunk_id": "LEGIARTI000006486501_0",
+        "table": "DGAFP",
+        "score": 0.1452,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre Ier : Dispositions générales Article 1-4 I.-Les agents recrutés pour répondre à un besoin permanent par contrat à d...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "644558d5acb287c7255b9324342b3ed0c6234d6b",
+        "table": "MATTE",
+        "score": 0.1452,
+        "section_id": "e0e2c003-b381-56b6-817b-eb490fab3f42",
+        "preview": "Quels sont les contractuels concernés ?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "5d77ca647dc2b3efb839dd4ad7250566ad6e194e",
+        "table": "Service-Public",
+        "score": 0.1452,
+        "section_id": "746d5dcd-e8ea-412b-9979-fc4f2761a76c",
+        "preview": "Arrêt maladie d'un agent public pendant ses congés: quelles sont les règles?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "75ef06dff7196e9e0126902b5ec74609c72dfa3f",
+        "table": "Service-Public",
+        "score": 0.1435,
+        "section_id": "128eca4b-0f1d-50a0-b861-a77524043f06",
+        "preview": "Q: Dans quel cas un contractuel est-t-il placé en congé de maladie? R: Lorsque vous êtes en **activité**, vous pouvez être placé en congé de maladie, sur présentation d'un certificat médical, lorsque la maladie ou un accident survenu **h...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.36470588235294116
+      },
+      {
+        "chunk_id": "95234f4b8cbe66af7258665ad337121ff59f2f72",
+        "table": "MATTE",
+        "score": 0.1435,
+        "section_id": "b00b8045-1d83-5dc7-928a-f271c7c2b89a",
+        "preview": "Q: Quel est le montant brut à utiliser dans le simulateur : avec ou sans primes ? Doit-on inclure les astreintes ? R: C'est à vous de demander la résiliation de votre contrat santé actuel. Alan vous accompagnera dans cette démarche en vo...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1535294117647059
+      },
+      {
+        "chunk_id": "LEGIARTI000006486593_0",
+        "table": "DGAFP",
+        "score": 0.1435,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre IX : Travail à temps partiel Article 39 L'agent contractuel exerçant ses fonctions à temps partiel perçoit une frac...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "5d53abc9d4749133041b706fc17de89ea2af7019",
+        "table": "MATTE",
+        "score": 0.1435,
+        "section_id": "88349d95-6d79-5d30-977e-77292b8a08f5",
+        "preview": "Q: 6.1 - Règle d’utilisation des JRTT R: Dans le cadre de la modalité à horaires fixes n°1, les absences liées à la maladie, à un accident du travail, à un congé de maternité, ou à une autorisation d’absence, ne donnent lieu ni à récupér...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "91faa3dd8374d79fb9798215b86772244ef0420e",
+        "table": "Service-Public",
+        "score": 0.1435,
+        "section_id": "7795a7c1-3bdb-52ea-9eac-0a6ebeb82117",
+        "preview": "Comment l'entretien professionnel est-il pris en compte dans la situation administrative d'un contractuel?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "a4c38e1af451e1a8d38a75a7423ed6a6860c68ea",
+        "table": "MATTE",
+        "score": 0.1419,
+        "section_id": "b00b8045-1d83-5dc7-928a-f271c7c2b89a",
+        "preview": "Quel est le montant brut à utiliser dans le simulateur : avec ou sans primes ? Doit-on inclure les astreintes ?",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.1535294117647059
+      },
+      {
+        "chunk_id": "LEGIARTI000006486556_0",
+        "table": "DGAFP",
+        "score": 0.1419,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre V : Congés non rémunérés pour raisons familiales ou personnelles Article 24 I.-Pour les congés faisant l'objet des ...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "53fb29f532cc657faf23308f3d675697c0e7b82c",
+        "table": "MATTE",
+        "score": 0.1419,
+        "section_id": "f2e5e992-2b7f-5c7c-8c8c-2c9cbb1389da",
+        "preview": "Q: Calcul de la rémunération initiale des agents contractuels recrutés et règles concernant son évolution R: La rémunération des agents contractuels est calculée par référence à un indice de traitement de la fonction publique complété du...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "71b2bf7d6df77d410d67c018a7536cb41da31539",
+        "table": "Service-Public",
+        "score": 0.1419,
+        "section_id": "c5257356-d609-4d85-abe3-d9b9349577cf",
+        "preview": "Quels agents publics peuvent donner ou recevoir des jours de repos?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "d1e3752b686fbc107bc299563d2a737001c3e347",
+        "table": "Service-Public",
+        "score": 0.1402,
+        "section_id": "201d2601-9695-56c7-b235-312bfabca940",
+        "preview": "Q: Quels sont les effets du congé d'adoption sur la situation administrative de l'agent contractuel? R: Le congé d'adoption est considéré comme une période de services effectifs. Il est pris en compte dans le calcul de votre durée de ser...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.3361344537815126
+      },
+      {
+        "chunk_id": "1d07251b300f4a5d57adb6e77be1eb9d861fa24e",
+        "table": "MATTE",
+        "score": 0.1402,
+        "section_id": "665920cc-f397-5c73-9db9-e543fdf196e9",
+        "preview": "Q: cas spécifique du travail posté ou décalé permanent comportant un poste de nuit : outre la visite médicale préalable à l'affectation, deux visites les six premiers mois, durant la première année, afin d'évaluer le retentissement poten...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.14019607843137255
+      },
+      {
+        "chunk_id": "LEGIARTI000044423661_r2s",
+        "table": "DGAFP",
+        "score": 0.1402,
+        "section_id": "",
+        "preview": "Code général de la fonction publique PARTIE LÉGISLATIVE > Livre VI : TEMPS DE TRAVAIL ET CONGÉS > Titre III : CONGÉS LIÉS AUX RESPONSABILITÉS PARENTALES OU FAMILIALES > Chapitre II : Congé de présence parentale Article L632-3 Le fonction...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "3a92fc21c4ee5d16e0b8a7de9166abe99769ad13",
+        "table": "MATTE",
+        "score": 0.1402,
+        "section_id": "00d101c1-2c20-5bb2-80da-62cc24166afb",
+        "preview": "Q: Article 2 R: Modifié par Décret n°2024-564 du 19 juin 2024 - art. 4 Un arrêté conjoint des ministres chargés du développement durable, du budget et de la fonction publique fixe les montants de l'indemnité d'astreinte et précise les ac...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "8f4f7b27c8ee95f7f1ad5c5904998970c0398174",
+        "table": "Service-Public",
+        "score": 0.1402,
+        "section_id": "c5257356-d609-4d85-abe3-d9b9349577cf",
+        "preview": "Quels agents publics peuvent donner ou recevoir des jours de repos?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "f177c04928faa7b30baa2cf9f020fa473baa9f91",
+        "table": "Service-Public",
+        "score": 0.1386,
+        "section_id": "201d2601-9695-56c7-b235-312bfabca940",
+        "preview": "Q: Quels sont les effets du congé d'adoption sur la situation administrative de l'agent contractuel? R: Le congé d'adoption est considéré comme une période de services effectifs. Il est pris en compte dans le calcul de votre durée de ser...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.3361344537815126
+      },
+      {
+        "chunk_id": "JORFARTI000049880800_0",
+        "table": "DGAFP",
+        "score": 0.1386,
+        "section_id": "",
+        "preview": "Décret n° 2024-678 du 4 juillet 2024 relatif à la protection sociale complémentaire des agents de la fonction publique de l'Etat Chapitre II : Garanties couvertes Article 4 I.-Le contrat mentionné à l'article 1 er prévoit le versement d'...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "7bf90038641cd20f2299517742acfd9764415c9b",
+        "table": "MATTE",
+        "score": 0.1386,
+        "section_id": "f2e5e992-2b7f-5c7c-8c8c-2c9cbb1389da",
+        "preview": "Q: Calcul de la rémunération initiale des agents contractuels recrutés et règles concernant son évolution R: La rémunération des agents contractuels est calculée par référence à un indice de traitement de la fonction publique complété du...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "bb6e9602c73bb63c713595066bd86402ece62d53",
+        "table": "Service-Public",
+        "score": 0.1386,
+        "section_id": "c5257356-d609-4d85-abe3-d9b9349577cf",
+        "preview": "Quels agents publics peuvent donner ou recevoir des jours de repos?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "5153ef131ada3946a199eed8054c941de5fa6911",
+        "table": "Service-Public",
+        "score": 0.1371,
+        "section_id": "21731610-d322-59ac-b07c-82ef1a4736cf",
+        "preview": "Q: Quels sont les effets du congé de maladie sur la situation administrative du contractuel? R: Les autres congés ne font pas perdre l'ancienneté acquise avant leur attribution. ⚠️ **Attention:** Si vous êtes placé en congé de maladie no...",
+        "retrieval_path": "heading",
+        "heading_search": true,
+        "heading_match_score": 0.2735294117647059
+      },
+      {
+        "chunk_id": "JORFARTI000030645259_0",
+        "table": "DGAFP",
+        "score": 0.1371,
+        "section_id": "",
+        "preview": "Décret n° 2015-580 du 28 mai 2015 permettant à un agent public civil le don de jours de repos à un autre agent public Article 1 Statut: VIGUEUR I.-Un agent public civil peut, sur sa demande, renoncer anonymement et sans contrepartie à to...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "58562d2ea2843d144fc03ef45bfe6d7508e5ff63",
+        "table": "MATTE",
+        "score": 0.1371,
+        "section_id": "2b5d3006-dfda-5ff8-b598-555f81a9a667",
+        "preview": "Q: 2.2 - Les agents bénéficiaires R: - Tous les agents, quelle que soit leur situation juridique, dès lors qu'ils travaillent dans l'un des services mentionnés ci-dessus, à l'exception des personnels enseignants et le cas échéant militai...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "f9ecf791e547960d6e701dd06e8cda54ec6256d2",
+        "table": "Service-Public",
+        "score": 0.1371,
+        "section_id": "c5257356-d609-4d85-abe3-d9b9349577cf",
+        "preview": "Quels agents publics peuvent donner ou recevoir des jours de repos?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "LEGIARTI000006486560_0",
+        "table": "DGAFP",
+        "score": 0.1356,
+        "section_id": "",
+        "preview": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l'Etat Titre VI : Absences résultant d'une obligation légale et des activités dans la réserve opérationnelle. > Titre VI : Absen...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "a3b7de2ba3f6ec336944bd113cdb6696ac00f095",
+        "table": "MATTE",
+        "score": 0.1356,
+        "section_id": "2b5d3006-dfda-5ff8-b598-555f81a9a667",
+        "preview": "Q: 2.2 - Les agents bénéficiaires R: - Tous les agents, quelle que soit leur situation juridique, dès lors qu'ils travaillent dans l'un des services mentionnés ci-dessus, à l'exception des personnels enseignants et le cas échéant militai...",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      },
+      {
+        "chunk_id": "c1a536653982ded93a5b82cb2dcd6d746e791afe",
+        "table": "Service-Public",
+        "score": 0.1356,
+        "section_id": "23c65ab5-c187-57b0-9f9d-1dddc04e490b",
+        "preview": "Quels sont les effets du congé supplémentaire de naissance sur la situation administrative de l’agent contractuel?",
+        "retrieval_path": "chunk",
+        "heading_search": false,
+        "heading_match_score": null
+      }
+    ],
+    "aggregated_sections": [
+      {
+        "section_id": "",
+        "heading": "",
+        "score": 0.9538,
+        "publisher": "DGAFP",
+        "chunk_count": 1,
+        "token_estimate": 308,
+        "document_id": "LEGIARTI000006486524"
+      },
+      {
+        "section_id": "",
+        "heading": "",
+        "score": 0.8212,
+        "publisher": "DGAFP",
+        "chunk_count": 1,
+        "token_estimate": 773,
+        "document_id": "LEGIARTI000006486502"
+      },
+      {
+        "section_id": "",
+        "heading": "",
+        "score": 0.7016,
+        "publisher": "DGAFP",
+        "chunk_count": 1,
+        "token_estimate": 423,
+        "document_id": "LEGIARTI000006486535"
+      },
+      {
+        "section_id": "",
+        "heading": "",
+        "score": 0.6985,
+        "publisher": "DGAFP",
+        "chunk_count": 1,
+        "token_estimate": 1611,
+        "document_id": "LEGIARTI000006486531"
+      },
+      {
+        "section_id": "88274202-850d-5d55-94cb-1c3ecb8b7d5f",
+        "heading": "Comment le congé pour accident du travail ou maladie professionnelle est-il rému",
+        "score": 0.6916,
+        "publisher": "Service-Public",
+        "chunk_count": 4,
+        "token_estimate": 452,
+        "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+      },
+      {
+        "section_id": "",
+        "heading": "",
+        "score": 0.6669,
+        "publisher": "DGAFP",
+        "chunk_count": 1,
+        "token_estimate": 265,
+        "document_id": "LEGIARTI000006486527"
+      },
+      {
+        "section_id": "a50db88f-242f-5cf3-a452-66815dbd1f5d",
+        "heading": "Quels sont les effets du congé pour accident du travail ou maladie professionnel",
+        "score": 0.6543,
+        "publisher": "Service-Public",
+        "chunk_count": 4,
+        "token_estimate": 570,
+        "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+      },
+      {
+        "section_id": "128eca4b-0f1d-50a0-b861-a77524043f06",
+        "heading": "Dans quel cas un contractuel est-t-il placé en congé de maladie?",
+        "score": 0.5463,
+        "publisher": "Service-Public",
+        "chunk_count": 2,
+        "token_estimate": 303,
+        "document_id": "4a20694d-4bbc-4b47-acaa-1bf8ce9eb1c7"
+      },
+      {
+        "section_id": "ab83d951-a9e0-58fb-8b7a-af766fdc4785",
+        "heading": "Quelles sont les obligations de l’agent contractuel pendant un congé pour accide",
+        "score": 0.502,
+        "publisher": "Service-Public",
+        "chunk_count": 4,
+        "token_estimate": 423,
+        "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+      },
+      {
+        "section_id": "",
+        "heading": "",
+        "score": 0.4455,
+        "publisher": "DGAFP",
+        "chunk_count": 1,
+        "token_estimate": 1450,
+        "document_id": "LEGIARTI000006486547"
+      },
+      {
+        "section_id": "85b1bca6-97b9-5113-943a-83f7dff2b6e8",
+        "heading": "Dans quel cas le contractuel est-il placé en congé pour accident du travail ou m",
+        "score": 0.4273,
+        "publisher": "Service-Public",
+        "chunk_count": 3,
+        "token_estimate": 184,
+        "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+      },
+      {
+        "section_id": "21731610-d322-59ac-b07c-82ef1a4736cf",
+        "heading": "Quels sont les effets du congé de maladie sur la situation administrative du con",
+        "score": 0.3813,
+        "publisher": "Service-Public",
+        "chunk_count": 2,
+        "token_estimate": 634,
+        "document_id": "4a20694d-4bbc-4b47-acaa-1bf8ce9eb1c7"
+      },
+      {
+        "section_id": "",
+        "heading": "",
+        "score": 0.3371,
+        "publisher": "DGAFP",
+        "chunk_count": 1,
+        "token_estimate": 184,
+        "document_id": "LEGIARTI000041655878"
+      },
+      {
+        "section_id": "",
+        "heading": "",
+        "score": 0.3282,
+        "publisher": "DGAFP",
+        "chunk_count": 1,
+        "token_estimate": 1185,
+        "document_id": "LEGIARTI000006486538"
+      },
+      {
+        "section_id": "",
+        "heading": "",
+        "score": 0.2108,
+        "publisher": "DGAFP",
+        "chunk_count": 1,
+        "token_estimate": 492,
+        "document_id": "LEGIARTI000006486594"
+      },
+      {
+        "section_id": "201d2601-9695-56c7-b235-312bfabca940",
+        "heading": "Quels sont les effets du congé d'adoption sur la situation administrative de l'a",
+        "score": 0.1964,
+        "publisher": "Service-Public",
+        "chunk_count": 3,
+        "token_estimate": 268,
+        "document_id": "2c05c3aa-442d-5e3e-ac9f-c1e09acf6971"
+      },
+      {
+        "section_id": "0b13ad4c-c491-4cd2-b19c-ceb4c1147fc9",
+        "heading": "L'agent a-t-il droit à une indemnité compensatrice de congés annuels?",
+        "score": 0.1307,
+        "publisher": "Service-Public",
+        "chunk_count": 3,
+        "token_estimate": 452,
+        "document_id": "958d8571-74a7-4d5c-bb13-42fe4e3d224b"
+      },
+      {
+        "section_id": "dbb20567-1b53-5e9d-8778-cb9c2f7db111",
+        "heading": "Quelle est la situation de l’agent contractuel à la fin du congé pour accident d",
+        "score": 0.1103,
+        "publisher": "Service-Public",
+        "chunk_count": 2,
+        "token_estimate": 365,
+        "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+      },
+      {
+        "section_id": "77af7a0b-96ad-5187-9573-ca53910640cf",
+        "heading": "V- L'indemnité de fin de contrat",
+        "score": 0.0583,
+        "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+        "chunk_count": 2,
+        "token_estimate": 507,
+        "document_id": "e79fbb82-e13b-5794-945a-c980cf53f6a9"
+      },
+      {
+        "section_id": "1bfbc35d-3cc3-5662-b2c1-faecfbda6956",
+        "heading": "Quelle est la démarche de mise en congé pour accident du travail ou maladie prof",
+        "score": 0.0399,
+        "publisher": "Service-Public",
+        "chunk_count": 3,
+        "token_estimate": 92,
+        "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+      }
+    ],
+    "context_items_ref": [
+      {
+        "section_id": "",
+        "doc_id": "LEGIARTI000006486524",
+        "heading": "",
+        "publisher": "DGAFP",
+        "tokens": 308,
+        "score": 0.9538,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "",
+        "doc_id": "LEGIARTI000006486502",
+        "heading": "",
+        "publisher": "DGAFP",
+        "tokens": 773,
+        "score": 0.8212,
+        "is_doc_entire": false
+      }
+    ],
+    "selector_decisions": {
+      "kept": [
+        {
+          "idx": 0,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486524"
+        },
+        {
+          "idx": 1,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486502"
+        }
+      ],
+      "removed": [
+        {
+          "idx": 2,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486535"
+        },
+        {
+          "idx": 3,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486531"
+        },
+        {
+          "idx": 4,
+          "heading": "Comment le congé pour accident du travail ou maladie professionnelle est-il rému",
+          "publisher": "Service-Public",
+          "section_id": "88274202-850d-5d55-94cb-1c3ecb8b7d5f",
+          "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+        },
+        {
+          "idx": 5,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486527"
+        },
+        {
+          "idx": 6,
+          "heading": "Quels sont les effets du congé pour accident du travail ou maladie professionnel",
+          "publisher": "Service-Public",
+          "section_id": "a50db88f-242f-5cf3-a452-66815dbd1f5d",
+          "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+        },
+        {
+          "idx": 7,
+          "heading": "Dans quel cas un contractuel est-t-il placé en congé de maladie?",
+          "publisher": "Service-Public",
+          "section_id": "128eca4b-0f1d-50a0-b861-a77524043f06",
+          "document_id": "4a20694d-4bbc-4b47-acaa-1bf8ce9eb1c7"
+        },
+        {
+          "idx": 8,
+          "heading": "Quelles sont les obligations de l’agent contractuel pendant un congé pour accide",
+          "publisher": "Service-Public",
+          "section_id": "ab83d951-a9e0-58fb-8b7a-af766fdc4785",
+          "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+        },
+        {
+          "idx": 9,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486547"
+        },
+        {
+          "idx": 10,
+          "heading": "Dans quel cas le contractuel est-il placé en congé pour accident du travail ou m",
+          "publisher": "Service-Public",
+          "section_id": "85b1bca6-97b9-5113-943a-83f7dff2b6e8",
+          "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+        },
+        {
+          "idx": 11,
+          "heading": "Quels sont les effets du congé de maladie sur la situation administrative du con",
+          "publisher": "Service-Public",
+          "section_id": "21731610-d322-59ac-b07c-82ef1a4736cf",
+          "document_id": "4a20694d-4bbc-4b47-acaa-1bf8ce9eb1c7"
+        },
+        {
+          "idx": 12,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000041655878"
+        },
+        {
+          "idx": 13,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486538"
+        },
+        {
+          "idx": 14,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486594"
+        },
+        {
+          "idx": 15,
+          "heading": "Quels sont les effets du congé d'adoption sur la situation administrative de l'a",
+          "publisher": "Service-Public",
+          "section_id": "201d2601-9695-56c7-b235-312bfabca940",
+          "document_id": "2c05c3aa-442d-5e3e-ac9f-c1e09acf6971"
+        },
+        {
+          "idx": 16,
+          "heading": "L'agent a-t-il droit à une indemnité compensatrice de congés annuels?",
+          "publisher": "Service-Public",
+          "section_id": "0b13ad4c-c491-4cd2-b19c-ceb4c1147fc9",
+          "document_id": "958d8571-74a7-4d5c-bb13-42fe4e3d224b"
+        },
+        {
+          "idx": 17,
+          "heading": "Quelle est la situation de l’agent contractuel à la fin du congé pour accident d",
+          "publisher": "Service-Public",
+          "section_id": "dbb20567-1b53-5e9d-8778-cb9c2f7db111",
+          "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+        },
+        {
+          "idx": 18,
+          "heading": "V- L'indemnité de fin de contrat",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "77af7a0b-96ad-5187-9573-ca53910640cf",
+          "document_id": "e79fbb82-e13b-5794-945a-c980cf53f6a9"
+        },
+        {
+          "idx": 19,
+          "heading": "Quelle est la démarche de mise en congé pour accident du travail ou maladie prof",
+          "publisher": "Service-Public",
+          "section_id": "1bfbc35d-3cc3-5662-b2c1-faecfbda6956",
+          "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+        }
+      ],
+      "reason": "Ces deux articles précisent les cas où l'administration se substitue aux indemnités journalières : l'article 2 du décret 86‑83 décrit la subrogation générale (maladie, maternité, paternité, adoption, AT/MP) dès que le traitement maintenu est au moins égal aux IJ, et l'article 14 détaille la subrogation spécifique aux accidents du travail et maladies professionnelles avec les durées de prise en charge à plein traitement."
+    },
+    "selector_reasoning": "Ces deux articles précisent les cas où l'administration se substitue aux indemnités journalières : l'article 2 du décret 86‑83 décrit la subrogation générale (maladie, maternité, paternité, adoption, AT/MP) dès que le traitement maintenu est au moins égal aux IJ, et l'article 14 détaille la subrogation spécifique aux accidents du travail et maladies professionnelles avec les durées de prise en charge à plein traitement.",
+    "selector_rejection_reason": "",
+    "selector_items_before": 20,
+    "selector_items_after": 2,
+    "sections_before_rerank": 80,
+    "sections_after_rerank": 20,
+    "selector_all_rejected": false,
+    "selector_retry_triggered": false,
+    "selector_retry_succeeded": false,
+    "selector_decision": "selected",
+    "reranker_status": {
+      "chunk": {
+        "enabled": false,
+        "status": "disabled",
+        "top_k": 30
+      },
+      "section": {
+        "enabled": true,
+        "status": "completed",
+        "top_k": 20,
+        "items_before": 80,
+        "items_after": 20,
+        "error": ""
+      }
+    }
+  }
+}

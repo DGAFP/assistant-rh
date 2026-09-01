@@ -25,6 +25,12 @@ This folder contains fixtures and output reports for parity checks between:
 > This banner is factual and reversible; it does not delete any historical
 > details, and it is removed when Mastra work is explicitly resumed.
 
+## Current hexagonal API reference
+
+The versioned M0b Python-runtime reference for the hexagonal API extraction is
+documented in [M0_REPLAYS.md](M0_REPLAYS.md). It uses strict offline replay
+verification and is independent of the paused Mastra candidate path below.
+
 ## Query fixture format
 
 `queries.sample.jsonl` uses one JSON object per line:
@@ -42,6 +48,8 @@ Optional fields:
 
 - `conversation_history`
 - `tags`
+- `ministry` (request-scoped corpus identifier)
+- `expected` (observed branch contract checked while recording)
 
 ## Run
 

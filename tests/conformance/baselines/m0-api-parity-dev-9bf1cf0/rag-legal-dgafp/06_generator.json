@@ -1,0 +1,12 @@
+{
+  "input": {
+    "query": "Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel en congé de maladie, maternité, paternité, adoption ou accident du travail ?",
+    "context_item_count": 2,
+    "conversation_history": []
+  },
+  "output": {
+    "answer": "D'après l'article 2 du décret n° 86-83 du 17 janvier 1986, l'administration est subrogée à l'agent contractuel dans ses droits aux indemnités journalières (maladie, maternité, paternité, adoption, accidents du travail et maladies professionnelles, temps partiel pour raison thérapeutique) lorsque la rémunération maintenue durant les congés prévus aux articles 11-1 à 15 est **au moins égale au montant des indemnités journalières**.\n\nEn pratique, cette subrogation s'applique donc lorsque l'administration maintient tout ou partie du traitement de l'agent pendant son congé, et que ce maintien atteint ou dépasse le montant des indemnités journalières versées par la sécurité sociale. Dans ce cas, l'administration perçoit directement ces indemnités en lieu et place de l'agent.",
+    "answer_length": 779,
+    "citations": []
+  }
+}

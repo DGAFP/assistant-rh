@@ -1,0 +1,17 @@
+{
+  "input": {
+    "query": "Peux-tu me donner le texte intégral du décret n°86-83 ?",
+    "conversation_history": []
+  },
+  "output": {
+    "intent": "document_request",
+    "theme": null,
+    "needs_legal_search": false,
+    "needs_legal_search_llm": false,
+    "should_proceed": false,
+    "processed_query": "Peux-tu me donner le texte intégral du décret n°86-83 ?",
+    "enriched_query": "",
+    "query_for_retrieval": "Peux-tu me donner le texte intégral du décret n°86-83 ?",
+    "search_terms": []
+  }
+}

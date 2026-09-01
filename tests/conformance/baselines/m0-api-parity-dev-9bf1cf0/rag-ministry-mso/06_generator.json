@@ -1,0 +1,12 @@
+{
+  "input": {
+    "query": "Au ministère chargé des affaires sociales, un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+    "context_item_count": 3,
+    "conversation_history": []
+  },
+  "output": {
+    "answer": "Oui, un agent contractuel en CDI peut bénéficier d’un congé de mobilité au ministère chargé des affaires sociales, sous réserve des nécessités de service.\n\n**Conditions d’octroi**  \nCe congé sans rémunération est accordé à l’agent contractuel employé pour une durée indéterminée, lorsqu’il est recruté par la même personne morale de droit public ou par une autre personne morale de droit public qui ne peut le recruter initialement que pour une durée déterminée. Il est accordé pour une durée maximale de trois ans, renouvelable, dans la limite d’une durée totale de six ans.\n\n**Procédure de renouvellement et de réemploi**  \nL’agent doit solliciter le renouvellement de son congé ou sa demande de réemploi auprès du bureau de gestion des personnels contractuels, par lettre recommandée avec demande d’avis de réception, au moins deux mois avant le terme du congé. À défaut de demande dans ce délai, l’agent est présumé renoncer à son emploi et ne peut percevoir aucune indemnité.\n\n**Réemploi**  \nL’agent est réemployé, selon les nécessités du service, dans les conditions prévues aux articles 32 et 33 du décret n° 86-83 du 17 janvier 1986.\n\n**Nouveau congé**  \nUn congé de même nature ne peut être accordé que si l’agent a repris ses fonctions pendant trois ans au moins.",
+    "answer_length": 1273,
+    "citations": []
+  }
+}

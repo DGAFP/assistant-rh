@@ -1,0 +1,19 @@
+{
+  "input": {
+    "query": "Bonjour, comment ça va ?",
+    "aggregated_section_ids": []
+  },
+  "output": {
+    "selector_enabled": false,
+    "selector_all_rejected": false,
+    "selector_items_before": 0,
+    "selector_items_after": 0,
+    "selector_decisions": {},
+    "selector_decision": "not_run",
+    "selector_retry_triggered": false,
+    "selector_retry_succeeded": false,
+    "rejection_reason": "",
+    "reason": "",
+    "selected_section_ids": []
+  }
+}

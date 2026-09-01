@@ -1,0 +1,186 @@
+{
+  "input": {
+    "query": "Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel en congé de maladie, maternité, paternité, adoption ou accident du travail ?",
+    "aggregated_section_ids": [
+      "",
+      "",
+      "",
+      "",
+      "88274202-850d-5d55-94cb-1c3ecb8b7d5f",
+      "",
+      "a50db88f-242f-5cf3-a452-66815dbd1f5d",
+      "128eca4b-0f1d-50a0-b861-a77524043f06",
+      "ab83d951-a9e0-58fb-8b7a-af766fdc4785",
+      "",
+      "85b1bca6-97b9-5113-943a-83f7dff2b6e8",
+      "21731610-d322-59ac-b07c-82ef1a4736cf",
+      "",
+      "",
+      "",
+      "201d2601-9695-56c7-b235-312bfabca940",
+      "0b13ad4c-c491-4cd2-b19c-ceb4c1147fc9",
+      "dbb20567-1b53-5e9d-8778-cb9c2f7db111",
+      "77af7a0b-96ad-5187-9573-ca53910640cf",
+      "1bfbc35d-3cc3-5662-b2c1-faecfbda6956"
+    ]
+  },
+  "output": {
+    "selector_enabled": true,
+    "selector_all_rejected": false,
+    "selector_items_before": 20,
+    "selector_items_after": 2,
+    "selector_decisions": {
+      "kept": [
+        {
+          "idx": 0,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486524"
+        },
+        {
+          "idx": 1,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486502"
+        }
+      ],
+      "removed": [
+        {
+          "idx": 2,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486535"
+        },
+        {
+          "idx": 3,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486531"
+        },
+        {
+          "idx": 4,
+          "heading": "Comment le congé pour accident du travail ou maladie professionnelle est-il rému",
+          "publisher": "Service-Public",
+          "section_id": "88274202-850d-5d55-94cb-1c3ecb8b7d5f",
+          "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+        },
+        {
+          "idx": 5,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486527"
+        },
+        {
+          "idx": 6,
+          "heading": "Quels sont les effets du congé pour accident du travail ou maladie professionnel",
+          "publisher": "Service-Public",
+          "section_id": "a50db88f-242f-5cf3-a452-66815dbd1f5d",
+          "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+        },
+        {
+          "idx": 7,
+          "heading": "Dans quel cas un contractuel est-t-il placé en congé de maladie?",
+          "publisher": "Service-Public",
+          "section_id": "128eca4b-0f1d-50a0-b861-a77524043f06",
+          "document_id": "4a20694d-4bbc-4b47-acaa-1bf8ce9eb1c7"
+        },
+        {
+          "idx": 8,
+          "heading": "Quelles sont les obligations de l’agent contractuel pendant un congé pour accide",
+          "publisher": "Service-Public",
+          "section_id": "ab83d951-a9e0-58fb-8b7a-af766fdc4785",
+          "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+        },
+        {
+          "idx": 9,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486547"
+        },
+        {
+          "idx": 10,
+          "heading": "Dans quel cas le contractuel est-il placé en congé pour accident du travail ou m",
+          "publisher": "Service-Public",
+          "section_id": "85b1bca6-97b9-5113-943a-83f7dff2b6e8",
+          "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+        },
+        {
+          "idx": 11,
+          "heading": "Quels sont les effets du congé de maladie sur la situation administrative du con",
+          "publisher": "Service-Public",
+          "section_id": "21731610-d322-59ac-b07c-82ef1a4736cf",
+          "document_id": "4a20694d-4bbc-4b47-acaa-1bf8ce9eb1c7"
+        },
+        {
+          "idx": 12,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000041655878"
+        },
+        {
+          "idx": 13,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486538"
+        },
+        {
+          "idx": 14,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486594"
+        },
+        {
+          "idx": 15,
+          "heading": "Quels sont les effets du congé d'adoption sur la situation administrative de l'a",
+          "publisher": "Service-Public",
+          "section_id": "201d2601-9695-56c7-b235-312bfabca940",
+          "document_id": "2c05c3aa-442d-5e3e-ac9f-c1e09acf6971"
+        },
+        {
+          "idx": 16,
+          "heading": "L'agent a-t-il droit à une indemnité compensatrice de congés annuels?",
+          "publisher": "Service-Public",
+          "section_id": "0b13ad4c-c491-4cd2-b19c-ceb4c1147fc9",
+          "document_id": "958d8571-74a7-4d5c-bb13-42fe4e3d224b"
+        },
+        {
+          "idx": 17,
+          "heading": "Quelle est la situation de l’agent contractuel à la fin du congé pour accident d",
+          "publisher": "Service-Public",
+          "section_id": "dbb20567-1b53-5e9d-8778-cb9c2f7db111",
+          "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+        },
+        {
+          "idx": 18,
+          "heading": "V- L'indemnité de fin de contrat",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "77af7a0b-96ad-5187-9573-ca53910640cf",
+          "document_id": "e79fbb82-e13b-5794-945a-c980cf53f6a9"
+        },
+        {
+          "idx": 19,
+          "heading": "Quelle est la démarche de mise en congé pour accident du travail ou maladie prof",
+          "publisher": "Service-Public",
+          "section_id": "1bfbc35d-3cc3-5662-b2c1-faecfbda6956",
+          "document_id": "61aa867e-f887-4d58-b3a1-be041e99819d"
+        }
+      ],
+      "reason": "Ces deux articles précisent les cas où l'administration se substitue aux indemnités journalières : l'article 2 du décret 86‑83 décrit la subrogation générale (maladie, maternité, paternité, adoption, AT/MP) dès que le traitement maintenu est au moins égal aux IJ, et l'article 14 détaille la subrogation spécifique aux accidents du travail et maladies professionnelles avec les durées de prise en charge à plein traitement."
+    },
+    "selector_decision": "selected",
+    "selector_retry_triggered": false,
+    "selector_retry_succeeded": false,
+    "rejection_reason": "",
+    "reason": "Ces deux articles précisent les cas où l'administration se substitue aux indemnités journalières : l'article 2 du décret 86‑83 décrit la subrogation générale (maladie, maternité, paternité, adoption, AT/MP) dès que le traitement maintenu est au moins égal aux IJ, et l'article 14 détaille la subrogation spécifique aux accidents du travail et maladies professionnelles avec les durées de prise en charge à plein traitement.",
+    "selected_section_ids": []
+  }
+}
