@@ -1,4 +1,4 @@
-"""Dump per-stage Python baselines for Mastra parity replay.
+"""Dump per-stage Python baselines for deterministic parity replay.
 
 Example:
 

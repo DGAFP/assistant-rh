@@ -17,7 +17,7 @@ Ces livrables peuvent être regroupés dans les premières PRs, pas une PR oblig
 
 | Repère | Livrable | Échéance |
 |---|---|---|
-| **A1** | Supprimer Mastra et ses références devenues mortes | Indépendant, dès le début |
+| **A1** | ✅ Ancien pipeline TypeScript et références mortes supprimés ([#440](https://github.com/DGAFP/assistant-rh/issues/440)) | Terminé le 2026-09-01 |
 | **A4 / A6** | Squelette `apps/api`, packaging, `/healthz`, `Dockerfile.api`, gardes d'import et DB runtime synthétique | Avec les premières PRs DB B1/B2 |
 | **A5** | Inventaire initial I/O, état mutable et consommateurs ; compléter pour chaque module | Avant l'extraction concernée |
 | **M0a / M0b** | Baseline goldset live et fixtures/replays exacts, config/corpus identifiés, résultats consignés | Avant l'extraction métier |
@@ -147,7 +147,7 @@ Chaque ligne décrit une **extraction de comportement** derrière des ports, val
 | `src/ui/chatbot_*`, `citation_deduplicator.py`, `db_utils.py`, `llm_selector.py` | conservés pour le rollback, puis absorbés ou supprimés | nettoyage tardif |
 | `src/ui/source_import.py`, `private_datasets.py` | **inchangés** (Grist + S3) | hors chantier RAG |
 | `src/goldset/` | imports vers `assistant_rh_api.core` + adaptateurs d'éval | repointage après parité |
-| `apps/mastra-pipeline` | supprimé | suppression immédiate |
+| Ancien pipeline TypeScript | supprimé par A1 ([#440](https://github.com/DGAFP/assistant-rh/issues/440)) | terminé |
 
 ## Audit d'isolation A5
 

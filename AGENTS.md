@@ -9,7 +9,6 @@ Assistant RH is a French government HR chatbot for contractual public employees 
 - UI: Streamlit app in `apps/streamlit-ui/`.
 - Core runtime: Python RAG pipeline in `packages/rag-pipeline/`.
 - Data ingestion: CLI app in `apps/data-ingestion-cli/` plus data-engineering package in `packages/data-engineering/`.
-- TypeScript port/API work: Mastra app in `apps/mastra-pipeline/`.
 - Database: PostgreSQL with pgvector on Scaleway Managed Database.
 - AI providers: Albert/DINUM primary; Scaleway fallback for LLM and embeddings.
 
@@ -18,7 +17,6 @@ Assistant RH is a French government HR chatbot for contractual public employees 
 ```text
 apps/
   streamlit-ui/         Streamlit UI entrypoint and pages
-  mastra-pipeline/      TypeScript Mastra pipeline and OpenAI-compatible API work
   data-ingestion-cli/   Canonical ingestion CLI
 packages/
   rag-pipeline/         Production Python RAG pipeline
@@ -48,7 +46,7 @@ This repository is normally used as a bare/worktree workspace under `~/Code/alli
 
 ## Local setup and commands
 
-Python uses uv. Node/TypeScript uses pnpm.
+Python uses uv. The JavaScript dependency security scan uses pnpm.
 
 ```bash
 # Install Python dependencies, including dev tools
@@ -65,13 +63,6 @@ uv run ruff check --fix src apps/streamlit-ui/pages tests
 
 # Run Streamlit locally
 uv run streamlit run apps/streamlit-ui/Home.py
-
-# Run TypeScript lint checks
-pnpm lint:ts
-
-# Mastra app
-pnpm mastra:dev
-pnpm mastra:build
 
 # Data ingestion CLI help
 uv run data-ingestion --help
@@ -155,7 +146,7 @@ Common RAG tables:
 - `system_prompts`: editable prompt templates.
 - `acronyms`: acronym expansion dictionary.
 
-Before changing schema assumptions, search for all consumers in Python, TypeScript, tests, scripts, and workflows.
+Before changing schema assumptions, search for all consumers in Python, tests, scripts, and workflows.
 
 ## Testing and verification expectations
 
@@ -164,7 +155,6 @@ Choose the smallest reliable verification for the change.
 - Documentation-only changes: inspect rendered Markdown or at least verify the diff.
 - Python logic changes: run targeted tests first, then broader pytest when practical.
 - RAG behavior changes: run relevant unit tests and conformance checks where available.
-- TypeScript/Mastra changes: run `pnpm lint:ts` and relevant Mastra build/tests.
 - Deployment/workflow changes: validate YAML and use one-shot status checks; avoid long-running `--watch` commands.
 
 Do not delete or relax tests to make a change pass unless the user explicitly approves and the rationale is documented in the PR.
@@ -177,7 +167,6 @@ Do not delete or relax tests to make a change pass unless the user explicitly ap
 - Confusing `SCALEWAY_*` AI variables with `SCW_*` infrastructure variables.
 - Running commands against staging/production DSNs accidentally from `.env`.
 - Assuming GitHub Environment secrets are available without `environment: ...` on the workflow job.
-- Using `localeCompare` or locale-sensitive sorting for deterministic fingerprints in TypeScript; use stable binary string comparison instead.
 - Touching `src/_archive/` or historical notebooks unless the task specifically targets them.
 
 ## Pull request guidance

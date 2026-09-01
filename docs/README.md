@@ -12,7 +12,6 @@ The rest is grouped by theme:
 - [Data](data/) - private datasets and local data handling.
 - [Deployment](deployment/) - Scaleway infrastructure, jobs, and deploy runbooks.
 - [Ingestion](ingestion/) - source ingestion plans, audits, and handovers.
-- [Mastra](mastra/) - TypeScript port analysis, conformance, and paused implementation plan.
 - [Observability](observability/) - RAG health and trace monitoring runbooks.
 - [Quality](quality/) - evaluation reports and human review findings.
 - [Repository](repository/) - repository publication and workspace/tooling migration notes.

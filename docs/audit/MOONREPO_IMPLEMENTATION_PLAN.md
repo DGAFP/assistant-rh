@@ -1,5 +1,9 @@
 # Moonrepo Migration Implementation Plan
 
+> **Statut historique.** Ce plan décrit la migration initiale et ne constitue
+> plus une procédure active. Les références au candidat TypeScript retiré par
+> [#440](https://github.com/DGAFP/assistant-rh/issues/440) sont conservées comme trace.
+
 ## Overview
 
 This document provides a concrete, step-by-step implementation plan for the initial moonrepo migration. It covers **Phase 0 (Preparation)** and **Phase 1 (Extract Packages)** from the main migration plan.

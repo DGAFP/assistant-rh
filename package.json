@@ -3,19 +3,9 @@
   "private": true,
   "packageManager": "pnpm@10.34.1",
   "scripts": {
-    "mastra:dev": "pnpm --filter @assistant-rh/mastra-pipeline dev",
-    "mastra:build": "pnpm --filter @assistant-rh/mastra-pipeline build",
-    "conformance:help": "uv run python scripts/run_mastra_conformance.py --help",
-    "lint:ts": "biome check apps/mastra-pipeline/src apps/mastra-pipeline/scripts",
     "security:scan:js": "cve-lite . --fail-on high"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.16",
     "cve-lite-cli": "1.19.2"
-  },
-  "pnpm": {
-    "overrides": {
-      "esbuild": "0.28.1"
-    }
   }
 }

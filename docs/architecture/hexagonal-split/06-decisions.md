@@ -24,7 +24,7 @@
 | D8 | **Parité suivie au [LEDGER](LEDGER.md)** : tout changement comportemental de l'ancien runtime est reporté dans la nouvelle implémentation ; gel court avant M3 | Le LEDGER rend visible la dérive entre les deux chemins qui cohabitent temporairement. |
 | D9 | **Tests exacts sur fixtures/replays ; goldset live sur métriques et tolérances** | Les dépendances figées permettent une comparaison exacte. Avec un vrai LLM, on compare la qualité, pas l'identité du texte. |
 | D10 | **Local et VM homelab avant le déploiement Scaleway staging** | Tests rapides en local, intégrations longues sur VM. Pas de troisième environnement temporaire. |
-| D12 | **`apps/mastra-pipeline` supprimé dès la première PR d'implémentation** | Il est confirmé mort, sans consommateur ni déploiement, et sa suppression ne dépend pas de la bascule Python. |
+| D12 | **Ancien pipeline TypeScript supprimé par A1 ([#440](https://github.com/DGAFP/assistant-rh/issues/440))** | Il était confirmé mort, sans consommateur ni déploiement, et sa suppression ne dépendait pas de la bascule Python. |
 | D14 | **Bascule réversible** : API dark → Streamlit sous feature flag → canary/stabilité → suppression de l'ancien chemin | Le déploiement de l'API et le retrait de `packages/rag-pipeline` ne se produisent jamais dans la même étape opérationnelle. |
 
 ## Exécution et données produit

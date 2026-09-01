@@ -8,13 +8,6 @@ repos:
       - id: ruff-format
         types_or: [python, pyi]
 
-  - repo: https://github.com/biomejs/pre-commit
-    rev: v2.4.14
-    hooks:
-      - id: biome-check
-        additional_dependencies: ["@biomejs/biome@2.4.14"]
-        files: ^apps/mastra-pipeline/.*\.tsx?$
-
   - repo: local
     hooks:
       - id: cve-lite-js

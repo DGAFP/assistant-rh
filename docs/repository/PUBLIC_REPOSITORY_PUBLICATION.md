@@ -66,9 +66,6 @@ The private repository has an active ruleset, but GitHub currently returns `403`
 Several workflows declare a deployment environment and should use environment-scoped secrets:
 
 ```text
-conformance.yml                         → scaleway-staging
-conformance-nightly.yml                 → scaleway-staging
-conformance-refresh-baselines.yml       → scaleway-staging
 data-engineering-preview-staging.yml    → scaleway-staging
 data-engineering-prod-ingestion.yml     → scaleway-production
 data-engineering-promote-prod.yml       → scaleway-production
@@ -382,12 +379,11 @@ After the initial push:
 2. Confirm Actions are visible and default permissions are read-only.
 3. Confirm no secret values appear in Actions logs.
 4. Run the CI workflow on `main`.
-5. Run `Conformance` only after staging secrets and database access are intentionally configured.
-6. Test that private dataset access fails clearly without `HF_TOKEN`.
-7. Test that private dataset access succeeds when `HF_TOKEN` is provided locally or in a trusted environment.
-8. Confirm `data/golden_beta` restricted CSVs are absent.
-9. Confirm `src/_archive` is absent.
-10. Confirm notebooks have no committed outputs.
+5. Test that private dataset access fails clearly without `HF_TOKEN`.
+6. Test that private dataset access succeeds when `HF_TOKEN` is provided locally or in a trusted environment.
+7. Confirm `data/golden_beta` restricted CSVs are absent.
+8. Confirm `src/_archive` is absent.
+9. Confirm notebooks have no committed outputs.
 
 Useful checks:
 
