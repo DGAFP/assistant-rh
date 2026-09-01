@@ -46,7 +46,6 @@ pour la documentation détaillée.
 assistant-rh/
 ├── apps/
 │   ├── streamlit-ui/           # UI Streamlit (Home.py + pages/)
-│   ├── mastra-pipeline/        # Port TypeScript / endpoint OpenAI-compatible
 │   └── data-ingestion-cli/     # CLI canonique d'ingestion de données
 ├── packages/
 │   ├── rag-pipeline/           # Pipeline RAG V3 (production)
@@ -211,31 +210,9 @@ uv run ruff check src apps/streamlit-ui/pages tests --select E,F,I
 uv run ruff check --fix src apps/streamlit-ui/pages tests
 ```
 
-### TypeScript (Biome)
-
-```bash
-# Lint + format check
-pnpm lint:ts
-
-# Auto-fix (safe + unsafe)
-pnpm exec biome check --write --unsafe apps/mastra-pipeline/src apps/mastra-pipeline/scripts
-```
-
-Biome config is in `biome.json` at the workspace root. It covers all `.ts`/`.tsx` files under `apps/mastra-pipeline/src/` and `apps/mastra-pipeline/scripts/`.
-
-### JavaScript Dependency Security
-
-The root `pnpm-lock.yaml` is scanned with [OWASP CVE Lite CLI](https://github.com/OWASP/cve-lite-cli):
-
-```bash
-pnpm security:scan:js
-```
-
-The scan fails on high or critical OSV findings and is installed as a pre-push hook so the full lockfile is checked before sharing code.
-
 ### Pre-commit hooks
 
-This repo uses [pre-commit](https://pre-commit.com) for ruff (Python), Biome (TypeScript), notebook cleanup, and the JavaScript dependency security scan.
+This repo uses [pre-commit](https://pre-commit.com) for ruff (Python) and notebook cleanup.
 
 **Installing hooks in a bare-repo workspace:**
 
@@ -244,7 +221,6 @@ Because this repo uses the bare-repo + worktree pattern, `git rev-parse --git-co
 ```bash
 # From inside any worktree (e.g. main/ or feat-*/):
 pre-commit install --config $(git rev-parse --show-toplevel)/.pre-commit-config.yaml
-pre-commit install --hook-type pre-push --config $(git rev-parse --show-toplevel)/.pre-commit-config.yaml
 ```
 
 This sets `core.hooksPath` to the pre-commit managed directory, bypassing the bare repo's empty hooks.
@@ -253,10 +229,7 @@ This sets `core.hooksPath` to the pre-commit managed directory, bypassing the ba
 
 ```bash
 # Run only on specific files (avoids reformatting unrelated code)
-pre-commit run --files path/to/file.ts path/to/other.py
-
-# Run only the Biome hook
-pre-commit run biome-check --files apps/mastra-pipeline/src/mastra/index.ts
+pre-commit run --files path/to/file.py path/to/notebook.ipynb
 
 # Run only the ruff hook
 pre-commit run ruff --files packages/rag-pipeline/src/assistant_rh_rag_pipeline/pipeline.py

@@ -8,23 +8,8 @@ repos:
       - id: ruff-format
         types_or: [python, pyi]
 
-  - repo: https://github.com/biomejs/pre-commit
-    rev: v2.4.14
-    hooks:
-      - id: biome-check
-        additional_dependencies: ["@biomejs/biome@2.4.14"]
-        files: ^apps/mastra-pipeline/.*\.tsx?$
-
   - repo: local
     hooks:
-      - id: cve-lite-js
-        name: CVE Lite JS dependency scan
-        entry: pnpm security:scan:js
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
-
       - id: strip-notebook-outputs
         name: strip notebook outputs
         entry: python3 scripts/strip_notebook_outputs.py --fix

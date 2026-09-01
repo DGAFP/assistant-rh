@@ -1,11 +1,6 @@
 {
   "version": 1,
   "skills": {
-    "mastra": {
-      "source": "mastra-ai/skills",
-      "sourceType": "github",
-      "computedHash": "b42f583342dfee7deb541f4d094f03e8748898257f1f884fa71de1fdba9f38a2"
-    },
     "medallion-architecture": {
       "source": "vivekgana/databricks-platform-marketplace",
       "sourceType": "github",

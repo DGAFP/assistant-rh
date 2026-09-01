@@ -1,5 +1,10 @@
 # Recommandation — Backend Assistant RH & intégration ProConnect
 
+> **Statut historique.** Cette recommandation a été remplacée par le plan
+> [`hexagonal-split`](../architecture/hexagonal-split/00-overview.md). Les
+> références au candidat TypeScript supprimé par [#440](https://github.com/DGAFP/assistant-rh/issues/440)
+> sont conservées uniquement comme trace de la décision de juin 2026.
+
 > Date : 2026-06-17.  
 > Objet : synthèse opérationnelle pour décider **comment implémenter le backend produit** et **où intégrer ProConnect**, en tenant compte de l'état actuel du repo, des audits existants et des audits ouverts en PR [#135](https://github.com/DGAFP/assistant-rh/pull/135), [#136](https://github.com/DGAFP/assistant-rh/pull/136), [#137](https://github.com/DGAFP/assistant-rh/pull/137).
 
@@ -472,9 +477,7 @@ Mastra redevient intéressant quand :
 - PR [#135 — Audit UI Streamlit & frontière UI ↔ pipeline](https://github.com/DGAFP/assistant-rh/pull/135).
 - PR [#136 — Revue RAG vs état de l'art 2025-2026](https://github.com/DGAFP/assistant-rh/pull/136).
 - PR [#137 — Audit ingestion vs références 2025/2026](https://github.com/DGAFP/assistant-rh/pull/137).
-- [`docs/architecture/UI_REPLACEMENT_ANALYSIS.md`](UI_REPLACEMENT_ANALYSIS.md) — comparaison historique `suitenumerique/conversations`, Open WebUI, LibreChat, etc.
-- [`docs/mastra/MASTRA_PORT_EXECUTIVE_SUMMARY.md`](../mastra/MASTRA_PORT_EXECUTIVE_SUMMARY.md) — état du port Mastra et options UI.
-- [`apps/mastra-pipeline/src/mastra/routes/chat-completions.ts`](../../apps/mastra-pipeline/src/mastra/routes/chat-completions.ts) — endpoint OpenAI-compatible existant côté Mastra.
+- [`docs/architecture/UI_REPLACEMENT_ANALYSIS.md`](../architecture/UI_REPLACEMENT_ANALYSIS.md) — comparaison historique `suitenumerique/conversations`, Open WebUI, LibreChat, etc.
 - Documentation ProConnect FS : [`implementation_technique.md`](https://github.com/numerique-gouv/proconnect-documentation/blob/main/doc_fs/implementation_technique.md) et [`scope-claims.md`](https://github.com/numerique-gouv/proconnect-documentation/blob/main/doc_fs/scope-claims.md).
 
 ---
