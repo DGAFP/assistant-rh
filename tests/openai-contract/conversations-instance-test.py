@@ -7,6 +7,7 @@ own test tree, where that project's fixtures and Django application are present.
 
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
@@ -31,9 +32,11 @@ def issue443_settings(settings):
 def test_instance_lists_models_and_consumes_completion(api_client, hello_conversation_data):
     conversation = ChatConversationFactory(owner__language="fr-fr")
     api_client.force_authenticate(user=conversation.owner)
+    bearer = os.environ["ASSISTANT_RH_CONVERSATIONS_API_KEY"]
 
     models_response = api_client.get("/api/v1.0/llm-configuration/")
     assert models_response.status_code == 200
+    assert bearer.encode() not in models_response.content
     models = {item["hrid"]: item for item in models_response.json()["models"]}
     assert models["assistant-rh-matte"]["is_default"] is True
     assert models["assistant-rh-mso"]["supports_image"] is False
@@ -44,9 +47,12 @@ def test_instance_lists_models_and_consumes_completion(api_client, hello_convers
     wire = b"".join(response.streaming_content).decode("utf-8")
     assert "Sources" in wire
     assert "guide-conges" in wire
+    assert bearer not in wire
 
     conversation.refresh_from_db()
     assert "**Sources :**" in conversation.messages[-1].content
+    assert bearer not in conversation.messages[-1].content
+    assert bearer not in json.dumps(conversation.pydantic_messages, ensure_ascii=False)
     provider_responses = [message for message in conversation.pydantic_messages if message["kind"] == "response"]
     assert provider_responses[-1]["provider_response_id"].startswith("chatcmpl-replay-")
     assert provider_responses[-1]["provider_name"] == "openai"

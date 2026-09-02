@@ -14,9 +14,9 @@ Trois écarts importants ont été trouvés dans le contrat initial de la PR #41
 
 Le contrat accepte désormais ces champs et les ignore explicitement. Il conserve la propriété des prompts, ne renvoie aucun `tool_call`, et ajoute le chunk d'usage attendu avant `[DONE]`.
 
-Le spike local de la couche provider est vert. L'instance Django réelle, construite depuis la révision épinglée, passe également le test monté [conversations-instance-test.py](../../../tests/openai-contract/conversations-instance-test.py) : son endpoint authentifié liste les modèles, son endpoint de conversation consomme le SSE, restitue et persiste les sources markdown, et conserve l'id provider `chatcmpl-*`. Le test verrouille aussi la propagation actuelle de `openai.APIError` après headers.
+Le spike local de la couche provider est vert. L'instance Django réelle, construite depuis la révision épinglée, passe également le test monté [conversations-instance-test.py](../../../tests/openai-contract/conversations-instance-test.py) : son endpoint authentifié liste les modèles, son endpoint de conversation consomme le SSE, restitue et persiste les sources markdown, et conserve l'id provider `chatcmpl-*`. Le test vérifie explicitement que le bearer backend est absent du catalogue renvoyé au navigateur, du flux SSE et des messages persistés. Il verrouille aussi la propagation actuelle de `openai.APIError` après headers.
 
-Le même replay SDK et le test de l'instance ont été rejoués avec succès le 2026-09-02 directement sur la VM homelab `assistant-rh.discus-iguana.ts.net` (`8 passed` et `2 passed`). Aucun reverse proxy API n'existe encore à ce stade du chantier : buffering et borne HTTP du proxy restent donc, comme prévu, une validation D4 au premier déploiement dark.
+Le même replay SDK et le test de l'instance ont été rejoués avec succès le 2026-09-02 directement sur la VM homelab `assistant-rh.discus-iguana.ts.net` (`13 passed` et `2 passed`). Aucun reverse proxy API n'existe encore à ce stade du chantier : buffering et borne HTTP du proxy restent donc, comme prévu, une validation D4 au premier déploiement dark.
 
 ## Versions éprouvées
 
@@ -84,7 +84,7 @@ Le serveur ferme ensuite le flux sans `[DONE]`. Il ne met dans `message` ni exce
 
 ## Modèles, bearer et feedback
 
-`conversations` lit le bearer depuis l'environnement de son backend. Le fichier de configuration reproductible [conversations-llm.issue443.json](../../../tests/openai-contract/conversations-llm.issue443.json) ne contient qu'une référence `environ.ASSISTANT_RH_CONVERSATIONS_API_KEY`; aucune valeur n'est versionnée, affichée dans le rapport ou envoyée au navigateur.
+`conversations` lit le bearer depuis l'environnement de son backend. Le fichier de configuration reproductible [conversations-llm.issue443.json](../../../tests/openai-contract/conversations-llm.issue443.json) ne contient qu'une référence `environ.ASSISTANT_RH_CONVERSATIONS_API_KEY`; aucune valeur n'est versionnée ou affichée dans le rapport. Le test de l'instance utilise un sentinel éphémère et affirme son absence dans la réponse du catalogue destinée au navigateur, le flux SSE, le message UI persisté et l'historique provider persisté.
 
 Le catalogue `conversations` étant statique, son déploiement doit valider au démarrage que chaque `model_name` actif figure dans `/v1/models` pour le bearer. Une réponse 403 reste nécessaire si un modèle ministériel connu est hors `allowed_ministries`; 404 est réservé à un modèle inconnu.
 
@@ -177,10 +177,10 @@ docker run --rm --network host --entrypoint python \
   -m pytest /app/chat/tests/views/chat/conversations/test_issue443_live.py -q --no-cov
 ```
 
-Résultat local du 2026-09-01 : `2 passed`. Le premier test couvre catalogue, stream, sources et id de completion ; le second prouve que l'erreur post-headers remonte encore sous forme `openai.APIError`, résultat attendu tant que le catch du fork n'est pas livré.
+Résultat local du 2026-09-02 : `2 passed`. Le premier test couvre catalogue, stream, sources, id de completion et non-exposition du bearer dans les réponses ou messages persistés ; le second prouve que l'erreur post-headers remonte encore sous forme `openai.APIError`, résultat attendu tant que le catch du fork n'est pas livré.
 
 ## Homelab — preuve validée
 
 L'environnement d'exécution du 2026-09-02 était la VM elle-même (`hostname -f` → `assistant-rh.discus-iguana.ts.net`) ; la tentative SSH vers l'alias local n'était donc pas nécessaire. Le replay a été exposé uniquement sur le port de test de la VM avec un bearer aléatoire éphémère, puis consommé par le SDK du dépôt et par l'image `conversations:backend-development` épinglée.
 
-Résultats : matrice SDK/replay complète verte, framing SSE brut conforme, instance Django `2 passed`. Le conteneur PostgreSQL et le réseau Docker éphémères ont été supprimés après le test. Aucun `.env`, header, log debug HTTP ou bearer n'a été archivé. La conversion de `openai.APIError` en `model_connection_error` reste un changement du fork avant son intégration finale ; elle n'altère pas le contrat serveur validé par A2.
+Résultats : matrice SDK/replay complète verte (`13 passed`), framing SSE brut conforme, instance Django `2 passed`. Le test de l'instance confirme que son bearer sentinel reste absent du catalogue navigateur, du SSE et des messages persistés. Le conteneur PostgreSQL et le réseau Docker éphémères ont été supprimés après le test. Aucun `.env`, header, log debug HTTP ou bearer n'a été archivé. La conversion de `openai.APIError` en `model_connection_error` reste un changement du fork avant son intégration finale ; elle n'altère pas le contrat serveur validé par A2.
