@@ -2,7 +2,7 @@
 
 > Statut : plan amendé après revue, mise à jour du 2026-09-02.
 > Portée : transformation du monolithe en architecture front & back hexagonale, contrat public OpenAI-compatible.
-> Documents du dossier : [décisions](06-decisions.md) · [architecture cible](01-target-architecture.md) · [contrat API](02-api-contract.md) · [diagrammes de séquence](03-sequence-diagrams.md) · [plan de migration](04-migration-plan.md) · [audit d'isolation A5](07-runtime-isolation-audit.md) · [environnements](05-environments.md) · [LEDGER](LEDGER.md)
+> Documents du dossier : [décisions](06-decisions.md) · [architecture cible](01-target-architecture.md) · [contrat API](02-api-contract.md) · [diagrammes de séquence](03-sequence-diagrams.md) · [plan de migration](04-migration-plan.md) · [audit d'isolation A5](07-runtime-isolation-audit.md) · [arbitrage Streamlit A3](08-streamlit-api-parity.md) · [LEDGER](LEDGER.md)
 
 ## Problème
 
@@ -39,9 +39,9 @@ Voir [06-decisions.md](06-decisions.md), organisé en architecture/contrat, migr
 
 **À supprimer seulement après stabilité de la bascule** : `packages/rag-pipeline` · les modules `src/ui/chatbot_*` du chemin direct-import · l'accès DB direct de Streamlit · les flags de rollback.
 
-**Créé** : `apps/api/` (`core`, handlers, wiring, db, gateways) · `docker/api/Dockerfile` · runners de conformance déterministe et d'éval via-API · garde CI de frontière d'imports · migration d'auth API · fixtures runtime locales sans données personnelles.
+**Créé** : `apps/api/` (`core`, handlers, wiring, db, gateways) · outil interne `apps/rag-ops/` pour corpus/goldset/évaluations · `docker/api/Dockerfile` · runners de conformance déterministe et d'éval via-API · garde CI de frontière d'imports · migration d'auth API · fixtures runtime locales sans données personnelles.
 
-**Conservé / adapté** : `apps/streamlit-ui` (ancien chemin conservé pendant le canary, puis chat/admin clients HTTP ; `15_Import_Sources` inchangé) · `src/goldset` + skill `run-rag-eval` repointés sur `assistant_rh_api.core` avec adaptateurs explicites · `packages/data-engineering` + `apps/data-ingestion-cli` intouchés · `packages/shared-config` conservé.
+**Conservé / adapté** : `apps/streamlit-ui` (ancien chemin conservé pendant le canary, puis chat/admin clients HTTP ; pages RAG-ops déplacées après parité ; `15_Import_Sources` inchangé) · `src/goldset` + skill `run-rag-eval` repointés sur `assistant_rh_api.core` avec adaptateurs explicites · `packages/data-engineering` + `apps/data-ingestion-cli` intouchés · `packages/shared-config` conservé.
 
 ## Risques principaux
 
@@ -55,4 +55,4 @@ Voir [06-decisions.md](06-decisions.md), organisé en architecture/contrat, migr
 ## Points ouverts
 
 - Validation DINUM/DGAFP du déploiement du fork `conversations` et de l'auth fork → API. Le spike technique A2 précède le handler completion ; la décision organisationnelle peut suivre.
-- Sort des pages DB/éval/debug : réintégration via API, maintien temporaire ou archivage approuvé (matrice A3, avant les endpoints concernés).
+- Déploiement et contrôle d'accès réseau de l'outil RAG-ops retenu par A3 ; son périmètre fonctionnel et son gate de parité sont déjà [figés](08-streamlit-api-parity.md#gate-de-retrait-des-pages-rag-ops).

@@ -22,7 +22,7 @@ Ces livrables peuvent être regroupés dans les premières PRs, pas une PR oblig
 | **A5** | ✅ [Inventaire initial I/O, état mutable et consommateurs](07-runtime-isolation-audit.md) ; compléter pour chaque module | Initial terminé le 2026-09-02 ; re-audit bloquant avant l'extraction concernée |
 | **M0a / M0b** | Baseline goldset live et fixtures/replays exacts, config/corpus identifiés, résultats consignés | Avant l'extraction métier |
 | **A2** | Essai du contrat avec SDK OpenAI et `conversations`, en local/homelab : messages, auth, erreurs et SSE | Avant le handler completion C1 |
-| **A3** | Arbitrages de la [matrice Streamlit](#matrice-de-parité-streamlit) et liste des endpoints à conserver | Avant les endpoints admin concernés, puis la bascule |
+| **A3** | ✅ [Matrice Streamlit, surface D1/D2, rôles et provisioning des bearers](08-streamlit-api-parity.md) arbitrés ([#444](https://github.com/DGAFP/assistant-rh/issues/444)) | Terminé le 2026-09-02 |
 
 Le proxy Scaleway reste testé au premier déploiement dark D4 ; aucun environnement cloud supplémentaire n'est créé pendant la préparation.
 
@@ -64,9 +64,9 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 
 | PR / étape | Contenu |
 |---|---|
-| **D1** | `POST /v1/feedback` avec ownership groupe/run, raisons structurées, enrichissement goldset et analyse durable |
-| **D2** | Endpoints admin retenus en A3 : config/prompts/acronymes, groupes/rôles/tokens, chat-runs/traces, feedback/stats/analyse et endpoints documentaires étroits |
-| **D3** | Runner via-API : conformance exacte en replay et goldset live séparé ; tests SDK OpenAI/`conversations` conservés |
+| **D1** | `POST /v1/feedback` avec ownership groupe/run, raisons structurées, traduction stockage 0–4 ↔ API 1–5, enrichissement goldset et analyse durable |
+| **D2** | Endpoints [publics/documentaires](08-streamlit-api-parity.md#registre-figé-des-endpoints-publics-et-documentaires) et [admin](08-streamlit-api-parity.md#registre-figé-des-endpoints-admin-d2) figés par A3 : auth Streamlit, config/prompts/acronymes, groupes/rôles/tokens, chat-runs/traces/stats, feedback/stats/jobs et document cité étroit |
+| **D3** | Runner via-API : conformance exacte en replay et goldset live séparé ; outil RAG-ops pour corpus, curation goldset et pages chunking/ablation/intent ; tests SDK OpenAI/`conversations` conservés |
 | **D4** | Déployer le container complet sur Scaleway staging en mode dark. Valider pour la première fois le proxy réel : cold start, pings/buffering SSE, timeout, mémoire, déconnexion et observabilité |
 
 **Jalon M2 — fidélité API et opérabilité** : conformance core ↔ API exacte en replay, qualité live dans les tolérances M1, intégration `conversations`, streaming Scaleway et métriques opérationnelles au vert.
@@ -75,8 +75,8 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 
 | PR / étape | Contenu |
 |---|---|
-| **E1** | Client Chat Completions SSE et provisioning serveur des bearers ; `RAG_CHAT_BACKEND=direct\|api`, défaut `direct` |
-| **E2** | Clients admin HTTP selon A3 ; accès DB existant conservé seulement dans le mode de rollback |
+| **E1** | Client Chat Completions SSE et [bundle secret serveur + rotation en deux phases](08-streamlit-api-parity.md#provisioning-serveur-des-bearers-streamlit) ; `RAG_CHAT_BACKEND=direct\|api`, défaut `direct` |
+| **E2** | Login et clients admin HTTP selon A3 ; déplacement des pages RAG-ops après leur gate de parité ; accès DB produit conservé seulement dans le mode de rollback |
 | **E3** | Activer `api` pour un canary staging borné ; comparer qualité, satisfaction, erreurs, latence et complétude des logs |
 | **E4** | Fenêtre de stabilité staging de 5 jours ouvrés minimum ; exercices `api → direct` et rotation de tokens |
 
@@ -94,20 +94,16 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 
 ## Matrice de parité Streamlit
 
-| Page/fonction | Cible proposée | Décision requise avant |
+La [matrice A3 détaillée](08-streamlit-api-parity.md#matrice-page-par-page) fait foi pour les fonctions, autorisations, données sensibles, propriétaires et conditions de retrait. Résumé des décisions cibles :
+
+| Page/fonction | Décision actée | Livraison |
 |---|---|---|
-| `01_Chatbot` | Client Chat Completions SSE sous feature flag, ancien chemin en rollback | E1 |
-| `02_Chat_Logs` | `/admin/chat-runs` liste/détail | PR D2 |
-| `03_Feedback_Dashboard` | `/admin/feedback`, stats, analyse et exports reconstruits côté client | PR D2 |
-| `04_Admin_Config` | RAG config + CRUD prompts + CRUD acronymes + health via API | PR D2 |
-| `05_DB_Explorer` | Endpoint document/chunk étroit, maintien temporaire ou archivage approuvé — jamais SQL générique | A3 |
-| `06_Goldset_Explorer` | API goldset dédiée, outil séparé ou maintien temporaire | A3 |
-| `08`, `09`, `10` évals | CLI/outils dédiés, maintien temporaire ou archivage approuvé | A3 |
-| `12_Pipeline_Timeline` | Détail run + `/trace` | PR D2 |
-| `13_admin` | Redirection vers la page admin cible | PR D2 |
-| `14_User_Groups` | CRUD, reset password, suppression protégée, rôles et rotation bearer | PR D2 |
-| `15_Import_Sources` | Inchangé (Grist + S3), hors frontière DB RAG | — |
-| `_PDF_Viewer` | Endpoint document/PDF étroit ou URL signée ; sinon retrait approuvé | A3 |
+| `Home`, `01_Chatbot` | Clients HTTP auth/models/chat/feedback/documents ; chemin direct en rollback | B4/B5, C1–C7, D1/D2, E1 |
+| `02_Chat_Logs`, `03_Feedback_Dashboard`, `04_Admin_Config`, `12_Pipeline_Timeline`, `13_admin`, `14_User_Groups` | Clients HTTP admin complets, sans perte fonctionnelle | D2/E2 |
+| `05_DB_Explorer`, `06_Goldset_Explorer`, `08`, `09`, `10` | Outil interne RAG-ops ; maintien temporaire jusqu'au gate de parité | D3/E2 |
+| `15_Import_Sources` | Outil ingestion Grist/S3 séparé, inchangé et sans accès Postgres RAG | Hors chantier RAG |
+| `_PDF_Viewer` | Client de la route documentaire étroite ; URLs publiques sinon capability par source citée | B2/D2/E1 |
+| `archive/07`, `archive/11` | Archivage antérieur conservé avec remplacements documentés | Déjà terminé |
 
 ## Après le chantier
 

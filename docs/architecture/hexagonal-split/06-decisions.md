@@ -13,8 +13,8 @@
 | D2 | **Routage ministère par le nom de modèle** : un modèle par ministère autorisé, `/v1/models` filtré par le bearer, fallback `default_ministry` | Le routage reste dans le contrat OpenAI et `conversations` sait déjà présenter un sélecteur de modèle. |
 | D3 | **Core interne à l'API**, dans `apps/api/src/assistant_rh_api/core/` | Pas de cycle de release indépendant. Le runner goldset importe ce sous-module ; les règles d'import assurent son isolation. |
 | D4 | **Le core garde la logique métier du retrieval et de la génération** : fusion, gates, sélection, composition des prompts et orchestration | C'est cette logique que les campagnes qualité mesurent. SQL et appels réseau restent derrière des ports étroits. |
-| D5 | **À l'état cible, Streamlit ne touche plus Postgres** : chat et admin deviennent clients HTTP | Pendant le canary, le chemin direct reste disponible uniquement pour le rollback. `15_Import_Sources` reste hors de cette frontière, car il appartient au domaine ingestion Grist/S3. |
-| D6 | **Même bearer pour chat et admin** : groupe résolu par token, rôle `is_admin` requis sur `/admin/*` | Une seule logique d'auth, sans token admin statique. Hash, rotation et bootstrap sont décrits dans le contrat API. |
+| D5 | **À l'état cible, le produit Streamlit ne touche plus Postgres** : chat et admin deviennent clients HTTP | Pendant le canary, le chemin direct reste disponible uniquement pour le rollback. `15_Import_Sources` reste hors de cette frontière, car il appartient au domaine ingestion Grist/S3 ; les outils DB de qualité quittent le produit public. |
+| D6 | **Même bearer pour chat et admin** : groupe résolu par token, rôle `is_admin` requis sur `/admin/*` | Une seule logique d'auth, sans token admin statique. Identifiant indexé, hash, collection multi-token, rotation et bootstrap sont décrits dans le contrat API. |
 
 ## Migration et livraison
 
@@ -34,6 +34,15 @@
 | D11 | **Feedback via `POST /v1/feedback`** ; l'id de completion correspond au `turn_id` du `chat_run` | La métrique produit survit à la séparation sans créer une seconde identité de run. |
 | D13 | **État métier par requête**, sans singleton ni champ `last_*` partagé | Des requêtes concurrentes peuvent partager les pools/clients sûrs, jamais leurs résultats ou leurs traces. Voir `RunContext` dans l'architecture cible. |
 
+## Parité Streamlit A3
+
+| # | Décision | Pourquoi |
+|---|---|---|
+| D15 | **Aucune nouvelle fonction active n'est archivée** : les parcours produit deviennent clients HTTP ; corpus, goldset et évaluations migrent dans un outil RAG-ops restreint | La surface API reste métier et bornée sans perdre les outils de diagnostic/qualité ni exposer une API SQL. La [matrice A3](08-streamlit-api-parity.md) fixe le remplacement et son gate pour chaque page. |
+| D16 | **Bearers Streamlit provisionnés par groupe dans `STREAMLIT_API_BEARERS_JSON`**, secret du container, avec plusieurs tokens actifs par groupe | Le login mot de passe ne retourne jamais de bearer. L'émission → déploiement → smoke → révocation permet une rotation sans coupure ni secret dans le navigateur. |
+| D17 | **Accès documentaire par URL publique ou capability limitée au document cité** | Les liens restent utilisables dans Streamlit, le SDK et `conversations`, sans exposer bearer, clé S3, chemin de stockage ni endpoint de listing. |
+| D18 | **L'API expose les étoiles en 1–5 mais persiste 0–4 pendant la coexistence** | Les dashboards historiques ajoutent encore 1. La traduction dans l'adaptateur évite de mélanger deux encodages avant une éventuelle migration atomique post-F3. |
+
 ## Règles de frontière gardées par la CI
 
 1. `assistant_rh_api.core` n'importe ni `handlers`, ni `db`, ni `gateways`, ni `psycopg`, `fastapi`, `httpx`, `streamlit` ou `boto3`.
@@ -41,4 +50,4 @@
 3. `db/` et `gateways/` n'importent pas `handlers` ; ils implémentent les `Protocol` de `assistant_rh_api.core.ports`.
 4. `assistant_rh_api/__init__.py` reste sans effet de bord afin que `src/goldset` importe le core sans créer FastAPI ni ouvrir de connexion.
 5. Le wiring vit dans `handlers/app.py` pour l'API et dans le runner direct-core pour l'éval.
-6. À l'état cible, Streamlit n'importe ni `psycopg` ni le package Python API ; il utilise HTTP. Cette garde n'est activée qu'après le canary et le retrait du rollback.
+6. À l'état cible, le produit `apps/streamlit-ui` n'importe ni `psycopg` ni le package Python API ; il utilise HTTP. Cette garde n'est activée qu'après le canary et le retrait du rollback. L'outil RAG-ops est une application séparée avec ses propres gardes et rôles DB.
