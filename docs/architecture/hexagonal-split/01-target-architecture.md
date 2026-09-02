@@ -17,7 +17,7 @@ flowchart TB
             MS[ModelService]
             P[pipeline & steps<br/>· query_processor <br>· retrieval <br/> · section aggregator  <br/> · context builder/selector <br/> · generator]
             PP[composition du prompt ministère]
-            PO[ports :<br/>· SearchPort <br/>· ContentStorePort<br/>· PromptStorePort <br/>· AcronymStorePort<br/>· RerankerPort <br/>· LLMPort <br/>· EmbeddingPort<br/>· ChatRunStorePort <br/>· ConfigStorePort<br/>· FeedbackStorePort<br/>· UserGroupStorePort]
+            PO[ports :<br/>· SearchPort <br/>· ContentStorePort<br/>· PromptStorePort <br/>· AcronymStorePort<br/>· RerankerPort <br/>· LLMPort <br/>· EmbeddingPort<br/>· ChatRunStorePort <br/>· ConfigStorePort<br/>· FeedbackStorePort<br/>· UserGroupStorePort<br/>· ClockPort<br/>· IdGeneratorPort<br/>· TraceSinkPort]
 
 
             FS[FeedbackService]
@@ -77,9 +77,10 @@ apps/api/
 │   │   │       ├── context_selector.py
 │   │   │       ├── context_builder.py
 │   │   │       └── generator.py
-│   │   ├── ports.py          
+│   │   ├── ports.py
 │   │   ├── models.py         
 │   │   ├── config.py         
+│   │   ├── run_context.py
 │   │   ├── ministry_scope.py 
 │   │   └── prompt_policy.py  
 │   ├── handlers/             
@@ -95,6 +96,8 @@ apps/api/
 │   │   ├── content_store.py  
 │   │   ├── chat_run_store.py 
 │   │   ├── config_store.py   
+│   │   ├── prompt_store.py
+│   │   ├── acronym_store.py
 │   │   ├── user_groups.py    
 │   │   ├── feedback_store.py 
 │   │   └── dsn.py            
@@ -108,3 +111,9 @@ apps/api/
     ├── handlers/             
     └── integration/          
 ```
+
+## État par requête
+
+`ChatService` crée un `RunContext` isolé pour chaque requête. Il porte les identifiants, le scope ministère, les snapshots et révisions de config/prompts/acronymes, les résultats intermédiaires, les outcomes providers, les timings et les événements de trace. Les pools, clients, secrets et caches process restent dans les adaptateurs et n'y figurent jamais.
+
+Les ports et adaptateurs partagés ne stockent aucun résultat de requête. Le détail des champs, des états historiques à supprimer et des contrats de concurrence est tenu dans l'[audit d'isolation A5](07-runtime-isolation-audit.md#runcontext-minimal).
