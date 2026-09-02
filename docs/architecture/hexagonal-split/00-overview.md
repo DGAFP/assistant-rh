@@ -2,7 +2,7 @@
 
 > Statut : plan amendé après revue, mise à jour du 2026-08-26.
 > Portée : transformation du monolithe en architecture front & back hexagonale, contrat public OpenAI-compatible.
-> Documents du dossier : [décisions](06-decisions.md) · [architecture cible](01-target-architecture.md) · [contrat API](02-api-contract.md) · [diagrammes de séquence](03-sequence-diagrams.md) · [plan de migration](04-migration-plan.md) · [environnements](05-environments.md) · [LEDGER](LEDGER.md)
+> Documents du dossier : [décisions](06-decisions.md) · [architecture cible](01-target-architecture.md) · [contrat API](02-api-contract.md) · [diagrammes de séquence](03-sequence-diagrams.md) · [plan de migration](04-migration-plan.md) · [spike clients A2](07-openai-client-spike.md) · [LEDGER](LEDGER.md)
 
 ## Problème
 

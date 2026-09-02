@@ -21,7 +21,7 @@ Ces livrables peuvent être regroupés dans les premières PRs, pas une PR oblig
 | **A4 / A6** | Squelette `apps/api`, packaging, `/healthz`, `docker/api/Dockerfile`, gardes d'import et DB runtime synthétique | Avec les premières PRs DB B1/B2 |
 | **A5** | Inventaire initial I/O, état mutable et consommateurs ; compléter pour chaque module | Avant l'extraction concernée |
 | **M0a / M0b** | Baseline goldset live et fixtures/replays exacts, config/corpus identifiés, résultats consignés | Avant l'extraction métier |
-| **A2** | Essai du contrat avec SDK OpenAI et `conversations`, en local/homelab : messages, auth, erreurs et SSE | Avant le handler completion C1 |
+| **A2** | ✅ Contrat, replay SDK/provider et instance Django validés en local et homelab ([preuve](07-openai-client-spike.md)) ; adaptation `openai.APIError` consignée pour le fork | Terminé le 2026-09-02 |
 | **A3** | Arbitrages de la [matrice Streamlit](#matrice-de-parité-streamlit) et liste des endpoints à conserver | Avant les endpoints admin concernés, puis la bascule |
 
 Le proxy Scaleway reste testé au premier déploiement dark D4 ; aucun environnement cloud supplémentaire n'est créé pendant la préparation.
