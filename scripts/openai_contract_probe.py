@@ -55,6 +55,7 @@ MODEL_CATALOG = {
     "assistant-rh-matte": "matte",
     "assistant-rh-mso": "mso",
     "assistant-rh-mi": "mi",
+    "assistant-rh-masa": "masa",
 }
 AUTHORIZED_MODELS = ("assistant-rh-matte", "assistant-rh-mso")
 
@@ -586,8 +587,9 @@ def run_sdk_probe(*, base_url: str, api_key: str, model: str = DEFAULT_MODEL) ->
 
     client = _client(base_url, api_key)
     model_ids = [item.id for item in client.models.list().data]
-    if model not in model_ids:
-        raise ProbeFailure(f"Expected model {model!r} in /v1/models")
+    resolved_model = DEFAULT_MODEL if model == "assistant-rh" else model
+    if resolved_model not in model_ids:
+        raise ProbeFailure(f"Expected concrete model {resolved_model!r} in /v1/models")
 
     messages = _probe_messages()
     tools = [
@@ -613,9 +615,11 @@ def run_sdk_probe(*, base_url: str, api_key: str, model: str = DEFAULT_MODEL) ->
         raise ProbeFailure("Non-stream response has no interoperable markdown source block")
     if not completion.id.startswith("chatcmpl-"):
         raise ProbeFailure(f"Unexpected non-stream completion id: {completion.id!r}")
+    if completion.model != resolved_model:
+        raise ProbeFailure(f"Unexpected non-stream resolved model: {completion.model!r}")
     if completion.choices[0].finish_reason != "stop":
         raise ProbeFailure(f"Unexpected non-stream finish reason: {completion.choices[0].finish_reason!r}")
-    expected_ministry = MODEL_CATALOG.get(model)
+    expected_ministry = MODEL_CATALOG.get(resolved_model)
     non_stream_extension = _extension(completion, expected_ministry=expected_ministry)
 
     chunks = client.chat.completions.create(
@@ -632,6 +636,8 @@ def run_sdk_probe(*, base_url: str, api_key: str, model: str = DEFAULT_MODEL) ->
     usage_seen = False
     finish_reason: str | None = None
     for chunk in chunks:
+        if chunk.model != resolved_model:
+            raise ProbeFailure(f"Unexpected stream resolved model: {chunk.model!r}")
         if chunk.usage is not None:
             usage_seen = True
         if chunk.choices:
@@ -656,6 +662,8 @@ def run_sdk_probe(*, base_url: str, api_key: str, model: str = DEFAULT_MODEL) ->
     return {
         "sdk": {"name": "openai", "version": openai.__version__},
         "base_url": base_url,
+        "requested_model": model,
+        "resolved_model": resolved_model,
         "models": model_ids,
         "non_stream": {
             "completion_id_prefix": completion.id.split("-", maxsplit=1)[0],
@@ -797,6 +805,9 @@ def run_replay_error_probe(*, base_url: str, api_key: str) -> dict[str, Any]:
         "forbidden_model": _capture_status(
             lambda: valid.chat.completions.create(model="assistant-rh-mi", messages=tiny_messages)
         ),
+        "forbidden_masa_model": _capture_status(
+            lambda: valid.chat.completions.create(model="assistant-rh-masa", messages=tiny_messages)
+        ),
         "unknown_model": _capture_status(
             lambda: valid.chat.completions.create(model="assistant-rh-unknown", messages=tiny_messages)
         ),
@@ -835,6 +846,7 @@ def run_replay_error_probe(*, base_url: str, api_key: str) -> dict[str, Any]:
     expected = {
         "invalid_bearer": (401, "invalid_api_key"),
         "forbidden_model": (403, "model_forbidden"),
+        "forbidden_masa_model": (403, "model_forbidden"),
         "unknown_model": (404, "model_not_found"),
         "n_greater_than_one": (422, "unsupported_n"),
         "unsupported_stream_option": (422, "unsupported_stream_option"),

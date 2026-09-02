@@ -16,7 +16,7 @@ Le contrat accepte désormais ces champs et les ignore explicitement. Il conserv
 
 Le spike local de la couche provider est vert. L'instance Django réelle, construite depuis la révision épinglée, passe également le test monté [conversations-instance-test.py](../../../tests/openai-contract/conversations-instance-test.py) : son endpoint authentifié liste les modèles, son endpoint de conversation consomme le SSE, restitue et persiste les sources markdown, et conserve l'id provider `chatcmpl-*`. Le test vérifie explicitement que le bearer backend est absent du catalogue renvoyé au navigateur, du flux SSE et des messages persistés. Il verrouille aussi la propagation actuelle de `openai.APIError` après headers.
 
-Le même replay SDK et le test de l'instance ont été rejoués avec succès le 2026-09-02 directement sur la VM homelab `assistant-rh.discus-iguana.ts.net` (`13 passed` et `2 passed`). Aucun reverse proxy API n'existe encore à ce stade du chantier : buffering et borne HTTP du proxy restent donc, comme prévu, une validation D4 au premier déploiement dark.
+Le même replay SDK et le test de l'instance ont été rejoués avec succès le 2026-09-02 directement sur la VM homelab `assistant-rh.discus-iguana.ts.net` (`14 passed` et `2 passed`). Aucun reverse proxy API n'existe encore à ce stade du chantier : buffering et borne HTTP du proxy restent donc, comme prévu, une validation D4 au premier déploiement dark.
 
 ## Versions éprouvées
 
@@ -130,7 +130,7 @@ Le test automatisé du SDK et du replay est :
 uv run python -m pytest tests/test_openai_contract_probe.py -v
 ```
 
-Résultat local du 2026-09-02 : `13 passed`. La preuve couvre notamment le framing SSE brut (pings, chunk d'usage, `[DONE]` uniquement en succès), en plus de la consommation stream/non-stream par le SDK et des gardes contre les réponses ou historiques mal formés.
+Résultat local du 2026-09-02 : `14 passed`. La preuve couvre notamment le framing SSE brut (pings, chunk d'usage, `[DONE]` uniquement en succès), la résolution de l'alias générique vers son modèle/ministère concret, le statut 403 des modèles MI et MASA connus mais interdits, la consommation stream/non-stream par le SDK et les gardes contre les réponses ou historiques mal formés.
 
 ## Instance `conversations` locale — preuve validée
 
@@ -183,4 +183,4 @@ Résultat local du 2026-09-02 : `2 passed`. Le premier test couvre catalogue, st
 
 L'environnement d'exécution du 2026-09-02 était la VM elle-même (`hostname -f` → `assistant-rh.discus-iguana.ts.net`) ; la tentative SSH vers l'alias local n'était donc pas nécessaire. Le replay a été exposé uniquement sur le port de test de la VM avec un bearer aléatoire éphémère, puis consommé par le SDK du dépôt et par l'image `conversations:backend-development` épinglée.
 
-Résultats : matrice SDK/replay complète verte (`13 passed`), framing SSE brut conforme, instance Django `2 passed`. Le test de l'instance confirme que son bearer sentinel reste absent du catalogue navigateur, du SSE et des messages persistés. Le conteneur PostgreSQL et le réseau Docker éphémères ont été supprimés après le test. Aucun `.env`, header, log debug HTTP ou bearer n'a été archivé. La conversion de `openai.APIError` en `model_connection_error` reste un changement du fork avant son intégration finale ; elle n'altère pas le contrat serveur validé par A2.
+Résultats : matrice SDK/replay complète verte (`14 passed`), framing SSE brut conforme, instance Django `2 passed`. Le test de l'instance confirme que son bearer sentinel reste absent du catalogue navigateur, du SSE et des messages persistés. Le conteneur PostgreSQL et le réseau Docker éphémères ont été supprimés après le test. Aucun `.env`, header, log debug HTTP ou bearer n'a été archivé. La conversion de `openai.APIError` en `model_connection_error` reste un changement du fork avant son intégration finale ; elle n'altère pas le contrat serveur validé par A2.

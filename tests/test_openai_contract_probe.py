@@ -56,12 +56,22 @@ def test_openai_sdk_stream_and_non_stream_contract(replay, capsys) -> None:
     assert all("authorization" not in json.dumps(request).lower() for request in replay.state.requests)
 
 
+def test_openai_sdk_probe_resolves_generic_model_alias(replay) -> None:
+    report = run_sdk_probe(base_url=replay.base_url, api_key=TEST_API_KEY, model="assistant-rh")
+
+    assert report["requested_model"] == "assistant-rh"
+    assert report["resolved_model"] == "assistant-rh-matte"
+    assert report["non_stream"]["extension"]["ministry"] == "matte"
+    assert report["stream"]["extension"]["ministry"] == "matte"
+
+
 def test_replay_enforces_statuses_and_limits(replay) -> None:
     results = run_replay_error_probe(base_url=replay.base_url, api_key=TEST_API_KEY)
 
     assert results == {
         "invalid_bearer": {"status": 401, "code": "invalid_api_key"},
         "forbidden_model": {"status": 403, "code": "model_forbidden"},
+        "forbidden_masa_model": {"status": 403, "code": "model_forbidden"},
         "unknown_model": {"status": 404, "code": "model_not_found"},
         "n_greater_than_one": {"status": 422, "code": "unsupported_n"},
         "unsupported_stream_option": {"status": 422, "code": "unsupported_stream_option"},
