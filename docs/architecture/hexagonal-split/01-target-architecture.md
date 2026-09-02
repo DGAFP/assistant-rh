@@ -96,6 +96,8 @@ apps/api/
 │   │   ├── content_store.py  
 │   │   ├── chat_run_store.py 
 │   │   ├── config_store.py   
+│   │   ├── prompt_store.py
+│   │   ├── acronym_store.py
 │   │   ├── user_groups.py    
 │   │   ├── feedback_store.py 
 │   │   └── dsn.py            
