@@ -6,7 +6,7 @@ services:
     image: assistant-rh-api:local
     init: true
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     environment:
       API_HOST: 0.0.0.0
       API_PORT: 8000
@@ -14,11 +14,16 @@ services:
     depends_on:
       api-postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
 
   api-postgres:
     image: pgvector/pgvector:pg17
     ports:
-      - "${API_POSTGRES_PORT:-55433}:5432"
+      - "127.0.0.1:${API_POSTGRES_PORT:-55433}:5432"
     environment:
       POSTGRES_USER: assistant_rh_api
       POSTGRES_PASSWORD: assistant_rh_api
