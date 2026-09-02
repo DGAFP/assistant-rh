@@ -20,7 +20,6 @@ included in the JSON report.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import threading
@@ -787,7 +786,9 @@ def run_replay_error_probe(*, base_url: str, api_key: str) -> dict[str, Any]:
     """Exercise deterministic replay-only status and size-limit scenarios."""
 
     valid = _client(base_url, api_key)
-    invalid_key = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+    invalid_key = "invalid-contract-replay-key"
+    if api_key == invalid_key:
+        invalid_key = "invalid-contract-replay-key-alternate"
     invalid = _client(base_url, invalid_key)
     tiny_messages = [{"role": "user", "content": "test"}]
 
@@ -985,7 +986,7 @@ def main() -> int:
     if args.command == "serve":
         server = ReplayHTTPServer((args.host, args.port), api_key)
         host, port = server.server_address[:2]
-        print(json.dumps({"base_url": f"http://{host}:{port}/v1", "api_key_env": args.api_key_env}))
+        print(json.dumps({"base_url": f"http://{host}:{port}/v1"}))
         try:
             server.serve_forever()
         except KeyboardInterrupt:
