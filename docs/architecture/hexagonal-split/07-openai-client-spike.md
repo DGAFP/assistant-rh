@@ -130,7 +130,7 @@ Le test automatisé du SDK et du replay est :
 uv run python -m pytest tests/test_openai_contract_probe.py -v
 ```
 
-Résultat local du 2026-09-02 : `8 passed`. La preuve couvre notamment le framing SSE brut (pings, chunk d'usage, `[DONE]` uniquement en succès), en plus de la consommation stream/non-stream par le SDK.
+Résultat local du 2026-09-02 : `13 passed`. La preuve couvre notamment le framing SSE brut (pings, chunk d'usage, `[DONE]` uniquement en succès), en plus de la consommation stream/non-stream par le SDK et des gardes contre les réponses ou historiques mal formés.
 
 ## Instance `conversations` locale — preuve validée
 

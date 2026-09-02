@@ -357,13 +357,18 @@ class ReplayRequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.UNPROCESSABLE_ENTITY, _error_body("A user message is required", "missing_user_message"))
             return None
 
-        effective = []
+        complete_turns: list[tuple[dict[str, str], dict[str, str]]] = []
+        pending_user: dict[str, str] | None = None
         for message in normalized_messages[:latest_user_index]:
-            if message["role"] not in {"user", "assistant"}:
+            if message["role"] == "user":
+                pending_user = {"role": "user", "content": message["content"]}
                 continue
-            content = _strip_sources(message["content"]) if message["role"] == "assistant" else message["content"]
-            effective.append({"role": message["role"], "content": content})
-        self.server.state.last_effective_history = effective[-(MAX_HISTORY_TURNS * 2) :]
+            if message["role"] != "assistant" or pending_user is None:
+                continue
+            assistant = {"role": "assistant", "content": _strip_sources(message["content"])}
+            complete_turns.append((pending_user, assistant))
+            pending_user = None
+        self.server.state.last_effective_history = [message for turn in complete_turns[-MAX_HISTORY_TURNS:] for message in turn]
 
         return (
             str(requested_model),
@@ -535,12 +540,33 @@ def _client(base_url: str, api_key: str) -> OpenAI:
     return OpenAI(base_url=base_url.rstrip("/"), api_key=api_key, max_retries=0, timeout=10)
 
 
-def _extension(model: Any) -> dict[str, Any]:
+def _extension(model: Any, *, expected_ministry: str | None = None) -> dict[str, Any]:
     extra = model.model_extra or {}
     extension = extra.get("x_assistant_rh")
     if not isinstance(extension, dict):
         raise ProbeFailure("Missing x_assistant_rh response extension")
+    if not isinstance(extension.get("turn_id"), str) or not extension["turn_id"]:
+        raise ProbeFailure("x_assistant_rh.turn_id must be a non-empty string")
+    ministry = extension.get("ministry")
+    if not isinstance(ministry, str) or not ministry:
+        raise ProbeFailure("x_assistant_rh.ministry must be a non-empty string")
+    if expected_ministry is not None and ministry != expected_ministry:
+        raise ProbeFailure(f"Unexpected x_assistant_rh ministry: {ministry!r}")
+    sources = extension.get("sources")
+    required_source_fields = ("title", "url", "publisher", "doc_ref")
+    if not isinstance(sources, list) or not sources:
+        raise ProbeFailure("x_assistant_rh.sources must be a non-empty list")
+    for source in sources:
+        if not isinstance(source, dict) or any(not isinstance(source.get(field), str) or not source[field] for field in required_source_fields):
+            raise ProbeFailure("Each x_assistant_rh source must contain non-empty title, url, publisher, and doc_ref strings")
     return extension
+
+
+def _provider_post_header_error_name(exc: Exception) -> str:
+    exception_name = f"{type(exc).__module__}.{type(exc).__name__}"
+    if not isinstance(exc, APIError) or exc.code != "stream_error":
+        raise ProbeFailure(f"Unexpected Conversations provider post-header error: {exception_name} (code={getattr(exc, 'code', None)!r})") from exc
+    return exception_name
 
 
 def _probe_messages() -> list[dict[str, str]]:
@@ -586,7 +612,12 @@ def run_sdk_probe(*, base_url: str, api_key: str, model: str = DEFAULT_MODEL) ->
     content = completion.choices[0].message.content or ""
     if SOURCE_MARKER not in content:
         raise ProbeFailure("Non-stream response has no interoperable markdown source block")
-    non_stream_extension = _extension(completion)
+    if not completion.id.startswith("chatcmpl-"):
+        raise ProbeFailure(f"Unexpected non-stream completion id: {completion.id!r}")
+    if completion.choices[0].finish_reason != "stop":
+        raise ProbeFailure(f"Unexpected non-stream finish reason: {completion.choices[0].finish_reason!r}")
+    expected_ministry = MODEL_CATALOG.get(model)
+    non_stream_extension = _extension(completion, expected_ministry=expected_ministry)
 
     chunks = client.chat.completions.create(
         model=model,
@@ -611,7 +642,7 @@ def run_sdk_probe(*, base_url: str, api_key: str, model: str = DEFAULT_MODEL) ->
             if choice.finish_reason:
                 finish_reason = choice.finish_reason
         if (chunk.model_extra or {}).get("x_assistant_rh"):
-            stream_extension = _extension(chunk)
+            stream_extension = _extension(chunk, expected_ministry=expected_ministry)
 
     joined = "".join(streamed_content)
     if SOURCE_MARKER not in joined:
@@ -886,8 +917,8 @@ def run_conversations_provider_probe(*, base_url: str, api_key: str) -> dict[str
         try:
             async with error_agent.run_stream(STREAM_ERROR_SENTINEL) as response:
                 await response.get_output()
-        except Exception as exc:  # noqa: BLE001 - the spike records the real third-party mapping
-            error_exception = f"{type(exc).__module__}.{type(exc).__name__}"
+        except Exception as exc:  # noqa: BLE001 - converted to an explicit contract failure below
+            error_exception = _provider_post_header_error_name(exc)
 
         if error_exception is None:
             raise ProbeFailure("Conversations provider client hid the post-header stream error")
