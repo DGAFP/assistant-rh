@@ -19,7 +19,7 @@ Ces livrables peuvent être regroupés dans les premières PRs, pas une PR oblig
 |---|---|---|
 | **A1** | ✅ Ancien pipeline TypeScript et références mortes supprimés ([#440](https://github.com/DGAFP/assistant-rh/issues/440)) | Terminé le 2026-09-01 |
 | **A4 / A6** | Squelette `apps/api`, packaging, `/healthz`, `docker/api/Dockerfile`, gardes d'import et DB runtime synthétique | Avec les premières PRs DB B1/B2 |
-| **A5** | Inventaire initial I/O, état mutable et consommateurs ; compléter pour chaque module | Avant l'extraction concernée |
+| **A5** | ✅ [Inventaire initial I/O, état mutable et consommateurs](07-runtime-isolation-audit.md) ; compléter pour chaque module | Initial terminé le 2026-09-02 ; re-audit bloquant avant l'extraction concernée |
 | **M0a / M0b** | Baseline goldset live et fixtures/replays exacts, config/corpus identifiés, résultats consignés | Avant l'extraction métier |
 | **A2** | ✅ Contrat, replay SDK/provider et instance Django validés en local et homelab ([preuve](07-openai-client-spike.md)) ; adaptation `openai.APIError` consignée pour le fork | Terminé le 2026-09-02 |
 | **A3** | Arbitrages de la [matrice Streamlit](#matrice-de-parité-streamlit) et liste des endpoints à conserver | Avant les endpoints admin concernés, puis la bascule |
@@ -41,6 +41,8 @@ Cette phase construit les bords de l'hexagone avant d'extraire le pipeline. Les 
 ## Phase C — completion, extraite étape par étape
 
 La DB et les providers existent déjà. Le handler de transport est posé avant l'extraction métier, puis chaque étape remplace une dépendance fake/replay par une règle pure nouvelle. L'ancien package n'est jamais modifié en façade et reste le runtime servi.
+
+**Gate A5 obligatoire** : avant chaque extraction C2 à C7, appliquer la [règle de re-audit](07-runtime-isolation-audit.md#règle-bloquante-avant-une-extraction-de-phase-c). La PR doit mettre à jour la carte du module, assigner les nouveaux écarts dans le LEDGER et figer les règles d'ordre touchées.
 
 | PR | Contenu | Preuve minimale |
 |---|---|---|
@@ -151,7 +153,7 @@ Chaque ligne décrit une **extraction de comportement** derrière des ports, val
 
 ## Audit d'isolation A5
 
-L'isolation imparfaite est présumée dans tout le pipeline. A5 établit l'inventaire initial, complété avant l'extraction de chaque module :
+L'[audit A5](07-runtime-isolation-audit.md) couvre les 21 modules Python, les prompts embarqués et les consommateurs directs. Il est complété avant l'extraction de chaque module :
 
 - SQL et résolution de DSN ;
 - prompts/config/acronymes dynamiques ;
@@ -160,6 +162,6 @@ L'isolation imparfaite est présumée dans tout le pipeline. A5 établit l'inven
 - état mutable `last_*`, diagnostics et données nécessaires au logging ;
 - consommateurs dans les apps, `src/`, tests, scripts et workflows.
 
-Chaque dépendance devient une donnée pure, un port, un adaptateur ou un élément du `RunContext`. Le [LEDGER](LEDGER.md) consigne les écarts découverts.
+Chaque dépendance devient une donnée pure, un port, un adaptateur ou un élément du `RunContext`. Le [LEDGER](LEDGER.md#écarts-disolation-a5) consigne les écarts découverts avec propriétaire et statut.
 
 Exemple retrieval : `db/search.py` retourne des chunks scorés bruts ; `core/pipeline/steps/retrieval.py` porte fusion, normalisation, seuils et déduplication. Les tests caractérisent ce comportement avant extraction.
