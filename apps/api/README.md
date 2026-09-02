@@ -6,29 +6,53 @@ probe `GET /healthz`; it does not initialize the RAG pipeline or any AI provider
 
 ## Run locally
 
-Start the dedicated synthetic Postgres database, then export its DSN as the
-canonical runtime DSN:
+The repository uses Proto to install the pinned Python, uv, and Moon versions.
+After installing Proto once, bootstrap the repository tools and start the full
+API stack:
 
 ```bash
-export API_POSTGRES_PORT="${API_POSTGRES_PORT:-55433}"
-export API_SYNTHETIC_POSTGRES_DSN="${API_SYNTHETIC_POSTGRES_DSN:-postgresql://assistant_rh_api:assistant_rh_api@localhost:${API_POSTGRES_PORT}/assistant_rh_api_test?sslmode=disable}"
-docker compose -f docker-compose.local.yml up -d --wait api-postgres
-export SCW_POSTGRES_DSN="$API_SYNTHETIC_POSTGRES_DSN"
-uv run --package assistant-rh-api --group dev assistant-rh-api
-curl --fail http://127.0.0.1:8000/healthz
+proto install
+moon run api:local
+curl --fail "http://127.0.0.1:${API_PORT:-8000}/healthz"
 ```
 
-Use a different `API_POSTGRES_PORT` when another worktree already exposes the
-default port. Compose scopes the container and volume to the current worktree.
+`api:local` builds the API image, starts the dedicated synthetic PostgreSQL
+service, and waits for both healthchecks. A successful probe returns:
+
+```json
+{"status":"ok","db":"ok","config_loaded":true}
+```
+
+Use `API_PORT` and `API_POSTGRES_PORT` to avoid host-port conflicts with another
+worktree. Compose scopes container and volume names to the current worktree.
+
+```bash
+API_PORT=8010 API_POSTGRES_PORT=55443 moon run api:local
+moon run api:local-logs
+moon run api:local-down
+```
+
+To delete and recreate only the synthetic API database:
+
+```bash
+moon run api:local-reset
+moon run api:local
+```
 
 The API database is a separate volume initialized exclusively from
 `tests/fixtures/runtime.sql`. It must never be seeded from staging or production.
 
+The equivalent direct Compose command is:
+
+```bash
+docker compose --project-directory . -f docker/api/compose.yml up --build -d --wait
+```
+
 ## Verify
 
 ```bash
-uv run --package assistant-rh-api --group dev ruff check apps/api/src apps/api/tests
-uv run --package assistant-rh-api --group dev lint-imports --config apps/api/pyproject.toml --no-cache
-uv run --package assistant-rh-api --group dev python -m pytest apps/api/tests -v
-docker build -f Dockerfile.api -t assistant-rh-api:local .
+moon run api:lint
+moon run api:architecture
+moon run api:test
+moon run api:docker-build
 ```

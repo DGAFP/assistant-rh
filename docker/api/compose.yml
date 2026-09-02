@@ -1,0 +1,36 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    image: assistant-rh-api:local
+    init: true
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      SCW_POSTGRES_DSN: postgresql://assistant_rh_api:assistant_rh_api@api-postgres:5432/assistant_rh_api_test?sslmode=disable
+    depends_on:
+      api-postgres:
+        condition: service_healthy
+
+  api-postgres:
+    image: pgvector/pgvector:pg17
+    ports:
+      - "${API_POSTGRES_PORT:-55433}:5432"
+    environment:
+      POSTGRES_USER: assistant_rh_api
+      POSTGRES_PASSWORD: assistant_rh_api
+      POSTGRES_DB: assistant_rh_api_test
+    volumes:
+      - assistant_rh_api_pgdata:/var/lib/postgresql/data
+      - ./apps/api/tests/fixtures/runtime.sql:/docker-entrypoint-initdb.d/10-api-runtime.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assistant_rh_api -d assistant_rh_api_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  assistant_rh_api_pgdata:

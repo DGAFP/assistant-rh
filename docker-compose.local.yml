@@ -15,26 +15,5 @@ services:
       - assistant_rh_local_pgdata:/var/lib/postgresql/data
     command: postgres -c shared_buffers=512MB -c maintenance_work_mem=256MB
 
-  # Base runtime API strictement synthétique. Volume, port et identifiants
-  # séparés pour qu'un dump staging du banc d'eval ne puisse jamais être lu
-  # par les tests API.
-  api-postgres:
-    image: pgvector/pgvector:pg17
-    ports:
-      - "${API_POSTGRES_PORT:-55433}:5432"
-    environment:
-      POSTGRES_USER: assistant_rh_api
-      POSTGRES_PASSWORD: assistant_rh_api
-      POSTGRES_DB: assistant_rh_api_test
-    volumes:
-      - assistant_rh_api_pgdata:/var/lib/postgresql/data
-      - ./apps/api/tests/fixtures/runtime.sql:/docker-entrypoint-initdb.d/10-api-runtime.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U assistant_rh_api -d assistant_rh_api_test"]
-      interval: 2s
-      timeout: 3s
-      retries: 20
-
 volumes:
   assistant_rh_local_pgdata:
-  assistant_rh_api_pgdata:

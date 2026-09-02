@@ -19,7 +19,8 @@ fileGroups:
   configs:
     - "pyproject.toml"
     - "moon.yml"
-    - "/Dockerfile.api"
+    - "/.dockerignore"
+    - "/docker/api/**/*"
 
 tasks:
   dev:
@@ -75,9 +76,41 @@ tasks:
       runFromWorkspaceRoot: true
       cache: false
 
+  local:
+    description: "Build and start the complete local API stack"
+    command: "docker compose --project-directory . -f docker/api/compose.yml up --build -d --wait"
+    inputs:
+      - "@group(sources)"
+      - "@group(configs)"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  local-down:
+    description: "Stop the local API stack and preserve its synthetic database"
+    command: "docker compose --project-directory . -f docker/api/compose.yml down"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  local-reset:
+    description: "Stop the local API stack and delete its synthetic database"
+    command: "docker compose --project-directory . -f docker/api/compose.yml down -v"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  local-logs:
+    description: "Follow logs from the local API container"
+    command: "docker compose --project-directory . -f docker/api/compose.yml logs -f api"
+    preset: "server"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
   docker-build:
     description: "Build the API container image"
-    command: "docker build -f Dockerfile.api -t assistant-rh-api:local ."
+    command: "docker build -f docker/api/Dockerfile -t assistant-rh-api:local ."
     inputs:
       - "@group(sources)"
       - "@group(configs)"
