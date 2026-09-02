@@ -8,7 +8,7 @@ project:
   name: "Assistant RH API"
   description: "OpenAI-compatible HTTP API and internal hexagonal core"
 
-toolchain:
+toolchains:
   default: "unstable_uv"
 
 fileGroups:
@@ -41,6 +41,7 @@ tasks:
       runFromWorkspaceRoot: true
       cache: false
       allowFailure: false
+      mergeArgs: replace
 
   architecture:
     description: "Enforce API import boundaries"
@@ -62,6 +63,7 @@ tasks:
     options:
       runFromWorkspaceRoot: true
       cache: false
+      mergeArgs: replace
 
   smoke:
     description: "Import the installable API package without starting it"
