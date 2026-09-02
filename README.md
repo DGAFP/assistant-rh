@@ -215,7 +215,8 @@ uv run ruff check --fix src apps/streamlit-ui/pages tests
 
 ### Pre-commit hooks
 
-This repo uses [pre-commit](https://pre-commit.com) for ruff (Python) and notebook cleanup.
+This repo uses [pre-commit](https://pre-commit.com) for ruff (Python), notebook cleanup,
+and targeted API checks before each push.
 
 **Installing hooks in a bare-repo workspace:**
 
@@ -223,10 +224,24 @@ Because this repo uses the bare-repo + worktree pattern, `git rev-parse --git-co
 
 ```bash
 # From inside any worktree (e.g. main/ or feat-*/):
+proto install
 pre-commit install --config $(git rev-parse --show-toplevel)/.pre-commit-config.yaml
 ```
 
 This sets `core.hooksPath` to the pre-commit managed directory, bypassing the bare repo's empty hooks.
+The configuration installs both `pre-commit` and `pre-push` hooks. The latter runs the canonical
+Moon targets `api:smoke`, `api:lint`, `api:architecture`, and `api:test`.
+
+If hooks were installed before the API pre-push gate was added, install the new hook explicitly
+after bootstrapping the pinned tools:
+
+```bash
+proto install
+pre-commit install --hook-type pre-push --config $(git rev-parse --show-toplevel)/.pre-commit-config.yaml
+```
+
+The pre-push hook does not start Docker. Without `API_SYNTHETIC_POSTGRES_DSN`, the database
+integration test is skipped locally and remains fully enforced by CI against synthetic PostgreSQL.
 
 **Running hooks manually (targeted):**
 
@@ -236,6 +251,9 @@ pre-commit run --files path/to/file.py path/to/notebook.ipynb
 
 # Run only the ruff hook
 pre-commit run ruff --files packages/rag-pipeline/src/assistant_rh_rag_pipeline/pipeline.py
+
+# Reproduce the pre-push API gate
+pre-commit run --hook-stage pre-push api-pre-push-checks
 ```
 
 > **Warning**: Do not run `pre-commit run --all-files` — it may reformat large areas of the codebase that are outside the scope of your change.
