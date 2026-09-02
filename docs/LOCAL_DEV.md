@@ -156,8 +156,9 @@ le dump staging ni aucune table contenant des conversations, feedbacks ou
 identifiants d'utilisateurs.
 
 ```bash
+export API_POSTGRES_PORT="${API_POSTGRES_PORT:-55433}"
 docker compose -f docker-compose.local.yml up -d --wait api-postgres
-export API_SYNTHETIC_POSTGRES_DSN="postgresql://assistant_rh_api:assistant_rh_api@localhost:55433/assistant_rh_api_test?sslmode=disable"
+export API_SYNTHETIC_POSTGRES_DSN="postgresql://assistant_rh_api:assistant_rh_api@localhost:${API_POSTGRES_PORT}/assistant_rh_api_test?sslmode=disable"
 export SCW_POSTGRES_DSN="$API_SYNTHETIC_POSTGRES_DSN"
 
 uv run --package assistant-rh-api --group dev assistant-rh-api
@@ -170,8 +171,10 @@ Le schéma et les valeurs minimales viennent uniquement de
 toucher au volume d'eval :
 
 ```bash
-docker compose -f docker-compose.local.yml stop api-postgres
-docker compose -f docker-compose.local.yml rm -f -v api-postgres
-docker volume rm assistant-rh-api-local-pgdata
+docker compose -f docker-compose.local.yml down -v api-postgres
 docker compose -f docker-compose.local.yml up -d --wait api-postgres
 ```
+
+Compose scope le conteneur et le volume au worktree courant. Si le port par
+défaut est déjà pris par un autre worktree, définir `API_POSTGRES_PORT` avant
+le `up` et construire le DSN avec la même valeur.

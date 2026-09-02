@@ -20,9 +20,8 @@ services:
   # par les tests API.
   api-postgres:
     image: pgvector/pgvector:pg17
-    container_name: assistant-rh-api-local-pg
     ports:
-      - "55433:5432"
+      - "${API_POSTGRES_PORT:-55433}:5432"
     environment:
       POSTGRES_USER: assistant_rh_api
       POSTGRES_PASSWORD: assistant_rh_api
@@ -39,4 +38,3 @@ services:
 volumes:
   assistant_rh_local_pgdata:
   assistant_rh_api_pgdata:
-    name: assistant-rh-api-local-pgdata

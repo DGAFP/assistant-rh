@@ -61,7 +61,7 @@ tasks:
       - "@group(configs)"
     options:
       runFromWorkspaceRoot: true
-      cache: true
+      cache: false
 
   smoke:
     description: "Import the installable API package without starting it"

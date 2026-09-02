@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from importlib.metadata import version as distribution_version
+
 import httpx
 import pytest
 from assistant_rh_api.core.health import HealthReport
@@ -48,3 +50,7 @@ def test_application_factory_does_not_open_a_database_connection(monkeypatch) ->
     monkeypatch.setattr("assistant_rh_api.db.health.psycopg.AsyncConnection.connect", fail_if_called)
 
     create_app()
+
+
+def test_application_version_matches_distribution_metadata() -> None:
+    assert create_app().version == distribution_version("assistant-rh-api")
