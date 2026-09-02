@@ -64,4 +64,4 @@ jobs:
           "
 
       - name: Build API image
-        run: docker build -f Dockerfile.api -t assistant-rh-api:${{ github.sha }} .
+        run: docker build -f docker/api/Dockerfile -t assistant-rh-api:${{ github.sha }} .

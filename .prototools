@@ -7,6 +7,9 @@ python = "3.12.13"
 # uv version for package management (pinned for reproducibility)
 uv = "0.11.18"
 
+# Monorepo task runner
+moon = "2.5.3"
+
 [settings]
 # Auto-install missing tool versions
 auto-install = true

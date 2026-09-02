@@ -48,6 +48,8 @@ assistant-rh/
 │   ├── api/                    # API FastAPI OpenAI-compatible (construction progressive)
 │   ├── streamlit-ui/           # UI Streamlit (Home.py + pages/)
 │   └── data-ingestion-cli/     # CLI canonique d'ingestion de données
+├── docker/
+│   └── api/                     # Image et stack locale API + PostgreSQL synthétique
 ├── packages/
 │   ├── rag-pipeline/           # Pipeline RAG V3 (production)
 │   ├── data-engineering/       # Jobs et transformations d'ingestion
