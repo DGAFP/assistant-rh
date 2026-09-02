@@ -23,6 +23,11 @@
         },
         {
           "type": "toml",
+          "path": "apps/api/pyproject.toml",
+          "jsonpath": "$.project.version"
+        },
+        {
+          "type": "toml",
           "path": "packages/data-engineering/pyproject.toml",
           "jsonpath": "$.project.version"
         },

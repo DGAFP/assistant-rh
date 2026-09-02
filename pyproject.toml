@@ -71,9 +71,9 @@ norecursedirs = ["tests/archive", ".venv", "node_modules"]
 # Workspace members - packages and apps in the monorepo
 # Paths are relative to workspace root (this file)
 members = [
+    "apps/api",
     "apps/data-ingestion-cli",
     "packages/*",
-    # "apps/*",  # TODO: add apps/*/pyproject.toml to make apps installable workspace members
     # Legacy src/ will be migrated to packages/ in Phase 1
     # "src",  # Uncomment after creating src/pyproject.toml
 ]

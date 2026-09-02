@@ -45,6 +45,7 @@ pour la documentation détaillée.
 ```
 assistant-rh/
 ├── apps/
+│   ├── api/                    # API FastAPI OpenAI-compatible (construction progressive)
 │   ├── streamlit-ui/           # UI Streamlit (Home.py + pages/)
 │   └── data-ingestion-cli/     # CLI canonique d'ingestion de données
 ├── packages/
