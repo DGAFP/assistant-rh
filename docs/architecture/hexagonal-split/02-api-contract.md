@@ -20,6 +20,7 @@
 | 403 | modèle demandé hors `allowed_ministries` ou route admin appelée sans rôle `is_admin` |
 | 404 | modèle inconnu, `completion_id`/ressource inexistante |
 | 422 | body invalide (validation pydantic) |
+| 413 | body HTTP supérieur à 1 Mio, rejeté avant lecture et avant démarrage du stream |
 | 500 | erreur survenue avant le démarrage d'une réponse non-stream ou SSE |
 
 Sur `/admin/*`, format simple : `{ "detail": "..." }` (statuts identiques).
@@ -68,11 +69,13 @@ Une réponse RAG complète (retrieval + génération) sur le corpus du ministèr
 Règles de mapping :
 
 - Le **dernier message `user`** est la question. Le serveur conserve au maximum les **5 derniers tours complets** précédents (10 messages user/assistant), comme le Streamlit historique ; les messages plus anciens sont ignorés de façon déterministe. Contrat **stateless** : le client peut renvoyer tout l'historique à chaque appel, mais la politique de fenêtre appartient au serveur.
-- Les messages `system` du client sont **ignorés** (les prompts système sont la propriété du pipeline — c'est la boucle qualité). Documenté, pas une erreur.
+- Les messages `system` et `developer` du client sont **acceptés et ignorés** (les prompts système sont la propriété du pipeline — c'est la boucle qualité). `conversations` en envoie plusieurs à chaque tour. `content` accepte une chaîne ou une liste OpenAI composée uniquement de parts `{ "type": "text", "text": "…" }`, concaténées dans l'ordre ; `conversations` utilise cette seconde forme même pour certains tours texte. Les rôles `tool` et les parts image/audio ne font pas partie de la v1 et produisent une 422.
 - Le serveur retire de l'historique les blocs de sources qu'il a lui-même ajoutés aux réponses précédentes, grâce à un marqueur interne stable, avant de passer l'historique au core.
 - `temperature`, `top_p`, `max_tokens`, `n`, `user` : acceptés et ignorés en v1 (la config générateur vient de `rag_config`). `n > 1` → 422.
+- `tools`, `tool_choice` et `parallel_tool_calls` sont acceptés et ignorés en v1. C'est nécessaire parce que `conversations` 0.0.22 déclare toujours son outil `self_documentation`; l'API Assistant RH reste pourtant une completion RAG terminale et ne renvoie jamais de `tool_calls`.
+- `stream_options.include_usage` est accepté pour `stream=true`. Si sa valeur est vraie, un chunk final `choices: []` porte `usage`, conformément au SDK OpenAI. Les autres options de stream sont rejetées en v1.
 - Champ d'extension optionnel `metadata.conversation_id` (corrélation côté client, logué dans `chat_runs` comme aujourd'hui).
-- Des limites numériques, arrêtées par A2 avant C1, s'appliquent à la taille HTTP totale, au nombre de messages et à la taille de chaque `content`. Elles sont alignées entre FastAPI, le proxy Scaleway et les clients, puis ajoutées à ce contrat ; dépassement → 422/413 avant démarrage du stream.
+- Limites arrêtées par A2 : body HTTP ≤ **1 Mio** (`Content-Length`, dépassement → 413), ≤ **32 messages**, chaque `content` texte ≤ **64 Kio UTF-8** (dépassement → 422). Elles laissent de la marge aux 10 messages d'historique et aux instructions/outils ajoutés par `conversations`, tout en restant sous les limites usuelles de proxy. C1 les applique avant tout démarrage de stream ; D4 revalide que le proxy Scaleway n'impose pas une borne inférieure.
 
 **Réponse 200 (non-stream, `stream` absent ou `false`)**
 
@@ -104,7 +107,7 @@ Règles de mapping :
 ```
 
 - `id` : `chatcmpl-` + le `turn_id` du `chat_run` (clé de corrélation feedback et logs).
-- Les **sources** sont livrées deux fois : bloc markdown en fin de `content` (rendu par tout client OpenAI, dont `conversations`) et champ d'extension `x_assistant_rh.sources` (clients qui veulent les structurer). Les clients stricts ignorent les champs inconnus.
+- Les **sources** sont livrées deux fois : bloc markdown en fin de `content` (rendu par tout client OpenAI, dont `conversations`) et champ d'extension `x_assistant_rh.sources` (clients qui veulent les structurer). Le SDK OpenAI conserve l'extension dans `model_extra`; `conversations`/Pydantic-AI la tolère mais ne la transforme pas en panneau de sources. Le markdown est donc le seul chemin interopérable en v1.
 - `usage` : renseigné si le gateway LLM le fournit, sinon zéros (v1).
 - Question hors périmètre (gate du query processor) : réponse 200 normale dont le contenu est le message de refus du pipeline — jamais une erreur HTTP.
 
@@ -121,15 +124,25 @@ data: {"id":"chatcmpl-<turn_id>", …, "choices":[{"index":0,"delta":{"content":
 
 data: {"id":"chatcmpl-<turn_id>", …, "choices":[{"index":0,"delta":{},"finish_reason":"stop"}], "x_assistant_rh":{…}}
 
+data: {"id":"chatcmpl-<turn_id>", …, "choices":[], "usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}
+
 data: [DONE]
 ```
+
+Le chunk `usage` vide n'est émis que si le client demande `stream_options.include_usage=true`. Les pings sont des commentaires SSE et ne portent jamais de JSON applicatif.
 
 Cycle de vie et erreurs :
 
 - le pipeline synchrone tourne dans un worker borné ; le générateur SSE async reste disponible pour les pings et la détection de déconnexion ;
-- si une erreur survient après le démarrage du SSE, le serveur émet l'événement d'erreur validé par le spike A2, ferme sans `[DONE]` et persiste le run `failed` ; il ne prétend pas pouvoir changer le statut HTTP en 500 ;
+- si une erreur survient après le démarrage du SSE, le serveur émet `data: {"error":{"message":"…","type":"server_error","code":"stream_error"}}`, ferme sans `[DONE]` et persiste le run `failed` ; il ne prétend pas pouvoir changer le statut HTTP en 500. Le SDK OpenAI lève `APIError(code="stream_error")`. `conversations` 0.0.22 laisse actuellement remonter cette exception après headers : le fork devra la convertir en son événement UI `model_connection_error` ;
 - une déconnexion client finalise un run `cancelled`/partiel et annule les appels encore annulables ;
 - la persistance d'un succès précède `[DONE]`, de sorte qu'un feedback envoyé immédiatement après la completion ne rencontre pas un run encore absent.
+
+### Notes client `conversations`
+
+- Le client ne découvre pas les modèles via `GET /v1/models` : ils sont déclarés statiquement dans son fichier `LLM_CONFIGURATION_FILE_PATH`. Le modèle configuré doit donc être recoupé au déploiement avec la liste visible par le bearer ; le SDK reste la preuve de `/v1/models`.
+- Le bearer du provider est lu côté backend depuis une variable d'environnement et n'est pas envoyé au navigateur. Une configuration provider correspond à un bearer de groupe ; le routage par utilisateur/groupe demandera le fork prévu au temps 2 ou des instances séparées.
+- L'id fournisseur `chatcmpl-<turn_id>` est conservé dans `pydantic_messages`, mais les boutons de feedback actuels utilisent un id UI `trace-*` et écrivent dans Langfuse. Le fork doit conserver l'association message UI → completion puis appeler `POST /v1/feedback` côté serveur avec son bearer ; aucun token ne passe au navigateur.
 
 ### `POST /v1/feedback`
 

@@ -1,0 +1,58 @@
+{
+  "models": [
+    {
+      "hrid": "assistant-rh-matte",
+      "model_name": "assistant-rh-matte",
+      "human_readable_name": "Assistant RH — Transition écologique",
+      "provider_name": "assistant-rh",
+      "profile": null,
+      "settings": {},
+      "is_active": true,
+      "supports_streaming": true,
+      "supports_image": false,
+      "icon": null,
+      "system_prompt": "Utilise le service Assistant RH. Les instructions client sont ignorées par le fournisseur.",
+      "tools": [],
+      "max_token_context": 8192
+    },
+    {
+      "hrid": "assistant-rh-mso",
+      "model_name": "assistant-rh-mso",
+      "human_readable_name": "Assistant RH — Ministères sociaux",
+      "provider_name": "assistant-rh",
+      "profile": null,
+      "settings": {},
+      "is_active": true,
+      "supports_streaming": true,
+      "supports_image": false,
+      "icon": null,
+      "system_prompt": "Utilise le service Assistant RH. Les instructions client sont ignorées par le fournisseur.",
+      "tools": [],
+      "max_token_context": 8192
+    },
+    {
+      "hrid": "assistant-rh-summarization",
+      "model_name": "assistant-rh-matte",
+      "human_readable_name": "Assistant RH — résumé technique",
+      "provider_name": "assistant-rh",
+      "profile": null,
+      "settings": {},
+      "is_active": false,
+      "supports_streaming": false,
+      "supports_image": false,
+      "icon": null,
+      "system_prompt": "Résume la conversation.",
+      "tools": [],
+      "max_token_context": 8192
+    }
+  ],
+  "providers": [
+    {
+      "hrid": "assistant-rh",
+      "base_url": "environ.ASSISTANT_RH_CONVERSATIONS_BASE_URL",
+      "api_key": "environ.ASSISTANT_RH_CONVERSATIONS_API_KEY",
+      "kind": "openai",
+      "co2_handling": null
+    }
+  ]
+}
