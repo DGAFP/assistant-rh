@@ -169,7 +169,7 @@ sequenceDiagram
     participant CR as db/chat_run_store
     participant DOC as PostgreSQL legacy ou S3
 
-    U->>F: ouvrir une source interne citée par le run
+    U->>F: ouvrir une source via navigation Streamlit conservant la session
     F->>API: POST /v1/documents/{doc_ref}/access-url {completion_id} (session)
     API->>DS: demander accès(doc_ref, turn_id, groupe)
     DS->>CR: vérifier run, groupe et source finale dans chat_run_sources
@@ -203,7 +203,7 @@ sequenceDiagram
     end
 ```
 
-La capability n'est ni persistée ni ajoutée au chat et sa valeur est masquée dans les logs d'accès. `_PDF_Viewer` conserve `doc_ref` + `completion_id`, demande une capability fraîche à chaque chargement et effectue la rédemption côté serveur ; il peut donc observer le premier 404, refaire une fois le `POST` avec sa session encore valide puis réessayer. Les contrôles d'autorisation sont rejoués et l'ancien lien ne se renouvelle jamais lui-même.
+La capability n'est ni persistée ni ajoutée au chat et sa valeur est masquée dans les logs d'accès. Le contrôle de source remplace le lien HTML historique ouvrant un nouvel onglet : une navigation interne Streamlit, ou un rendu inline équivalent, préserve le bearer en `st.session_state`. `_PDF_Viewer` conserve `doc_ref` + `completion_id`, demande une capability fraîche à chaque chargement et effectue la rédemption côté serveur ; il peut donc observer le premier 404, refaire une fois le `POST` avec sa session encore valide puis réessayer. Les contrôles d'autorisation sont rejoués et l'ancien lien ne se renouvelle jamais lui-même.
 
 ## 7. Éval via-API (test de fidélité de l'adaptateur, D3)
 

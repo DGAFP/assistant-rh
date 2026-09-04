@@ -12,7 +12,7 @@ Ce document ferme la matrice demandée par l'issue [#444](https://github.com/DGA
 3. **Cette exception ne bloque pas M4.** Une migration vers Grafana/Tempo, LangSmith, un outil RAG-ops ou des endpoints admin sera instruite séparément, avec une décision d'hébergement et de traitement des données sensibles.
 4. **Aucune API SQL générique n'est créée.** Le maintien de pages admin en accès direct n'autorise aucun endpoint de requête arbitraire dans `apps/api`.
 5. **Le login crée une session API courte.** Après vérification du mot de passe, l'API émet un bearer opaque, borné au groupe, valable huit heures et conservé dans la session serveur Streamlit. La perte de cet état force une réauthentification et le logout révoque la session. Il n'existe pas de bundle `STREAMLIT_API_BEARERS_JSON`.
-6. **Les liens internes ne contiennent pas de capability durable.** `chat_run_sources` persiste seulement les sources finales affichées. `_PDF_Viewer` demande et rédime côté serveur une URL valable quinze minutes ; sa présignature S3 ne dépasse pas la durée restante et un premier 404 déclenche au plus une nouvelle demande authentifiée.
+6. **Les liens internes ne contiennent pas de capability durable.** `chat_run_sources` persiste seulement les sources finales affichées. Le contrôle de source navigue dans la session Streamlit existante plutôt que d'ouvrir une URL dans un nouvel onglet. `_PDF_Viewer` demande et rédime côté serveur une URL valable quinze minutes ; sa présignature S3 ne dépasse pas la durée restante et un premier 404 déclenche au plus une nouvelle demande authentifiée.
 7. **Le feedback suit l'UI active.** L'API accepte une note 1–5, les raisons positives/négatives cochées et un commentaire. Elle dérive `helpful`, normalise le stockage historique 0–4, migre les doublons existants sans perte et conserve un audit des remplacements corrélé au groupe et à une session pseudonyme.
 8. **L'agentic RAG reste hors de ce chantier iso-fonctionnel.** Il est traité comme une expérimentation qualité ultérieure ; LangSmith éventuel n'impose aucune adoption de LangChain.
 
@@ -52,7 +52,7 @@ Ce document ferme la matrice demandée par l'issue [#444](https://github.com/DGA
 | `13_admin` | **Exception admin directe** | raccourci Streamlit existant | Aucun endpoint propre. |
 | `14_User_Groups` | **Exception admin directe** | CRUD et reset de mot de passe existants | La gestion de bearers longue durée est retirée du périmètre. |
 | `15_Import_Sources` | **Outil ingestion** | domaine ingestion Grist/S3 existant | Inchangé ; propriétaire data engineering. |
-| `_PDF_Viewer` | **Client HTTP public** | référence stable puis URL signée à la demande ; rédemption API des bytes legacy ou redirection S3 | Plus aucun accès DB/S3 direct depuis le viewer public après F3. |
+| `_PDF_Viewer` | **Client HTTP public** | navigation interne conservant `st.session_state`, référence stable puis URL signée à la demande ; rédemption API des bytes legacy ou redirection S3 | Plus aucun accès DB/S3 direct depuis le viewer public après F3 ; le lien HTML/nouvel onglet historique est retiré. |
 | `archive/07_Eval_Comparison` | **Archivage antérieur** | `rag_quality_eval_runs` + journal/runner | Décision antérieure conservée. |
 | `archive/11_Golden_Beta_Analysis` | **Archivage antérieur** | `03_Feedback_Dashboard` | Décision antérieure conservée. |
 
@@ -97,6 +97,7 @@ Les routes authentifiées sont utilisées par le backend Streamlit. `_PDF_Viewer
 - Le token est conservé dans la session serveur du frontend, jamais dans le cookie Streamlit, une URL, un log ou un artefact CI. Le cookie de groupe devient une préférence d'affichage et ne permet pas de recréer un bearer sans mot de passe.
 - Il n'est pas renouvelé silencieusement : à expiration, une nouvelle authentification est requise.
 - La perte de `st.session_state`/du websocket impose la même réauthentification ; le chemin API ne reprend pas le fast-path historique fondé sur le seul cookie de groupe.
+- Une ouverture directe de `_PDF_Viewer` par URL ou dans un nouvel onglet crée une nouvelle session et requiert donc le mot de passe ; le parcours normal utilise une navigation interne Streamlit ou un rendu inline qui conserve l'état serveur.
 - Le logout appelle `DELETE /v1/auth/session`, puis efface le bearer, le groupe et l'historique de l'état Streamlit.
 - Un reset de mot de passe incrémente `credential_revision` et invalide les sessions antérieures.
 - Le resolver revérifie le groupe, sa visibilité, son rôle et sa révision ; il échoue fermé si le groupe a été désactivé.
@@ -138,6 +139,7 @@ La requête canonique correspond au widget actif :
 
 - Une source publique conserve son URL canonique.
 - Une source interne persiste seulement `doc_ref`, `turn_id` et son ordinal dans `chat_run_sources`, jamais une capability ou une URL signée.
+- Le contrôle de source utilise une navigation interne Streamlit (`st.page_link`/`st.switch_page`) ou un rendu inline équivalent afin de conserver la session ; il ne réutilise pas le lien HTML `target="_blank"` historique.
 - `_PDF_Viewer`, authentifié côté serveur, appelle `POST /v1/documents/{doc_ref}/access-url` à son chargement, avec le `completion_id` concerné.
 - Le serveur vérifie que le document figure dans les sources persistées de ce run et que la session appartient au groupe autorisé.
 - La réponse contient une URL opaque valable quinze minutes et `expires_at`. Elle n'est pas ajoutée à l'historique de conversation. Chaque chargement du viewer repart de `doc_ref` + `completion_id` et obtient une URL fraîche.
@@ -157,6 +159,7 @@ Ce report ne change pas les autorisations actuelles : les fonctions restent derr
 - le chemin public fonctionne via HTTP sous feature flag, avec rollback testé jusqu'à F3 ;
 - les sessions expirent après huit heures et sont invalidées par reset de mot de passe ;
 - la perte d'état Streamlit force une réauthentification et le logout révoque la session avant d'effacer l'état local ;
+- le clic source nominal conserve la session Streamlit ; l'ouverture URL/nouvel onglet ne récupère jamais le bearer et redemande le mot de passe ;
 - les quotas login fonctionnent derrière le backend Streamlit, retournent `Retry-After` et ne verrouillent jamais durablement un groupe ;
 - les feedbacks suivent le schéma étoiles/raisons/commentaire et vérifient l'ownership ;
 - la migration feedback conserve le dernier `(ts, id)`, archive tous les doublons et résiste à deux premières soumissions concurrentes ;

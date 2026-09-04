@@ -75,7 +75,7 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 
 | PR / étape | Contenu |
 |---|---|
-| **E1** | Client public auth/models/Chat Completions SSE/feedback/documents avec bearer dans la session serveur : perte d'état → réauthentification, logout → révocation. Streamlit limite aussi les logins visiteur + slug. `_PDF_Viewer` rédime côté serveur, rend bytes/redirect S3 et retente une fois après 404 ; `RAG_CHAT_BACKEND=direct\|api`, défaut `direct`. |
+| **E1** | Client public auth/models/Chat Completions SSE/feedback/documents avec bearer dans la session serveur : perte d'état → réauthentification, logout → révocation. Streamlit limite aussi les logins visiteur + slug. Les liens documentaires HTML/nouvel onglet deviennent une navigation Streamlit conservant la session ; `_PDF_Viewer` rédime côté serveur, rend bytes/redirect S3 et retente une fois après 404. `RAG_CHAT_BACKEND=direct\|api`, défaut `direct`. |
 | **E2** | Garde CI de frontière publique et vérification de l'exception admin : pages publiques sans DB en mode API, allowlist des modules admin, les deux chemins actuels de `require_admin()` testés et smoke des pages admin conservées |
 | **E3** | Activer `api` pour un canary staging borné ; comparer qualité, satisfaction, erreurs, latence et complétude des logs |
 | **E4** | Fenêtre de stabilité staging de 5 jours ouvrés minimum ; exercices `api → direct`, perte d'état Streamlit, expiration 8 h, logout et invalidation des sessions par reset |
