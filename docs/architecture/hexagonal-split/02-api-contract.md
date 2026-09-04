@@ -21,7 +21,7 @@
 | 404 | modèle inconnu, `completion_id`/ressource inexistante |
 | 422 | body invalide (validation pydantic) |
 | 413 | body HTTP supérieur à 1 Mio, rejeté avant lecture et avant démarrage du stream |
-| 429 | tentatives de vérification de mot de passe trop nombreuses |
+| 429 | tentatives de vérification de mot de passe trop nombreuses ; `Retry-After` indique le backoff temporaire |
 | 500 | erreur survenue avant le démarrage d'une réponse non-stream ou SSE |
 
 - **Modèles exposés** : `assistant-rh-<ministère>` pour chaque id du catalogue (`matte`, `mso`, `mi`, `masa`) présent dans `allowed_ministries` du token. Le nom générique `assistant-rh` est accepté en entrée et résolu sur `default_ministry`.
@@ -66,11 +66,13 @@ La réponse 200 crée une session non renouvelable de huit heures :
 }
 ```
 
-L'erreur 401 est identique pour un groupe absent et un mot de passe faux. La route est rate-limitée par IP + slug et n'enregistre jamais le mot de passe.
+L'erreur 401 est identique pour un groupe absent et un mot de passe faux. Le backend Streamlit applique un quota visiteur + slug à partir de l'adresse fournie par l'ingress de confiance ; l'API applique en complément des quotas temporaires par source directe, par slug et globaux. Une adresse transmise par le client ou un proxy non approuvé n'est jamais crue. Le dépassement répond 429 avec `Retry-After` et un backoff borné : aucun verrou persistant n'est écrit sur le groupe. Les seuils sont configurables, testés et n'enregistrent jamais le mot de passe.
 
 `GET /v1/auth/me`, avec bearer, retourne l'objet `group`, `expires_at` et le nombre de secondes restantes, jamais le token lui-même.
 
-Le bearer retourné est conservé uniquement côté serveur Streamlit. Le cookie navigateur ne contient que les données non secrètes nécessaires au parcours produit. La session n'est pas renouvelée silencieusement : son expiration ou un reset de mot de passe impose une nouvelle authentification. Le registre de données et permissions est figé par [A3](08-streamlit-api-parity.md#registre-des-endpoints-publics).
+`DELETE /v1/auth/session`, avec le bearer courant, révoque sa ligne de session et répond 204 sans corps. Le logout Streamlit appelle cette route avant d'effacer son état local ; une session déjà expirée n'est jamais renouvelée pour permettre le logout.
+
+Le bearer retourné est conservé uniquement dans l'état serveur de la session Streamlit. Le cookie navigateur ne contient que les données non secrètes nécessaires au parcours produit et n'autorise jamais à recréer une session API sans mot de passe. La perte du websocket/état Streamlit, l'expiration, le logout ou un reset de mot de passe imposent donc une nouvelle authentification ; le fast-path historique fondé sur le seul cookie de groupe est désactivé en mode API. Le registre de données et permissions est figé par [A3](08-streamlit-api-parity.md#registre-des-endpoints-publics).
 
 ### `GET /v1/models`
 
@@ -233,13 +235,15 @@ Sans auth (probe). **200** `{ "status": "ok", "db": "ok", "config_loaded": true 
 
 La relation `chat_run_sources` persiste `turn_id`, `doc_ref` et l'ordre des seules sources finales présentées avec le run. L'URL signée est créée au clic par le frontend authentifié et n'entre jamais dans le contenu ou l'historique du chat.
 
-`GET /v1/documents/access/{capability}` utilise cette capability sans bearer de session supplémentaire, afin qu'un navigateur puisse suivre le lien. Le serveur résout alors le support courant : il streame les bytes d'un document legacy stocké en PostgreSQL, ou redirige vers une URL S3 présignée ; une source publique conserve son URL canonique et n'a normalement pas besoin de cette route. Une capability invalide, expirée ou inconnue répond 404. Elle expire après quinze minutes, n'autorise qu'un document, n'est jamais persistée et doit être masquée dans les logs d'accès.
+`GET /v1/documents/access/{capability}` utilise cette capability sans bearer de session supplémentaire. Un client capable de piloter la navigation peut suivre directement le lien ; au temps 1, `_PDF_Viewer` le rédime côté serveur afin de pouvoir détecter une expiration et piloter le rendu. Le serveur résout alors le support courant : il streame les bytes d'un document legacy stocké en PostgreSQL, ou redirige vers une URL S3 présignée ; une source publique conserve son URL canonique et n'a normalement pas besoin de cette route. Une capability invalide, expirée ou inconnue répond 404. Elle expire après quinze minutes, n'autorise qu'un document, n'est jamais persistée et doit être masquée dans les logs d'accès.
 
-Une redirection S3 reprend un `Content-Disposition` assaini et `Cache-Control: private, no-store` dans les paramètres signés. Sa durée est la partie entière de la durée restante de la capability, jamais quinze minutes supplémentaires ; si cette durée est épuisée, la rédemption échoue. Le frontend conserve seulement `doc_ref` et `completion_id`, crée une capability fraîche à chaque clic et, sur un premier échec de rédemption, redemande automatiquement une URL puis réessaie une seule fois si sa session de huit heures reste valide. Cette nouvelle demande refait les contrôles run/groupe/source ; une capability expirée ne peut pas se renouveler elle-même. Il n'existe aucune route de listing. Les règles complètes sont dans [A3](08-streamlit-api-parity.md#accès-documentaire-court).
+Une redirection S3 reprend un `Content-Disposition` assaini et `Cache-Control: private, no-store` dans les paramètres signés. Sa durée est la partie entière de la durée restante de la capability, jamais quinze minutes supplémentaires ; si cette durée est épuisée, la rédemption échoue. `_PDF_Viewer` conserve seulement `doc_ref` et `completion_id`, crée une capability fraîche à chaque chargement, puis appelle la rédemption côté serveur sans suivre automatiquement la redirection. Sur un premier 404, il redemande une URL et réessaie une seule fois si sa session de huit heures reste valide. Il rend directement les bytes legacy ou transmet au navigateur la `Location` S3 courte retournée par l'API. Cette nouvelle demande refait les contrôles run/groupe/source ; une capability expirée ne peut pas se renouveler elle-même. Il n'existe aucune route de listing. Les règles complètes sont dans [A3](08-streamlit-api-parity.md#accès-documentaire-court).
 
 ## Surface admin reportée
 
 Chat Logs, Feedback Dashboard, Admin Config, DB/Goldset Explorer, les pages d'évaluation, Pipeline Timeline et User Groups restent dans Streamlit sous auth admin et accès DB direct allowlisté. Aucun contrat `/admin/*` ne fait partie de la v1 ; leur éventuelle migration est un chantier ultérieur.
+
+`require_admin()` conserve ses deux chemins actuels : un groupe issu du cookie chiffré dont `is_admin` est revérifié en PostgreSQL, ou le fallback serveur `ADMIN_PASSWORD` lu depuis l'environnement. Le second ne consulte pas PostgreSQL pour vérifier le mot de passe. Le rôle DB dédié et à privilèges minimaux appartient à `admin-hardening`, pas aux conditions M4.
 
 ---
 

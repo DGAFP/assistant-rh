@@ -65,21 +65,24 @@ Pendant le retrieval, le handler SSE émet `: ping` indépendamment du worker. S
 sequenceDiagram
     autonumber
     participant ST as Backend Streamlit
-    participant H as handlers/auth
-    participant RL as rate limiter
+    participant SRL as rate limiter Streamlit
+    participant H as handlers/auth + rate limiter API
     participant UG as db/user_groups
     participant S as db/auth_sessions
 
+    ST->>SRL: quota visiteur + slug (IP de l'ingress de confiance)
+    SRL-->>ST: 429 + Retry-After si dépassé
     ST->>H: POST {slug, password}
-    H->>RL: quota IP + slug
-    RL-->>H: 429 si dépassé
+    H->>H: quotas source directe + slug + global ; backoff temporaire
     H->>UG: lire hash + politique + credential_revision
     H->>H: vérification PBKDF2 constante, hash factice si absent
     H-->>ST: 401 générique si absent/invalide
     H->>S: créer session opaque hashée, expiration +8 h
     S-->>H: session créée
     H-->>ST: bearer affiché une fois + groupe + expires_at
-    Note over ST: bearer conservé côté serveur uniquement<br/>expiration ou reset → réauthentification
+    Note over ST: bearer conservé dans la session serveur uniquement<br/>perte d'état, expiration ou reset → réauthentification
+    ST->>H: DELETE /v1/auth/session au logout
+    H-->>ST: 204 puis effacement de l'état local
 ```
 
 ## 3. `GET /v1/models`
@@ -136,10 +139,16 @@ sequenceDiagram
     participant ST as Streamlit admin
     participant AUTH as src/ui/admin_auth
     participant DB as PostgreSQL
+    participant ENV as environnement serveur
 
     ST->>AUTH: require_admin()
-    AUTH->>DB: vérifier groupe/mot de passe admin
-    DB-->>AUTH: rôle is_admin
+    alt groupe issu du cookie chiffré
+        AUTH->>DB: revérifier is_admin du groupe
+        DB-->>AUTH: rôle is_admin
+    else fallback mot de passe
+        AUTH->>ENV: comparer ADMIN_PASSWORD côté serveur
+        ENV-->>AUTH: valide | invalide
+    end
     AUTH-->>ST: stop si non-admin
     ST->>DB: lecture/mutation allowlistée
     DB-->>ST: résultat
@@ -168,22 +177,33 @@ sequenceDiagram
     DS->>DS: émettre capability document bornée (15 min)
     DS-->>API: URL + expires_at | inconnu/hors groupe
     API-->>F: 200 URL courte | 404
-    F-->>U: lien de rédemption
-    U->>API: GET /v1/documents/access/{capability}
+    F->>API: GET /v1/documents/access/{capability} (serveur, redirects=false)
     API->>DS: vérifier capability et résoudre le support
+    opt premier GET → 404 invalide/expiré
+        DS-->>API: capability refusée
+        API-->>F: 404
+        F->>API: POST access-url à nouveau (session encore valide)
+        API->>DS: rejouer les contrôles run/groupe/source
+        DS-->>API: nouvelle capability | refus
+        API-->>F: nouvelle URL | 401/404 terminal
+        F->>API: GET nouvelle capability si 200 (une seule relance)
+        API->>DS: vérifier la nouvelle capability
+    end
     DS->>DOC: lire le document autorisé
     alt bytes legacy PostgreSQL
         DOC-->>DS: bytes + métadonnées
         DS-->>API: contenu legacy
-        API-->>U: stream privé, no-store
+        API-->>F: bytes privés, no-store
+        F-->>U: PDF rendu
     else objet S3
         DOC-->>DS: URL S3 présignée, TTL borné à la durée restante, no-store/disposition signés
         DS-->>API: redirection autorisée
-        API-->>U: redirection
+        API-->>F: 302 + Location S3
+        F-->>U: ouvrir/embarquer la Location courte
     end
 ```
 
-La capability n'est ni persistée ni ajoutée au chat et sa valeur est masquée dans les logs d'accès. Le frontend conserve `doc_ref` + `completion_id` et demande une capability fraîche à chaque clic. Si la première rédemption échoue, il refait une fois le `POST` avec sa session encore valide puis réessaie ; les contrôles d'autorisation sont donc rejoués et l'ancien lien ne se renouvelle jamais lui-même.
+La capability n'est ni persistée ni ajoutée au chat et sa valeur est masquée dans les logs d'accès. `_PDF_Viewer` conserve `doc_ref` + `completion_id`, demande une capability fraîche à chaque chargement et effectue la rédemption côté serveur ; il peut donc observer le premier 404, refaire une fois le `POST` avec sa session encore valide puis réessayer. Les contrôles d'autorisation sont rejoués et l'ancien lien ne se renouvelle jamais lui-même.
 
 ## 7. Éval via-API (test de fidélité de l'adaptateur, D3)
 
