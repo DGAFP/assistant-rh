@@ -1,0 +1,11 @@
+{
+  "query": "Bonjour, comment ça va ?",
+  "answer": "Bonjour, je suis l'Assistant RH specialise sur les questions liees aux contractuels de la fonction publique d'Etat (FPE). Comment puis-je vous aider ?",
+  "sources": [],
+  "metadata": {
+    "intent": "chit_chat",
+    "retrieval_scope": null,
+    "selected_ministry": null,
+    "scoped_table_keys": []
+  }
+}

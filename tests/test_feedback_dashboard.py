@@ -1,5 +1,5 @@
 """
-Issue #341 — Feedback Dashboard : période effective et affichage du ministère.
+Issues #341 et #470 — Feedback Dashboard : filtres, ministère et export.
 
 Teste les helpers purs (``src.ui.feedback_dashboard``) et, à la manière de
 ``test_rag_health_dashboard.py``, la requête/présentation de la page Streamlit
@@ -9,7 +9,11 @@ via son source (la page ne s'importe pas sans session Streamlit).
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from io import BytesIO
 from pathlib import Path
+
+import pandas as pd
+from openpyxl import load_workbook
 
 from src.ui.feedback_dashboard import (
     BETA_END,
@@ -21,7 +25,9 @@ from src.ui.feedback_dashboard import (
     PERIOD_LAST_MONTH,
     PERIOD_MODE_LABELS,
     PERIOD_MODE_OPTIONS,
+    build_unified_feedback_export,
     current_paris_date,
+    dataframe_to_xlsx_bytes,
     ministry_display_label,
     period_caption,
     previous_calendar_month,
@@ -163,6 +169,143 @@ class TestVisibleAvailableGroups:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Issue #470 — export Excel unifié, jointure gauche et dédoublonnage
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+def _questions_for_export() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "ts": "2026-07-17T10:00:00Z",
+                "turn_id": "with-feedback",
+                "session_id": "session-1",
+                "user_group": "betatest-jan26",
+                "selected_ministry": "matte",
+                "question": "Question évaluée",
+                "answer": "Réponse évaluée",
+                "theme": "conges",
+                "rag_version": "v3",
+                "chunk_selection_mode": "section",
+                "dist_after_rerank": "{}",
+                "total_time_ms": 1200,
+            },
+            {
+                "ts": "2026-07-17T11:00:00Z",
+                "turn_id": "without-feedback",
+                "session_id": "session-2",
+                "user_group": "betatest-jan26",
+                "selected_ministry": None,
+                "question": "Question sans évaluation",
+                "answer": "Réponse sans évaluation",
+                "theme": "remuneration",
+                "rag_version": "v3",
+                "chunk_selection_mode": "section",
+                "dist_after_rerank": "{}",
+                "total_time_ms": 900,
+            },
+        ]
+    )
+
+
+def _feedback_for_export() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "id": 42,
+                "ts": "2026-07-17T10:05:00Z",
+                "turn_id": "with-feedback",
+                "stars": 4,
+                "helpful": True,
+                "reasons_positive": "Sources claires",
+                "reasons_negative": "",
+                "comment": "Très utile",
+                "theme": "conges",
+                "beta_scope": "Oui",
+                "error_category": "",
+                "ai_reason": "",
+            }
+        ]
+    )
+
+
+class TestUnifiedFeedbackExport:
+    def test_keeps_every_question_and_enriches_only_matching_turn(self):
+        export = build_unified_feedback_export(_questions_for_export(), _feedback_for_export())
+
+        assert export["turn_id"].tolist() == ["with-feedback", "without-feedback"]
+        evaluated = export.loc[export["turn_id"] == "with-feedback"].iloc[0]
+        assert evaluated["Note (1-5)"] == 5
+        assert bool(evaluated["Utile"]) is True
+        assert evaluated["Commentaire"] == "Très utile"
+        assert evaluated["Date"] == "17/07/2026 12:00"
+        assert evaluated["Date du feedback"] == "17/07/2026 12:05"
+        assert evaluated["Groupe utilisateur"] == "betatest-jan26"
+        assert evaluated["Ministère"] == "MATTE"
+
+        unanswered = export.loc[export["turn_id"] == "without-feedback"].iloc[0]
+        assert unanswered["Question"] == "Question sans évaluation"
+        assert pd.isna(unanswered["feedback_id"])
+        assert pd.isna(unanswered["Note (1-5)"])
+        assert pd.isna(unanswered["Commentaire"])
+        assert unanswered["Ministère"] == MINISTRY_NOT_SET_LABEL
+
+    def test_keeps_all_questions_when_no_feedback_is_eligible(self):
+        export = build_unified_feedback_export(_questions_for_export(), pd.DataFrame())
+
+        assert export["turn_id"].tolist() == ["with-feedback", "without-feedback"]
+        assert export["feedback_id"].isna().all()
+
+    def test_empty_question_set_still_has_the_stable_export_schema(self):
+        export = build_unified_feedback_export(pd.DataFrame(), _feedback_for_export())
+
+        assert export.empty
+        assert ["Date", "Groupe utilisateur", "Ministère", "Question", "Réponse"] == export.columns[:5].tolist()
+
+    def test_feedback_theme_fills_missing_historic_question_theme(self):
+        questions = _questions_for_export().iloc[[0]].copy()
+        questions["theme"] = None
+
+        export = build_unified_feedback_export(questions, _feedback_for_export())
+
+        assert export.loc[0, "Thème"] == "conges"
+
+    def test_preserves_existing_question_technical_metadata(self):
+        export = build_unified_feedback_export(_questions_for_export(), _feedback_for_export())
+
+        assert export.loc[0, "session_id"] == "session-1"
+        assert export.loc[0, "rag_version"] == "v3"
+        assert export.loc[0, "chunk_selection_mode"] == "section"
+        assert export.loc[0, "dist_after_rerank"] == "{}"
+        assert export.loc[0, "total_time_ms"] == 1200
+
+    def test_latest_feedback_wins_then_highest_id_breaks_timestamp_tie(self):
+        questions = _questions_for_export().iloc[[0]]
+        feedbacks = pd.DataFrame(
+            [
+                {"id": 99, "turn_id": "with-feedback", "ts": "2026-07-17T09:00:00Z", "comment": "ancien"},
+                {"id": 7, "turn_id": "with-feedback", "ts": "2026-07-17T10:00:00Z", "comment": "même date, petit id"},
+                {"id": 8, "turn_id": "with-feedback", "ts": "2026-07-17T10:00:00Z", "comment": "retenu"},
+            ]
+        )
+
+        export = build_unified_feedback_export(questions, feedbacks)
+
+        assert len(export) == 1
+        assert export.loc[0, "feedback_id"] == 8
+        assert export.loc[0, "Commentaire"] == "retenu"
+
+    def test_serialized_workbook_is_readable(self):
+        export = build_unified_feedback_export(_questions_for_export(), _feedback_for_export())
+
+        workbook = load_workbook(BytesIO(dataframe_to_xlsx_bytes(export, "Questions et feedbacks")), read_only=True)
+        worksheet = workbook["Questions et feedbacks"]
+
+        assert worksheet.max_row == 3
+        assert [cell.value for cell in next(worksheet.iter_rows(max_row=1))] == export.columns.tolist()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Page Streamlit — requête et présentation
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -174,6 +317,9 @@ class TestDashboardSource:
     def test_questions_query_selects_ministry(self):
         source = _dashboard_source()
         assert source.count("selected_ministry") >= 2
+
+    def test_questions_query_selects_theme_for_unanswered_questions(self):
+        assert "v3_detected_theme AS theme" in _dashboard_source()
 
     def test_ministry_column_displayed_and_exported(self):
         source = _dashboard_source()
@@ -202,7 +348,24 @@ class TestDashboardSource:
         source = _dashboard_source()
         assert 'feedback_display_df["ts"].dt.tz_localize(None)' in source
         assert 'feedback_display_df["ts"].dt.strftime' not in source
-        assert 'feedback_export_df["ts"].dt.strftime' in source
+
+    def test_single_unified_excel_export_replaces_both_buttons(self):
+        source = _dashboard_source()
+        assert source.count("st.download_button(") == 1
+        assert "Export questions, réponses et feedbacks (Excel)" in source
+        assert "Export Feedbacks (Excel)" not in source
+        assert "Export Questions (Excel)" not in source
+
+    def test_export_is_built_after_theme_and_quality_filters(self):
+        source = _dashboard_source()
+        export_position = source.index("build_unified_feedback_export(df_q, df_f)")
+        assert source.index("df_q = df_q[question_theme_mask]") < export_position
+        assert source.index("df_f = df_f[~exclude_mask]") < export_position
+
+    def test_duplicate_feedback_rule_is_documented_in_dashboard(self):
+        source = _dashboard_source()
+        assert "feedbacks multiples" in source
+        assert "l’identifiant le plus élevé" in source
 
     def test_candidate_cut_has_its_own_aggregate_bucket(self):
         source = _dashboard_source()

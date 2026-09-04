@@ -13,6 +13,21 @@ jobs:
     runs-on: ubuntu-latest
     env:
       UV_CACHE_DIR: .uv-cache
+      API_SYNTHETIC_POSTGRES_DSN: postgresql://assistant_rh_api:assistant_rh_api@127.0.0.1:55433/assistant_rh_api_test?sslmode=disable
+    services:
+      api-postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: assistant_rh_api
+          POSTGRES_PASSWORD: assistant_rh_api
+          POSTGRES_DB: assistant_rh_api_test
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U assistant_rh_api -d assistant_rh_api_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
 
     steps:
       - name: Checkout code
@@ -25,10 +40,16 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --group dev --frozen
+        run: uv sync --all-packages --group dev --frozen
 
       - name: Lint check
-        run: uv run --no-sync ruff check src apps/streamlit-ui/pages tests --select E,F,I
+        run: uv run --no-sync ruff check src apps/streamlit-ui/pages apps/api/src apps/api/tests tests --select E,F,I
+
+      - name: Check API import boundaries
+        run: uv run --no-sync lint-imports --config apps/api/pyproject.toml --no-cache
+
+      - name: Run API tests on synthetic Postgres
+        run: uv run --no-sync python -m pytest apps/api/tests -v
 
       - name: Run tests
         run: uv run --no-sync python -m pytest tests/ --ignore=tests/archive -v
@@ -42,22 +63,5 @@ jobs:
           print('All pipeline imports OK')
           "
 
-  biome:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Biome lint & format check
-        run: pnpm exec biome check apps/mastra-pipeline/src apps/mastra-pipeline/scripts
+      - name: Build API image
+        run: docker build -f docker/api/Dockerfile -t assistant-rh-api:${{ github.sha }} .

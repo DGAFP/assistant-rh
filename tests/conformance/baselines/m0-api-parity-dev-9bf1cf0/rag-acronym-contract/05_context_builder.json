@@ -1,0 +1,29 @@
+{
+  "input": {
+    "selected_section_ids": [],
+    "selector_retry_triggered": false
+  },
+  "output": {
+    "context_items_ref": [
+      {
+        "section_id": "",
+        "doc_id": "25826b29-ee7d-568b-9b20-742e84868464",
+        "heading": "Fiche MATTE n° 5 - Renouvellement et délais de prévenance - Juillet 2024",
+        "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+        "tokens": 794,
+        "score": 0.9966,
+        "is_doc_entire": true
+      },
+      {
+        "section_id": "",
+        "doc_id": "LEGIARTI000044421868",
+        "heading": "",
+        "publisher": "DGAFP",
+        "tokens": 597,
+        "score": 0.9427,
+        "is_doc_entire": false
+      }
+    ],
+    "context_text_hash": "1eb2fa77e18522c9ca539fbf77cf1a67851f739083d2a3e9f0136a14fa889184"
+  }
+}

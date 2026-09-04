@@ -1,0 +1,17 @@
+{
+  "input": {
+    "query": "Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel en congé de maladie, maternité, paternité, adoption ou accident du travail ?",
+    "conversation_history": []
+  },
+  "output": {
+    "intent": "rag_query",
+    "theme": "conges",
+    "needs_legal_search": true,
+    "needs_legal_search_llm": false,
+    "should_proceed": true,
+    "processed_query": "Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel en congé de maladie, maternité, paternité, adoption ou accident du travail ?",
+    "enriched_query": "",
+    "query_for_retrieval": "Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel en congé de maladie, maternité, paternité, adoption ou accident du travail ?",
+    "search_terms": []
+  }
+}

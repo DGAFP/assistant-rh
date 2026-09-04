@@ -1,0 +1,17 @@
+{
+  "input": {
+    "query": "Au ministère chargé des affaires sociales, un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+    "conversation_history": []
+  },
+  "output": {
+    "intent": "rag_query",
+    "theme": "renouvellement_mobilite",
+    "needs_legal_search": false,
+    "needs_legal_search_llm": false,
+    "should_proceed": true,
+    "processed_query": "Au ministère chargé des affaires sociales, un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+    "enriched_query": "",
+    "query_for_retrieval": "Au ministère chargé des affaires sociales, un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+    "search_terms": []
+  }
+}

@@ -1,0 +1,119 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+language: "python"
+layer: "application"
+stack: "backend"
+
+project:
+  name: "Assistant RH API"
+  description: "OpenAI-compatible HTTP API and internal hexagonal core"
+
+toolchains:
+  default: "unstable_uv"
+
+fileGroups:
+  sources:
+    - "src/**/*.py"
+  tests:
+    - "tests/**/*.py"
+  configs:
+    - "pyproject.toml"
+    - "moon.yml"
+    - "/.dockerignore"
+    - "/docker/api/**/*"
+
+tasks:
+  dev:
+    description: "Run the API development server"
+    command: "uv run --package assistant-rh-api assistant-rh-api"
+    preset: "server"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  lint:
+    description: "Lint API source and tests"
+    command: "uv run --package assistant-rh-api --group dev ruff check apps/api/src apps/api/tests"
+    inputs:
+      - "@group(sources)"
+      - "@group(tests)"
+      - "@group(configs)"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+      allowFailure: false
+      mergeArgs: replace
+
+  architecture:
+    description: "Enforce API import boundaries"
+    command: "uv run --package assistant-rh-api --group dev lint-imports --config apps/api/pyproject.toml --no-cache"
+    inputs:
+      - "@group(sources)"
+      - "@group(configs)"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  test:
+    description: "Run API tests"
+    command: "uv run --package assistant-rh-api --group dev python -m pytest apps/api/tests -v --tb=short"
+    inputs:
+      - "@group(sources)"
+      - "@group(tests)"
+      - "@group(configs)"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+      mergeArgs: replace
+
+  smoke:
+    description: "Import the installable API package without starting it"
+    command: "uv run --package assistant-rh-api python -c 'import assistant_rh_api; import assistant_rh_api.core'"
+    inputs:
+      - "@group(sources)"
+      - "@group(configs)"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  local:
+    description: "Build and start the complete local API stack"
+    command: "docker compose --project-directory . -f docker/api/compose.yml up --build -d --wait"
+    inputs:
+      - "@group(sources)"
+      - "@group(configs)"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  local-down:
+    description: "Stop the local API stack and preserve its synthetic database"
+    command: "docker compose --project-directory . -f docker/api/compose.yml down"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  local-reset:
+    description: "Stop the local API stack and delete its synthetic database"
+    command: "docker compose --project-directory . -f docker/api/compose.yml down -v"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  local-logs:
+    description: "Follow logs from the local API container"
+    command: "docker compose --project-directory . -f docker/api/compose.yml logs -f api"
+    preset: "server"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  docker-build:
+    description: "Build the API container image"
+    command: "docker build -f docker/api/Dockerfile -t assistant-rh-api:local ."
+    inputs:
+      - "@group(sources)"
+      - "@group(configs)"
+    options:
+      runFromWorkspaceRoot: true
+      cache: false

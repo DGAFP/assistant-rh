@@ -1,0 +1,12 @@
+{
+  "input": {
+    "query": "Quel temps fera-t-il demain à Paris ?",
+    "context_item_count": 0,
+    "conversation_history": []
+  },
+  "output": {
+    "answer": "Je suis specialise sur les questions liees aux contractuels de la fonction publique d'Etat (FPE). Puis-je vous aider sur un sujet RH (contrats, conges, remuneration, fin de contrat...) ?",
+    "answer_length": 186,
+    "citations": []
+  }
+}
