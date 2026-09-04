@@ -9,7 +9,7 @@ Le chemin nominal complet, avec la résolution session → groupe → modèle �
 ```mermaid
 sequenceDiagram
     autonumber
-    participant C as Client (conversations / Streamlit)
+    participant C as Client (Streamlit ; provider conversations en test)
     participant H as handlers/openai_compat
     participant A as handlers/auth
     participant UG as db/user_groups
@@ -108,14 +108,22 @@ sequenceDiagram
     participant C as Client
     participant H as handlers/feedback
     participant A as handlers/auth
+    participant S as core/FeedbackService
     participant FS as db/feedback_store
 
     C->>H: POST /v1/feedback {completion_id, stars, raisons, commentaire}
     H->>A: authentifier(session de groupe)
     H->>H: completion_id → turn_id (strip "chatcmpl-")
-    H->>H: dériver helpful ; convertir stars 1–5 → stockage 0–4
-    H->>FS: upsert + audit précédent(turn_id, groupe, stars, raisons, commentaire)
-    FS-->>H: ok | run inconnu/hors groupe
+    H->>S: feedback validé + groupe + turn_id
+    S->>S: dériver helpful ; normaliser ; calculer l'empreinte
+    S->>FS: transaction + verrou ; convertir stars 1–5 → stockage 0–4
+    alt empreinte identique au feedback courant
+        FS-->>S: no-op, aucun nouvel audit
+    else charge différente
+        FS->>FS: archiver précédent puis remplacer courant atomiquement
+        FS-->>S: mis à jour
+    end
+    S-->>H: ok | run inconnu/hors groupe
     H-->>C: 204 | 404
 ```
 
@@ -147,20 +155,36 @@ sequenceDiagram
     participant U as Utilisateur
     participant F as Frontend authentifié
     participant API as handlers/documents
+    participant DS as core/DocumentService
     participant CR as db/chat_run_store
-    participant DOC as db/content_store ou S3
+    participant DOC as PostgreSQL legacy ou S3
 
-    U->>F: ouvrir une source interne ancienne ou récente
+    U->>F: ouvrir une source interne citée par le run
     F->>API: POST /v1/documents/{doc_ref}/access-url {completion_id} (session)
-    API->>CR: vérifier run, groupe et source persistée
-    CR-->>API: autorisé | inconnu/hors groupe
-    API->>DOC: créer URL signée (15 min)
-    DOC-->>API: URL + expires_at
+    API->>DS: demander accès(doc_ref, turn_id, groupe)
+    DS->>CR: vérifier run, groupe et source persistée
+    CR-->>DS: autorisé | inconnu/hors groupe
+    DS->>DS: émettre capability document bornée (15 min)
+    DS-->>API: URL + expires_at | inconnu/hors groupe
     API-->>F: 200 URL courte | 404
-    F-->>U: redirection/téléchargement
+    F-->>U: lien de rédemption
+    U->>API: GET /v1/documents/access/{capability}
+    API->>DS: vérifier capability et résoudre le support
+    DS->>DOC: lire le document autorisé
+    alt bytes legacy PostgreSQL
+        DOC-->>DS: bytes + métadonnées
+        DS-->>API: contenu legacy
+        API-->>U: stream privé, no-store
+    else objet S3
+        DOC-->>DS: URL S3 présignée
+        DS-->>API: redirection autorisée
+        API-->>U: redirection
+    end
 ```
 
-## 7. Éval via-API (test de fidélité de l'adaptateur, D9)
+La capability n'est ni persistée ni ajoutée au chat et sa valeur est masquée dans les logs d'accès.
+
+## 7. Éval via-API (test de fidélité de l'adaptateur, D3)
 
 ```mermaid
 sequenceDiagram

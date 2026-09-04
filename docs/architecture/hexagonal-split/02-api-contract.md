@@ -5,7 +5,7 @@
 ## Conventions générales
 
 - Base : `https://<host>` ; toutes les réponses en JSON UTF-8.
-- **Auth publique** : `Authorization: Bearer <session opaque>`. `POST /v1/auth/session` émet après vérification du mot de passe une session bornée au groupe, à sa politique ministère et à huit heures.
+- **Auth publique** : `Authorization: Bearer <session opaque>`. `POST /v1/auth/session` émet après vérification du mot de passe une session bornée au groupe, à sa politique ministère et à huit heures. La route de rédemption documentaire `GET /v1/documents/access/{capability}` utilise sa capability courte à la place du bearer afin de permettre une navigation directe du navigateur.
 - **Conservation du secret** : le bearer de session reste côté serveur du frontend. Il n'entre ni dans le cookie Streamlit, ni dans une URL, ni dans un log. Il n'existe pas de bundle statique de bearers par groupe.
 - **Admin hors v1** : les fonctions admin restent dans Streamlit avec accès DB direct sous l'exception A3. Aucun endpoint `/admin/*` n'est requis par ce contrat.
 - **Erreurs** : format OpenAI sur `/v1/*` :
@@ -202,11 +202,12 @@ Hors spec OpenAI. Rattache une note utilisateur au run identifié par l'id de co
 
 - `completion_id` : accepté avec ou sans préfixe `chatcmpl-`.
 - `stars` : entier **1–5 obligatoire**. Pendant la coexistence avec le runtime historique, l'adaptateur persiste `stars - 1` sur l'échelle 0–4.
-- `reasons_positive` / `reasons_negative` : listes de libellés issus du catalogue produit.
+- `reasons_positive` / `reasons_negative` : listes de libellés issus du catalogue produit actif : positif `Clair`, `Utile`, `Pertinent`, `Complet`, `Précis` ; négatif `Confus`, `Éléments faux`, `Non pertinent`, `Incomplet`, `Sources manquantes`.
 - `comment` : chaîne optionnelle ; au moins une raison ou un commentaire non vide est requis.
 - `helpful` est dérivé par le serveur : 1–2 → `false`, 3–5 → `true`. Le champ historique `rating` n'appartient pas au contrat canonique.
+- Les combinaisons suivent le widget : 1–2 affiche seulement les raisons négatives, 3–4 autorise les deux listes, 5 affiche seulement les raisons positives. Un libellé inconnu ou une raison dans une liste non applicable produit une 422.
 
-**Réponse 204.** 404 si le `turn_id` est inconnu **ou n'appartient pas au groupe identifié par le bearer**. Un second POST sur le même run remplace idempotemment le feedback courant et conserve la valeur précédente dans un audit append-only. L'enrichissement goldset historique reste conservé ; l'analyse admin reste dans Streamlit.
+**Réponse 204.** 404 si le `turn_id` est inconnu **ou n'appartient pas au groupe identifié par le bearer**. Le store normalise la charge utile — `stars`, raisons dédupliquées dans l'ordre du catalogue, commentaire nettoyé aux extrémités — puis calcule une empreinte canonique. Sous transaction et verrou du feedback courant, une charge identique est un no-op sans nouvelle ligne d'audit ; une charge différente archive la valeur précédente puis remplace la valeur courante atomiquement. Une contrainte garantit au plus un feedback courant par `turn_id`. L'enrichissement goldset historique reste conservé ; l'analyse admin reste dans Streamlit.
 
 ### `GET /healthz`
 
@@ -216,13 +217,15 @@ Sans auth (probe). **200** `{ "status": "ok", "db": "ok", "config_loaded": true 
 
 ## Accès documentaire
 
-`POST /v1/documents/{doc_ref}/access-url`, avec `{ "completion_id": "chatcmpl-<turn_id>" }`, vérifie que le document figure dans les sources persistées du run et que la session appartient au groupe autorisé. La réponse contient une URL opaque valable quinze minutes et son expiration :
+`POST /v1/documents/{doc_ref}/access-url`, avec `{ "completion_id": "chatcmpl-<turn_id>" }`, vérifie que le document figure dans les sources persistées du run et que la session appartient au groupe autorisé. La réponse contient une URL opaque de rédemption valable quinze minutes et son expiration :
 
 ```json
 { "url": "https://…", "expires_at": "2026-09-04T14:15:00Z" }
 ```
 
-Seuls `doc_ref` et `turn_id` sont persistés. L'URL signée est créée au clic par le frontend authentifié et n'entre jamais dans le contenu ou l'historique du chat. Il n'existe aucune route de listing. Les règles complètes sont dans [A3](08-streamlit-api-parity.md#accès-documentaire-court).
+Seuls `doc_ref` et `turn_id` sont persistés avec le run. L'URL signée est créée au clic par le frontend authentifié et n'entre jamais dans le contenu ou l'historique du chat.
+
+`GET /v1/documents/access/{capability}` consomme cette capability sans bearer de session supplémentaire, afin qu'un navigateur puisse suivre le lien. Le serveur résout alors le support courant : il streame les bytes d'un document legacy stocké en PostgreSQL, ou redirige vers une URL S3 présignée ; une source publique conserve son URL canonique et n'a normalement pas besoin de cette route. Une capability invalide, expirée ou inconnue répond 404. Elle expire après quinze minutes, n'autorise qu'un document, n'est jamais persistée et doit être masquée dans les logs d'accès. Les réponses de contenu utilisent `Cache-Control: private, no-store` et un `Content-Disposition` sûr. Il n'existe aucune route de listing. Les règles complètes sont dans [A3](08-streamlit-api-parity.md#accès-documentaire-court).
 
 ## Surface admin reportée
 

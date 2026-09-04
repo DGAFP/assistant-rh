@@ -46,28 +46,30 @@ Ce document ferme la matrice demandée par l'issue [#444](https://github.com/DGA
 | `05_DB_Explorer` — stats, documents, chunks et sections | **Exception admin directe** | vue Streamlit existante | Lecture du corpus réservée aux admins. Aucun endpoint SQL/corpus. |
 | `06_Goldset_Explorer` — curation, imports et exports | **Exception admin directe** | page Streamlit existante | Mutations goldset conservées ; migration RAG-ops éventuelle hors chantier. |
 | `08_Chunking_Evaluation` | **Exception admin directe** | runner et vue Streamlit existants | Accès corpus/goldset et écritures d'expériences conservés. |
-| `09_Pipeline_Evaluation` | **Exception admin directe** | runner et vue Streamlit existants | Le repointage vers le nouveau core reste requis avant retrait de `packages/rag-pipeline`. |
+| `09_Pipeline_Evaluation` | **Exception admin directe** | runner et vue Streamlit existants | Son repointage, avec celui des autres consommateurs admin, appartient à `admin-hardening` avant retrait de `packages/rag-pipeline`. |
 | `10_Intent_Gater_Evaluation` | **Exception admin directe** | runner et vue Streamlit existants | Le retrait de son DDL runtime devient un suivi d'admin-hardening non bloquant pour M4. |
 | `12_Pipeline_Timeline` | **Exception admin directe** | page Streamlit et `rag_trace_events` | Reste en place après M4. Grafana/Tempo ou LangSmith seront évalués séparément. |
 | `13_admin` | **Exception admin directe** | raccourci Streamlit existant | Aucun endpoint propre. |
 | `14_User_Groups` | **Exception admin directe** | CRUD et reset de mot de passe existants | La gestion de bearers longue durée est retirée du périmètre. |
 | `15_Import_Sources` | **Outil ingestion** | domaine ingestion Grist/S3 existant | Inchangé ; propriétaire data engineering. |
-| `_PDF_Viewer` | **Client HTTP public** | référence stable puis URL signée à la demande | Plus aucun accès DB/S3 direct depuis le viewer public après F3. |
+| `_PDF_Viewer` | **Client HTTP public** | référence stable puis URL signée à la demande ; rédemption API des bytes legacy ou redirection S3 | Plus aucun accès DB/S3 direct depuis le viewer public après F3. |
 | `archive/07_Eval_Comparison` | **Archivage antérieur** | `rag_quality_eval_runs` + journal/runner | Décision antérieure conservée. |
 | `archive/11_Golden_Beta_Analysis` | **Archivage antérieur** | `03_Feedback_Dashboard` | Décision antérieure conservée. |
+
+Après F3, les pages d'évaluation qui exécutent encore `packages/rag-pipeline` sont explicitement signalées comme **legacy** : elles restent consultables, mais ne constituent plus une preuve sur le runtime public. Le runner D3 via API et son journal deviennent la preuve canonique M2/M3/M4 jusqu'à leur repointage dans `admin-hardening`.
 
 ## Exception Streamlit admin → PostgreSQL
 
 L'accès direct des pages admin est une architecture intermédiaire acceptée, sans date de retrait arbitraire. Il ne bloque ni la bascule du chat, ni F3, ni M4.
 
-Garde-fous attendus :
+Garde-fous bloquants pour M4 :
 
 - toutes les pages concernées appellent `require_admin()` avant leur logique applicative ;
 - la CI maintient une allowlist explicite des modules Streamlit autorisés à importer un client DB ;
-- les identifiants DB sont dédiés à l'admin et limités aux tables/opérations nécessaires ;
-- les nouveaux DDL passent par des migrations versionnées ; le DDL runtime historique restant est suivi comme durcissement non bloquant ;
-- l'accès réseau et les actions admin sensibles sont audités ;
+- un smoke vérifie que les pages admin conservées restent chargeables après F3 ;
 - `Home.py`, `01_Chatbot`, `_PDF_Viewer` et leurs helpers publics sont interdits d'accès direct DB après F3.
+
+Le chantier `admin-hardening`, explicitement non bloquant pour M4, porte la restriction réseau, les identifiants DB dédiés et bornés, l'audit des actions sensibles, le déplacement du DDL runtime historique vers des migrations, le repointage de tous les consommateurs admin puis la suppression de `packages/rag-pipeline`. Les nouveaux schémas livrés par l'API continuent dès maintenant à passer par des migrations versionnées.
 
 L'exception est réexaminée lorsqu'un remplaçant admin/ops est financé et satisfait les besoins fonctionnels, ou si l'accès externe, un incident de sécurité ou le couplage au schéma impose une séparation. Les options Grafana/Tempo, LangSmith et RAG-ops restent des pistes, pas des dépendances du chantier actuel.
 
@@ -83,8 +85,9 @@ L'exception est réexaminée lorsqu'un remplaçant admin/ops est financé et sat
 | `POST /v1/chat/completions` | C1–C7 | bearer de session | Question, historique, réponse et références de sources ; aucun secret durable dans le contenu. |
 | `POST /v1/feedback` | D1 | bearer propriétaire du run | Feedback structuré ; 404 pour run absent ou hors groupe ; upsert audité. |
 | `POST /v1/documents/{doc_ref}/access-url` | D2 | bearer propriétaire/autorisé | Vérifie que le document appartient aux sources du run et retourne une URL valable 15 min. |
+| `GET /v1/documents/access/{capability}` | D2 | capability courte dans l'URL | Streame les bytes legacy ou redirige vers S3 ; portée à un document, expiration 15 min, masquée dans les logs. |
 
-Ces routes sont utilisables par le backend Streamlit. L'absence de CORS n'est pas considérée comme un contrôle d'accès : la vérification de mot de passe est protégée par quotas IP + slug, backoff et métriques sans données de mot de passe.
+Les routes authentifiées sont utilisées par le backend Streamlit ; seule la route de rédemption est suivie directement par le navigateur avec sa capability courte. L'absence de CORS n'est pas considérée comme un contrôle d'accès : la vérification de mot de passe est protégée par quotas IP + slug, backoff et métriques sans données de mot de passe.
 
 ## Session API courte
 
@@ -93,7 +96,7 @@ Ces routes sont utilisables par le backend Streamlit. L'absence de CORS n'est pa
 - Il n'est pas renouvelé silencieusement : à expiration, une nouvelle authentification est requise.
 - Un reset de mot de passe incrémente `credential_revision` et invalide les sessions antérieures.
 - Le resolver revérifie le groupe, sa visibilité, son rôle et sa révision ; il échoue fermé si le groupe a été désactivé.
-- Le mécanisme machine-to-machine du futur front `conversations` sera décidé pendant son spike et ne réintroduit pas un bundle par groupe dans Streamlit.
+- Le mécanisme machine-to-machine du futur front `conversations` sera décidé pendant la conception du fork au temps 2 et ne réintroduit pas un bundle par groupe dans Streamlit.
 
 ## Feedback public
 
@@ -113,7 +116,9 @@ La requête canonique correspond au widget actif :
 - Au moins une raison cochée ou un commentaire non vide est requis, comme dans l'UI actuelle.
 - `helpful` est dérivé côté serveur : 1–2 → faux, 3–5 → vrai.
 - Pendant la coexistence, l'adaptateur persiste `stars - 1` afin de conserver l'encodage historique 0–4 ; les lectures admin existantes restent inchangées.
-- Une nouvelle soumission pour le même `turn_id` remplace la valeur courante de façon idempotente. La valeur précédente est conservée dans un audit append-only avec acteur et horodatage.
+- Le catalogue correspond au widget actif : positif `Clair`, `Utile`, `Pertinent`, `Complet`, `Précis` ; négatif `Confus`, `Éléments faux`, `Non pertinent`, `Incomplet`, `Sources manquantes`.
+- Les combinaisons suivent le rendu de l'UI : raisons négatives seules pour 1–2, deux listes pour 3–4, raisons positives seules pour 5 ; les écarts sont rejetés en 422.
+- Le serveur normalise les raisons dans l'ordre du catalogue et nettoie le commentaire, puis calcule une empreinte canonique. Sous transaction et verrou du feedback courant, un retry identique est un no-op sans nouvel audit ; une charge différente archive la valeur précédente puis remplace atomiquement la valeur courante. Une contrainte garantit au plus une valeur courante par `turn_id`.
 - L'ownership est vérifié sur le groupe de la session ; run absent et run hors groupe répondent tous deux 404.
 
 ## Accès documentaire court
@@ -123,8 +128,9 @@ La requête canonique correspond au widget actif :
 - Le frontend authentifié appelle `POST /v1/documents/{doc_ref}/access-url` au moment du clic, avec le `completion_id` concerné.
 - Le serveur vérifie que le document figure dans les sources persistées de ce run et que la session appartient au groupe autorisé.
 - La réponse contient une URL opaque valable quinze minutes et `expires_at`. Elle n'est pas ajoutée à l'historique de conversation.
-- La route n'autorise ni listing ni autre document. Les échecs d'existence et d'autorisation répondent tous deux 404.
-- Le rendu et le renouvellement dans `conversations` sont vérifiés pendant A2 ; un document interne peut rester non cliquable dans un client OpenAI générique qui n'implémente pas l'extension de sources.
+- `GET /v1/documents/access/{capability}` streame les bytes d'un document legacy conservé en PostgreSQL ou redirige vers une URL S3 présignée. La capability remplace le bearer pour cette navigation, ne couvre qu'un document, expire après quinze minutes, n'est pas persistée et est masquée dans les logs d'accès ; le contenu est servi avec `Cache-Control: private, no-store`.
+- Les routes n'autorisent ni listing ni autre document. Les échecs d'existence et d'autorisation répondent tous deux 404.
+- A2 a validé uniquement le transport OpenAI du provider `conversations`. Le rendu et le renouvellement de ces sources, comme son auth machine-to-machine et son feedback, appartiennent au fork du temps 2 ; un document interne peut rester non cliquable dans un client OpenAI générique qui n'implémente pas l'extension.
 
 ## Surface admin reportée
 
@@ -137,6 +143,6 @@ Ce report ne change pas les autorisations actuelles : les fonctions restent derr
 - le chemin public fonctionne via HTTP sous feature flag, avec rollback testé jusqu'à F3 ;
 - les sessions expirent après huit heures et sont invalidées par reset de mot de passe ;
 - les feedbacks suivent le schéma étoiles/raisons/commentaire et vérifient l'ownership ;
-- aucune URL documentaire durable n'est persistée ;
+- aucune URL signée ou capability documentaire durable n'est persistée ;
 - les pages admin existantes restent fonctionnelles et protégées ;
 - M4 vérifie l'absence d'accès DB et d'import pipeline dans le chemin public, pas dans toute l'application Streamlit.

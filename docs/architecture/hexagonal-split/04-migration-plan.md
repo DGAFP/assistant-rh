@@ -64,19 +64,19 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 
 | PR / étape | Contenu |
 |---|---|
-| **D1** | `POST /v1/feedback` avec ownership groupe/run, étoiles 1–5, raisons/commentaire, `helpful` dérivé, stockage 0–4, upsert idempotent et audit |
-| **D2** | `POST /v1/documents/{doc_ref}/access-url` : vérification run/groupe et URL signée 15 min créée au clic ; aucun endpoint admin |
-| **D3** | Runner via-API : conformance exacte en replay et goldset live séparé ; tests SDK OpenAI/`conversations` conservés. La reconstruction RAG-ops est hors chantier. |
+| **D1** | `POST /v1/feedback` avec ownership groupe/run, étoiles 1–5, raisons/commentaire, `helpful` dérivé, stockage 0–4 ; empreinte canonique, retry identique sans écriture, remplacement + audit atomiques |
+| **D2** | `POST /v1/documents/{doc_ref}/access-url` puis `GET /v1/documents/access/{capability}` : vérification run/groupe, capability 15 min créée au clic, stream des bytes legacy ou redirection S3 ; aucun endpoint admin |
+| **D3** | Runner via-API : conformance exacte en replay et goldset live séparé ; tests de transport conservés avec le SDK OpenAI et le provider `conversations` épinglé, au moyen d'une session de test créée à la volée. La reconstruction RAG-ops est hors chantier. |
 | **D4** | Déployer le container complet sur Scaleway staging en mode dark. Valider pour la première fois le proxy réel : cold start, pings/buffering SSE, timeout, mémoire, déconnexion et observabilité |
 
-**Jalon M2 — fidélité API et opérabilité** : conformance core ↔ API exacte en replay, qualité live dans les tolérances M1, intégration `conversations`, streaming Scaleway et métriques opérationnelles au vert.
+**Jalon M2 — fidélité API et opérabilité** : conformance core ↔ API exacte en replay, qualité live dans les tolérances M1, compatibilité de transport SDK/provider `conversations` épinglé, streaming Scaleway et métriques opérationnelles au vert. Le fork déployable, son auth machine-to-machine, ProConnect, son feedback et le renouvellement des sources restent au temps 2.
 
 ## Phase E — Streamlit et canary staging
 
 | PR / étape | Contenu |
 |---|---|
 | **E1** | Client public auth/models/Chat Completions SSE/feedback/documents avec session serveur de 8 h ; `RAG_CHAT_BACKEND=direct\|api`, défaut `direct` |
-| **E2** | Garde CI de frontière publique et vérification de l'exception admin : pages publiques sans DB en mode API, pages admin existantes toujours protégées par `require_admin()` |
+| **E2** | Garde CI de frontière publique et vérification de l'exception admin : pages publiques sans DB en mode API, allowlist des modules admin, `require_admin()` testé et smoke des pages admin conservées |
 | **E3** | Activer `api` pour un canary staging borné ; comparer qualité, satisfaction, erreurs, latence et complétude des logs |
 | **E4** | Fenêtre de stabilité staging de 5 jours ouvrés minimum ; exercices `api → direct`, expiration 8 h et invalidation des sessions par reset |
 
@@ -88,8 +88,8 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 |---|---|
 | **F1** | Promouvoir API + Streamlit dual-path en production avec `direct` encore actif ; smoke API dark |
 | **F2** | Activer `RAG_CHAT_BACKEND=api` par configuration ; conserver `direct` pendant la fenêtre de stabilité convenue |
-| **F3** | Après validation explicite : supprimer `packages/rag-pipeline`, le chemin direct du chat, ses accès DB, fallbacks obsolètes et flags de rollback ; conserver l'exception admin Streamlit |
-| **F4** | Activer la garde finale interdisant DB/pipeline dans le chemin public et allowlistant les modules admin ; balayer apps, packages, `src`, tests, scripts, docs et workflows |
+| **F3** | Après validation explicite : supprimer le chemin direct du chat, ses accès DB, ses helpers exclusivement publics, fallbacks obsolètes et flags de rollback ; conserver `packages/rag-pipeline` et ses helpers seulement pour les consommateurs admin allowlistés |
+| **F4** | Activer la garde finale interdisant DB/pipeline dans le chemin public et limitant les imports du package historique aux modules admin allowlistés ; balayer apps, packages, `src`, tests, scripts, docs et workflows |
 | **M4 — cible atteinte** | Chemin public HTTP et sans DB/pipeline direct ; conformance + goldset final, admin smoke, frontières CI et déploiement standard verts ; journal + LEDGER consignés |
 
 ## Matrice de parité Streamlit
@@ -109,6 +109,7 @@ La [matrice A3 détaillée](08-streamlit-api-parity.md#matrice-page-par-page) fa
 
 - Temps 2 : fork `conversations` complet avec ProConnect et feedback ; le spike A2 réduit le risque technique mais ne remplace pas la décision DINUM/DGAFP.
 - Suppression du chat Streamlit ; Streamlit devient admin/ops et conserve temporairement ses accès DB allowlistés.
+- Admin-hardening : repointer tous les consommateurs admin encore dépendants de `packages/rag-pipeline`, puis supprimer le package historique sans lier cette échéance à M4.
 - Étude séparée de Grafana/Tempo, LangSmith ou RAG-ops pour Chat Logs, Pipeline Timeline et les outils qualité.
 - Expérimentation agentic RAG éventuelle après la migration iso-fonctionnelle ; LangSmith reste utilisable sans LangChain.
 - Extraction éventuelle de `assistant_rh_api.core` en package uniquement si un consommateur et un cycle de release indépendants apparaissent.
@@ -139,12 +140,12 @@ Chaque ligne décrit une **extraction de comportement** derrière des ports, val
 | `.../context_selector.py`, `generator.py` | décisions → core ; prompts/LLM → ports injectés | extraction comportementale |
 | `.../reranker.py`, `llm_client.py`, `embedder.py` | `gateways/` ; seuils/gates dans le core | adaptateurs puis extraction des règles |
 | `.../chat_logger.py`, `tracing.py` | `db/chat_run_store.py` derrière `ChatRunStorePort` | adaptateur DB |
-| `.../admin.py` | adaptateurs/services admin + schéma dans `core/config.py` | séparer I/O et validation |
+| `.../admin.py` | adaptateurs API + schéma dans `core/config.py` | extraire ce qui sert l'API ; conserver la façade historique requise par l'admin jusqu'à son durcissement |
 | `.../models.py`, `config.py`, `ministry_scope.py` | `core/` sans re-export ni initialisation I/O | extraction légère |
 | `.../citation_extractor.py`, `conformance.py`, `db_helpers.py` | core pour les règles ; `db/` pour les helpers SQL | séparation |
-| `.../feedback_analyzer.py` | service applicatif + `FeedbackStorePort` | séparation |
-| `src/ui/user_groups_store.py`, `groups.py` | `db/user_groups.py`, auth handler et scope dans `core/chat_service.py` | première slice verticale |
-| `src/ui/chatbot_*`, `citation_deduplicator.py`, `db_utils.py`, `llm_selector.py` | conservés pour le rollback, puis absorbés ou supprimés | nettoyage tardif |
+| `.../feedback_analyzer.py` | service applicatif + `FeedbackStorePort` | extraire les règles nécessaires ; conserver le job admin existant jusqu'à son repointage |
+| `src/ui/user_groups_store.py`, `groups.py` | `db/user_groups.py`, auth handler et scope dans `core/chat_service.py` | première slice verticale pour l'API ; façade admin conservée |
+| `src/ui/chatbot_*`, `citation_deduplicator.py`, `db_utils.py`, `llm_selector.py` | helpers exclusivement publics supprimés en F3 ; helpers partagés/admin conservés | F3 puis admin-hardening |
 | `src/ui/source_import.py`, `private_datasets.py` | **inchangés** (Grist + S3) | hors chantier RAG |
 | `src/goldset/` | imports vers `assistant_rh_api.core` + adaptateurs d'éval | repointage après parité |
 | Ancien pipeline TypeScript | supprimé par A1 ([#440](https://github.com/DGAFP/assistant-rh/issues/440)) | terminé |

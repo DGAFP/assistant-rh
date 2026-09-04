@@ -10,7 +10,7 @@ Le runtime actuel est couplé à Streamlit : `packages/rag-pipeline` mêle méti
 
 ## Solution en deux temps
 
-**Temps 1 (ce chantier)** — construire `apps/api` à côté du runtime existant : DB/adaptateurs d'abord, puis extraction progressive de la logique vers `assistant_rh_api/core`. Déployer l'API, adapter le chemin public Streamlit sous feature flag, puis retirer l'ancien chemin après stabilité. Les pages admin/ops restent dans Streamlit avec accès DB direct sous une exception gardée.
+**Temps 1 (ce chantier)** — construire `apps/api` à côté du runtime existant : DB/adaptateurs d'abord, puis extraction progressive de la logique vers `assistant_rh_api/core`. Déployer l'API, adapter le chemin public Streamlit sous feature flag, puis retirer son ancien chemin direct après stabilité. Les pages admin/ops restent dans Streamlit avec accès DB direct et peuvent conserver temporairement leurs dépendances au package historique sous une exception gardée.
 
 **Temps 2 (chantier ultérieur)** — un fork de [suitenumerique/conversations](https://github.com/suitenumerique/conversations) (adapté à nos besoins, dont le feedback) remplace le chat Streamlit ; Streamlit devient une pure interface d'admin ; ProConnect vit dans le front, jamais dans l'API RAG.
 
@@ -38,7 +38,9 @@ Voir [06-decisions.md](06-decisions.md), organisé en architecture/contrat, migr
 
 **Supprimé en A1 ([#440](https://github.com/DGAFP/assistant-rh/issues/440))** : l'ancien pipeline TypeScript, ses workflows et ses scripts de conformance dédiés.
 
-**À supprimer seulement après stabilité de la bascule** : `packages/rag-pipeline` · les modules `src/ui/chatbot_*` du chemin direct-import · l'accès DB du chemin public Streamlit · les flags de rollback.
+**À supprimer seulement après stabilité de la bascule** : le chemin direct-import du chat et ses helpers exclusivement publics · l'accès DB du chemin public Streamlit · les flags de rollback.
+
+**Conservé temporairement pour l'admin** : `packages/rag-pipeline` et les helpers partagés encore importés par les pages admin allowlistées. Leur repointage puis la suppression du package relèvent du chantier `admin-hardening`, après M4.
 
 **Créé** : `apps/api/` (`core`, handlers, wiring, db, gateways) · `docker/api/Dockerfile` · runners de conformance déterministe et d'éval via-API · garde CI de frontière publique · migration d'auth API · fixtures runtime locales sans données personnelles.
 
@@ -57,4 +59,4 @@ Voir [06-decisions.md](06-decisions.md), organisé en architecture/contrat, migr
 
 - Validation DINUM/DGAFP du déploiement du fork `conversations` et de l'auth fork → API. Le spike technique A2 précède le handler completion ; la décision organisationnelle peut suivre.
 - Cible ultérieure des pages Chat Logs, Pipeline Timeline et qualité : maintien Streamlit, Grafana/Tempo, LangSmith ou outil RAG-ops. Ce choix ne bloque pas le chemin public.
-- Retrait du DDL runtime historique dans les pages admin : durcissement suivi après la bascule publique, sans bloquer M4.
+- Durcissement de l'admin après M4 : restriction réseau, identifiants DB dédiés et bornés, audit des actions sensibles, retrait du DDL runtime, repointage des consommateurs puis suppression de `packages/rag-pipeline`.

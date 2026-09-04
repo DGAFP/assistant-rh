@@ -10,7 +10,7 @@
 | D2 | **Routage ministère par le nom de modèle** : un modèle par ministère autorisé, `/v1/models` filtré par le bearer, fallback `default_ministry` | Le routage reste dans le contrat OpenAI et `conversations` sait déjà présenter un sélecteur de modèle. |
 | D3 | **Core interne à l'API**, dans `apps/api/src/assistant_rh_api/core/` | Pas de cycle de release indépendant. Le runner goldset importe ce sous-module ; les règles d'import assurent son isolation. |
 | D4 | **Le core garde la logique métier du retrieval et de la génération** : fusion, gates, sélection, composition des prompts et orchestration | C'est cette logique que les campagnes qualité mesurent. SQL et appels réseau restent derrière des ports étroits. |
-| D5 | **À M4, le chemin public Streamlit ne touche plus PostgreSQL et n'importe plus le pipeline Python** | L'admin/ops Streamlit conserve un accès DB direct sous exception allowlistée et `require_admin()`. Cette exception ne bloque pas la bascule du chat ni le retrait de `packages/rag-pipeline`. |
+| D5 | **À M4, le chemin public Streamlit ne touche plus PostgreSQL et n'importe plus le pipeline Python** | L'admin/ops Streamlit conserve un accès DB direct sous exception allowlistée et `require_admin()`. Le package historique peut subsister uniquement pour ces consommateurs admin jusqu'au chantier de durcissement. |
 | D6 | **Le login émet une session API opaque, bornée au groupe et valable huit heures** | Streamlit conserve le bearer uniquement côté serveur. Il n'existe ni token admin statique, ni bundle de bearers par groupe dans une variable d'environnement. Un reset de mot de passe invalide les sessions antérieures. |
 
 ## Migration et livraison
@@ -22,7 +22,7 @@
 | D9 | **Tests exacts sur fixtures/replays ; goldset live sur métriques et tolérances** | Les dépendances figées permettent une comparaison exacte. Avec un vrai LLM, on compare la qualité, pas l'identité du texte. |
 | D10 | **Local et VM homelab avant le déploiement Scaleway staging** | Tests rapides en local, intégrations longues sur VM. Pas de troisième environnement temporaire. |
 | D12 | **Ancien pipeline TypeScript supprimé par A1 ([#440](https://github.com/DGAFP/assistant-rh/issues/440))** | Il était confirmé mort, sans consommateur ni déploiement, et sa suppression ne dépendait pas de la bascule Python. |
-| D14 | **Bascule réversible** : API dark → Streamlit sous feature flag → canary/stabilité → suppression de l'ancien chemin | Le déploiement de l'API et le retrait de `packages/rag-pipeline` ne se produisent jamais dans la même étape opérationnelle. |
+| D14 | **Bascule réversible** : API dark → Streamlit sous feature flag → canary/stabilité → suppression de l'ancien chemin public | Le déploiement de l'API et le retrait du rollback public ne se produisent jamais dans la même étape opérationnelle. La suppression globale de `packages/rag-pipeline` attend le repointage ultérieur de l'admin. |
 
 ## Exécution et données produit
 
@@ -36,9 +36,9 @@
 | # | Décision | Pourquoi |
 |---|---|---|
 | D15 | **Aucune nouvelle fonction active n'est archivée et aucune reconstruction RAG-ops ne bloque M4** | Chat Logs, Feedback Dashboard, Admin Config, DB/Goldset Explorer, évaluations, Pipeline Timeline et User Groups restent dans Streamlit sous auth admin. Grafana/Tempo, LangSmith, RAG-ops et les endpoints admin sont des chantiers ultérieurs. |
-| D16 | **L'accès DB direct de l'admin Streamlit est une exception acceptée et gardée** | La CI allowliste les modules, `require_admin()` est testé, les identifiants DB sont bornés et le nouveau DDL passe par migrations. Le DDL runtime historique restant est une dette de durcissement non bloquante. |
-| D17 | **Les documents internes utilisent une URL signée de quinze minutes, créée au clic** | Seuls `doc_ref` et `turn_id` sont persistés. Le frontend authentifié demande une URL fraîche ; aucune capability durable ne fuit dans l'historique, les traces ou les exports. |
-| D18 | **Le feedback canonique est étoiles 1–5 + raisons cochées + commentaire** | `helpful` est dérivé, le stockage reste 0–4 pendant la coexistence, un second envoi remplace la valeur courante de façon idempotente et l'ancienne valeur reste auditée. |
+| D16 | **L'accès DB direct de l'admin Streamlit est une exception acceptée et gardée** | À M4, la CI allowliste les modules, `require_admin()` est testé et les pages conservées passent un smoke. Restriction réseau, identifiants DB dédiés et bornés, audit des actions sensibles, retrait du DDL runtime et suppression du package historique relèvent d'`admin-hardening`. |
+| D17 | **Les documents internes utilisent une URL signée de quinze minutes, créée au clic** | Seuls `doc_ref` et `turn_id` sont persistés. Une route de rédemption streame les bytes PostgreSQL legacy ou redirige vers S3 ; aucune capability durable ne fuit dans l'historique, les traces ou les exports. |
+| D18 | **Le feedback canonique est étoiles 1–5 + raisons cochées + commentaire** | `helpful` est dérivé et le stockage reste 0–4 pendant la coexistence. Un retry dont l'empreinte normalisée est identique est un no-op ; une modification archive puis remplace atomiquement la valeur courante. |
 
 ## Règles de frontière gardées par la CI
 

@@ -1,6 +1,6 @@
 # Architecture cible M4 — core interne à `apps/api`
 
-> Référence : [décisions D3, D4 et D5](06-decisions.md).
+> Référence : [décisions D3, D4, D5 et D17](06-decisions.md).
 
 ## Vue d'ensemble
 
@@ -18,17 +18,19 @@ flowchart TB
             MS[ModelService]
             P[pipeline & steps<br/>· query_processor <br>· retrieval <br/> · section aggregator  <br/> · context builder/selector <br/> · generator]
             PP[composition du prompt ministère]
-            PO[ports :<br/>· SearchPort <br/>· ContentStorePort<br/>· PromptStorePort <br/>· AcronymStorePort<br/>· RerankerPort <br/>· LLMPort <br/>· EmbeddingPort<br/>· ChatRunStorePort <br/>· ConfigStorePort<br/>· FeedbackStorePort<br/>· UserGroupStorePort<br/>· AuthSessionStorePort<br/>· ClockPort<br/>· IdGeneratorPort<br/>· TraceSinkPort]
+            PO[ports :<br/>· SearchPort <br/>· ContentStorePort<br/>· PromptStorePort <br/>· AcronymStorePort<br/>· RerankerPort <br/>· LLMPort <br/>· EmbeddingPort<br/>· ChatRunStorePort <br/>· ConfigStorePort<br/>· FeedbackStorePort<br/>· UserGroupStorePort<br/>· AuthSessionStorePort<br/>· DocumentCapabilityPort<br/>· ClockPort<br/>· IdGeneratorPort<br/>· TraceSinkPort]
 
 
             FS[FeedbackService]
+
+            DS[DocumentService]
 
             AU[AuthService]
 
         end
 
         DB[db/ — psycopg<br/>· recherche <br> · documents/sections <br/> · prompts/acronymes<br/> · chat_runs <br> · rag_config <br/> · user_groups/sessions <br> · feedback]
-        GW[gateways/ — httpx<br/>Albert/Scaleway LLM/embeddings · reranker]
+        GW[gateways/ — httpx/crypto<br/>Albert/Scaleway LLM/embeddings · reranker · capability documentaire]
     end
 
     ST -->|HTTP| H
@@ -48,6 +50,8 @@ flowchart TB
     GW --> SCW[Scaleway API]
     H --> FS
     FS --> PO
+    H --> DS
+    DS --> PO
     H --> AU
     AU --> PO
 ```
@@ -104,7 +108,8 @@ apps/api/
 │   └── gateways/             
 │       ├── albert.py         
 │       ├── scaleway.py         
-│       └── reranker.py
+│       ├── reranker.py
+│       └── document_access.py
 └── tests/
     ├── core/                 
     ├── db/                   
