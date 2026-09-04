@@ -4,7 +4,7 @@
 
 ## 1. `POST /v1/chat/completions` (stream)
 
-Le chemin nominal complet, avec la résolution token → groupe → modèle → ministère.
+Le chemin nominal complet, avec la résolution session → groupe → modèle → ministère.
 
 ```mermaid
 sequenceDiagram
@@ -23,7 +23,7 @@ sequenceDiagram
 
     C->>H: POST /v1/chat/completions (bearer, model, messages, stream=true)
     H->>A: authentifier(bearer)
-    A->>UG: résoudre token (PBKDF2) → groupe
+    A->>UG: résoudre session opaque non expirée → groupe
     UG-->>A: groupe {allowed_ministries, default_ministry}
     A-->>H: 401 si inconnu
     H->>H: model → ministère (403 si hors allowed, fallback default si "assistant-rh")
@@ -59,7 +59,30 @@ sequenceDiagram
 
 Pendant le retrieval, le handler SSE émet `: ping` indépendamment du worker. Sur déconnexion ou erreur après démarrage, il annule ce qui peut l'être, persiste `cancelled`/`failed` et ferme sans `[DONE]`. Variante non-stream : la réponse est assemblée en un seul `chat.completion` ; le log `chat_run` précède la réponse HTTP.
 
-## 2. `GET /v1/models`
+## 2. `POST /v1/auth/session`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ST as Backend Streamlit
+    participant H as handlers/auth
+    participant RL as rate limiter
+    participant UG as db/user_groups
+    participant S as db/auth_sessions
+
+    ST->>H: POST {slug, password}
+    H->>RL: quota IP + slug
+    RL-->>H: 429 si dépassé
+    H->>UG: lire hash + politique + credential_revision
+    H->>H: vérification PBKDF2 constante, hash factice si absent
+    H-->>ST: 401 générique si absent/invalide
+    H->>S: créer session opaque hashée, expiration +8 h
+    S-->>H: session créée
+    H-->>ST: bearer affiché une fois + groupe + expires_at
+    Note over ST: bearer conservé côté serveur uniquement<br/>expiration ou reset → réauthentification
+```
+
+## 3. `GET /v1/models`
 
 ```mermaid
 sequenceDiagram
@@ -71,13 +94,13 @@ sequenceDiagram
 
     C->>H: GET /v1/models (bearer)
     H->>A: authentifier(bearer)
-    A->>UG: token → groupe
+    A->>UG: session → groupe
     UG-->>A: {allowed_ministries: [matte, mso]}
     A-->>H: groupe
     H-->>C: 200 {data: [assistant-rh-matte, assistant-rh-mso]}
 ```
 
-## 3. `POST /v1/feedback`
+## 4. `POST /v1/feedback`
 
 ```mermaid
 sequenceDiagram
@@ -87,40 +110,57 @@ sequenceDiagram
     participant A as handlers/auth
     participant FS as db/feedback_store
 
-    C->>H: POST /v1/feedback {completion_id, note, raisons, commentaire}
-    H->>A: authentifier(bearer de groupe)
+    C->>H: POST /v1/feedback {completion_id, stars, raisons, commentaire}
+    H->>A: authentifier(session de groupe)
     H->>H: completion_id → turn_id (strip "chatcmpl-")
-    H->>FS: upsert feedback(turn_id, groupe, note, raisons, commentaire)
+    H->>H: dériver helpful ; convertir stars 1–5 → stockage 0–4
+    H->>FS: upsert + audit précédent(turn_id, groupe, stars, raisons, commentaire)
     FS-->>H: ok | run inconnu/hors groupe
     H-->>C: 204 | 404
 ```
 
-## 4. Admin — `PUT /admin/rag-config`
+## 5. Admin Streamlit — exception DB directe
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant ST as Streamlit admin
-    participant H as handlers/admin
-    participant A as handlers/auth
-    participant UG as db/user_groups
-    participant CORE as assistant_rh_api.core/config (schéma)
-    participant CFG as db/config_store
+    participant AUTH as src/ui/admin_auth
+    participant DB as PostgreSQL
 
-    ST->>H: PUT /admin/rag-config {v3_rerank_input_k: 40} (bearer)
-    H->>A: authentifier(bearer)
-    A->>UG: résoudre token → groupe
-    UG-->>A: groupe {is_admin}
-    A-->>H: 401 si inconnu · 403 si is_admin=false
-    H->>CFG: lire config courante
-    H->>CORE: valider merge (clé connue ? valeur valide ?)
-    CORE-->>H: 422 si clé inconnue (piège clés legacy)
-    H->>CFG: écrire config + updated_at
-    H-->>ST: 200 config résultante
-    Note over CFG: le cache TTL (~15 s) des instances API se rafraîchit seul
+    ST->>AUTH: require_admin()
+    AUTH->>DB: vérifier groupe/mot de passe admin
+    DB-->>AUTH: rôle is_admin
+    AUTH-->>ST: stop si non-admin
+    ST->>DB: lecture/mutation allowlistée
+    DB-->>ST: résultat
+    Note over ST,DB: aucun endpoint /admin/* requis pour M4<br/>nouveau DDL par migrations ; DDL historique en dette de durcissement
 ```
 
-## 5. Éval via-API (test de fidélité de l'adaptateur, D9)
+Chat Logs, Feedback Dashboard, Admin Config, DB/Goldset Explorer, les pages d'évaluation, Pipeline Timeline et User Groups conservent ce chemin après M4. Leur migration vers une API, Grafana/Tempo, LangSmith ou RAG-ops est un chantier séparé.
+
+## 6. Document interne — URL courte créée au clic
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as Utilisateur
+    participant F as Frontend authentifié
+    participant API as handlers/documents
+    participant CR as db/chat_run_store
+    participant DOC as db/content_store ou S3
+
+    U->>F: ouvrir une source interne ancienne ou récente
+    F->>API: POST /v1/documents/{doc_ref}/access-url {completion_id} (session)
+    API->>CR: vérifier run, groupe et source persistée
+    CR-->>API: autorisé | inconnu/hors groupe
+    API->>DOC: créer URL signée (15 min)
+    DOC-->>API: URL + expires_at
+    API-->>F: 200 URL courte | 404
+    F-->>U: redirection/téléchargement
+```
+
+## 7. Éval via-API (test de fidélité de l'adaptateur, D9)
 
 ```mermaid
 sequenceDiagram
@@ -140,7 +180,7 @@ sequenceDiagram
     R->>J: consigner conformance + éval live sur API dark, config, écarts (obligatoire)
 ```
 
-## 6. Temps 1 → Temps 2 (vue macro)
+## 8. Temps 1 → Temps 2 (vue macro)
 
 ```mermaid
 sequenceDiagram
@@ -150,7 +190,7 @@ sequenceDiagram
     Note over F: Temps 1 : F = Streamlit 01_Chatbot (direct par défaut, puis client SSE sous flag)
     Note over F: Temps 2 : F = fork conversations (ProConnect, feedback → /v1/feedback)
     U->>F: question
-    F->>API: /v1/chat/completions (bearer du déploiement)
+    F->>API: /v1/chat/completions (session 8 h au temps 1)
     API-->>F: SSE deltas + sources
     F-->>U: réponse rendue
     U->>F: note / commentaire

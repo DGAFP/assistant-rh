@@ -1,4 +1,4 @@
-# Architecture cible — core interne à `apps/api`
+# Architecture cible M4 — core interne à `apps/api`
 
 > Référence : [décisions D3, D4 et D5](06-decisions.md).
 
@@ -6,28 +6,28 @@
 
 ```mermaid
 flowchart TB
-    ST[Streamlit<br/>client HTTP pur]
+    ST[Streamlit public<br/>client HTTP pur]
+    ADMIN[Streamlit admin/ops<br/>exception DB directe]
     EV[éval goldset<br/>src/goldset — driver direct-core]
 
     subgraph api ["apps/api — application déployable"]
-        H[handlers/ — FastAPI<br/>· chat_completions <br/> · admin <br/>· feedback <br/> · health]
+        H[handlers/ — FastAPI<br/>· auth/models <br/>· chat_completions <br/>· feedback/documents <br/>· health]
 
         subgraph core ["assistant_rh_api/core — logique métier pure"]
             CS[ChatService<br/>orchestration requête]
             MS[ModelService]
             P[pipeline & steps<br/>· query_processor <br>· retrieval <br/> · section aggregator  <br/> · context builder/selector <br/> · generator]
             PP[composition du prompt ministère]
-            PO[ports :<br/>· SearchPort <br/>· ContentStorePort<br/>· PromptStorePort <br/>· AcronymStorePort<br/>· RerankerPort <br/>· LLMPort <br/>· EmbeddingPort<br/>· ChatRunStorePort <br/>· ConfigStorePort<br/>· FeedbackStorePort<br/>· UserGroupStorePort<br/>· ClockPort<br/>· IdGeneratorPort<br/>· TraceSinkPort]
+            PO[ports :<br/>· SearchPort <br/>· ContentStorePort<br/>· PromptStorePort <br/>· AcronymStorePort<br/>· RerankerPort <br/>· LLMPort <br/>· EmbeddingPort<br/>· ChatRunStorePort <br/>· ConfigStorePort<br/>· FeedbackStorePort<br/>· UserGroupStorePort<br/>· AuthSessionStorePort<br/>· ClockPort<br/>· IdGeneratorPort<br/>· TraceSinkPort]
 
 
             FS[FeedbackService]
 
-            AS[AdminService]
             AU[AuthService]
 
         end
 
-        DB[db/ — psycopg<br/>· recherche <br> · documents/sections <br> · prompts/acronymes<br/> · chat_runs <br> · rag_config <br> · user_groups <br> · feedback]
+        DB[db/ — psycopg<br/>· recherche <br> · documents/sections <br/> · prompts/acronymes<br/> · chat_runs <br> · rag_config <br/> · user_groups/sessions <br> · feedback]
         GW[gateways/ — httpx<br/>Albert/Scaleway LLM/embeddings · reranker]
     end
 
@@ -43,12 +43,11 @@ flowchart TB
     PO --> DB
     PO --> GW
     DB --> PG[(Postgres pgvector)]
+    ADMIN -->|accès allowlisté + require_admin| PG
     GW --> ALB[Albert API]
     GW --> SCW[Scaleway API]
     H --> FS
     FS --> PO
-    H --> AS
-    AS --> PO
     H --> AU
     AU --> PO
 ```
@@ -64,7 +63,7 @@ apps/api/
 │   ├── core/                 
 │   │   ├── chat_service.py   
 │   │   ├── feedback_service.py 
-│   │   ├── admin_service.py 
+│   │   ├── document_service.py
 │   │   ├── model_service.py 
 │   │   ├── auth_service.py 
 │   │   ├── pipeline/
@@ -88,7 +87,7 @@ apps/api/
 │   │   ├── chat_completions.py  
 │   │   ├── models.py          
 │   │   ├── feedback.py          
-│   │   ├── admin.py          
+│   │   ├── documents.py
 │   │   ├── health.py         
 │   │   └── auth.py           
 │   ├── db/                   
@@ -99,6 +98,7 @@ apps/api/
 │   │   ├── prompt_store.py
 │   │   ├── acronym_store.py
 │   │   ├── user_groups.py    
+│   │   ├── auth_sessions.py
 │   │   ├── feedback_store.py 
 │   │   └── dsn.py            
 │   └── gateways/             

@@ -22,7 +22,7 @@ Ces livrables peuvent être regroupés dans les premières PRs, pas une PR oblig
 | **A5** | ✅ [Inventaire initial I/O, état mutable et consommateurs](07-runtime-isolation-audit.md) ; compléter pour chaque module | Initial terminé le 2026-09-02 ; re-audit bloquant avant l'extraction concernée |
 | **M0a / M0b** | Baseline goldset live et fixtures/replays exacts, config/corpus identifiés, résultats consignés | Avant l'extraction métier |
 | **A2** | Essai du contrat avec SDK OpenAI et `conversations`, en local/homelab : messages, auth, erreurs et SSE | Avant le handler completion C1 |
-| **A3** | ✅ [Matrice Streamlit, surface D1/D2, rôles et provisioning des bearers](08-streamlit-api-parity.md) arbitrés ([#444](https://github.com/DGAFP/assistant-rh/issues/444)) | Terminé le 2026-09-02 |
+| **A3** | ✅ [Matrice Streamlit et périmètre public](08-streamlit-api-parity.md) arbitrés : chemin public HTTP, exception admin DB directe, session 8 h, documents 15 min et feedback canonique ([#444](https://github.com/DGAFP/assistant-rh/issues/444)) | Amendé le 2026-09-04 |
 
 Le proxy Scaleway reste testé au premier déploiement dark D4 ; aucun environnement cloud supplémentaire n'est créé pendant la préparation.
 
@@ -33,9 +33,9 @@ Cette phase construit les bords de l'hexagone avant d'extraire le pipeline. Les 
 | PR | Contenu | Preuve minimale |
 |---|---|---|
 | **B1** | Types partagés minimaux et ports dans `core/`, puis fondation DB : DSN/pool, transactions, révisions/cache et erreurs traduites | Import-linter + tests DB synthétique |
-| **B2** | Adaptateurs DB : groupes/rôles/tokens, config, prompts, acronymes, search, documents/sections, chat runs/traces et feedback | Tests contractuels repository par repository |
+| **B2** | Adaptateurs DB : groupes/sessions, config, prompts, acronymes, search, documents/sections, chat runs/traces et feedback | Tests contractuels repository par repository |
 | **B3** | Adaptateurs providers : Albert/Scaleway LLM et embeddings, reranker, timeouts/fallbacks ; aucun état `last_*` | Fakes HTTP + tests fallback/concurrence |
-| **B4** | **Première slice : auth**. Bearer → groupe pour toutes les routes ; rôle `is_admin` pour `/admin/*` ; bootstrap/rotation du premier token admin | Isolation groupes/ministères, rotation et bootstrap testés |
+| **B4** | **Première slice : auth publique**. Mot de passe → session opaque de 8 h ; bearer → groupe et politique ministère ; reset de mot de passe → invalidation | Isolation groupes/ministères, expiration, révocation et rate limiting testés |
 | **B5** | **Deuxième slice : `GET /v1/models`** sur l'auth et le repository groupes déjà construits | Tests SDK OpenAI + filtrage/fallback ministère |
 
 ## Phase C — completion, extraite étape par étape
@@ -64,9 +64,9 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 
 | PR / étape | Contenu |
 |---|---|
-| **D1** | `POST /v1/feedback` avec ownership groupe/run, raisons structurées, traduction stockage 0–4 ↔ API 1–5, enrichissement goldset et analyse durable |
-| **D2** | Endpoints [publics/documentaires](08-streamlit-api-parity.md#registre-figé-des-endpoints-publics-et-documentaires) et [admin](08-streamlit-api-parity.md#registre-figé-des-endpoints-admin-d2) figés par A3 : auth Streamlit, config/prompts/acronymes, groupes/rôles/tokens, chat-runs/traces/stats, feedback/stats/jobs et document cité étroit |
-| **D3** | Runner via-API : conformance exacte en replay et goldset live séparé ; outil RAG-ops pour corpus, curation goldset et pages chunking/ablation/intent ; tests SDK OpenAI/`conversations` conservés |
+| **D1** | `POST /v1/feedback` avec ownership groupe/run, étoiles 1–5, raisons/commentaire, `helpful` dérivé, stockage 0–4, upsert idempotent et audit |
+| **D2** | `POST /v1/documents/{doc_ref}/access-url` : vérification run/groupe et URL signée 15 min créée au clic ; aucun endpoint admin |
+| **D3** | Runner via-API : conformance exacte en replay et goldset live séparé ; tests SDK OpenAI/`conversations` conservés. La reconstruction RAG-ops est hors chantier. |
 | **D4** | Déployer le container complet sur Scaleway staging en mode dark. Valider pour la première fois le proxy réel : cold start, pings/buffering SSE, timeout, mémoire, déconnexion et observabilité |
 
 **Jalon M2 — fidélité API et opérabilité** : conformance core ↔ API exacte en replay, qualité live dans les tolérances M1, intégration `conversations`, streaming Scaleway et métriques opérationnelles au vert.
@@ -75,12 +75,12 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 
 | PR / étape | Contenu |
 |---|---|
-| **E1** | Client Chat Completions SSE et [bundle secret serveur + rotation en deux phases](08-streamlit-api-parity.md#provisioning-serveur-des-bearers-streamlit) ; `RAG_CHAT_BACKEND=direct\|api`, défaut `direct` |
-| **E2** | Login et clients admin HTTP selon A3 ; déplacement des pages RAG-ops après leur gate de parité ; accès DB produit conservé seulement dans le mode de rollback |
+| **E1** | Client public auth/models/Chat Completions SSE/feedback/documents avec session serveur de 8 h ; `RAG_CHAT_BACKEND=direct\|api`, défaut `direct` |
+| **E2** | Garde CI de frontière publique et vérification de l'exception admin : pages publiques sans DB en mode API, pages admin existantes toujours protégées par `require_admin()` |
 | **E3** | Activer `api` pour un canary staging borné ; comparer qualité, satisfaction, erreurs, latence et complétude des logs |
 | **E4** | Fenêtre de stabilité staging de 5 jours ouvrés minimum ; exercices `api → direct` et rotation de tokens |
 
-**Jalon M3 — autorisation de bascule production** : M2 toujours vert, canary sans régression inexpliquée, fonctions admin retenues disponibles, rollback testé et dette LEDGER à zéro.
+**Jalon M3 — autorisation de bascule production** : M2 toujours vert, canary sans régression inexpliquée, fonctions admin existantes disponibles, rollback public testé et dette de parité moteur du LEDGER à zéro.
 
 ## Phase F — production, stabilité puis nettoyage
 
@@ -88,9 +88,9 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 |---|---|
 | **F1** | Promouvoir API + Streamlit dual-path en production avec `direct` encore actif ; smoke API dark |
 | **F2** | Activer `RAG_CHAT_BACKEND=api` par configuration ; conserver `direct` pendant la fenêtre de stabilité convenue |
-| **F3** | Après validation explicite : supprimer `packages/rag-pipeline`, le chemin direct, les accès DB Streamlit, fallbacks obsolètes et flags de rollback |
-| **F4** | Activer la garde finale interdisant DB/pipeline dans Streamlit ; balayer apps, packages, `src`, tests, scripts, docs et workflows |
-| **M4 — cible atteinte** | Conformance + goldset final, admin smoke, frontières CI et déploiement standard verts ; journal + LEDGER consignés |
+| **F3** | Après validation explicite : supprimer `packages/rag-pipeline`, le chemin direct du chat, ses accès DB, fallbacks obsolètes et flags de rollback ; conserver l'exception admin Streamlit |
+| **F4** | Activer la garde finale interdisant DB/pipeline dans le chemin public et allowlistant les modules admin ; balayer apps, packages, `src`, tests, scripts, docs et workflows |
+| **M4 — cible atteinte** | Chemin public HTTP et sans DB/pipeline direct ; conformance + goldset final, admin smoke, frontières CI et déploiement standard verts ; journal + LEDGER consignés |
 
 ## Matrice de parité Streamlit
 
@@ -99,8 +99,8 @@ La [matrice A3 détaillée](08-streamlit-api-parity.md#matrice-page-par-page) fa
 | Page/fonction | Décision actée | Livraison |
 |---|---|---|
 | `Home`, `01_Chatbot` | Clients HTTP auth/models/chat/feedback/documents ; chemin direct en rollback | B4/B5, C1–C7, D1/D2, E1 |
-| `02_Chat_Logs`, `03_Feedback_Dashboard`, `04_Admin_Config`, `12_Pipeline_Timeline`, `13_admin`, `14_User_Groups` | Clients HTTP admin complets, sans perte fonctionnelle | D2/E2 |
-| `05_DB_Explorer`, `06_Goldset_Explorer`, `08`, `09`, `10` | Outil interne RAG-ops ; maintien temporaire jusqu'au gate de parité | D3/E2 |
+| `02_Chat_Logs`, `03_Feedback_Dashboard`, `04_Admin_Config`, `12_Pipeline_Timeline`, `13_admin`, `14_User_Groups` | Exception admin Streamlit avec DB directe ; API admin reportée | Maintien après M4 |
+| `05_DB_Explorer`, `06_Goldset_Explorer`, `08`, `09`, `10` | Exception admin Streamlit ; RAG-ops éventuel hors chantier | Maintien après M4 |
 | `15_Import_Sources` | Outil ingestion Grist/S3 séparé, inchangé et sans accès Postgres RAG | Hors chantier RAG |
 | `_PDF_Viewer` | Client de la route documentaire étroite ; URLs publiques sinon capability par source citée | B2/D2/E1 |
 | `archive/07`, `archive/11` | Archivage antérieur conservé avec remplacements documentés | Déjà terminé |
@@ -108,7 +108,9 @@ La [matrice A3 détaillée](08-streamlit-api-parity.md#matrice-page-par-page) fa
 ## Après le chantier
 
 - Temps 2 : fork `conversations` complet avec ProConnect et feedback ; le spike A2 réduit le risque technique mais ne remplace pas la décision DINUM/DGAFP.
-- Suppression du chat Streamlit ; Streamlit devient admin pur.
+- Suppression du chat Streamlit ; Streamlit devient admin/ops et conserve temporairement ses accès DB allowlistés.
+- Étude séparée de Grafana/Tempo, LangSmith ou RAG-ops pour Chat Logs, Pipeline Timeline et les outils qualité.
+- Expérimentation agentic RAG éventuelle après la migration iso-fonctionnelle ; LangSmith reste utilisable sans LangChain.
 - Extraction éventuelle de `assistant_rh_api.core` en package uniquement si un consommateur et un cycle de release indépendants apparaissent.
 - Améliorations pipeline consignées au LEDGER pendant l'extraction.
 

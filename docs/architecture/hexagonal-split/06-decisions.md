@@ -1,6 +1,3 @@
-
-
-
 # Décisions du chantier hexagonal-split
 
 > Ce document regroupe les décisions actées et leur justification. La [vue d'ensemble](00-overview.md) reste volontairement courte ; le détail de mise en œuvre vit dans le [plan de migration](04-migration-plan.md).
@@ -13,8 +10,8 @@
 | D2 | **Routage ministère par le nom de modèle** : un modèle par ministère autorisé, `/v1/models` filtré par le bearer, fallback `default_ministry` | Le routage reste dans le contrat OpenAI et `conversations` sait déjà présenter un sélecteur de modèle. |
 | D3 | **Core interne à l'API**, dans `apps/api/src/assistant_rh_api/core/` | Pas de cycle de release indépendant. Le runner goldset importe ce sous-module ; les règles d'import assurent son isolation. |
 | D4 | **Le core garde la logique métier du retrieval et de la génération** : fusion, gates, sélection, composition des prompts et orchestration | C'est cette logique que les campagnes qualité mesurent. SQL et appels réseau restent derrière des ports étroits. |
-| D5 | **À l'état cible, le produit Streamlit ne touche plus Postgres** : chat et admin deviennent clients HTTP | Pendant le canary, le chemin direct reste disponible uniquement pour le rollback. `15_Import_Sources` reste hors de cette frontière, car il appartient au domaine ingestion Grist/S3 ; les outils DB de qualité quittent le produit public. |
-| D6 | **Même bearer pour chat et admin** : groupe résolu par token, rôle `is_admin` requis sur `/admin/*` | Une seule logique d'auth, sans token admin statique. Identifiant indexé, hash, collection multi-token, rotation et bootstrap sont décrits dans le contrat API. |
+| D5 | **À M4, le chemin public Streamlit ne touche plus PostgreSQL et n'importe plus le pipeline Python** | L'admin/ops Streamlit conserve un accès DB direct sous exception allowlistée et `require_admin()`. Cette exception ne bloque pas la bascule du chat ni le retrait de `packages/rag-pipeline`. |
+| D6 | **Le login émet une session API opaque, bornée au groupe et valable huit heures** | Streamlit conserve le bearer uniquement côté serveur. Il n'existe ni token admin statique, ni bundle de bearers par groupe dans une variable d'environnement. Un reset de mot de passe invalide les sessions antérieures. |
 
 ## Migration et livraison
 
@@ -38,10 +35,10 @@
 
 | # | Décision | Pourquoi |
 |---|---|---|
-| D15 | **Aucune nouvelle fonction active n'est archivée** : les parcours produit deviennent clients HTTP ; corpus, goldset et évaluations migrent dans un outil RAG-ops restreint | La surface API reste métier et bornée sans perdre les outils de diagnostic/qualité ni exposer une API SQL. La [matrice A3](08-streamlit-api-parity.md) fixe le remplacement et son gate pour chaque page. |
-| D16 | **Bearers Streamlit provisionnés par groupe dans `STREAMLIT_API_BEARERS_JSON`**, secret du container, avec plusieurs tokens actifs par groupe | Le login mot de passe ne retourne jamais de bearer. L'émission → déploiement → smoke → révocation permet une rotation sans coupure ni secret dans le navigateur. |
-| D17 | **Accès documentaire par URL publique ou capability limitée au document cité** | Les liens restent utilisables dans Streamlit, le SDK et `conversations`, sans exposer bearer, clé S3, chemin de stockage ni endpoint de listing. |
-| D18 | **L'API expose les étoiles en 1–5 mais persiste 0–4 pendant la coexistence** | Les dashboards historiques ajoutent encore 1. La traduction dans l'adaptateur évite de mélanger deux encodages avant une éventuelle migration atomique post-F3. |
+| D15 | **Aucune nouvelle fonction active n'est archivée et aucune reconstruction RAG-ops ne bloque M4** | Chat Logs, Feedback Dashboard, Admin Config, DB/Goldset Explorer, évaluations, Pipeline Timeline et User Groups restent dans Streamlit sous auth admin. Grafana/Tempo, LangSmith, RAG-ops et les endpoints admin sont des chantiers ultérieurs. |
+| D16 | **L'accès DB direct de l'admin Streamlit est une exception acceptée et gardée** | La CI allowliste les modules, `require_admin()` est testé, les identifiants DB sont bornés et le nouveau DDL passe par migrations. Le DDL runtime historique restant est une dette de durcissement non bloquante. |
+| D17 | **Les documents internes utilisent une URL signée de quinze minutes, créée au clic** | Seuls `doc_ref` et `turn_id` sont persistés. Le frontend authentifié demande une URL fraîche ; aucune capability durable ne fuit dans l'historique, les traces ou les exports. |
+| D18 | **Le feedback canonique est étoiles 1–5 + raisons cochées + commentaire** | `helpful` est dérivé, le stockage reste 0–4 pendant la coexistence, un second envoi remplace la valeur courante de façon idempotente et l'ancienne valeur reste auditée. |
 
 ## Règles de frontière gardées par la CI
 
@@ -50,4 +47,4 @@
 3. `db/` et `gateways/` n'importent pas `handlers` ; ils implémentent les `Protocol` de `assistant_rh_api.core.ports`.
 4. `assistant_rh_api/__init__.py` reste sans effet de bord afin que `src/goldset` importe le core sans créer FastAPI ni ouvrir de connexion.
 5. Le wiring vit dans `handlers/app.py` pour l'API et dans le runner direct-core pour l'éval.
-6. À l'état cible, le produit `apps/streamlit-ui` n'importe ni `psycopg` ni le package Python API ; il utilise HTTP. Cette garde n'est activée qu'après le canary et le retrait du rollback. L'outil RAG-ops est une application séparée avec ses propres gardes et rôles DB.
+6. Après F3, le chemin public (`Home.py`, `01_Chatbot`, `_PDF_Viewer` et leurs helpers) n'importe ni client PostgreSQL ni `packages/rag-pipeline` ; il utilise HTTP. Les modules admin autorisés à accéder à la DB figurent dans une allowlist CI distincte et restent protégés par `require_admin()`.
