@@ -7,7 +7,6 @@ Filtrage par groupe de testeurs, période, thème.
 from __future__ import annotations
 
 from datetime import date, datetime
-from io import BytesIO
 
 import pandas as pd
 import plotly.express as px
@@ -22,6 +21,8 @@ from src.ui.feedback_dashboard import (
     PERIOD_CUSTOM,
     PERIOD_MODE_LABELS,
     PERIOD_MODE_OPTIONS,
+    build_unified_feedback_export,
+    dataframe_to_xlsx_bytes,
     ministry_display_label,
     period_caption,
     resolve_period,
@@ -36,19 +37,6 @@ except Exception:
 
 require_admin()
 show_admin_badge()
-
-
-def dataframe_to_xlsx_bytes(df: pd.DataFrame, sheet_name: str) -> bytes:
-    """Serialize a dataframe to an in-memory XLSX file."""
-    buffer = BytesIO()
-    try:
-        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            df.to_excel(writer, index=False, sheet_name=sheet_name)
-    except ModuleNotFoundError as exc:
-        if exc.name and exc.name.startswith("openpyxl"):
-            raise RuntimeError("Le package openpyxl est requis pour l'export Excel.") from exc
-        raise
-    return buffer.getvalue()
 
 
 # ------------------------------
@@ -94,7 +82,7 @@ def load_feedbacks_with_groups() -> pd.DataFrame:
                 r.chunk_selection_mode
             FROM chat_feedbacks f
             LEFT JOIN chat_runs r ON f.turn_id = r.turn_id
-            ORDER BY f.ts DESC
+            ORDER BY f.ts DESC, f.id DESC
         """
         df = pd.read_sql(query, engine)
         return df
@@ -123,7 +111,8 @@ def load_questions_stats() -> pd.DataFrame:
                 rag_version,
                 chunk_selection_mode,
                 dist_after_rerank,
-                total_time_ms
+                total_time_ms,
+                v3_detected_theme AS theme
             FROM chat_runs
             ORDER BY ts DESC
         """
@@ -386,8 +375,11 @@ with st.sidebar:
     # Theme filter
     st.subheader("🏷️ Filtre par thème")
     theme_options = [None]  # None = "Tous"
-    if "theme" in df_feedbacks.columns and df_feedbacks["theme"].notna().any():
-        theme_options += sorted(df_feedbacks["theme"].dropna().unique().tolist())
+    available_themes = set()
+    for theme_df in (df_questions, df_feedbacks):
+        if "theme" in theme_df.columns:
+            available_themes.update(theme_df["theme"].dropna().tolist())
+    theme_options += sorted(available_themes)
     selected_theme = st.selectbox(
         "Thème",
         options=theme_options,
@@ -419,9 +411,18 @@ df_q_usage = df_q.copy()
 df_f_usage = df_f.copy()
 
 # Theme filter
-if selected_theme and "theme" in df_f.columns:
-    df_f = df_f[df_f["theme"] == selected_theme].copy()
-    if "turn_id" in df_q.columns and "turn_id" in df_f.columns:
+if selected_theme:
+    if "theme" in df_f.columns:
+        df_f = df_f[df_f["theme"] == selected_theme].copy()
+    if "theme" in df_q.columns:
+        question_theme_mask = df_q["theme"] == selected_theme
+        if "turn_id" in df_q.columns and "turn_id" in df_f.columns:
+            # Historic runs may lack v3_detected_theme while their feedback
+            # still carries the theme: retain those alongside themed runs that
+            # have no feedback at all.
+            question_theme_mask = question_theme_mask | df_q["turn_id"].isin(df_f["turn_id"])
+        df_q = df_q[question_theme_mask].copy()
+    elif "turn_id" in df_q.columns and "turn_id" in df_f.columns:
         valid_turn_ids = df_f["turn_id"].unique()
         df_q = df_q[df_q["turn_id"].isin(valid_turn_ids)].copy()
     st.info(f"🏷️ **Thème sélectionné** : {get_theme_label(selected_theme)}. Stats affichées pour ce thème uniquement.")
@@ -726,8 +727,6 @@ st.divider()
 st.subheader("📋 Détails des feedbacks")
 _applied_groups = ", ".join(get_group_label(g) for g in selected_groups)
 st.caption(f"👥 Groupes : {_applied_groups} · 📅 Période : {applied_period_caption}")
-feedback_export_df = pd.DataFrame()
-
 if df_f.empty:
     st.info("Aucun feedback pour les filtres sélectionnés")
 else:
@@ -825,22 +824,6 @@ else:
         "comment": st.column_config.TextColumn("💭 Commentaire", width="medium"),
         "sources_dist": st.column_config.TextColumn("📚 Sources", width="medium"),
     }
-    export_labels = {
-        "ts": "📅 Date",
-        "label": "⭐ Note",
-        "theme_display": "🏷️ Thème",
-        "beta_scope_display": "📋 Périmètre beta-test",
-        "error_label": "🤖 Erreur Label",
-        "ai_reason_display": "💡 Raison",
-        "groupe_display": "👥 Groupe",
-        "ministere_display": "🏛️ Ministère",
-        "question": "❓ Question",
-        "answer": "💬 Réponse",
-        "reasons_positive": "👍 Positif",
-        "reasons_negative": "👎 Négatif",
-        "comment": "💭 Commentaire",
-        "sources_dist": "📚 Sources",
-    }
     feedback_display_df = display_df[display_cols].sort_values("ts", ascending=False).copy()
     if "ts" in feedback_display_df.columns:
         # Garder de vrais datetimes pour la grille : une chaîne "17/07/2026 …"
@@ -848,11 +831,6 @@ else:
         # Le format d'affichage vient de col_config (DatetimeColumn) ; le tz est
         # retiré après conversion Paris pour afficher l'heure locale telle quelle.
         feedback_display_df["ts"] = feedback_display_df["ts"].dt.tz_localize(None)
-    feedback_export_df = feedback_display_df.copy()
-    if "ts" in feedback_export_df.columns:
-        feedback_export_df["ts"] = feedback_export_df["ts"].dt.strftime("%d/%m/%Y %H:%M")
-    feedback_export_df = feedback_export_df.rename(columns={col: export_labels[col] for col in feedback_export_df.columns if col in export_labels})
-
     st.dataframe(feedback_display_df, width="stretch", hide_index=True, column_config=col_config, height=500)
 
 st.divider()
@@ -887,43 +865,23 @@ st.divider()
 # ------------------------------
 # Export
 # ------------------------------
-export_col1, export_col2, _ = st.columns([1, 1, 2])
-
-with export_col1:
-    try:
-        feedback_xlsx = dataframe_to_xlsx_bytes(feedback_export_df, "Feedbacks")
-    except RuntimeError as exc:
-        st.warning(str(exc))
-    else:
-        st.download_button(
-            "⬇️ Export Feedbacks (Excel)",
-            feedback_xlsx,
-            f"feedbacks_betatest_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            width="stretch",
-        )
-
-with export_col2:
-    questions_export_df = df_q.copy()
-    if "selected_ministry" in questions_export_df.columns:
-        questions_export_df["selected_ministry"] = questions_export_df["selected_ministry"].apply(ministry_display_label)
-        questions_export_df = questions_export_df.rename(columns={"selected_ministry": "Ministère"})
-    if "ts" in questions_export_df.columns:
-        questions_export_df["ts"] = (
-            pd.to_datetime(questions_export_df["ts"], utc=True, errors="coerce").dt.tz_convert("Europe/Paris").dt.strftime("%d/%m/%Y %H:%M")
-        )
-    try:
-        questions_xlsx = dataframe_to_xlsx_bytes(questions_export_df, "Questions")
-    except RuntimeError as exc:
-        st.warning(str(exc))
-    else:
-        st.download_button(
-            "⬇️ Export Questions (Excel)",
-            questions_xlsx,
-            f"questions_betatest_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            width="stretch",
-        )
+unified_export_df = build_unified_feedback_export(df_q, df_f)
+st.caption(
+    "Une ligne par question. En cas de feedbacks multiples, l’export retient le plus récent après application des filtres "
+    "(puis l’identifiant le plus élevé si les dates sont identiques)."
+)
+try:
+    unified_xlsx = dataframe_to_xlsx_bytes(unified_export_df, "Questions et feedbacks")
+except RuntimeError as exc:
+    st.warning(str(exc))
+else:
+    st.download_button(
+        "⬇️ Export questions, réponses et feedbacks (Excel)",
+        unified_xlsx,
+        f"questions_reponses_feedbacks_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="stretch",
+    )
 
 # ------------------------------
 # 👥 Usage & Engagement (données globales, hors filtre thème)
