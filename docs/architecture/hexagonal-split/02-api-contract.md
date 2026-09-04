@@ -1,6 +1,6 @@
 # Contrat API v1
 
-> Référence : [décisions D1, D2, D6, D11 et D15 à D18](06-decisions.md). Périmètre Streamlit : [arbitrage A3](08-streamlit-api-parity.md). Diagrammes : [03-sequence-diagrams.md](03-sequence-diagrams.md).
+> Référence : [décisions D1, D2, D6, D11 et D15 à D19](06-decisions.md). Périmètre Streamlit : [arbitrage A3](08-streamlit-api-parity.md). Diagrammes : [03-sequence-diagrams.md](03-sequence-diagrams.md).
 
 ## Conventions générales
 
@@ -153,7 +153,7 @@ Règles de mapping :
 
 **Réponse 200 (stream, SSE `text/event-stream`)**
 
-Chunks conformes OpenAI ; keep-alive SSE `: ping` toutes les ~10 s pendant le retrieval, puis deltas de génération et bloc sources. Le `chat_run` et ses traces sont finalisés **avant** le chunk terminal et `[DONE]` :
+Chunks conformes OpenAI ; keep-alive SSE `: ping` toutes les ~10 s pendant le retrieval, puis deltas de génération et bloc sources. Le `chat_run`, ses sources finales et ses traces sont finalisés **avant** le chunk terminal et `[DONE]` :
 
 ```text
 data: {"id":"chatcmpl-<turn_id>","object":"chat.completion.chunk","created":…,"model":"assistant-rh-matte","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
@@ -176,7 +176,9 @@ Cycle de vie et erreurs :
 - le pipeline synchrone tourne dans un worker borné ; le générateur SSE async reste disponible pour les pings et la détection de déconnexion ;
 - si une erreur survient après le démarrage du SSE, le serveur émet `data: {"error":{"message":"…","type":"server_error","code":"stream_error"}}`, ferme sans `[DONE]` et persiste le run `failed` ; il ne prétend pas pouvoir changer le statut HTTP en 500. Le SDK OpenAI lève `APIError(code="stream_error")`. `conversations` 0.0.22 laisse actuellement remonter cette exception après headers : le fork devra la convertir en son événement UI `model_connection_error` ;
 - une déconnexion client finalise un run `cancelled`/partiel et annule les appels encore annulables ;
-- la persistance d'un succès précède `[DONE]`, de sorte qu'un feedback envoyé immédiatement après la completion ne rencontre pas un run encore absent.
+- la persistance atomique d'un succès — `chat_runs`, sources finales ordonnées dans `chat_run_sources` et événements de toutes les étapes dans `rag_trace_events` — précède `[DONE]`, de sorte qu'un feedback ou un clic source immédiat ne rencontre pas un run incomplet.
+
+`chat_run_sources(turn_id, doc_ref, ordinal, …)` ne contient que les sources finales renvoyées dans le bloc markdown et `x_assistant_rh.sources`. Cette relation est l'autorité utilisée par l'accès documentaire. Les candidats, scores, filtres, rejets et décisions intermédiaires de chaque étape restent des événements structurés de trace ; ils ne donnent jamais accès à un document non présenté à l'utilisateur.
 
 ### Notes client `conversations`
 
@@ -207,7 +209,13 @@ Hors spec OpenAI. Rattache une note utilisateur au run identifié par l'id de co
 - `helpful` est dérivé par le serveur : 1–2 → `false`, 3–5 → `true`. Le champ historique `rating` n'appartient pas au contrat canonique.
 - Les combinaisons suivent le widget : 1–2 affiche seulement les raisons négatives, 3–4 autorise les deux listes, 5 affiche seulement les raisons positives. Un libellé inconnu ou une raison dans une liste non applicable produit une 422.
 
-**Réponse 204.** 404 si le `turn_id` est inconnu **ou n'appartient pas au groupe identifié par le bearer**. Le store normalise la charge utile — `stars`, raisons dédupliquées dans l'ordre du catalogue, commentaire nettoyé aux extrémités — puis calcule une empreinte canonique. Sous transaction et verrou du feedback courant, une charge identique est un no-op sans nouvelle ligne d'audit ; une charge différente archive la valeur précédente puis remplace la valeur courante atomiquement. Une contrainte garantit au plus un feedback courant par `turn_id`. L'enrichissement goldset historique reste conservé ; l'analyse admin reste dans Streamlit.
+**Réponse 204.** 404 si le `turn_id` est inconnu **ou n'appartient pas au groupe identifié par le bearer**. Le store normalise la charge utile — `stars`, raisons dédupliquées dans l'ordre du catalogue, commentaire nettoyé aux extrémités — puis calcule une empreinte canonique.
+
+La transaction verrouille d'abord la ligne parent `chat_runs` : elle sérialise ainsi deux premières soumissions concurrentes, même quand aucun feedback n'existe encore. Une empreinte identique à la valeur courante est un no-op sans nouvel audit. Une charge différente copie l'ancienne valeur dans `chat_feedback_audit`, puis remplace la valeur courante ; la contrainte unique sur `chat_feedbacks(turn_id)` constitue le dernier garde-fou. Une modification réinitialise `error_category`, `ai_reason` et `ai_analyzed_at` afin de replanifier l'analyse IA, mais conserve les annotations humaines `beta_scope` et `theme`.
+
+L'audit append-only conserve les identifiants et horodatages originaux, la valeur remplacée, le groupe acteur et `audit_session_hash`. Ce dernier est un HMAC-SHA-256, avec une clé d'audit dédiée, d'un identifiant interne aléatoire de session ; il est stable au plus pendant les huit heures de cette session et n'est ni le bearer, ni un cookie, ni une identité utilisateur. Le rôle runtime peut insérer dans l'audit mais pas modifier ni supprimer ses lignes.
+
+Avant d'ajouter l'unicité, une migration versionnée classe les lignes existantes par `(ts DESC NULLS LAST, id DESC)` pour chaque `turn_id`, conserve la première comme valeur courante et copie toutes les autres dans l'audit avant de les retirer de `chat_feedbacks`. Copie, suppression et contrainte sont dans une transaction ; le test de migration vérifie que `nombre courant + nombre archivé = nombre initial`, y compris avec égalités de date. L'enrichissement goldset historique reste conservé ; l'analyse admin reste dans Streamlit.
 
 ### `GET /healthz`
 
@@ -223,9 +231,11 @@ Sans auth (probe). **200** `{ "status": "ok", "db": "ok", "config_loaded": true 
 { "url": "https://…", "expires_at": "2026-09-04T14:15:00Z" }
 ```
 
-Seuls `doc_ref` et `turn_id` sont persistés avec le run. L'URL signée est créée au clic par le frontend authentifié et n'entre jamais dans le contenu ou l'historique du chat.
+La relation `chat_run_sources` persiste `turn_id`, `doc_ref` et l'ordre des seules sources finales présentées avec le run. L'URL signée est créée au clic par le frontend authentifié et n'entre jamais dans le contenu ou l'historique du chat.
 
-`GET /v1/documents/access/{capability}` consomme cette capability sans bearer de session supplémentaire, afin qu'un navigateur puisse suivre le lien. Le serveur résout alors le support courant : il streame les bytes d'un document legacy stocké en PostgreSQL, ou redirige vers une URL S3 présignée ; une source publique conserve son URL canonique et n'a normalement pas besoin de cette route. Une capability invalide, expirée ou inconnue répond 404. Elle expire après quinze minutes, n'autorise qu'un document, n'est jamais persistée et doit être masquée dans les logs d'accès. Les réponses de contenu utilisent `Cache-Control: private, no-store` et un `Content-Disposition` sûr. Il n'existe aucune route de listing. Les règles complètes sont dans [A3](08-streamlit-api-parity.md#accès-documentaire-court).
+`GET /v1/documents/access/{capability}` utilise cette capability sans bearer de session supplémentaire, afin qu'un navigateur puisse suivre le lien. Le serveur résout alors le support courant : il streame les bytes d'un document legacy stocké en PostgreSQL, ou redirige vers une URL S3 présignée ; une source publique conserve son URL canonique et n'a normalement pas besoin de cette route. Une capability invalide, expirée ou inconnue répond 404. Elle expire après quinze minutes, n'autorise qu'un document, n'est jamais persistée et doit être masquée dans les logs d'accès.
+
+Une redirection S3 reprend un `Content-Disposition` assaini et `Cache-Control: private, no-store` dans les paramètres signés. Sa durée est la partie entière de la durée restante de la capability, jamais quinze minutes supplémentaires ; si cette durée est épuisée, la rédemption échoue. Le frontend conserve seulement `doc_ref` et `completion_id`, crée une capability fraîche à chaque clic et, sur un premier échec de rédemption, redemande automatiquement une URL puis réessaie une seule fois si sa session de huit heures reste valide. Cette nouvelle demande refait les contrôles run/groupe/source ; une capability expirée ne peut pas se renouveler elle-même. Il n'existe aucune route de listing. Les règles complètes sont dans [A3](08-streamlit-api-parity.md#accès-documentaire-court).
 
 ## Surface admin reportée
 

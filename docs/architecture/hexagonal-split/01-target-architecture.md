@@ -1,6 +1,6 @@
 # Architecture cible M4 — core interne à `apps/api`
 
-> Référence : [décisions D3, D4, D5 et D17](06-decisions.md).
+> Référence : [décisions D3 à D5, D17 et D19](06-decisions.md).
 
 ## Vue d'ensemble
 
@@ -8,7 +8,8 @@
 flowchart TB
     ST[Streamlit public<br/>client HTTP pur]
     ADMIN[Streamlit admin/ops<br/>exception DB directe]
-    EV[éval goldset<br/>src/goldset — driver direct-core]
+    LEGACY[packages/rag-pipeline<br/>runtime legacy admin/éval]
+    EV[éval D3 canonique<br/>API + référence direct-core]
 
     subgraph api ["apps/api — application déployable"]
         H[handlers/ — FastAPI<br/>· auth/models <br/>· chat_completions <br/>· feedback/documents <br/>· health]
@@ -29,13 +30,14 @@ flowchart TB
 
         end
 
-        DB[db/ — psycopg<br/>· recherche <br> · documents/sections <br/> · prompts/acronymes<br/> · chat_runs <br> · rag_config <br/> · user_groups/sessions <br> · feedback]
+        DB[db/ — psycopg<br/>· recherche <br> · documents/sections <br/> · prompts/acronymes<br/> · chat_runs/sources/traces <br> · rag_config <br/> · user_groups/sessions <br> · feedback courant/audit]
         GW[gateways/ — httpx/crypto<br/>Albert/Scaleway LLM/embeddings · reranker · capability documentaire]
     end
 
     ST -->|HTTP| H
     H --> CS
-    EV --> CS
+    EV -->|conformance HTTP| H
+    EV -->|référence exacte| CS
     CS --> P
     P --> PP
     H --> MS
@@ -46,6 +48,10 @@ flowchart TB
     PO --> GW
     DB --> PG[(Postgres pgvector)]
     ADMIN -->|accès allowlisté + require_admin| PG
+    ADMIN -->|pages d'évaluation conservées| LEGACY
+    LEGACY --> PG
+    LEGACY --> ALB
+    LEGACY --> SCW
     GW --> ALB[Albert API]
     GW --> SCW[Scaleway API]
     H --> FS
@@ -55,6 +61,8 @@ flowchart TB
     H --> AU
     AU --> PO
 ```
+
+Le nœud `packages/rag-pipeline` reste une dépendance legacy de certaines pages admin/éval après M4 ; il n'est ni sur le chemin public ni une preuve du nouveau runtime. Aucun avertissement UI n'est requis pour ces pages non publiques. Leur repointage et le retrait de ce nœud appartiennent à `admin-hardening` ; le runner D3 via API reste la preuve canonique.
 
 ## Arborescence cible
 
@@ -119,6 +127,6 @@ apps/api/
 
 ## État par requête
 
-`ChatService` crée un `RunContext` isolé pour chaque requête. Il porte les identifiants, le scope ministère, les snapshots et révisions de config/prompts/acronymes, les résultats intermédiaires, les outcomes providers, les timings et les événements de trace. Les pools, clients, secrets et caches process restent dans les adaptateurs et n'y figurent jamais.
+`ChatService` crée un `RunContext` isolé pour chaque requête. Il porte les identifiants, le scope ministère, les snapshots et révisions de config/prompts/acronymes, les résultats intermédiaires, les outcomes providers, les timings et les événements de trace. Chaque étape produit un événement structuré ; la sélection finale de sources est extraite séparément dans `chat_run_sources`. Le run, ses sources finales et ses traces sont persistés dans une même transaction avant la réponse terminale. Les pools, clients, secrets et caches process restent dans les adaptateurs et n'y figurent jamais.
 
 Les ports et adaptateurs partagés ne stockent aucun résultat de requête. Le détail des champs, des états historiques à supprimer et des contrats de concurrence est tenu dans l'[audit d'isolation A5](07-runtime-isolation-audit.md#runcontext-minimal).

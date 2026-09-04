@@ -19,7 +19,7 @@ sequenceDiagram
     participant P as assistant_rh_api.core/pipeline (steps)
     participant S as db/search
     participant GW as gateways (Albert, reranker)
-    participant CR as db/chat_run_store
+    participant CR as db/chat_run_store (run + sources + traces)
 
     C->>H: POST /v1/chat/completions (bearer, model, messages, stream=true)
     H->>A: authentifier(bearer)
@@ -50,8 +50,8 @@ sequenceDiagram
         W-->>H: token via file async
         H-->>C: SSE chunk delta
     end
-    P-->>W: PipelineResult explicite (sources, timings)
-    W->>CR: finaliser chat_run + trace events (turn_id)
+    P-->>W: PipelineResult explicite (sources finales, timings)
+    W->>CR: transaction : chat_run + chat_run_sources finales ordonnées + traces de toutes les étapes
     CR-->>W: commit ok
     W-->>H: résultat final durable
     H-->>C: chunk bloc sources + chunk final (finish_reason=stop, x_assistant_rh) + [DONE]
@@ -116,11 +116,12 @@ sequenceDiagram
     H->>H: completion_id → turn_id (strip "chatcmpl-")
     H->>S: feedback validé + groupe + turn_id
     S->>S: dériver helpful ; normaliser ; calculer l'empreinte
-    S->>FS: transaction + verrou ; convertir stars 1–5 → stockage 0–4
+    S->>FS: transaction ; verrouiller le chat_run parent ; convertir stars 1–5 → stockage 0–4
     alt empreinte identique au feedback courant
         FS-->>S: no-op, aucun nouvel audit
     else charge différente
-        FS->>FS: archiver précédent puis remplacer courant atomiquement
+        FS->>FS: archiver précédent avec groupe + hash de session
+        FS->>FS: remplacer courant ; préserver annotations humaines ; réinitialiser analyse IA
         FS-->>S: mis à jour
     end
     S-->>H: ok | run inconnu/hors groupe
@@ -162,7 +163,7 @@ sequenceDiagram
     U->>F: ouvrir une source interne citée par le run
     F->>API: POST /v1/documents/{doc_ref}/access-url {completion_id} (session)
     API->>DS: demander accès(doc_ref, turn_id, groupe)
-    DS->>CR: vérifier run, groupe et source persistée
+    DS->>CR: vérifier run, groupe et source finale dans chat_run_sources
     CR-->>DS: autorisé | inconnu/hors groupe
     DS->>DS: émettre capability document bornée (15 min)
     DS-->>API: URL + expires_at | inconnu/hors groupe
@@ -176,13 +177,13 @@ sequenceDiagram
         DS-->>API: contenu legacy
         API-->>U: stream privé, no-store
     else objet S3
-        DOC-->>DS: URL S3 présignée
+        DOC-->>DS: URL S3 présignée, TTL borné à la durée restante, no-store/disposition signés
         DS-->>API: redirection autorisée
         API-->>U: redirection
     end
 ```
 
-La capability n'est ni persistée ni ajoutée au chat et sa valeur est masquée dans les logs d'accès.
+La capability n'est ni persistée ni ajoutée au chat et sa valeur est masquée dans les logs d'accès. Le frontend conserve `doc_ref` + `completion_id` et demande une capability fraîche à chaque clic. Si la première rédemption échoue, il refait une fois le `POST` avec sa session encore valide puis réessaie ; les contrôles d'autorisation sont donc rejoués et l'ancien lien ne se renouvelle jamais lui-même.
 
 ## 7. Éval via-API (test de fidélité de l'adaptateur, D3)
 

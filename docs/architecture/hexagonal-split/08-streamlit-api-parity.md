@@ -12,8 +12,8 @@ Ce document ferme la matrice demandée par l'issue [#444](https://github.com/DGA
 3. **Cette exception ne bloque pas M4.** Une migration vers Grafana/Tempo, LangSmith, un outil RAG-ops ou des endpoints admin sera instruite séparément, avec une décision d'hébergement et de traitement des données sensibles.
 4. **Aucune API SQL générique n'est créée.** Le maintien de pages admin en accès direct n'autorise aucun endpoint de requête arbitraire dans `apps/api`.
 5. **Le login crée une session API courte.** Après vérification du mot de passe, l'API émet un bearer opaque, borné au groupe, valable huit heures et conservé uniquement côté serveur Streamlit. Il n'existe pas de bundle `STREAMLIT_API_BEARERS_JSON`.
-6. **Les liens internes ne contiennent pas de capability durable.** Le chat persiste seulement une référence de document. Au clic, le frontend authentifié demande une URL signée valable quinze minutes.
-7. **Le feedback suit l'UI active.** L'API accepte une note 1–5, les raisons positives/négatives cochées et un commentaire. Elle dérive `helpful`, normalise le stockage historique 0–4 et conserve un audit des remplacements.
+6. **Les liens internes ne contiennent pas de capability durable.** `chat_run_sources` persiste seulement les sources finales affichées. Au clic, le frontend authentifié demande une URL valable quinze minutes ; sa présignature S3 ne dépasse pas la durée restante et un échec déclenche au plus une nouvelle demande authentifiée.
+7. **Le feedback suit l'UI active.** L'API accepte une note 1–5, les raisons positives/négatives cochées et un commentaire. Elle dérive `helpful`, normalise le stockage historique 0–4, migre les doublons existants sans perte et conserve un audit des remplacements corrélé au groupe et à une session pseudonyme.
 8. **L'agentic RAG reste hors de ce chantier iso-fonctionnel.** Il est traité comme une expérimentation qualité ultérieure ; LangSmith éventuel n'impose aucune adoption de LangChain.
 
 ## Catégories de décision
@@ -56,7 +56,7 @@ Ce document ferme la matrice demandée par l'issue [#444](https://github.com/DGA
 | `archive/07_Eval_Comparison` | **Archivage antérieur** | `rag_quality_eval_runs` + journal/runner | Décision antérieure conservée. |
 | `archive/11_Golden_Beta_Analysis` | **Archivage antérieur** | `03_Feedback_Dashboard` | Décision antérieure conservée. |
 
-Après F3, les pages d'évaluation qui exécutent encore `packages/rag-pipeline` sont explicitement signalées comme **legacy** : elles restent consultables, mais ne constituent plus une preuve sur le runtime public. Le runner D3 via API et son journal deviennent la preuve canonique M2/M3/M4 jusqu'à leur repointage dans `admin-hardening`.
+Après F3, la documentation classe comme **legacy** les pages d'évaluation qui exécutent encore `packages/rag-pipeline` : elles restent consultables, sans avertissement UI obligatoire puisqu'elles ne sont pas publiques, mais ne constituent plus une preuve sur le runtime public. Le runner D3 via API et son journal deviennent la preuve canonique M2/M3/M4 jusqu'à leur repointage dans `admin-hardening`.
 
 ## Exception Streamlit admin → PostgreSQL
 
@@ -118,17 +118,27 @@ La requête canonique correspond au widget actif :
 - Pendant la coexistence, l'adaptateur persiste `stars - 1` afin de conserver l'encodage historique 0–4 ; les lectures admin existantes restent inchangées.
 - Le catalogue correspond au widget actif : positif `Clair`, `Utile`, `Pertinent`, `Complet`, `Précis` ; négatif `Confus`, `Éléments faux`, `Non pertinent`, `Incomplet`, `Sources manquantes`.
 - Les combinaisons suivent le rendu de l'UI : raisons négatives seules pour 1–2, deux listes pour 3–4, raisons positives seules pour 5 ; les écarts sont rejetés en 422.
-- Le serveur normalise les raisons dans l'ordre du catalogue et nettoie le commentaire, puis calcule une empreinte canonique. Sous transaction et verrou du feedback courant, un retry identique est un no-op sans nouvel audit ; une charge différente archive la valeur précédente puis remplace atomiquement la valeur courante. Une contrainte garantit au plus une valeur courante par `turn_id`.
+- Avant l'unicité, une migration versionnée conserve comme valeur courante le dernier feedback par `(ts DESC NULLS LAST, id DESC)` et copie chaque doublon antérieur, avec son id et son horodatage, dans `chat_feedback_audit`. Elle ajoute ensuite la contrainte unique sur `chat_feedbacks(turn_id)` ; ce nettoyage précède le déploiement de D1.
+- Le serveur normalise les raisons dans l'ordre du catalogue et nettoie le commentaire, puis calcule une empreinte canonique. La transaction verrouille le `chat_run` parent pour sérialiser aussi deux toutes premières soumissions. Un retry identique est un no-op sans nouvel audit ; une charge différente archive la valeur précédente puis remplace atomiquement la valeur courante.
+- Une modification conserve les annotations humaines `beta_scope` et `theme`, mais efface `error_category`, `ai_reason` et `ai_analyzed_at` pour permettre une nouvelle analyse IA.
+- L'audit append-only porte le groupe et un `audit_session_hash` stable pendant la session de huit heures : HMAC-SHA-256 avec clé dédiée d'un identifiant interne aléatoire, jamais du bearer, du cookie ou d'une identité utilisateur. Il distingue des sessions, pas des personnes, et change après expiration, logout ou nouvelle authentification ; le rôle runtime n'a aucun droit d'update/delete sur l'audit.
 - L'ownership est vérifié sur le groupe de la session ; run absent et run hors groupe répondent tous deux 404.
+
+## Sources finales et traces
+
+- `chat_run_sources(turn_id, doc_ref, ordinal, …)` contient uniquement les sources effectivement sélectionnées et retournées à l'utilisateur, dans leur ordre d'affichage. C'est la liste d'autorisation de la route documentaire.
+- Les candidats récupérés, scores/rangs, filtres, rejets, fallbacks et décisions des différentes étapes sont consignés dans `rag_trace_events`. Ils restent diagnostiques et n'accordent aucun droit documentaire.
+- `chat_runs`, `chat_run_sources` et `rag_trace_events` sont commités atomiquement avant le chunk terminal et `[DONE]` ; une transaction échouée ne publie pas une completion prétendument réussie.
 
 ## Accès documentaire court
 
 - Une source publique conserve son URL canonique.
-- Une source interne persiste seulement `doc_ref` et `turn_id`, jamais une capability ou une URL signée.
+- Une source interne persiste seulement `doc_ref`, `turn_id` et son ordinal dans `chat_run_sources`, jamais une capability ou une URL signée.
 - Le frontend authentifié appelle `POST /v1/documents/{doc_ref}/access-url` au moment du clic, avec le `completion_id` concerné.
 - Le serveur vérifie que le document figure dans les sources persistées de ce run et que la session appartient au groupe autorisé.
-- La réponse contient une URL opaque valable quinze minutes et `expires_at`. Elle n'est pas ajoutée à l'historique de conversation.
-- `GET /v1/documents/access/{capability}` streame les bytes d'un document legacy conservé en PostgreSQL ou redirige vers une URL S3 présignée. La capability remplace le bearer pour cette navigation, ne couvre qu'un document, expire après quinze minutes, n'est pas persistée et est masquée dans les logs d'accès ; le contenu est servi avec `Cache-Control: private, no-store`.
+- La réponse contient une URL opaque valable quinze minutes et `expires_at`. Elle n'est pas ajoutée à l'historique de conversation. Chaque clic repart de `doc_ref` + `completion_id` et obtient une URL fraîche.
+- `GET /v1/documents/access/{capability}` streame les bytes d'un document legacy conservé en PostgreSQL ou redirige vers une URL S3 présignée. La capability remplace le bearer pour cette navigation, ne couvre qu'un document, expire après quinze minutes, n'est pas persistée et est masquée dans les logs d'accès ; le contenu et les paramètres de réponse S3 imposent `Cache-Control: private, no-store` et un `Content-Disposition` assaini.
+- La durée de la présignature S3 est au plus la durée restante de la capability. Sur un premier échec de rédemption, le frontend encore authentifié redemande automatiquement une capability puis réessaie une fois ; le `POST` refait les contrôles run/groupe/source et aucun lien expiré ne peut se renouveler seul.
 - Les routes n'autorisent ni listing ni autre document. Les échecs d'existence et d'autorisation répondent tous deux 404.
 - A2 a validé uniquement le transport OpenAI du provider `conversations`. Le rendu et le renouvellement de ces sources, comme son auth machine-to-machine et son feedback, appartiennent au fork du temps 2 ; un document interne peut rester non cliquable dans un client OpenAI générique qui n'implémente pas l'extension.
 
@@ -143,6 +153,9 @@ Ce report ne change pas les autorisations actuelles : les fonctions restent derr
 - le chemin public fonctionne via HTTP sous feature flag, avec rollback testé jusqu'à F3 ;
 - les sessions expirent après huit heures et sont invalidées par reset de mot de passe ;
 - les feedbacks suivent le schéma étoiles/raisons/commentaire et vérifient l'ownership ;
+- la migration feedback conserve le dernier `(ts, id)`, archive tous les doublons et résiste à deux premières soumissions concurrentes ;
+- les sources finales autorisées et les traces de toutes les étapes sont persistées atomiquement avec le run ;
 - aucune URL signée ou capability documentaire durable n'est persistée ;
+- la présignature S3 n'excède pas la durée restante de sa capability et le client ne retente qu'une fois, par une nouvelle demande authentifiée ;
 - les pages admin existantes restent fonctionnelles et protégées ;
 - M4 vérifie l'absence d'accès DB et d'import pipeline dans le chemin public, pas dans toute l'application Streamlit.

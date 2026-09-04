@@ -33,7 +33,7 @@ Cette phase construit les bords de l'hexagone avant d'extraire le pipeline. Les 
 | PR | Contenu | Preuve minimale |
 |---|---|---|
 | **B1** | Types partagés minimaux et ports dans `core/`, puis fondation DB : DSN/pool, transactions, révisions/cache et erreurs traduites | Import-linter + tests DB synthétique |
-| **B2** | Adaptateurs DB : groupes/sessions, config, prompts, acronymes, search, documents/sections, chat runs/traces et feedback | Tests contractuels repository par repository |
+| **B2** | Adaptateurs DB : groupes/sessions, config, prompts, acronymes, search, documents/sections, chat runs/sources/traces et feedback courant/audit. La migration versionnée conserve le dernier feedback `(ts, id)`, archive les doublons puis ajoute l'unicité avant D1. | Tests contractuels repository par repository + migration sur jeu synthétique avec doublons feedback |
 | **B3** | Adaptateurs providers : Albert/Scaleway LLM et embeddings, reranker, timeouts/fallbacks ; aucun état `last_*` | Fakes HTTP + tests fallback/concurrence |
 | **B4** | **Première slice : auth publique**. Mot de passe → session opaque de 8 h ; bearer → groupe et politique ministère ; reset de mot de passe → invalidation | Isolation groupes/ministères, expiration, révocation et rate limiting testés |
 | **B5** | **Deuxième slice : `GET /v1/models`** sur l'auth et le repository groupes déjà construits | Tests SDK OpenAI + filtrage/fallback ministère |
@@ -51,7 +51,7 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 | **C3** | Extraction du retrieval : recherche brute via adaptateurs B2, fusion, scores, gates et déterminisme dans le core | Conformance d'étape + tests d'égalité de scores |
 | **C4** | Extraction du section aggregator et du context builder : accès sections/documents/références via `ContentStorePort` | Conformance agrégation/contexte |
 | **C5** | Extraction du context selector, de la composition du prompt ministère et du generator | Replays + anti-hallucination/no-answer/fallback |
-| **C6** | `Pipeline`/`ChatService` réel, `RunContext` par requête, logging/tracing via ports et persistance non-stream | Conformance bout en bout + tests de concurrence |
+| **C6** | `Pipeline`/`ChatService` réel, `RunContext` par requête, événements de toutes les étapes et persistance atomique du run, de ses sources finales ordonnées et de ses traces | Conformance bout en bout + tests de concurrence et d'atomicité |
 | **C7** | Streaming SSE : worker borné, file async, pings, erreur post-headers, annulation et persistance avant `[DONE]` | Tests stream/déconnexion/erreur sur local et homelab |
 
 **Jalon M1 — parité moteur** :
@@ -64,8 +64,8 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 
 | PR / étape | Contenu |
 |---|---|
-| **D1** | `POST /v1/feedback` avec ownership groupe/run, étoiles 1–5, raisons/commentaire, `helpful` dérivé, stockage 0–4 ; empreinte canonique, retry identique sans écriture, remplacement + audit atomiques |
-| **D2** | `POST /v1/documents/{doc_ref}/access-url` puis `GET /v1/documents/access/{capability}` : vérification run/groupe, capability 15 min créée au clic, stream des bytes legacy ou redirection S3 ; aucun endpoint admin |
+| **D1** | Sur le schéma nettoyé par B2, `POST /v1/feedback` verrouille le `chat_run` parent, vérifie l'ownership, rend le retry identique sans écriture et archive/remplace atomiquement. Une modification conserve les annotations humaines, efface/replanifie l'analyse IA et journalise groupe + hash de session. |
+| **D2** | `POST /v1/documents/{doc_ref}/access-url` puis `GET /v1/documents/access/{capability}` : autorisation par `chat_run_sources`, capability 15 min créée au clic, stream legacy ou présignature S3 bornée à la durée restante avec headers sûrs ; retry frontend unique par nouvelle demande authentifiée ; aucun endpoint admin. |
 | **D3** | Runner via-API : conformance exacte en replay et goldset live séparé ; tests de transport conservés avec le SDK OpenAI et le provider `conversations` épinglé, au moyen d'une session de test créée à la volée. La reconstruction RAG-ops est hors chantier. |
 | **D4** | Déployer le container complet sur Scaleway staging en mode dark. Valider pour la première fois le proxy réel : cold start, pings/buffering SSE, timeout, mémoire, déconnexion et observabilité |
 
@@ -75,7 +75,7 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 
 | PR / étape | Contenu |
 |---|---|
-| **E1** | Client public auth/models/Chat Completions SSE/feedback/documents avec session serveur de 8 h ; `RAG_CHAT_BACKEND=direct\|api`, défaut `direct` |
+| **E1** | Client public auth/models/Chat Completions SSE/feedback/documents avec session serveur de 8 h ; le clic source demande toujours une URL fraîche et retente une fois après expiration ; `RAG_CHAT_BACKEND=direct\|api`, défaut `direct` |
 | **E2** | Garde CI de frontière publique et vérification de l'exception admin : pages publiques sans DB en mode API, allowlist des modules admin, `require_admin()` testé et smoke des pages admin conservées |
 | **E3** | Activer `api` pour un canary staging borné ; comparer qualité, satisfaction, erreurs, latence et complétude des logs |
 | **E4** | Fenêtre de stabilité staging de 5 jours ouvrés minimum ; exercices `api → direct`, expiration 8 h et invalidation des sessions par reset |
