@@ -21,7 +21,7 @@ Ces livrables peuvent être regroupés dans les premières PRs, pas une PR oblig
 | **A4 / A6** | Squelette `apps/api`, packaging, `/healthz`, `docker/api/Dockerfile`, gardes d'import et DB runtime synthétique | Avec les premières PRs DB B1/B2 |
 | **A5** | ✅ [Inventaire initial I/O, état mutable et consommateurs](07-runtime-isolation-audit.md) ; compléter pour chaque module | Initial terminé le 2026-09-02 ; re-audit bloquant avant l'extraction concernée |
 | **M0a / M0b** | Baseline goldset live et fixtures/replays exacts, config/corpus identifiés, résultats consignés | Avant l'extraction métier |
-| **A2** | Essai du contrat avec SDK OpenAI et `conversations`, en local/homelab : messages, auth, erreurs et SSE | Avant le handler completion C1 |
+| **A2** | ✅ Contrat, replay SDK/provider et instance Django validés en local et homelab ([preuve](07-openai-client-spike.md)) ; adaptation `openai.APIError` consignée pour le fork | Terminé le 2026-09-02 |
 | **A3** | ✅ [Matrice Streamlit et périmètre public](08-streamlit-api-parity.md) arbitrés : chemin public HTTP, exception admin DB directe, session 8 h, documents 15 min et feedback canonique ([#444](https://github.com/DGAFP/assistant-rh/issues/444)) | Amendé le 2026-09-04 |
 
 Le proxy Scaleway reste testé au premier déploiement dark D4 ; aucun environnement cloud supplémentaire n'est créé pendant la préparation.
@@ -78,7 +78,7 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 | **E1** | Client public auth/models/Chat Completions SSE/feedback/documents avec session serveur de 8 h ; `RAG_CHAT_BACKEND=direct\|api`, défaut `direct` |
 | **E2** | Garde CI de frontière publique et vérification de l'exception admin : pages publiques sans DB en mode API, pages admin existantes toujours protégées par `require_admin()` |
 | **E3** | Activer `api` pour un canary staging borné ; comparer qualité, satisfaction, erreurs, latence et complétude des logs |
-| **E4** | Fenêtre de stabilité staging de 5 jours ouvrés minimum ; exercices `api → direct` et rotation de tokens |
+| **E4** | Fenêtre de stabilité staging de 5 jours ouvrés minimum ; exercices `api → direct`, expiration 8 h et invalidation des sessions par reset |
 
 **Jalon M3 — autorisation de bascule production** : M2 toujours vert, canary sans régression inexpliquée, fonctions admin existantes disponibles, rollback public testé et dette de parité moteur du LEDGER à zéro.
 
@@ -102,7 +102,7 @@ La [matrice A3 détaillée](08-streamlit-api-parity.md#matrice-page-par-page) fa
 | `02_Chat_Logs`, `03_Feedback_Dashboard`, `04_Admin_Config`, `12_Pipeline_Timeline`, `13_admin`, `14_User_Groups` | Exception admin Streamlit avec DB directe ; API admin reportée | Maintien après M4 |
 | `05_DB_Explorer`, `06_Goldset_Explorer`, `08`, `09`, `10` | Exception admin Streamlit ; RAG-ops éventuel hors chantier | Maintien après M4 |
 | `15_Import_Sources` | Outil ingestion Grist/S3 séparé, inchangé et sans accès Postgres RAG | Hors chantier RAG |
-| `_PDF_Viewer` | Client de la route documentaire étroite ; URLs publiques sinon capability par source citée | B2/D2/E1 |
+| `_PDF_Viewer` | Client de la route documentaire étroite ; URL publique sinon référence stable et URL signée 15 min créée au clic | B2/D2/E1 |
 | `archive/07`, `archive/11` | Archivage antérieur conservé avec remplacements documentés | Déjà terminé |
 
 ## Après le chantier
