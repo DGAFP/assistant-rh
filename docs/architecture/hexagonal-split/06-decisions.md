@@ -11,7 +11,7 @@
 | D3 | **Core interne à l'API**, dans `apps/api/src/assistant_rh_api/core/` | Pas de cycle de release indépendant. Le runner goldset importe ce sous-module ; les règles d'import assurent son isolation. |
 | D4 | **Le core garde la logique métier du retrieval et de la génération** : fusion, gates, sélection, composition des prompts et orchestration | C'est cette logique que les campagnes qualité mesurent. SQL et appels réseau restent derrière des ports étroits. |
 | D5 | **À M4, le chemin public Streamlit ne touche plus PostgreSQL et n'importe plus le pipeline Python** | L'admin/ops Streamlit conserve un accès DB direct sous exception allowlistée et `require_admin()`. Le package historique peut subsister uniquement pour ces consommateurs admin jusqu'au chantier de durcissement. |
-| D6 | **Le login émet une session API opaque, bornée au groupe et valable huit heures** | Streamlit conserve le bearer dans sa session serveur ; toute perte d'état force une réauthentification et le logout révoque explicitement la session API. Il n'existe ni token admin statique, ni bundle de bearers par groupe dans une variable d'environnement. Un reset de mot de passe invalide les sessions antérieures. |
+| D6 | **Le login émet une session API opaque, bornée au groupe et valable huit heures** | Streamlit conserve le bearer dans sa session serveur ; toute perte d'état force une réauthentification et le logout révoque explicitement la session API. Le fast-path passwordless `?group=<slug>` est abandonné à E1 et `default` n'est jamais proposé au login. Il n'existe ni token admin statique, ni bundle de bearers par groupe dans une variable d'environnement. Un reset de mot de passe invalide les sessions antérieures. |
 
 ## Migration et livraison
 

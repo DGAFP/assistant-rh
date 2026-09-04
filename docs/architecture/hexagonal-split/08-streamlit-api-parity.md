@@ -11,7 +11,7 @@ Ce document ferme la matrice demandée par l'issue [#444](https://github.com/DGA
 2. **Streamlit reste l'outil admin/ops.** Chat Logs, Feedback Dashboard, Admin Config, DB Explorer, Goldset Explorer, les pages d'évaluation, Pipeline Timeline et User Groups restent dans `apps/streamlit-ui`, protégés par `require_admin()`, avec leurs accès DB actuels.
 3. **Cette exception ne bloque pas M4.** Une migration vers Grafana/Tempo, LangSmith, un outil RAG-ops ou des endpoints admin sera instruite séparément, avec une décision d'hébergement et de traitement des données sensibles.
 4. **Aucune API SQL générique n'est créée.** Le maintien de pages admin en accès direct n'autorise aucun endpoint de requête arbitraire dans `apps/api`.
-5. **Le login crée une session API courte.** Après vérification du mot de passe, l'API émet un bearer opaque, borné au groupe, valable huit heures et conservé dans la session serveur Streamlit. La perte de cet état force une réauthentification et le logout révoque la session. Il n'existe pas de bundle `STREAMLIT_API_BEARERS_JSON`.
+5. **Le login crée une session API courte.** Après vérification du mot de passe, l'API émet un bearer opaque, borné au groupe, valable huit heures et conservé dans la session serveur Streamlit. La perte de cet état force une réauthentification et le logout révoque la session. Le fast-path passwordless `?group=<slug>` est supprimé à E1 et le sentinel `default` est exclu du catalogue. Il n'existe pas de bundle `STREAMLIT_API_BEARERS_JSON`.
 6. **Les liens internes ne contiennent pas de capability durable.** `chat_run_sources` persiste seulement les sources finales affichées. Le contrôle de source navigue dans la session Streamlit existante plutôt que d'ouvrir une URL dans un nouvel onglet. `_PDF_Viewer` demande et rédime côté serveur une URL valable quinze minutes ; sa présignature S3 ne dépasse pas la durée restante et un premier 404 déclenche au plus une nouvelle demande authentifiée.
 7. **Le feedback suit l'UI active.** L'API accepte une note 1–5, les raisons positives/négatives cochées et un commentaire. Elle dérive `helpful`, normalise le stockage historique 0–4, migre les doublons existants sans perte et conserve un audit des remplacements corrélé au groupe et à une session pseudonyme.
 8. **L'agentic RAG reste hors de ce chantier iso-fonctionnel.** Il est traité comme une expérimentation qualité ultérieure ; LangSmith éventuel n'impose aucune adoption de LangChain.
@@ -37,7 +37,7 @@ Ce document ferme la matrice demandée par l'issue [#444](https://github.com/DGA
 
 | Page / fonction actuelle | Décision cible | Remplacement ou maintien | Transition et propriétaire |
 |---|---|---|---|
-| `Home.py` — groupes visibles, login/logout par mot de passe, cookie de groupe | **Client HTTP public** | `GET /v1/auth/groups`, `POST`/`DELETE /v1/auth/session`, `GET /v1/auth/me` | B4 livre l'auth ; E1 migre le client. DB direct maintenu seulement dans le rollback public jusqu'à F3. |
+| `Home.py` — groupes visibles, login/logout par mot de passe, cookie de groupe, deep-link de cohorte | **Client HTTP public** | `GET /v1/auth/groups`, `POST`/`DELETE /v1/auth/session`, `GET /v1/auth/me` | B4 livre l'auth ; E1 migre le client et supprime `?group=<slug>` ainsi que les liens d'onboarding associés. Le paramètre est ignoré dans les modes `direct` et `api` pour qu'un rollback ne réactive pas le bypass ; DB direct maintenu seulement dans le rollback public jusqu'à F3. |
 | `01_Chatbot` — modèles/ministères, historique cinq tours, stream, sources | **Client HTTP public** | `GET /v1/models`, `POST /v1/chat/completions`, demande d'URL documentaire | C1–C7 puis E1. `RAG_CHAT_BACKEND=direct|api` jusqu'à F3. |
 | `01_Chatbot` — feedback structuré | **Client HTTP public** | `POST /v1/feedback` | D1 puis E1 ; ownership groupe/run obligatoire. |
 | `02_Chat_Logs` — filtres, tableau, détail, métriques pipeline | **Exception admin directe** | page Streamlit et tables `chat_runs`/`chat_feedbacks` existantes | Reste en place après M4. Migration d'observabilité séparée. |
@@ -79,7 +79,7 @@ L'exception est réexaminée lorsqu'un remplaçant admin/ops est financé et sat
 | Endpoint | Livraison | Autorisation | Données et règle de sécurité |
 |---|---|---|---|
 | `GET /healthz` | A4, existant | aucune | État synthétique uniquement. |
-| `GET /v1/auth/groups` | B4 | aucune | Métadonnées d'affichage des groupes visibles, non-admin et loginables. |
+| `GET /v1/auth/groups` | B4 | aucune | Métadonnées d'affichage des groupes visibles, non-admin, dotés d'un mot de passe et dont `slug != "default"`. |
 | `POST /v1/auth/session` | B4 | aucune, rate-limitée | Reçoit slug/mot de passe ; retourne un bearer opaque de 8 h et l'identité non secrète. 401 identique pour groupe absent ou mot de passe faux. |
 | `GET /v1/auth/me` | B4 | bearer de session | Identité, politique ministère, expiration et `credential_revision`. |
 | `DELETE /v1/auth/session` | B4 | bearer de session | Révoque la session courante au logout ; ne renouvelle jamais une session expirée. |
@@ -87,7 +87,7 @@ L'exception est réexaminée lorsqu'un remplaçant admin/ops est financé et sat
 | `POST /v1/chat/completions` | C1–C7 | bearer de session | Question, historique, réponse et références de sources ; aucun secret durable dans le contenu. |
 | `POST /v1/feedback` | D1 | bearer propriétaire du run | Feedback structuré ; 404 pour run absent ou hors groupe ; upsert audité. |
 | `POST /v1/documents/{doc_ref}/access-url` | D2 | bearer propriétaire/autorisé | Vérifie que le document appartient aux sources du run et retourne une URL valable 15 min. |
-| `GET /v1/documents/access/{capability}` | D2 | capability courte dans l'URL | Streame les bytes legacy ou redirige vers S3 ; portée à un document, expiration 15 min, masquée dans les logs. |
+| `GET /v1/documents/access/{capability}` | D2 | capability courte dans l'URL | Répond 200 PDF legacy ou 302 S3 selon le contrat de headers ; portée à un document, expiration 15 min, masquée dans les logs. |
 
 Les routes authentifiées sont utilisées par le backend Streamlit. `_PDF_Viewer` rédime aussi la capability côté serveur pour rendre le retry observable ; la route reste utilisable en navigation directe par d'autres clients. L'absence de CORS n'est pas considérée comme un contrôle d'accès. Streamlit limite les tentatives par IP visiteur issue de l'ingress de confiance + slug ; l'API protège aussi son accès direct par source, slug et quota global. Les compteurs déclenchent un 429/`Retry-After` et un backoff borné, jamais une colonne ou un verrou persistant sur le groupe.
 
@@ -95,6 +95,7 @@ Les routes authentifiées sont utilisées par le backend Streamlit. `_PDF_Viewer
 
 - `POST /v1/auth/session` émet un token opaque borné au groupe et à ses `allowed_ministries` pendant huit heures.
 - Le token est conservé dans la session serveur du frontend, jamais dans le cookie Streamlit, une URL, un log ou un artefact CI. Le cookie de groupe devient une préférence d'affichage et ne permet pas de recréer un bearer sans mot de passe.
+- Le deep-link passwordless `?group=<slug>` est discontinué : E1 retire les liens de cohorte et ignore ce paramètre dans les modes `direct` et `api`, sans authentification ni présélection implicite.
 - Il n'est pas renouvelé silencieusement : à expiration, une nouvelle authentification est requise.
 - La perte de `st.session_state`/du websocket impose la même réauthentification ; le chemin API ne reprend pas le fast-path historique fondé sur le seul cookie de groupe.
 - Une ouverture directe de `_PDF_Viewer` par URL ou dans un nouvel onglet crée une nouvelle session et requiert donc le mot de passe ; le parcours normal utilise une navigation interne Streamlit ou un rendu inline qui conserve l'état serveur.
@@ -143,7 +144,7 @@ La requête canonique correspond au widget actif :
 - `_PDF_Viewer`, authentifié côté serveur, appelle `POST /v1/documents/{doc_ref}/access-url` à son chargement, avec le `completion_id` concerné.
 - Le serveur vérifie que le document figure dans les sources persistées de ce run et que la session appartient au groupe autorisé.
 - La réponse contient une URL opaque valable quinze minutes et `expires_at`. Elle n'est pas ajoutée à l'historique de conversation. Chaque chargement du viewer repart de `doc_ref` + `completion_id` et obtient une URL fraîche.
-- `GET /v1/documents/access/{capability}` streame les bytes d'un document legacy conservé en PostgreSQL ou redirige vers une URL S3 présignée. La capability remplace le bearer pour cette navigation, ne couvre qu'un document, expire après quinze minutes, n'est pas persistée et est masquée dans les logs d'accès ; le contenu et les paramètres de réponse S3 imposent `Cache-Control: private, no-store` et un `Content-Disposition` assaini.
+- `GET /v1/documents/access/{capability}` répond soit 200 avec les bytes PDF legacy (`application/pdf`, disposition `inline` avec nom assaini, `private, no-store`, `nosniff`), soit 302 sans body vers S3 (`Location`, `private, no-store`) ; les paramètres signés S3 imposent type allowlisté, disposition assainie et `private, no-store`. La capability remplace le bearer pour cette navigation, ne couvre qu'un document, expire après quinze minutes, n'est pas persistée et est masquée dans les logs d'accès.
 - `_PDF_Viewer` rédime la capability côté serveur avec les redirections désactivées : il rend les bytes legacy ou transmet la `Location` S3 courte au navigateur. Sur un premier 404, il redemande automatiquement une capability puis réessaie une fois ; le `POST` refait les contrôles run/groupe/source et aucun lien expiré ne peut se renouveler seul.
 - Les routes n'autorisent ni listing ni autre document. Les échecs d'existence et d'autorisation répondent tous deux 404.
 - A2 a validé uniquement le transport OpenAI du provider `conversations`. Le rendu et le renouvellement de ces sources, comme son auth machine-to-machine et son feedback, appartiennent au fork du temps 2 ; un document interne peut rester non cliquable dans un client OpenAI générique qui n'implémente pas l'extension.
@@ -159,12 +160,13 @@ Ce report ne change pas les autorisations actuelles : les fonctions restent derr
 - le chemin public fonctionne via HTTP sous feature flag, avec rollback testé jusqu'à F3 ;
 - les sessions expirent après huit heures et sont invalidées par reset de mot de passe ;
 - la perte d'état Streamlit force une réauthentification et le logout révoque la session avant d'effacer l'état local ;
+- le deep-link de cohorte `?group=<slug>` est retiré et ignoré dans les modes `direct` et `api`, y compris après rollback, et `default` n'apparaît jamais dans le catalogue de login ;
 - le clic source nominal conserve la session Streamlit ; l'ouverture URL/nouvel onglet ne récupère jamais le bearer et redemande le mot de passe ;
 - les quotas login fonctionnent derrière le backend Streamlit, retournent `Retry-After` et ne verrouillent jamais durablement un groupe ;
 - les feedbacks suivent le schéma étoiles/raisons/commentaire et vérifient l'ownership ;
 - la migration feedback conserve le dernier `(ts, id)`, archive tous les doublons et résiste à deux premières soumissions concurrentes ;
 - les sources finales autorisées et les traces de toutes les étapes sont persistées atomiquement avec le run ;
 - aucune URL signée ou capability documentaire durable n'est persistée ;
-- la présignature S3 n'excède pas la durée restante de sa capability et `_PDF_Viewer` ne retente qu'une fois, par une nouvelle demande authentifiée ;
+- la rédemption renvoie exactement le 200 PDF legacy ou la 302 S3 avec les headers sûrs définis, la présignature S3 n'excède pas la durée restante de sa capability et `_PDF_Viewer` ne retente qu'une fois, par une nouvelle demande authentifiée ;
 - les pages admin existantes restent fonctionnelles et protégées ;
 - M4 vérifie l'absence d'accès DB et d'import pipeline dans le chemin public, pas dans toute l'application Streamlit.

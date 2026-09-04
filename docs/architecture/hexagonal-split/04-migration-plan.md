@@ -35,7 +35,7 @@ Cette phase construit les bords de l'hexagone avant d'extraire le pipeline. Les 
 | **B1** | Types partagés minimaux et ports dans `core/`, puis fondation DB : DSN/pool, transactions, révisions/cache et erreurs traduites | Import-linter + tests DB synthétique |
 | **B2** | Adaptateurs DB : groupes/sessions, config, prompts, acronymes, search, documents/sections, chat runs/sources/traces et feedback courant/audit. La migration versionnée conserve le dernier feedback `(ts, id)`, archive les doublons puis ajoute l'unicité avant D1. | Tests contractuels repository par repository + migration sur jeu synthétique avec doublons feedback |
 | **B3** | Adaptateurs providers : Albert/Scaleway LLM et embeddings, reranker, timeouts/fallbacks ; aucun état `last_*` | Fakes HTTP + tests fallback/concurrence |
-| **B4** | **Première slice : auth publique**. Mot de passe → session opaque de 8 h ; bearer → groupe et politique ministère ; logout explicite ; reset de mot de passe → invalidation ; quotas API temporaires source/slug/global | Isolation groupes/ministères, expiration, révocation, `Retry-After` et absence de lockout persistant testés |
+| **B4** | **Première slice : auth publique**. Le catalogue exclut `default`, les groupes admin/masqués/sans mot de passe ; mot de passe → session opaque de 8 h ; bearer → groupe et politique ministère ; logout explicite ; reset de mot de passe → invalidation ; quotas API temporaires source/slug/global | Filtres catalogue, isolation groupes/ministères, expiration, révocation, `Retry-After` et absence de lockout persistant testés |
 | **B5** | **Deuxième slice : `GET /v1/models`** sur l'auth et le repository groupes déjà construits | Tests SDK OpenAI + filtrage/fallback ministère |
 
 ## Phase C — completion, extraite étape par étape
@@ -65,7 +65,7 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 | PR / étape | Contenu |
 |---|---|
 | **D1** | Sur le schéma nettoyé par B2, `POST /v1/feedback` verrouille le `chat_run` parent, vérifie l'ownership, rend le retry identique sans écriture et archive/remplace atomiquement. Une modification conserve les annotations humaines, efface/replanifie l'analyse IA et journalise groupe + hash de session. |
-| **D2** | `POST /v1/documents/{doc_ref}/access-url` puis `GET /v1/documents/access/{capability}` : autorisation par `chat_run_sources`, capability 15 min créée au clic, stream legacy ou présignature S3 bornée à la durée restante avec headers sûrs ; rédemption serveur et retry unique de `_PDF_Viewer` par nouvelle demande authentifiée ; aucun endpoint admin. |
+| **D2** | `POST /v1/documents/{doc_ref}/access-url` puis `GET /v1/documents/access/{capability}` : autorisation par `chat_run_sources`, capability 15 min créée au clic, réponse 200 PDF legacy ou 302 S3 avec headers sûrs et présignature bornée à la durée restante ; rédemption serveur et retry unique de `_PDF_Viewer` par nouvelle demande authentifiée ; aucun endpoint admin. |
 | **D3** | Runner via-API : conformance exacte en replay et goldset live séparé ; tests de transport conservés avec le SDK OpenAI et le provider `conversations` épinglé, au moyen d'une session de test créée à la volée. La reconstruction RAG-ops est hors chantier. |
 | **D4** | Déployer le container complet sur Scaleway staging en mode dark. Valider pour la première fois le proxy réel : cold start, pings/buffering SSE, timeout, mémoire, déconnexion et observabilité |
 
@@ -75,7 +75,7 @@ La DB et les providers existent déjà. Le handler de transport est posé avant 
 
 | PR / étape | Contenu |
 |---|---|
-| **E1** | Client public auth/models/Chat Completions SSE/feedback/documents avec bearer dans la session serveur : perte d'état → réauthentification, logout → révocation. Streamlit limite aussi les logins visiteur + slug. Les liens documentaires HTML/nouvel onglet deviennent une navigation Streamlit conservant la session ; `_PDF_Viewer` rédime côté serveur, rend bytes/redirect S3 et retente une fois après 404. `RAG_CHAT_BACKEND=direct\|api`, défaut `direct`. |
+| **E1** | Client public auth/models/Chat Completions SSE/feedback/documents avec bearer dans la session serveur : perte d'état → réauthentification, logout → révocation. Le fast-path de cohorte `?group=<slug>` et ses liens sont retirés ; le paramètre est ignoré dans les modes `direct` et `api` afin qu'un rollback ne le réactive pas. Streamlit limite aussi les logins visiteur + slug. Les liens documentaires HTML/nouvel onglet deviennent une navigation Streamlit conservant la session ; `_PDF_Viewer` rédime côté serveur, rend le 200 PDF ou la 302 S3 et retente une fois après 404. `RAG_CHAT_BACKEND=direct\|api`, défaut `direct`. |
 | **E2** | Garde CI de frontière publique et vérification de l'exception admin : pages publiques sans DB en mode API, allowlist des modules admin, les deux chemins actuels de `require_admin()` testés et smoke des pages admin conservées |
 | **E3** | Activer `api` pour un canary staging borné ; comparer qualité, satisfaction, erreurs, latence et complétude des logs |
 | **E4** | Fenêtre de stabilité staging de 5 jours ouvrés minimum ; exercices `api → direct`, perte d'état Streamlit, expiration 8 h, logout et invalidation des sessions par reset |

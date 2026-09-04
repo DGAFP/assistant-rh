@@ -173,33 +173,59 @@ sequenceDiagram
     F->>API: POST /v1/documents/{doc_ref}/access-url {completion_id} (session)
     API->>DS: demander accès(doc_ref, turn_id, groupe)
     DS->>CR: vérifier run, groupe et source finale dans chat_run_sources
-    CR-->>DS: autorisé | inconnu/hors groupe
+    CR-->>DS: autorisé
+    Note over API,CR: variante refusée → 404 terminal<br/>aucune capability créée ni rédemption tentée
     DS->>DS: émettre capability document bornée (15 min)
-    DS-->>API: URL + expires_at | inconnu/hors groupe
-    API-->>F: 200 URL courte | 404
+    DS-->>API: URL + expires_at
+    API-->>F: 200 URL courte
     F->>API: GET /v1/documents/access/{capability} (serveur, redirects=false)
     API->>DS: vérifier capability et résoudre le support
-    opt premier GET → 404 invalide/expiré
+    alt première capability valide
+        DS->>DOC: lire le document autorisé
+        alt PDF legacy PostgreSQL
+            DOC-->>DS: bytes PDF + nom assaini
+            DS-->>API: contenu legacy
+            API-->>F: 200 application/pdf, inline, private/no-store, nosniff
+            F-->>U: PDF rendu
+        else objet S3
+            DOC-->>DS: URL présignée, TTL borné et paramètres de réponse sûrs
+            DS-->>API: redirection autorisée
+            API-->>F: 302 sans body + Location S3, private/no-store
+            F-->>U: ouvrir/embarquer la Location courte
+        end
+    else première capability invalide/expirée
         DS-->>API: capability refusée
         API-->>F: 404
         F->>API: POST access-url à nouveau (session encore valide)
         API->>DS: rejouer les contrôles run/groupe/source
-        DS-->>API: nouvelle capability | refus
-        API-->>F: nouvelle URL | 401/404 terminal
-        F->>API: GET nouvelle capability si 200 (une seule relance)
-        API->>DS: vérifier la nouvelle capability
-    end
-    DS->>DOC: lire le document autorisé
-    alt bytes legacy PostgreSQL
-        DOC-->>DS: bytes + métadonnées
-        DS-->>API: contenu legacy
-        API-->>F: bytes privés, no-store
-        F-->>U: PDF rendu
-    else objet S3
-        DOC-->>DS: URL S3 présignée, TTL borné à la durée restante, no-store/disposition signés
-        DS-->>API: redirection autorisée
-        API-->>F: 302 + Location S3
-        F-->>U: ouvrir/embarquer la Location courte
+        alt session ou source refusée
+            DS-->>API: refus
+            API-->>F: 401/404 terminal
+            F-->>U: réauthentification ou source indisponible
+        else nouvelle capability
+            DS-->>API: nouvelle URL + expires_at
+            API-->>F: 200 URL courte
+            F->>API: GET nouvelle capability (unique relance)
+            API->>DS: vérifier la nouvelle capability
+            alt seconde capability invalide/expirée
+                DS-->>API: capability refusée
+                API-->>F: 404 terminal
+                F-->>U: document indisponible
+            else seconde capability valide
+                DS->>DOC: lire le document autorisé
+                alt PDF legacy PostgreSQL
+                    DOC-->>DS: bytes PDF + nom assaini
+                    DS-->>API: contenu legacy
+                    API-->>F: 200 application/pdf, inline, private/no-store, nosniff
+                    F-->>U: PDF rendu
+                else objet S3
+                    DOC-->>DS: URL présignée, TTL borné et paramètres de réponse sûrs
+                    DS-->>API: redirection autorisée
+                    API-->>F: 302 sans body + Location S3, private/no-store
+                    F-->>U: ouvrir/embarquer la Location courte
+                end
+            end
+        end
     end
 ```
 
