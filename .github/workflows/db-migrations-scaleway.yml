@@ -1,9 +1,13 @@
 name: Database Migrations (Scaleway)
 
 on:
-  release:
+  workflow_run:
+    workflows:
+      - "Release Please"
     types:
-      - published
+      - completed
+    branches:
+      - main
   push:
     branches:
       - staging
@@ -35,6 +39,13 @@ on:
 
 permissions:
   contents: read
+
+# Hold automatic production releases through both migrations and the reusable
+# deployment. A job-level lock would be released before deploy-production runs,
+# allowing the next release to migrate underneath the previous release's image.
+concurrency:
+  group: ${{ (github.event_name == 'workflow_run' || inputs.target == 'production') && 'scaleway-production-release-chain' || format('db-migrations-scaleway-{0}', github.run_id) }}
+  cancel-in-progress: false
 
 jobs:
   migrate-staging:
@@ -150,9 +161,14 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   migrate-production:
-    if: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.target == 'production') }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'workflow_dispatch' && inputs.target == 'production') }}
     runs-on: ubuntu-latest
+    concurrency:
+      group: scaleway-production-db-migrations
+      cancel-in-progress: false
     environment: scaleway-production
+    outputs:
+      release_tag: ${{ steps.release.outputs.tag }}
     env:
       SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
 
@@ -160,7 +176,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve published release
+        id: release
+        if: ${{ github.event_name == 'workflow_run' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          MAIN_SHA="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [[ "${MAIN_SHA}" != "${RELEASE_SHA}" ]]; then
+            echo "Release SHA ${RELEASE_SHA} is no longer the protected main tip (${MAIN_SHA})." >&2
+            exit 1
+          fi
+          RELEASE_TAG="$(bash .github/scripts/resolve_published_release.sh "${RELEASE_SHA}")"
+          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v2
@@ -182,8 +216,19 @@ jobs:
             echo "## Scaleway production migration summary"
             echo ""
             echo "- Trigger: \`${{ github.event_name }}\`"
-            if [[ "${{ github.event_name }}" == "release" ]]; then
-              echo "- Release tag: \`${{ github.event.release.tag_name }}\`"
+            if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+              echo "- Release tag: \`${{ steps.release.outputs.tag }}\`"
             fi
             echo "- Seed load: \`disabled\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Pass the validated release identity directly. A second workflow_run event
+  # would expose this workflow's metadata rather than the nested release SHA.
+  deploy-production:
+    if: ${{ github.event_name == 'workflow_run' }}
+    needs: migrate-production
+    uses: ./.github/workflows/streamlit-deploy-production.yml
+    with:
+      release_sha: ${{ github.event.workflow_run.head_sha }}
+      release_tag: ${{ needs.migrate-production.outputs.release_tag }}
+    secrets: inherit
