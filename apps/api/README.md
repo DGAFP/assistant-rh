@@ -56,3 +56,87 @@ moon run api:architecture
 moon run api:test
 moon run api:docker-build
 ```
+
+## Core contracts and PostgreSQL foundation (B1)
+
+`core/ports.py` defines the initial config, prompt, acronym, clock and ID ports.
+Stores are async and return immutable `Snapshot` values with an opaque content
+revision and an explicit origin. A missing row is `None`; an unavailable database
+raises an application error. Search/auth/run/feedback and provider contracts will
+be added with their B2/B3 adapters, rather than introducing unneeded domain types
+in this foundation. The legacy RAG runtime is unchanged.
+
+The FastAPI lifespan resolves `SCW_POSTGRES_DSN` at startup, creates one async
+`Database`, opens it, and closes it on shutdown. Construction and imports do not
+connect. A missing DSN keeps `/healthz` at 503; an invalid configured DSN or failed
+initial connection prevents startup. `create_app(database=...)` transfers pool
+lifecycle ownership to the app; `create_app(health_probe=...)` supports tests
+without PostgreSQL. Direct-core runners own `open()`/`close()` themselves.
+
+`db/dsn.py` accepts an explicit DSN or an explicitly supplied environment mapping,
+never reads `.env`, and has no historical provider fallback. Host, database and
+user must be present, and libpq service-file target resolution is refused. DSNs
+are omitted from settings representations. Secrets still belong in deployment
+configuration and must never be included in application snapshots.
+Pool startup and every reconnect refuse ambient `PGHOST`, `PGHOSTADDR`, `PGPORT`,
+`PGDATABASE`, `PGUSER`, `PGSERVICE` or `PGSERVICEFILE`: remove these from the API
+process environment and express the target solely in `SCW_POSTGRES_DSN`.
+
+Pool defaults are 1–4 connections per process, at most 16 waiting callers, a
+2-second acquisition/startup timeout and a 10-second statement timeout. Adjust
+`DatabaseSettings` in the composition root when sizing worker count/retrieval
+concurrency against the database connection budget. `statistics()` exposes pool
+counts without connection details. Pool behavior follows the
+[psycopg pool API](https://www.psycopg.org/psycopg3/docs/api/pool.html).
+Checkout health checks have their own 2-second deadline; expiry or cancellation
+closes the connection before the pool replaces it. The queue and checkout-check
+deadlines are separate; the statement timeout is enforced by PostgreSQL.
+
+```python
+database = Database(DatabaseSettings(dsn=resolve_dsn(environ=environment)))
+await database.open()
+try:
+    async with database.transaction(read_only=True) as connection:
+        # SQL stays in db/. Pass one connection to cooperating repositories.
+        cursor = await connection.execute("SELECT config FROM public.rag_config WHERE id = 1")
+        row = await cursor.fetchone()
+finally:
+    await database.close()
+```
+
+Each lease is one explicit transaction: success commits; exceptions and
+cancellation roll back before returning the connection. Repository methods must
+not commit manually or retain the connection. For atomic multi-repository writes,
+share the lease; use `connection.transaction()` for an inner savepoint. Session
+settings such as `ivfflat.probes` must use `SET LOCAL` inside the transaction.
+The read-only flag and statement timeout are transaction-local too.
+
+Driver errors are translated after cleanup to `database_conflict` (constraints,
+serialization or deadlock), `database_unavailable` (connection, saturation or
+timeout), or `database_failure` (other SQL errors). No automatic write retries are
+performed. Connection-worker logs are also scrubbed before pool logging.
+
+`freeze_json` detaches and freezes nested configuration; `content_revision`
+hashes canonical JSON (sorted object keys, significant array order/text, no NaN).
+These hashes detect content equality, **not** monotonic database revisions or
+compare-and-swap tokens. B2 must read content and revision in the same snapshot.
+
+`RevisionCache` is per adapter/DB target and event loop, with a bounded LRU, an
+explicit TTL and injected monotonic clock. Include scope/ministry/name in keys.
+Loads and invalidations are serialized; invalidate only **after commit**, or clear
+the cache explicitly. At TTL expiry, failed loads raise instead of serving stale
+data. Old snapshots remain immutable for in-flight requests. Cross-process admin
+changes become visible on TTL expiry; cross-store/request snapshot orchestration
+and store-specific freshness policies belong to B2/C2/C5.
+
+Run the full foundation suite on the dedicated synthetic database:
+
+```bash
+API_POSTGRES_PORT=55453 docker compose --project-name assistant-rh-issue-453 \
+  --project-directory . -f docker/api/compose.yml up -d --wait api-postgres
+API_SYNTHETIC_POSTGRES_DSN='postgresql://assistant_rh_api:assistant_rh_api@127.0.0.1:55453/assistant_rh_api_test?sslmode=disable' \
+  uv run --package assistant-rh-api --group dev python -m pytest apps/api/tests -q
+```
+
+The fixture rejects nonlocal targets and any database name other than
+`assistant_rh_api_test`. CI supplies this DSN so DB tests cannot be skipped there.

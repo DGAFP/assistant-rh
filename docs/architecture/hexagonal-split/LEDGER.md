@@ -24,6 +24,10 @@
 
 ## Écarts d'isolation A5
 
+Avancement B1 (2026-09-07) — [issue #453](https://github.com/DGAFP/assistant-rh/issues/453), PR à référencer : ports minimaux config/prompts/acronymes/horloge/ids et snapshots immuables, résolution DSN explicite, pool async borné géré par lifespan, transactions avec rollback/annulation, erreurs DB stables, révisions de contenu et cache TTL invalidable. Le healthcheck utilise cette fondation. Tests sur PostgreSQL local exclusivement synthétique, mypy et gardes d'import ; aucun changement du runtime RAG servi. Les contrats search/auth/persistance/provider restent à préciser avec B2/B3 pour éviter des types métier spéculatifs.
+
+Suivi A5 B1 — A5-03 : primitive de cache synchronisée et révisions de contenu livrées ; TTL métier et cohérence entre stores/requêtes restent B2/C2/C5. A5-05 : pool borné et isolation transactionnelle `SET LOCAL` éprouvés ; extraction SQL/cache d'introspection reste C3. A5-08 : nouvelle configuration DB explicite, immuable et wiring sans I/O à l'import ; extraction de `RAGConfig` historique reste à faire avec les stores B2. Aucun écart de parité supplémentaire découvert ; ces dettes historiques ne sont pas déclarées closes par la seule fondation.
+
 > Ces lignes décrivent une dette d'extraction, pas une autorisation de modifier le comportement historique. Statuts : `ouvert`, `en cours`, `clos`.
 
 | ID | Écart constaté | Propriétaire | Statut |

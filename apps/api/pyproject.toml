@@ -5,6 +5,7 @@ description = "OpenAI-compatible HTTP API for Assistant RH"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.136.3,<1",
+    "psycopg-pool>=3.3,<4",
     "psycopg[binary]>=3.3.3,<4",
     "uvicorn>=0.48.0,<1",
 ]
@@ -41,6 +42,7 @@ forbidden_modules = [
     "assistant_rh_api.db",
     "assistant_rh_api.gateways",
     "psycopg",
+    "psycopg_pool",
     "fastapi",
     "httpx",
     "streamlit",
@@ -52,7 +54,7 @@ id = "handlers-do-not-use-psycopg"
 name = "Handlers do not access Postgres directly"
 type = "forbidden"
 source_modules = ["assistant_rh_api.handlers"]
-forbidden_modules = ["psycopg"]
+forbidden_modules = ["psycopg", "psycopg_pool"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
