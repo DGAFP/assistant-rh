@@ -1,14 +1,6 @@
 name: Data Engineering Promote Prod
 
 on:
-  # Run the production delta automatically after the release migrations have
-  # completed successfully. Keeping this dependency explicit avoids racing an
-  # ingestion image that expects a new schema against the migration workflow.
-  workflow_run:
-    workflows:
-      - "Database Migrations (Scaleway)"
-    types:
-      - completed
   workflow_dispatch:
     inputs:
       source:
@@ -112,11 +104,10 @@ concurrency:
 
 env:
   REGISTRY_HOST: rg.fr-par.scw.cloud
-  PROD_IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_builds && 'prod-latest' || format('prod-{0}', github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha) }}
+  PROD_IMAGE_TAG: ${{ inputs.skip_builds && 'prod-latest' || format('prod-{0}', github.sha) }}
 
 jobs:
   plan:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release') }}
     runs-on: ubuntu-latest
     outputs:
       service_public: ${{ steps.plan.outputs.service_public }}
@@ -135,24 +126,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
 
       - name: Detect changed data engineering jobs
         id: plan
         env:
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
-          INPUT_AUTOMATED_RELEASE: ${{ github.event_name == 'workflow_run' }}
-          INPUT_SOURCE: ${{ github.event_name == 'workflow_run' && 'all' || inputs.source }}
-          INPUT_RUN_EMBEDDINGS: ${{ github.event_name == 'workflow_run' || inputs.run_embeddings }}
-          INPUT_EMBEDDING_SOURCE: ${{ github.event_name == 'workflow_run' && 'all' || inputs.embedding_source }}
-          INPUT_MODE: ${{ github.event_name == 'workflow_run' && 'apply' || inputs.mode }}
+          INPUT_AUTOMATED_RELEASE: "false"
+          INPUT_SOURCE: ${{ inputs.source }}
+          INPUT_RUN_EMBEDDINGS: ${{ inputs.run_embeddings }}
+          INPUT_EMBEDDING_SOURCE: ${{ inputs.embedding_source }}
+          INPUT_MODE: ${{ inputs.mode }}
         run: python3 .github/scripts/data_engineering_plan.py
 
   build-prod-images:
     runs-on: ubuntu-latest
     needs: plan
-    if: ${{ (needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_builds == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.skip_builds) }}
+    if: ${{ (needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_builds == 'true' && !inputs.skip_builds }}
     timeout-minutes: 90
     environment: scaleway-production
     strategy:
@@ -162,8 +152,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -204,7 +192,7 @@ jobs:
     needs:
       - plan
       - build-prod-images
-    if: ${{ always() && (needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_runs == 'true' && (needs.build-prod-images.result == 'success' || (needs.build-prod-images.result == 'skipped' && github.event_name == 'workflow_dispatch' && inputs.skip_builds)) }}
+    if: ${{ always() && (needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_runs == 'true' && (needs.build-prod-images.result == 'success' || (needs.build-prod-images.result == 'skipped' && inputs.skip_builds)) }}
     # > job_timeout R2 (14400s) + marge : --wait doit voir le statut terminal.
     timeout-minutes: 250
     environment: scaleway-production
@@ -235,21 +223,19 @@ jobs:
       GRIST_TABLE_ID: ${{ vars.GRIST_TABLE_ID }}
       LEGIFRANCE_CLIENT_ID: ${{ secrets.LEGIFRANCE_CLIENT_ID }}
       LEGIFRANCE_CLIENT_SECRET: ${{ secrets.LEGIFRANCE_CLIENT_SECRET }}
-      RUN_INGESTION: ${{ github.event_name == 'workflow_run' || (inputs.mode == 'apply' && inputs.run_ingestion) || false }}
-      WIPE_EXISTING_CHUNKS: ${{ github.event_name == 'workflow_dispatch' && inputs.wipe_existing_chunks || false }}
-      DELTA_MODE: ${{ github.event_name == 'workflow_run' || inputs.delta || false }}
+      RUN_INGESTION: ${{ (inputs.mode == 'apply' && inputs.run_ingestion) || false }}
+      WIPE_EXISTING_CHUNKS: ${{ inputs.wipe_existing_chunks || false }}
+      DELTA_MODE: ${{ inputs.delta || false }}
       EMBEDDING_SOURCE: ${{ matrix.embedding_source }}
-      EMBEDDING_ONLY_COLUMN: ${{ github.event_name == 'workflow_dispatch' && inputs.embedding_only_column || '' }}
-      R2_REVIEWED_CACHE: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_reviewed_cache || false }}
-      R2_CACHE_SOURCE_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_cache_source_env || 'staging' }}
-      R2_LIMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_limit || 0 }}
-      R2_ALLOW_CACHE_MISSES: ${{ github.event_name == 'workflow_dispatch' && inputs.r2_allow_cache_misses || false }}
+      EMBEDDING_ONLY_COLUMN: ${{ inputs.embedding_only_column || '' }}
+      R2_REVIEWED_CACHE: ${{ inputs.r2_reviewed_cache || false }}
+      R2_CACHE_SOURCE_ENV: ${{ inputs.r2_cache_source_env || 'staging' }}
+      R2_LIMIT: ${{ inputs.r2_limit || 0 }}
+      R2_ALLOW_CACHE_MISSES: ${{ inputs.r2_allow_cache_misses || false }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Install Scaleway CLI
         uses: scaleway/action-scw@v0.0.3

@@ -1,11 +1,16 @@
 name: Streamlit Deploy Production
 
 on:
-  workflow_run:
-    workflows:
-      - "Database Migrations (Scaleway)"
-    types:
-      - completed
+  workflow_call:
+    inputs:
+      release_sha:
+        description: "Validated release commit migrated by the caller"
+        required: true
+        type: string
+      release_tag:
+        description: "Published release tag validated by the caller"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       existing_image_tag:
@@ -27,7 +32,6 @@ env:
 
 jobs:
   deploy:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: scaleway-production
@@ -70,7 +74,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
+          ref: ${{ inputs.release_sha || github.ref }}
           fetch-depth: 0
           fetch-tags: true
 
@@ -108,29 +112,25 @@ jobs:
       - name: Resolve deployment mode and image
         id: image
         env:
+          GH_TOKEN: ${{ github.token }}
           INPUT_EXISTING_IMAGE_TAG: ${{ inputs.existing_image_tag }}
-          RELEASE_WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
-          WORKFLOW_RUN_DISPLAY_TITLE: ${{ github.event.workflow_run.display_title }}
+          RELEASE_WORKFLOW_SHA: ${{ inputs.release_sha }}
+          RELEASE_WORKFLOW_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
 
-          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+          if [[ -n "${RELEASE_WORKFLOW_SHA}" || -n "${RELEASE_WORKFLOW_TAG}" ]]; then
             RELEASE_SHA="${RELEASE_WORKFLOW_SHA}"
-            if [[ -z "${RELEASE_SHA}" ]]; then
-              echo "Missing workflow_run.head_sha for release deployment." >&2
+            if [[ -z "${RELEASE_SHA}" || -z "${RELEASE_WORKFLOW_TAG}" ]]; then
+              echo "Release deployment requires both release_sha and release_tag." >&2
               exit 1
             fi
 
-            RELEASE_TAG="$(git tag --points-at "${RELEASE_SHA}" | sort -V | tail -n1)"
-            if [[ -z "${RELEASE_TAG}" && "${WORKFLOW_RUN_DISPLAY_TITLE}" =~ ^v[0-9] ]]; then
-              RELEASE_TAG="${WORKFLOW_RUN_DISPLAY_TITLE}"
-            fi
-
-            if [[ -z "${RELEASE_TAG}" ]]; then
-              echo "Could not resolve release tag for commit ${RELEASE_SHA}." >&2
+            RELEASE_TAG="$(bash .github/scripts/resolve_published_release.sh "${RELEASE_SHA}")"
+            if [[ "${RELEASE_TAG}" != "${RELEASE_WORKFLOW_TAG}" ]]; then
+              echo "Resolved release tag ${RELEASE_TAG} does not match migrated tag ${RELEASE_WORKFLOW_TAG}." >&2
               exit 1
             fi
-
             IMAGE_TAG="release-${RELEASE_TAG}"
             BUILD_REQUIRED=true
             MODE="release-after-db-migration"
