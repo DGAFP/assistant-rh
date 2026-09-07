@@ -162,14 +162,16 @@ def test_quality_gates_support_absolute_minimum_for_non_article_table(tmp_path: 
     assert not any(check["check"] == "expected_id_coverage" for check in report["checks"])
 
 
-def test_legifrance_modern_table_does_not_apply_article_manifest() -> None:
+def test_legifrance_quality_gates_only_target_the_served_article_surface() -> None:
     config_path = Path(__file__).resolve().parents[1] / "config/data_quality_gates.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
-    modern_table = next(table for table in config["sources"]["legifrance"]["tables"] if table["name"] == "rag_chunks_legifrance")
+    tables = config["sources"]["legifrance"]["tables"]
+    table_names = {table["name"] for table in tables}
+    served_chunks = next(table for table in tables if table["name"] == "rag_chunks_dgafp")
 
-    assert modern_table["min_rows"] == 1
-    assert "id_column" not in modern_table
-    assert "min_rows_per_expected_id" not in modern_table
+    assert "rag_chunks_legifrance" not in table_names
+    assert served_chunks["id_column"] == "cid"
+    assert served_chunks["freshness_column"] == "updated_at"
 
 
 def test_quality_gates_cli_route_is_registered() -> None:
