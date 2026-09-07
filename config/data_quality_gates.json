@@ -83,12 +83,6 @@
           "min_distinct_expected_id_ratio": 1.0,
           "text_columns": ["chunk_text"],
           "freshness_column": "updated_at"
-        },
-        {
-          "name": "rag_chunks_legifrance",
-          "min_rows": 1,
-          "text_columns": ["chunk_text"],
-          "freshness_column": "updated_at"
         }
       ]
     }

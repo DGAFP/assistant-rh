@@ -1,7 +1,7 @@
 {
  "dataset": "rag_chunks_dgafp",
  "source": "legifrance_api:follow-live",
- "generated_at": "2026-07-12T20:01:54.703509+00:00",
+ "generated_at": "2026-09-07T14:32:20.273184+00:00",
  "texts": [
   {
    "uid": "JORFTEXT000000208382",
@@ -31,7 +31,7 @@
    "uid": "JORFTEXT000000699956",
    "kind": "texte",
    "titre": "Décret n° 86-83 du 17 janvier 1986 relatif aux dispositions générales applicables aux agents contractuels de l’État.",
-   "articles_en_vigueur": 92
+   "articles_en_vigueur": 93
   },
   {
    "uid": "JORFTEXT000000886529",
@@ -73,13 +73,13 @@
    "uid": "JORFTEXT000032036983",
    "kind": "texte",
    "titre": "Décret n° 2016-151 du 11 février 2016 relatif aux conditions et modalités de mise en œuvre du télétravail dans la foncti",
-   "articles_en_vigueur": 15
+   "articles_en_vigueur": 2
   },
   {
    "uid": "JORFTEXT000034640143",
    "kind": "texte",
    "titre": "Décret n° 2017-928 du 6 mai 2017 relatif à la mise en œuvre du compte personnel d'activité dans la fonction publique et ",
-   "articles_en_vigueur": 22
+   "articles_en_vigueur": 9
   },
   {
    "uid": "JORFTEXT000037852096",
@@ -97,7 +97,7 @@
    "uid": "JORFTEXT000041849917",
    "kind": "texte",
    "titre": "Décret n° 2020-524 du 5 mai 2020 modifiant le décret n° 2016-151 du 11 février 2016 relatif aux conditions et modalités ",
-   "articles_en_vigueur": 10
+   "articles_en_vigueur": 8
   },
   {
    "uid": "JORFTEXT000042007392",
@@ -151,7 +151,7 @@
    "uid": "LEGITEXT000044416551",
    "kind": "code",
    "titre": "CGFP",
-   "articles_en_vigueur": 3750
+   "articles_en_vigueur": 4246
   }
  ],
  "articles": [
@@ -276,10 +276,10 @@
   },
   {
    "cid": "JORFARTI000001719096",
-   "version_id": "LEGIARTI000006214266",
+   "version_id": "LEGIARTI000054670125",
    "aliases": [
     "JORFARTI000001719096",
-    "LEGIARTI000006214266"
+    "LEGIARTI000054670125"
    ],
    "text_uid": "JORFTEXT000000597461"
   },
@@ -375,10 +375,10 @@
   },
   {
    "cid": "JORFARTI000002247868",
-   "version_id": "LEGIARTI000006214267",
+   "version_id": "LEGIARTI000054670123",
    "aliases": [
     "JORFARTI000002247868",
-    "LEGIARTI000006214267"
+    "LEGIARTI000054670123"
    ],
    "text_uid": "JORFTEXT000000597461"
   },
@@ -752,97 +752,6 @@
    "text_uid": "JORFTEXT000030645224"
   },
   {
-   "cid": "JORFARTI000032037005",
-   "version_id": "LEGIARTI000032038742",
-   "aliases": [
-    "JORFARTI000032037005",
-    "LEGIARTI000032038742"
-   ],
-   "text_uid": "JORFTEXT000032036983"
-  },
-  {
-   "cid": "JORFARTI000032037008",
-   "version_id": "LEGIARTI000041853196",
-   "aliases": [
-    "JORFARTI000032037008",
-    "LEGIARTI000041853196"
-   ],
-   "text_uid": "JORFTEXT000032036983"
-  },
-  {
-   "cid": "JORFARTI000032037012",
-   "version_id": "LEGIARTI000032038756",
-   "aliases": [
-    "JORFARTI000032037012",
-    "LEGIARTI000032038756"
-   ],
-   "text_uid": "JORFTEXT000032036983"
-  },
-  {
-   "cid": "JORFARTI000032037013",
-   "version_id": "LEGIARTI000044542569",
-   "aliases": [
-    "JORFARTI000032037013",
-    "LEGIARTI000044542569"
-   ],
-   "text_uid": "JORFTEXT000032036983"
-  },
-  {
-   "cid": "JORFARTI000032037014",
-   "version_id": "LEGIARTI000041853208",
-   "aliases": [
-    "JORFARTI000032037014",
-    "LEGIARTI000041853208"
-   ],
-   "text_uid": "JORFTEXT000032036983"
-  },
-  {
-   "cid": "JORFARTI000032037015",
-   "version_id": "LEGIARTI000041853211",
-   "aliases": [
-    "JORFARTI000032037015",
-    "LEGIARTI000041853211"
-   ],
-   "text_uid": "JORFTEXT000032036983"
-  },
-  {
-   "cid": "JORFARTI000032037016",
-   "version_id": "LEGIARTI000041853213",
-   "aliases": [
-    "JORFARTI000032037016",
-    "LEGIARTI000041853213"
-   ],
-   "text_uid": "JORFTEXT000032036983"
-  },
-  {
-   "cid": "JORFARTI000032037017",
-   "version_id": "LEGIARTI000041853215",
-   "aliases": [
-    "JORFARTI000032037017",
-    "LEGIARTI000041853215"
-   ],
-   "text_uid": "JORFTEXT000032036983"
-  },
-  {
-   "cid": "JORFARTI000032037018",
-   "version_id": "LEGIARTI000032038764",
-   "aliases": [
-    "JORFARTI000032037018",
-    "LEGIARTI000032038764"
-   ],
-   "text_uid": "JORFTEXT000032036983"
-  },
-  {
-   "cid": "JORFARTI000032037020",
-   "version_id": "LEGIARTI000041853217",
-   "aliases": [
-    "JORFARTI000032037020",
-    "LEGIARTI000032038744",
-    "LEGIARTI000041853217"
-   ],
-   "text_uid": "JORFTEXT000032036983"
-  },
-  {
    "cid": "JORFARTI000032037023",
    "version_id": "LEGIARTI000032038746",
    "aliases": [
@@ -861,110 +770,20 @@
    "text_uid": "JORFTEXT000032036983"
   },
   {
-   "cid": "JORFARTI000032037029",
-   "version_id": "LEGIARTI000032038766",
-   "aliases": [
-    "JORFARTI000032037029",
-    "LEGIARTI000032038766"
-   ],
-   "text_uid": "JORFTEXT000032036983"
-  },
-  {
-   "cid": "JORFARTI000032037030",
-   "version_id": "LEGIARTI000032038740",
-   "aliases": [
-    "JORFARTI000032037030",
-    "LEGIARTI000032038740"
-   ],
-   "text_uid": "JORFTEXT000032036983"
-  },
-  {
    "cid": "JORFARTI000034640186",
-   "version_id": "LEGIARTI000034701183",
+   "version_id": "LEGIARTI000054090344",
    "aliases": [
     "JORFARTI000034640186",
-    "LEGIARTI000034701183"
+    "LEGIARTI000054090344"
    ],
    "text_uid": "JORFTEXT000034640143"
   },
   {
    "cid": "JORFARTI000034640189",
-   "version_id": "LEGIARTI000039644926",
+   "version_id": "LEGIARTI000054090348",
    "aliases": [
     "JORFARTI000034640189",
-    "LEGIARTI000039644926"
-   ],
-   "text_uid": "JORFTEXT000034640143"
-  },
-  {
-   "cid": "JORFARTI000034640193",
-   "version_id": "LEGIARTI000039644931",
-   "aliases": [
-    "JORFARTI000034640193",
-    "LEGIARTI000039644931"
-   ],
-   "text_uid": "JORFTEXT000034640143"
-  },
-  {
-   "cid": "JORFARTI000034640209",
-   "version_id": "LEGIARTI000034701217",
-   "aliases": [
-    "JORFARTI000034640209",
-    "LEGIARTI000034701217"
-   ],
-   "text_uid": "JORFTEXT000034640143"
-  },
-  {
-   "cid": "JORFARTI000034640210",
-   "version_id": "LEGIARTI000039644950",
-   "aliases": [
-    "JORFARTI000034640210",
-    "LEGIARTI000039644950"
-   ],
-   "text_uid": "JORFTEXT000034640143"
-  },
-  {
-   "cid": "JORFARTI000034640212",
-   "version_id": "LEGIARTI000034701185",
-   "aliases": [
-    "JORFARTI000034640212",
-    "LEGIARTI000034701185"
-   ],
-   "text_uid": "JORFTEXT000034640143"
-  },
-  {
-   "cid": "JORFARTI000034640215",
-   "version_id": "LEGIARTI000034701195",
-   "aliases": [
-    "JORFARTI000034640215",
-    "LEGIARTI000034701195"
-   ],
-   "text_uid": "JORFTEXT000034640143"
-  },
-  {
-   "cid": "JORFARTI000034640216",
-   "version_id": "LEGIARTI000034701187",
-   "aliases": [
-    "JORFARTI000034640216",
-    "LEGIARTI000034701187"
-   ],
-   "text_uid": "JORFTEXT000034640143"
-  },
-  {
-   "cid": "JORFARTI000034640218",
-   "version_id": "LEGIARTI000039644954",
-   "aliases": [
-    "JORFARTI000034640218",
-    "LEGIARTI000039644954"
-   ],
-   "text_uid": "JORFTEXT000034640143"
-  },
-  {
-   "cid": "JORFARTI000034640219",
-   "version_id": "LEGIARTI000034701191",
-   "aliases": [
-    "JORFARTI000034640219",
-    "LEGIARTI000034701191"
+    "LEGIARTI000054090348"
    ],
    "text_uid": "JORFTEXT000034640143"
   },
@@ -1023,20 +842,11 @@
    "text_uid": "JORFTEXT000034640143"
   },
   {
-   "cid": "JORFARTI000034640326",
-   "version_id": "LEGIARTI000039644958",
-   "aliases": [
-    "JORFARTI000034640326",
-    "LEGIARTI000039644958"
-   ],
-   "text_uid": "JORFTEXT000034640143"
-  },
-  {
    "cid": "JORFARTI000034640327",
-   "version_id": "LEGIARTI000034701211",
+   "version_id": "LEGIARTI000054090346",
    "aliases": [
     "JORFARTI000034640327",
-    "LEGIARTI000034701211"
+    "LEGIARTI000054090346"
    ],
    "text_uid": "JORFTEXT000034640143"
   },
@@ -1069,37 +879,37 @@
   },
   {
    "cid": "JORFARTI000039728047",
-   "version_id": "LEGIARTI000041438763",
+   "version_id": "LEGIARTI000054638406",
    "aliases": [
     "JORFARTI000039728047",
-    "LEGIARTI000041438763"
+    "LEGIARTI000054638406"
    ],
    "text_uid": "JORFTEXT000039728021"
   },
   {
    "cid": "JORFARTI000039728052",
-   "version_id": "LEGIARTI000041438765",
+   "version_id": "LEGIARTI000054638420",
    "aliases": [
     "JORFARTI000039728052",
-    "LEGIARTI000041438765"
+    "LEGIARTI000054638420"
    ],
    "text_uid": "JORFTEXT000039728021"
   },
   {
    "cid": "JORFARTI000039728053",
-   "version_id": "LEGIARTI000041438767",
+   "version_id": "LEGIARTI000054638425",
    "aliases": [
     "JORFARTI000039728053",
-    "LEGIARTI000041438767"
+    "LEGIARTI000054638425"
    ],
    "text_uid": "JORFTEXT000039728021"
   },
   {
    "cid": "JORFARTI000039728054",
-   "version_id": "LEGIARTI000041438783",
+   "version_id": "LEGIARTI000054638427",
    "aliases": [
     "JORFARTI000039728054",
-    "LEGIARTI000041438783"
+    "LEGIARTI000054638427"
    ],
    "text_uid": "JORFTEXT000039728021"
   },
@@ -1235,24 +1045,6 @@
    "aliases": [
     "JORFARTI000041849952",
     "LEGIARTI000041851730"
-   ],
-   "text_uid": "JORFTEXT000041849917"
-  },
-  {
-   "cid": "JORFARTI000041849954",
-   "version_id": "LEGIARTI000041851732",
-   "aliases": [
-    "JORFARTI000041849954",
-    "LEGIARTI000041851732"
-   ],
-   "text_uid": "JORFTEXT000041849917"
-  },
-  {
-   "cid": "JORFARTI000041849955",
-   "version_id": "LEGIARTI000041851734",
-   "aliases": [
-    "JORFARTI000041849955",
-    "LEGIARTI000041851734"
    ],
    "text_uid": "JORFTEXT000041849917"
   },
@@ -2581,10 +2373,10 @@
   },
   {
    "cid": "LEGIARTI000006455169",
-   "version_id": "LEGIARTI000051777239",
+   "version_id": "LEGIARTI000054669967",
    "aliases": [
     "LEGIARTI000006455169",
-    "LEGIARTI000051777239"
+    "LEGIARTI000054669967"
    ],
    "text_uid": "JORFTEXT000000886529"
   },
@@ -2674,10 +2466,10 @@
   },
   {
    "cid": "LEGIARTI000006486502",
-   "version_id": "LEGIARTI000049856321",
+   "version_id": "LEGIARTI000054641778",
    "aliases": [
     "LEGIARTI000006486502",
-    "LEGIARTI000049856321"
+    "LEGIARTI000054641778"
    ],
    "text_uid": "JORFTEXT000000699956"
   },
@@ -2701,28 +2493,28 @@
   },
   {
    "cid": "LEGIARTI000006486518",
-   "version_id": "LEGIARTI000050595674",
+   "version_id": "LEGIARTI000054089660",
    "aliases": [
     "LEGIARTI000006486518",
-    "LEGIARTI000050595674"
+    "LEGIARTI000054089660"
    ],
    "text_uid": "JORFTEXT000000699956"
   },
   {
    "cid": "LEGIARTI000006486520",
-   "version_id": "LEGIARTI000051268709",
+   "version_id": "LEGIARTI000054641788",
    "aliases": [
     "LEGIARTI000006486520",
-    "LEGIARTI000051268709"
+    "LEGIARTI000054641788"
    ],
    "text_uid": "JORFTEXT000000699956"
   },
   {
    "cid": "LEGIARTI000006486522",
-   "version_id": "LEGIARTI000049856334",
+   "version_id": "LEGIARTI000054641791",
    "aliases": [
     "LEGIARTI000006486522",
-    "LEGIARTI000049856334"
+    "LEGIARTI000054641791"
    ],
    "text_uid": "JORFTEXT000000699956"
   },
@@ -2764,10 +2556,10 @@
   },
   {
    "cid": "LEGIARTI000006486535",
-   "version_id": "LEGIARTI000054175573",
+   "version_id": "LEGIARTI000054641794",
    "aliases": [
     "LEGIARTI000006486535",
-    "LEGIARTI000054175573"
+    "LEGIARTI000054641794"
    ],
    "text_uid": "JORFTEXT000000699956"
   },
@@ -2885,15 +2677,6 @@
    "aliases": [
     "LEGIARTI000006486565",
     "LEGIARTI000049856328"
-   ],
-   "text_uid": "JORFTEXT000000699956"
-  },
-  {
-   "cid": "LEGIARTI000006486566",
-   "version_id": "LEGIARTI000028769874",
-   "aliases": [
-    "LEGIARTI000006486566",
-    "LEGIARTI000028769874"
    ],
    "text_uid": "JORFTEXT000000699956"
   },
@@ -3090,15 +2873,6 @@
    "aliases": [
     "LEGIARTI000006486627",
     "LEGIARTI000045662477"
-   ],
-   "text_uid": "JORFTEXT000000699956"
-  },
-  {
-   "cid": "LEGIARTI000006486629",
-   "version_id": "LEGIARTI000045662481",
-   "aliases": [
-    "LEGIARTI000006486629",
-    "LEGIARTI000045662481"
    ],
    "text_uid": "JORFTEXT000000699956"
   },
@@ -3409,10 +3183,10 @@
   },
   {
    "cid": "LEGIARTI000029705232",
-   "version_id": "LEGIARTI000051980389",
+   "version_id": "LEGIARTI000054089677",
    "aliases": [
     "LEGIARTI000029705232",
-    "LEGIARTI000051980389"
+    "LEGIARTI000054089677"
    ],
    "text_uid": "JORFTEXT000000699956"
   },
@@ -3468,47 +3242,11 @@
    "text_uid": "JORFTEXT000000242359"
   },
   {
-   "cid": "LEGIARTI000039639317",
-   "version_id": "LEGIARTI000039644949",
-   "aliases": [
-    "LEGIARTI000039639317",
-    "LEGIARTI000039644949"
-   ],
-   "text_uid": "JORFTEXT000034640143"
-  },
-  {
-   "cid": "LEGIARTI000039639319",
-   "version_id": "LEGIARTI000039644948",
-   "aliases": [
-    "LEGIARTI000039639319",
-    "LEGIARTI000039644948"
-   ],
-   "text_uid": "JORFTEXT000034640143"
-  },
-  {
-   "cid": "LEGIARTI000039639424",
-   "version_id": "LEGIARTI000039639752",
-   "aliases": [
-    "LEGIARTI000039639424",
-    "LEGIARTI000039639752"
-   ],
-   "text_uid": "JORFTEXT000034640143"
-  },
-  {
-   "cid": "LEGIARTI000039639426",
-   "version_id": "LEGIARTI000039639759",
-   "aliases": [
-    "LEGIARTI000039639426",
-    "LEGIARTI000039639759"
-   ],
-   "text_uid": "JORFTEXT000034640143"
-  },
-  {
    "cid": "LEGIARTI000041437957",
-   "version_id": "LEGIARTI000045662525",
+   "version_id": "LEGIARTI000054637019",
    "aliases": [
     "LEGIARTI000041437957",
-    "LEGIARTI000045662525"
+    "LEGIARTI000054637019"
    ],
    "text_uid": "JORFTEXT000000699956"
   },
@@ -3530,9 +3268,10 @@
   },
   {
    "cid": "LEGIARTI000041437963",
-   "version_id": "LEGIARTI000041437963",
+   "version_id": "LEGIARTI000054637027",
    "aliases": [
-    "LEGIARTI000041437963"
+    "LEGIARTI000041437963",
+    "LEGIARTI000054637027"
    ],
    "text_uid": "JORFTEXT000000699956"
   },
@@ -3571,9 +3310,10 @@
   },
   {
    "cid": "LEGIARTI000041437973",
-   "version_id": "LEGIARTI000041437973",
+   "version_id": "LEGIARTI000054637024",
    "aliases": [
-    "LEGIARTI000041437973"
+    "LEGIARTI000041437973",
+    "LEGIARTI000054637024"
    ],
    "text_uid": "JORFTEXT000000699956"
   },
@@ -3659,15 +3399,6 @@
    "text_uid": "JORFTEXT000000699956"
   },
   {
-   "cid": "LEGIARTI000041852785",
-   "version_id": "LEGIARTI000041852788",
-   "aliases": [
-    "LEGIARTI000041852785",
-    "LEGIARTI000041852788"
-   ],
-   "text_uid": "JORFTEXT000032036983"
-  },
-  {
    "cid": "LEGIARTI000042462406",
    "version_id": "LEGIARTI000045662545",
    "aliases": [
@@ -3696,10 +3427,10 @@
   },
   {
    "cid": "LEGIARTI000043873636",
-   "version_id": "LEGIARTI000045351577",
+   "version_id": "LEGIARTI000054641785",
    "aliases": [
     "LEGIARTI000043873636",
-    "LEGIARTI000045351577"
+    "LEGIARTI000054641785"
    ],
    "text_uid": "JORFTEXT000000699956"
   },
@@ -6567,10 +6298,10 @@
   },
   {
    "cid": "LEGIARTI000044421546",
-   "version_id": "LEGIARTI000044427041",
+   "version_id": "LEGIARTI000054703756",
    "aliases": [
     "LEGIARTI000044421546",
-    "LEGIARTI000044427041"
+    "LEGIARTI000054703756"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -6738,10 +6469,10 @@
   },
   {
    "cid": "LEGIARTI000044421606",
-   "version_id": "LEGIARTI000044426976",
+   "version_id": "LEGIARTI000054703032",
    "aliases": [
     "LEGIARTI000044421606",
-    "LEGIARTI000044426976"
+    "LEGIARTI000054703032"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -6837,10 +6568,10 @@
   },
   {
    "cid": "LEGIARTI000044421636",
-   "version_id": "LEGIARTI000044426944",
+   "version_id": "LEGIARTI000054703041",
    "aliases": [
     "LEGIARTI000044421636",
-    "LEGIARTI000044426944"
+    "LEGIARTI000054703041"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -6909,10 +6640,10 @@
   },
   {
    "cid": "LEGIARTI000044421658",
-   "version_id": "LEGIARTI000053152620",
+   "version_id": "LEGIARTI000054703044",
    "aliases": [
     "LEGIARTI000044421658",
-    "LEGIARTI000053152620"
+    "LEGIARTI000054703044"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -7134,10 +6865,10 @@
   },
   {
    "cid": "LEGIARTI000044421734",
-   "version_id": "LEGIARTI000044426846",
+   "version_id": "LEGIARTI000054703051",
    "aliases": [
     "LEGIARTI000044421734",
-    "LEGIARTI000044426846"
+    "LEGIARTI000054703051"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -7179,10 +6910,10 @@
   },
   {
    "cid": "LEGIARTI000044421746",
-   "version_id": "LEGIARTI000044426834",
+   "version_id": "LEGIARTI000054703055",
    "aliases": [
     "LEGIARTI000044421746",
-    "LEGIARTI000044426834"
+    "LEGIARTI000054703055"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -7251,10 +6982,10 @@
   },
   {
    "cid": "LEGIARTI000044421768",
-   "version_id": "LEGIARTI000044426812",
+   "version_id": "LEGIARTI000054703753",
    "aliases": [
     "LEGIARTI000044421768",
-    "LEGIARTI000044426812"
+    "LEGIARTI000054703753"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -7278,10 +7009,10 @@
   },
   {
    "cid": "LEGIARTI000044421780",
-   "version_id": "LEGIARTI000044426800",
+   "version_id": "LEGIARTI000054703750",
    "aliases": [
     "LEGIARTI000044421780",
-    "LEGIARTI000044426800"
+    "LEGIARTI000054703750"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -7422,10 +7153,10 @@
   },
   {
    "cid": "LEGIARTI000044421826",
-   "version_id": "LEGIARTI000044426754",
+   "version_id": "LEGIARTI000054703744",
    "aliases": [
     "LEGIARTI000044421826",
-    "LEGIARTI000044426754"
+    "LEGIARTI000054703744"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -7485,10 +7216,10 @@
   },
   {
    "cid": "LEGIARTI000044421842",
-   "version_id": "LEGIARTI000044426738",
+   "version_id": "LEGIARTI000054703747",
    "aliases": [
     "LEGIARTI000044421842",
-    "LEGIARTI000044426738"
+    "LEGIARTI000054703747"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -8124,10 +7855,10 @@
   },
   {
    "cid": "LEGIARTI000044422058",
-   "version_id": "LEGIARTI000044426522",
+   "version_id": "LEGIARTI000054703741",
    "aliases": [
     "LEGIARTI000044422058",
-    "LEGIARTI000044426522"
+    "LEGIARTI000054703741"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -11274,10 +11005,10 @@
   },
   {
    "cid": "LEGIARTI000044423025",
-   "version_id": "LEGIARTI000044425556",
+   "version_id": "LEGIARTI000054703059",
    "aliases": [
     "LEGIARTI000044423025",
-    "LEGIARTI000044425556"
+    "LEGIARTI000054703059"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -13461,19 +13192,19 @@
   },
   {
    "cid": "LEGIARTI000044423709",
-   "version_id": "LEGIARTI000044424869",
+   "version_id": "LEGIARTI000054703406",
    "aliases": [
     "LEGIARTI000044423709",
-    "LEGIARTI000044424869"
+    "LEGIARTI000054703406"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423711",
-   "version_id": "LEGIARTI000044424867",
+   "version_id": "LEGIARTI000054703409",
    "aliases": [
     "LEGIARTI000044423711",
-    "LEGIARTI000044424867"
+    "LEGIARTI000054703409"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -13497,10 +13228,10 @@
   },
   {
    "cid": "LEGIARTI000044423717",
-   "version_id": "LEGIARTI000044424861",
+   "version_id": "LEGIARTI000054703415",
    "aliases": [
     "LEGIARTI000044423717",
-    "LEGIARTI000044424861"
+    "LEGIARTI000054703415"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -13551,325 +13282,325 @@
   },
   {
    "cid": "LEGIARTI000044423743",
-   "version_id": "LEGIARTI000046195865",
+   "version_id": "LEGIARTI000044424835",
    "aliases": [
     "LEGIARTI000044423743",
-    "LEGIARTI000046195865"
+    "LEGIARTI000044424835"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423745",
-   "version_id": "LEGIARTI000046195868",
+   "version_id": "LEGIARTI000044424833",
    "aliases": [
     "LEGIARTI000044423745",
-    "LEGIARTI000046195868"
+    "LEGIARTI000044424833"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423749",
-   "version_id": "LEGIARTI000046195862",
+   "version_id": "LEGIARTI000044424829",
    "aliases": [
     "LEGIARTI000044423749",
-    "LEGIARTI000046195862"
+    "LEGIARTI000044424829"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423753",
-   "version_id": "LEGIARTI000046195871",
+   "version_id": "LEGIARTI000044424825",
    "aliases": [
     "LEGIARTI000044423753",
-    "LEGIARTI000046195871"
+    "LEGIARTI000044424825"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423757",
-   "version_id": "LEGIARTI000046195855",
+   "version_id": "LEGIARTI000044424821",
    "aliases": [
     "LEGIARTI000044423757",
-    "LEGIARTI000046195855"
+    "LEGIARTI000044424821"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423759",
-   "version_id": "LEGIARTI000046195858",
+   "version_id": "LEGIARTI000044424819",
    "aliases": [
     "LEGIARTI000044423759",
-    "LEGIARTI000046195858"
+    "LEGIARTI000044424819"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423765",
-   "version_id": "LEGIARTI000046195837",
+   "version_id": "LEGIARTI000044424813",
    "aliases": [
     "LEGIARTI000044423765",
-    "LEGIARTI000046195837"
+    "LEGIARTI000044424813"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423767",
-   "version_id": "LEGIARTI000046195840",
+   "version_id": "LEGIARTI000044424811",
    "aliases": [
     "LEGIARTI000044423767",
-    "LEGIARTI000046195840"
+    "LEGIARTI000044424811"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423771",
-   "version_id": "LEGIARTI000046195813",
+   "version_id": "LEGIARTI000044424807",
    "aliases": [
     "LEGIARTI000044423771",
-    "LEGIARTI000046195813"
+    "LEGIARTI000044424807"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423773",
-   "version_id": "LEGIARTI000046195804",
+   "version_id": "LEGIARTI000044424805",
    "aliases": [
     "LEGIARTI000044423773",
-    "LEGIARTI000046195804"
+    "LEGIARTI000044424805"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423775",
-   "version_id": "LEGIARTI000046195807",
+   "version_id": "LEGIARTI000044424803",
    "aliases": [
     "LEGIARTI000044423775",
-    "LEGIARTI000046195807"
+    "LEGIARTI000044424803"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423777",
-   "version_id": "LEGIARTI000046195810",
+   "version_id": "LEGIARTI000044424801",
    "aliases": [
     "LEGIARTI000044423777",
-    "LEGIARTI000046195810"
+    "LEGIARTI000044424801"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423781",
-   "version_id": "LEGIARTI000046195816",
+   "version_id": "LEGIARTI000044424797",
    "aliases": [
     "LEGIARTI000044423781",
-    "LEGIARTI000046195816"
+    "LEGIARTI000044424797"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423783",
-   "version_id": "LEGIARTI000046195819",
+   "version_id": "LEGIARTI000044424795",
    "aliases": [
     "LEGIARTI000044423783",
-    "LEGIARTI000046195819"
+    "LEGIARTI000044424795"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423785",
-   "version_id": "LEGIARTI000046195822",
+   "version_id": "LEGIARTI000044424793",
    "aliases": [
     "LEGIARTI000044423785",
-    "LEGIARTI000046195822"
+    "LEGIARTI000044424793"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423787",
-   "version_id": "LEGIARTI000046195825",
+   "version_id": "LEGIARTI000044424791",
    "aliases": [
     "LEGIARTI000044423787",
-    "LEGIARTI000046195825"
+    "LEGIARTI000044424791"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423789",
-   "version_id": "LEGIARTI000046195834",
+   "version_id": "LEGIARTI000044424789",
    "aliases": [
     "LEGIARTI000044423789",
-    "LEGIARTI000046195834"
+    "LEGIARTI000044424789"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423791",
-   "version_id": "LEGIARTI000046195828",
+   "version_id": "LEGIARTI000044424787",
    "aliases": [
     "LEGIARTI000044423791",
-    "LEGIARTI000046195828"
+    "LEGIARTI000044424787"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423793",
-   "version_id": "LEGIARTI000046195831",
+   "version_id": "LEGIARTI000044424785",
    "aliases": [
     "LEGIARTI000044423793",
-    "LEGIARTI000046195831"
+    "LEGIARTI000044424785"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423797",
-   "version_id": "LEGIARTI000046195795",
+   "version_id": "LEGIARTI000044424781",
    "aliases": [
     "LEGIARTI000044423797",
-    "LEGIARTI000046195795"
+    "LEGIARTI000044424781"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423799",
-   "version_id": "LEGIARTI000046195798",
+   "version_id": "LEGIARTI000044424779",
    "aliases": [
     "LEGIARTI000044423799",
-    "LEGIARTI000046195798"
+    "LEGIARTI000044424779"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423805",
-   "version_id": "LEGIARTI000046195765",
+   "version_id": "LEGIARTI000044424773",
    "aliases": [
     "LEGIARTI000044423805",
-    "LEGIARTI000046195765"
+    "LEGIARTI000044424773"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423809",
-   "version_id": "LEGIARTI000046195768",
+   "version_id": "LEGIARTI000044424769",
    "aliases": [
     "LEGIARTI000044423809",
-    "LEGIARTI000046195768"
+    "LEGIARTI000044424769"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423811",
-   "version_id": "LEGIARTI000046195771",
+   "version_id": "LEGIARTI000044424767",
    "aliases": [
     "LEGIARTI000044423811",
-    "LEGIARTI000046195771"
+    "LEGIARTI000044424767"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423815",
-   "version_id": "LEGIARTI000046195735",
+   "version_id": "LEGIARTI000044424763",
    "aliases": [
     "LEGIARTI000044423815",
-    "LEGIARTI000046195735"
+    "LEGIARTI000044424763"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423817",
-   "version_id": "LEGIARTI000046195738",
+   "version_id": "LEGIARTI000044424761",
    "aliases": [
     "LEGIARTI000044423817",
-    "LEGIARTI000046195738"
+    "LEGIARTI000044424761"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423819",
-   "version_id": "LEGIARTI000046195741",
+   "version_id": "LEGIARTI000044424759",
    "aliases": [
     "LEGIARTI000044423819",
-    "LEGIARTI000046195741"
+    "LEGIARTI000044424759"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423821",
-   "version_id": "LEGIARTI000046195744",
+   "version_id": "LEGIARTI000044424757",
    "aliases": [
     "LEGIARTI000044423821",
-    "LEGIARTI000046195744"
+    "LEGIARTI000044424757"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423823",
-   "version_id": "LEGIARTI000046195747",
+   "version_id": "LEGIARTI000044424755",
    "aliases": [
     "LEGIARTI000044423823",
-    "LEGIARTI000046195747"
+    "LEGIARTI000044424755"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423825",
-   "version_id": "LEGIARTI000046195750",
+   "version_id": "LEGIARTI000044424753",
    "aliases": [
     "LEGIARTI000044423825",
-    "LEGIARTI000046195750"
+    "LEGIARTI000044424753"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423827",
-   "version_id": "LEGIARTI000046195753",
+   "version_id": "LEGIARTI000044424751",
    "aliases": [
     "LEGIARTI000044423827",
-    "LEGIARTI000046195753"
+    "LEGIARTI000044424751"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423829",
-   "version_id": "LEGIARTI000046195759",
+   "version_id": "LEGIARTI000044424749",
    "aliases": [
     "LEGIARTI000044423829",
-    "LEGIARTI000046195759"
+    "LEGIARTI000044424749"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423831",
-   "version_id": "LEGIARTI000046195762",
+   "version_id": "LEGIARTI000044424747",
    "aliases": [
     "LEGIARTI000044423831",
-    "LEGIARTI000046195762"
+    "LEGIARTI000044424747"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423833",
-   "version_id": "LEGIARTI000046195756",
+   "version_id": "LEGIARTI000044424745",
    "aliases": [
     "LEGIARTI000044423833",
-    "LEGIARTI000046195756"
+    "LEGIARTI000044424745"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423837",
-   "version_id": "LEGIARTI000046195774",
+   "version_id": "LEGIARTI000044424741",
    "aliases": [
     "LEGIARTI000044423837",
-    "LEGIARTI000046195774"
+    "LEGIARTI000044424741"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000044423839",
-   "version_id": "LEGIARTI000046195777",
+   "version_id": "LEGIARTI000044424739",
    "aliases": [
     "LEGIARTI000044423839",
-    "LEGIARTI000046195777"
+    "LEGIARTI000044424739"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -15243,10 +14974,10 @@
   },
   {
    "cid": "LEGIARTI000049852216",
-   "version_id": "LEGIARTI000049852523",
+   "version_id": "LEGIARTI000054641896",
    "aliases": [
     "LEGIARTI000049852216",
-    "LEGIARTI000049852523"
+    "LEGIARTI000054641896"
    ],
    "text_uid": "JORFTEXT000022748868"
   },
@@ -20712,10 +20443,10 @@
   },
   {
    "cid": "LEGIARTI000050547865",
-   "version_id": "LEGIARTI000052969328",
+   "version_id": "LEGIARTI000054087745",
    "aliases": [
     "LEGIARTI000050547865",
-    "LEGIARTI000052969328"
+    "LEGIARTI000054087745"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -22541,9 +22272,10 @@
   },
   {
    "cid": "LEGIARTI000050548443",
-   "version_id": "LEGIARTI000050548443",
+   "version_id": "LEGIARTI000054087752",
    "aliases": [
-    "LEGIARTI000050548443"
+    "LEGIARTI000050548443",
+    "LEGIARTI000054087752"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -22886,17 +22618,19 @@
   },
   {
    "cid": "LEGIARTI000050548549",
-   "version_id": "LEGIARTI000050548549",
+   "version_id": "LEGIARTI000054087757",
    "aliases": [
-    "LEGIARTI000050548549"
+    "LEGIARTI000050548549",
+    "LEGIARTI000054087757"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000050548553",
-   "version_id": "LEGIARTI000050548553",
+   "version_id": "LEGIARTI000054087761",
    "aliases": [
-    "LEGIARTI000050548553"
+    "LEGIARTI000050548553",
+    "LEGIARTI000054087761"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -24037,9 +23771,10 @@
   },
   {
    "cid": "LEGIARTI000050548985",
-   "version_id": "LEGIARTI000050548985",
+   "version_id": "LEGIARTI000054087768",
    "aliases": [
-    "LEGIARTI000050548985"
+    "LEGIARTI000050548985",
+    "LEGIARTI000054087768"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -25937,9 +25672,10 @@
   },
   {
    "cid": "LEGIARTI000050549649",
-   "version_id": "LEGIARTI000050549649",
+   "version_id": "LEGIARTI000054087772",
    "aliases": [
-    "LEGIARTI000050549649"
+    "LEGIARTI000050549649",
+    "LEGIARTI000054087772"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -26074,10 +25810,10 @@
   },
   {
    "cid": "LEGIARTI000050549701",
-   "version_id": "LEGIARTI000051968639",
+   "version_id": "LEGIARTI000054087776",
    "aliases": [
     "LEGIARTI000050549701",
-    "LEGIARTI000051968639"
+    "LEGIARTI000054087776"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -26115,19 +25851,19 @@
   },
   {
    "cid": "LEGIARTI000050549715",
-   "version_id": "LEGIARTI000051968654",
+   "version_id": "LEGIARTI000054087789",
    "aliases": [
     "LEGIARTI000050549715",
-    "LEGIARTI000051968654"
+    "LEGIARTI000054087789"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000050549721",
-   "version_id": "LEGIARTI000051968660",
+   "version_id": "LEGIARTI000054087794",
    "aliases": [
     "LEGIARTI000050549721",
-    "LEGIARTI000051968660"
+    "LEGIARTI000054087794"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -26141,26 +25877,28 @@
   },
   {
    "cid": "LEGIARTI000050549727",
-   "version_id": "LEGIARTI000050549727",
+   "version_id": "LEGIARTI000054087811",
    "aliases": [
-    "LEGIARTI000050549727"
+    "LEGIARTI000050549727",
+    "LEGIARTI000054087811"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000050549731",
-   "version_id": "LEGIARTI000050549731",
+   "version_id": "LEGIARTI000054087815",
    "aliases": [
-    "LEGIARTI000050549731"
+    "LEGIARTI000050549731",
+    "LEGIARTI000054087815"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000050549737",
-   "version_id": "LEGIARTI000052025347",
+   "version_id": "LEGIARTI000054087819",
    "aliases": [
     "LEGIARTI000050549737",
-    "LEGIARTI000052025347"
+    "LEGIARTI000054087819"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -26174,9 +25912,10 @@
   },
   {
    "cid": "LEGIARTI000050549741",
-   "version_id": "LEGIARTI000050549741",
+   "version_id": "LEGIARTI000054087822",
    "aliases": [
-    "LEGIARTI000050549741"
+    "LEGIARTI000050549741",
+    "LEGIARTI000054087822"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -26190,28 +25929,28 @@
   },
   {
    "cid": "LEGIARTI000050549749",
-   "version_id": "LEGIARTI000051968677",
+   "version_id": "LEGIARTI000054087832",
    "aliases": [
     "LEGIARTI000050549749",
-    "LEGIARTI000051968677"
+    "LEGIARTI000054087832"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000050549751",
-   "version_id": "LEGIARTI000051968687",
+   "version_id": "LEGIARTI000054087842",
    "aliases": [
     "LEGIARTI000050549751",
-    "LEGIARTI000051968687"
+    "LEGIARTI000054087842"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
   {
    "cid": "LEGIARTI000050549753",
-   "version_id": "LEGIARTI000051968694",
+   "version_id": "LEGIARTI000054087849",
    "aliases": [
     "LEGIARTI000050549753",
-    "LEGIARTI000051968694"
+    "LEGIARTI000054087849"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -26337,9 +26076,10 @@
   },
   {
    "cid": "LEGIARTI000050549799",
-   "version_id": "LEGIARTI000050549799",
+   "version_id": "LEGIARTI000054087859",
    "aliases": [
-    "LEGIARTI000050549799"
+    "LEGIARTI000050549799",
+    "LEGIARTI000054087859"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -27362,9 +27102,10 @@
   },
   {
    "cid": "LEGIARTI000050550191",
-   "version_id": "LEGIARTI000050550191",
+   "version_id": "LEGIARTI000054087862",
    "aliases": [
-    "LEGIARTI000050550191"
+    "LEGIARTI000050550191",
+    "LEGIARTI000054087862"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -27402,9 +27143,10 @@
   },
   {
    "cid": "LEGIARTI000050550207",
-   "version_id": "LEGIARTI000050550207",
+   "version_id": "LEGIARTI000054087873",
    "aliases": [
-    "LEGIARTI000050550207"
+    "LEGIARTI000050550207",
+    "LEGIARTI000054087873"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -27418,9 +27160,10 @@
   },
   {
    "cid": "LEGIARTI000050550213",
-   "version_id": "LEGIARTI000050550213",
+   "version_id": "LEGIARTI000054087877",
    "aliases": [
-    "LEGIARTI000050550213"
+    "LEGIARTI000050550213",
+    "LEGIARTI000054087877"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -27434,9 +27177,10 @@
   },
   {
    "cid": "LEGIARTI000050550219",
-   "version_id": "LEGIARTI000050550219",
+   "version_id": "LEGIARTI000054089476",
    "aliases": [
-    "LEGIARTI000050550219"
+    "LEGIARTI000050550219",
+    "LEGIARTI000054089476"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -27667,9 +27411,10 @@
   },
   {
    "cid": "LEGIARTI000050550307",
-   "version_id": "LEGIARTI000050550307",
+   "version_id": "LEGIARTI000054089480",
    "aliases": [
-    "LEGIARTI000050550307"
+    "LEGIARTI000050550307",
+    "LEGIARTI000054089480"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -28005,10 +27750,10 @@
   },
   {
    "cid": "LEGIARTI000050550419",
-   "version_id": "LEGIARTI000051968714",
+   "version_id": "LEGIARTI000054089483",
    "aliases": [
     "LEGIARTI000050550419",
-    "LEGIARTI000051968714"
+    "LEGIARTI000054089483"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -28030,10 +27775,10 @@
   },
   {
    "cid": "LEGIARTI000050550425",
-   "version_id": "LEGIARTI000051968728",
+   "version_id": "LEGIARTI000054089493",
    "aliases": [
     "LEGIARTI000050550425",
-    "LEGIARTI000051968728"
+    "LEGIARTI000054089493"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -28073,9 +27818,10 @@
   },
   {
    "cid": "LEGIARTI000050550437",
-   "version_id": "LEGIARTI000050550437",
+   "version_id": "LEGIARTI000054089502",
    "aliases": [
-    "LEGIARTI000050550437"
+    "LEGIARTI000050550437",
+    "LEGIARTI000054089502"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -28089,10 +27835,10 @@
   },
   {
    "cid": "LEGIARTI000050550443",
-   "version_id": "LEGIARTI000051968753",
+   "version_id": "LEGIARTI000054089511",
    "aliases": [
     "LEGIARTI000050550443",
-    "LEGIARTI000051968753"
+    "LEGIARTI000054089511"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -28114,9 +27860,10 @@
   },
   {
    "cid": "LEGIARTI000050550449",
-   "version_id": "LEGIARTI000050550449",
+   "version_id": "LEGIARTI000054089529",
    "aliases": [
-    "LEGIARTI000050550449"
+    "LEGIARTI000050550449",
+    "LEGIARTI000054089529"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -28867,9 +28614,10 @@
   },
   {
    "cid": "LEGIARTI000050550741",
-   "version_id": "LEGIARTI000050550741",
+   "version_id": "LEGIARTI000054089538",
    "aliases": [
-    "LEGIARTI000050550741"
+    "LEGIARTI000050550741",
+    "LEGIARTI000054089538"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -28883,9 +28631,10 @@
   },
   {
    "cid": "LEGIARTI000050550745",
-   "version_id": "LEGIARTI000050550745",
+   "version_id": "LEGIARTI000054089554",
    "aliases": [
-    "LEGIARTI000050550745"
+    "LEGIARTI000050550745",
+    "LEGIARTI000054089554"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -29115,9 +28864,10 @@
   },
   {
    "cid": "LEGIARTI000050550839",
-   "version_id": "LEGIARTI000050550839",
+   "version_id": "LEGIARTI000054089561",
    "aliases": [
-    "LEGIARTI000050550839"
+    "LEGIARTI000050550839",
+    "LEGIARTI000054089561"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -29403,9 +29153,10 @@
   },
   {
    "cid": "LEGIARTI000050550951",
-   "version_id": "LEGIARTI000050550951",
+   "version_id": "LEGIARTI000054088208",
    "aliases": [
-    "LEGIARTI000050550951"
+    "LEGIARTI000050550951",
+    "LEGIARTI000054088208"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -29419,9 +29170,10 @@
   },
   {
    "cid": "LEGIARTI000050550955",
-   "version_id": "LEGIARTI000050550955",
+   "version_id": "LEGIARTI000054088224",
    "aliases": [
-    "LEGIARTI000050550955"
+    "LEGIARTI000050550955",
+    "LEGIARTI000054088224"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -29597,10 +29349,10 @@
   },
   {
    "cid": "LEGIARTI000050551025",
-   "version_id": "LEGIARTI000051968773",
+   "version_id": "LEGIARTI000054088235",
    "aliases": [
     "LEGIARTI000050551025",
-    "LEGIARTI000051968773"
+    "LEGIARTI000054088235"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -29614,9 +29366,10 @@
   },
   {
    "cid": "LEGIARTI000050551031",
-   "version_id": "LEGIARTI000050551031",
+   "version_id": "LEGIARTI000054088254",
    "aliases": [
-    "LEGIARTI000050551031"
+    "LEGIARTI000050551031",
+    "LEGIARTI000054088254"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -29926,9 +29679,10 @@
   },
   {
    "cid": "LEGIARTI000050551159",
-   "version_id": "LEGIARTI000050551159",
+   "version_id": "LEGIARTI000054088261",
    "aliases": [
-    "LEGIARTI000050551159"
+    "LEGIARTI000050551159",
+    "LEGIARTI000054088261"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -30383,37 +30137,37 @@
   },
   {
    "cid": "LEGIARTI000051774876",
-   "version_id": "LEGIARTI000051775619",
+   "version_id": "LEGIARTI000054669959",
    "aliases": [
     "LEGIARTI000051774876",
-    "LEGIARTI000051775619"
+    "LEGIARTI000054669959"
    ],
    "text_uid": "JORFTEXT000000886529"
   },
   {
    "cid": "LEGIARTI000051774878",
-   "version_id": "LEGIARTI000051775632",
+   "version_id": "LEGIARTI000054669956",
    "aliases": [
     "LEGIARTI000051774878",
-    "LEGIARTI000051775632"
+    "LEGIARTI000054669956"
    ],
    "text_uid": "JORFTEXT000000886529"
   },
   {
    "cid": "LEGIARTI000051774925",
-   "version_id": "LEGIARTI000051775634",
+   "version_id": "LEGIARTI000054670120",
    "aliases": [
     "LEGIARTI000051774925",
-    "LEGIARTI000051775634"
+    "LEGIARTI000054670120"
    ],
    "text_uid": "JORFTEXT000000597461"
   },
   {
    "cid": "LEGIARTI000051774927",
-   "version_id": "LEGIARTI000051775636",
+   "version_id": "LEGIARTI000054670117",
    "aliases": [
     "LEGIARTI000051774927",
-    "LEGIARTI000051775636"
+    "LEGIARTI000054670117"
    ],
    "text_uid": "JORFTEXT000000597461"
   },
@@ -30532,9 +30286,10 @@
   },
   {
    "cid": "LEGIARTI000051961591",
-   "version_id": "LEGIARTI000051961591",
+   "version_id": "LEGIARTI000054788921",
    "aliases": [
-    "LEGIARTI000051961591"
+    "LEGIARTI000051961591",
+    "LEGIARTI000054788921"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -32133,9 +31888,10 @@
   },
   {
    "cid": "LEGIARTI000051962166",
-   "version_id": "LEGIARTI000051962166",
+   "version_id": "LEGIARTI000054088265",
    "aliases": [
-    "LEGIARTI000051962166"
+    "LEGIARTI000051962166",
+    "LEGIARTI000054088265"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -33279,9 +33035,10 @@
   },
   {
    "cid": "LEGIARTI000051962593",
-   "version_id": "LEGIARTI000051962593",
+   "version_id": "LEGIARTI000054088271",
    "aliases": [
-    "LEGIARTI000051962593"
+    "LEGIARTI000051962593",
+    "LEGIARTI000054088271"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -33575,9 +33332,10 @@
   },
   {
    "cid": "LEGIARTI000051962713",
-   "version_id": "LEGIARTI000051962713",
+   "version_id": "LEGIARTI000054088276",
    "aliases": [
-    "LEGIARTI000051962713"
+    "LEGIARTI000051962713",
+    "LEGIARTI000054088276"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -33760,10 +33518,28 @@
   },
   {
    "cid": "LEGIARTI000051962778",
-   "version_id": "LEGIARTI000052969292",
+   "version_id": "LEGIARTI000054088291",
    "aliases": [
     "LEGIARTI000051962778",
-    "LEGIARTI000052969292"
+    "LEGIARTI000054088291"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000051962782",
+   "version_id": "LEGIARTI000054088286",
+   "aliases": [
+    "LEGIARTI000051962782",
+    "LEGIARTI000054088286"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000051962784",
+   "version_id": "LEGIARTI000054088281",
+   "aliases": [
+    "LEGIARTI000051962784",
+    "LEGIARTI000054088281"
    ],
    "text_uid": "LEGITEXT000044416551"
   },
@@ -35214,6 +34990,3952 @@
    "text_uid": "LEGITEXT000044416551"
   },
   {
+   "cid": "LEGIARTI000054074800",
+   "version_id": "LEGIARTI000054089650",
+   "aliases": [
+    "LEGIARTI000054074800",
+    "LEGIARTI000054089650"
+   ],
+   "text_uid": "JORFTEXT000000699956"
+  },
+  {
+   "cid": "LEGIARTI000054074834",
+   "version_id": "LEGIARTI000054089654",
+   "aliases": [
+    "LEGIARTI000054074834",
+    "LEGIARTI000054089654"
+   ],
+   "text_uid": "JORFTEXT000000699956"
+  },
+  {
+   "cid": "LEGIARTI000054076078",
+   "version_id": "LEGIARTI000054076078",
+   "aliases": [
+    "LEGIARTI000054076078"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076082",
+   "version_id": "LEGIARTI000054076082",
+   "aliases": [
+    "LEGIARTI000054076082"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076086",
+   "version_id": "LEGIARTI000054076086",
+   "aliases": [
+    "LEGIARTI000054076086"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076088",
+   "version_id": "LEGIARTI000054076088",
+   "aliases": [
+    "LEGIARTI000054076088"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076092",
+   "version_id": "LEGIARTI000054076092",
+   "aliases": [
+    "LEGIARTI000054076092"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076099",
+   "version_id": "LEGIARTI000054076099",
+   "aliases": [
+    "LEGIARTI000054076099"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076101",
+   "version_id": "LEGIARTI000054076101",
+   "aliases": [
+    "LEGIARTI000054076101"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076103",
+   "version_id": "LEGIARTI000054076103",
+   "aliases": [
+    "LEGIARTI000054076103"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076109",
+   "version_id": "LEGIARTI000054076109",
+   "aliases": [
+    "LEGIARTI000054076109"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076111",
+   "version_id": "LEGIARTI000054076111",
+   "aliases": [
+    "LEGIARTI000054076111"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076113",
+   "version_id": "LEGIARTI000054076113",
+   "aliases": [
+    "LEGIARTI000054076113"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076115",
+   "version_id": "LEGIARTI000054076115",
+   "aliases": [
+    "LEGIARTI000054076115"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076119",
+   "version_id": "LEGIARTI000054076119",
+   "aliases": [
+    "LEGIARTI000054076119"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076121",
+   "version_id": "LEGIARTI000054076121",
+   "aliases": [
+    "LEGIARTI000054076121"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076123",
+   "version_id": "LEGIARTI000054076123",
+   "aliases": [
+    "LEGIARTI000054076123"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076127",
+   "version_id": "LEGIARTI000054076127",
+   "aliases": [
+    "LEGIARTI000054076127"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076129",
+   "version_id": "LEGIARTI000054076129",
+   "aliases": [
+    "LEGIARTI000054076129"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076131",
+   "version_id": "LEGIARTI000054076131",
+   "aliases": [
+    "LEGIARTI000054076131"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076133",
+   "version_id": "LEGIARTI000054076133",
+   "aliases": [
+    "LEGIARTI000054076133"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076137",
+   "version_id": "LEGIARTI000054076137",
+   "aliases": [
+    "LEGIARTI000054076137"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076139",
+   "version_id": "LEGIARTI000054076139",
+   "aliases": [
+    "LEGIARTI000054076139"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076141",
+   "version_id": "LEGIARTI000054076141",
+   "aliases": [
+    "LEGIARTI000054076141"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076143",
+   "version_id": "LEGIARTI000054076143",
+   "aliases": [
+    "LEGIARTI000054076143"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076145",
+   "version_id": "LEGIARTI000054076145",
+   "aliases": [
+    "LEGIARTI000054076145"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076149",
+   "version_id": "LEGIARTI000054076149",
+   "aliases": [
+    "LEGIARTI000054076149"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076153",
+   "version_id": "LEGIARTI000054076153",
+   "aliases": [
+    "LEGIARTI000054076153"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076164",
+   "version_id": "LEGIARTI000054076164",
+   "aliases": [
+    "LEGIARTI000054076164"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076166",
+   "version_id": "LEGIARTI000054076166",
+   "aliases": [
+    "LEGIARTI000054076166"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076168",
+   "version_id": "LEGIARTI000054076168",
+   "aliases": [
+    "LEGIARTI000054076168"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076170",
+   "version_id": "LEGIARTI000054076170",
+   "aliases": [
+    "LEGIARTI000054076170"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076172",
+   "version_id": "LEGIARTI000054076172",
+   "aliases": [
+    "LEGIARTI000054076172"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076174",
+   "version_id": "LEGIARTI000054076174",
+   "aliases": [
+    "LEGIARTI000054076174"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076176",
+   "version_id": "LEGIARTI000054076176",
+   "aliases": [
+    "LEGIARTI000054076176"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076178",
+   "version_id": "LEGIARTI000054076178",
+   "aliases": [
+    "LEGIARTI000054076178"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076180",
+   "version_id": "LEGIARTI000054076180",
+   "aliases": [
+    "LEGIARTI000054076180"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076182",
+   "version_id": "LEGIARTI000054076182",
+   "aliases": [
+    "LEGIARTI000054076182"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076184",
+   "version_id": "LEGIARTI000054076184",
+   "aliases": [
+    "LEGIARTI000054076184"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076186",
+   "version_id": "LEGIARTI000054076186",
+   "aliases": [
+    "LEGIARTI000054076186"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076188",
+   "version_id": "LEGIARTI000054076188",
+   "aliases": [
+    "LEGIARTI000054076188"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076190",
+   "version_id": "LEGIARTI000054076190",
+   "aliases": [
+    "LEGIARTI000054076190"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076192",
+   "version_id": "LEGIARTI000054076192",
+   "aliases": [
+    "LEGIARTI000054076192"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076194",
+   "version_id": "LEGIARTI000054076194",
+   "aliases": [
+    "LEGIARTI000054076194"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076198",
+   "version_id": "LEGIARTI000054076198",
+   "aliases": [
+    "LEGIARTI000054076198"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076202",
+   "version_id": "LEGIARTI000054076202",
+   "aliases": [
+    "LEGIARTI000054076202"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076204",
+   "version_id": "LEGIARTI000054076204",
+   "aliases": [
+    "LEGIARTI000054076204"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076208",
+   "version_id": "LEGIARTI000054076208",
+   "aliases": [
+    "LEGIARTI000054076208"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076215",
+   "version_id": "LEGIARTI000054076215",
+   "aliases": [
+    "LEGIARTI000054076215"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076219",
+   "version_id": "LEGIARTI000054076219",
+   "aliases": [
+    "LEGIARTI000054076219"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076221",
+   "version_id": "LEGIARTI000054076221",
+   "aliases": [
+    "LEGIARTI000054076221"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076223",
+   "version_id": "LEGIARTI000054076223",
+   "aliases": [
+    "LEGIARTI000054076223"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076225",
+   "version_id": "LEGIARTI000054076225",
+   "aliases": [
+    "LEGIARTI000054076225"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076227",
+   "version_id": "LEGIARTI000054076227",
+   "aliases": [
+    "LEGIARTI000054076227"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076233",
+   "version_id": "LEGIARTI000054076233",
+   "aliases": [
+    "LEGIARTI000054076233"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076235",
+   "version_id": "LEGIARTI000054076235",
+   "aliases": [
+    "LEGIARTI000054076235"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076237",
+   "version_id": "LEGIARTI000054076237",
+   "aliases": [
+    "LEGIARTI000054076237"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076239",
+   "version_id": "LEGIARTI000054076239",
+   "aliases": [
+    "LEGIARTI000054076239"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076241",
+   "version_id": "LEGIARTI000054076241",
+   "aliases": [
+    "LEGIARTI000054076241"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076243",
+   "version_id": "LEGIARTI000054076243",
+   "aliases": [
+    "LEGIARTI000054076243"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076247",
+   "version_id": "LEGIARTI000054076247",
+   "aliases": [
+    "LEGIARTI000054076247"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076251",
+   "version_id": "LEGIARTI000054076251",
+   "aliases": [
+    "LEGIARTI000054076251"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076253",
+   "version_id": "LEGIARTI000054076253",
+   "aliases": [
+    "LEGIARTI000054076253"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076255",
+   "version_id": "LEGIARTI000054076255",
+   "aliases": [
+    "LEGIARTI000054076255"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076259",
+   "version_id": "LEGIARTI000054076259",
+   "aliases": [
+    "LEGIARTI000054076259"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076261",
+   "version_id": "LEGIARTI000054076261",
+   "aliases": [
+    "LEGIARTI000054076261"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076267",
+   "version_id": "LEGIARTI000054076267",
+   "aliases": [
+    "LEGIARTI000054076267"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076269",
+   "version_id": "LEGIARTI000054076269",
+   "aliases": [
+    "LEGIARTI000054076269"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076271",
+   "version_id": "LEGIARTI000054076271",
+   "aliases": [
+    "LEGIARTI000054076271"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076273",
+   "version_id": "LEGIARTI000054076273",
+   "aliases": [
+    "LEGIARTI000054076273"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076275",
+   "version_id": "LEGIARTI000054076275",
+   "aliases": [
+    "LEGIARTI000054076275"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076277",
+   "version_id": "LEGIARTI000054076277",
+   "aliases": [
+    "LEGIARTI000054076277"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076281",
+   "version_id": "LEGIARTI000054076281",
+   "aliases": [
+    "LEGIARTI000054076281"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076285",
+   "version_id": "LEGIARTI000054076285",
+   "aliases": [
+    "LEGIARTI000054076285"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076287",
+   "version_id": "LEGIARTI000054076287",
+   "aliases": [
+    "LEGIARTI000054076287"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076291",
+   "version_id": "LEGIARTI000054076291",
+   "aliases": [
+    "LEGIARTI000054076291"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076297",
+   "version_id": "LEGIARTI000054076297",
+   "aliases": [
+    "LEGIARTI000054076297"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076299",
+   "version_id": "LEGIARTI000054076299",
+   "aliases": [
+    "LEGIARTI000054076299"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076301",
+   "version_id": "LEGIARTI000054076301",
+   "aliases": [
+    "LEGIARTI000054076301"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076303",
+   "version_id": "LEGIARTI000054076303",
+   "aliases": [
+    "LEGIARTI000054076303"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076313",
+   "version_id": "LEGIARTI000054076313",
+   "aliases": [
+    "LEGIARTI000054076313"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076317",
+   "version_id": "LEGIARTI000054076317",
+   "aliases": [
+    "LEGIARTI000054076317"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076322",
+   "version_id": "LEGIARTI000054076322",
+   "aliases": [
+    "LEGIARTI000054076322"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076332",
+   "version_id": "LEGIARTI000054076332",
+   "aliases": [
+    "LEGIARTI000054076332"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076334",
+   "version_id": "LEGIARTI000054076334",
+   "aliases": [
+    "LEGIARTI000054076334"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076336",
+   "version_id": "LEGIARTI000054076336",
+   "aliases": [
+    "LEGIARTI000054076336"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076340",
+   "version_id": "LEGIARTI000054076340",
+   "aliases": [
+    "LEGIARTI000054076340"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076342",
+   "version_id": "LEGIARTI000054076342",
+   "aliases": [
+    "LEGIARTI000054076342"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076344",
+   "version_id": "LEGIARTI000054076344",
+   "aliases": [
+    "LEGIARTI000054076344"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076346",
+   "version_id": "LEGIARTI000054076346",
+   "aliases": [
+    "LEGIARTI000054076346"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076350",
+   "version_id": "LEGIARTI000054076350",
+   "aliases": [
+    "LEGIARTI000054076350"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076352",
+   "version_id": "LEGIARTI000054076352",
+   "aliases": [
+    "LEGIARTI000054076352"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076354",
+   "version_id": "LEGIARTI000054076354",
+   "aliases": [
+    "LEGIARTI000054076354"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076356",
+   "version_id": "LEGIARTI000054076356",
+   "aliases": [
+    "LEGIARTI000054076356"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076362",
+   "version_id": "LEGIARTI000054076362",
+   "aliases": [
+    "LEGIARTI000054076362"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076364",
+   "version_id": "LEGIARTI000054076364",
+   "aliases": [
+    "LEGIARTI000054076364"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076366",
+   "version_id": "LEGIARTI000054076366",
+   "aliases": [
+    "LEGIARTI000054076366"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076368",
+   "version_id": "LEGIARTI000054076368",
+   "aliases": [
+    "LEGIARTI000054076368"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076370",
+   "version_id": "LEGIARTI000054076370",
+   "aliases": [
+    "LEGIARTI000054076370"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076372",
+   "version_id": "LEGIARTI000054076372",
+   "aliases": [
+    "LEGIARTI000054076372"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076374",
+   "version_id": "LEGIARTI000054076374",
+   "aliases": [
+    "LEGIARTI000054076374"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076376",
+   "version_id": "LEGIARTI000054076376",
+   "aliases": [
+    "LEGIARTI000054076376"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076378",
+   "version_id": "LEGIARTI000054076378",
+   "aliases": [
+    "LEGIARTI000054076378"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076380",
+   "version_id": "LEGIARTI000054076380",
+   "aliases": [
+    "LEGIARTI000054076380"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076382",
+   "version_id": "LEGIARTI000054076382",
+   "aliases": [
+    "LEGIARTI000054076382"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076386",
+   "version_id": "LEGIARTI000054076386",
+   "aliases": [
+    "LEGIARTI000054076386"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076388",
+   "version_id": "LEGIARTI000054076388",
+   "aliases": [
+    "LEGIARTI000054076388"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076390",
+   "version_id": "LEGIARTI000054076390",
+   "aliases": [
+    "LEGIARTI000054076390"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076392",
+   "version_id": "LEGIARTI000054076392",
+   "aliases": [
+    "LEGIARTI000054076392"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076394",
+   "version_id": "LEGIARTI000054076394",
+   "aliases": [
+    "LEGIARTI000054076394"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076398",
+   "version_id": "LEGIARTI000054076398",
+   "aliases": [
+    "LEGIARTI000054076398"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076400",
+   "version_id": "LEGIARTI000054076400",
+   "aliases": [
+    "LEGIARTI000054076400"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076402",
+   "version_id": "LEGIARTI000054076402",
+   "aliases": [
+    "LEGIARTI000054076402"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076404",
+   "version_id": "LEGIARTI000054076404",
+   "aliases": [
+    "LEGIARTI000054076404"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076408",
+   "version_id": "LEGIARTI000054076408",
+   "aliases": [
+    "LEGIARTI000054076408"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076410",
+   "version_id": "LEGIARTI000054076410",
+   "aliases": [
+    "LEGIARTI000054076410"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076412",
+   "version_id": "LEGIARTI000054076412",
+   "aliases": [
+    "LEGIARTI000054076412"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076414",
+   "version_id": "LEGIARTI000054076414",
+   "aliases": [
+    "LEGIARTI000054076414"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076416",
+   "version_id": "LEGIARTI000054076416",
+   "aliases": [
+    "LEGIARTI000054076416"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076418",
+   "version_id": "LEGIARTI000054076418",
+   "aliases": [
+    "LEGIARTI000054076418"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076424",
+   "version_id": "LEGIARTI000054076424",
+   "aliases": [
+    "LEGIARTI000054076424"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076428",
+   "version_id": "LEGIARTI000054076428",
+   "aliases": [
+    "LEGIARTI000054076428"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076430",
+   "version_id": "LEGIARTI000054076430",
+   "aliases": [
+    "LEGIARTI000054076430"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076432",
+   "version_id": "LEGIARTI000054076432",
+   "aliases": [
+    "LEGIARTI000054076432"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076434",
+   "version_id": "LEGIARTI000054076434",
+   "aliases": [
+    "LEGIARTI000054076434"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076436",
+   "version_id": "LEGIARTI000054076436",
+   "aliases": [
+    "LEGIARTI000054076436"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076440",
+   "version_id": "LEGIARTI000054076440",
+   "aliases": [
+    "LEGIARTI000054076440"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076442",
+   "version_id": "LEGIARTI000054076442",
+   "aliases": [
+    "LEGIARTI000054076442"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076450",
+   "version_id": "LEGIARTI000054076450",
+   "aliases": [
+    "LEGIARTI000054076450"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076454",
+   "version_id": "LEGIARTI000054076454",
+   "aliases": [
+    "LEGIARTI000054076454"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076456",
+   "version_id": "LEGIARTI000054076456",
+   "aliases": [
+    "LEGIARTI000054076456"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076460",
+   "version_id": "LEGIARTI000054076460",
+   "aliases": [
+    "LEGIARTI000054076460"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076464",
+   "version_id": "LEGIARTI000054076464",
+   "aliases": [
+    "LEGIARTI000054076464"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076466",
+   "version_id": "LEGIARTI000054076466",
+   "aliases": [
+    "LEGIARTI000054076466"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076474",
+   "version_id": "LEGIARTI000054076474",
+   "aliases": [
+    "LEGIARTI000054076474"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076476",
+   "version_id": "LEGIARTI000054076476",
+   "aliases": [
+    "LEGIARTI000054076476"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076478",
+   "version_id": "LEGIARTI000054076478",
+   "aliases": [
+    "LEGIARTI000054076478"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076483",
+   "version_id": "LEGIARTI000054076483",
+   "aliases": [
+    "LEGIARTI000054076483"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076487",
+   "version_id": "LEGIARTI000054076487",
+   "aliases": [
+    "LEGIARTI000054076487"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076491",
+   "version_id": "LEGIARTI000054076491",
+   "aliases": [
+    "LEGIARTI000054076491"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076493",
+   "version_id": "LEGIARTI000054076493",
+   "aliases": [
+    "LEGIARTI000054076493"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076495",
+   "version_id": "LEGIARTI000054076495",
+   "aliases": [
+    "LEGIARTI000054076495"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076497",
+   "version_id": "LEGIARTI000054076497",
+   "aliases": [
+    "LEGIARTI000054076497"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076503",
+   "version_id": "LEGIARTI000054076503",
+   "aliases": [
+    "LEGIARTI000054076503"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076505",
+   "version_id": "LEGIARTI000054076505",
+   "aliases": [
+    "LEGIARTI000054076505"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076507",
+   "version_id": "LEGIARTI000054076507",
+   "aliases": [
+    "LEGIARTI000054076507"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076511",
+   "version_id": "LEGIARTI000054076511",
+   "aliases": [
+    "LEGIARTI000054076511"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076519",
+   "version_id": "LEGIARTI000054076519",
+   "aliases": [
+    "LEGIARTI000054076519"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076525",
+   "version_id": "LEGIARTI000054076525",
+   "aliases": [
+    "LEGIARTI000054076525"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076527",
+   "version_id": "LEGIARTI000054076527",
+   "aliases": [
+    "LEGIARTI000054076527"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076529",
+   "version_id": "LEGIARTI000054076529",
+   "aliases": [
+    "LEGIARTI000054076529"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076531",
+   "version_id": "LEGIARTI000054076531",
+   "aliases": [
+    "LEGIARTI000054076531"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076533",
+   "version_id": "LEGIARTI000054076533",
+   "aliases": [
+    "LEGIARTI000054076533"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076535",
+   "version_id": "LEGIARTI000054076535",
+   "aliases": [
+    "LEGIARTI000054076535"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076537",
+   "version_id": "LEGIARTI000054076537",
+   "aliases": [
+    "LEGIARTI000054076537"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076541",
+   "version_id": "LEGIARTI000054076541",
+   "aliases": [
+    "LEGIARTI000054076541"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076543",
+   "version_id": "LEGIARTI000054076543",
+   "aliases": [
+    "LEGIARTI000054076543"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076545",
+   "version_id": "LEGIARTI000054076545",
+   "aliases": [
+    "LEGIARTI000054076545"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076547",
+   "version_id": "LEGIARTI000054076547",
+   "aliases": [
+    "LEGIARTI000054076547"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076549",
+   "version_id": "LEGIARTI000054076549",
+   "aliases": [
+    "LEGIARTI000054076549"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076553",
+   "version_id": "LEGIARTI000054076553",
+   "aliases": [
+    "LEGIARTI000054076553"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076555",
+   "version_id": "LEGIARTI000054076555",
+   "aliases": [
+    "LEGIARTI000054076555"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076557",
+   "version_id": "LEGIARTI000054076557",
+   "aliases": [
+    "LEGIARTI000054076557"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076559",
+   "version_id": "LEGIARTI000054076559",
+   "aliases": [
+    "LEGIARTI000054076559"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076561",
+   "version_id": "LEGIARTI000054076561",
+   "aliases": [
+    "LEGIARTI000054076561"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076563",
+   "version_id": "LEGIARTI000054076563",
+   "aliases": [
+    "LEGIARTI000054076563"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076565",
+   "version_id": "LEGIARTI000054076565",
+   "aliases": [
+    "LEGIARTI000054076565"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076568",
+   "version_id": "LEGIARTI000054076568",
+   "aliases": [
+    "LEGIARTI000054076568"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076570",
+   "version_id": "LEGIARTI000054076570",
+   "aliases": [
+    "LEGIARTI000054076570"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076572",
+   "version_id": "LEGIARTI000054076572",
+   "aliases": [
+    "LEGIARTI000054076572"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076574",
+   "version_id": "LEGIARTI000054076574",
+   "aliases": [
+    "LEGIARTI000054076574"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076576",
+   "version_id": "LEGIARTI000054076576",
+   "aliases": [
+    "LEGIARTI000054076576"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076580",
+   "version_id": "LEGIARTI000054076580",
+   "aliases": [
+    "LEGIARTI000054076580"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076582",
+   "version_id": "LEGIARTI000054076582",
+   "aliases": [
+    "LEGIARTI000054076582"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076584",
+   "version_id": "LEGIARTI000054076584",
+   "aliases": [
+    "LEGIARTI000054076584"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076588",
+   "version_id": "LEGIARTI000054076588",
+   "aliases": [
+    "LEGIARTI000054076588"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076590",
+   "version_id": "LEGIARTI000054076590",
+   "aliases": [
+    "LEGIARTI000054076590"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076596",
+   "version_id": "LEGIARTI000054076596",
+   "aliases": [
+    "LEGIARTI000054076596"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076598",
+   "version_id": "LEGIARTI000054076598",
+   "aliases": [
+    "LEGIARTI000054076598"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076600",
+   "version_id": "LEGIARTI000054076600",
+   "aliases": [
+    "LEGIARTI000054076600"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076602",
+   "version_id": "LEGIARTI000054076602",
+   "aliases": [
+    "LEGIARTI000054076602"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076607",
+   "version_id": "LEGIARTI000054076607",
+   "aliases": [
+    "LEGIARTI000054076607"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076609",
+   "version_id": "LEGIARTI000054076609",
+   "aliases": [
+    "LEGIARTI000054076609"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076611",
+   "version_id": "LEGIARTI000054076611",
+   "aliases": [
+    "LEGIARTI000054076611"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076613",
+   "version_id": "LEGIARTI000054076613",
+   "aliases": [
+    "LEGIARTI000054076613"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076617",
+   "version_id": "LEGIARTI000054076617",
+   "aliases": [
+    "LEGIARTI000054076617"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076619",
+   "version_id": "LEGIARTI000054076619",
+   "aliases": [
+    "LEGIARTI000054076619"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076621",
+   "version_id": "LEGIARTI000054076621",
+   "aliases": [
+    "LEGIARTI000054076621"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076627",
+   "version_id": "LEGIARTI000054076627",
+   "aliases": [
+    "LEGIARTI000054076627"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076629",
+   "version_id": "LEGIARTI000054076629",
+   "aliases": [
+    "LEGIARTI000054076629"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076631",
+   "version_id": "LEGIARTI000054076631",
+   "aliases": [
+    "LEGIARTI000054076631"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076633",
+   "version_id": "LEGIARTI000054076633",
+   "aliases": [
+    "LEGIARTI000054076633"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076635",
+   "version_id": "LEGIARTI000054076635",
+   "aliases": [
+    "LEGIARTI000054076635"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076637",
+   "version_id": "LEGIARTI000054076637",
+   "aliases": [
+    "LEGIARTI000054076637"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076639",
+   "version_id": "LEGIARTI000054076639",
+   "aliases": [
+    "LEGIARTI000054076639"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076643",
+   "version_id": "LEGIARTI000054076643",
+   "aliases": [
+    "LEGIARTI000054076643"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076647",
+   "version_id": "LEGIARTI000054076647",
+   "aliases": [
+    "LEGIARTI000054076647"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076649",
+   "version_id": "LEGIARTI000054076649",
+   "aliases": [
+    "LEGIARTI000054076649"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076653",
+   "version_id": "LEGIARTI000054076653",
+   "aliases": [
+    "LEGIARTI000054076653"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076657",
+   "version_id": "LEGIARTI000054076657",
+   "aliases": [
+    "LEGIARTI000054076657"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076659",
+   "version_id": "LEGIARTI000054076659",
+   "aliases": [
+    "LEGIARTI000054076659"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076665",
+   "version_id": "LEGIARTI000054076665",
+   "aliases": [
+    "LEGIARTI000054076665"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076667",
+   "version_id": "LEGIARTI000054076667",
+   "aliases": [
+    "LEGIARTI000054076667"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076669",
+   "version_id": "LEGIARTI000054076669",
+   "aliases": [
+    "LEGIARTI000054076669"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076671",
+   "version_id": "LEGIARTI000054076671",
+   "aliases": [
+    "LEGIARTI000054076671"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076673",
+   "version_id": "LEGIARTI000054076673",
+   "aliases": [
+    "LEGIARTI000054076673"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076675",
+   "version_id": "LEGIARTI000054076675",
+   "aliases": [
+    "LEGIARTI000054076675"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076677",
+   "version_id": "LEGIARTI000054076677",
+   "aliases": [
+    "LEGIARTI000054076677"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076679",
+   "version_id": "LEGIARTI000054076679",
+   "aliases": [
+    "LEGIARTI000054076679"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076685",
+   "version_id": "LEGIARTI000054076685",
+   "aliases": [
+    "LEGIARTI000054076685"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076687",
+   "version_id": "LEGIARTI000054076687",
+   "aliases": [
+    "LEGIARTI000054076687"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076693",
+   "version_id": "LEGIARTI000054076693",
+   "aliases": [
+    "LEGIARTI000054076693"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076695",
+   "version_id": "LEGIARTI000054076695",
+   "aliases": [
+    "LEGIARTI000054076695"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076697",
+   "version_id": "LEGIARTI000054076697",
+   "aliases": [
+    "LEGIARTI000054076697"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076699",
+   "version_id": "LEGIARTI000054076699",
+   "aliases": [
+    "LEGIARTI000054076699"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076701",
+   "version_id": "LEGIARTI000054076701",
+   "aliases": [
+    "LEGIARTI000054076701"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076703",
+   "version_id": "LEGIARTI000054076703",
+   "aliases": [
+    "LEGIARTI000054076703"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076707",
+   "version_id": "LEGIARTI000054076707",
+   "aliases": [
+    "LEGIARTI000054076707"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076710",
+   "version_id": "LEGIARTI000054076710",
+   "aliases": [
+    "LEGIARTI000054076710"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076714",
+   "version_id": "LEGIARTI000054076714",
+   "aliases": [
+    "LEGIARTI000054076714"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076716",
+   "version_id": "LEGIARTI000054076716",
+   "aliases": [
+    "LEGIARTI000054076716"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076720",
+   "version_id": "LEGIARTI000054076720",
+   "aliases": [
+    "LEGIARTI000054076720"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076722",
+   "version_id": "LEGIARTI000054076722",
+   "aliases": [
+    "LEGIARTI000054076722"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076724",
+   "version_id": "LEGIARTI000054076724",
+   "aliases": [
+    "LEGIARTI000054076724"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076728",
+   "version_id": "LEGIARTI000054076728",
+   "aliases": [
+    "LEGIARTI000054076728"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076733",
+   "version_id": "LEGIARTI000054076733",
+   "aliases": [
+    "LEGIARTI000054076733"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076735",
+   "version_id": "LEGIARTI000054076735",
+   "aliases": [
+    "LEGIARTI000054076735"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076739",
+   "version_id": "LEGIARTI000054076739",
+   "aliases": [
+    "LEGIARTI000054076739"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076741",
+   "version_id": "LEGIARTI000054076741",
+   "aliases": [
+    "LEGIARTI000054076741"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076743",
+   "version_id": "LEGIARTI000054076743",
+   "aliases": [
+    "LEGIARTI000054076743"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076745",
+   "version_id": "LEGIARTI000054076745",
+   "aliases": [
+    "LEGIARTI000054076745"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076750",
+   "version_id": "LEGIARTI000054076750",
+   "aliases": [
+    "LEGIARTI000054076750"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076752",
+   "version_id": "LEGIARTI000054076752",
+   "aliases": [
+    "LEGIARTI000054076752"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076756",
+   "version_id": "LEGIARTI000054076756",
+   "aliases": [
+    "LEGIARTI000054076756"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076762",
+   "version_id": "LEGIARTI000054076762",
+   "aliases": [
+    "LEGIARTI000054076762"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076771",
+   "version_id": "LEGIARTI000054076771",
+   "aliases": [
+    "LEGIARTI000054076771"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076775",
+   "version_id": "LEGIARTI000054076775",
+   "aliases": [
+    "LEGIARTI000054076775"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076777",
+   "version_id": "LEGIARTI000054076777",
+   "aliases": [
+    "LEGIARTI000054076777"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076779",
+   "version_id": "LEGIARTI000054076779",
+   "aliases": [
+    "LEGIARTI000054076779"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076781",
+   "version_id": "LEGIARTI000054076781",
+   "aliases": [
+    "LEGIARTI000054076781"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076783",
+   "version_id": "LEGIARTI000054076783",
+   "aliases": [
+    "LEGIARTI000054076783"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076785",
+   "version_id": "LEGIARTI000054076785",
+   "aliases": [
+    "LEGIARTI000054076785"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076787",
+   "version_id": "LEGIARTI000054076787",
+   "aliases": [
+    "LEGIARTI000054076787"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076791",
+   "version_id": "LEGIARTI000054076791",
+   "aliases": [
+    "LEGIARTI000054076791"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076793",
+   "version_id": "LEGIARTI000054076793",
+   "aliases": [
+    "LEGIARTI000054076793"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076797",
+   "version_id": "LEGIARTI000054076797",
+   "aliases": [
+    "LEGIARTI000054076797"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076799",
+   "version_id": "LEGIARTI000054076799",
+   "aliases": [
+    "LEGIARTI000054076799"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076803",
+   "version_id": "LEGIARTI000054076803",
+   "aliases": [
+    "LEGIARTI000054076803"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076805",
+   "version_id": "LEGIARTI000054076805",
+   "aliases": [
+    "LEGIARTI000054076805"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076808",
+   "version_id": "LEGIARTI000054076808",
+   "aliases": [
+    "LEGIARTI000054076808"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076810",
+   "version_id": "LEGIARTI000054076810",
+   "aliases": [
+    "LEGIARTI000054076810"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076814",
+   "version_id": "LEGIARTI000054076814",
+   "aliases": [
+    "LEGIARTI000054076814"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076818",
+   "version_id": "LEGIARTI000054076818",
+   "aliases": [
+    "LEGIARTI000054076818"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076820",
+   "version_id": "LEGIARTI000054076820",
+   "aliases": [
+    "LEGIARTI000054076820"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076822",
+   "version_id": "LEGIARTI000054076822",
+   "aliases": [
+    "LEGIARTI000054076822"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076824",
+   "version_id": "LEGIARTI000054076824",
+   "aliases": [
+    "LEGIARTI000054076824"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076826",
+   "version_id": "LEGIARTI000054076826",
+   "aliases": [
+    "LEGIARTI000054076826"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076830",
+   "version_id": "LEGIARTI000054076830",
+   "aliases": [
+    "LEGIARTI000054076830"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076832",
+   "version_id": "LEGIARTI000054076832",
+   "aliases": [
+    "LEGIARTI000054076832"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076834",
+   "version_id": "LEGIARTI000054076834",
+   "aliases": [
+    "LEGIARTI000054076834"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076836",
+   "version_id": "LEGIARTI000054076836",
+   "aliases": [
+    "LEGIARTI000054076836"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076842",
+   "version_id": "LEGIARTI000054076842",
+   "aliases": [
+    "LEGIARTI000054076842"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076844",
+   "version_id": "LEGIARTI000054076844",
+   "aliases": [
+    "LEGIARTI000054076844"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076848",
+   "version_id": "LEGIARTI000054076848",
+   "aliases": [
+    "LEGIARTI000054076848"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076850",
+   "version_id": "LEGIARTI000054076850",
+   "aliases": [
+    "LEGIARTI000054076850"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076852",
+   "version_id": "LEGIARTI000054076852",
+   "aliases": [
+    "LEGIARTI000054076852"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076854",
+   "version_id": "LEGIARTI000054076854",
+   "aliases": [
+    "LEGIARTI000054076854"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076856",
+   "version_id": "LEGIARTI000054076856",
+   "aliases": [
+    "LEGIARTI000054076856"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076858",
+   "version_id": "LEGIARTI000054076858",
+   "aliases": [
+    "LEGIARTI000054076858"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076862",
+   "version_id": "LEGIARTI000054076862",
+   "aliases": [
+    "LEGIARTI000054076862"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076866",
+   "version_id": "LEGIARTI000054076866",
+   "aliases": [
+    "LEGIARTI000054076866"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076868",
+   "version_id": "LEGIARTI000054076868",
+   "aliases": [
+    "LEGIARTI000054076868"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076876",
+   "version_id": "LEGIARTI000054076876",
+   "aliases": [
+    "LEGIARTI000054076876"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076878",
+   "version_id": "LEGIARTI000054076878",
+   "aliases": [
+    "LEGIARTI000054076878"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076880",
+   "version_id": "LEGIARTI000054076880",
+   "aliases": [
+    "LEGIARTI000054076880"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076882",
+   "version_id": "LEGIARTI000054076882",
+   "aliases": [
+    "LEGIARTI000054076882"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076884",
+   "version_id": "LEGIARTI000054076884",
+   "aliases": [
+    "LEGIARTI000054076884"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076888",
+   "version_id": "LEGIARTI000054076888",
+   "aliases": [
+    "LEGIARTI000054076888"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076890",
+   "version_id": "LEGIARTI000054076890",
+   "aliases": [
+    "LEGIARTI000054076890"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076892",
+   "version_id": "LEGIARTI000054076892",
+   "aliases": [
+    "LEGIARTI000054076892"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076896",
+   "version_id": "LEGIARTI000054076896",
+   "aliases": [
+    "LEGIARTI000054076896"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076898",
+   "version_id": "LEGIARTI000054076898",
+   "aliases": [
+    "LEGIARTI000054076898"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076902",
+   "version_id": "LEGIARTI000054076902",
+   "aliases": [
+    "LEGIARTI000054076902"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076910",
+   "version_id": "LEGIARTI000054076910",
+   "aliases": [
+    "LEGIARTI000054076910"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076913",
+   "version_id": "LEGIARTI000054076913",
+   "aliases": [
+    "LEGIARTI000054076913"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076916",
+   "version_id": "LEGIARTI000054076916",
+   "aliases": [
+    "LEGIARTI000054076916"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076918",
+   "version_id": "LEGIARTI000054076918",
+   "aliases": [
+    "LEGIARTI000054076918"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076922",
+   "version_id": "LEGIARTI000054076922",
+   "aliases": [
+    "LEGIARTI000054076922"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076924",
+   "version_id": "LEGIARTI000054076924",
+   "aliases": [
+    "LEGIARTI000054076924"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076926",
+   "version_id": "LEGIARTI000054076926",
+   "aliases": [
+    "LEGIARTI000054076926"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076929",
+   "version_id": "LEGIARTI000054076929",
+   "aliases": [
+    "LEGIARTI000054076929"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076933",
+   "version_id": "LEGIARTI000054076933",
+   "aliases": [
+    "LEGIARTI000054076933"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076935",
+   "version_id": "LEGIARTI000054076935",
+   "aliases": [
+    "LEGIARTI000054076935"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076937",
+   "version_id": "LEGIARTI000054076937",
+   "aliases": [
+    "LEGIARTI000054076937"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076940",
+   "version_id": "LEGIARTI000054076940",
+   "aliases": [
+    "LEGIARTI000054076940"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076942",
+   "version_id": "LEGIARTI000054076942",
+   "aliases": [
+    "LEGIARTI000054076942"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076944",
+   "version_id": "LEGIARTI000054076944",
+   "aliases": [
+    "LEGIARTI000054076944"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076948",
+   "version_id": "LEGIARTI000054076948",
+   "aliases": [
+    "LEGIARTI000054076948"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076952",
+   "version_id": "LEGIARTI000054076952",
+   "aliases": [
+    "LEGIARTI000054076952"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076960",
+   "version_id": "LEGIARTI000054076960",
+   "aliases": [
+    "LEGIARTI000054076960"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076964",
+   "version_id": "LEGIARTI000054076964",
+   "aliases": [
+    "LEGIARTI000054076964"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076966",
+   "version_id": "LEGIARTI000054076966",
+   "aliases": [
+    "LEGIARTI000054076966"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076968",
+   "version_id": "LEGIARTI000054076968",
+   "aliases": [
+    "LEGIARTI000054076968"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076972",
+   "version_id": "LEGIARTI000054076972",
+   "aliases": [
+    "LEGIARTI000054076972"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076974",
+   "version_id": "LEGIARTI000054076974",
+   "aliases": [
+    "LEGIARTI000054076974"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076978",
+   "version_id": "LEGIARTI000054076978",
+   "aliases": [
+    "LEGIARTI000054076978"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076980",
+   "version_id": "LEGIARTI000054076980",
+   "aliases": [
+    "LEGIARTI000054076980"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076982",
+   "version_id": "LEGIARTI000054076982",
+   "aliases": [
+    "LEGIARTI000054076982"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076984",
+   "version_id": "LEGIARTI000054076984",
+   "aliases": [
+    "LEGIARTI000054076984"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076990",
+   "version_id": "LEGIARTI000054076990",
+   "aliases": [
+    "LEGIARTI000054076990"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076996",
+   "version_id": "LEGIARTI000054076996",
+   "aliases": [
+    "LEGIARTI000054076996"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054076998",
+   "version_id": "LEGIARTI000054076998",
+   "aliases": [
+    "LEGIARTI000054076998"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077000",
+   "version_id": "LEGIARTI000054077000",
+   "aliases": [
+    "LEGIARTI000054077000"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077002",
+   "version_id": "LEGIARTI000054077002",
+   "aliases": [
+    "LEGIARTI000054077002"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077004",
+   "version_id": "LEGIARTI000054077004",
+   "aliases": [
+    "LEGIARTI000054077004"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077006",
+   "version_id": "LEGIARTI000054077006",
+   "aliases": [
+    "LEGIARTI000054077006"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077008",
+   "version_id": "LEGIARTI000054077008",
+   "aliases": [
+    "LEGIARTI000054077008"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077010",
+   "version_id": "LEGIARTI000054077010",
+   "aliases": [
+    "LEGIARTI000054077010"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077014",
+   "version_id": "LEGIARTI000054077014",
+   "aliases": [
+    "LEGIARTI000054077014"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077020",
+   "version_id": "LEGIARTI000054077020",
+   "aliases": [
+    "LEGIARTI000054077020"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077024",
+   "version_id": "LEGIARTI000054077024",
+   "aliases": [
+    "LEGIARTI000054077024"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077028",
+   "version_id": "LEGIARTI000054077028",
+   "aliases": [
+    "LEGIARTI000054077028"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077031",
+   "version_id": "LEGIARTI000054077031",
+   "aliases": [
+    "LEGIARTI000054077031"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077033",
+   "version_id": "LEGIARTI000054077033",
+   "aliases": [
+    "LEGIARTI000054077033"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077035",
+   "version_id": "LEGIARTI000054077035",
+   "aliases": [
+    "LEGIARTI000054077035"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077037",
+   "version_id": "LEGIARTI000054077037",
+   "aliases": [
+    "LEGIARTI000054077037"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077039",
+   "version_id": "LEGIARTI000054077039",
+   "aliases": [
+    "LEGIARTI000054077039"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077041",
+   "version_id": "LEGIARTI000054077041",
+   "aliases": [
+    "LEGIARTI000054077041"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077043",
+   "version_id": "LEGIARTI000054077043",
+   "aliases": [
+    "LEGIARTI000054077043"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077049",
+   "version_id": "LEGIARTI000054077049",
+   "aliases": [
+    "LEGIARTI000054077049"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077051",
+   "version_id": "LEGIARTI000054077051",
+   "aliases": [
+    "LEGIARTI000054077051"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077055",
+   "version_id": "LEGIARTI000054077055",
+   "aliases": [
+    "LEGIARTI000054077055"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077057",
+   "version_id": "LEGIARTI000054077057",
+   "aliases": [
+    "LEGIARTI000054077057"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077059",
+   "version_id": "LEGIARTI000054077059",
+   "aliases": [
+    "LEGIARTI000054077059"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077062",
+   "version_id": "LEGIARTI000054077062",
+   "aliases": [
+    "LEGIARTI000054077062"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077066",
+   "version_id": "LEGIARTI000054077066",
+   "aliases": [
+    "LEGIARTI000054077066"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077068",
+   "version_id": "LEGIARTI000054077068",
+   "aliases": [
+    "LEGIARTI000054077068"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077070",
+   "version_id": "LEGIARTI000054077070",
+   "aliases": [
+    "LEGIARTI000054077070"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077074",
+   "version_id": "LEGIARTI000054077074",
+   "aliases": [
+    "LEGIARTI000054077074"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077076",
+   "version_id": "LEGIARTI000054077076",
+   "aliases": [
+    "LEGIARTI000054077076"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077078",
+   "version_id": "LEGIARTI000054077078",
+   "aliases": [
+    "LEGIARTI000054077078"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077080",
+   "version_id": "LEGIARTI000054077080",
+   "aliases": [
+    "LEGIARTI000054077080"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077082",
+   "version_id": "LEGIARTI000054077082",
+   "aliases": [
+    "LEGIARTI000054077082"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077084",
+   "version_id": "LEGIARTI000054077084",
+   "aliases": [
+    "LEGIARTI000054077084"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077086",
+   "version_id": "LEGIARTI000054077086",
+   "aliases": [
+    "LEGIARTI000054077086"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077088",
+   "version_id": "LEGIARTI000054077088",
+   "aliases": [
+    "LEGIARTI000054077088"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077094",
+   "version_id": "LEGIARTI000054077094",
+   "aliases": [
+    "LEGIARTI000054077094"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077096",
+   "version_id": "LEGIARTI000054077096",
+   "aliases": [
+    "LEGIARTI000054077096"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077098",
+   "version_id": "LEGIARTI000054077098",
+   "aliases": [
+    "LEGIARTI000054077098"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077101",
+   "version_id": "LEGIARTI000054077101",
+   "aliases": [
+    "LEGIARTI000054077101"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077104",
+   "version_id": "LEGIARTI000054077104",
+   "aliases": [
+    "LEGIARTI000054077104"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077106",
+   "version_id": "LEGIARTI000054077106",
+   "aliases": [
+    "LEGIARTI000054077106"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077110",
+   "version_id": "LEGIARTI000054077110",
+   "aliases": [
+    "LEGIARTI000054077110"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077112",
+   "version_id": "LEGIARTI000054077112",
+   "aliases": [
+    "LEGIARTI000054077112"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077116",
+   "version_id": "LEGIARTI000054077116",
+   "aliases": [
+    "LEGIARTI000054077116"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077123",
+   "version_id": "LEGIARTI000054077123",
+   "aliases": [
+    "LEGIARTI000054077123"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077125",
+   "version_id": "LEGIARTI000054077125",
+   "aliases": [
+    "LEGIARTI000054077125"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077127",
+   "version_id": "LEGIARTI000054077127",
+   "aliases": [
+    "LEGIARTI000054077127"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077133",
+   "version_id": "LEGIARTI000054077133",
+   "aliases": [
+    "LEGIARTI000054077133"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077135",
+   "version_id": "LEGIARTI000054077135",
+   "aliases": [
+    "LEGIARTI000054077135"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077137",
+   "version_id": "LEGIARTI000054077137",
+   "aliases": [
+    "LEGIARTI000054077137"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077141",
+   "version_id": "LEGIARTI000054077141",
+   "aliases": [
+    "LEGIARTI000054077141"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077143",
+   "version_id": "LEGIARTI000054077143",
+   "aliases": [
+    "LEGIARTI000054077143"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077145",
+   "version_id": "LEGIARTI000054077145",
+   "aliases": [
+    "LEGIARTI000054077145"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077147",
+   "version_id": "LEGIARTI000054077147",
+   "aliases": [
+    "LEGIARTI000054077147"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077149",
+   "version_id": "LEGIARTI000054077149",
+   "aliases": [
+    "LEGIARTI000054077149"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077151",
+   "version_id": "LEGIARTI000054077151",
+   "aliases": [
+    "LEGIARTI000054077151"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077153",
+   "version_id": "LEGIARTI000054077153",
+   "aliases": [
+    "LEGIARTI000054077153"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077155",
+   "version_id": "LEGIARTI000054077155",
+   "aliases": [
+    "LEGIARTI000054077155"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077157",
+   "version_id": "LEGIARTI000054077157",
+   "aliases": [
+    "LEGIARTI000054077157"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077159",
+   "version_id": "LEGIARTI000054077159",
+   "aliases": [
+    "LEGIARTI000054077159"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077161",
+   "version_id": "LEGIARTI000054077161",
+   "aliases": [
+    "LEGIARTI000054077161"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077163",
+   "version_id": "LEGIARTI000054077163",
+   "aliases": [
+    "LEGIARTI000054077163"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077169",
+   "version_id": "LEGIARTI000054077169",
+   "aliases": [
+    "LEGIARTI000054077169"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077171",
+   "version_id": "LEGIARTI000054077171",
+   "aliases": [
+    "LEGIARTI000054077171"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077173",
+   "version_id": "LEGIARTI000054077173",
+   "aliases": [
+    "LEGIARTI000054077173"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077175",
+   "version_id": "LEGIARTI000054077175",
+   "aliases": [
+    "LEGIARTI000054077175"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077177",
+   "version_id": "LEGIARTI000054077177",
+   "aliases": [
+    "LEGIARTI000054077177"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077180",
+   "version_id": "LEGIARTI000054077180",
+   "aliases": [
+    "LEGIARTI000054077180"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077184",
+   "version_id": "LEGIARTI000054077184",
+   "aliases": [
+    "LEGIARTI000054077184"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077186",
+   "version_id": "LEGIARTI000054077186",
+   "aliases": [
+    "LEGIARTI000054077186"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077188",
+   "version_id": "LEGIARTI000054077188",
+   "aliases": [
+    "LEGIARTI000054077188"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077190",
+   "version_id": "LEGIARTI000054077190",
+   "aliases": [
+    "LEGIARTI000054077190"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077192",
+   "version_id": "LEGIARTI000054077192",
+   "aliases": [
+    "LEGIARTI000054077192"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077200",
+   "version_id": "LEGIARTI000054077200",
+   "aliases": [
+    "LEGIARTI000054077200"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077208",
+   "version_id": "LEGIARTI000054077208",
+   "aliases": [
+    "LEGIARTI000054077208"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077211",
+   "version_id": "LEGIARTI000054077211",
+   "aliases": [
+    "LEGIARTI000054077211"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077215",
+   "version_id": "LEGIARTI000054077215",
+   "aliases": [
+    "LEGIARTI000054077215"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077217",
+   "version_id": "LEGIARTI000054077217",
+   "aliases": [
+    "LEGIARTI000054077217"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077220",
+   "version_id": "LEGIARTI000054077220",
+   "aliases": [
+    "LEGIARTI000054077220"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077222",
+   "version_id": "LEGIARTI000054077222",
+   "aliases": [
+    "LEGIARTI000054077222"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077224",
+   "version_id": "LEGIARTI000054077224",
+   "aliases": [
+    "LEGIARTI000054077224"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077226",
+   "version_id": "LEGIARTI000054077226",
+   "aliases": [
+    "LEGIARTI000054077226"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077230",
+   "version_id": "LEGIARTI000054077230",
+   "aliases": [
+    "LEGIARTI000054077230"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077232",
+   "version_id": "LEGIARTI000054077232",
+   "aliases": [
+    "LEGIARTI000054077232"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077239",
+   "version_id": "LEGIARTI000054077239",
+   "aliases": [
+    "LEGIARTI000054077239"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077255",
+   "version_id": "LEGIARTI000054077255",
+   "aliases": [
+    "LEGIARTI000054077255"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077261",
+   "version_id": "LEGIARTI000054077261",
+   "aliases": [
+    "LEGIARTI000054077261"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077264",
+   "version_id": "LEGIARTI000054077264",
+   "aliases": [
+    "LEGIARTI000054077264"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077268",
+   "version_id": "LEGIARTI000054077268",
+   "aliases": [
+    "LEGIARTI000054077268"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077274",
+   "version_id": "LEGIARTI000054077274",
+   "aliases": [
+    "LEGIARTI000054077274"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077276",
+   "version_id": "LEGIARTI000054077276",
+   "aliases": [
+    "LEGIARTI000054077276"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077280",
+   "version_id": "LEGIARTI000054077280",
+   "aliases": [
+    "LEGIARTI000054077280"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077282",
+   "version_id": "LEGIARTI000054077282",
+   "aliases": [
+    "LEGIARTI000054077282"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077284",
+   "version_id": "LEGIARTI000054077284",
+   "aliases": [
+    "LEGIARTI000054077284"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077286",
+   "version_id": "LEGIARTI000054077286",
+   "aliases": [
+    "LEGIARTI000054077286"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077288",
+   "version_id": "LEGIARTI000054077288",
+   "aliases": [
+    "LEGIARTI000054077288"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077294",
+   "version_id": "LEGIARTI000054077294",
+   "aliases": [
+    "LEGIARTI000054077294"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077298",
+   "version_id": "LEGIARTI000054077298",
+   "aliases": [
+    "LEGIARTI000054077298"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077300",
+   "version_id": "LEGIARTI000054077300",
+   "aliases": [
+    "LEGIARTI000054077300"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077304",
+   "version_id": "LEGIARTI000054077304",
+   "aliases": [
+    "LEGIARTI000054077304"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077306",
+   "version_id": "LEGIARTI000054077306",
+   "aliases": [
+    "LEGIARTI000054077306"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077308",
+   "version_id": "LEGIARTI000054077308",
+   "aliases": [
+    "LEGIARTI000054077308"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077310",
+   "version_id": "LEGIARTI000054077310",
+   "aliases": [
+    "LEGIARTI000054077310"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077314",
+   "version_id": "LEGIARTI000054077314",
+   "aliases": [
+    "LEGIARTI000054077314"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077318",
+   "version_id": "LEGIARTI000054077318",
+   "aliases": [
+    "LEGIARTI000054077318"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077320",
+   "version_id": "LEGIARTI000054077320",
+   "aliases": [
+    "LEGIARTI000054077320"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077322",
+   "version_id": "LEGIARTI000054077322",
+   "aliases": [
+    "LEGIARTI000054077322"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077324",
+   "version_id": "LEGIARTI000054077324",
+   "aliases": [
+    "LEGIARTI000054077324"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077326",
+   "version_id": "LEGIARTI000054077326",
+   "aliases": [
+    "LEGIARTI000054077326"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077330",
+   "version_id": "LEGIARTI000054077330",
+   "aliases": [
+    "LEGIARTI000054077330"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077332",
+   "version_id": "LEGIARTI000054077332",
+   "aliases": [
+    "LEGIARTI000054077332"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077337",
+   "version_id": "LEGIARTI000054077337",
+   "aliases": [
+    "LEGIARTI000054077337"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077339",
+   "version_id": "LEGIARTI000054077339",
+   "aliases": [
+    "LEGIARTI000054077339"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077341",
+   "version_id": "LEGIARTI000054077341",
+   "aliases": [
+    "LEGIARTI000054077341"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077344",
+   "version_id": "LEGIARTI000054077344",
+   "aliases": [
+    "LEGIARTI000054077344"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077347",
+   "version_id": "LEGIARTI000054077347",
+   "aliases": [
+    "LEGIARTI000054077347"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077349",
+   "version_id": "LEGIARTI000054077349",
+   "aliases": [
+    "LEGIARTI000054077349"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077355",
+   "version_id": "LEGIARTI000054077355",
+   "aliases": [
+    "LEGIARTI000054077355"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077357",
+   "version_id": "LEGIARTI000054077357",
+   "aliases": [
+    "LEGIARTI000054077357"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077359",
+   "version_id": "LEGIARTI000054077359",
+   "aliases": [
+    "LEGIARTI000054077359"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077361",
+   "version_id": "LEGIARTI000054077361",
+   "aliases": [
+    "LEGIARTI000054077361"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077363",
+   "version_id": "LEGIARTI000054077363",
+   "aliases": [
+    "LEGIARTI000054077363"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077365",
+   "version_id": "LEGIARTI000054077365",
+   "aliases": [
+    "LEGIARTI000054077365"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077367",
+   "version_id": "LEGIARTI000054077367",
+   "aliases": [
+    "LEGIARTI000054077367"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077369",
+   "version_id": "LEGIARTI000054077369",
+   "aliases": [
+    "LEGIARTI000054077369"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077371",
+   "version_id": "LEGIARTI000054077371",
+   "aliases": [
+    "LEGIARTI000054077371"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077373",
+   "version_id": "LEGIARTI000054077373",
+   "aliases": [
+    "LEGIARTI000054077373"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077377",
+   "version_id": "LEGIARTI000054077377",
+   "aliases": [
+    "LEGIARTI000054077377"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077379",
+   "version_id": "LEGIARTI000054077379",
+   "aliases": [
+    "LEGIARTI000054077379"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077381",
+   "version_id": "LEGIARTI000054077381",
+   "aliases": [
+    "LEGIARTI000054077381"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077383",
+   "version_id": "LEGIARTI000054077383",
+   "aliases": [
+    "LEGIARTI000054077383"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077385",
+   "version_id": "LEGIARTI000054077385",
+   "aliases": [
+    "LEGIARTI000054077385"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077391",
+   "version_id": "LEGIARTI000054077391",
+   "aliases": [
+    "LEGIARTI000054077391"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077393",
+   "version_id": "LEGIARTI000054077393",
+   "aliases": [
+    "LEGIARTI000054077393"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077395",
+   "version_id": "LEGIARTI000054077395",
+   "aliases": [
+    "LEGIARTI000054077395"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077397",
+   "version_id": "LEGIARTI000054077397",
+   "aliases": [
+    "LEGIARTI000054077397"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077399",
+   "version_id": "LEGIARTI000054077399",
+   "aliases": [
+    "LEGIARTI000054077399"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077401",
+   "version_id": "LEGIARTI000054077401",
+   "aliases": [
+    "LEGIARTI000054077401"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077404",
+   "version_id": "LEGIARTI000054077404",
+   "aliases": [
+    "LEGIARTI000054077404"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077408",
+   "version_id": "LEGIARTI000054077408",
+   "aliases": [
+    "LEGIARTI000054077408"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077410",
+   "version_id": "LEGIARTI000054077410",
+   "aliases": [
+    "LEGIARTI000054077410"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077414",
+   "version_id": "LEGIARTI000054077414",
+   "aliases": [
+    "LEGIARTI000054077414"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077425",
+   "version_id": "LEGIARTI000054077425",
+   "aliases": [
+    "LEGIARTI000054077425"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077427",
+   "version_id": "LEGIARTI000054077427",
+   "aliases": [
+    "LEGIARTI000054077427"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077431",
+   "version_id": "LEGIARTI000054077431",
+   "aliases": [
+    "LEGIARTI000054077431"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077433",
+   "version_id": "LEGIARTI000054077433",
+   "aliases": [
+    "LEGIARTI000054077433"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077435",
+   "version_id": "LEGIARTI000054077435",
+   "aliases": [
+    "LEGIARTI000054077435"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077439",
+   "version_id": "LEGIARTI000054077439",
+   "aliases": [
+    "LEGIARTI000054077439"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077441",
+   "version_id": "LEGIARTI000054077441",
+   "aliases": [
+    "LEGIARTI000054077441"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077445",
+   "version_id": "LEGIARTI000054077445",
+   "aliases": [
+    "LEGIARTI000054077445"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077447",
+   "version_id": "LEGIARTI000054077447",
+   "aliases": [
+    "LEGIARTI000054077447"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077449",
+   "version_id": "LEGIARTI000054077449",
+   "aliases": [
+    "LEGIARTI000054077449"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077453",
+   "version_id": "LEGIARTI000054077453",
+   "aliases": [
+    "LEGIARTI000054077453"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077455",
+   "version_id": "LEGIARTI000054077455",
+   "aliases": [
+    "LEGIARTI000054077455"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077458",
+   "version_id": "LEGIARTI000054077458",
+   "aliases": [
+    "LEGIARTI000054077458"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077460",
+   "version_id": "LEGIARTI000054077460",
+   "aliases": [
+    "LEGIARTI000054077460"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077462",
+   "version_id": "LEGIARTI000054077462",
+   "aliases": [
+    "LEGIARTI000054077462"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077465",
+   "version_id": "LEGIARTI000054077465",
+   "aliases": [
+    "LEGIARTI000054077465"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077472",
+   "version_id": "LEGIARTI000054077472",
+   "aliases": [
+    "LEGIARTI000054077472"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077482",
+   "version_id": "LEGIARTI000054077482",
+   "aliases": [
+    "LEGIARTI000054077482"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077489",
+   "version_id": "LEGIARTI000054077489",
+   "aliases": [
+    "LEGIARTI000054077489"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077494",
+   "version_id": "LEGIARTI000054077494",
+   "aliases": [
+    "LEGIARTI000054077494"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077504",
+   "version_id": "LEGIARTI000054077504",
+   "aliases": [
+    "LEGIARTI000054077504"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077507",
+   "version_id": "LEGIARTI000054077507",
+   "aliases": [
+    "LEGIARTI000054077507"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077510",
+   "version_id": "LEGIARTI000054077510",
+   "aliases": [
+    "LEGIARTI000054077510"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077513",
+   "version_id": "LEGIARTI000054077513",
+   "aliases": [
+    "LEGIARTI000054077513"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077516",
+   "version_id": "LEGIARTI000054077516",
+   "aliases": [
+    "LEGIARTI000054077516"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077519",
+   "version_id": "LEGIARTI000054077519",
+   "aliases": [
+    "LEGIARTI000054077519"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077522",
+   "version_id": "LEGIARTI000054077522",
+   "aliases": [
+    "LEGIARTI000054077522"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077525",
+   "version_id": "LEGIARTI000054077525",
+   "aliases": [
+    "LEGIARTI000054077525"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077530",
+   "version_id": "LEGIARTI000054077530",
+   "aliases": [
+    "LEGIARTI000054077530"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077532",
+   "version_id": "LEGIARTI000054077532",
+   "aliases": [
+    "LEGIARTI000054077532"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077539",
+   "version_id": "LEGIARTI000054077539",
+   "aliases": [
+    "LEGIARTI000054077539"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077541",
+   "version_id": "LEGIARTI000054077541",
+   "aliases": [
+    "LEGIARTI000054077541"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077543",
+   "version_id": "LEGIARTI000054077543",
+   "aliases": [
+    "LEGIARTI000054077543"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077545",
+   "version_id": "LEGIARTI000054077545",
+   "aliases": [
+    "LEGIARTI000054077545"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077549",
+   "version_id": "LEGIARTI000054077549",
+   "aliases": [
+    "LEGIARTI000054077549"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077552",
+   "version_id": "LEGIARTI000054077552",
+   "aliases": [
+    "LEGIARTI000054077552"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077555",
+   "version_id": "LEGIARTI000054077555",
+   "aliases": [
+    "LEGIARTI000054077555"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077557",
+   "version_id": "LEGIARTI000054077557",
+   "aliases": [
+    "LEGIARTI000054077557"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077560",
+   "version_id": "LEGIARTI000054077560",
+   "aliases": [
+    "LEGIARTI000054077560"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054077563",
+   "version_id": "LEGIARTI000054077563",
+   "aliases": [
+    "LEGIARTI000054077563"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
    "cid": "LEGIARTI000054161658",
    "version_id": "LEGIARTI000054163842",
    "aliases": [
@@ -35239,6 +38961,42 @@
     "LEGIARTI000054163848"
    ],
    "text_uid": "JORFTEXT000043728505"
+  },
+  {
+   "cid": "LEGIARTI000054590603",
+   "version_id": "LEGIARTI000054641775",
+   "aliases": [
+    "LEGIARTI000054590603",
+    "LEGIARTI000054641775"
+   ],
+   "text_uid": "JORFTEXT000000699956"
+  },
+  {
+   "cid": "LEGIARTI000054699409",
+   "version_id": "LEGIARTI000054702945",
+   "aliases": [
+    "LEGIARTI000054699409",
+    "LEGIARTI000054702945"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054700535",
+   "version_id": "LEGIARTI000054703072",
+   "aliases": [
+    "LEGIARTI000054700535",
+    "LEGIARTI000054703072"
+   ],
+   "text_uid": "LEGITEXT000044416551"
+  },
+  {
+   "cid": "LEGIARTI000054700537",
+   "version_id": "LEGIARTI000054703070",
+   "aliases": [
+    "LEGIARTI000054700537",
+    "LEGIARTI000054703070"
+   ],
+   "text_uid": "LEGITEXT000044416551"
   }
  ],
  "article_cids": [
@@ -35308,37 +39066,16 @@
   "JORFARTI000030645289",
   "JORFARTI000030645290",
   "JORFARTI000030645291",
-  "JORFARTI000032037005",
-  "JORFARTI000032037008",
-  "JORFARTI000032037012",
-  "JORFARTI000032037013",
-  "JORFARTI000032037014",
-  "JORFARTI000032037015",
-  "JORFARTI000032037016",
-  "JORFARTI000032037017",
-  "JORFARTI000032037018",
-  "JORFARTI000032037020",
   "JORFARTI000032037023",
   "JORFARTI000032037026",
-  "JORFARTI000032037029",
-  "JORFARTI000032037030",
   "JORFARTI000034640186",
   "JORFARTI000034640189",
-  "JORFARTI000034640193",
-  "JORFARTI000034640209",
-  "JORFARTI000034640210",
-  "JORFARTI000034640212",
-  "JORFARTI000034640215",
-  "JORFARTI000034640216",
-  "JORFARTI000034640218",
-  "JORFARTI000034640219",
   "JORFARTI000034640221",
   "JORFARTI000034640225",
   "JORFARTI000034640259",
   "JORFARTI000034640283",
   "JORFARTI000034640294",
   "JORFARTI000034640321",
-  "JORFARTI000034640326",
   "JORFARTI000034640327",
   "JORFARTI000037852101",
   "JORFARTI000037852106",
@@ -35362,8 +39099,6 @@
   "JORFARTI000041849943",
   "JORFARTI000041849947",
   "JORFARTI000041849952",
-  "JORFARTI000041849954",
-  "JORFARTI000041849955",
   "JORFARTI000042007404",
   "JORFARTI000042007408",
   "JORFARTI000042007410",
@@ -35546,7 +39281,6 @@
   "LEGIARTI000006486560",
   "LEGIARTI000006486563",
   "LEGIARTI000006486565",
-  "LEGIARTI000006486566",
   "LEGIARTI000006486571",
   "LEGIARTI000006486572",
   "LEGIARTI000006486576",
@@ -35569,7 +39303,6 @@
   "LEGIARTI000006486623",
   "LEGIARTI000006486625",
   "LEGIARTI000006486627",
-  "LEGIARTI000006486629",
   "LEGIARTI000006486630",
   "LEGIARTI000006486633",
   "LEGIARTI000006486636",
@@ -35611,10 +39344,6 @@
   "LEGIARTI000038180321",
   "LEGIARTI000038180437",
   "LEGIARTI000038180468",
-  "LEGIARTI000039639317",
-  "LEGIARTI000039639319",
-  "LEGIARTI000039639424",
-  "LEGIARTI000039639426",
   "LEGIARTI000041437957",
   "LEGIARTI000041437959",
   "LEGIARTI000041437961",
@@ -35634,7 +39363,6 @@
   "LEGIARTI000041655886",
   "LEGIARTI000041655888",
   "LEGIARTI000041655890",
-  "LEGIARTI000041852785",
   "LEGIARTI000042462406",
   "LEGIARTI000042646047",
   "LEGIARTI000043232671",
@@ -39224,6 +42952,8 @@
   "LEGIARTI000051962768",
   "LEGIARTI000051962772",
   "LEGIARTI000051962778",
+  "LEGIARTI000051962782",
+  "LEGIARTI000051962784",
   "LEGIARTI000051962788",
   "LEGIARTI000051962790",
   "LEGIARTI000051962792",
@@ -39404,9 +43134,506 @@
   "LEGIARTI000053528852",
   "LEGIARTI000053528854",
   "LEGIARTI000053529068",
+  "LEGIARTI000054074800",
+  "LEGIARTI000054074834",
+  "LEGIARTI000054076078",
+  "LEGIARTI000054076082",
+  "LEGIARTI000054076086",
+  "LEGIARTI000054076088",
+  "LEGIARTI000054076092",
+  "LEGIARTI000054076099",
+  "LEGIARTI000054076101",
+  "LEGIARTI000054076103",
+  "LEGIARTI000054076109",
+  "LEGIARTI000054076111",
+  "LEGIARTI000054076113",
+  "LEGIARTI000054076115",
+  "LEGIARTI000054076119",
+  "LEGIARTI000054076121",
+  "LEGIARTI000054076123",
+  "LEGIARTI000054076127",
+  "LEGIARTI000054076129",
+  "LEGIARTI000054076131",
+  "LEGIARTI000054076133",
+  "LEGIARTI000054076137",
+  "LEGIARTI000054076139",
+  "LEGIARTI000054076141",
+  "LEGIARTI000054076143",
+  "LEGIARTI000054076145",
+  "LEGIARTI000054076149",
+  "LEGIARTI000054076153",
+  "LEGIARTI000054076164",
+  "LEGIARTI000054076166",
+  "LEGIARTI000054076168",
+  "LEGIARTI000054076170",
+  "LEGIARTI000054076172",
+  "LEGIARTI000054076174",
+  "LEGIARTI000054076176",
+  "LEGIARTI000054076178",
+  "LEGIARTI000054076180",
+  "LEGIARTI000054076182",
+  "LEGIARTI000054076184",
+  "LEGIARTI000054076186",
+  "LEGIARTI000054076188",
+  "LEGIARTI000054076190",
+  "LEGIARTI000054076192",
+  "LEGIARTI000054076194",
+  "LEGIARTI000054076198",
+  "LEGIARTI000054076202",
+  "LEGIARTI000054076204",
+  "LEGIARTI000054076208",
+  "LEGIARTI000054076215",
+  "LEGIARTI000054076219",
+  "LEGIARTI000054076221",
+  "LEGIARTI000054076223",
+  "LEGIARTI000054076225",
+  "LEGIARTI000054076227",
+  "LEGIARTI000054076233",
+  "LEGIARTI000054076235",
+  "LEGIARTI000054076237",
+  "LEGIARTI000054076239",
+  "LEGIARTI000054076241",
+  "LEGIARTI000054076243",
+  "LEGIARTI000054076247",
+  "LEGIARTI000054076251",
+  "LEGIARTI000054076253",
+  "LEGIARTI000054076255",
+  "LEGIARTI000054076259",
+  "LEGIARTI000054076261",
+  "LEGIARTI000054076267",
+  "LEGIARTI000054076269",
+  "LEGIARTI000054076271",
+  "LEGIARTI000054076273",
+  "LEGIARTI000054076275",
+  "LEGIARTI000054076277",
+  "LEGIARTI000054076281",
+  "LEGIARTI000054076285",
+  "LEGIARTI000054076287",
+  "LEGIARTI000054076291",
+  "LEGIARTI000054076297",
+  "LEGIARTI000054076299",
+  "LEGIARTI000054076301",
+  "LEGIARTI000054076303",
+  "LEGIARTI000054076313",
+  "LEGIARTI000054076317",
+  "LEGIARTI000054076322",
+  "LEGIARTI000054076332",
+  "LEGIARTI000054076334",
+  "LEGIARTI000054076336",
+  "LEGIARTI000054076340",
+  "LEGIARTI000054076342",
+  "LEGIARTI000054076344",
+  "LEGIARTI000054076346",
+  "LEGIARTI000054076350",
+  "LEGIARTI000054076352",
+  "LEGIARTI000054076354",
+  "LEGIARTI000054076356",
+  "LEGIARTI000054076362",
+  "LEGIARTI000054076364",
+  "LEGIARTI000054076366",
+  "LEGIARTI000054076368",
+  "LEGIARTI000054076370",
+  "LEGIARTI000054076372",
+  "LEGIARTI000054076374",
+  "LEGIARTI000054076376",
+  "LEGIARTI000054076378",
+  "LEGIARTI000054076380",
+  "LEGIARTI000054076382",
+  "LEGIARTI000054076386",
+  "LEGIARTI000054076388",
+  "LEGIARTI000054076390",
+  "LEGIARTI000054076392",
+  "LEGIARTI000054076394",
+  "LEGIARTI000054076398",
+  "LEGIARTI000054076400",
+  "LEGIARTI000054076402",
+  "LEGIARTI000054076404",
+  "LEGIARTI000054076408",
+  "LEGIARTI000054076410",
+  "LEGIARTI000054076412",
+  "LEGIARTI000054076414",
+  "LEGIARTI000054076416",
+  "LEGIARTI000054076418",
+  "LEGIARTI000054076424",
+  "LEGIARTI000054076428",
+  "LEGIARTI000054076430",
+  "LEGIARTI000054076432",
+  "LEGIARTI000054076434",
+  "LEGIARTI000054076436",
+  "LEGIARTI000054076440",
+  "LEGIARTI000054076442",
+  "LEGIARTI000054076450",
+  "LEGIARTI000054076454",
+  "LEGIARTI000054076456",
+  "LEGIARTI000054076460",
+  "LEGIARTI000054076464",
+  "LEGIARTI000054076466",
+  "LEGIARTI000054076474",
+  "LEGIARTI000054076476",
+  "LEGIARTI000054076478",
+  "LEGIARTI000054076483",
+  "LEGIARTI000054076487",
+  "LEGIARTI000054076491",
+  "LEGIARTI000054076493",
+  "LEGIARTI000054076495",
+  "LEGIARTI000054076497",
+  "LEGIARTI000054076503",
+  "LEGIARTI000054076505",
+  "LEGIARTI000054076507",
+  "LEGIARTI000054076511",
+  "LEGIARTI000054076519",
+  "LEGIARTI000054076525",
+  "LEGIARTI000054076527",
+  "LEGIARTI000054076529",
+  "LEGIARTI000054076531",
+  "LEGIARTI000054076533",
+  "LEGIARTI000054076535",
+  "LEGIARTI000054076537",
+  "LEGIARTI000054076541",
+  "LEGIARTI000054076543",
+  "LEGIARTI000054076545",
+  "LEGIARTI000054076547",
+  "LEGIARTI000054076549",
+  "LEGIARTI000054076553",
+  "LEGIARTI000054076555",
+  "LEGIARTI000054076557",
+  "LEGIARTI000054076559",
+  "LEGIARTI000054076561",
+  "LEGIARTI000054076563",
+  "LEGIARTI000054076565",
+  "LEGIARTI000054076568",
+  "LEGIARTI000054076570",
+  "LEGIARTI000054076572",
+  "LEGIARTI000054076574",
+  "LEGIARTI000054076576",
+  "LEGIARTI000054076580",
+  "LEGIARTI000054076582",
+  "LEGIARTI000054076584",
+  "LEGIARTI000054076588",
+  "LEGIARTI000054076590",
+  "LEGIARTI000054076596",
+  "LEGIARTI000054076598",
+  "LEGIARTI000054076600",
+  "LEGIARTI000054076602",
+  "LEGIARTI000054076607",
+  "LEGIARTI000054076609",
+  "LEGIARTI000054076611",
+  "LEGIARTI000054076613",
+  "LEGIARTI000054076617",
+  "LEGIARTI000054076619",
+  "LEGIARTI000054076621",
+  "LEGIARTI000054076627",
+  "LEGIARTI000054076629",
+  "LEGIARTI000054076631",
+  "LEGIARTI000054076633",
+  "LEGIARTI000054076635",
+  "LEGIARTI000054076637",
+  "LEGIARTI000054076639",
+  "LEGIARTI000054076643",
+  "LEGIARTI000054076647",
+  "LEGIARTI000054076649",
+  "LEGIARTI000054076653",
+  "LEGIARTI000054076657",
+  "LEGIARTI000054076659",
+  "LEGIARTI000054076665",
+  "LEGIARTI000054076667",
+  "LEGIARTI000054076669",
+  "LEGIARTI000054076671",
+  "LEGIARTI000054076673",
+  "LEGIARTI000054076675",
+  "LEGIARTI000054076677",
+  "LEGIARTI000054076679",
+  "LEGIARTI000054076685",
+  "LEGIARTI000054076687",
+  "LEGIARTI000054076693",
+  "LEGIARTI000054076695",
+  "LEGIARTI000054076697",
+  "LEGIARTI000054076699",
+  "LEGIARTI000054076701",
+  "LEGIARTI000054076703",
+  "LEGIARTI000054076707",
+  "LEGIARTI000054076710",
+  "LEGIARTI000054076714",
+  "LEGIARTI000054076716",
+  "LEGIARTI000054076720",
+  "LEGIARTI000054076722",
+  "LEGIARTI000054076724",
+  "LEGIARTI000054076728",
+  "LEGIARTI000054076733",
+  "LEGIARTI000054076735",
+  "LEGIARTI000054076739",
+  "LEGIARTI000054076741",
+  "LEGIARTI000054076743",
+  "LEGIARTI000054076745",
+  "LEGIARTI000054076750",
+  "LEGIARTI000054076752",
+  "LEGIARTI000054076756",
+  "LEGIARTI000054076762",
+  "LEGIARTI000054076771",
+  "LEGIARTI000054076775",
+  "LEGIARTI000054076777",
+  "LEGIARTI000054076779",
+  "LEGIARTI000054076781",
+  "LEGIARTI000054076783",
+  "LEGIARTI000054076785",
+  "LEGIARTI000054076787",
+  "LEGIARTI000054076791",
+  "LEGIARTI000054076793",
+  "LEGIARTI000054076797",
+  "LEGIARTI000054076799",
+  "LEGIARTI000054076803",
+  "LEGIARTI000054076805",
+  "LEGIARTI000054076808",
+  "LEGIARTI000054076810",
+  "LEGIARTI000054076814",
+  "LEGIARTI000054076818",
+  "LEGIARTI000054076820",
+  "LEGIARTI000054076822",
+  "LEGIARTI000054076824",
+  "LEGIARTI000054076826",
+  "LEGIARTI000054076830",
+  "LEGIARTI000054076832",
+  "LEGIARTI000054076834",
+  "LEGIARTI000054076836",
+  "LEGIARTI000054076842",
+  "LEGIARTI000054076844",
+  "LEGIARTI000054076848",
+  "LEGIARTI000054076850",
+  "LEGIARTI000054076852",
+  "LEGIARTI000054076854",
+  "LEGIARTI000054076856",
+  "LEGIARTI000054076858",
+  "LEGIARTI000054076862",
+  "LEGIARTI000054076866",
+  "LEGIARTI000054076868",
+  "LEGIARTI000054076876",
+  "LEGIARTI000054076878",
+  "LEGIARTI000054076880",
+  "LEGIARTI000054076882",
+  "LEGIARTI000054076884",
+  "LEGIARTI000054076888",
+  "LEGIARTI000054076890",
+  "LEGIARTI000054076892",
+  "LEGIARTI000054076896",
+  "LEGIARTI000054076898",
+  "LEGIARTI000054076902",
+  "LEGIARTI000054076910",
+  "LEGIARTI000054076913",
+  "LEGIARTI000054076916",
+  "LEGIARTI000054076918",
+  "LEGIARTI000054076922",
+  "LEGIARTI000054076924",
+  "LEGIARTI000054076926",
+  "LEGIARTI000054076929",
+  "LEGIARTI000054076933",
+  "LEGIARTI000054076935",
+  "LEGIARTI000054076937",
+  "LEGIARTI000054076940",
+  "LEGIARTI000054076942",
+  "LEGIARTI000054076944",
+  "LEGIARTI000054076948",
+  "LEGIARTI000054076952",
+  "LEGIARTI000054076960",
+  "LEGIARTI000054076964",
+  "LEGIARTI000054076966",
+  "LEGIARTI000054076968",
+  "LEGIARTI000054076972",
+  "LEGIARTI000054076974",
+  "LEGIARTI000054076978",
+  "LEGIARTI000054076980",
+  "LEGIARTI000054076982",
+  "LEGIARTI000054076984",
+  "LEGIARTI000054076990",
+  "LEGIARTI000054076996",
+  "LEGIARTI000054076998",
+  "LEGIARTI000054077000",
+  "LEGIARTI000054077002",
+  "LEGIARTI000054077004",
+  "LEGIARTI000054077006",
+  "LEGIARTI000054077008",
+  "LEGIARTI000054077010",
+  "LEGIARTI000054077014",
+  "LEGIARTI000054077020",
+  "LEGIARTI000054077024",
+  "LEGIARTI000054077028",
+  "LEGIARTI000054077031",
+  "LEGIARTI000054077033",
+  "LEGIARTI000054077035",
+  "LEGIARTI000054077037",
+  "LEGIARTI000054077039",
+  "LEGIARTI000054077041",
+  "LEGIARTI000054077043",
+  "LEGIARTI000054077049",
+  "LEGIARTI000054077051",
+  "LEGIARTI000054077055",
+  "LEGIARTI000054077057",
+  "LEGIARTI000054077059",
+  "LEGIARTI000054077062",
+  "LEGIARTI000054077066",
+  "LEGIARTI000054077068",
+  "LEGIARTI000054077070",
+  "LEGIARTI000054077074",
+  "LEGIARTI000054077076",
+  "LEGIARTI000054077078",
+  "LEGIARTI000054077080",
+  "LEGIARTI000054077082",
+  "LEGIARTI000054077084",
+  "LEGIARTI000054077086",
+  "LEGIARTI000054077088",
+  "LEGIARTI000054077094",
+  "LEGIARTI000054077096",
+  "LEGIARTI000054077098",
+  "LEGIARTI000054077101",
+  "LEGIARTI000054077104",
+  "LEGIARTI000054077106",
+  "LEGIARTI000054077110",
+  "LEGIARTI000054077112",
+  "LEGIARTI000054077116",
+  "LEGIARTI000054077123",
+  "LEGIARTI000054077125",
+  "LEGIARTI000054077127",
+  "LEGIARTI000054077133",
+  "LEGIARTI000054077135",
+  "LEGIARTI000054077137",
+  "LEGIARTI000054077141",
+  "LEGIARTI000054077143",
+  "LEGIARTI000054077145",
+  "LEGIARTI000054077147",
+  "LEGIARTI000054077149",
+  "LEGIARTI000054077151",
+  "LEGIARTI000054077153",
+  "LEGIARTI000054077155",
+  "LEGIARTI000054077157",
+  "LEGIARTI000054077159",
+  "LEGIARTI000054077161",
+  "LEGIARTI000054077163",
+  "LEGIARTI000054077169",
+  "LEGIARTI000054077171",
+  "LEGIARTI000054077173",
+  "LEGIARTI000054077175",
+  "LEGIARTI000054077177",
+  "LEGIARTI000054077180",
+  "LEGIARTI000054077184",
+  "LEGIARTI000054077186",
+  "LEGIARTI000054077188",
+  "LEGIARTI000054077190",
+  "LEGIARTI000054077192",
+  "LEGIARTI000054077200",
+  "LEGIARTI000054077208",
+  "LEGIARTI000054077211",
+  "LEGIARTI000054077215",
+  "LEGIARTI000054077217",
+  "LEGIARTI000054077220",
+  "LEGIARTI000054077222",
+  "LEGIARTI000054077224",
+  "LEGIARTI000054077226",
+  "LEGIARTI000054077230",
+  "LEGIARTI000054077232",
+  "LEGIARTI000054077239",
+  "LEGIARTI000054077255",
+  "LEGIARTI000054077261",
+  "LEGIARTI000054077264",
+  "LEGIARTI000054077268",
+  "LEGIARTI000054077274",
+  "LEGIARTI000054077276",
+  "LEGIARTI000054077280",
+  "LEGIARTI000054077282",
+  "LEGIARTI000054077284",
+  "LEGIARTI000054077286",
+  "LEGIARTI000054077288",
+  "LEGIARTI000054077294",
+  "LEGIARTI000054077298",
+  "LEGIARTI000054077300",
+  "LEGIARTI000054077304",
+  "LEGIARTI000054077306",
+  "LEGIARTI000054077308",
+  "LEGIARTI000054077310",
+  "LEGIARTI000054077314",
+  "LEGIARTI000054077318",
+  "LEGIARTI000054077320",
+  "LEGIARTI000054077322",
+  "LEGIARTI000054077324",
+  "LEGIARTI000054077326",
+  "LEGIARTI000054077330",
+  "LEGIARTI000054077332",
+  "LEGIARTI000054077337",
+  "LEGIARTI000054077339",
+  "LEGIARTI000054077341",
+  "LEGIARTI000054077344",
+  "LEGIARTI000054077347",
+  "LEGIARTI000054077349",
+  "LEGIARTI000054077355",
+  "LEGIARTI000054077357",
+  "LEGIARTI000054077359",
+  "LEGIARTI000054077361",
+  "LEGIARTI000054077363",
+  "LEGIARTI000054077365",
+  "LEGIARTI000054077367",
+  "LEGIARTI000054077369",
+  "LEGIARTI000054077371",
+  "LEGIARTI000054077373",
+  "LEGIARTI000054077377",
+  "LEGIARTI000054077379",
+  "LEGIARTI000054077381",
+  "LEGIARTI000054077383",
+  "LEGIARTI000054077385",
+  "LEGIARTI000054077391",
+  "LEGIARTI000054077393",
+  "LEGIARTI000054077395",
+  "LEGIARTI000054077397",
+  "LEGIARTI000054077399",
+  "LEGIARTI000054077401",
+  "LEGIARTI000054077404",
+  "LEGIARTI000054077408",
+  "LEGIARTI000054077410",
+  "LEGIARTI000054077414",
+  "LEGIARTI000054077425",
+  "LEGIARTI000054077427",
+  "LEGIARTI000054077431",
+  "LEGIARTI000054077433",
+  "LEGIARTI000054077435",
+  "LEGIARTI000054077439",
+  "LEGIARTI000054077441",
+  "LEGIARTI000054077445",
+  "LEGIARTI000054077447",
+  "LEGIARTI000054077449",
+  "LEGIARTI000054077453",
+  "LEGIARTI000054077455",
+  "LEGIARTI000054077458",
+  "LEGIARTI000054077460",
+  "LEGIARTI000054077462",
+  "LEGIARTI000054077465",
+  "LEGIARTI000054077472",
+  "LEGIARTI000054077482",
+  "LEGIARTI000054077489",
+  "LEGIARTI000054077494",
+  "LEGIARTI000054077504",
+  "LEGIARTI000054077507",
+  "LEGIARTI000054077510",
+  "LEGIARTI000054077513",
+  "LEGIARTI000054077516",
+  "LEGIARTI000054077519",
+  "LEGIARTI000054077522",
+  "LEGIARTI000054077525",
+  "LEGIARTI000054077530",
+  "LEGIARTI000054077532",
+  "LEGIARTI000054077539",
+  "LEGIARTI000054077541",
+  "LEGIARTI000054077543",
+  "LEGIARTI000054077545",
+  "LEGIARTI000054077549",
+  "LEGIARTI000054077552",
+  "LEGIARTI000054077555",
+  "LEGIARTI000054077557",
+  "LEGIARTI000054077560",
+  "LEGIARTI000054077563",
   "LEGIARTI000054161658",
   "LEGIARTI000054161660",
-  "LEGIARTI000054161662"
+  "LEGIARTI000054161662",
+  "LEGIARTI000054590603",
+  "LEGIARTI000054699409",
+  "LEGIARTI000054700535",
+  "LEGIARTI000054700537"
  ],
  "article_version_ids": [
   "LEGIARTI000006211065",
@@ -39415,8 +43642,6 @@
   "LEGIARTI000006214263",
   "LEGIARTI000006214264",
   "LEGIARTI000006214265",
-  "LEGIARTI000006214266",
-  "LEGIARTI000006214267",
   "LEGIARTI000006214268",
   "LEGIARTI000006252669",
   "LEGIARTI000006252672",
@@ -39474,7 +43699,6 @@
   "LEGIARTI000028452378",
   "LEGIARTI000028757072",
   "LEGIARTI000028769866",
-  "LEGIARTI000028769874",
   "LEGIARTI000028769964",
   "LEGIARTI000028769979",
   "LEGIARTI000028769984",
@@ -39484,26 +43708,14 @@
   "LEGIARTI000030647556",
   "LEGIARTI000030647558",
   "LEGIARTI000030647559",
-  "LEGIARTI000032038740",
-  "LEGIARTI000032038742",
   "LEGIARTI000032038746",
   "LEGIARTI000032038748",
-  "LEGIARTI000032038756",
-  "LEGIARTI000032038764",
-  "LEGIARTI000032038766",
-  "LEGIARTI000034701183",
-  "LEGIARTI000034701185",
-  "LEGIARTI000034701187",
-  "LEGIARTI000034701191",
-  "LEGIARTI000034701195",
   "LEGIARTI000034701197",
   "LEGIARTI000034701199",
   "LEGIARTI000034701201",
   "LEGIARTI000034701203",
   "LEGIARTI000034701205",
   "LEGIARTI000034701207",
-  "LEGIARTI000034701211",
-  "LEGIARTI000034701217",
   "LEGIARTI000036654494",
   "LEGIARTI000036654505",
   "LEGIARTI000037457049",
@@ -39519,26 +43731,12 @@
   "LEGIARTI000038190118",
   "LEGIARTI000038190125",
   "LEGIARTI000039211053",
-  "LEGIARTI000039639752",
-  "LEGIARTI000039639759",
-  "LEGIARTI000039644926",
-  "LEGIARTI000039644931",
-  "LEGIARTI000039644948",
-  "LEGIARTI000039644949",
-  "LEGIARTI000039644950",
-  "LEGIARTI000039644954",
-  "LEGIARTI000039644958",
   "LEGIARTI000041437959",
   "LEGIARTI000041437961",
-  "LEGIARTI000041437963",
   "LEGIARTI000041437967",
   "LEGIARTI000041437969",
   "LEGIARTI000041437971",
-  "LEGIARTI000041437973",
   "LEGIARTI000041438060",
-  "LEGIARTI000041438763",
-  "LEGIARTI000041438765",
-  "LEGIARTI000041438767",
   "LEGIARTI000041438769",
   "LEGIARTI000041438771",
   "LEGIARTI000041438773",
@@ -39546,7 +43744,6 @@
   "LEGIARTI000041438777",
   "LEGIARTI000041438779",
   "LEGIARTI000041438781",
-  "LEGIARTI000041438783",
   "LEGIARTI000041655874",
   "LEGIARTI000041655876",
   "LEGIARTI000041655878",
@@ -39563,15 +43760,6 @@
   "LEGIARTI000041851726",
   "LEGIARTI000041851728",
   "LEGIARTI000041851730",
-  "LEGIARTI000041851732",
-  "LEGIARTI000041851734",
-  "LEGIARTI000041852788",
-  "LEGIARTI000041853196",
-  "LEGIARTI000041853208",
-  "LEGIARTI000041853211",
-  "LEGIARTI000041853213",
-  "LEGIARTI000041853215",
-  "LEGIARTI000041853217",
   "LEGIARTI000042009428",
   "LEGIARTI000042009430",
   "LEGIARTI000042009432",
@@ -39730,15 +43918,48 @@
   "LEGIARTI000044424723",
   "LEGIARTI000044424725",
   "LEGIARTI000044424727",
+  "LEGIARTI000044424739",
+  "LEGIARTI000044424741",
+  "LEGIARTI000044424745",
+  "LEGIARTI000044424747",
+  "LEGIARTI000044424749",
+  "LEGIARTI000044424751",
+  "LEGIARTI000044424753",
+  "LEGIARTI000044424755",
+  "LEGIARTI000044424757",
+  "LEGIARTI000044424759",
+  "LEGIARTI000044424761",
+  "LEGIARTI000044424763",
+  "LEGIARTI000044424767",
+  "LEGIARTI000044424769",
+  "LEGIARTI000044424773",
+  "LEGIARTI000044424779",
+  "LEGIARTI000044424781",
+  "LEGIARTI000044424785",
+  "LEGIARTI000044424787",
+  "LEGIARTI000044424789",
+  "LEGIARTI000044424791",
+  "LEGIARTI000044424793",
+  "LEGIARTI000044424795",
+  "LEGIARTI000044424797",
+  "LEGIARTI000044424801",
+  "LEGIARTI000044424803",
+  "LEGIARTI000044424805",
+  "LEGIARTI000044424807",
+  "LEGIARTI000044424811",
+  "LEGIARTI000044424813",
+  "LEGIARTI000044424819",
+  "LEGIARTI000044424821",
+  "LEGIARTI000044424825",
+  "LEGIARTI000044424829",
+  "LEGIARTI000044424833",
+  "LEGIARTI000044424835",
   "LEGIARTI000044424845",
   "LEGIARTI000044424851",
   "LEGIARTI000044424853",
   "LEGIARTI000044424855",
-  "LEGIARTI000044424861",
   "LEGIARTI000044424863",
   "LEGIARTI000044424865",
-  "LEGIARTI000044424867",
-  "LEGIARTI000044424869",
   "LEGIARTI000044424873",
   "LEGIARTI000044424877",
   "LEGIARTI000044424879",
@@ -39956,7 +44177,6 @@
   "LEGIARTI000044425546",
   "LEGIARTI000044425548",
   "LEGIARTI000044425554",
-  "LEGIARTI000044425556",
   "LEGIARTI000044425558",
   "LEGIARTI000044425560",
   "LEGIARTI000044425562",
@@ -40293,7 +44513,6 @@
   "LEGIARTI000044426514",
   "LEGIARTI000044426516",
   "LEGIARTI000044426520",
-  "LEGIARTI000044426522",
   "LEGIARTI000044426524",
   "LEGIARTI000044426526",
   "LEGIARTI000044426528",
@@ -40362,14 +44581,12 @@
   "LEGIARTI000044426728",
   "LEGIARTI000044426734",
   "LEGIARTI000044426736",
-  "LEGIARTI000044426738",
   "LEGIARTI000044426742",
   "LEGIARTI000044426744",
   "LEGIARTI000044426746",
   "LEGIARTI000044426748",
   "LEGIARTI000044426750",
   "LEGIARTI000044426752",
-  "LEGIARTI000044426754",
   "LEGIARTI000044426758",
   "LEGIARTI000044426760",
   "LEGIARTI000044426766",
@@ -40384,9 +44601,7 @@
   "LEGIARTI000044426788",
   "LEGIARTI000044426790",
   "LEGIARTI000044426796",
-  "LEGIARTI000044426800",
   "LEGIARTI000044426806",
-  "LEGIARTI000044426812",
   "LEGIARTI000044426818",
   "LEGIARTI000044426820",
   "LEGIARTI000044426822",
@@ -40394,12 +44609,10 @@
   "LEGIARTI000044426826",
   "LEGIARTI000044426830",
   "LEGIARTI000044426832",
-  "LEGIARTI000044426834",
   "LEGIARTI000044426838",
   "LEGIARTI000044426840",
   "LEGIARTI000044426842",
   "LEGIARTI000044426844",
-  "LEGIARTI000044426846",
   "LEGIARTI000044426848",
   "LEGIARTI000044426854",
   "LEGIARTI000044426856",
@@ -40431,7 +44644,6 @@
   "LEGIARTI000044426936",
   "LEGIARTI000044426940",
   "LEGIARTI000044426942",
-  "LEGIARTI000044426944",
   "LEGIARTI000044426946",
   "LEGIARTI000044426948",
   "LEGIARTI000044426950",
@@ -40442,7 +44654,6 @@
   "LEGIARTI000044426968",
   "LEGIARTI000044426972",
   "LEGIARTI000044426974",
-  "LEGIARTI000044426976",
   "LEGIARTI000044426978",
   "LEGIARTI000044426980",
   "LEGIARTI000044426984",
@@ -40461,7 +44672,6 @@
   "LEGIARTI000044427024",
   "LEGIARTI000044427026",
   "LEGIARTI000044427039",
-  "LEGIARTI000044427041",
   "LEGIARTI000044427043",
   "LEGIARTI000044427055",
   "LEGIARTI000044427057",
@@ -40761,10 +44971,8 @@
   "LEGIARTI000044428003",
   "LEGIARTI000044428005",
   "LEGIARTI000044428007",
-  "LEGIARTI000044542569",
   "LEGIARTI000045205033",
   "LEGIARTI000045214244",
-  "LEGIARTI000045351577",
   "LEGIARTI000045389685",
   "LEGIARTI000045392464",
   "LEGIARTI000045392482",
@@ -40848,10 +45056,8 @@
   "LEGIARTI000045662460",
   "LEGIARTI000045662463",
   "LEGIARTI000045662477",
-  "LEGIARTI000045662481",
   "LEGIARTI000045662506",
   "LEGIARTI000045662514",
-  "LEGIARTI000045662525",
   "LEGIARTI000045662545",
   "LEGIARTI000045662550",
   "LEGIARTI000045662634",
@@ -40881,42 +45087,6 @@
   "LEGIARTI000046195245",
   "LEGIARTI000046195249",
   "LEGIARTI000046195730",
-  "LEGIARTI000046195735",
-  "LEGIARTI000046195738",
-  "LEGIARTI000046195741",
-  "LEGIARTI000046195744",
-  "LEGIARTI000046195747",
-  "LEGIARTI000046195750",
-  "LEGIARTI000046195753",
-  "LEGIARTI000046195756",
-  "LEGIARTI000046195759",
-  "LEGIARTI000046195762",
-  "LEGIARTI000046195765",
-  "LEGIARTI000046195768",
-  "LEGIARTI000046195771",
-  "LEGIARTI000046195774",
-  "LEGIARTI000046195777",
-  "LEGIARTI000046195795",
-  "LEGIARTI000046195798",
-  "LEGIARTI000046195804",
-  "LEGIARTI000046195807",
-  "LEGIARTI000046195810",
-  "LEGIARTI000046195813",
-  "LEGIARTI000046195816",
-  "LEGIARTI000046195819",
-  "LEGIARTI000046195822",
-  "LEGIARTI000046195825",
-  "LEGIARTI000046195828",
-  "LEGIARTI000046195831",
-  "LEGIARTI000046195834",
-  "LEGIARTI000046195837",
-  "LEGIARTI000046195840",
-  "LEGIARTI000046195855",
-  "LEGIARTI000046195858",
-  "LEGIARTI000046195862",
-  "LEGIARTI000046195865",
-  "LEGIARTI000046195868",
-  "LEGIARTI000046195871",
   "LEGIARTI000046197515",
   "LEGIARTI000046773101",
   "LEGIARTI000046774648",
@@ -40980,12 +45150,9 @@
   "LEGIARTI000049852141",
   "LEGIARTI000049852143",
   "LEGIARTI000049852147",
-  "LEGIARTI000049852523",
   "LEGIARTI000049856270",
   "LEGIARTI000049856275",
-  "LEGIARTI000049856321",
   "LEGIARTI000049856328",
-  "LEGIARTI000049856334",
   "LEGIARTI000049881505",
   "LEGIARTI000049881511",
   "LEGIARTI000049881513",
@@ -41846,7 +46013,6 @@
   "LEGIARTI000050548429",
   "LEGIARTI000050548431",
   "LEGIARTI000050548435",
-  "LEGIARTI000050548443",
   "LEGIARTI000050548445",
   "LEGIARTI000050548447",
   "LEGIARTI000050548449",
@@ -41888,8 +46054,6 @@
   "LEGIARTI000050548537",
   "LEGIARTI000050548543",
   "LEGIARTI000050548547",
-  "LEGIARTI000050548549",
-  "LEGIARTI000050548553",
   "LEGIARTI000050548555",
   "LEGIARTI000050548565",
   "LEGIARTI000050548567",
@@ -42024,7 +46188,6 @@
   "LEGIARTI000050548975",
   "LEGIARTI000050548979",
   "LEGIARTI000050548981",
-  "LEGIARTI000050548985",
   "LEGIARTI000050548991",
   "LEGIARTI000050548995",
   "LEGIARTI000050548997",
@@ -42257,7 +46420,6 @@
   "LEGIARTI000050549641",
   "LEGIARTI000050549643",
   "LEGIARTI000050549647",
-  "LEGIARTI000050549649",
   "LEGIARTI000050549655",
   "LEGIARTI000050549657",
   "LEGIARTI000050549659",
@@ -42278,10 +46440,7 @@
   "LEGIARTI000050549709",
   "LEGIARTI000050549711",
   "LEGIARTI000050549725",
-  "LEGIARTI000050549727",
-  "LEGIARTI000050549731",
   "LEGIARTI000050549739",
-  "LEGIARTI000050549741",
   "LEGIARTI000050549745",
   "LEGIARTI000050549761",
   "LEGIARTI000050549765",
@@ -42298,7 +46457,6 @@
   "LEGIARTI000050549791",
   "LEGIARTI000050549793",
   "LEGIARTI000050549797",
-  "LEGIARTI000050549799",
   "LEGIARTI000050549801",
   "LEGIARTI000050549803",
   "LEGIARTI000050549805",
@@ -42425,16 +46583,12 @@
   "LEGIARTI000050550179",
   "LEGIARTI000050550181",
   "LEGIARTI000050550189",
-  "LEGIARTI000050550191",
   "LEGIARTI000050550193",
   "LEGIARTI000050550195",
   "LEGIARTI000050550199",
   "LEGIARTI000050550203",
-  "LEGIARTI000050550207",
   "LEGIARTI000050550209",
-  "LEGIARTI000050550213",
   "LEGIARTI000050550217",
-  "LEGIARTI000050550219",
   "LEGIARTI000050550221",
   "LEGIARTI000050550227",
   "LEGIARTI000050550229",
@@ -42462,7 +46616,6 @@
   "LEGIARTI000050550299",
   "LEGIARTI000050550301",
   "LEGIARTI000050550303",
-  "LEGIARTI000050550307",
   "LEGIARTI000050550309",
   "LEGIARTI000050550311",
   "LEGIARTI000050550313",
@@ -42506,11 +46659,9 @@
   "LEGIARTI000050550423",
   "LEGIARTI000050550433",
   "LEGIARTI000050550435",
-  "LEGIARTI000050550437",
   "LEGIARTI000050550441",
   "LEGIARTI000050550445",
   "LEGIARTI000050550447",
-  "LEGIARTI000050550449",
   "LEGIARTI000050550457",
   "LEGIARTI000050550459",
   "LEGIARTI000050550463",
@@ -42603,9 +46754,7 @@
   "LEGIARTI000050550733",
   "LEGIARTI000050550735",
   "LEGIARTI000050550737",
-  "LEGIARTI000050550741",
   "LEGIARTI000050550743",
-  "LEGIARTI000050550745",
   "LEGIARTI000050550747",
   "LEGIARTI000050550755",
   "LEGIARTI000050550759",
@@ -42634,7 +46783,6 @@
   "LEGIARTI000050550831",
   "LEGIARTI000050550833",
   "LEGIARTI000050550835",
-  "LEGIARTI000050550839",
   "LEGIARTI000050550841",
   "LEGIARTI000050550843",
   "LEGIARTI000050550849",
@@ -42670,9 +46818,7 @@
   "LEGIARTI000050550941",
   "LEGIARTI000050550945",
   "LEGIARTI000050550947",
-  "LEGIARTI000050550951",
   "LEGIARTI000050550953",
-  "LEGIARTI000050550955",
   "LEGIARTI000050550957",
   "LEGIARTI000050550977",
   "LEGIARTI000050550979",
@@ -42693,7 +46839,6 @@
   "LEGIARTI000050551017",
   "LEGIARTI000050551019",
   "LEGIARTI000050551027",
-  "LEGIARTI000050551031",
   "LEGIARTI000050551037",
   "LEGIARTI000050551041",
   "LEGIARTI000050551045",
@@ -42732,7 +46877,6 @@
   "LEGIARTI000050551149",
   "LEGIARTI000050551151",
   "LEGIARTI000050551153",
-  "LEGIARTI000050551159",
   "LEGIARTI000050551161",
   "LEGIARTI000050551165",
   "LEGIARTI000050551167",
@@ -42775,7 +46919,6 @@
   "LEGIARTI000050551281",
   "LEGIARTI000050551283",
   "LEGIARTI000050551285",
-  "LEGIARTI000050595674",
   "LEGIARTI000050595694",
   "LEGIARTI000050595697",
   "LEGIARTI000050595700",
@@ -42787,7 +46930,6 @@
   "LEGIARTI000051057352",
   "LEGIARTI000051201136",
   "LEGIARTI000051268706",
-  "LEGIARTI000051268709",
   "LEGIARTI000051288343",
   "LEGIARTI000051667912",
   "LEGIARTI000051667916",
@@ -42814,12 +46956,7 @@
   "LEGIARTI000051774824",
   "LEGIARTI000051774826",
   "LEGIARTI000051774828",
-  "LEGIARTI000051775619",
-  "LEGIARTI000051775632",
-  "LEGIARTI000051775634",
-  "LEGIARTI000051775636",
   "LEGIARTI000051777208",
-  "LEGIARTI000051777239",
   "LEGIARTI000051829288",
   "LEGIARTI000051944851",
   "LEGIARTI000051944857",
@@ -42843,7 +46980,6 @@
   "LEGIARTI000051961581",
   "LEGIARTI000051961585",
   "LEGIARTI000051961588",
-  "LEGIARTI000051961591",
   "LEGIARTI000051961593",
   "LEGIARTI000051961595",
   "LEGIARTI000051961599",
@@ -43042,7 +47178,6 @@
   "LEGIARTI000051962144",
   "LEGIARTI000051962161",
   "LEGIARTI000051962164",
-  "LEGIARTI000051962166",
   "LEGIARTI000051962168",
   "LEGIARTI000051962170",
   "LEGIARTI000051962172",
@@ -43183,7 +47318,6 @@
   "LEGIARTI000051962587",
   "LEGIARTI000051962589",
   "LEGIARTI000051962591",
-  "LEGIARTI000051962593",
   "LEGIARTI000051962597",
   "LEGIARTI000051962599",
   "LEGIARTI000051962601",
@@ -43220,7 +47354,6 @@
   "LEGIARTI000051962695",
   "LEGIARTI000051962699",
   "LEGIARTI000051962707",
-  "LEGIARTI000051962713",
   "LEGIARTI000051962716",
   "LEGIARTI000051962720",
   "LEGIARTI000051962722",
@@ -43408,20 +47541,10 @@
   "LEGIARTI000051968615",
   "LEGIARTI000051968621",
   "LEGIARTI000051968626",
-  "LEGIARTI000051968639",
-  "LEGIARTI000051968654",
-  "LEGIARTI000051968660",
-  "LEGIARTI000051968677",
-  "LEGIARTI000051968687",
-  "LEGIARTI000051968694",
   "LEGIARTI000051968704",
-  "LEGIARTI000051968714",
-  "LEGIARTI000051968728",
   "LEGIARTI000051968736",
   "LEGIARTI000051968740",
-  "LEGIARTI000051968753",
   "LEGIARTI000051968768",
-  "LEGIARTI000051968773",
   "LEGIARTI000051979600",
   "LEGIARTI000051979603",
   "LEGIARTI000051979608",
@@ -43433,7 +47556,6 @@
   "LEGIARTI000051979635",
   "LEGIARTI000051979911",
   "LEGIARTI000051980382",
-  "LEGIARTI000051980389",
   "LEGIARTI000051980394",
   "LEGIARTI000051980396",
   "LEGIARTI000051980403",
@@ -43442,7 +47564,6 @@
   "LEGIARTI000052013317",
   "LEGIARTI000052022049",
   "LEGIARTI000052023412",
-  "LEGIARTI000052025347",
   "LEGIARTI000052073873",
   "LEGIARTI000052080961",
   "LEGIARTI000052081153",
@@ -43464,19 +47585,16 @@
   "LEGIARTI000052551960",
   "LEGIARTI000052625044",
   "LEGIARTI000052968860",
-  "LEGIARTI000052969292",
   "LEGIARTI000052969300",
   "LEGIARTI000052969306",
   "LEGIARTI000052969314",
   "LEGIARTI000052969317",
-  "LEGIARTI000052969328",
   "LEGIARTI000053146283",
   "LEGIARTI000053146292",
   "LEGIARTI000053146303",
   "LEGIARTI000053147921",
   "LEGIARTI000053148242",
   "LEGIARTI000053148245",
-  "LEGIARTI000053152620",
   "LEGIARTI000053279059",
   "LEGIARTI000053279062",
   "LEGIARTI000053279065",
@@ -43555,6 +47673,545 @@
   "LEGIARTI000053548456",
   "LEGIARTI000053548460",
   "LEGIARTI000053572784",
+  "LEGIARTI000054076078",
+  "LEGIARTI000054076082",
+  "LEGIARTI000054076086",
+  "LEGIARTI000054076088",
+  "LEGIARTI000054076092",
+  "LEGIARTI000054076099",
+  "LEGIARTI000054076101",
+  "LEGIARTI000054076103",
+  "LEGIARTI000054076109",
+  "LEGIARTI000054076111",
+  "LEGIARTI000054076113",
+  "LEGIARTI000054076115",
+  "LEGIARTI000054076119",
+  "LEGIARTI000054076121",
+  "LEGIARTI000054076123",
+  "LEGIARTI000054076127",
+  "LEGIARTI000054076129",
+  "LEGIARTI000054076131",
+  "LEGIARTI000054076133",
+  "LEGIARTI000054076137",
+  "LEGIARTI000054076139",
+  "LEGIARTI000054076141",
+  "LEGIARTI000054076143",
+  "LEGIARTI000054076145",
+  "LEGIARTI000054076149",
+  "LEGIARTI000054076153",
+  "LEGIARTI000054076164",
+  "LEGIARTI000054076166",
+  "LEGIARTI000054076168",
+  "LEGIARTI000054076170",
+  "LEGIARTI000054076172",
+  "LEGIARTI000054076174",
+  "LEGIARTI000054076176",
+  "LEGIARTI000054076178",
+  "LEGIARTI000054076180",
+  "LEGIARTI000054076182",
+  "LEGIARTI000054076184",
+  "LEGIARTI000054076186",
+  "LEGIARTI000054076188",
+  "LEGIARTI000054076190",
+  "LEGIARTI000054076192",
+  "LEGIARTI000054076194",
+  "LEGIARTI000054076198",
+  "LEGIARTI000054076202",
+  "LEGIARTI000054076204",
+  "LEGIARTI000054076208",
+  "LEGIARTI000054076215",
+  "LEGIARTI000054076219",
+  "LEGIARTI000054076221",
+  "LEGIARTI000054076223",
+  "LEGIARTI000054076225",
+  "LEGIARTI000054076227",
+  "LEGIARTI000054076233",
+  "LEGIARTI000054076235",
+  "LEGIARTI000054076237",
+  "LEGIARTI000054076239",
+  "LEGIARTI000054076241",
+  "LEGIARTI000054076243",
+  "LEGIARTI000054076247",
+  "LEGIARTI000054076251",
+  "LEGIARTI000054076253",
+  "LEGIARTI000054076255",
+  "LEGIARTI000054076259",
+  "LEGIARTI000054076261",
+  "LEGIARTI000054076267",
+  "LEGIARTI000054076269",
+  "LEGIARTI000054076271",
+  "LEGIARTI000054076273",
+  "LEGIARTI000054076275",
+  "LEGIARTI000054076277",
+  "LEGIARTI000054076281",
+  "LEGIARTI000054076285",
+  "LEGIARTI000054076287",
+  "LEGIARTI000054076291",
+  "LEGIARTI000054076297",
+  "LEGIARTI000054076299",
+  "LEGIARTI000054076301",
+  "LEGIARTI000054076303",
+  "LEGIARTI000054076313",
+  "LEGIARTI000054076317",
+  "LEGIARTI000054076322",
+  "LEGIARTI000054076332",
+  "LEGIARTI000054076334",
+  "LEGIARTI000054076336",
+  "LEGIARTI000054076340",
+  "LEGIARTI000054076342",
+  "LEGIARTI000054076344",
+  "LEGIARTI000054076346",
+  "LEGIARTI000054076350",
+  "LEGIARTI000054076352",
+  "LEGIARTI000054076354",
+  "LEGIARTI000054076356",
+  "LEGIARTI000054076362",
+  "LEGIARTI000054076364",
+  "LEGIARTI000054076366",
+  "LEGIARTI000054076368",
+  "LEGIARTI000054076370",
+  "LEGIARTI000054076372",
+  "LEGIARTI000054076374",
+  "LEGIARTI000054076376",
+  "LEGIARTI000054076378",
+  "LEGIARTI000054076380",
+  "LEGIARTI000054076382",
+  "LEGIARTI000054076386",
+  "LEGIARTI000054076388",
+  "LEGIARTI000054076390",
+  "LEGIARTI000054076392",
+  "LEGIARTI000054076394",
+  "LEGIARTI000054076398",
+  "LEGIARTI000054076400",
+  "LEGIARTI000054076402",
+  "LEGIARTI000054076404",
+  "LEGIARTI000054076408",
+  "LEGIARTI000054076410",
+  "LEGIARTI000054076412",
+  "LEGIARTI000054076414",
+  "LEGIARTI000054076416",
+  "LEGIARTI000054076418",
+  "LEGIARTI000054076424",
+  "LEGIARTI000054076428",
+  "LEGIARTI000054076430",
+  "LEGIARTI000054076432",
+  "LEGIARTI000054076434",
+  "LEGIARTI000054076436",
+  "LEGIARTI000054076440",
+  "LEGIARTI000054076442",
+  "LEGIARTI000054076450",
+  "LEGIARTI000054076454",
+  "LEGIARTI000054076456",
+  "LEGIARTI000054076460",
+  "LEGIARTI000054076464",
+  "LEGIARTI000054076466",
+  "LEGIARTI000054076474",
+  "LEGIARTI000054076476",
+  "LEGIARTI000054076478",
+  "LEGIARTI000054076483",
+  "LEGIARTI000054076487",
+  "LEGIARTI000054076491",
+  "LEGIARTI000054076493",
+  "LEGIARTI000054076495",
+  "LEGIARTI000054076497",
+  "LEGIARTI000054076503",
+  "LEGIARTI000054076505",
+  "LEGIARTI000054076507",
+  "LEGIARTI000054076511",
+  "LEGIARTI000054076519",
+  "LEGIARTI000054076525",
+  "LEGIARTI000054076527",
+  "LEGIARTI000054076529",
+  "LEGIARTI000054076531",
+  "LEGIARTI000054076533",
+  "LEGIARTI000054076535",
+  "LEGIARTI000054076537",
+  "LEGIARTI000054076541",
+  "LEGIARTI000054076543",
+  "LEGIARTI000054076545",
+  "LEGIARTI000054076547",
+  "LEGIARTI000054076549",
+  "LEGIARTI000054076553",
+  "LEGIARTI000054076555",
+  "LEGIARTI000054076557",
+  "LEGIARTI000054076559",
+  "LEGIARTI000054076561",
+  "LEGIARTI000054076563",
+  "LEGIARTI000054076565",
+  "LEGIARTI000054076568",
+  "LEGIARTI000054076570",
+  "LEGIARTI000054076572",
+  "LEGIARTI000054076574",
+  "LEGIARTI000054076576",
+  "LEGIARTI000054076580",
+  "LEGIARTI000054076582",
+  "LEGIARTI000054076584",
+  "LEGIARTI000054076588",
+  "LEGIARTI000054076590",
+  "LEGIARTI000054076596",
+  "LEGIARTI000054076598",
+  "LEGIARTI000054076600",
+  "LEGIARTI000054076602",
+  "LEGIARTI000054076607",
+  "LEGIARTI000054076609",
+  "LEGIARTI000054076611",
+  "LEGIARTI000054076613",
+  "LEGIARTI000054076617",
+  "LEGIARTI000054076619",
+  "LEGIARTI000054076621",
+  "LEGIARTI000054076627",
+  "LEGIARTI000054076629",
+  "LEGIARTI000054076631",
+  "LEGIARTI000054076633",
+  "LEGIARTI000054076635",
+  "LEGIARTI000054076637",
+  "LEGIARTI000054076639",
+  "LEGIARTI000054076643",
+  "LEGIARTI000054076647",
+  "LEGIARTI000054076649",
+  "LEGIARTI000054076653",
+  "LEGIARTI000054076657",
+  "LEGIARTI000054076659",
+  "LEGIARTI000054076665",
+  "LEGIARTI000054076667",
+  "LEGIARTI000054076669",
+  "LEGIARTI000054076671",
+  "LEGIARTI000054076673",
+  "LEGIARTI000054076675",
+  "LEGIARTI000054076677",
+  "LEGIARTI000054076679",
+  "LEGIARTI000054076685",
+  "LEGIARTI000054076687",
+  "LEGIARTI000054076693",
+  "LEGIARTI000054076695",
+  "LEGIARTI000054076697",
+  "LEGIARTI000054076699",
+  "LEGIARTI000054076701",
+  "LEGIARTI000054076703",
+  "LEGIARTI000054076707",
+  "LEGIARTI000054076710",
+  "LEGIARTI000054076714",
+  "LEGIARTI000054076716",
+  "LEGIARTI000054076720",
+  "LEGIARTI000054076722",
+  "LEGIARTI000054076724",
+  "LEGIARTI000054076728",
+  "LEGIARTI000054076733",
+  "LEGIARTI000054076735",
+  "LEGIARTI000054076739",
+  "LEGIARTI000054076741",
+  "LEGIARTI000054076743",
+  "LEGIARTI000054076745",
+  "LEGIARTI000054076750",
+  "LEGIARTI000054076752",
+  "LEGIARTI000054076756",
+  "LEGIARTI000054076762",
+  "LEGIARTI000054076771",
+  "LEGIARTI000054076775",
+  "LEGIARTI000054076777",
+  "LEGIARTI000054076779",
+  "LEGIARTI000054076781",
+  "LEGIARTI000054076783",
+  "LEGIARTI000054076785",
+  "LEGIARTI000054076787",
+  "LEGIARTI000054076791",
+  "LEGIARTI000054076793",
+  "LEGIARTI000054076797",
+  "LEGIARTI000054076799",
+  "LEGIARTI000054076803",
+  "LEGIARTI000054076805",
+  "LEGIARTI000054076808",
+  "LEGIARTI000054076810",
+  "LEGIARTI000054076814",
+  "LEGIARTI000054076818",
+  "LEGIARTI000054076820",
+  "LEGIARTI000054076822",
+  "LEGIARTI000054076824",
+  "LEGIARTI000054076826",
+  "LEGIARTI000054076830",
+  "LEGIARTI000054076832",
+  "LEGIARTI000054076834",
+  "LEGIARTI000054076836",
+  "LEGIARTI000054076842",
+  "LEGIARTI000054076844",
+  "LEGIARTI000054076848",
+  "LEGIARTI000054076850",
+  "LEGIARTI000054076852",
+  "LEGIARTI000054076854",
+  "LEGIARTI000054076856",
+  "LEGIARTI000054076858",
+  "LEGIARTI000054076862",
+  "LEGIARTI000054076866",
+  "LEGIARTI000054076868",
+  "LEGIARTI000054076876",
+  "LEGIARTI000054076878",
+  "LEGIARTI000054076880",
+  "LEGIARTI000054076882",
+  "LEGIARTI000054076884",
+  "LEGIARTI000054076888",
+  "LEGIARTI000054076890",
+  "LEGIARTI000054076892",
+  "LEGIARTI000054076896",
+  "LEGIARTI000054076898",
+  "LEGIARTI000054076902",
+  "LEGIARTI000054076910",
+  "LEGIARTI000054076913",
+  "LEGIARTI000054076916",
+  "LEGIARTI000054076918",
+  "LEGIARTI000054076922",
+  "LEGIARTI000054076924",
+  "LEGIARTI000054076926",
+  "LEGIARTI000054076929",
+  "LEGIARTI000054076933",
+  "LEGIARTI000054076935",
+  "LEGIARTI000054076937",
+  "LEGIARTI000054076940",
+  "LEGIARTI000054076942",
+  "LEGIARTI000054076944",
+  "LEGIARTI000054076948",
+  "LEGIARTI000054076952",
+  "LEGIARTI000054076960",
+  "LEGIARTI000054076964",
+  "LEGIARTI000054076966",
+  "LEGIARTI000054076968",
+  "LEGIARTI000054076972",
+  "LEGIARTI000054076974",
+  "LEGIARTI000054076978",
+  "LEGIARTI000054076980",
+  "LEGIARTI000054076982",
+  "LEGIARTI000054076984",
+  "LEGIARTI000054076990",
+  "LEGIARTI000054076996",
+  "LEGIARTI000054076998",
+  "LEGIARTI000054077000",
+  "LEGIARTI000054077002",
+  "LEGIARTI000054077004",
+  "LEGIARTI000054077006",
+  "LEGIARTI000054077008",
+  "LEGIARTI000054077010",
+  "LEGIARTI000054077014",
+  "LEGIARTI000054077020",
+  "LEGIARTI000054077024",
+  "LEGIARTI000054077028",
+  "LEGIARTI000054077031",
+  "LEGIARTI000054077033",
+  "LEGIARTI000054077035",
+  "LEGIARTI000054077037",
+  "LEGIARTI000054077039",
+  "LEGIARTI000054077041",
+  "LEGIARTI000054077043",
+  "LEGIARTI000054077049",
+  "LEGIARTI000054077051",
+  "LEGIARTI000054077055",
+  "LEGIARTI000054077057",
+  "LEGIARTI000054077059",
+  "LEGIARTI000054077062",
+  "LEGIARTI000054077066",
+  "LEGIARTI000054077068",
+  "LEGIARTI000054077070",
+  "LEGIARTI000054077074",
+  "LEGIARTI000054077076",
+  "LEGIARTI000054077078",
+  "LEGIARTI000054077080",
+  "LEGIARTI000054077082",
+  "LEGIARTI000054077084",
+  "LEGIARTI000054077086",
+  "LEGIARTI000054077088",
+  "LEGIARTI000054077094",
+  "LEGIARTI000054077096",
+  "LEGIARTI000054077098",
+  "LEGIARTI000054077101",
+  "LEGIARTI000054077104",
+  "LEGIARTI000054077106",
+  "LEGIARTI000054077110",
+  "LEGIARTI000054077112",
+  "LEGIARTI000054077116",
+  "LEGIARTI000054077123",
+  "LEGIARTI000054077125",
+  "LEGIARTI000054077127",
+  "LEGIARTI000054077133",
+  "LEGIARTI000054077135",
+  "LEGIARTI000054077137",
+  "LEGIARTI000054077141",
+  "LEGIARTI000054077143",
+  "LEGIARTI000054077145",
+  "LEGIARTI000054077147",
+  "LEGIARTI000054077149",
+  "LEGIARTI000054077151",
+  "LEGIARTI000054077153",
+  "LEGIARTI000054077155",
+  "LEGIARTI000054077157",
+  "LEGIARTI000054077159",
+  "LEGIARTI000054077161",
+  "LEGIARTI000054077163",
+  "LEGIARTI000054077169",
+  "LEGIARTI000054077171",
+  "LEGIARTI000054077173",
+  "LEGIARTI000054077175",
+  "LEGIARTI000054077177",
+  "LEGIARTI000054077180",
+  "LEGIARTI000054077184",
+  "LEGIARTI000054077186",
+  "LEGIARTI000054077188",
+  "LEGIARTI000054077190",
+  "LEGIARTI000054077192",
+  "LEGIARTI000054077200",
+  "LEGIARTI000054077208",
+  "LEGIARTI000054077211",
+  "LEGIARTI000054077215",
+  "LEGIARTI000054077217",
+  "LEGIARTI000054077220",
+  "LEGIARTI000054077222",
+  "LEGIARTI000054077224",
+  "LEGIARTI000054077226",
+  "LEGIARTI000054077230",
+  "LEGIARTI000054077232",
+  "LEGIARTI000054077239",
+  "LEGIARTI000054077255",
+  "LEGIARTI000054077261",
+  "LEGIARTI000054077264",
+  "LEGIARTI000054077268",
+  "LEGIARTI000054077274",
+  "LEGIARTI000054077276",
+  "LEGIARTI000054077280",
+  "LEGIARTI000054077282",
+  "LEGIARTI000054077284",
+  "LEGIARTI000054077286",
+  "LEGIARTI000054077288",
+  "LEGIARTI000054077294",
+  "LEGIARTI000054077298",
+  "LEGIARTI000054077300",
+  "LEGIARTI000054077304",
+  "LEGIARTI000054077306",
+  "LEGIARTI000054077308",
+  "LEGIARTI000054077310",
+  "LEGIARTI000054077314",
+  "LEGIARTI000054077318",
+  "LEGIARTI000054077320",
+  "LEGIARTI000054077322",
+  "LEGIARTI000054077324",
+  "LEGIARTI000054077326",
+  "LEGIARTI000054077330",
+  "LEGIARTI000054077332",
+  "LEGIARTI000054077337",
+  "LEGIARTI000054077339",
+  "LEGIARTI000054077341",
+  "LEGIARTI000054077344",
+  "LEGIARTI000054077347",
+  "LEGIARTI000054077349",
+  "LEGIARTI000054077355",
+  "LEGIARTI000054077357",
+  "LEGIARTI000054077359",
+  "LEGIARTI000054077361",
+  "LEGIARTI000054077363",
+  "LEGIARTI000054077365",
+  "LEGIARTI000054077367",
+  "LEGIARTI000054077369",
+  "LEGIARTI000054077371",
+  "LEGIARTI000054077373",
+  "LEGIARTI000054077377",
+  "LEGIARTI000054077379",
+  "LEGIARTI000054077381",
+  "LEGIARTI000054077383",
+  "LEGIARTI000054077385",
+  "LEGIARTI000054077391",
+  "LEGIARTI000054077393",
+  "LEGIARTI000054077395",
+  "LEGIARTI000054077397",
+  "LEGIARTI000054077399",
+  "LEGIARTI000054077401",
+  "LEGIARTI000054077404",
+  "LEGIARTI000054077408",
+  "LEGIARTI000054077410",
+  "LEGIARTI000054077414",
+  "LEGIARTI000054077425",
+  "LEGIARTI000054077427",
+  "LEGIARTI000054077431",
+  "LEGIARTI000054077433",
+  "LEGIARTI000054077435",
+  "LEGIARTI000054077439",
+  "LEGIARTI000054077441",
+  "LEGIARTI000054077445",
+  "LEGIARTI000054077447",
+  "LEGIARTI000054077449",
+  "LEGIARTI000054077453",
+  "LEGIARTI000054077455",
+  "LEGIARTI000054077458",
+  "LEGIARTI000054077460",
+  "LEGIARTI000054077462",
+  "LEGIARTI000054077465",
+  "LEGIARTI000054077472",
+  "LEGIARTI000054077482",
+  "LEGIARTI000054077489",
+  "LEGIARTI000054077494",
+  "LEGIARTI000054077504",
+  "LEGIARTI000054077507",
+  "LEGIARTI000054077510",
+  "LEGIARTI000054077513",
+  "LEGIARTI000054077516",
+  "LEGIARTI000054077519",
+  "LEGIARTI000054077522",
+  "LEGIARTI000054077525",
+  "LEGIARTI000054077530",
+  "LEGIARTI000054077532",
+  "LEGIARTI000054077539",
+  "LEGIARTI000054077541",
+  "LEGIARTI000054077543",
+  "LEGIARTI000054077545",
+  "LEGIARTI000054077549",
+  "LEGIARTI000054077552",
+  "LEGIARTI000054077555",
+  "LEGIARTI000054077557",
+  "LEGIARTI000054077560",
+  "LEGIARTI000054077563",
+  "LEGIARTI000054087745",
+  "LEGIARTI000054087752",
+  "LEGIARTI000054087757",
+  "LEGIARTI000054087761",
+  "LEGIARTI000054087768",
+  "LEGIARTI000054087772",
+  "LEGIARTI000054087776",
+  "LEGIARTI000054087789",
+  "LEGIARTI000054087794",
+  "LEGIARTI000054087811",
+  "LEGIARTI000054087815",
+  "LEGIARTI000054087819",
+  "LEGIARTI000054087822",
+  "LEGIARTI000054087832",
+  "LEGIARTI000054087842",
+  "LEGIARTI000054087849",
+  "LEGIARTI000054087859",
+  "LEGIARTI000054087862",
+  "LEGIARTI000054087873",
+  "LEGIARTI000054087877",
+  "LEGIARTI000054088208",
+  "LEGIARTI000054088224",
+  "LEGIARTI000054088235",
+  "LEGIARTI000054088254",
+  "LEGIARTI000054088261",
+  "LEGIARTI000054088265",
+  "LEGIARTI000054088271",
+  "LEGIARTI000054088276",
+  "LEGIARTI000054088281",
+  "LEGIARTI000054088286",
+  "LEGIARTI000054088291",
+  "LEGIARTI000054089476",
+  "LEGIARTI000054089480",
+  "LEGIARTI000054089483",
+  "LEGIARTI000054089493",
+  "LEGIARTI000054089502",
+  "LEGIARTI000054089511",
+  "LEGIARTI000054089529",
+  "LEGIARTI000054089538",
+  "LEGIARTI000054089554",
+  "LEGIARTI000054089561",
+  "LEGIARTI000054089650",
+  "LEGIARTI000054089654",
+  "LEGIARTI000054089660",
+  "LEGIARTI000054089677",
+  "LEGIARTI000054090344",
+  "LEGIARTI000054090346",
+  "LEGIARTI000054090348",
   "LEGIARTI000054145319",
   "LEGIARTI000054163842",
   "LEGIARTI000054163845",
@@ -43565,7 +48222,6 @@
   "LEGIARTI000054175556",
   "LEGIARTI000054175561",
   "LEGIARTI000054175568",
-  "LEGIARTI000054175573",
   "LEGIARTI000054175576",
   "LEGIARTI000054175579",
   "LEGIARTI000054176607",
@@ -43573,6 +48229,46 @@
   "LEGIARTI000054176756",
   "LEGIARTI000054242072",
   "LEGIARTI000054242079",
-  "LEGIARTI000054242082"
+  "LEGIARTI000054242082",
+  "LEGIARTI000054637019",
+  "LEGIARTI000054637024",
+  "LEGIARTI000054637027",
+  "LEGIARTI000054638406",
+  "LEGIARTI000054638420",
+  "LEGIARTI000054638425",
+  "LEGIARTI000054638427",
+  "LEGIARTI000054641775",
+  "LEGIARTI000054641778",
+  "LEGIARTI000054641785",
+  "LEGIARTI000054641788",
+  "LEGIARTI000054641791",
+  "LEGIARTI000054641794",
+  "LEGIARTI000054641896",
+  "LEGIARTI000054669956",
+  "LEGIARTI000054669959",
+  "LEGIARTI000054669967",
+  "LEGIARTI000054670117",
+  "LEGIARTI000054670120",
+  "LEGIARTI000054670123",
+  "LEGIARTI000054670125",
+  "LEGIARTI000054702945",
+  "LEGIARTI000054703032",
+  "LEGIARTI000054703041",
+  "LEGIARTI000054703044",
+  "LEGIARTI000054703051",
+  "LEGIARTI000054703055",
+  "LEGIARTI000054703059",
+  "LEGIARTI000054703070",
+  "LEGIARTI000054703072",
+  "LEGIARTI000054703406",
+  "LEGIARTI000054703409",
+  "LEGIARTI000054703415",
+  "LEGIARTI000054703741",
+  "LEGIARTI000054703744",
+  "LEGIARTI000054703747",
+  "LEGIARTI000054703750",
+  "LEGIARTI000054703753",
+  "LEGIARTI000054703756",
+  "LEGIARTI000054788921"
  ]
 }
