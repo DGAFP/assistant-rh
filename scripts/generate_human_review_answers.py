@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""Generate human-review CSV answers from the Python and/or Mastra RAG pipeline.
+"""Generate human-review CSV answers from Python and/or an API candidate.
 
 The input may be a plain text file with one question per line, a CSV file, or a
 JSONL file. The output is a CSV designed for reviewers: original question first,
-then Python answer/metadata columns, then Mastra answer/metadata columns.
+then Python answer/metadata columns, then candidate answer/metadata columns.
 
 Examples:
 
   # Python only
   uv run python scripts/generate_human_review_answers.py \
-    --input "~/Downloads/AssistantRH_Liste questions Mastra" \
+    --input "~/Downloads/assistant_rh_questions.txt" \
     --output tmp/assistant_rh_answers_python.csv \
     --pipeline python
 
-  # Python + local Mastra endpoint
+  # Python + local OpenAI-compatible candidate endpoint
   uv run python scripts/generate_human_review_answers.py \
-    --input "~/Downloads/AssistantRH_Liste questions Mastra" \
-    --output tmp/assistant_rh_answers_python_mastra.csv \
+    --input "~/Downloads/assistant_rh_questions.txt" \
+    --output tmp/assistant_rh_answers_python_candidate.csv \
     --pipeline both \
-    --mastra-base-url http://localhost:4111 \
-    --mastra-model openweight-medium
+    --candidate-base-url http://localhost:8000 \
+    --candidate-model assistant-rh
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ from dotenv import load_dotenv
 REPO_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(REPO_ROOT / ".env")
 
-PipelineChoice = Literal["python", "mastra", "both"]
+PipelineChoice = Literal["python", "candidate", "both"]
 
 
 @dataclass(frozen=True)
@@ -67,11 +67,11 @@ CSV_COLUMNS = [
     "python_sources_json",
     "python_timing_json",
     "python_error",
-    "mastra_answer",
-    "mastra_metadata_json",
-    "mastra_sources_json",
-    "mastra_timing_json",
-    "mastra_error",
+    "candidate_answer",
+    "candidate_metadata_json",
+    "candidate_sources_json",
+    "candidate_timing_json",
+    "candidate_error",
 ]
 
 
@@ -180,7 +180,7 @@ def run_python_pipeline(pipe: Any, question: str) -> PipelineRun:
     )
 
 
-def run_mastra_pipeline(*, question: str, base_url: str, model: str, api_key: str | None, timeout_s: int) -> PipelineRun:
+def run_candidate_pipeline(*, question: str, base_url: str, model: str, api_key: str | None, timeout_s: int) -> PipelineRun:
     url = f"{base_url.rstrip('/')}/v1/chat/completions"
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -233,7 +233,7 @@ def error_run(exc: BaseException) -> PipelineRun:
     return PipelineRun(answer="", metadata={}, sources=[], timing={}, error=str(exc))
 
 
-def build_row(question: Question, python_run: PipelineRun | None, mastra_run: PipelineRun | None) -> dict[str, str]:
+def build_row(question: Question, python_run: PipelineRun | None, candidate_run: PipelineRun | None) -> dict[str, str]:
     return {
         "id": question.id,
         "question": question.question,
@@ -242,11 +242,11 @@ def build_row(question: Question, python_run: PipelineRun | None, mastra_run: Pi
         "python_sources_json": _json_dumps(python_run.sources if python_run else None),
         "python_timing_json": _json_dumps(python_run.timing if python_run else None),
         "python_error": python_run.error if python_run else "",
-        "mastra_answer": mastra_run.answer if mastra_run else "",
-        "mastra_metadata_json": _json_dumps(mastra_run.metadata if mastra_run else None),
-        "mastra_sources_json": _json_dumps(mastra_run.sources if mastra_run else None),
-        "mastra_timing_json": _json_dumps(mastra_run.timing if mastra_run else None),
-        "mastra_error": mastra_run.error if mastra_run else "",
+        "candidate_answer": candidate_run.answer if candidate_run else "",
+        "candidate_metadata_json": _json_dumps(candidate_run.metadata if candidate_run else None),
+        "candidate_sources_json": _json_dumps(candidate_run.sources if candidate_run else None),
+        "candidate_timing_json": _json_dumps(candidate_run.timing if candidate_run else None),
+        "candidate_error": candidate_run.error if candidate_run else "",
     }
 
 
@@ -262,14 +262,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate human-review CSV answers from Assistant RH pipelines.")
     parser.add_argument("--input", type=Path, required=True, help="Text, CSV, or JSONL questions file.")
     parser.add_argument("--output", type=Path, required=True, help="Output CSV path.")
-    parser.add_argument("--pipeline", choices=["python", "mastra", "both"], default="both", help="Pipeline(s) to run.")
+    parser.add_argument("--pipeline", choices=["python", "candidate", "both"], default="both", help="Pipeline(s) to run.")
     parser.add_argument("--question-column", default="question", help="Question column for CSV/JSONL input. Also accepts 'query'.")
     parser.add_argument("--id-column", default="id", help="ID column for CSV/JSONL input.")
     parser.add_argument("--limit", type=int, default=None, help="Maximum number of questions to process.")
-    parser.add_argument("--mastra-base-url", default="http://localhost:4111", help="Mastra/OpenAI-compatible base URL.")
-    parser.add_argument("--mastra-model", default="openweight-medium", help="Model name sent to the Mastra endpoint.")
-    parser.add_argument("--mastra-api-key", default=None, help="Optional Mastra API key. Defaults to OPENAI_API_KEY if set.")
-    parser.add_argument("--timeout-s", type=int, default=180, help="HTTP timeout for Mastra requests.")
+    parser.add_argument("--candidate-base-url", default="http://localhost:8000", help="OpenAI-compatible candidate base URL.")
+    parser.add_argument("--candidate-model", default="assistant-rh", help="Model name sent to the candidate endpoint.")
+    parser.add_argument("--candidate-api-key", default=None, help="Optional candidate API key. Defaults to OPENAI_API_KEY if set.")
+    parser.add_argument("--timeout-s", type=int, default=180, help="HTTP timeout for candidate requests.")
     parser.add_argument("--continue-on-error", action="store_true", help="Keep writing rows when one pipeline call fails.")
     return parser
 
@@ -286,8 +286,8 @@ def main() -> int:
         raise SystemExit("No questions found")
 
     should_run_python = args.pipeline in {"python", "both"}
-    should_run_mastra = args.pipeline in {"mastra", "both"}
-    mastra_api_key = args.mastra_api_key or os.getenv("OPENAI_API_KEY")
+    should_run_candidate = args.pipeline in {"candidate", "both"}
+    candidate_api_key = args.candidate_api_key or os.getenv("OPENAI_API_KEY")
 
     python_pipe = create_python_pipeline() if should_run_python else None
 
@@ -303,7 +303,7 @@ def main() -> int:
         for index, question in enumerate(questions, start=1):
             print(f"[{index}/{total}] {question.id}: {question.question[:90]}", file=sys.stderr)
             python_run = None
-            mastra_run = None
+            candidate_run = None
 
             if should_run_python:
                 try:
@@ -315,22 +315,22 @@ def main() -> int:
                     if not args.continue_on_error:
                         raise
 
-            if should_run_mastra:
+            if should_run_candidate:
                 try:
-                    mastra_run = run_mastra_pipeline(
+                    candidate_run = run_candidate_pipeline(
                         question=question.question,
-                        base_url=args.mastra_base_url,
-                        model=args.mastra_model,
-                        api_key=mastra_api_key,
+                        base_url=args.candidate_base_url,
+                        model=args.candidate_model,
+                        api_key=candidate_api_key,
                         timeout_s=args.timeout_s,
                     )
                 except Exception as exc:  # pragma: no cover - environment dependent
                     failed = True
-                    mastra_run = error_run(exc)
+                    candidate_run = error_run(exc)
                     if not args.continue_on_error:
                         raise
 
-            writer.writerow(build_row(question, python_run, mastra_run))
+            writer.writerow(build_row(question, python_run, candidate_run))
             handle.flush()
 
     print(

@@ -1,0 +1,10 @@
+{
+  "input": {
+    "selected_section_ids": [],
+    "selector_retry_triggered": false
+  },
+  "output": {
+    "context_items_ref": [],
+    "context_text_hash": ""
+  }
+}

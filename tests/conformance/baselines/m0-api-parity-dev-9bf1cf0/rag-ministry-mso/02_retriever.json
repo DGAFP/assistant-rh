@@ -1,0 +1,831 @@
+{
+  "input": {
+    "query": "Au ministère chargé des affaires sociales, un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+    "needs_legal_search": false,
+    "tables_searched": [
+      "mso",
+      "service_public",
+      "dgafp"
+    ]
+  },
+  "output": {
+    "retrieved_chunks": [
+      {
+        "chunk_id": "a06cbe3b55824e48303e99e541697119946168d6",
+        "section_id": "d15c16b2-9b4c-55b5-84dc-c09aec785745",
+        "score": 0.3662,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "eb783c01538e161658103733a430e7943825225e",
+        "section_id": "ab83d951-a9e0-58fb-8b7a-af766fdc4785",
+        "score": 0.3481,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "14a1895bdf6a8ac9db971cb013865d7c47048ee9",
+        "section_id": "a50db88f-242f-5cf3-a452-66815dbd1f5d",
+        "score": 0.3431,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "47c40df9de36913b790e339e9ca97563322d5613",
+        "section_id": "85b1bca6-97b9-5113-943a-83f7dff2b6e8",
+        "score": 0.3392,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "0eadc36f55701a38b8258650ce5c9de081ce6714",
+        "section_id": "2ff3b865-771f-5be1-abf1-6c5ed3733f0a",
+        "score": 0.3323,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "c1a536653982ded93a5b82cb2dcd6d746e791afe",
+        "section_id": "23c65ab5-c187-57b0-9f9d-1dddc04e490b",
+        "score": 0.3105,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "66e7e8a5b12f627cd1b50fd713c99bd8f2426e85",
+        "section_id": "d15c16b2-9b4c-55b5-84dc-c09aec785745",
+        "score": 0.2,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "047079429ddf08e69580331e01cbe44de5eb887f",
+        "section_id": "2ff3b865-771f-5be1-abf1-6c5ed3733f0a",
+        "score": 0.2,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486578_0",
+        "section_id": "",
+        "score": 0.2,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "7173f767a4766d7bc7eb20e62517b406a116f76e",
+        "section_id": "d247a7b3-2bc1-5fff-89aa-b5ff527c611c",
+        "score": 0.2,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "f136dc64c3f1c582b4a8835350b220da254c066a",
+        "section_id": "4f3eb776-ea29-4a3d-a3ef-09b2b368b63a",
+        "score": 0.2,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "LEGIARTI000042646047_0",
+        "section_id": "",
+        "score": 0.1968,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "f0f327903b10a4f9d424f043298cb8609ac18910",
+        "section_id": "d247a7b3-2bc1-5fff-89aa-b5ff527c611c",
+        "score": 0.1968,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "492f2eedfb76d3d1de7f514fbaf05f4fa27a3c99",
+        "section_id": "3b545d2e-794d-448e-8d79-f9307309154e",
+        "score": 0.1968,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "da3914f2ebb3d21f4996c98b15e831b7fd54e603",
+        "section_id": "d15c16b2-9b4c-55b5-84dc-c09aec785745",
+        "score": 0.1937,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "5243b759a73830ec07f3553c812eb77cbc8297dd",
+        "section_id": "ef2b6fb6-f1f0-5b67-96b1-51a2327f6eda",
+        "score": 0.1937,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486544_r2s",
+        "section_id": "",
+        "score": 0.1937,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "3e82d73b4e8b53ff464740dc77c04728787787ea",
+        "section_id": "7769a066-efac-58d6-85e9-a99f7dfdc5f1",
+        "score": 0.1937,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "1b4a40bce71774744444390aa636649f2f881255",
+        "section_id": "5136076b-5a18-59b8-bcc4-02f588213274",
+        "score": 0.1906,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "92284475b46ef746be849a5ebe7b88683df18a83",
+        "section_id": "ef2b6fb6-f1f0-5b67-96b1-51a2327f6eda",
+        "score": 0.1906,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486547_0",
+        "section_id": "",
+        "score": 0.1906,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "403a2a29dc73a85935dfb27cfd75e91013e447ee",
+        "section_id": "7769a066-efac-58d6-85e9-a99f7dfdc5f1",
+        "score": 0.1906,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "0f5cd8ed277eb2fc12910de39c7ab524f2738e8b",
+        "section_id": "51f88477-5202-5987-81a0-d4e57d456616",
+        "score": 0.1877,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "f77f6b9ef7dcb2f40b7102d265c86368f34bd055",
+        "section_id": "ef2b6fb6-f1f0-5b67-96b1-51a2327f6eda",
+        "score": 0.1877,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486560_0",
+        "section_id": "",
+        "score": 0.1877,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "31bfe790ba135dce22f3bb966d1042fc78d65e4e",
+        "section_id": "54209894-cef1-5c98-b813-f43ec62b44dd",
+        "score": 0.1877,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "5840c3f9fb2cb721f559c7d768e3d8b44e46a898",
+        "section_id": "10a46160-3989-4b12-8869-fb786b1f7e74",
+        "score": 0.1877,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "31b32058617628ef2ae3288e3f26387cb19d8bd7",
+        "section_id": "e7250998-08b8-56c8-9291-df8c203e18ab",
+        "score": 0.1848,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "29f53ce70c78e375ddd1c7eee6088b3bc82e9c6f",
+        "section_id": "46b90002-1e5e-549e-a0f0-3048ad612f75",
+        "score": 0.1848,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486577_0",
+        "section_id": "",
+        "score": 0.1848,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "8c5fa82cf87e7d9de126520303a2eee2b03ae026",
+        "section_id": "54209894-cef1-5c98-b813-f43ec62b44dd",
+        "score": 0.1848,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "58223a6da075a832db1ac0168295bcec89b4831a",
+        "section_id": "69089a00-c80a-4155-9b20-d17a10cb1973",
+        "score": 0.1848,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "07487f43fccab13d593913bc6b6664dad5a24f1a",
+        "section_id": "6e4e673d-db05-44f7-8e30-5751f555895c",
+        "score": 0.1821,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "93069f702db7c02c33d87adcce8a0c3952e09bed",
+        "section_id": "46b90002-1e5e-549e-a0f0-3048ad612f75",
+        "score": 0.1821,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486531_0",
+        "section_id": "",
+        "score": 0.1821,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "1ced6d1196997f502cd28d15a16c2888bb2a559f",
+        "section_id": "a7af9751-a652-575c-b2d9-6d8937a9dc6e",
+        "score": 0.1821,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "ecc4485d71efe8f04f5435c16b04d383fe2f5be9",
+        "section_id": "f07426e5-de69-52f9-9a92-3f3cf750fbe8",
+        "score": 0.1821,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "3c816150018174281713337c3992cd4e4c4a188d",
+        "section_id": "6e4e673d-db05-44f7-8e30-5751f555895c",
+        "score": 0.1794,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "cb25d4eb39c23431c5c9f7f5a876671ab20345c8",
+        "section_id": "46b90002-1e5e-549e-a0f0-3048ad612f75",
+        "score": 0.1794,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000041438060_0",
+        "section_id": "",
+        "score": 0.1794,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "3ee003e8d6d7adcbc8d6d4b718267705e06e8700",
+        "section_id": "a7af9751-a652-575c-b2d9-6d8937a9dc6e",
+        "score": 0.1794,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "0d784b99d9a58b38be6fba4182f7c7be29134b10",
+        "section_id": "18137aeb-9725-4897-86f9-074f6354499a",
+        "score": 0.1794,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "2caa076de6ed9d617b35d68899d6d183093c3de3",
+        "section_id": "23c65ab5-c187-57b0-9f9d-1dddc04e490b",
+        "score": 0.1768,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "f0554c11f774204d4a6f8b6cac2cffb291cdc556",
+        "section_id": "46b90002-1e5e-549e-a0f0-3048ad612f75",
+        "score": 0.1768,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000028756965_0",
+        "section_id": "",
+        "score": 0.1768,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "6e7a01044c9f0833c1be9a24f1410133c4976020",
+        "section_id": "df63da32-4462-59a0-b65f-12a78243c6fb",
+        "score": 0.1768,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "f60024230500395219629546cdde102be989f748",
+        "section_id": "",
+        "score": 0.1768,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "66951556277941ebea3915c7515e3e4182a90ee0",
+        "section_id": "23c65ab5-c187-57b0-9f9d-1dddc04e490b",
+        "score": 0.1743,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "752770b81bcad9a0dbc021ae589b14220872eb3c",
+        "section_id": "1329cacc-18aa-5b07-b80e-02629a1cd210",
+        "score": 0.1743,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486518_0",
+        "section_id": "",
+        "score": 0.1743,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "7bec5f5fdd9fb111b0c5e04e226b22616f4f6a18",
+        "section_id": "df63da32-4462-59a0-b65f-12a78243c6fb",
+        "score": 0.1743,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "9a93d13df01b5842c876b14c83c442c19c3bd70f",
+        "section_id": "1329cacc-18aa-5b07-b80e-02629a1cd210",
+        "score": 0.1718,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486545_0",
+        "section_id": "",
+        "score": 0.1718,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "718f1ef8948552c7099fbdd70a2c67ad47d690b5",
+        "section_id": "27463eaf-ac0b-57cc-aefb-176cfded8589",
+        "score": 0.1718,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "d6fa1ccdde6d03919481977132d72f0cd9615afc",
+        "section_id": "1e07162d-2289-57da-b370-5c29c93cbf6d",
+        "score": 0.1718,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "d1ea27a57cd03d0ef54fe4349f74e584d1a13dd2",
+        "section_id": "23c65ab5-c187-57b0-9f9d-1dddc04e490b",
+        "score": 0.1694,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "def8bfb8bb451a438919d3dfebc671ab3367e515",
+        "section_id": "1329cacc-18aa-5b07-b80e-02629a1cd210",
+        "score": 0.1694,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486527_r2s",
+        "section_id": "",
+        "score": 0.1694,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "b1be92a890a6deabe302c468996f6d51a1e402ef",
+        "section_id": "27463eaf-ac0b-57cc-aefb-176cfded8589",
+        "score": 0.1694,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "2e63e2a4db2ecfc28a5340576bdba5b13b68f967",
+        "section_id": "ab83d951-a9e0-58fb-8b7a-af766fdc4785",
+        "score": 0.1671,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "4e10dde88e2529da801974f39a26f2d7313fbee1",
+        "section_id": "7ee5e5de-b916-5229-a039-c32f071af2fc",
+        "score": 0.1671,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486538_0",
+        "section_id": "",
+        "score": 0.1671,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "a81912115020dfefa1bf52d51532ff18d2b29f3a",
+        "section_id": "66501190-0350-5a9a-aaa6-034db5489015",
+        "score": 0.1671,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "31bb2dae1a4c223a4cd3020db872c17d37f2a141",
+        "section_id": "014dd687-75ee-4098-a808-98d24c0dae0a",
+        "score": 0.1671,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "4f04c28b827da6cf33f79c3de5feba4947a27049",
+        "section_id": "bfe97747-d2bb-5fa2-8744-05e8f7885280",
+        "score": 0.1649,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000054077453_0",
+        "section_id": "",
+        "score": 0.1649,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "dc53c0ac365920c5ca88cc8995cc3000530a0d28",
+        "section_id": "66501190-0350-5a9a-aaa6-034db5489015",
+        "score": 0.1649,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "481af931dac6a60c0ed97d96ece5e4166878b246",
+        "section_id": "014dd687-75ee-4098-a808-98d24c0dae0a",
+        "score": 0.1649,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "623af189092928e2d7d900b1840200b09e9d8722",
+        "section_id": "ab83d951-a9e0-58fb-8b7a-af766fdc4785",
+        "score": 0.1627,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "690bf2593f9429910206285ab6dc2364eefcc3e7",
+        "section_id": "bfe97747-d2bb-5fa2-8744-05e8f7885280",
+        "score": 0.1627,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000029705168_0",
+        "section_id": "",
+        "score": 0.1627,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "51c51d7a2e8885983b7dffa0bccff6beff46a4d5",
+        "section_id": "66501190-0350-5a9a-aaa6-034db5489015",
+        "score": 0.1627,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "77498291b519648fcf8c84f5df356717337d83ad",
+        "section_id": "014dd687-75ee-4098-a808-98d24c0dae0a",
+        "score": 0.1627,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "8b9b74779a90b20fbfbc54262f78ff6f3f9c454b",
+        "section_id": "dbb20567-1b53-5e9d-8778-cb9c2f7db111",
+        "score": 0.1605,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "75863fc3d7361169a1943aecaf750f91f9926564",
+        "section_id": "7ee5e5de-b916-5229-a039-c32f071af2fc",
+        "score": 0.1605,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486542_0",
+        "section_id": "",
+        "score": 0.1605,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "0fb901689c0677a4f0cf6a12c4ab3f7111171bd3",
+        "section_id": "cdb3dba6-e107-5e6b-998d-fcc9ec6ad60c",
+        "score": 0.1605,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "c70a7dff6f328517e37209eb064014ebc0efc2e2",
+        "section_id": "bafd4d4a-2a2b-5682-91c6-40f268e2f2d7",
+        "score": 0.1605,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "927aaa87331a0deb51f26d6270ba500502e4f371",
+        "section_id": "ab83d951-a9e0-58fb-8b7a-af766fdc4785",
+        "score": 0.1584,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "e150f5e321acb96b19d4e639f68c090e8efa9c63",
+        "section_id": "bfe97747-d2bb-5fa2-8744-05e8f7885280",
+        "score": 0.1584,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486501_0",
+        "section_id": "",
+        "score": 0.1584,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "793e6c9c56283193ba2ead5616ccee0d8ffdd825",
+        "section_id": "fe583479-30d9-58a9-a24e-5bcb4708d057",
+        "score": 0.1584,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "7efe267ed2fc43e53e07825646f846ea9da1aa91",
+        "section_id": "201d2601-9695-56c7-b235-312bfabca940",
+        "score": 0.1584,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "da717e85b3273edfc5dde6b32e5df167731c855f",
+        "section_id": "dbb20567-1b53-5e9d-8778-cb9c2f7db111",
+        "score": 0.1564,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "ffc1f24c0eb111dbeecbcd3c6ae8c7108a803800",
+        "section_id": "7ee5e5de-b916-5229-a039-c32f071af2fc",
+        "score": 0.1564,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486520_0",
+        "section_id": "",
+        "score": 0.1564,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "9bbfd5f6e86c344c6c8b46c1d237ec2a1c6432a0",
+        "section_id": "fe583479-30d9-58a9-a24e-5bcb4708d057",
+        "score": 0.1564,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "99af5e5de39b98cc3c7ed022c4ab8ed11f347e27",
+        "section_id": "128eca4b-0f1d-50a0-b861-a77524043f06",
+        "score": 0.1564,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "19be94877755b946edd3c962cb109b878067685b",
+        "section_id": "568a1e0c-2381-56e0-b4f5-6a1712daa67a",
+        "score": 0.1544,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486524_0",
+        "section_id": "",
+        "score": 0.1544,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "4435661504f63de2a573a02af3926c85d9bd27c0",
+        "section_id": "cdb3dba6-e107-5e6b-998d-fcc9ec6ad60c",
+        "score": 0.1544,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "d572e228d933677aa5165a544ff738adf820b13b",
+        "section_id": "",
+        "score": 0.1544,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "02d8b1c8f205d02cb68bf2218ae174ea0f45db3e",
+        "section_id": "225cf00e-0a9c-5424-9453-b7bbd055e90f",
+        "score": 0.1525,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000050546679_0",
+        "section_id": "",
+        "score": 0.1525,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "822b4d81e71c96d00dedfc29462e129c22df8076",
+        "section_id": "4b0e90eb-55c3-5cff-8edb-6ef345de2c48",
+        "score": 0.1525,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "7032d64389f54277db0e1e04bb5fcf9ac42437cc",
+        "section_id": "21731610-d322-59ac-b07c-82ef1a4736cf",
+        "score": 0.1525,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "1ae905e41ccf4bb4e1b48257c50a24bdecac4df7",
+        "section_id": "a50db88f-242f-5cf3-a452-66815dbd1f5d",
+        "score": 0.1506,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "1325a2412d5bfec52af35daeb73ef298fb90689d",
+        "section_id": "d3bb445e-0152-5537-8435-7f8e1caa0c0b",
+        "score": 0.1506,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486522_0",
+        "section_id": "",
+        "score": 0.1506,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "e53e74a910647f09033ed8816b3ee07eba9ddf49",
+        "section_id": "4b0e90eb-55c3-5cff-8edb-6ef345de2c48",
+        "score": 0.1506,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "4a175d4244a5f2467120fca34801df271fdae4bb",
+        "section_id": "fe3bda64-e079-4b5e-9eaf-73b72a3386aa",
+        "score": 0.1506,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "7d3dc9bf74c1453f0bed0d8f0abeb8d5c2f04126",
+        "section_id": "a50db88f-242f-5cf3-a452-66815dbd1f5d",
+        "score": 0.1488,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "066096fa9a2442c78f66878a691cdbfaa7152f9f",
+        "section_id": "29593a3a-a409-5d07-9d91-abf9980d5691",
+        "score": 0.1488,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "LEGIARTI000051962186_r2s",
+        "section_id": "",
+        "score": 0.1488,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "f677196b102957451afbe1dcc4fb954c16577111",
+        "section_id": "304531a1-46d0-537f-ac8c-4421595b7fe0",
+        "score": 0.1488,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "8763fb72e5b9b5ed3b26956ac4262b297cc667e7",
+        "section_id": "fe3bda64-e079-4b5e-9eaf-73b72a3386aa",
+        "score": 0.1488,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "de91133227e0345ce6e283aa7d1c2a84c7e5ea9e",
+        "section_id": "a50db88f-242f-5cf3-a452-66815dbd1f5d",
+        "score": 0.147,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "LEGIARTI000044422206_r2s",
+        "section_id": "",
+        "score": 0.147,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "f8d9a7dc73c51748d17544c9d7ec5ec8f1a5ff8c",
+        "section_id": "304531a1-46d0-537f-ac8c-4421595b7fe0",
+        "score": 0.147,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "b66a1ab8692dd2ed1dec0d32b3434168c9f9b081",
+        "section_id": "fe3bda64-e079-4b5e-9eaf-73b72a3386aa",
+        "score": 0.147,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "40e2ae9411d20ab2b8ac79127d7468727bd5d7c5",
+        "section_id": "24a8e537-4d55-5c9b-8d48-accf7d50a3eb",
+        "score": 0.1452,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "LEGIARTI000050547103_0",
+        "section_id": "",
+        "score": 0.1452,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "3803e8780a54b56c2d785c8634c5e9830dcb6ffc",
+        "section_id": "51aba92c-c52c-5278-a103-75afbce2b056",
+        "score": 0.1452,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "e06543ff5cf409bd4a1acfa2c2c2dbf23f028025",
+        "section_id": "fe3bda64-e079-4b5e-9eaf-73b72a3386aa",
+        "score": 0.1452,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "6dff3becd2155ea1f5abc43cf798dcdde228b1b6",
+        "section_id": "e59d0f35-2aea-4357-b531-fde6697648aa",
+        "score": 0.1435,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486549_0",
+        "section_id": "",
+        "score": 0.1435,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "0d525f93c80cae257093129066578811a945a2e4",
+        "section_id": "dcfa9b76-7244-5a3a-b91a-4d37f4671ba4",
+        "score": 0.1435,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "01f084edd784f33bbd9055d718fdad4170bc6c16",
+        "section_id": "",
+        "score": 0.1435,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "b03b0af3c0173b6131da9165d31ba2bbc6ed534b",
+        "section_id": "e59d0f35-2aea-4357-b531-fde6697648aa",
+        "score": 0.1419,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486552_0",
+        "section_id": "",
+        "score": 0.1419,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "8b5ad366d67af6244b104bc1ce29e24d06a054ca",
+        "section_id": "dcfa9b76-7244-5a3a-b91a-4d37f4671ba4",
+        "score": 0.1419,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "2912a24d7db284c8447dad500f70e7c045dbbfdb",
+        "section_id": "2762bcbe-539f-5d56-bfdd-587d578ea506",
+        "score": 0.1419,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "dd4b01026bf94c21e333f5cf4760120e30c182ca",
+        "section_id": "e59d0f35-2aea-4357-b531-fde6697648aa",
+        "score": 0.1402,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "LEGIARTI000054077408_0",
+        "section_id": "",
+        "score": 0.1402,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "560be2be4d3711ad2b5ddeb31f7253cf060d657e",
+        "section_id": "8b28a712-b92e-5877-b730-3e1cee677ffd",
+        "score": 0.1402,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "cbfb1aff23ba457ab8c1ef67feb3157e810d5d1e",
+        "section_id": "ba06ea73-f764-5fe0-8da3-4ce232397929",
+        "score": 0.1402,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "f78df87b029ab5f263f411652da842459267d496",
+        "section_id": "e59d0f35-2aea-4357-b531-fde6697648aa",
+        "score": 0.1386,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "LEGIARTI000044422490_0",
+        "section_id": "",
+        "score": 0.1386,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "e175cdeb6336faad1ad904f4f628ab03ce6a37d3",
+        "section_id": "8b28a712-b92e-5877-b730-3e1cee677ffd",
+        "score": 0.1386,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "089b3bc217e86cc00dd742a59b2ee496bb79ccc3",
+        "section_id": "b22e4513-f25e-5b35-aa9d-564144adbfa9",
+        "score": 0.1371,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "LEGIARTI000054077377_0",
+        "section_id": "",
+        "score": 0.1371,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "8847ea7cd0fec2ec7179376c8b8ae92d6e404705",
+        "section_id": "2ff3b865-771f-5be1-abf1-6c5ed3733f0a",
+        "score": 0.1371,
+        "source_table": "MSO"
+      },
+      {
+        "chunk_id": "e09a9f4620d087c555b3ab4d21f68828f5dcbb3a",
+        "section_id": "",
+        "score": 0.1371,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "367f60f514166608749124762a5ec77e0adb917b",
+        "section_id": "b22e4513-f25e-5b35-aa9d-564144adbfa9",
+        "score": 0.1356,
+        "source_table": "Service-Public"
+      },
+      {
+        "chunk_id": "LEGIARTI000006486550_0",
+        "section_id": "",
+        "score": 0.1356,
+        "source_table": "DGAFP"
+      },
+      {
+        "chunk_id": "71b2bf7d6df77d410d67c018a7536cb41da31539",
+        "section_id": "c5257356-d609-4d85-abe3-d9b9349577cf",
+        "score": 0.1356,
+        "source_table": "Service-Public"
+      }
+    ]
+  }
+}

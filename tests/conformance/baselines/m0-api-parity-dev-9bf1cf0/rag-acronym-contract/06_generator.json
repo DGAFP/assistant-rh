@@ -1,0 +1,12 @@
+{
+  "input": {
+    "query": "Quelle est la durée maximale d'un contrat à durée déterminée (CDD) pour un agent contractuel ?",
+    "context_item_count": 2,
+    "conversation_history": []
+  },
+  "output": {
+    "answer": "Pour un agent contractuel de la fonction publique de l'État, la durée maximale d'un contrat à durée déterminée (CDD) est de **trois ans** pour le contrat initial.\n\nCe contrat peut ensuite être renouvelé par reconduction expresse, dans la limite d'une durée globale maximale de **six ans** (tous contrats confondus avec la même autorité hiérarchique et pour la même catégorie d'emploi, sans interruption de plus de quatre mois entre deux contrats).\n\n**Références :**\n- Article L332-4 du Code général de la fonction publique : « Lorsque ces contrats sont conclus pour une durée déterminée, cette durée est au maximum de trois ans. Ils sont renouvelables par reconduction expresse dans la limite d'une durée maximale de six ans. »\n- Fiche n°5 de MATTE (juillet 2024) : « Lorsque les contrats sont conclus pour une durée déterminée, cette durée est au maximum de trois ans. Ces contrats sont renouvelables par reconduction expresse. Le renouvellement peut être effectué à durée déterminée dans la limite d'une durée globale maximale de six ans. »",
+    "answer_length": 1042,
+    "citations": []
+  }
+}

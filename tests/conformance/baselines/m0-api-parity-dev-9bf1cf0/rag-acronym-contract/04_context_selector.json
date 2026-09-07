@@ -1,0 +1,186 @@
+{
+  "input": {
+    "query": "Quelle est la durée maximale d'un contrat à durée déterminée (CDD) pour un agent contractuel ?",
+    "aggregated_section_ids": [
+      "98774ee4-d5e0-5a8a-aca2-369f1b83cb60",
+      "bd02202e-edd9-57e0-b994-1a6ff5f212c9",
+      "",
+      "7315c2d1-2350-4a60-b9b6-f6ad0940e2d1",
+      "a31a2c35-a812-4d99-910e-d3644116b98d",
+      "",
+      "",
+      "",
+      "897784d4-1cff-4c5c-a4a5-f97d820e682d",
+      "f49efda9-e296-5211-a989-d9f0de9982ae",
+      "edf9564b-cd95-58c4-bdf9-33767b3b3a1a",
+      "c77f9099-83da-4121-868f-79e2692fb151",
+      "326c485d-7930-5aab-b6b4-0bdea04df0bf",
+      "",
+      "",
+      "",
+      "08c595b2-46dd-5bcd-8319-b47c9c30b1e6",
+      "cc8c24ea-0d36-5414-b4fb-65d67a450bc1",
+      "719d31ba-713c-5034-b040-ec823daaea1e",
+      ""
+    ]
+  },
+  "output": {
+    "selector_enabled": true,
+    "selector_all_rejected": false,
+    "selector_items_before": 20,
+    "selector_items_after": 2,
+    "selector_decisions": {
+      "kept": [
+        {
+          "idx": 0,
+          "heading": "Renouvellement du CDD par avenant et respect des délais de prévenance",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "98774ee4-d5e0-5a8a-aca2-369f1b83cb60",
+          "document_id": "25826b29-ee7d-568b-9b20-742e84868464"
+        },
+        {
+          "idx": 6,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000044421868"
+        }
+      ],
+      "removed": [
+        {
+          "idx": 1,
+          "heading": "I-3. La reconduction expresse du CDD en CDI au terme des 6 ans",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "bd02202e-edd9-57e0-b994-1a6ff5f212c9",
+          "document_id": "5fd1eda2-b78d-57d9-a81b-a6c255f43229"
+        },
+        {
+          "idx": 2,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000044421884"
+        },
+        {
+          "idx": 3,
+          "heading": "Durée du contrat",
+          "publisher": "Service-Public",
+          "section_id": "7315c2d1-2350-4a60-b9b6-f6ad0940e2d1",
+          "document_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f"
+        },
+        {
+          "idx": 4,
+          "heading": "Durée du contrat",
+          "publisher": "Service-Public",
+          "section_id": "a31a2c35-a812-4d99-910e-d3644116b98d",
+          "document_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f"
+        },
+        {
+          "idx": 5,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000044421976"
+        },
+        {
+          "idx": 7,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000044421906"
+        },
+        {
+          "idx": 8,
+          "heading": "Personnel associé",
+          "publisher": "Service-Public",
+          "section_id": "897784d4-1cff-4c5c-a4a5-f97d820e682d",
+          "document_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f"
+        },
+        {
+          "idx": 9,
+          "heading": "I-2. Recrutement direct en CDI",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "f49efda9-e296-5211-a989-d9f0de9982ae",
+          "document_id": "5fd1eda2-b78d-57d9-a81b-a6c255f43229"
+        },
+        {
+          "idx": 10,
+          "heading": "Rupture",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "edf9564b-cd95-58c4-bdf9-33767b3b3a1a",
+          "document_id": "2388e569-925c-5e50-9146-abda77809b5b"
+        },
+        {
+          "idx": 11,
+          "heading": "Accroissement temporaire ou saisonnier d'activité",
+          "publisher": "Service-Public",
+          "section_id": "c77f9099-83da-4121-868f-79e2692fb151",
+          "document_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f"
+        },
+        {
+          "idx": 12,
+          "heading": "Quelles sont les sanctions disciplinaires applicables à l'agent contractuel?",
+          "publisher": "Service-Public",
+          "section_id": "326c485d-7930-5aab-b6b4-0bdea04df0bf",
+          "document_id": "b55efbe6-7d65-5bf0-a789-38f661e48d47"
+        },
+        {
+          "idx": 13,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000044421930"
+        },
+        {
+          "idx": 14,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000051962599"
+        },
+        {
+          "idx": 15,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486501"
+        },
+        {
+          "idx": 16,
+          "heading": "Quel contrat choisir et pour quelle durée selon la situation ?",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "08c595b2-46dd-5bcd-8319-b47c9c30b1e6",
+          "document_id": "a0018f44-d036-591c-a74a-8087e62c5510"
+        },
+        {
+          "idx": 17,
+          "heading": "I- L'arrivée à terme du contrat à durée déterminée",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "cc8c24ea-0d36-5414-b4fb-65d67a450bc1",
+          "document_id": "e79fbb82-e13b-5794-945a-c980cf53f6a9"
+        },
+        {
+          "idx": 18,
+          "heading": "Des agents concernés par le dispositif de la durée maximale d'occupation d'un em",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "719d31ba-713c-5034-b040-ec823daaea1e",
+          "document_id": "73d8f244-1d9d-5f64-895e-087ea7569bb3"
+        },
+        {
+          "idx": 19,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000006486531"
+        }
+      ],
+      "reason": "Ces sections indiquent clairement que la durée maximale d’un CDD est de 3 ans, renouvelable jusqu’à 6 ans, avec le texte législatif en [6] et les précisions pratiques en [0]."
+    },
+    "selector_decision": "selected",
+    "selector_retry_triggered": false,
+    "selector_retry_succeeded": false,
+    "rejection_reason": "",
+    "reason": "Ces sections indiquent clairement que la durée maximale d’un CDD est de 3 ans, renouvelable jusqu’à 6 ans, avec le texte législatif en [6] et les précisions pratiques en [0].",
+    "selected_section_ids": []
+  }
+}

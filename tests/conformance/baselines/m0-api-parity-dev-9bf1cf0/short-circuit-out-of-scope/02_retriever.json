@@ -1,0 +1,10 @@
+{
+  "input": {
+    "query": "Quel temps fera-t-il demain à Paris ?",
+    "needs_legal_search": false,
+    "tables_searched": []
+  },
+  "output": {
+    "retrieved_chunks": []
+  }
+}

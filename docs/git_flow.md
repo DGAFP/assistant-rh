@@ -16,8 +16,7 @@ flowchart TD
 
     STG -.->|push| S1["Streamlit deploy · staging (always)"]
     STG -.->|"push · if supabase/migrations or seed paths"| S2["DB migrations · staging"]
-    STG -.->|push| S3["Conformance checks"]
-    STG -.->|"push · if data-engineering paths"| S4["Data preview · full or scoped (wipe off)"]
+    STG -.->|"push · if data-engineering paths"| S3["Data preview · full or scoped (wipe off)"]
 
     REL -.->|release published| P1["DB migrations · production"]
     P1 -.->|on success| P2["Streamlit deploy · production"]
@@ -25,7 +24,7 @@ flowchart TD
     classDef branch fill:#1f6feb,stroke:#0b3a8c,color:#fff;
     classDef job fill:#21262d,stroke:#8b949e,color:#fff;
     class F,DEV,STG,MAIN,REL branch;
-    class S1,S2,S3,S4,P1,P2 job;
+    class S1,S2,S3,P1,P2 job;
 ```
 
 Solid arrows are branch promotions (merge policy on the label); dashed arrows are the CI/CD workflows each push triggers.
@@ -102,14 +101,14 @@ Production data ingestion/promotion remains manual through workflow dispatch.
 
 Release Please constructs `release-candidate` by merging the current `main` baseline with the protected `staging` revision. It reads the conventional commits from that combined history, updates `CHANGELOG.md`, bumps version fields, and opens one draft PR against `main`. The candidate and generated release branches are automation-owned and must not be edited manually.
 
-The release PR remains a draft until `CI Tests`, `CodeQL`, `Conformance`, `Streamlit Deploy Staging`, and every other push workflow discovered for the same staging SHA have completed successfully. Its merge publishes a tag such as `v0.8.1` without a second PR.
+The release PR remains a draft until `CI Tests`, `CodeQL`, `Streamlit Deploy Staging`, and every other push workflow discovered for the same staging SHA have completed successfully. Its merge publishes a tag such as `v0.8.1` without a second PR.
 
 Current release configuration:
 
 - Workflow: `.github/workflows/release-please.yml`
 - Config: `release-please-config.json`
 - Manifest: `.release-please-manifest.json`
-- Version files: root `pyproject.toml`, package `pyproject.toml` files, and `apps/mastra-pipeline/package.json`
+- Version files: root `pyproject.toml` and package `pyproject.toml` files
 
 Examples:
 

@@ -1,0 +1,17 @@
+{
+  "id": "short-circuit-document-request",
+  "query": "Peux-tu me donner le texte intégral du décret n°86-83 ?",
+  "conversation_history": [],
+  "tags": [
+    "m0b",
+    "short-circuit",
+    "document-request"
+  ],
+  "ministry": null,
+  "expected": {
+    "intent": "document_request",
+    "should_proceed": false,
+    "needs_legal_search": false,
+    "generator_used_fallback": false
+  }
+}

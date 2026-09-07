@@ -1,3 +1,6 @@
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.5
@@ -8,25 +11,17 @@ repos:
       - id: ruff-format
         types_or: [python, pyi]
 
-  - repo: https://github.com/biomejs/pre-commit
-    rev: v2.4.14
-    hooks:
-      - id: biome-check
-        additional_dependencies: ["@biomejs/biome@2.4.14"]
-        files: ^apps/mastra-pipeline/.*\.tsx?$
-
   - repo: local
     hooks:
-      - id: cve-lite-js
-        name: CVE Lite JS dependency scan
-        entry: pnpm security:scan:js
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
-
       - id: strip-notebook-outputs
         name: strip notebook outputs
         entry: python3 scripts/strip_notebook_outputs.py --fix
         language: system
         files: \.ipynb$
+      - id: api-pre-push-checks
+        name: API checks before push
+        entry: moon run api:smoke api:lint api:architecture api:test
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

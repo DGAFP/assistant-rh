@@ -1,0 +1,10 @@
+{
+  "input": {
+    "query": "Bonjour, comment ça va ?",
+    "needs_legal_search": false,
+    "tables_searched": []
+  },
+  "output": {
+    "retrieved_chunks": []
+  }
+}

@@ -147,3 +147,43 @@ uv run --no-sync python scripts/run_rag_quality_eval.py \
 
 Rejouer le § 2 (le `--clean --if-exists` remplace les objets existants), ou
 `docker compose -f docker-compose.local.yml down -v` pour repartir de zéro.
+
+## Base runtime synthétique de l'API
+
+La stack dédiée `docker/api/compose.yml` lance l'API et un service pgvector avec
+un volume séparé du banc d'eval. Cette séparation est volontaire : les tests API
+ne doivent jamais lire le dump staging ni aucune table contenant des
+conversations, feedbacks ou identifiants d'utilisateurs.
+
+```bash
+proto install
+moon run api:local
+curl --fail "http://127.0.0.1:${API_PORT:-8000}/healthz"
+```
+
+La commande attend les healthchecks PostgreSQL et API. Le probe doit répondre
+`200` avec `{"status":"ok","db":"ok","config_loaded":true}`.
+
+Pour suivre les logs puis arrêter la stack en conservant sa base :
+
+```bash
+moon run api:local-logs
+moon run api:local-down
+```
+
+Le schéma et les valeurs minimales viennent uniquement de
+`apps/api/tests/fixtures/runtime.sql`. Pour réinitialiser cette base sans
+toucher au volume d'eval :
+
+```bash
+moon run api:local-reset
+moon run api:local
+```
+
+Compose scope le conteneur et le volume au worktree courant. Si le port par
+défaut est déjà pris par un autre worktree, définir `API_PORT` et
+`API_POSTGRES_PORT` pour cette invocation :
+
+```bash
+API_PORT=8010 API_POSTGRES_PORT=55443 moon run api:local
+```
