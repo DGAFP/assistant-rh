@@ -180,6 +180,7 @@ def _questions_for_export() -> pd.DataFrame:
                 "ts": "2026-07-17T10:00:00Z",
                 "turn_id": "with-feedback",
                 "session_id": "session-1",
+                "turn_index": 1,
                 "user_group": "betatest-jan26",
                 "selected_ministry": "matte",
                 "question": "Question évaluée",
@@ -194,6 +195,7 @@ def _questions_for_export() -> pd.DataFrame:
                 "ts": "2026-07-17T11:00:00Z",
                 "turn_id": "without-feedback",
                 "session_id": "session-2",
+                "turn_index": 2,
                 "user_group": "betatest-jan26",
                 "selected_ministry": None,
                 "question": "Question sans évaluation",
@@ -236,7 +238,6 @@ class TestUnifiedFeedbackExport:
         assert export["turn_id"].tolist() == ["with-feedback", "without-feedback"]
         evaluated = export.loc[export["turn_id"] == "with-feedback"].iloc[0]
         assert evaluated["Note (1-5)"] == 5
-        assert bool(evaluated["Utile"]) is True
         assert evaluated["Commentaire"] == "Très utile"
         assert evaluated["Date"] == "17/07/2026 12:00"
         assert evaluated["Date du feedback"] == "17/07/2026 12:05"
@@ -274,6 +275,7 @@ class TestUnifiedFeedbackExport:
         export = build_unified_feedback_export(_questions_for_export(), _feedback_for_export())
 
         assert export.loc[0, "session_id"] == "session-1"
+        assert export.loc[0, "Rang dans la conversation"] == 1
         assert export.loc[0, "rag_version"] == "v3"
         assert export.loc[0, "chunk_selection_mode"] == "section"
         assert export.loc[0, "dist_after_rerank"] == "{}"
@@ -303,6 +305,7 @@ class TestUnifiedFeedbackExport:
 
         assert worksheet.max_row == 3
         assert [cell.value for cell in next(worksheet.iter_rows(max_row=1))] == export.columns.tolist()
+        assert "Utile" not in export.columns
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -320,6 +323,9 @@ class TestDashboardSource:
 
     def test_questions_query_selects_theme_for_unanswered_questions(self):
         assert "v3_detected_theme AS theme" in _dashboard_source()
+
+    def test_questions_query_selects_conversation_rank(self):
+        assert "turn_index" in _dashboard_source()
 
     def test_ministry_column_displayed_and_exported(self):
         source = _dashboard_source()
