@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.1](https://github.com/DGAFP/assistant-rh/compare/v0.10.0...v0.10.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* secure production release deployment chain ([#438](https://github.com/DGAFP/assistant-rh/issues/438)) ([8384f8f](https://github.com/DGAFP/assistant-rh/commit/8384f8fecc752dc3fc951e372fc37335d7738e4d))
+
+
+### Documentation
+
+* document unrelated staging data-preview failures ([#484](https://github.com/DGAFP/assistant-rh/issues/484)) ([989f449](https://github.com/DGAFP/assistant-rh/commit/989f4499f1cbcc074acb6a8d72290d6a0dfd48af))
+
 ## [0.10.0](https://github.com/DGAFP/assistant-rh/compare/v0.9.1...v0.10.0) (2026-09-07)
 
 

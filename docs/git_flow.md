@@ -18,7 +18,7 @@ flowchart TD
     STG -.->|"push · if supabase/migrations or seed paths"| S2["DB migrations · staging"]
     STG -.->|"push · if data-engineering paths"| S3["Data preview · full or scoped (wipe off)"]
 
-    REL -.->|release published| P1["DB migrations · production"]
+    REL -.->|Release Please succeeds on main| P1["DB migrations · production"]
     P1 -.->|on success| P2["Streamlit deploy · production"]
 
     classDef branch fill:#1f6feb,stroke:#0b3a8c,color:#fff;
@@ -49,7 +49,7 @@ Do not use `main` as the default target for feature work. Production deployment 
 8. Review and merge that release/promotion PR with a merge commit, not squash.
 9. The push to `main` publishes the tag and GitHub Release without opening another PR.
 10. The same `main` push back-merges `main` into `dev` so the release commit (version fields, changelog, `uv.lock`) never diverges from the integration branch. If the direct merge is rejected (conflict or branch protection), the workflow opens a `chore(release): back-merge main into dev` PR instead — resolve and merge it with a merge commit.
-11. The published GitHub Release triggers production migrations and Streamlit production deployment.
+11. A successful Release Please run on `main` triggers production migrations after verifying that its exact commit has a published semantic release tag. A successful migration run then triggers the Streamlit production deployment.
 
 Useful PR commands:
 
@@ -88,14 +88,16 @@ On push to `main`:
 
 - `.github/workflows/release-please.yml` detects the merged pending release PR and publishes its tag and GitHub Release; it cannot open a second release PR.
 - The same workflow back-merges `main` into `dev` (direct merge commit, or a fallback PR when the merge is blocked) so release metadata flows back to the integration branch.
-- Production still deploys from the published release event, not directly from the branch push.
+- Production does not deploy directly from the branch push. It waits for the Release Please workflow to succeed and verifies that the exact `main` commit has a published `vX.Y.Z` release.
 
-On release publication:
+After Release Please succeeds on `main`:
 
-- `.github/workflows/db-migrations-scaleway.yml` pushes production migrations.
+- `.github/workflows/db-migrations-scaleway.yml` verifies the published release tag and pushes production migrations.
 - `.github/workflows/streamlit-deploy-production.yml` deploys Streamlit production after the production migration workflow succeeds.
 
-Production data ingestion/promotion remains manual through workflow dispatch.
+The production release workflow holds one concurrency lock across both steps, so a newer release cannot migrate the database while the previous release image is still being built or deployed.
+
+Production data ingestion/promotion is independent from the application deployment and remains manual through workflow dispatch.
 
 ## Release-Please
 
@@ -121,6 +123,24 @@ Examples:
 For Streamlit production rollback, run **Streamlit Deploy Production** manually with `existing_image_tag` set to a known-good image tag, for example `release-v0.8.0`.
 
 For staging or production data jobs, prefer workflow dispatch with explicit source and embedding options. Avoid destructive staging or production data operations unless the selected workflow inputs clearly request them and the target database has been confirmed.
+
+### Unrelated staging data-preview failures
+
+A failed data preview must not be hidden by editing the automation-owned release
+branch, weakening a quality threshold, or marking the draft release PR ready by
+hand. If the failure is demonstrably pre-existing and unrelated to the release
+contents, an operator may advance the release only after all of the following
+are recorded:
+
+1. the failing run and exact quality gaps are linked in a dedicated issue;
+2. the unchanged failure is confirmed on an earlier staging run;
+3. an explicit go decision accepts excluding that data check from the release;
+4. a new non-data revision is promoted through `dev -> staging` normally;
+5. every workflow triggered for that new staging SHA succeeds.
+
+The data incident remains open until its original preview passes without
+relaxed checks. The release PR must still be refreshed and marked ready by the
+Release Please workflow, never manually.
 
 ## Repository Settings
 
