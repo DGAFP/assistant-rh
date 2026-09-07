@@ -20,7 +20,7 @@ The canonical branch and release procedure is documented in `docs/git_flow.md`.
 - Workflow: `.github/workflows/release-please.yml`
 - Trigger: push to protected `staging` to prepare the PR, then push to `main` to publish the merged release
 - Config: `release-please-config.json` + `.release-please-manifest.json`
-- Strategy: `release-type=python` + `extra-files` so release PRs also bump version fields in `pyproject.toml` and `package.json` files
+- Strategy: `release-type=python` + `extra-files` so release PRs also bump version fields in the package `pyproject.toml` files
 - Auth token: `RELEASE_PLEASE_TOKEN` secret (PAT/GitHub App token). This is required so release-please-created tags/releases can trigger downstream workflows (production deploy on `release.published`).
 - Required token repository permissions: `actions: read`, `contents: write`, `pull-requests: write`, `issues: write`.
 - Commit signatures: candidate, version and lockfile commits use the built-in GitHub Actions app token so GitHub marks them verified. `RELEASE_PLEASE_TOKEN` is reserved for PR state changes that must trigger checks and for release publication.

@@ -1,0 +1,66 @@
+[project]
+name = "assistant-rh-api"
+version = "0.9.1"
+description = "OpenAI-compatible HTTP API for Assistant RH"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.136.3,<1",
+    "psycopg[binary]>=3.3.3,<4",
+    "uvicorn>=0.48.0,<1",
+]
+
+[project.scripts]
+assistant-rh-api = "assistant_rh_api.__main__:main"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1,<1",
+    "import-linter>=2.14,<3",
+    "pytest>=8.0,<10",
+    "ruff>=0.15,<1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/assistant_rh_api"]
+
+[tool.importlinter]
+root_package = "assistant_rh_api"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+id = "core-is-pure"
+name = "Core does not depend on transport, adapters, or I/O frameworks"
+type = "forbidden"
+source_modules = ["assistant_rh_api.core"]
+forbidden_modules = [
+    "assistant_rh_api.handlers",
+    "assistant_rh_api.db",
+    "assistant_rh_api.gateways",
+    "psycopg",
+    "fastapi",
+    "httpx",
+    "streamlit",
+    "boto3",
+]
+
+[[tool.importlinter.contracts]]
+id = "handlers-do-not-use-psycopg"
+name = "Handlers do not access Postgres directly"
+type = "forbidden"
+source_modules = ["assistant_rh_api.handlers"]
+forbidden_modules = ["psycopg"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+id = "adapters-do-not-import-handlers"
+name = "Database and provider adapters do not depend on HTTP handlers"
+type = "forbidden"
+source_modules = [
+    "assistant_rh_api.db",
+    "assistant_rh_api.gateways",
+]
+forbidden_modules = ["assistant_rh_api.handlers"]

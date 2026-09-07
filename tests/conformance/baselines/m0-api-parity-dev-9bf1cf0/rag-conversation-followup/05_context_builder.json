@@ -1,0 +1,47 @@
+{
+  "input": {
+    "selected_section_ids": [],
+    "selector_retry_triggered": false
+  },
+  "output": {
+    "context_items_ref": [
+      {
+        "section_id": "",
+        "doc_id": "25826b29-ee7d-568b-9b20-742e84868464",
+        "heading": "Fiche MATTE n° 5 - Renouvellement et délais de prévenance - Juillet 2024",
+        "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+        "tokens": 794,
+        "score": 0.9907,
+        "is_doc_entire": true
+      },
+      {
+        "section_id": "",
+        "doc_id": "LEGIARTI000051962599",
+        "heading": "",
+        "publisher": "DGAFP",
+        "tokens": 208,
+        "score": 0.6009,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "",
+        "doc_id": "LEGIARTI000044421868",
+        "heading": "",
+        "publisher": "DGAFP",
+        "tokens": 597,
+        "score": 0.4525,
+        "is_doc_entire": false
+      },
+      {
+        "section_id": "",
+        "doc_id": "f663dfdc-71dc-4348-b61f-aeac64a4b413",
+        "heading": "Conditions d'emploi d'un contractuel dans la fonction publique",
+        "publisher": "Service-Public",
+        "tokens": 6628,
+        "score": 0.158,
+        "is_doc_entire": true
+      }
+    ],
+    "context_text_hash": "15f53dd9a3eb7fd4cf1154d2665b4000d23a88b2934b120aa370cfc0d95571cc"
+  }
+}

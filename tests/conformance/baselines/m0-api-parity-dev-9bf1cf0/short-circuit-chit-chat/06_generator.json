@@ -1,0 +1,12 @@
+{
+  "input": {
+    "query": "Bonjour, comment ça va ?",
+    "context_item_count": 0,
+    "conversation_history": []
+  },
+  "output": {
+    "answer": "Bonjour, je suis l'Assistant RH specialise sur les questions liees aux contractuels de la fonction publique d'Etat (FPE). Comment puis-je vous aider ?",
+    "answer_length": 150,
+    "citations": []
+  }
+}

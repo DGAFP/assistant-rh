@@ -1,0 +1,17 @@
+{
+  "id": "short-circuit-chit-chat",
+  "query": "Bonjour, comment ça va ?",
+  "conversation_history": [],
+  "tags": [
+    "m0b",
+    "short-circuit",
+    "chit-chat"
+  ],
+  "ministry": null,
+  "expected": {
+    "intent": "chit_chat",
+    "should_proceed": false,
+    "needs_legal_search": false,
+    "generator_used_fallback": false
+  }
+}

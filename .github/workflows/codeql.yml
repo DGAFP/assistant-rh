@@ -37,8 +37,6 @@ jobs:
         include:
           - language: python
             suppression_pack: codeql/python-queries:AlertSuppression.ql
-          - language: javascript-typescript
-            suppression_pack: codeql/javascript-queries:AlertSuppression.ql
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

@@ -1,0 +1,19 @@
+{
+  "id": "rag-acronym-contract",
+  "query": "Quelle est la durée maximale d'un CDD pour un agent contractuel ?",
+  "conversation_history": [],
+  "tags": [
+    "m0b",
+    "rag",
+    "acronym",
+    "matte-scope"
+  ],
+  "ministry": "matte",
+  "expected": {
+    "intent": "rag_query",
+    "should_proceed": true,
+    "needs_legal_search": false,
+    "selected_ministry": "matte",
+    "generator_used_fallback": false
+  }
+}

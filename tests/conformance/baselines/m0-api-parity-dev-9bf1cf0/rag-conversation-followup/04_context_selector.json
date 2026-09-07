@@ -1,0 +1,186 @@
+{
+  "input": {
+    "query": "Quelles sont les règles de renouvellement d'un CDD dans la fonction publique d'État ?",
+    "aggregated_section_ids": [
+      "98774ee4-d5e0-5a8a-aca2-369f1b83cb60",
+      "bd02202e-edd9-57e0-b994-1a6ff5f212c9",
+      "a31a2c35-a812-4d99-910e-d3644116b98d",
+      "037e17f3-8701-421f-bcab-47048cb68683",
+      "5740d525-7844-4524-97a3-6cbaf40b1c69",
+      "210d756c-281a-4b4b-86fa-90b640843aeb",
+      "a455bab2-ccf8-4dda-b4bf-250aaaf3d1bc",
+      "1981ca5a-7970-459e-956a-d8d51d0d2c56",
+      "ce0bf1f2-fa33-528a-a254-8438395137f3",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "5b03617b-618e-58db-971e-7bfd1411eb11",
+      "0b3366d9-4a66-5aa0-9009-db477c2ad9cd",
+      "31889adf-bf56-55a6-afad-868480c1b880",
+      "a02d78a0-e14f-59dc-a699-6af91ff2ea49",
+      "61c3ddc4-5ee1-5e1b-a641-f4b8603d512e",
+      ""
+    ]
+  },
+  "output": {
+    "selector_enabled": true,
+    "selector_all_rejected": false,
+    "selector_items_before": 20,
+    "selector_items_after": 4,
+    "selector_decisions": {
+      "kept": [
+        {
+          "idx": 0,
+          "heading": "Renouvellement du CDD par avenant et respect des délais de prévenance",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "98774ee4-d5e0-5a8a-aca2-369f1b83cb60",
+          "document_id": "25826b29-ee7d-568b-9b20-742e84868464"
+        },
+        {
+          "idx": 9,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000051962599"
+        },
+        {
+          "idx": 10,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000044421868"
+        },
+        {
+          "idx": 16,
+          "heading": "Comment est renouvelé ou s'achève le contrat de travail d'un contractuel?",
+          "publisher": "Service-Public",
+          "section_id": "31889adf-bf56-55a6-afad-868480c1b880",
+          "document_id": "f663dfdc-71dc-4348-b61f-aeac64a4b413"
+        }
+      ],
+      "removed": [
+        {
+          "idx": 1,
+          "heading": "I-3. La reconduction expresse du CDD en CDI au terme des 6 ans",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "bd02202e-edd9-57e0-b994-1a6ff5f212c9",
+          "document_id": "5fd1eda2-b78d-57d9-a81b-a6c255f43229"
+        },
+        {
+          "idx": 2,
+          "heading": "Durée du contrat",
+          "publisher": "Service-Public",
+          "section_id": "a31a2c35-a812-4d99-910e-d3644116b98d",
+          "document_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f"
+        },
+        {
+          "idx": 3,
+          "heading": "Durée du contrat",
+          "publisher": "Service-Public",
+          "section_id": "037e17f3-8701-421f-bcab-47048cb68683",
+          "document_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f"
+        },
+        {
+          "idx": 4,
+          "heading": "Durée du contrat",
+          "publisher": "Service-Public",
+          "section_id": "5740d525-7844-4524-97a3-6cbaf40b1c69",
+          "document_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f"
+        },
+        {
+          "idx": 5,
+          "heading": "Dans quels cas un CDD peut-il déboucher sur un CDI?",
+          "publisher": "Service-Public",
+          "section_id": "210d756c-281a-4b4b-86fa-90b640843aeb",
+          "document_id": "694164dc-e0ac-44d5-9812-e218e0cd0f98"
+        },
+        {
+          "idx": 6,
+          "heading": "Corps dispensé de formation statutaire préalable à titularisation",
+          "publisher": "Service-Public",
+          "section_id": "a455bab2-ccf8-4dda-b4bf-250aaaf3d1bc",
+          "document_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f"
+        },
+        {
+          "idx": 7,
+          "heading": "Vous êtes recruté en CDD sur un nouvel emploi dans la fonction publique",
+          "publisher": "Service-Public",
+          "section_id": "1981ca5a-7970-459e-956a-d8d51d0d2c56",
+          "document_id": "50a80468-f408-43b0-a2b5-cc127b6339e0"
+        },
+        {
+          "idx": 8,
+          "heading": "Quels sont les motifs de dispense ?",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "ce0bf1f2-fa33-528a-a254-8438395137f3",
+          "document_id": "471ab8f6-5121-5e72-a76a-4c4017b34c15"
+        },
+        {
+          "idx": 11,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000051962604"
+        },
+        {
+          "idx": 12,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000044421874"
+        },
+        {
+          "idx": 13,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000044421884"
+        },
+        {
+          "idx": 14,
+          "heading": "2. Evolution de la rémunération",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "5b03617b-618e-58db-971e-7bfd1411eb11",
+          "document_id": "5db2b6cb-7d3d-59b2-9ee5-c5cae6f9cfb3"
+        },
+        {
+          "idx": 15,
+          "heading": "2.1- L’évolution de la rémunération des agents employés en CDD",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "0b3366d9-4a66-5aa0-9009-db477c2ad9cd",
+          "document_id": "5db2b6cb-7d3d-59b2-9ee5-c5cae6f9cfb3"
+        },
+        {
+          "idx": 17,
+          "heading": "Comment recruter ? Quels procédure et principes généraux appliquer ? (Cadre mini",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "a02d78a0-e14f-59dc-a699-6af91ff2ea49",
+          "document_id": "943da0b3-70de-5453-9589-0f4d9e3f99f2"
+        },
+        {
+          "idx": 18,
+          "heading": "Le renouvellement ou le non renouvellement du contrat doit être notifié à l'agen",
+          "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+          "section_id": "61c3ddc4-5ee1-5e1b-a641-f4b8603d512e",
+          "document_id": "25826b29-ee7d-568b-9b20-742e84868464"
+        },
+        {
+          "idx": 19,
+          "heading": "",
+          "publisher": "DGAFP",
+          "section_id": "",
+          "document_id": "LEGIARTI000051962606"
+        }
+      ],
+      "reason": "Ces sections donnent les règles complètes de renouvellement d’un CDD d’État : durée maximale (3 ans, renouvelable jusqu’à 6 ans) et passage en CDI, procédure d’avenant et signatures (0), délais de prévenance selon la durée du contrat (9), cadre légal et conditions de comptabilisation des 6 ans (10), et modalités pratiques de notification, entretien et conséquences du refus (16)."
+    },
+    "selector_decision": "selected",
+    "selector_retry_triggered": false,
+    "selector_retry_succeeded": false,
+    "rejection_reason": "",
+    "reason": "Ces sections donnent les règles complètes de renouvellement d’un CDD d’État : durée maximale (3 ans, renouvelable jusqu’à 6 ans) et passage en CDI, procédure d’avenant et signatures (0), délais de prévenance selon la durée du contrat (9), cadre légal et conditions de comptabilisation des 6 ans (10), et modalités pratiques de notification, entretien et conséquences du refus (16).",
+    "selected_section_ids": []
+  }
+}

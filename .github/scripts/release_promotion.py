@@ -34,7 +34,6 @@ REQUIRED_STAGING_WORKFLOWS = frozenset(
     {
         "CI Tests",
         "CodeQL",
-        "Conformance",
         "Streamlit Deploy Staging",
     }
 )

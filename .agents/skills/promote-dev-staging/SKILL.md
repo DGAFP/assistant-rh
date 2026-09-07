@@ -64,7 +64,6 @@ workflows from the promoted file set:
   - `tests/conformance/**/*.jsonl`
   - `scripts/load_goldset_seed.py`
   - `.github/workflows/db-migrations-scaleway.yml`
-- **Conformance** (`conformance.yml`) — runs on staging push.
 - **Data Engineering Preview Staging** (`data-engineering-preview-staging.yml`)
   — runs only if the promoted files touch its path filter:
   - `.github/workflows/data-engineering-*.yml`
@@ -118,8 +117,8 @@ gh pr create -R DGAFP/assistant-rh \
   --title "chore: promote dev to staging" \
   --body "<preflight summary: commits promoted + predicted staging workflows>"
 ```
-Put the preflight summary (promoted commits, predicted Streamlit/migrations/
-conformance/data-preview behavior) in the PR body.
+Put the preflight summary (promoted commits and predicted Streamlit,
+migrations, and data-preview behavior) in the PR body.
 
 ### 6. Hand off — the human merges
 Do **not** merge. Tell the user to merge with a **merge commit**, e.g.:
