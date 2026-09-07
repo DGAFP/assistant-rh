@@ -104,6 +104,7 @@ def load_questions_stats() -> pd.DataFrame:
                 ts,
                 turn_id,
                 session_id,
+                turn_index,
                 user_group,
                 selected_ministry,
                 question,

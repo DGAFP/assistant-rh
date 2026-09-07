@@ -1,5 +1,7 @@
 # Spike A2 — compatibilité SDK OpenAI et `conversations`
 
+> Amendement A3 du 2026-09-04 : ce document conserve la preuve de transport observée pendant le spike. Le [contrat courant](02-api-contract.md) remplace, pour Streamlit, le bearer statique par une session de huit heures, définit le feedback étoiles/raisons/commentaire et crée les URLs des documents internes au clic. L'auth machine-to-machine et le rendu de ces sources dans le fork `conversations` restent à traiter au temps 2.
+
 > Date : 2026-09-02 · issue [#443](https://github.com/DGAFP/assistant-rh/issues/443) · contrat amendé dans [02-api-contract.md](02-api-contract.md).
 
 ## Verdict
@@ -43,7 +45,7 @@ La référence de forme des chunks et de `stream_options.include_usage` est la [
 | Erreur JSON avant headers | Exceptions typées par statut | Pydantic-AI sait mapper les erreurs HTTP usuelles | format OpenAI `{error:{...}}` |
 | Erreur après headers | `openai.APIError`, code `stream_error` | même `openai.APIError` remonte de Pydantic-AI | événement OpenAI retenu ; adaptation UI requise dans le fork |
 | Déconnexion | `Stream.close()` ferme la socket ; replay la détecte | annulation du flux async disponible | C7 doit persister `cancelled` et annuler les appels encore annulables |
-| Feedback | l'id `chatcmpl-*` est disponible | l'id provider est persisté, mais le bouton actuel note un id UI `trace-*` dans Langfuse | association UI → completion et appel serveur à `/v1/feedback` à ajouter au fork |
+| Feedback | l'id `chatcmpl-*` est disponible | l'id provider est persisté, mais le bouton actuel note un id UI `trace-*` dans Langfuse | association UI → completion, widget étoiles/raisons/commentaire et appel serveur à `/v1/feedback` à ajouter au fork |
 
 ## Requêtes réellement émises par `conversations`
 
@@ -88,7 +90,7 @@ Le serveur ferme ensuite le flux sans `[DONE]`. Il ne met dans `message` ni exce
 
 Le catalogue `conversations` étant statique, son déploiement doit valider au démarrage que chaque `model_name` actif figure dans `/v1/models` pour le bearer. Une réponse 403 reste nécessaire si un modèle ministériel connu est hors `allowed_ministries`; 404 est réservé à un modèle inconnu.
 
-Pour le feedback futur, l'id fournisseur `chatcmpl-<turn_id>` doit être associé au message UI au moment de finaliser le stream. Le bouton envoie ensuite `rating=up|down` au backend `conversations`; ce backend appelle `/v1/feedback` avec son bearer. La clé n'est jamais confiée au code frontend.
+Au moment du spike, le bouton envoyait `rating=up|down` au backend `conversations`. La cible A3 le remplace par le widget étoiles/raisons/commentaire : l'id fournisseur `chatcmpl-<turn_id>` doit être associé au message UI au moment de finaliser le stream, puis le backend appelle `/v1/feedback`. La clé ou session n'est jamais confiée au code frontend.
 
 ## Reproduction locale
 

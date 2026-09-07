@@ -1,13 +1,13 @@
 # Contrat API v1
 
-> Référence : [décisions D1, D2, D6 et D11](06-decisions.md). Diagrammes : [03-sequence-diagrams.md](03-sequence-diagrams.md).
+> Référence : [décisions D1, D2, D6, D11 et D15 à D19](06-decisions.md). Périmètre Streamlit : [arbitrage A3](08-streamlit-api-parity.md). Diagrammes : [03-sequence-diagrams.md](03-sequence-diagrams.md).
 
 ## Conventions générales
 
-- Base : `https://<host>` ; toutes les réponses en JSON UTF-8.
-- **Auth unique** : `Authorization: Bearer <token de groupe>`. Le token hashé (PBKDF2, colonne `user_groups.api_token_hash`) identifie un groupe avec `allowed_ministries`, `default_ministry` et `is_admin`.
-- **Autorisation admin** : `/admin/*` utilise le même resolver de bearer puis exige `is_admin=true`. Il n'existe pas d'`ADMIN_TOKEN` statique séparé. Une commande de bootstrap DB crée ou réinitialise le premier groupe admin et affiche son token une seule fois.
-- **Bascule Streamlit** : l'API peut être déployée dark sans que Streamlit détienne ces tokens. Avant d'activer le client HTTP, l'étape E1 livre et teste le provisioning/rotation côté serveur Streamlit ; aucun token n'est exposé au navigateur.
+- Base : `https://<host>` ; les réponses applicatives sont en JSON UTF-8, sauf le flux SSE et la rédemption documentaire (bytes ou redirection) explicitement décrits ci-dessous.
+- **Auth publique** : `Authorization: Bearer <session opaque>`. `POST /v1/auth/session` émet après vérification du mot de passe une session bornée au groupe, à sa politique ministère et à huit heures. La route de rédemption documentaire `GET /v1/documents/access/{capability}` utilise sa capability courte à la place du bearer afin de permettre une navigation directe du navigateur.
+- **Conservation du secret** : le bearer de session reste côté serveur du frontend. Il n'entre ni dans le cookie Streamlit, ni dans une URL, ni dans un log. Il n'existe pas de bundle statique de bearers par groupe.
+- **Admin hors v1** : les fonctions admin restent dans Streamlit avec accès DB direct sous l'exception A3. Aucun endpoint `/admin/*` n'est requis par ce contrat.
 - **Erreurs** : format OpenAI sur `/v1/*` :
 
 ```json
@@ -17,13 +17,12 @@
 | HTTP | Cas |
 |---|---|
 | 401 | token absent/invalide |
-| 403 | modèle demandé hors `allowed_ministries` ou route admin appelée sans rôle `is_admin` |
+| 403 | modèle demandé hors `allowed_ministries` |
 | 404 | modèle inconnu, `completion_id`/ressource inexistante |
 | 422 | body invalide (validation pydantic) |
 | 413 | body HTTP supérieur à 1 Mio, rejeté avant lecture et avant démarrage du stream |
+| 429 | tentatives de vérification de mot de passe trop nombreuses ; `Retry-After` indique le backoff temporaire |
 | 500 | erreur survenue avant le démarrage d'une réponse non-stream ou SSE |
-
-Sur `/admin/*`, format simple : `{ "detail": "..." }` (statuts identiques).
 
 - **Modèles exposés** : `assistant-rh-<ministère>` pour chaque id du catalogue (`matte`, `mso`, `mi`, `masa`) présent dans `allowed_ministries` du token. Le nom générique `assistant-rh` est accepté en entrée et résolu sur `default_ministry`.
 - **Compatibilité assumée** : le sous-ensemble exact de Chat Completions supporté est figé par des tests contre le SDK OpenAI et une instance de `conversations` pendant le spike A2. Toute extension non documentée reste rejetée ou ignorée explicitement.
@@ -31,6 +30,49 @@ Sur `/admin/*`, format simple : `{ "detail": "..." }` (statuts identiques).
 ---
 
 ## Surface publique
+
+### Authentification du produit Streamlit
+
+`GET /v1/auth/groups` liste uniquement les métadonnées d'affichage des groupes `visible=true`, non-admin, dotés d'un mot de passe et dont le slug n'est pas le sentinel structurel `default`, ordonnées par priorité puis slug :
+
+```json
+{
+  "data": [
+    { "slug": "dgafp-beta", "label": "DGAFP Beta", "icon": "🏛️", "color": "#0053b3" }
+  ]
+}
+```
+
+`POST /v1/auth/session` vérifie le mot de passe :
+
+```json
+{ "slug": "dgafp-beta", "password": "…" }
+```
+
+La réponse 200 crée une session non renouvelable de huit heures :
+
+```json
+{
+  "access_token": "<opaque>",
+  "token_type": "bearer",
+  "expires_in": 28800,
+  "expires_at": "2026-09-04T22:00:00Z",
+  "group": {
+    "slug": "dgafp-beta",
+    "allowed_ministries": ["matte"],
+    "default_ministry": "matte",
+    "credential_revision": 3
+  }
+}
+```
+
+L'erreur 401 est identique pour un groupe absent et un mot de passe faux. Le backend Streamlit applique un quota visiteur + slug à partir de l'adresse fournie par l'ingress de confiance ; l'API applique en complément des quotas temporaires par source directe, par slug et globaux. Une adresse transmise par le client ou un proxy non approuvé n'est jamais crue. Le dépassement répond 429 avec `Retry-After` et un backoff borné : aucun verrou persistant n'est écrit sur le groupe. Les seuils sont configurables, testés et n'enregistrent jamais le mot de passe.
+
+`GET /v1/auth/me`, avec bearer, retourne l'objet `group`, `expires_at` et le nombre de secondes restantes, jamais le token lui-même.
+
+`DELETE /v1/auth/session`, avec le bearer courant, révoque sa ligne de session et répond 204 sans corps. Le logout Streamlit appelle cette route avant d'effacer son état local ; une session déjà expirée n'est jamais renouvelée pour permettre le logout.
+
+Le bearer retourné est conservé uniquement dans l'état serveur de la session Streamlit. Le cookie navigateur ne contient que les données non secrètes nécessaires au parcours produit et n'autorise jamais à recréer une session API sans mot de passe. La perte du websocket/état Streamlit, l'expiration, le logout ou un reset de mot de passe imposent donc une nouvelle authentification ; le fast-path historique fondé sur le seul cookie de groupe est désactivé en mode API. Le fast-path d'onboarding `?group=<slug>` est également supprimé à E1 : le paramètre n'authentifie ni ne présélectionne un groupe, et les liens de cohorte existants sont retirés avant le canary. Pour la même raison, l'ouverture du viewer utilise une navigation interne qui conserve la session Streamlit, et non le lien HTML/`target="_blank"` historique qui créerait une nouvelle session. Une ouverture directe dans un nouvel onglet exige une nouvelle authentification. Le registre de données et permissions est figé par [A3](08-streamlit-api-parity.md#registre-des-endpoints-publics).
 
 ### `GET /v1/models`
 
@@ -90,7 +132,7 @@ Règles de mapping :
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "Réponse rédigée…\n\n---\n**Sources :**\n1. [Titre du document](https://…) — MATTE\n2. …"
+        "content": "Réponse rédigée…\n\n---\n**Sources :**\n1. Titre du document interne — MATTE\n2. [Titre public](https://…) — Service-Public"
       },
       "finish_reason": "stop"
     }
@@ -100,20 +142,20 @@ Règles de mapping :
     "turn_id": "<turn_id>",
     "ministry": "matte",
     "sources": [
-      { "title": "…", "url": "https://…", "publisher": "MATTE", "doc_ref": "…" }
+      { "title": "…", "url": null, "publisher": "MATTE", "doc_ref": "…", "access": "authenticated" }
     ]
   }
 }
 ```
 
 - `id` : `chatcmpl-` + le `turn_id` du `chat_run` (clé de corrélation feedback et logs).
-- Les **sources** sont livrées deux fois : bloc markdown en fin de `content` (rendu par tout client OpenAI, dont `conversations`) et champ d'extension `x_assistant_rh.sources` (clients qui veulent les structurer). Le SDK OpenAI conserve l'extension dans `model_extra`; `conversations`/Pydantic-AI la tolère mais ne la transforme pas en panneau de sources. Le markdown est donc le seul chemin interopérable en v1.
+- Les **sources** sont livrées deux fois : bloc markdown en fin de `content` et champ d'extension `x_assistant_rh.sources`. Le SDK OpenAI conserve l'extension dans `model_extra`, mais `conversations`/Pydantic-AI ne la transforme pas encore en panneau de sources. Une source publique garde donc son URL canonique dans le markdown ; une source interne reste sans URL durable et le fork doit utiliser l'extension pour demander une URL courte au clic. Un client générique peut afficher sa référence sans la rendre cliquable.
 - `usage` : renseigné si le gateway LLM le fournit, sinon zéros (v1).
 - Question hors périmètre (gate du query processor) : réponse 200 normale dont le contenu est le message de refus du pipeline — jamais une erreur HTTP.
 
 **Réponse 200 (stream, SSE `text/event-stream`)**
 
-Chunks conformes OpenAI ; keep-alive SSE `: ping` toutes les ~10 s pendant le retrieval, puis deltas de génération et bloc sources. Le `chat_run` et ses traces sont finalisés **avant** le chunk terminal et `[DONE]` :
+Chunks conformes OpenAI ; keep-alive SSE `: ping` toutes les ~10 s pendant le retrieval, puis deltas de génération et bloc sources. Le `chat_run`, ses sources finales et ses traces sont finalisés **avant** le chunk terminal et `[DONE]` :
 
 ```text
 data: {"id":"chatcmpl-<turn_id>","object":"chat.completion.chunk","created":…,"model":"assistant-rh-matte","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
@@ -136,13 +178,15 @@ Cycle de vie et erreurs :
 - le pipeline synchrone tourne dans un worker borné ; le générateur SSE async reste disponible pour les pings et la détection de déconnexion ;
 - si une erreur survient après le démarrage du SSE, le serveur émet `data: {"error":{"message":"…","type":"server_error","code":"stream_error"}}`, ferme sans `[DONE]` et persiste le run `failed` ; il ne prétend pas pouvoir changer le statut HTTP en 500. Le SDK OpenAI lève `APIError(code="stream_error")`. `conversations` 0.0.22 laisse actuellement remonter cette exception après headers : le fork devra la convertir en son événement UI `model_connection_error` ;
 - une déconnexion client finalise un run `cancelled`/partiel et annule les appels encore annulables ;
-- la persistance d'un succès précède `[DONE]`, de sorte qu'un feedback envoyé immédiatement après la completion ne rencontre pas un run encore absent.
+- la persistance atomique d'un succès — `chat_runs`, sources finales ordonnées dans `chat_run_sources` et événements de toutes les étapes dans `rag_trace_events` — précède `[DONE]`, de sorte qu'un feedback ou un clic source immédiat ne rencontre pas un run incomplet.
+
+`chat_run_sources(turn_id, doc_ref, ordinal, …)` ne contient que les sources finales renvoyées dans le bloc markdown et `x_assistant_rh.sources`. Cette relation est l'autorité utilisée par l'accès documentaire. Les candidats, scores, filtres, rejets et décisions intermédiaires de chaque étape restent des événements structurés de trace ; ils ne donnent jamais accès à un document non présenté à l'utilisateur.
 
 ### Notes client `conversations`
 
 - Le client ne découvre pas les modèles via `GET /v1/models` : ils sont déclarés statiquement dans son fichier `LLM_CONFIGURATION_FILE_PATH`. Le modèle configuré doit donc être recoupé au déploiement avec la liste visible par le bearer ; le SDK reste la preuve de `/v1/models`.
-- Le bearer du provider est lu côté backend depuis une variable d'environnement et n'est pas envoyé au navigateur. Une configuration provider correspond à un bearer de groupe ; le routage par utilisateur/groupe demandera le fork prévu au temps 2 ou des instances séparées.
-- L'id fournisseur `chatcmpl-<turn_id>` est conservé dans `pydantic_messages`, mais les boutons de feedback actuels utilisent un id UI `trace-*` et écrivent dans Langfuse. Le fork doit conserver l'association message UI → completion puis appeler `POST /v1/feedback` côté serveur avec son bearer ; aucun token ne passe au navigateur.
+- Le provider actuel lit une clé statique côté backend et ne l'envoie pas au navigateur. La session interactive de huit heures est le contrat du Streamlit temps 1, pas encore le mécanisme machine-to-machine du fork : A2 a validé le transport, tandis que l'auth du temps 2 reste à décider sans réintroduire un bundle Streamlit par groupe.
+- L'id fournisseur `chatcmpl-<turn_id>` est conservé dans `pydantic_messages`, mais les boutons actuels utilisent un id UI `trace-*` et écrivent dans Langfuse. Le fork doit conserver l'association message UI → completion, fournir le widget étoiles/raisons/commentaire puis appeler `POST /v1/feedback` côté serveur ; aucun token ne passe au navigateur.
 
 ### `POST /v1/feedback`
 
@@ -153,21 +197,27 @@ Hors spec OpenAI. Rattache une note utilisateur au run identifié par l'id de co
 ```json
 {
   "completion_id": "chatcmpl-<turn_id>",
-  "rating": "down",
-  "stars": null,
+  "stars": 2,
   "reasons_positive": [],
-  "reasons_negative": ["Source juridique manquante"],
+  "reasons_negative": ["Sources manquantes"],
   "comment": "La réponse ne cite pas le décret applicable."
 }
 ```
 
 - `completion_id` : accepté avec ou sans préfixe `chatcmpl-`.
-- `rating` : `"up"` | `"down"`.
-- `stars` : entier **1–5** ou `null`. Le widget Streamlit historique produit 0–4 ; la conversion **+1 est à la charge du client** — l'API stocke l'échelle 1–5.
-- `reasons_positive` / `reasons_negative` : listes optionnelles de libellés issus du catalogue produit, conservées pour la parité du dashboard et de l'analyse des feedbacks.
-- `comment` : optionnel.
+- `stars` : entier **1–5 obligatoire**. Pendant la coexistence avec le runtime historique, l'adaptateur persiste `stars - 1` sur l'échelle 0–4.
+- `reasons_positive` / `reasons_negative` : listes de libellés issus du catalogue produit actif : positif `Clair`, `Utile`, `Pertinent`, `Complet`, `Précis` ; négatif `Confus`, `Éléments faux`, `Non pertinent`, `Incomplet`, `Sources manquantes`.
+- `comment` : chaîne optionnelle ; au moins une raison ou un commentaire non vide est requis.
+- `helpful` est dérivé par le serveur : 1–2 → `false`, 3–5 → `true`. Le champ historique `rating` n'appartient pas au contrat canonique.
+- Les combinaisons suivent le widget : 1–2 affiche seulement les raisons négatives, 3–4 autorise les deux listes, 5 affiche seulement les raisons positives. Un libellé inconnu ou une raison dans une liste non applicable produit une 422.
 
-**Réponse 204.** 404 si le `turn_id` est inconnu **ou n'appartient pas au groupe identifié par le bearer**. Un second POST autorisé sur le même run remplace le feedback courant selon une règle explicite et auditée. L'écriture déclenche le même enrichissement goldset et le même pipeline d'analyse que le chemin Streamlit historique, directement ou via un job durable.
+**Réponse 204.** 404 si le `turn_id` est inconnu **ou n'appartient pas au groupe identifié par le bearer**. Le store normalise la charge utile — `stars`, raisons dédupliquées dans l'ordre du catalogue, commentaire nettoyé aux extrémités — puis calcule une empreinte canonique.
+
+La transaction verrouille d'abord la ligne parent `chat_runs` : elle sérialise ainsi deux premières soumissions concurrentes, même quand aucun feedback n'existe encore. Une empreinte identique à la valeur courante est un no-op sans nouvel audit. Une charge différente copie l'ancienne valeur dans `chat_feedback_audit`, puis remplace la valeur courante ; la contrainte unique sur `chat_feedbacks(turn_id)` constitue le dernier garde-fou. Une modification réinitialise `error_category`, `ai_reason` et `ai_analyzed_at` afin de replanifier l'analyse IA, mais conserve les annotations humaines `beta_scope` et `theme`.
+
+L'audit append-only conserve les identifiants et horodatages originaux, la valeur remplacée, le groupe acteur et `audit_session_hash`. Ce dernier est un HMAC-SHA-256, avec une clé d'audit dédiée, d'un identifiant interne aléatoire de session ; il est stable au plus pendant les huit heures de cette session et n'est ni le bearer, ni un cookie, ni une identité utilisateur. Le rôle runtime peut insérer dans l'audit mais pas modifier ni supprimer ses lignes.
+
+Avant d'ajouter l'unicité, une migration versionnée classe les lignes existantes par `(ts DESC NULLS LAST, id DESC)` pour chaque `turn_id`, conserve la première comme valeur courante et copie toutes les autres dans l'audit avant de les retirer de `chat_feedbacks`. Copie, suppression et contrainte sont dans une transaction ; le test de migration vérifie que `nombre courant + nombre archivé = nombre initial`, y compris avec égalités de date. L'enrichissement goldset historique reste conservé ; l'analyse admin reste dans Streamlit.
 
 ### `GET /healthz`
 
@@ -175,55 +225,39 @@ Sans auth (probe). **200** `{ "status": "ok", "db": "ok", "config_loaded": true 
 
 ---
 
-## Surface admin (bearer d'un groupe `is_admin`)
+## Accès documentaire
 
-### `GET /admin/rag-config` · `PUT /admin/rag-config`
-
-- `GET` → l'objet de config runtime complet (clés `v3_*` : `v3_initial_top_k`, `v3_rerank_top_k`, `v3_rerank_input_k`, gates, prompts actifs, …) + métadonnées (`updated_at`, version).
-- `PUT` avec un objet **partiel** → merge et validation par `assistant_rh_api.core.config` ; 422 si clé inconnue ou valeur invalide, notamment les anciennes clés v1/v2.
-
-### `/admin/system-prompts/*` · `/admin/acronyms/*`
-
-- System prompts : liste, détail, création/mise à jour, duplication et suppression protégée du défaut.
-- Acronymes : liste/recherche, création, mise à jour, suppression, liste des acronymes détectés manquants et marquage comme traité.
-- Toute mutation incrémente une révision de configuration. Les instances API rechargent prompts/acronymes sans conserver indéfiniment une valeur dans un objet pipeline partagé.
-
-### `GET /admin/user-groups` · `POST /admin/user-groups` · `PATCH/DELETE /admin/user-groups/{slug}`
-
-CRUD des groupes : `slug`, `label`, `icon`, `color`, `priority`, `is_admin`, `visible`, `allowed_ministries`, `default_ministry`, `chart_color`, `chart_label`. Les hash (`password_hash`, `api_token_hash`) ne sont **jamais** renvoyés.
-
-`POST /admin/user-groups/{slug}/reset-password` conserve la gestion des mots de passe du sélecteur Streamlit tant que ce mécanisme existe. Les groupes structurels restent non supprimables.
-
-### `POST /admin/user-groups/{slug}/rotate-token`
-
-Génère un nouveau token API pour le groupe, stocke son hash, retourne le token **en clair une seule fois** :
+`POST /v1/documents/{doc_ref}/access-url`, avec `{ "completion_id": "chatcmpl-<turn_id>" }`, vérifie que le document figure dans les sources persistées du run et que la session appartient au groupe autorisé. La réponse contient une URL opaque de rédemption valable quinze minutes et son expiration :
 
 ```json
-{ "slug": "dgafp-beta", "token": "arh_live_…", "rotated_at": "2026-08-21T10:00:00Z" }
+{ "url": "https://…", "expires_at": "2026-09-04T14:15:00Z" }
 ```
 
-### `GET /admin/chat-runs` · `GET /admin/chat-runs/{turn_id}` · `GET /admin/chat-runs/{turn_id}/trace`
+La relation `chat_run_sources` persiste `turn_id`, `doc_ref` et l'ordre des seules sources finales présentées avec le run. L'URL signée est créée au clic par le frontend authentifié et n'entre jamais dans le contenu ou l'historique du chat.
 
-- Liste paginée : filtres `from`, `to`, `group`, `ministry`, `source`, `has_feedback`, `limit` (≤ 200), `offset`. Champs résumés (turn_id, ts, groupe, ministère, question tronquée, note).
-- Détail : le run complet (question, réponse, sources, timings, feedback, config utilisée).
-- Trace : événements `rag_trace_events` ordonnés pour la page Pipeline Timeline.
+`GET /v1/documents/access/{capability}` utilise cette capability sans bearer de session supplémentaire. Un client capable de piloter la navigation peut suivre directement le lien ; au temps 1, `_PDF_Viewer` le rédime côté serveur afin de pouvoir détecter une expiration et piloter le rendu. Une capability invalide, expirée ou inconnue répond 404 au format d'erreur v1. Elle expire après quinze minutes, n'autorise qu'un document, n'est jamais persistée et doit être masquée dans les logs d'accès.
 
-### `GET /admin/feedback` · `GET /admin/feedback/stats` · `POST /admin/feedback/analyze`
+Les deux réponses de succès sont figées :
 
-- Liste paginée détaillée : étoiles, helpful, raisons positives/négatives, commentaire, groupe/ministère, question/réponse, thème et résultat d'analyse IA ; filtres équivalents au dashboard actuel.
-- Stats : volumes, répartition up/down, moyenne d'étoiles (échelle 1–5), par période/groupe/ministère.
-- Analyse : déclenchement borné/idempotent de l'analyse des feedbacks négatifs non analysés ; le travail long ne dépend pas du rerun d'une page Streamlit.
+- **PDF legacy PostgreSQL** : 200, body contenant les bytes, `Content-Type: application/pdf`, `Content-Disposition: inline; filename="<nom assaini>.pdf"`, `Cache-Control: private, no-store` et `X-Content-Type-Options: nosniff` ;
+- **objet S3** : 302 sans body avec `Location: <URL S3 présignée>` et `Cache-Control: private, no-store`. Les paramètres signés de la réponse S3 imposent un `Content-Type` issu d'une allowlist serveur, `Content-Disposition` avec nom assaini (`inline` pour un PDF, `attachment` sinon) et `Cache-Control: private, no-store`.
 
-### Documents et pages DB/éval
+La durée de la présignature S3 est la partie entière de la durée restante de la capability, jamais quinze minutes supplémentaires ; si cette durée est épuisée, la rédemption échoue. Une source publique conserve son URL canonique et n'a normalement pas besoin de cette route. La source interne est ouverte par un contrôle Streamlit qui conserve la session (`st.page_link`/`st.switch_page` ou rendu inline équivalent), jamais par une navigation URL créant une nouvelle session. `_PDF_Viewer` conserve seulement `doc_ref` et `completion_id`, crée une capability fraîche à chaque chargement, puis appelle la rédemption côté serveur sans suivre automatiquement la redirection. Sur un premier 404, il redemande une URL et réessaie une seule fois si sa session de huit heures reste valide. Il rend directement les bytes legacy ou transmet au navigateur la `Location` S3 courte retournée par l'API. Cette nouvelle demande refait les contrôles run/groupe/source ; une capability expirée ne peut pas se renouveler elle-même. Il n'existe aucune route de listing. Les règles complètes sont dans [A3](08-streamlit-api-parity.md#accès-documentaire-court).
 
-La matrice A3 fixe le sort de DB Explorer, Goldset Explorer, des pages d'éval et de `_PDF_Viewer` avant les endpoints concernés. Une page conservée reçoit un endpoint métier étroit, jamais une API SQL générique. L'archivage exige une validation produit.
+## Surface admin reportée
+
+Chat Logs, Feedback Dashboard, Admin Config, DB/Goldset Explorer, les pages d'évaluation, Pipeline Timeline et User Groups restent dans Streamlit sous auth admin et accès DB direct allowlisté. Aucun contrat `/admin/*` ne fait partie de la v1 ; leur éventuelle migration est un chantier ultérieur.
+
+`require_admin()` conserve ses deux chemins actuels : un groupe issu du cookie chiffré dont `is_admin` est revérifié en PostgreSQL, ou le fallback serveur `ADMIN_PASSWORD` lu depuis l'environnement. Le second ne consulte pas PostgreSQL pour vérifier le mot de passe. Le rôle DB dédié et à privilèges minimaux appartient à `admin-hardening`, pas aux conditions M4.
 
 ---
 
 ## Hors périmètre v1 (explicite)
 
 - ProConnect / OIDC (temps 2, dans le front).
-- Rate limiting au-delà de l'auth (suivi des coûts via `chat_runs`).
+- Rate limiting général au-delà de l'auth et de la protection obligatoire de `POST /v1/auth/session` (suivi des coûts via `chat_runs`).
 - Import de sources (reste Streamlit → Grist + S3, domaine ingestion).
-- API SQL générique et endpoints d'éval/debug non décidés par la matrice A3. Les outils conservés reçoivent uniquement des endpoints métier étroits.
+- API SQL générique, endpoints admin, corpus/goldset et endpoints d'éval/debug : les fonctions existantes restent dans Streamlit admin.
+- Migration Grafana/Tempo, LangSmith ou RAG-ops des pages Chat Logs, Pipeline Timeline et qualité.
+- Agentic RAG et adoption éventuelle de LangChain.
 - MCP.
