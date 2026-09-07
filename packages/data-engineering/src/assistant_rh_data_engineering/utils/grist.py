@@ -9,6 +9,7 @@ from typing import Any
 import requests
 
 from .helpers import utc_now_iso
+from .http_retry import request_with_retry
 
 # Contrat de manifest sur le référentiel de sources Grist (La Suite numérique).
 # Table unique multi-corpus (décision 2026-07-03, confirmée sur les données
@@ -145,9 +146,18 @@ class GristClient:
     /api/docs/{doc_id}/tables/{table_id}/records et .../columns.
     """
 
-    def __init__(self, config: GristConfig | None = None, *, timeout: int = 30):
+    def __init__(
+        self,
+        config: GristConfig | None = None,
+        *,
+        timeout: int = 30,
+        retry_attempts: int = 4,
+        retry_backoff_seconds: float = 1.0,
+    ):
         self.config = config or GristConfig.from_env()
         self.timeout = timeout
+        self.retry_attempts = retry_attempts
+        self.retry_backoff_seconds = retry_backoff_seconds
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -165,7 +175,11 @@ class GristClient:
         return f"{self.config.base_url}/api/docs/{self.config.doc_id}/tables/{table_id}/{resource}"
 
     def _get(self, url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
-        response = requests.get(url, headers=self._headers(), params=params, timeout=self.timeout)
+        response = request_with_retry(
+            lambda: requests.get(url, headers=self._headers(), params=params, timeout=self.timeout),
+            attempts=self.retry_attempts,
+            backoff_seconds=self.retry_backoff_seconds,
+        )
         if response.status_code >= 400:
             raise GristError(f"GET {url} -> HTTP {response.status_code}: {response.text[:500]}")
         return response.json()
@@ -210,11 +224,17 @@ class GristClient:
         if not updates:
             return
         url = self._table_url(self._resolve_table(table_id), "records")
-        response = requests.patch(
-            url,
-            headers=self._headers(),
-            json={"records": updates},
-            timeout=self.timeout,
+        # PATCH réapplique les mêmes champs aux mêmes record ids : le rejeu est
+        # idempotent et sûr en cas de 502/503 ou de coupure réseau transitoire.
+        response = request_with_retry(
+            lambda: requests.patch(
+                url,
+                headers=self._headers(),
+                json={"records": updates},
+                timeout=self.timeout,
+            ),
+            attempts=self.retry_attempts,
+            backoff_seconds=self.retry_backoff_seconds,
         )
         if response.status_code >= 400:
             raise GristError(f"PATCH {url} -> HTTP {response.status_code}: {response.text[:500]}")

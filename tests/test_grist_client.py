@@ -56,6 +56,7 @@ class FakeResponse:
     def __init__(self, payload: dict[str, Any] | None = None, status_code: int = 200):
         self._payload = payload or {}
         self.status_code = status_code
+        self.headers: dict[str, str] = {}
         self.text = json.dumps(self._payload)
 
     def json(self) -> dict[str, Any]:
@@ -130,6 +131,21 @@ def test_get_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(GristError, match="HTTP 403"):
         make_client().list_columns()
+
+
+def test_get_retries_transient_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    responses = iter(
+        [
+            FakeResponse({"error": "bad gateway"}, status_code=502),
+            FakeResponse({"columns": [{"id": "uid"}]}),
+        ]
+    )
+    delays: list[float] = []
+    monkeypatch.setattr(grist_module.requests, "get", lambda *args, **kwargs: next(responses))
+    monkeypatch.setattr("assistant_rh_data_engineering.utils.http_retry.time.sleep", delays.append)
+
+    assert make_client().list_columns() == ["uid"]
+    assert delays == [1.0]
 
 
 def test_update_records_patches_with_ids(monkeypatch: pytest.MonkeyPatch) -> None:
