@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.10.0](https://github.com/DGAFP/assistant-rh/compare/v0.9.1...v0.10.0) (2026-09-07)
+
+
+### Features
+
+* **admin:** unifier l’export questions, réponses et feedbacks ([#472](https://github.com/DGAFP/assistant-rh/issues/472)) ([6cf20cf](https://github.com/DGAFP/assistant-rh/commit/6cf20cf80d99ee4896cdaa40c6f6c71f5d6aebac))
+* **api:** scaffold hexagonal API ([#447](https://github.com/DGAFP/assistant-rh/issues/447)) ([2f89fa8](https://github.com/DGAFP/assistant-rh/commit/2f89fa8b28865d71ab408be80cdd1f21df558151))
+* unify feedback dashboard Excel export ([6cf20cf](https://github.com/DGAFP/assistant-rh/commit/6cf20cf80d99ee4896cdaa40c6f6c71f5d6aebac))
+
+
+### Bug Fixes
+
+* **admin:** affiner les colonnes de l’export feedback ([#474](https://github.com/DGAFP/assistant-rh/issues/474)) ([f58967a](https://github.com/DGAFP/assistant-rh/commit/f58967aafdecdaf02b865416bc90168d4ae86cdc))
+* refine unified feedback export columns ([f58967a](https://github.com/DGAFP/assistant-rh/commit/f58967aafdecdaf02b865416bc90168d4ae86cdc))
+
+
+### Documentation
+
+* arbitrate Streamlit API parity ([#469](https://github.com/DGAFP/assistant-rh/issues/469)) ([3d9b756](https://github.com/DGAFP/assistant-rh/commit/3d9b7563caadd1bce19607cc65960f416a9a09f3))
+* **architecture:** plan du chantier hexagonal-split — monolithe → front & back OpenAI-compat ([#418](https://github.com/DGAFP/assistant-rh/issues/418)) ([9bf1cf0](https://github.com/DGAFP/assistant-rh/commit/9bf1cf0cb92420e9e551f811edadb1d7129244b1))
+* audit RAG runtime isolation ([#451](https://github.com/DGAFP/assistant-rh/issues/451)) ([c78d8e1](https://github.com/DGAFP/assistant-rh/commit/c78d8e16cb3ff0f79348102c171a30924b6ba273))
+
 ## [0.9.1](https://github.com/DGAFP/assistant-rh/compare/v0.9.0...v0.9.1) (2026-08-31)
 
 
