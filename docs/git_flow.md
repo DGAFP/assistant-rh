@@ -124,6 +124,24 @@ For Streamlit production rollback, run **Streamlit Deploy Production** manually 
 
 For staging or production data jobs, prefer workflow dispatch with explicit source and embedding options. Avoid destructive staging or production data operations unless the selected workflow inputs clearly request them and the target database has been confirmed.
 
+### Unrelated staging data-preview failures
+
+A failed data preview must not be hidden by editing the automation-owned release
+branch, weakening a quality threshold, or marking the draft release PR ready by
+hand. If the failure is demonstrably pre-existing and unrelated to the release
+contents, an operator may advance the release only after all of the following
+are recorded:
+
+1. the failing run and exact quality gaps are linked in a dedicated issue;
+2. the unchanged failure is confirmed on an earlier staging run;
+3. an explicit go decision accepts excluding that data check from the release;
+4. a new non-data revision is promoted through `dev -> staging` normally;
+5. every workflow triggered for that new staging SHA succeeds.
+
+The data incident remains open until its original preview passes without
+relaxed checks. The release PR must still be refreshed and marked ready by the
+Release Please workflow, never manually.
+
 ## Repository Settings
 
 Protect `dev`, `staging`, and `main` in GitHub:
