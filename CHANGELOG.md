@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.11.0](https://github.com/DGAFP/assistant-rh/compare/v0.10.1...v0.11.0) (2026-09-08)
+
+
+### Features
+
+* add core ports and PostgreSQL foundation ([#476](https://github.com/DGAFP/assistant-rh/issues/476)) ([507a34c](https://github.com/DGAFP/assistant-rh/commit/507a34c34dbcac316f94d2a2d9d808945aa8f830))
+
+
+### Bug Fixes
+
+* **data:** honor Grist removals and add production cron ([#506](https://github.com/DGAFP/assistant-rh/issues/506)) ([cba95f2](https://github.com/DGAFP/assistant-rh/commit/cba95f2727100f084eeabd352a61123009e2f29c))
+* **data:** restore Legifrance staging quality gates ([#487](https://github.com/DGAFP/assistant-rh/issues/487)) ([1a632a3](https://github.com/DGAFP/assistant-rh/commit/1a632a37eb220bf3acede026b5af5cb592d19fa8))
+
 ## [0.10.1](https://github.com/DGAFP/assistant-rh/compare/v0.10.0...v0.10.1) (2026-09-07)
 
 
