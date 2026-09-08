@@ -83,3 +83,8 @@ pool and top-20, then loses it at the selector and context despite global recall
 being 1.0. Use this as a diagnostic regression check without replaying the RAG.
 Check retry separation, empty data, untraced items and oversized-run behavior in
 tests. Inspect the matrix and history in Grafana after import.
+
+Metric and dimension definitions appear in panel help, table field descriptions,
+and the expandable explanation blocks below the charts. Their reference is
+[RAG_EVAL_METRICS.md](RAG_EVAL_METRICS.md). These are explanations only; queries,
+scoring and collection cadence are unchanged.
