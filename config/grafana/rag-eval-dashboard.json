@@ -149,7 +149,7 @@
         "mode": "markdown",
         "content": "<h2>Évaluations RAG · qualité et parcours du gold</h2><p>Choisissez un run et une tentative. Les indicateurs de contexte utilisent uniquement l’étape <b>contexte construit</b>. Le hit/recall historique « global » combine plusieurs étapes : il ne prouve pas que le gold est encore dans le contexte.</p>"
       },
-      "description": "Mode d’emploi : les icônes d’information décrivent les indicateurs ; les blocs dépliables sous les graphiques expliquent chaque dimension et chaque étape."
+      "description": "Mode d’emploi : les icônes d’information décrivent les indicateurs ; la section « Comprendre les métriques » sous les graphiques expliquent chaque dimension et chaque étape."
     },
     {
       "id": 1,
@@ -777,7 +777,7 @@
     {
       "id": 10,
       "title": "Dimensions du juge et RAGAS",
-      "description": "Les barres sont des moyennes de scores enregistrés par question, affichés de 0 à 100 %. Un score élevé n’est pas un taux de réponses correctes. Les mesures absentes restent absentes. Dépliez « Comprendre les dimensions » sous le graphique pour lire chaque définition.\n\n**Score global du juge** — Moyenne des scores enregistrés par question, après la calibration et les plafonds prévus par le protocole. Ce n’est ni le taux de PASS, ni une probabilité que la réponse soit correcte. Un plafond de diagnostic retrieval peut abaisser ce score sans annuler un PASS. En protocole multi-votes, ne pas le lire comme la moyenne de tous les votes.\n\n**Exactitude juridique** — Le juge vérifie les règles de droit, obligations, exceptions et nuances de la réponse. Une règle erronée ou une nuance trompeuse baisse la note ; une réponse concise mais juridiquement correcte peut obtenir une note élevée.\n\n**Complétude** — Les éléments nécessaires pour répondre et agir sont-ils présents : conditions, délais, exceptions et points obligatoires de la réponse de référence ? La longueur, les exemples et les détails facultatifs ne sont pas récompensés. Une réponse courte peut être complète.\n\n**Accord avec la réponse de référence** — La conclusion est-elle cohérente avec la réponse gold ? Une contradiction ou une conclusion juridiquement plus forte ou plus faible réduit la note. Ce n’est pas une similarité mot à mot : reformuler ou ajouter une information correcte n’est pas un défaut en soi.\n\n**Appui sur les sources** — Les affirmations sont-elles étayées par la réponse de référence ou par les contextes fournis au juge ? Ce jugement sur le contenu ne vérifie pas la présence d’un identifiant gold dans le retrieval ; il peut donc être élevé alors que le hit documentaire est faible.\n\n**RAGAS · fidélité** — Part des affirmations de la réponse générée que RAGAS peut justifier à partir des contextes fournis. Une valeur élevée indique un bon ancrage dans ces contextes, sans prouver leur exactitude juridique. Moyenne des scores disponibles ; absent si RAGAS n’a pas produit de mesure.\n\n**RAGAS · précision du contexte** — Les extraits utiles pour répondre à la référence sont-ils placés en tête des contextes ? Cette précision tient compte du classement (average precision). Ce n’est pas la proportion d’identifiants gold retrouvés, ni la simple précision documentaire. Moyenne des scores disponibles.\n\n**RAGAS · rappel du contexte** — Part des éléments de la réponse de référence que les contextes fournis permettent de justifier, selon RAGAS. Ce rappel porte sur l’information exprimée, pas sur les identifiants des documents gold. Moyenne des scores disponibles ; une mesure absente n’est pas remplacée par zéro.",
+      "description": "Les barres sont des moyennes de scores enregistrés par question, affichés de 0 à 100 %. Un score élevé n’est pas un taux de réponses correctes. Les mesures absentes restent absentes. Ouvrez la section « Comprendre les métriques », puis « Comprendre les dimensions » pour lire chaque définition.\n\n**Score global du juge** — Moyenne des scores enregistrés par question, après la calibration et les plafonds prévus par le protocole. Ce n’est ni le taux de PASS, ni une probabilité que la réponse soit correcte. Un plafond de diagnostic retrieval peut abaisser ce score sans annuler un PASS. En protocole multi-votes, ne pas le lire comme la moyenne de tous les votes.\n\n**Exactitude juridique** — Le juge vérifie les règles de droit, obligations, exceptions et nuances de la réponse. Une règle erronée ou une nuance trompeuse baisse la note ; une réponse concise mais juridiquement correcte peut obtenir une note élevée.\n\n**Complétude** — Les éléments nécessaires pour répondre et agir sont-ils présents : conditions, délais, exceptions et points obligatoires de la réponse de référence ? La longueur, les exemples et les détails facultatifs ne sont pas récompensés. Une réponse courte peut être complète.\n\n**Accord avec la réponse de référence** — La conclusion est-elle cohérente avec la réponse gold ? Une contradiction ou une conclusion juridiquement plus forte ou plus faible réduit la note. Ce n’est pas une similarité mot à mot : reformuler ou ajouter une information correcte n’est pas un défaut en soi.\n\n**Appui sur les sources** — Les affirmations sont-elles étayées par la réponse de référence ou par les contextes fournis au juge ? Ce jugement sur le contenu ne vérifie pas la présence d’un identifiant gold dans le retrieval ; il peut donc être élevé alors que le hit documentaire est faible.\n\n**RAGAS · fidélité** — Part des affirmations de la réponse générée que RAGAS peut justifier à partir des contextes fournis. Une valeur élevée indique un bon ancrage dans ces contextes, sans prouver leur exactitude juridique. Moyenne des scores disponibles ; absent si RAGAS n’a pas produit de mesure.\n\n**RAGAS · précision du contexte** — Les extraits utiles pour répondre à la référence sont-ils placés en tête des contextes ? Cette précision tient compte du classement (average precision). Ce n’est pas la proportion d’identifiants gold retrouvés, ni la simple précision documentaire. Moyenne des scores disponibles.\n\n**RAGAS · rappel du contexte** — Part des éléments de la réponse de référence que les contextes fournis permettent de justifier, selon RAGAS. Ce rappel porte sur l’information exprimée, pas sur les identifiants des documents gold. Moyenne des scores disponibles ; une mesure absente n’est pas remplacée par zéro.",
       "type": "bargauge",
       "datasource": {
         "type": "prometheus",
@@ -1109,36 +1109,63 @@
       }
     },
     {
-      "id": 200,
-      "type": "text",
-      "title": "Comprendre les dimensions",
-      "description": "Dépliez une ligne pour lire le sens et les limites de cette mesure.",
+      "id": 202,
+      "type": "row",
+      "title": "Comprendre les métriques · dimensions, rappel et top-k",
+      "collapsed": true,
       "gridPos": {
         "x": 0,
         "y": 26,
-        "w": 12,
-        "h": 14
+        "w": 24,
+        "h": 1
       },
-      "options": {
-        "mode": "html",
-        "content": "<p>Cliquez sur une mesure pour lire sa définition. Les scores sont affichés en pourcentage ; ils ne sont pas tous des taux de PASS.</p><details><summary>Score global du juge</summary><p>Moyenne des scores enregistrés par question, après la calibration et les plafonds prévus par le protocole. Ce n’est ni le taux de PASS, ni une probabilité que la réponse soit correcte. Un plafond de diagnostic retrieval peut abaisser ce score sans annuler un PASS. En protocole multi-votes, ne pas le lire comme la moyenne de tous les votes.</p></details><details><summary>Exactitude juridique</summary><p>Le juge vérifie les règles de droit, obligations, exceptions et nuances de la réponse. Une règle erronée ou une nuance trompeuse baisse la note ; une réponse concise mais juridiquement correcte peut obtenir une note élevée.</p></details><details><summary>Complétude</summary><p>Les éléments nécessaires pour répondre et agir sont-ils présents : conditions, délais, exceptions et points obligatoires de la réponse de référence ? La longueur, les exemples et les détails facultatifs ne sont pas récompensés. Une réponse courte peut être complète.</p></details><details><summary>Accord avec la réponse de référence</summary><p>La conclusion est-elle cohérente avec la réponse gold ? Une contradiction ou une conclusion juridiquement plus forte ou plus faible réduit la note. Ce n’est pas une similarité mot à mot : reformuler ou ajouter une information correcte n’est pas un défaut en soi.</p></details><details><summary>Appui sur les sources</summary><p>Les affirmations sont-elles étayées par la réponse de référence ou par les contextes fournis au juge ? Ce jugement sur le contenu ne vérifie pas la présence d’un identifiant gold dans le retrieval ; il peut donc être élevé alors que le hit documentaire est faible.</p></details><details><summary>RAGAS · fidélité</summary><p>Part des affirmations de la réponse générée que RAGAS peut justifier à partir des contextes fournis. Une valeur élevée indique un bon ancrage dans ces contextes, sans prouver leur exactitude juridique. Moyenne des scores disponibles ; absent si RAGAS n’a pas produit de mesure.</p></details><details><summary>RAGAS · précision du contexte</summary><p>Les extraits utiles pour répondre à la référence sont-ils placés en tête des contextes ? Cette précision tient compte du classement (average precision). Ce n’est pas la proportion d’identifiants gold retrouvés, ni la simple précision documentaire. Moyenne des scores disponibles.</p></details><details><summary>RAGAS · rappel du contexte</summary><p>Part des éléments de la réponse de référence que les contextes fournis permettent de justifier, selon RAGAS. Ce rappel porte sur l’information exprimée, pas sur les identifiants des documents gold. Moyenne des scores disponibles ; une mesure absente n’est pas remplacée par zéro.</p></details>"
-      }
+      "panels": [
+        {
+          "id": 200,
+          "type": "text",
+          "title": "Comprendre les dimensions",
+          "description": "Dépliez une ligne pour lire le sens et les limites de cette mesure.",
+          "gridPos": {
+            "x": 0,
+            "y": 27,
+            "w": 12,
+            "h": 14
+          },
+          "options": {
+            "mode": "html",
+            "content": "<p>Cliquez sur une mesure pour lire sa définition. Les scores sont affichés en pourcentage ; ils ne sont pas tous des taux de PASS.</p><details><summary>Score global du juge</summary><p>Moyenne des scores enregistrés par question, après la calibration et les plafonds prévus par le protocole. Ce n’est ni le taux de PASS, ni une probabilité que la réponse soit correcte. Un plafond de diagnostic retrieval peut abaisser ce score sans annuler un PASS. En protocole multi-votes, ne pas le lire comme la moyenne de tous les votes.</p></details><details><summary>Exactitude juridique</summary><p>Le juge vérifie les règles de droit, obligations, exceptions et nuances de la réponse. Une règle erronée ou une nuance trompeuse baisse la note ; une réponse concise mais juridiquement correcte peut obtenir une note élevée.</p></details><details><summary>Complétude</summary><p>Les éléments nécessaires pour répondre et agir sont-ils présents : conditions, délais, exceptions et points obligatoires de la réponse de référence ? La longueur, les exemples et les détails facultatifs ne sont pas récompensés. Une réponse courte peut être complète.</p></details><details><summary>Accord avec la réponse de référence</summary><p>La conclusion est-elle cohérente avec la réponse gold ? Une contradiction ou une conclusion juridiquement plus forte ou plus faible réduit la note. Ce n’est pas une similarité mot à mot : reformuler ou ajouter une information correcte n’est pas un défaut en soi.</p></details><details><summary>Appui sur les sources</summary><p>Les affirmations sont-elles étayées par la réponse de référence ou par les contextes fournis au juge ? Ce jugement sur le contenu ne vérifie pas la présence d’un identifiant gold dans le retrieval ; il peut donc être élevé alors que le hit documentaire est faible.</p></details><details><summary>RAGAS · fidélité</summary><p>Part des affirmations de la réponse générée que RAGAS peut justifier à partir des contextes fournis. Une valeur élevée indique un bon ancrage dans ces contextes, sans prouver leur exactitude juridique. Moyenne des scores disponibles ; absent si RAGAS n’a pas produit de mesure.</p></details><details><summary>RAGAS · précision du contexte</summary><p>Les extraits utiles pour répondre à la référence sont-ils placés en tête des contextes ? Cette précision tient compte du classement (average precision). Ce n’est pas la proportion d’identifiants gold retrouvés, ni la simple précision documentaire. Moyenne des scores disponibles.</p></details><details><summary>RAGAS · rappel du contexte</summary><p>Part des éléments de la réponse de référence que les contextes fournis permettent de justifier, selon RAGAS. Ce rappel porte sur l’information exprimée, pas sur les identifiants des documents gold. Moyenne des scores disponibles ; une mesure absente n’est pas remplacée par zéro.</p></details>"
+          }
+        },
+        {
+          "id": 201,
+          "type": "text",
+          "title": "Comprendre le rappel et les top-k",
+          "description": "Dépliez une ligne pour lire le sens et les limites de cette mesure.",
+          "gridPos": {
+            "x": 12,
+            "y": 27,
+            "w": 12,
+            "h": 14
+          },
+          "options": {
+            "mode": "html",
+            "content": "<p>Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %.</p><details><summary>Présence d’une source · hit</summary><p>Hit d’une question = 1 si au moins une source gold est retrouvée, sinon 0. Taux de hit = questions avec gold / questions dont le hit est mesuré. Retrouvé ne signifie pas que toutes les sources sont présentes, ni que la réponse générée est correcte.</p></details><details><summary>Pool avant reranking</summary><p>Documents identifiés dans les chunks candidats avant le reranking des sections, pour la tentative choisie. Cette étape indique si la recherche a trouvé le gold dans son ensemble de candidats ; elle ne garantit pas qu’il sera conservé ensuite.</p></details><details><summary>Sections top-20</summary><p>Documents représentés dans les 20 premières sections agrégées après reranking, dans l’ordre enregistré. k compte des sections, pas des documents ni des chunks : un même document peut occuper plusieurs places. S’il reste moins de 20 sections, toutes sont prises en compte.</p></details><details><summary>Top-12 · diagnostic</summary><p>Même liste de sections classées, limitée aux 12 premières. C’est une coupe alternative pour mesurer l’effet d’un k plus petit, pas une étape exécutée entre top-20 et sélection. La différence top-20 / top-12 indique ce que la coupe retire, sur des questions mesurées comparables.</p></details><details><summary>Sélection conservée</summary><p>Documents des sections que le sélecteur a explicitement gardées, selon les décisions enregistrées. Une trace absente n’est pas une sélection vide : elle est marquée Non tracé et exclue des moyennes correspondantes.</p></details><details><summary>Contexte construit</summary><p>Documents référencés dans le contexte produit par ContextBuilder pour la tentative choisie, après construction et budget de contexte. Si un retry remplace cette tentative, cette mesure initiale ne décrit pas à elle seule le contexte finalement envoyé au générateur.</p></details><details><summary>Lire les baisses de rappel</summary><p>Exemple : 2 golds attendus, 1 conservé donne un hit de 100 % mais un recall de 50 %. Une baisse entre étapes est à lire avec leurs dénominateurs ; les transitions appariées isolent les pertes sur les mêmes questions. Ne pas soustraire directement deux moyennes portant sur des populations différentes.</p></details>"
+          }
+        }
+      ]
     },
     {
-      "id": 201,
-      "type": "text",
-      "title": "Comprendre le rappel et les top-k",
-      "description": "Dépliez une ligne pour lire le sens et les limites de cette mesure.",
+      "id": 203,
+      "type": "row",
+      "title": "Résultats et détail par question",
+      "collapsed": false,
       "gridPos": {
-        "x": 12,
-        "y": 26,
-        "w": 12,
-        "h": 14
+        "x": 0,
+        "y": 27,
+        "w": 24,
+        "h": 1
       },
-      "options": {
-        "mode": "html",
-        "content": "<p>Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %.</p><details><summary>Présence d’une source · hit</summary><p>Hit d’une question = 1 si au moins une source gold est retrouvée, sinon 0. Taux de hit = questions avec gold / questions dont le hit est mesuré. Retrouvé ne signifie pas que toutes les sources sont présentes, ni que la réponse générée est correcte.</p></details><details><summary>Pool avant reranking</summary><p>Documents identifiés dans les chunks candidats avant le reranking des sections, pour la tentative choisie. Cette étape indique si la recherche a trouvé le gold dans son ensemble de candidats ; elle ne garantit pas qu’il sera conservé ensuite.</p></details><details><summary>Sections top-20</summary><p>Documents représentés dans les 20 premières sections agrégées après reranking, dans l’ordre enregistré. k compte des sections, pas des documents ni des chunks : un même document peut occuper plusieurs places. S’il reste moins de 20 sections, toutes sont prises en compte.</p></details><details><summary>Top-12 · diagnostic</summary><p>Même liste de sections classées, limitée aux 12 premières. C’est une coupe alternative pour mesurer l’effet d’un k plus petit, pas une étape exécutée entre top-20 et sélection. La différence top-20 / top-12 indique ce que la coupe retire, sur des questions mesurées comparables.</p></details><details><summary>Sélection conservée</summary><p>Documents des sections que le sélecteur a explicitement gardées, selon les décisions enregistrées. Une trace absente n’est pas une sélection vide : elle est marquée Non tracé et exclue des moyennes correspondantes.</p></details><details><summary>Contexte construit</summary><p>Documents référencés dans le contexte produit par ContextBuilder pour la tentative choisie, après construction et budget de contexte. Si un retry remplace cette tentative, cette mesure initiale ne décrit pas à elle seule le contexte finalement envoyé au générateur.</p></details><details><summary>Lire les baisses de rappel</summary><p>Exemple : 2 golds attendus, 1 conservé donne un hit de 100 % mais un recall de 50 %. Une baisse entre étapes est à lire avec leurs dénominateurs ; les transitions appariées isolent les pertes sur les mêmes questions. Ne pas soustraire directement deux moyennes portant sur des populations différentes.</p></details>"
-      }
+      "panels": []
     },
     {
       "id": 12,
@@ -1151,7 +1178,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 40,
+        "y": 28,
         "w": 8,
         "h": 5
       },
@@ -1234,7 +1261,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 40,
+        "y": 28,
         "w": 8,
         "h": 5
       },
@@ -1286,7 +1313,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 40,
+        "y": 28,
         "w": 8,
         "h": 5
       },
@@ -1338,7 +1365,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 45,
+        "y": 33,
         "w": 24,
         "h": 9
       },
@@ -1473,7 +1500,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 54,
+        "y": 42,
         "w": 24,
         "h": 8
       },
@@ -1802,7 +1829,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 62,
+        "y": 50,
         "w": 24,
         "h": 7
       },
@@ -2017,7 +2044,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 69,
+        "y": 57,
         "w": 24,
         "h": 3
       },
@@ -2088,7 +2115,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 72,
+        "y": 60,
         "w": 24,
         "h": 7
       },
@@ -2203,7 +2230,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 79,
+        "y": 67,
         "w": 24,
         "h": 12
       },
@@ -2735,7 +2762,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 91,
+        "y": 79,
         "w": 24,
         "h": 10
       },
@@ -3033,7 +3060,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 101,
+        "y": 89,
         "w": 24,
         "h": 7
       },
@@ -3149,7 +3176,7 @@
       "type": "text",
       "gridPos": {
         "x": 0,
-        "y": 108,
+        "y": 96,
         "w": 24,
         "h": 5
       },

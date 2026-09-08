@@ -88,3 +88,8 @@ Metric and dimension definitions appear in panel help (including every table col
 and the expandable explanation blocks below the charts. Their reference is
 [RAG_EVAL_METRICS.md](RAG_EVAL_METRICS.md). These are explanations only; queries,
 scoring and collection cadence are unchanged.
+
+The two explanation panels are grouped in the native Grafana row
+“Comprendre les métriques”, collapsed by default. Expanding it reveals both
+panels side by side; closing it releases their space while keeping results
+and question details visible in the following row.
