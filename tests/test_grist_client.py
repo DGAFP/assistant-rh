@@ -56,6 +56,7 @@ class FakeResponse:
     def __init__(self, payload: dict[str, Any] | None = None, status_code: int = 200):
         self._payload = payload or {}
         self.status_code = status_code
+        self.headers: dict[str, str] = {}
         self.text = json.dumps(self._payload)
 
     def json(self) -> dict[str, Any]:
@@ -130,6 +131,21 @@ def test_get_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(GristError, match="HTTP 403"):
         make_client().list_columns()
+
+
+def test_get_retries_transient_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    responses = iter(
+        [
+            FakeResponse({"error": "bad gateway"}, status_code=502),
+            FakeResponse({"columns": [{"id": "uid"}]}),
+        ]
+    )
+    delays: list[float] = []
+    monkeypatch.setattr(grist_module.requests, "get", lambda *args, **kwargs: next(responses))
+    monkeypatch.setattr("assistant_rh_data_engineering.utils.http_retry.time.sleep", delays.append)
+
+    assert make_client().list_columns() == ["uid"]
+    assert delays == [1.0]
 
 
 def test_update_records_patches_with_ids(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -335,3 +351,12 @@ def test_statut_ingestion_inactif_rend_la_ligne_abrogee() -> None:
         "uid-4": "en_vigueur",
     }
     assert validation.rejected == []
+
+
+@pytest.mark.parametrize("corpus", ["MI", "MASA", "MATTE", "MSO"])
+@pytest.mark.parametrize("statut", ["a_supprimer", "supprime", " A_SUPPRIMER "])
+def test_canonical_removal_applies_to_every_pdf_ministry(corpus: str, statut: str) -> None:
+    record = {"id": 42, "fields": manifest_fields(source_corpus=corpus, statut=statut, statut_ingestion="ok")}
+    validation = validate_manifest_records([record], corpus)
+    assert validation.rejected == []
+    assert validation.valid[0].statut == "abroge"

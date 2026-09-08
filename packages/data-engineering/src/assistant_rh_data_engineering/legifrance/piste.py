@@ -18,6 +18,8 @@ from dataclasses import dataclass
 
 import requests
 
+from ..utils.http_retry import request_with_retry
+
 DEFAULT_TOKEN_URL = "https://oauth.piste.gouv.fr/api/oauth/token"
 DEFAULT_BASE_URL = "https://api.piste.gouv.fr/dila/legifrance/lf-engine-app"
 
@@ -130,19 +132,32 @@ class PisteClient:
         token_url: str | None = None,
         base_url: str | None = None,
         timeout: int = 60,
+        retry_attempts: int = 4,
+        retry_backoff_seconds: float = 1.0,
     ) -> None:
         self.client_id = client_id or os.getenv("LEGIFRANCE_CLIENT_ID", "")
         self.client_secret = client_secret or os.getenv("LEGIFRANCE_CLIENT_SECRET", "")
         self.token_url = token_url or os.getenv("LEGIFRANCE_TOKEN_URL", DEFAULT_TOKEN_URL)
         self.base_url = (base_url or os.getenv("LEGIFRANCE_BASE_URL", DEFAULT_BASE_URL)).rstrip("/")
         self.timeout = timeout
+        self.retry_attempts = retry_attempts
+        self.retry_backoff_seconds = retry_backoff_seconds
         self._token: str | None = None
+
+    def _post(self, url: str, **kwargs: object) -> requests.Response:
+        # OAuth et endpoints consult sont des lectures logiques : leurs POST
+        # sont sûrs à rejouer après une réponse ou coupure transitoire.
+        return request_with_retry(
+            lambda: requests.post(url, timeout=self.timeout, **kwargs),
+            attempts=self.retry_attempts,
+            backoff_seconds=self.retry_backoff_seconds,
+        )
 
     def _headers(self) -> dict[str, str]:
         if self._token is None:
             if not (self.client_id and self.client_secret):
                 raise PisteError("Creds PISTE manquants (LEGIFRANCE_CLIENT_ID / LEGIFRANCE_CLIENT_SECRET).")
-            resp = requests.post(
+            resp = self._post(
                 self.token_url,
                 data={
                     "grant_type": "client_credentials",
@@ -150,7 +165,6 @@ class PisteClient:
                     "client_secret": self.client_secret,
                     "scope": "openid",
                 },
-                timeout=self.timeout,
             )
             resp.raise_for_status()
             self._token = resp.json()["access_token"]
@@ -158,22 +172,20 @@ class PisteClient:
 
     def consult(self, path: str, payload: dict) -> dict:
         url = f"{self.base_url}/consult/{path.lstrip('/')}"
-        resp = requests.post(
+        resp = self._post(
             url,
             headers=self._headers(),
             data=json.dumps(payload),
-            timeout=self.timeout,
         )
         # Un delta complet peut durer plus longtemps que le TTL OAuth PISTE.
         # Rafraîchir une seule fois sur 401 évite que tous les articles restants
         # basculent artificiellement en échec, sans masquer des creds invalides.
         if resp.status_code == 401:
             self._token = None
-            resp = requests.post(
+            resp = self._post(
                 url,
                 headers=self._headers(),
                 data=json.dumps(payload),
-                timeout=self.timeout,
             )
         resp.raise_for_status()
         return resp.json()

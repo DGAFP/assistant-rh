@@ -2,19 +2,46 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from importlib.metadata import version as distribution_version
 
 from fastapi import FastAPI
 
 from assistant_rh_api.core.health import HealthProbe
+from assistant_rh_api.db.dsn import DatabaseSettings, resolve_dsn
 from assistant_rh_api.db.health import PostgresHealthProbe
+from assistant_rh_api.db.pool import Database
 from assistant_rh_api.handlers.health import create_health_router
 
 
-def create_app(*, health_probe: HealthProbe | None = None) -> FastAPI:
+def create_app(*, health_probe: HealthProbe | None = None, database: Database | None = None, environ: Mapping[str, str] | None = None) -> FastAPI:
     """Create the HTTP application without opening connections or loading RAG."""
-    application = FastAPI(title="Assistant RH API", version=distribution_version("assistant-rh-api"))
-    application.include_router(create_health_router(health_probe or PostgresHealthProbe()))
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        runtime_database = database
+        if runtime_database is None and health_probe is None:
+            environment = os.environ if environ is None else environ
+            if environment.get("SCW_POSTGRES_DSN", "").strip():
+                runtime_database = Database(DatabaseSettings(dsn=resolve_dsn(environ=environment)))
+        application.state.database = runtime_database
+        if runtime_database is None:
+            yield
+            return
+        try:
+            await runtime_database.open()
+            if health_probe is None:
+                application.state.health_probe = PostgresHealthProbe(runtime_database)
+            yield
+        finally:
+            await runtime_database.close()
+            application.state.health_probe = health_probe or PostgresHealthProbe()
+
+    application = FastAPI(title="Assistant RH API", version=distribution_version("assistant-rh-api"), lifespan=lifespan)
+    application.state.health_probe = health_probe or PostgresHealthProbe()
+    application.include_router(create_health_router())
     return application
 
 
