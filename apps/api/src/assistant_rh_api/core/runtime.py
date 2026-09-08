@@ -19,6 +19,9 @@ class Group:
     password_hash: str | None = field(repr=False)
     allowed_ministries: tuple[str, ...]
     default_ministry: str
+    icon: str = ""
+    color: str = ""
+    credential_revision: int = 0
 
     @property
     def roles(self) -> tuple[str, ...]:
@@ -32,6 +35,7 @@ class Session:
     created_at: datetime
     expires_at: datetime
     credential_hash: str = field(repr=False)
+    credential_revision: int = 0
 
 
 @dataclass(frozen=True, slots=True)

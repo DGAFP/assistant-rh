@@ -1,8 +1,8 @@
 # Assistant RH API
 
 Installable FastAPI application that will host the OpenAI-compatible Assistant
-RH contract. This first scaffold exposes only the unauthenticated operational
-probe `GET /healthz`; it does not initialize the RAG pipeline or any AI provider.
+RH contract. It exposes the operational probe `GET /healthz` and public group
+session authentication. It does not initialize the RAG pipeline or any AI provider.
 
 ## Run locally
 
@@ -292,3 +292,96 @@ not a live provider or RAG quality evaluation. Run it without credentials or DB:
 ```bash
 uv run --package assistant-rh-api --group dev python -m pytest apps/api/tests/gateways -q
 ```
+
+## Public authentication (B4, #456)
+
+This implements the current D6/A3 contract, which supersedes #456's original
+permanent group-token/admin-bootstrap wording. The public API issues nonrenewable
+eight-hour sessions after a group password check. Admin groups, hidden groups,
+groups without a password and the structural `default` group cannot log in or
+appear in the picker. Invalid ministry policies fail closed. Admin tooling and
+password administration remain in the existing Streamlit admin; `/admin/*`,
+bootstrap of static API keys, and token rotation commands are outside this v1.
+
+| Route | Access | Result |
+| --- | --- | --- |
+| `GET /v1/auth/groups` | Public | Display metadata, ordered by priority then slug; no password hash or policy internals. |
+| `POST /v1/auth/session` | Group slug + password | Bearer, expiration, allowed/default ministries and credential revision. |
+| `GET /v1/auth/me` | Bearer | Current group policy and remaining lifetime; never echoes the bearer. |
+| `DELETE /v1/auth/session` | Bearer | Revokes the current session; 204 with no body. |
+
+`core/auth.py` owns eligibility, lifetime, scope and session use cases. Its ports
+inject stores, password verification, token generation, admission quotas and a
+clock. The application lifespan composes these with PostgreSQL and crypto
+adapters. `create_app(auth_service=...)` allows deterministic HTTP testing.
+Future protected handlers must use the shared `Authenticated` dependency from
+`handlers/auth.py`; they call `context.authorize_ministry(...)` before ministry
+work. Public login/catalogue and `/healthz` remain unauthenticated. Model-alias
+resolution belongs to B5; no model/chat/document route is introduced here.
+
+The bearer is `arhs_` followed by 32 random bytes encoded with URL-safe base64.
+Only its SHA-256 digest is persisted and queried through the existing session
+primary key; there is no scan of group password hashes and no PBKDF2 on bearer
+resolution. Randomness uses Python's [secrets](https://docs.python.org/3/library/secrets.html).
+Passwords remain compatible with Streamlit's salted PBKDF2-SHA256 format. One
+bounded dummy verification is performed for an absent/ineligible group. Crypto
+work runs outside the event loop with a four-worker capacity limit. Passwords
+are neither normalized nor stripped. Tokens and stored hashes are excluded from
+object representations; response projections never expose hashes. Error responses
+use the OpenAI envelope without request inputs or backend messages.
+
+The additive migration `20260908180029_api_public_auth.sql` adds monotonic
+`credential_revision` values to groups and sessions. A trigger catches existing
+Streamlit password updates and changes to visibility, admin role or ministry
+policy. Reverting A → B → A cannot revive old sessions. Session creation locks
+and verifies the authenticated credential/revision; reset races fail closed.
+Cosmetic metadata updates do not invalidate sessions. Existing group creation
+and password-update SQL remain compatible and no existing password is changed.
+
+Login admission is shared in `api_auth_limits` across API workers/replicas:
+
+| Environment variable | Default |
+| --- | --- |
+| `API_AUTH_SOURCE_LIMIT` | 20 attempts per source per window |
+| `API_AUTH_SLUG_LIMIT` | 20 attempts per slug per window |
+| `API_AUTH_GLOBAL_LIMIT` | 200 attempts across the API per window |
+| `API_AUTH_WINDOW_SECONDS` | 60 seconds; configurable from 1 to 300 |
+
+Admission uses a short PostgreSQL transaction before PBKDF2, including successful
+login attempts. No lock is held during password work. Rejected reservations do
+not increment counters or extend expiry; 429 includes the remaining `Retry-After`.
+Expired counters are purged during admission. The table stores hashed identities,
+not raw source addresses/slugs, passwords or bearers. DB failure stops login.
+All replicas must use the same quota settings; changing them is a coordinated
+configuration change, not a per-request override.
+
+The canonical `assistant-rh-api` entrypoint disables Uvicorn proxy-header
+rewriting. The API uses the direct peer address, never arbitrary `Forwarded` or
+`X-Forwarded-For`. Behind Streamlit/an ingress, this source may be shared: tune its
+quota for aggregate traffic and retain the visitor+slug limiter planned in E1.
+An alternative ASGI launcher must likewise disable proxy-header rewriting.
+Login bodies are limited to 16 KiB before JSON parsing, including chunked bodies;
+passwords are at most 1024 characters. Responses use `Cache-Control: no-store`.
+The frontend must keep the bearer in server session state, never in a URL/cookie.
+
+### Deployment and rollback
+
+Apply B2 then the B4 versioned migration through the existing migration runner
+before starting the B4 API. The local Compose health fixture alone does not create
+these auth tables; the API tests provision the synthetic repository fixture and
+both migrations. Grant the API runtime role access to the new quota table under
+the same deployment role policy as `api_sessions`. No cloud migration is implied
+by local test success.
+
+Prefer rolling back the API application while retaining this additive schema;
+Streamlit continues using its existing group/password columns. If schema removal
+is required, stop every B4 API instance, verify the database target and execute
+[`rollback_b4_auth.sql`](../../docs/architecture/hexagonal-split/sql/rollback_b4_auth.sql)
+in one transaction (`psql -X -v ON_ERROR_STOP=1 -1 -f ...`). It revokes sessions
+before dropping revision checks, preserves groups/passwords and removes only B4
+columns, trigger and quotas. Reapplying B4 must not restore those sessions.
+
+Validation covers deterministic core/HTTP behavior, real legacy-format password
+verification, the assembled FastAPI lifespan against synthetic PostgreSQL,
+concurrent quotas, reset/login races, A → B → A and migration reapply/rollback.
+It does not migrate Streamlit to HTTP or validate the production ingress (E1/D4).

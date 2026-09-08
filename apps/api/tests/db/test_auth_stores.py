@@ -40,7 +40,7 @@ async def test_sessions_conflict_expiry_revocation_and_legacy_password_reset(rep
     async with repository_db.transaction() as connection:
         await connection.execute("UPDATE public.user_groups SET password_hash = 'reset-hash' WHERE slug = 'synthetic'")
     assert await store.get_active(session.token_hash, NOW) is None
-    renewed = replace(session, token_hash="c" * 64, credential_hash="reset-hash")
+    renewed = replace(session, token_hash="c" * 64, credential_hash="reset-hash", credential_revision=1)
     await store.create(renewed)
     await store.revoke(renewed.token_hash, NOW)
     await store.revoke(renewed.token_hash, NOW)
