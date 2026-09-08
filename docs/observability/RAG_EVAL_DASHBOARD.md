@@ -1,7 +1,7 @@
 # Evaluation dashboard
 
 `config/grafana/rag-eval-dashboard.json` is the portable Grafana dashboard
-**Assistant RH - Évaluations RAG** (`assistant-rh-rag-evals`). It uses the existing
+**Assistant RH - Évaluations RAG** (`ef5g8p2`). It uses the existing
 RAG Health Prometheus datasource; staging is selected by default because this is
 where evaluation results are normally recorded.
 
@@ -38,3 +38,8 @@ collects the recent existing runs without replaying an evaluation or calling a m
 Verify `schema_available`, `runs_exposed`, one known run's sample count and scores,
 and an empty environment. Keep full question-level investigations in the existing
 administrative evaluation tools.
+
+The managed Grafana instance assigned UID `ef5g8p2` through native dashboard
+creation. Keep that UID when importing updates; it is the published dashboard
+identity. The history table formats only `Créé le` as a date and hides scrape
+infrastructure labels, preserving readable run IDs and goldset names.
