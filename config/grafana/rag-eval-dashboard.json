@@ -1,5 +1,5 @@
 {
-  "uid": "assistant-rh-rag-evals",
+  "uid": "ef5g8p2",
   "title": "Assistant RH - Évaluations RAG",
   "id": null,
   "version": 1,
@@ -1074,7 +1074,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "dateTimeAsIso",
+          "unit": "none",
           "decimals": 0,
           "noValue": "Non disponible",
           "color": {
@@ -1082,7 +1082,20 @@
             "fixedColor": "blue"
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Créé le"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "colorMode": "value",
@@ -1103,7 +1116,10 @@
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true
+              "Time": true,
+              "instance": true,
+              "job": true,
+              "__name__": true
             },
             "renameByName": {
               "Value": "Créé le",
