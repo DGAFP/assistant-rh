@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/DGAFP/assistant-rh/compare/v0.11.0...v0.12.0) (2026-09-08)
+
+
+### Features
+
+* **data:** expose PDF ingestion runs in Grafana ([#509](https://github.com/DGAFP/assistant-rh/issues/509)) ([022f491](https://github.com/DGAFP/assistant-rh/commit/022f491ec7251faa795b82115dd47a05f0cc977c))
+
 ## [0.11.0](https://github.com/DGAFP/assistant-rh/compare/v0.10.1...v0.11.0) (2026-09-08)
 
 

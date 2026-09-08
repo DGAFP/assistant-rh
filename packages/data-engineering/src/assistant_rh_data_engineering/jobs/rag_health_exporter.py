@@ -75,10 +75,15 @@ EXPECTED_TABLES = (
     "rag_documents",
     "rag_sections",
     "rag_trace_events",
+    "rag_ingestion_runs",
     *(table.table for table in DIRECT_CHUNK_TABLES),
 )
 
 METRIC_HELP = {
+    "assistant_rh_ingestion_run_available": "Whether a completed PDF ingestion run exists for this ministry and scope.",
+    "assistant_rh_ingestion_last_run_timestamp_seconds": "Completion timestamp of the latest PDF ingestion run by ministry and scope.",
+    "assistant_rh_ingestion_last_run_documents": "Document counts from the latest completed PDF ingestion run; gauges, not cumulative counters.",
+    "assistant_rh_ingestion_last_run_success": "Whether the latest completed PDF ingestion run has no failed or rejected documents.",
     "assistant_rh_rag_table_present": "Whether an expected RAG table exists in the configured schema.",
     "assistant_rh_rag_documents_total": "Total RAG documents by source.",
     "assistant_rh_rag_sections_total": "Total RAG sections by source.",
@@ -196,9 +201,10 @@ class RagHealthCollector:
             samples.extend(self._integrity_metrics(conn, columns, table_spec))
 
         samples.extend(self._trace_metrics(conn, columns, now))
+        samples.extend(self._ingestion_metrics(conn, columns))
 
         for table in EXPECTED_TABLES:
-            if table == "rag_trace_events":
+            if table in {"rag_trace_events", "rag_ingestion_runs"}:
                 continue
             samples.extend(self._freshness_metrics(conn, columns, table, now))
 
@@ -234,13 +240,58 @@ class RagHealthCollector:
             return "sections"
         if table == "rag_trace_events":
             return "traces"
+        if table == "rag_ingestion_runs":
+            return "ingestion_runs"
         return "chunks"
+
+    def _ingestion_metrics(self, conn: psycopg.Connection, columns: dict[str, set[str]]) -> list[MetricSample]:
+        counts = ("expected", "ingested", "skipped", "failed", "deleted", "rejected")
+        required = {"run_id", "ministere", "target_env", "finished_at", "details", *(f"{name}_count" for name in counts)}
+        if not required.issubset(columns.get("rag_ingestion_runs", set())):
+            return []
+
+        # Legacy runs have no reliable scope: never treat them as full corpus
+        # runs. A newer document-only run must not hide the last full run.
+        scope_sql = """CASE WHEN details->'_scope'->>'kind' IN ('full', 'document')
+                            THEN details->'_scope'->>'kind' ELSE 'unknown' END"""
+        env_values = [self.env_label, "production"] if self.env_label == "prod" else [self.env_label]
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT DISTINCT ON (ministere, {scope_sql})
+                    ministere, {scope_sql} AS scope, EXTRACT(EPOCH FROM finished_at),
+                    expected_count, ingested_count, skipped_count, failed_count, deleted_count, rejected_count
+                FROM {self.schema_sql}.rag_ingestion_runs
+                WHERE target_env = ANY(%s) AND ministere = ANY(%s) AND finished_at IS NOT NULL
+                ORDER BY ministere, {scope_sql}, finished_at DESC, run_id DESC
+                """,
+                (env_values, ["mi", "masa", "matte", "mso"]),
+            )
+            rows = cur.fetchall()
+
+        available = {(str(row[0]), str(row[1])) for row in rows}
+        samples = [
+            metric("assistant_rh_ingestion_run_available", self.env_label, int((source, scope) in available), source=source, scope=scope)
+            for source in ("mi", "masa", "matte", "mso")
+            for scope in ("full", "document", "unknown")
+        ]
+        for source, scope, finished_at, *values in rows:
+            labels = {"source": str(source), "scope": str(scope)}
+            samples.append(metric("assistant_rh_ingestion_last_run_timestamp_seconds", self.env_label, float(finished_at), **labels))
+            samples.append(metric("assistant_rh_ingestion_last_run_success", self.env_label, int(values[3] == 0 and values[5] == 0), **labels))
+            for result, value in zip(counts, values, strict=True):
+                samples.append(metric("assistant_rh_ingestion_last_run_documents", self.env_label, float(value), result=result, **labels))
+        return samples
 
     def _document_metrics(self, conn: psycopg.Connection, columns: dict[str, set[str]]) -> list[MetricSample]:
         if "rag_documents" not in columns:
             return []
         if "source" in columns["rag_documents"]:
             counts = self._count_by_column(conn, "rag_documents", "source", "unknown")
+            # A fully empty ministry must remain visible in the manifest-gap
+            # panel. Do not synthesize zeros when the source column is absent.
+            for source in ("mi", "masa", "matte", "mso"):
+                counts.setdefault(source, 0)
         elif "publisher" in columns["rag_documents"]:
             counts = self._count_by_column(conn, "rag_documents", "publisher", "unknown")
         else:
