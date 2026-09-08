@@ -13,13 +13,27 @@ from assistant_rh_api.db.revisions import content_revision, freeze_json
 from assistant_rh_api.db.run_store import as_jsonb, aware, json_data
 
 
+def _decode_reasons(value: str | None) -> tuple[str, ...]:
+    """Decode the historical Streamlit TEXT representation at the DB boundary."""
+    return tuple(reason.strip() for reason in (value or "").split(";") if reason.strip())
+
+
+def _encode_reasons(reasons: tuple[str, ...]) -> str:
+    # Refuse values that cannot round-trip through the legacy delimiter format.
+    if not isinstance(reasons, tuple) or any(
+        not isinstance(reason, str) or not reason or reason != reason.strip() or ";" in reason for reason in reasons
+    ):
+        raise ValueError("reasons must be a tuple of nonempty trimmed strings without semicolons")
+    return "; ".join(reasons)
+
+
 def feedback(row: dict) -> Feedback:
     value = FeedbackInput(
         row["turn_id"],
         row["stars"] + 1 if row.get("stars") is not None else None,
         row.get("comment") or "",
-        row.get("reasons_positive") or "",
-        row.get("reasons_negative") or "",
+        _decode_reasons(row.get("reasons_positive")),
+        _decode_reasons(row.get("reasons_negative")),
         row.get("helpful"),
     )
     # Explicit edit generation also distinguishes A -> B -> A with a fixed clock.
@@ -44,6 +58,8 @@ class FeedbackStore(FeedbackStorePort):
     async def save(self, value: FeedbackInput, group_slug: str, session_hash: str, now: datetime) -> Feedback | None:
         if not session_hash or now.tzinfo is None:
             raise ValueError("session hash and aware timestamp required")
+        reasons_positive = _encode_reasons(value.reasons_positive)
+        reasons_negative = _encode_reasons(value.reasons_negative)
         async with self._database.transaction() as connection:
             async with connection.cursor(row_factory=dict_row) as cursor:
                 # The parent exists before any feedback: this also serializes
@@ -77,8 +93,8 @@ class FeedbackStore(FeedbackStorePort):
                     timestamp,
                     value.stars - 1 if value.stars is not None else None,
                     value.comment,
-                    value.reasons_positive,
-                    value.reasons_negative,
+                    reasons_positive,
+                    reasons_negative,
                     value.helpful,
                     group_slug,
                     session_hash,

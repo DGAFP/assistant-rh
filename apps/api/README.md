@@ -166,6 +166,9 @@ composition root**, never the bearer or its authentication digest. Session
 authentication uses the separate `Session.token_hash`. B4/D1 supply the HMAC
 audit pseudonym and enforce public validation, quotas and session policy.
 Ownership follows the group, including after session renewal.
+Feedback reasons are immutable tuples in the core (JSON arrays at the HTTP
+boundary). Only the PostgreSQL adapter joins/splits the legacy `; `-separated
+TEXT columns; empty or NULL stored reasons become empty tuples.
 
 The stores deliberately have a zero cache TTL: each call reads committed data
 and computes its revision from the same result. They do not hold stale snapshots

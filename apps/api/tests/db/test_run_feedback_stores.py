@@ -172,3 +172,35 @@ async def test_nullable_historical_timestamps(repository_db):
         await connection.execute("INSERT INTO public.chat_feedbacks(turn_id, stars) VALUES ('nullts', 0)")
     assert (await ChatRunStore(repository_db).get("nullts")).timestamp is None
     assert (await FeedbackStore(repository_db).get("nullts")).timestamp is None
+
+
+async def test_feedback_reason_collections_roundtrip_and_legacy_read(repository_db):
+    run = make_run()
+    await ChatRunStore(repository_db).finalize(run)
+    store = FeedbackStore(repository_db)
+    value = FeedbackInput(run.turn_id, 4, reasons_positive=("Clair", "Utile"), reasons_negative=("Incomplet",))
+    saved = await store.save(value, run.group_slug, run.session_hash, NOW)
+    assert saved.value == value
+    assert await store.get(run.turn_id) == saved
+    assert await store.save(value, run.group_slug, run.session_hash, NOW) == saved
+    async with repository_db.transaction() as connection:
+        row = await (await connection.execute("SELECT reasons_positive, reasons_negative FROM public.chat_feedbacks")).fetchone()
+        assert row == ("Clair; Utile", "Incomplet")
+        assert await (await connection.execute("SELECT count(*) FROM public.chat_feedback_audit")).fetchone() == (0,)
+        await connection.execute("""
+            INSERT INTO public.chat_feedbacks(turn_id, stars, reasons_positive, reasons_negative)
+            VALUES ('legacy-reasons', 2, NULL, ' Confus ; Incomplet; ')
+        """)
+    legacy = await store.get("legacy-reasons")
+    assert legacy.value.reasons_positive == ()
+    assert legacy.value.reasons_negative == ("Confus", "Incomplet")
+    cleared = await store.save(replace(value, reasons_positive=(), reasons_negative=()), run.group_slug, run.session_hash, NOW)
+    assert cleared.value.reasons_positive == cleared.value.reasons_negative == ()
+    assert cleared.revision != saved.revision
+
+
+@pytest.mark.parametrize("reasons", [("Clair; Utile",), (" Clair",), ("",), "Clair"])
+async def test_feedback_rejects_reasons_that_cannot_roundtrip(repository_db, reasons):
+    value = FeedbackInput("missing", 4, reasons_positive=reasons)
+    with pytest.raises(ValueError, match="reasons must be a tuple"):
+        await FeedbackStore(repository_db).save(value, "synthetic", "a" * 64, NOW)

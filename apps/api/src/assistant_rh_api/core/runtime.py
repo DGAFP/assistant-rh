@@ -130,8 +130,8 @@ class FeedbackInput:
     turn_id: str
     stars: int | None
     comment: str = ""
-    reasons_positive: str = ""
-    reasons_negative: str = ""
+    reasons_positive: tuple[str, ...] = ()
+    reasons_negative: tuple[str, ...] = ()
     helpful: bool | None = None
 
     def __post_init__(self) -> None:
