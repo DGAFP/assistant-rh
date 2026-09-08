@@ -20,11 +20,11 @@ from ..utils.grist import (
     STATUT_IGNORE,
     STATUT_OK,
     STATUT_SUPPRIME,
-    STATUTS_INACTIFS,
     GristClient,
     ManifestRow,
     build_pdf_writeback_fields,
     fetch_validated_manifest,
+    pdf_row_is_inactive,
 )
 from ..utils.helpers import utc_now_iso
 from ..utils.image_annotation import AlbertImageAnnotator
@@ -201,8 +201,7 @@ class MedallionPipeline:
             # a_supprimer/supprime garde son statut (l'intention de
             # l'opérateur ou l'état terminal ne sont jamais écrasés par une
             # erreur de saisie ailleurs sur la ligne).
-            already = str(rejected_fields_by_id.get(rejected.record_id, {}).get("statut_ingestion") or "").strip().lower()
-            if writeback_enabled and already not in STATUTS_INACTIFS:
+            if writeback_enabled and not pdf_row_is_inactive(rejected_fields_by_id.get(rejected.record_id, {})):
                 self._writeback(
                     rejected.record_id,
                     statut=STATUT_ERREUR,
@@ -372,7 +371,7 @@ class MedallionPipeline:
         # et balayerait le reste du corpus.
         purged_chunks = 0
         if ingest and not requested and expected:
-            purged_chunks = self.db_writer.delete_chunks_not_in_short_ids(sorted(expected))
+            purged_chunks = self.db_writer.delete_chunks_not_in_short_ids(sorted(set(expected) | rejected_uids))
             if purged_chunks:
                 details["_purge_hors_manifest"] = {"chunks": purged_chunks}
 
@@ -389,7 +388,9 @@ class MedallionPipeline:
                 already = str(row.fields.get("statut_ingestion") or "").strip().lower()
                 env_column = INGERE_ENV_COLUMNS.get(self.config.target_env)
                 env_already_absent = env_column is not None and row.fields.get(env_column) is False
-                canonical_already_done = self.config.target_env != CANONICAL_ENV or already == STATUT_SUPPRIME
+                canonical_already_done = self.config.target_env != CANONICAL_ENV or (
+                    already == STATUT_SUPPRIME and str(row.fields.get("statut") or "").strip().lower() == STATUT_SUPPRIME
+                )
                 if writeback_enabled and not (env_already_absent and canonical_already_done):
                     self._writeback(row.record_id, statut=STATUT_SUPPRIME, nb_chunks=0, corpus_present=False)
 
