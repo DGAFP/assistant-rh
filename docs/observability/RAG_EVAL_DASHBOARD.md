@@ -1,45 +1,82 @@
 # Evaluation dashboard
 
 `config/grafana/rag-eval-dashboard.json` is the portable Grafana dashboard
-**Assistant RH - Évaluations RAG** (`ef5g8p2`). It uses the existing
-RAG Health Prometheus datasource; staging is selected by default because this is
-where evaluation results are normally recorded.
+**Assistant RH - Évaluations RAG** (`ef5g8p2`). It uses the existing RAG Health
+Prometheus datasource and defaults to staging. The UID was assigned through native
+creation in managed Grafana; keep it when importing updates.
 
-The RAG Health collector reads the last 50 `rag_quality_eval_runs` rows by primary
-key, with a single bounded SELECT on each polling cycle. It does not read item
-questions, answers, contexts or prompts. No database migration is required.
-Missing or partially migrated schemas publish `schema_available=0`; an available
-but empty database publishes `runs_exposed=0`. The window is global per environment,
-so filtering a goldset can return fewer runs or none. This is not a complete archive.
+## Recorded results and interpretation
 
-Choose an environment, goldset and run. The dashboard displays execution status,
-sample size, duration, judge pass rate, retrieval metrics, judge dimensions,
-optional RAGAS metrics and the retrieval funnel. Missing metrics remain absent;
-zero is never substituted for a disabled judge. Completion is an execution state,
-not a quality verdict. `limit=0` means no explicit limit, not proof of a full goldset.
+Choose an environment, goldset, run and retrieval attempt. The question filter
+applies to the detail tables, while the funnel always summarizes the whole run.
+Initial and selector retry attempts remain separate. The context KPIs use only
+`context_builder_output` for the selected attempt. They are not a claim about the
+final generator input if another attempt superseded it.
 
-Run metadata includes judge model, git revision, configuration fingerprint and a
-hash of recorded evaluation scope and tag filters. The hash helps identify scope
-changes; it does not establish baseline comparability or source snapshot identity.
-Stage sample counts are exported separately because attempts can evaluate different
-subsets. Baseline deltas are emitted only for a stored comparison with
-`comparable=true` and a baseline run ID. Verdicts come from the runner; Grafana does
-not recompute a comparison or infer a regression from two displayed averages.
+The historical global hit/recall metrics combine document IDs from multiple
+pipeline stages, including the raw pool. A source can be found and then discarded
+while still contributing to those global scores. These remain visible in a clearly
+labelled diagnostic panel; they are not the final-context KPIs or a new quality gate.
 
-All queries use current snapshots. Historical creation dates come from the run
-records; a Prometheus scrape timestamp is not presented as an evaluation date.
-Per-run metric labels are bounded by the 50-row export window (older series still
-follow the datasource retention policy). No per-question series are emitted.
+The question matrix shows the recorded question and expected-source excerpts,
+judge verdict, gold presence at five stages, and context recall. A second table
+shows recall at every stage and judge score. **Found** means at least one gold
+source, not all sources. The stage recall is the stored historical metric and can
+count identifier aliases. Expected sources are the stored human labels, not an
+assertion that those labels were individually matched at every stage. No current
+corpus lookup, alias reconstruction, evaluation replay or judge call is performed.
 
-Deploy the updated RAG Health exporter, then import the JSON with the existing
-Grafana import helper or UI and select its Prometheus datasource. Unlike OTLP
-excerpts, these historical aggregates already exist in the database: a deployment
-collects the recent existing runs without replaying an evaluation or calling a model.
-Verify `schema_available`, `runs_exposed`, one known run's sample count and scores,
-and an empty environment. Keep full question-level investigations in the existing
-administrative evaluation tools.
+The funnel is recomputed from the stored per-question stage metrics, with separate
+hit and recall denominators. Missing stages, invalid measurements and explicitly
+zero gold counts do not become retrieval failures. Null, boolean, non-finite or
+out-of-range ratios are excluded. A genuine measured zero remains zero.
+Transitions count the same items with valid measurements at both endpoints:
+retained, lost (1 to 0), or gained (0 to 1). **Top-12 is an alternative diagnostic
+cut**, not an extra step between top-20 and the selector. Partial recall losses
+remain visible in the question recall table.
 
-The managed Grafana instance assigned UID `ef5g8p2` through native dashboard
-creation. Keep that UID when importing updates; it is the published dashboard
-identity. The history table formats only `Créé le` as a date and hides scrape
-infrastructure labels, preserving readable run IDs and goldset names.
+Baseline verdicts and deltas remain those recorded by the evaluator. Deltas are
+exported only for an explicitly comparable stored result. A scope fingerprint,
+shared judge or similar sample size alone does not prove comparability.
+
+## Collection boundaries
+
+The collector reads the last 50 `rag_quality_eval_runs` rows by primary key. The
+window is global per environment; a goldset may have fewer runs or none. This is
+not a complete archive. A second query uses the item `run_id` index and a lateral
+lookup with `LIMIT 201` for each selected run. Runs above 200 items are marked
+oversized and omitted entirely from detail and derived averages. No partial
+sample is presented as a full run. Empty and partially recorded runs are explicit.
+
+At most 10,000 items can be exported across the current run window. Numeric item
+metrics use the stored item ID, avoiding collisions when question IDs repeat.
+Only the bounded `item_info` series carries a question and expected-source excerpt
+(each at most 500 characters; at most 20 expected-source entries). This is intended
+for the curated evaluation goldsets, not live user conversations. Answers, gold
+answers, contexts, prompts, judge explanations and arbitrary metadata are not
+selected or exported. The query projects only stage diagnostics and scalar judge
+fields. No new service, datasource, database account or migration is required.
+
+Historical series follow Prometheus retention after they leave the export window.
+Dashboard variables query current samples, not retained label values. The item and run metrics are scraped separately every 120 seconds at
+`/metrics/evals`; health remains at 60 seconds at `/metrics/health`. The combined
+`/metrics` endpoint stays available for compatibility. The two configured scrape
+paths are disjoint, avoiding duplicate samples; 120 seconds preserves a margin
+below the usual five-minute instant-query lookback. All panels
+use instant queries: creation dates are evaluation dates, not scrape timestamps.
+Only the history date column gets date formatting; identifiers stay textual.
+
+## Deployment and verification
+
+Deploy RAG Health, then import the JSON into the existing dashboard and choose its
+Prometheus datasource. The optional run/item schemas publish availability flags;
+an available empty run table publishes zero runs. The item availability panel
+explains empty or oversized runs; absent metrics remain non-available.
+
+Verify a known run's item count, judge score and stage numerators/denominators.
+Run #240 (`baseline_v1`) has 98 recorded items: initial pool 79/96 hits, top-20
+65/96, top-12 62/96, selector 51/94 and context 51/96. Its question 1 has gold in the
+pool and top-20, then loses it at the selector and context despite global recall
+being 1.0. Use this as a diagnostic regression check without replaying the RAG.
+Check retry separation, empty data, untraced items and oversized-run behavior in
+tests. Inspect the matrix and history in Grafana after import.

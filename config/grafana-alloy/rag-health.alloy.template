@@ -5,6 +5,20 @@ prometheus.scrape "rag_health" {
 
   scrape_interval = "60s"
   scrape_timeout  = "10s"
+  metrics_path    = "/metrics/health"
+  forward_to      = [prometheus.remote_write.cockpit.receiver]
+}
+
+// Recorded evaluation snapshots change slowly; keep health at its normal cadence.
+// Stay below the instant-query lookback so current run variables remain available.
+prometheus.scrape "rag_evals" {
+  targets = [
+    {"__address__" = "127.0.0.1:${RAG_HEALTH_EXPORTER_PORT}"},
+  ]
+
+  scrape_interval = "120s"
+  scrape_timeout  = "10s"
+  metrics_path    = "/metrics/evals"
   forward_to      = [prometheus.remote_write.cockpit.receiver]
 }
 
