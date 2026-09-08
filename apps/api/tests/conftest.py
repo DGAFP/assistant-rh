@@ -5,6 +5,7 @@ from pathlib import Path
 
 import psycopg
 import pytest
+from assistant_rh_api.db.dsn import validate_libpq_environment
 from psycopg.conninfo import conninfo_to_dict
 
 FIXTURE_SQL = Path(__file__).parent / "fixtures" / "runtime.sql"
@@ -13,14 +14,12 @@ TEST_DATABASE = "assistant_rh_api_test"
 
 
 def _validate_synthetic_dsn(dsn: str) -> None:
+    validate_libpq_environment(os.environ)
     parameters = conninfo_to_dict(dsn)
     host = parameters.get("host", "")
     database = parameters.get("dbname", "")
-    if host not in LOCAL_TEST_HOSTS or database != TEST_DATABASE:
-        raise RuntimeError(
-            "API_SYNTHETIC_POSTGRES_DSN must target the local "
-            f"{TEST_DATABASE!r} database; refusing to apply test fixtures"
-        )
+    if host not in LOCAL_TEST_HOSTS or database != TEST_DATABASE or any(key in parameters for key in ("hostaddr", "service", "servicefile")):
+        raise RuntimeError(f"API_SYNTHETIC_POSTGRES_DSN must target the local {TEST_DATABASE!r} database; refusing to apply test fixtures")
 
 
 @pytest.fixture(scope="session")
