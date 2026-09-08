@@ -68,3 +68,28 @@ After import, select the Grafana variables:
 6. Confirm the Tempo panels show spans and the Prometheus panels show trace volume, latency, error, and freshness metrics.
 
 Trace export is best effort. PostgreSQL persistence remains the primary admin debugging source if the external trace backend is unavailable, but the Grafana dashboard intentionally avoids a direct PostgreSQL data source requirement.
+
+## Corpus excerpts by stage
+
+The **Chunks et contexte par étape** table uses Tempo span results for the exact
+selected trace. Each stage and retrieval attempt remains a separate row. Expand
+the evidence cell to read numbered corpus excerpts, source identifiers and scores.
+Retrieval and aggregation expose chunks; the selector exposes the actual retained
+and removed candidates. Its reason is global, not a per-chunk explanation. A
+disabled selector does not claim to have made a selection. Context building and
+generation expose the section or complete document actually supplied as context.
+Query processing has no documentary context.
+
+The `rag.evidence` attribute contains at most 16,000 UTF-8 bytes, with at most 500
+characters per excerpt. Whole entries are retained in order until that budget is
+reached. `rag.evidence.total`, `rag.evidence.shown` and
+`rag.evidence.truncated` explicitly describe omitted entries. Chunk scores and
+section reranking scores are labelled separately and are not probabilities.
+Existing compact `input.value` / `output.value` diagnostics remain available in
+**Détails structurés**; additional candidate/context snapshots do not displace
+their decisions and references.
+
+This requires a deployment of the enriched pipeline: importing the dashboard
+alone cannot recover excerpts removed from older OTLP traces. Existing traces
+continue to show their available structured metadata. No historical traces are
+rewritten. PostgreSQL remains the source for full administrative drilldown.
