@@ -62,9 +62,8 @@ moon run api:docker-build
 `core/ports.py` defines the initial config, prompt, acronym, clock and ID ports.
 Stores are async and return immutable `Snapshot` values with an opaque content
 revision and an explicit origin. A missing row is `None`; an unavailable database
-raises an application error. Search/auth/run/feedback and provider contracts will
-be added with their B2/B3 adapters, rather than introducing unneeded domain types
-in this foundation. The legacy RAG runtime is unchanged.
+raises an application error. B2/B3 extend these ports alongside their concrete
+runtime repositories and inference gateways. The legacy RAG runtime is unchanged.
 
 The FastAPI lifespan resolves `SCW_POSTGRES_DSN` at startup, creates one async
 `Database`, opens it, and closes it on shutdown. Construction and imports do not
@@ -214,4 +213,79 @@ only invented content and three-dimensional vectors, never a database dump.
 ```bash
 API_SYNTHETIC_POSTGRES_DSN='postgresql://assistant_rh_api:assistant_rh_api@127.0.0.1:55433/assistant_rh_api_test?sslmode=disable' \
   uv run --no-sync python -m pytest apps/api/tests -q
+```
+
+## Inference gateways (B3, #455)
+
+`core/inference.py` and `core/ports.py` define immutable inference values and
+`LLMPort`, `EmbeddingPort`, `RerankerPort`. `gateways/` implements them through
+an injected `httpx.AsyncClient`; the core imports neither HTTPX nor provider SDKs.
+Construction reads no environment, creates no singleton and performs no I/O.
+The composition root owns the client lifecycle and supplies explicit HTTPS base
+URLs (including `/v1`), keys, deployed model names and request budgets. Endpoint
+representations and errors omit credentials, URLs, prompts and provider bodies.
+Use a dedicated client with `trust_env=False` unless the deployment explicitly
+requires a proxy. Redirects are disabled even if the injected client enables them.
+
+| Adapter | Success | Failure / fallback |
+| --- | --- | --- |
+| `ChatGateway.complete` | Trimmed text, provider, requested model, finish reason, immutable attempt history. | Albert then optional Scaleway; double failure raises `InferenceFailure`. A single configured endpoint supports primary-only calls. |
+| `ChatGateway.stream` | Nonempty `TextDelta` events, then one `StreamCompleted` with provider/model/attempts. | Retry/fallback only before content; after content, raise `InferenceFailure(partial=True)`. Never splice a second model into a partial answer. EOF without `[DONE]` is invalid. |
+| `EmbeddingGateway` | L2-normalized vector **with its logical model key**: `albert` / 1024 dimensions or `bge_scaleway` / 3584 dimensions. | Albert then optional Scaleway; double failure raises `InferenceFailure`, so C3 can deliberately choose lexical retrieval. Never infer SQL columns from shared state. |
+| `RerankerGateway` | Batches of 40, all candidates scored before global `(-score, original_index)` ordering and `top_k`. | Any failed batch discards partial ranking; default result explicitly marks input-order fallback with historical `1 - i * .001` scores. `fallback_on_error=False` raises instead for callers preserving existing input scores. |
+
+Every actual HTTP attempt records provider/model and an optional stable failure
+kind: `timeout`, `unavailable`, `rate_limited`, `rejected`, `invalid_response`.
+`InferenceFailure.attempts` contains the same safe values; it never wraps a raw
+provider exception for display. No result, trace or `last_*` diagnostic is shared
+between requests. Cancellation propagates and does not initiate fallback or
+open the embedding circuit. Response cleanup is bounded and shielded against
+ASGI/AnyIO cancellation. Early stream consumers must exit the context:
+
+```python
+async with httpx.AsyncClient(trust_env=False) as client:
+    gateway = ChatGateway(client, albert_endpoint, scaleway_endpoint)
+    request = ChatRequest((Message("system", system_prompt), Message("user", query)))
+    async with gateway.stream(request) as events:
+        async for event in events:
+            # Render TextDelta; store StreamCompleted on this request's context.
+            consume(event)
+```
+
+This follows HTTPX's [async lifecycle](https://www.python-httpx.org/async/).
+The stream deadline is checked during reads and buffered SSE processing; it
+does not install a timeout across `yield` that could cancel consumer work.
+
+`RequestPolicy` defaults to 10 s per I/O operation, 30 s total **per provider**,
+two attempts (configurable 1–3), fixed 100 ms retry delay and an 8 MiB response
+limit. Chat uses 120 s I/O / 240 s total per provider by default. Total budgets
+include retries and, for reranking, all batches; fallback has a fresh provider
+budget. Cleanup has at most one additional I/O timeout per opened response.
+Only network errors, timeouts, 429 and 5xx retry; other HTTP statuses and invalid
+payloads go directly to the configured fallback. Arbitrary `Retry-After` values
+cannot extend the configured budget. Inject tighter deployment budgets as needed.
+
+The optional `EmbeddingCircuit(clock)` reproduces the historical 60 s Albert
+cooldown. It belongs to a gateway/target in the composition root, uses an injected
+monotonic clock and a lock only around its small technical state. A stale success
+cannot reset a newer failure. Calls skipped during cooldown record `circuit_open`.
+Expiry admits concurrent primary calls, as in the legacy cooldown. The circuit
+does not retain vectors, model selection or request diagnostics.
+
+Explicit differences to carry into extraction C2–C7: empty stream deltas do not
+prevent fallback; malformed/truncated streams are errors; zero/nonfinite/wrong-size
+vectors are rejected; reranker zero scores remain zero rather than selecting an
+alternate score field. Strict provider response validation and bounded retries
+replace permissive SDK/legacy behavior. Partial-error rendering and lexical/
+input-ranking fallback policy stay with the core/handlers. The composition root
+must select embedding deployments compatible with existing indexed vectors;
+dimension checks alone cannot establish semantic compatibility. Inter-batch
+reranker scores retain the legacy approximation and must be replayed in C4.
+
+The gateways are additive: `/healthz` still initializes no inference provider,
+and Streamlit continues using its historical runtime. Fake-wire verification is
+not a live provider or RAG quality evaluation. Run it without credentials or DB:
+
+```bash
+uv run --package assistant-rh-api --group dev python -m pytest apps/api/tests/gateways -q
 ```
