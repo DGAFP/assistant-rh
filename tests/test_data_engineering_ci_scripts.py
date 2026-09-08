@@ -1985,3 +1985,37 @@ def test_should_run_pdf_sources_scoped_to_single_ministry(monkeypatch: pytest.Mo
     args.pdf_sources_ministry = ""
     selected = [spec["key"] for spec in config["jobs"] if scaleway_data_jobs.should_run(spec, args)]
     assert {"pdf-sources-mi-medallion", "pdf-sources-masa-medallion", "pdf-sources-matte-medallion", "pdf-sources-mso-medallion"} <= set(selected)
+
+
+def test_production_cron_matrix_selects_six_scoped_delta_chains(monkeypatch: pytest.MonkeyPatch) -> None:
+    import yaml
+
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/data-engineering-cron-production.yml").read_text())
+    job = workflow["jobs"]["cron-delta-production"]
+    specs = scaleway_data_jobs.load_config(REPO_ROOT / ".github/data-engineering-jobs.json")["jobs"]
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
+    expected = {
+        "service-public": ["service-public-medallion", "service-public-ingestion", "embeddings-service-public"],
+        "legifrance": ["legifrance-medallion", "legifrance-ingestion", "embeddings-legifrance"],
+        **{name: [f"pdf-sources-{name}-medallion", f"embeddings-{name}"] for name in ("mi", "masa", "matte", "mso")},
+    }
+    actual = {}
+    for row in job["strategy"]["matrix"]["include"]:
+        args = SimpleNamespace(
+            delta=True,
+            service_public=row["service_public"],
+            legifrance=row["legifrance"],
+            pdf_sources=row["pdf_sources"],
+            pdf_sources_ministry=row["ministry"],
+            embeddings=True,
+            embedding_source=row["embedding_source"],
+            r2=False,
+            run_ingestion=True,
+            run_embeddings=True,
+        )
+        actual[row["name"]] = [spec["key"] for spec in specs if scaleway_data_jobs.should_run(spec, args)]
+    assert actual == expected
+    assert job["environment"] == "scaleway-production"
+    assert "refs/heads/main" in job["if"]
+    assert "vars.DATA_PROD_CRON_ENABLED == 'true'" in job["if"]
+    assert workflow["concurrency"]["group"] == "data-promote-prod"

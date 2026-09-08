@@ -8,11 +8,12 @@ def test_package_and_core_imports_do_not_wire_io() -> None:
     script = """
 import sys
 import assistant_rh_api
-from assistant_rh_api.core import health
+from assistant_rh_api.core import errors, health, models, ports
 
 forbidden = {
     "fastapi",
     "psycopg",
+    "psycopg_pool",
     "httpx",
     "assistant_rh_api.handlers.app",
     "assistant_rh_api.db.health",

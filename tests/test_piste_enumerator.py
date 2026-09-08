@@ -168,3 +168,43 @@ def test_piste_client_refreshes_expired_oauth_token_once(monkeypatch) -> None:
 
     assert client.get_article("LEGIARTI000000000001")["article"]["id"] == "LEGIARTI000000000001"
     assert authorization_headers == ["Bearer expired-token", "Bearer fresh-token"]
+
+
+def test_piste_client_retries_transient_consult_error(monkeypatch) -> None:
+    class FakeResponse:
+        def __init__(self, status_code: int, payload: dict) -> None:
+            self.status_code = status_code
+            self.payload = payload
+            self.headers: dict[str, str] = {}
+
+        def raise_for_status(self) -> None:
+            if self.status_code >= 400:
+                raise RuntimeError(f"HTTP {self.status_code}")
+
+        def json(self) -> dict:
+            return self.payload
+
+    consult_responses = iter(
+        [
+            FakeResponse(502, {}),
+            FakeResponse(200, {"article": {"id": "LEGIARTI000000000001"}}),
+        ]
+    )
+    delays: list[float] = []
+
+    def fake_post(url: str, **kwargs):
+        if url == "https://token.test":
+            return FakeResponse(200, {"access_token": "token"})
+        return next(consult_responses)
+
+    monkeypatch.setattr("assistant_rh_data_engineering.legifrance.piste.requests.post", fake_post)
+    monkeypatch.setattr("assistant_rh_data_engineering.utils.http_retry.time.sleep", delays.append)
+    client = PisteClient(
+        client_id="client",
+        client_secret="secret",
+        token_url="https://token.test",
+        base_url="https://piste.test",
+    )
+
+    assert client.get_article("LEGIARTI000000000001")["article"]["id"] == "LEGIARTI000000000001"
+    assert delays == [1.0]

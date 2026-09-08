@@ -9,6 +9,7 @@ from typing import Any
 import requests
 
 from .helpers import utc_now_iso
+from .http_retry import request_with_retry
 
 # Contrat de manifest sur le référentiel de sources Grist (La Suite numérique).
 # Table unique multi-corpus (décision 2026-07-03, confirmée sur les données
@@ -57,6 +58,12 @@ STATUT_SUPPRIME = "supprime"
 # Valeurs de statut_ingestion qui rendent la ligne inactive: le pipeline la
 # traite comme un document à supprimer/absent, jamais à (ré)ingérer.
 STATUTS_INACTIFS: tuple[str, ...] = (STATUT_A_SUPPRIMER, STATUT_SUPPRIME)
+
+
+def pdf_row_is_inactive(fields: dict[str, Any]) -> bool:
+    """Honor operator removals in the canonical status and the legacy PDF status."""
+    return any(str(fields.get(column) or "").strip().lower() in STATUTS_INACTIFS for column in ("statut", "statut_ingestion"))
+
 
 MANIFEST_STATUTS: tuple[str, ...] = ("en_vigueur", "abroge")
 
@@ -145,9 +152,18 @@ class GristClient:
     /api/docs/{doc_id}/tables/{table_id}/records et .../columns.
     """
 
-    def __init__(self, config: GristConfig | None = None, *, timeout: int = 30):
+    def __init__(
+        self,
+        config: GristConfig | None = None,
+        *,
+        timeout: int = 30,
+        retry_attempts: int = 4,
+        retry_backoff_seconds: float = 1.0,
+    ):
         self.config = config or GristConfig.from_env()
         self.timeout = timeout
+        self.retry_attempts = retry_attempts
+        self.retry_backoff_seconds = retry_backoff_seconds
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -165,7 +181,11 @@ class GristClient:
         return f"{self.config.base_url}/api/docs/{self.config.doc_id}/tables/{table_id}/{resource}"
 
     def _get(self, url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
-        response = requests.get(url, headers=self._headers(), params=params, timeout=self.timeout)
+        response = request_with_retry(
+            lambda: requests.get(url, headers=self._headers(), params=params, timeout=self.timeout),
+            attempts=self.retry_attempts,
+            backoff_seconds=self.retry_backoff_seconds,
+        )
         if response.status_code >= 400:
             raise GristError(f"GET {url} -> HTTP {response.status_code}: {response.text[:500]}")
         return response.json()
@@ -210,11 +230,17 @@ class GristClient:
         if not updates:
             return
         url = self._table_url(self._resolve_table(table_id), "records")
-        response = requests.patch(
-            url,
-            headers=self._headers(),
-            json={"records": updates},
-            timeout=self.timeout,
+        # PATCH réapplique les mêmes champs aux mêmes record ids : le rejeu est
+        # idempotent et sûr en cas de 502/503 ou de coupure réseau transitoire.
+        response = request_with_retry(
+            lambda: requests.patch(
+                url,
+                headers=self._headers(),
+                json={"records": updates},
+                timeout=self.timeout,
+            ),
+            attempts=self.retry_attempts,
+            backoff_seconds=self.retry_backoff_seconds,
         )
         if response.status_code >= 400:
             raise GristError(f"PATCH {url} -> HTTP {response.status_code}: {response.text[:500]}")
@@ -310,12 +336,10 @@ def validate_manifest_records(
         if statut is None:
             errors.append(f"abroge invalide: {abroge_raw!r} (attendu: vide, 'non' ou 'oui')")
 
-        # Colonne de statut unique: a_supprimer (opérateur) et supprime (job
-        # après cascade) rendent la ligne inactive au même titre que le
-        # drapeau juridique abroge — sans quoi une ligne déjà supprimée
-        # serait ré-ingérée au run suivant.
-        statut_ingestion = str(fields.get("statut_ingestion") or "").strip().lower()
-        if statut == "en_vigueur" and statut_ingestion in STATUTS_INACTIFS:
+        # Statut opérateur canonique + compatibilité du statut PDF historique.
+        # Une suppression dans l'une des colonnes prime sur un ancien « ok ».
+        # L'état terminal reste inactif pour empêcher une ré-ingestion.
+        if statut == "en_vigueur" and pdf_row_is_inactive(fields):
             statut = "abroge"
 
         if errors:
@@ -428,9 +452,8 @@ def build_pdf_writeback_fields(
 ) -> dict[str, Any]:
     """Writeback PDF séparé par environnement, compatible avec le statut legacy.
 
-    Les pipelines PDF utilisent encore ``statut_ingestion`` comme cycle de vie
-    opérateur (``a_supprimer``/``supprime``). La prod reste donc seule à écrire
-    ce statut détaillé et ses métadonnées historiques. Chaque environnement
+    La prod acquitte une suppression dans ``statut`` et ``statut_ingestion``.
+    Elle seule écrit ces statuts détaillés et leurs métadonnées. Chaque environnement
     écrit uniquement son booléen ``ingere_{env}`` quand la présence réelle en
     base est connue.
     """
@@ -443,6 +466,9 @@ def build_pdf_writeback_fields(
                 "erreur_ingestion": erreur,
             }
         )
+        if statut == STATUT_SUPPRIME:
+            fields["statut"] = STATUT_SUPPRIME
+            fields["statut_ingestion_reelle"] = STATUT_REEL_NON_TROUVE
         if nb_chunks is not None:
             fields["nb_chunks"] = nb_chunks
         if hash_contenu:
