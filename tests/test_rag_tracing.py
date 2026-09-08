@@ -4,16 +4,72 @@ import copy
 import json
 from unittest.mock import patch
 
+import pytest
+from assistant_rh_rag_pipeline.models import AggregatedSection, ContextItem, RetrievedChunk
 from assistant_rh_rag_pipeline.tracing import (
     _build_otlp_payload,
     _evidence_attributes,
     _resolve_otlp_traces_endpoint,
     _send_otlp_payload,
     bounded_preview,
+    chunk_ref,
+    context_item_ref,
     export_events_to_otel,
     make_trace_event,
     normalize_trace_id,
+    section_ref,
 )
+
+
+@pytest.mark.parametrize("metadata_key", ["doc_id", "doc_short_id", "document_id", "source_document_id", "short_id", "cid"])
+def test_document_identity_reaches_otel_evidence_at_every_stage(metadata_key: str) -> None:
+    metadata = {metadata_key: "DOC-123"}
+    chunk = RetrievedChunk("c1", "Extrait", 0.8, "rag_chunks_dgafp", metadata=metadata)
+    section = AggregatedSection(None, "Titre", "Section", [chunk], 0.9, metadata=metadata)
+    context = ContextItem(None, "Titre", "Contexte", 0.9, metadata=metadata)
+    refs = [chunk_ref(chunk), section_ref(section), context_item_ref(context)]
+    assert all(ref["document_id"] == "DOC-123" for ref in refs)
+    events = [
+        make_trace_event(stage="retriever", output_ref={"retrieved_chunks": [refs[0]]}),
+        make_trace_event(stage="section-aggregator", output_ref={"aggregated_sections": [refs[1]]}),
+        make_trace_event(stage="context-selector", output_ref={"candidate_sections": [dict(refs[1], selection_state="kept")]}),
+        make_trace_event(stage="context-builder", output_ref={"context_items": [refs[2]]}),
+        make_trace_event(stage="generator", input_ref={"context_items": [refs[2]]}),
+    ]
+    payload = _build_otlp_payload(turn_id="turn", trace_id="a" * 32, events=events, env_label="staging")
+    for span in payload["resourceSpans"][0]["scopeSpans"][0]["spans"][1:]:
+        attrs = {attr["key"]: next(iter(attr["value"].values())) for attr in span["attributes"]}
+        assert "Document : DOC-123" in attrs["rag.evidence"], span["name"]
+
+
+@pytest.mark.parametrize("metadata_key", ["cid", "short_id"])
+def test_standalone_section_keeps_chunk_document_identity_without_exporting_chunks(metadata_key: str) -> None:
+    chunk = RetrievedChunk("c1", "Extrait", 0.8, "rag_chunks_dgafp", metadata={metadata_key: "LEGI-123"})
+    section = AggregatedSection(None, "Titre", "Section", [chunk], 0.9)
+    ref = section_ref(section, include_chunks=False)
+    assert ref["document_id"] == "LEGI-123"
+    assert "chunks" not in ref
+    evidence = _evidence_attributes(make_trace_event(stage="context-selector", output_ref={"selected_sections": [ref]}))
+    assert "Document : LEGI-123" in evidence["rag.evidence"]
+
+
+def test_trace_document_identity_uses_canonical_precedence_and_allows_missing_ids() -> None:
+    metadata = {"doc_id": "canonical", "source_document_id": "alternate"}
+    chunk = RetrievedChunk("c1", "Extrait", 0.8, "rag_chunks_dgafp", metadata=metadata)
+    context = ContextItem(None, "Titre", "Contexte", 0.9, metadata=metadata)
+    section = AggregatedSection(None, "Titre", "Section", [chunk], 0.9, metadata=metadata)
+    assert chunk_ref(chunk)["document_id"] == "canonical"
+    assert context_item_ref(context)["document_id"] == "canonical"
+    assert section_ref(section)["document_id"] == "canonical"
+    section.document_id = "section-document"
+    assert section_ref(section)["document_id"] == "section-document"
+    chunk.metadata = {}
+    context.metadata = {}
+    section.metadata = {}
+    section.document_id = None
+    assert chunk_ref(chunk)["document_id"] == ""
+    assert context_item_ref(context)["document_id"] == ""
+    assert section_ref(section)["document_id"] == ""
 
 
 def test_normalize_trace_id_accepts_valid_hex() -> None:

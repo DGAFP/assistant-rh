@@ -20,6 +20,8 @@ from urllib.parse import urlparse
 
 import requests
 
+from .models import context_item_document_id, metadata_document_id, section_document_id
+
 logger = logging.getLogger(__name__)
 
 TRACE_SCHEMA_VERSION = "2026-06-25"
@@ -89,13 +91,7 @@ def make_trace_event(
 
 def chunk_ref(chunk: Any) -> dict[str, Any]:
     metadata = getattr(chunk, "metadata", {}) or {}
-    document_id = (
-        metadata.get("source_document_id")
-        or metadata.get("doc_id")
-        or metadata.get("doc_short_id")
-        or metadata.get("short_id")
-        or metadata.get("cid")
-    )
+    document_id = metadata_document_id(metadata)
     heading = (
         metadata.get("heading")
         or metadata.get("matched_heading")
@@ -121,7 +117,7 @@ def chunk_ref(chunk: Any) -> dict[str, Any]:
 def section_ref(section: Any, *, include_chunks: bool = True) -> dict[str, Any]:
     metadata = getattr(section, "metadata", {}) or {}
     chunks = getattr(section, "chunks", []) or []
-    document_id = getattr(section, "document_id", "") or metadata.get("doc_id") or metadata.get("doc_short_id") or metadata.get("cid")
+    document_id = section_document_id(section)
     heading = (
         getattr(section, "heading", "")
         or metadata.get("doc_title")
@@ -147,7 +143,7 @@ def section_ref(section: Any, *, include_chunks: bool = True) -> dict[str, Any]:
 
 def context_item_ref(item: Any) -> dict[str, Any]:
     metadata = getattr(item, "metadata", {}) or {}
-    document_id = metadata.get("doc_id") or metadata.get("doc_short_id") or metadata.get("cid")
+    document_id = context_item_document_id(item)
     heading = (
         getattr(item, "heading", "")
         or metadata.get("doc_title")
