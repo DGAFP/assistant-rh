@@ -189,6 +189,13 @@ Ties use `(ts DESC NULLS LAST, id DESC)`. A compatibility trigger accepts legacy
 Streamlit INSERTs, preserves the latest submission and human annotations, and
 archives replacements. The current row retains its original ID; a separate last
 submission ID prevents out-of-order inserts at equal timestamps from winning.
+The legacy analyzer captures the feedback revision before its LLM work and
+conditionally saves only that still-current, unanalyzed generation. The query
+also works before the revision column exists. Rollout must replace/drain old
+analyzer workers before enabling the replacement trigger; those old workers
+still write by ID alone. API feedback writers use `FOR NO KEY UPDATE` on the
+parent so legacy INSERTs can finish their foreign-key `KEY SHARE` checks while
+holding the advisory lock, without a parent/advisory deadlock.
 No runtime repository executes DDL. Apply migrations using the normal deployment
 workflow; this implementation has only been applied to a local synthetic DB.
 Deployment credentials/grants for an audit writer without UPDATE/DELETE remain
@@ -198,7 +205,10 @@ Repository tests initialize `tests/fixtures/repositories.sql` plus the actual
 trace and B2 migrations on the guarded synthetic target. They cover every
 repository, all seven logical sources, ordering ties, missing data, database
 unavailability, ownership, concurrency, conflicts, rollback, legacy schemas,
-lossless deduplication and migration replay. The additional baseline contains
+lossless deduplication and migration replay. Coexistence tests exercise the real
+legacy analyzer across API/Streamlit replacements (including A → B → A), the
+pre-migration schema, and concurrent first INSERTs with the historical foreign
+key installed. The additional baseline contains
 only invented content and three-dimensional vectors, never a database dump.
 
 ```bash

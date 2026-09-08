@@ -64,10 +64,12 @@ class FeedbackStore(FeedbackStorePort):
             async with connection.cursor(row_factory=dict_row) as cursor:
                 # The parent exists before any feedback: this also serializes
                 # concurrent first submissions (locking an absent child cannot).
+                # NO KEY UPDATE still serializes API writers, but lets a legacy
+                # INSERT holding the advisory lock finish its FK KEY SHARE check.
                 await cursor.execute(
                     """
                     SELECT question, answer FROM public.chat_runs
-                    WHERE turn_id = %s AND user_group = %s FOR UPDATE
+                    WHERE turn_id = %s AND user_group = %s FOR NO KEY UPDATE
                 """,
                     (value.turn_id, group_slug),
                 )

@@ -39,7 +39,11 @@ CREATE TABLE IF NOT EXISTS public.rag_chunks_rgrh (LIKE public.rag_chunks_matte 
 CREATE TABLE IF NOT EXISTS public.chat_runs (
     turn_id VARCHAR(8) PRIMARY KEY, trace_id TEXT, ts TIMESTAMP, user_group TEXT,
     session_id TEXT, conversation_id TEXT, question TEXT, answer TEXT, selected_ministry TEXT, model TEXT,
-    retrieved JSONB, v3_full_prompt TEXT, chunks_sent_to_selector JSONB
+    retrieved JSONB, v3_full_prompt TEXT, chunks_sent_to_selector JSONB,
+    v3_source_distribution JSONB, v3_sections_count INTEGER, v3_context_items_count INTEGER,
+    v3_context_tokens INTEGER, v3_context_mode TEXT, llm_selector_reasoning TEXT, llm_selector_response TEXT,
+    v3_selector_confidence DOUBLE PRECISION, v3_selector_selected_count INTEGER, v3_selector_decisions JSONB,
+    llm_selector_model TEXT, v3_chunks_raw JSONB
 );
 CREATE TABLE IF NOT EXISTS public.chat_feedbacks (
     id BIGSERIAL PRIMARY KEY, turn_id VARCHAR(8), ts TIMESTAMP, turn_idx INTEGER,
