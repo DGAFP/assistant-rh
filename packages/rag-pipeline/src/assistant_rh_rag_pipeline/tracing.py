@@ -336,10 +336,13 @@ def _build_otlp_payload(
             "rag.duration_ms": int(event.get("duration_ms", 0) or 0),
             "rag.chunk_ids": ",".join(selected_chunk_ids(event)),
             "rag.source_tables": ",".join(source_tables(event)),
-            "input.value": _safe_json_for_otel(event.get("input_ref", {})),
+            "input.value": _safe_json_for_otel(
+                _compact_output_ref({key: value for key, value in (event.get("input_ref") or {}).items() if key != "context_items"})
+            ),
             "output.value": _safe_json_for_otel(_compact_output_ref(event.get("output_ref", {}))),
             "input.mime_type": "application/json",
             "output.mime_type": "application/json",
+            **_evidence_attributes(event),
         }
         error_message = str(event.get("error_message", "") or "")
         if error_message:
@@ -377,6 +380,78 @@ def _span_id(trace_id: str, seed: str) -> str:
     return hashlib.sha256(f"{trace_id}:{seed}".encode("utf-8")).hexdigest()[:16]
 
 
+def _evidence_attributes(event: dict[str, Any]) -> dict[str, Any]:
+    """Expose bounded corpus excerpts separately from compact diagnostic JSON.
+
+    Keep each stage/attempt on its own span. Section scores and chunk scores
+    have different meanings; neither is labelled a probability or confidence.
+    The byte budget preserves whole entries and explicitly reports omissions.
+    """
+    stage = event.get("stage")
+    output = event.get("output_ref") or {}
+    source = (event.get("input_ref") or {}) if stage == "generator" else output
+    key = {
+        "retriever": "retrieved_chunks",
+        "section-aggregator": "aggregated_sections",
+        "context-selector": "candidate_sections" if "candidate_sections" in output else "selected_sections",
+        "context-builder": "context_items",
+        "generator": "context_items",
+    }.get(stage)
+    if key is None or not isinstance(source.get(key), list):
+        return {}
+
+    entries: list[str] = []
+    for item in source[key]:
+        if not isinstance(item, dict):
+            continue
+        chunks = item.get("chunks")
+        leaves = chunks if isinstance(chunks, list) and chunks else [item]
+        for leaf in leaves:
+            if not isinstance(leaf, dict):
+                continue
+            heading = bounded_preview(item.get("heading") or leaf.get("heading"), 180)
+            fields = []
+            for name, label in (("chunk_id", "Chunk"), ("section_id", "Section"), ("document_id", "Document")):
+                value = leaf.get(name) or item.get(name)
+                if value:
+                    fields.append(f"{label} : {bounded_preview(value, 160)}")
+            source_name = leaf.get("table") or item.get("publisher") or item.get("table")
+            if source_name:
+                fields.append(f"Source : {bounded_preview(source_name, 120)}")
+            if leaf.get("score") is not None:
+                fields.append(f"Score {'chunk' if leaf.get('chunk_id') else 'section/contexte'} : {leaf['score']}")
+            if leaf is not item and item.get("score") is not None:
+                fields.append(f"Score section : {item['score']}")
+            decision = {"kept": "Retenu", "removed": "Écarté"}.get(item.get("selection_state"))
+            if decision:
+                fields.append(f"Sélection : {decision}")
+            if item.get("is_doc_entire"):
+                fields.append("Contexte : document entier")
+            preview = bounded_preview(leaf.get("preview"), DEFAULT_PREVIEW_CHARS) or "Extrait indisponible"
+            entries.append(f"{len(entries) + 1}. {heading}\n{' · '.join(fields)}\n{preview}")
+
+    visible: list[str] = []
+    # Reserve room for the omission notice, even with multibyte French text.
+    used_bytes = 0
+    for entry in entries:
+        size = len(entry.encode("utf-8")) + 2
+        if used_bytes + size > MAX_OTEL_JSON_CHARS - 200:
+            break
+        visible.append(entry)
+        used_bytes += size
+    omitted = len(entries) - len(visible)
+    summary = "\n\n".join(visible) or "Aucun élément documentaire à cette étape."
+    if omitted:
+        summary += f"\n\nAffichage limité : {omitted} élément(s) supplémentaire(s) non exporté(s)."
+    return {
+        "rag.evidence": summary,
+        "rag.evidence.total": len(entries),
+        "rag.evidence.shown": len(visible),
+        "rag.evidence.truncated": bool(omitted),
+        "rag.selection.reason": bounded_preview(output.get("reason"), 2_000),
+    }
+
+
 def _safe_json_for_otel(value: Any) -> str:
     text = json_dumps(value)
     if len(text) <= MAX_OTEL_JSON_CHARS:
@@ -392,8 +467,10 @@ def _compact_output_ref(value: Any) -> Any:
         return value
     compact: dict[str, Any] = {}
     for key, item in value.items():
-        if key == "preview":
+        if key in {"preview", "candidate_sections"}:
             continue
+        if key == "selected_sections" and isinstance(item, list):
+            item = [{key: value for key, value in section.items() if key != "chunks"} for section in item]
         compact[key] = _compact_output_ref(item)
     return compact
 
