@@ -54,7 +54,7 @@ Each: `config.py` (SOURCE/PUBLISHER, chunk table, lake paths, uuid5 namespace, r
 ### Grist contract — révisé 2026-07-03 (Phase A, vérifié sur le doc réel)
 **Table unique : le référentiel existant EST le manifest.** Il couvre déjà tous les corpus via `source_corpus` (MI, MASA, MATTE, MSO, RGRH, Service-public, Interministériel/Légifrance) avec un `uid` stable par ligne — pas de table manifest ni de table whitelist séparées. Implémenté dans `utils/grist.py`.
 Read (REQUIRED_MANIFEST_COLUMNS) : `source_corpus` (discriminant, filtrage par corpus insensible à la casse) · `uid` (unique → `short_id`) · `titre_document` · `cle_bucket` (colonne ajoutée — lien vers la dropzone ; ligne sans `cle_bucket` ⇒ rejetée ⇒ c'est la liste des PDF à déposer) · `abroge` (`oui` → abrogé ; vide/`non` → en vigueur). `date_publication` ajoutée mais **optionnelle** (jamais bloquante). Les colonnes du suivi manuel (`cle_matching`, `statut_cible`, `statut_ingestion_reelle`, …) sont ignorées par le pipeline.
-Writeback — **statut canonique prod + présence par environnement** : `statut_ingestion` = (vide)=à ingérer · `ok` (job: présent et à jour, inchangé compris — le détail ingéré/inchangé vit dans `rag_ingestion_runs`) · `erreur` (job, retentée) · `a_supprimer` (**opérateur**: suppression cascade au prochain run) · `supprime` (job après cascade; ligne inactive, ré-activation en vidant la cellule). Seule la prod écrit ce statut canonique et ses métadonnées `derniere_ingestion` · `nb_chunks` · `hash_contenu` · `erreur_ingestion`; chaque environnement écrit uniquement son booléen de présence réelle (`ingere_staging` ou `ingere_prod`). `abroge=oui` reste le drapeau juridique et déclenche aussi la suppression. Les colonnes du suivi manuel historique (`statut_ingestion_reelle`, `statut_cible`, `cle_matching`) sont périmées pour ces corpus PDF.
+Writeback — **statut canonique prod + présence par environnement** : `statut_ingestion` = (vide)=à ingérer · `ok` (job: présent et à jour, inchangé compris — le détail ingéré/inchangé vit dans `rag_ingestion_runs`) · `erreur` (job, retentée) · `a_supprimer` (**opérateur**: suppression cascade au prochain run) · `supprime` (job après cascade; ligne inactive, ré-activation en retirant les valeurs de suppression dans `statut` et `statut_ingestion`). Seule la prod écrit ce statut canonique et ses métadonnées `derniere_ingestion` · `nb_chunks` · `hash_contenu` · `erreur_ingestion`; chaque environnement écrit uniquement son booléen de présence réelle (`ingere_staging` ou `ingere_prod`). `abroge=oui` reste le drapeau juridique et déclenche aussi la suppression. Les colonnes du suivi manuel historique (`statut_ingestion_reelle`, `statut_cible`, `cle_matching`) sont périmées pour ces corpus PDF.
 Ajouts unitaires legi/SP (Phase E) : lignes du même référentiel (`source_corpus` Légifrance/Service-public, ids dans `id_extraction`/`legitext`/`jorftext`) — pas de table à part.
 
 ### Buckets / bronze layout
@@ -104,3 +104,12 @@ Ajouts unitaires legi/SP (Phase E) : lignes du même référentiel (`source_corp
 5. **Legacy id mapping** (MATTE/MSO → new `MATTE-xxxx`/`MSO-xxxx`): old chat-log citations dangle — accepted (cosmetic).
 6. **OCR-markdown sectioning quality**: headings may be noisy on old circulaires; iterate per-ministry silver via the Chunking Evaluation page — that's exactly why parsing is per-ministry.
 7. **Prod exposure is safe-by-default**: new catalog/table keys are inert until group policies include them; gate enablement on content sign-off.
+
+
+### Mise à jour opérationnelle — suppressions et cron production
+
+Pour les PDF, les demandes `a_supprimer` / états `supprime` sont reconnus dans
+`statut` et `statut_ingestion`. Après acquittement en production, les deux valent
+`supprime`. Une réactivation nécessite de retirer ces valeurs dans **les deux
+colonnes**, ainsi que `abroge=oui` le cas échéant.
+Voir le [runbook du cron production](deployment/PRODUCTION_INGESTION_CRON.md).

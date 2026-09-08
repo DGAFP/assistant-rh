@@ -529,6 +529,7 @@ def grist_record(
     abroge: str = "",
     cle_bucket: str | None = None,
     statut_ingestion: str = "",
+    statut: str = "",
     ingere_staging: bool | None = None,
 ) -> dict[str, Any]:
     record = {
@@ -540,6 +541,7 @@ def grist_record(
             "cle_bucket": cle_bucket if cle_bucket is not None else f"mi/{uid.lower()}_circulaire.pdf",
             "abroge": abroge,
             "statut_ingestion": statut_ingestion,
+            "statut": statut,
         },
     }
     if ingere_staging is not None:
@@ -978,3 +980,91 @@ def test_rejected_row_keeps_operator_inactive_status(tmp_path: Path) -> None:
 
     assert summary["rejected_count"] == 1
     assert grist.writebacks == []  # statut opérateur préservé
+
+
+@pytest.mark.parametrize("target_env", ["staging", "prod"])
+def test_canonical_operator_removal_overrides_legacy_ok(tmp_path: Path, target_env: str) -> None:
+    state = {"MI-0001": {"doc_id": "d1", "checksum": "a" * 64, "nb_chunks": 4}}
+    records = [grist_record("MI-0001", record_id=11, statut="a_supprimer", statut_ingestion="ok")]
+    pipeline, grist, store, ocr, writer = build_pipeline(tmp_path, records=records, documents={}, state=state)
+    pipeline.config.target_env = target_env
+
+    planned = pipeline.run(ingest=True, dry_run=True)
+    assert planned["plan"]["delete"] == ["MI-0001"]
+    assert writer.cascade_deletes == []
+    assert grist.writebacks == []
+
+    summary = pipeline.run(ingest=True)
+    assert writer.cascade_deletes == [["MI-0001"]]
+    assert summary["deleted_count"] == 1
+    assert ocr.calls == 0
+    fields = grist.fields_for(11)[-1]
+    assert fields[f"ingere_{target_env}"] is False
+    if target_env == "prod":
+        assert fields["statut"] == fields["statut_ingestion"] == "supprime"
+        assert fields["statut_ingestion_reelle"] == "non_trouve"
+    else:
+        assert fields == {"ingere_staging": False}
+
+
+def test_invalid_canonical_removal_preserves_intent_and_existing_document(tmp_path: Path) -> None:
+    state = {"MI-0001": {"doc_id": "d1", "checksum": "a" * 64, "nb_chunks": 4}}
+    record = grist_record("MI-0001", record_id=11, statut="a_supprimer", statut_ingestion="ok")
+    record["fields"]["titre_document"] = ""
+    pipeline, grist, store, ocr, writer = build_pipeline(tmp_path, records=[record], documents={}, state=state)
+    pipeline.config.target_env = "prod"
+
+    summary = pipeline.run(ingest=True)
+    assert summary["rejected_count"] == 1
+    assert writer.cascade_deletes == []
+    assert grist.writebacks == []
+
+
+def test_canonical_deleted_row_cannot_be_reingested_by_legacy_ok(tmp_path: Path) -> None:
+    record = grist_record("MI-0001", record_id=11, statut="supprime", statut_ingestion="ok")
+    pipeline, grist, store, ocr, writer = build_pipeline(tmp_path, records=[record], documents={})
+    pipeline.config.target_env = "prod"
+
+    summary = pipeline.run(ingest=True)
+    assert summary["ingested_count"] == 0
+    assert writer.upserted_documents == []
+    assert ocr.calls == 0
+    assert grist.fields_for(11)[-1]["statut_ingestion"] == "supprime"
+
+
+def test_mixed_manifest_preserves_rejected_document_chunks(tmp_path: Path) -> None:
+    state = {"MI-0001": {"doc_id": "d1", "checksum": "a" * 64, "nb_chunks": 4}}
+    invalid = grist_record("MI-0001", record_id=11, statut="a_supprimer", statut_ingestion="ok")
+    invalid["fields"]["titre_document"] = ""
+    valid = grist_record("MI-0002", record_id=12)
+    pipeline, grist, store, ocr, writer = build_pipeline(
+        tmp_path,
+        records=[invalid, valid],
+        documents={"mi/mi-0002_circulaire.pdf": b"%PDF-doc2"},
+        state=state,
+    )
+
+    summary = pipeline.run(ingest=True)
+    assert summary["rejected_count"] == 1
+    assert writer.cascade_deletes == []
+    assert writer.purge_keep_lists == [["MI-0001", "MI-0002"]]
+    assert grist.fields_for(11) == []
+
+
+def test_production_removal_can_be_reactivated_after_clearing_both_statuses(tmp_path: Path) -> None:
+    record = grist_record("MI-0001", record_id=11, statut="a_supprimer", statut_ingestion="ok")
+    state = {"MI-0001": {"doc_id": "d1", "checksum": "a" * 64, "nb_chunks": 4}}
+    pipeline, grist, store, ocr, writer = build_pipeline(
+        tmp_path,
+        records=[record],
+        documents={"mi/mi-0001_circulaire.pdf": b"%PDF-doc1"},
+        state=state,
+    )
+    pipeline.config.target_env = "prod"
+    pipeline.run(ingest=True)
+    record["fields"].update(grist.fields_for(11)[-1])
+    assert pipeline.run(ingest=True)["ingested_count"] == 0
+    record["fields"]["statut_ingestion"] = ""
+    assert pipeline.run(ingest=True)["ingested_count"] == 0
+    record["fields"]["statut"] = "a_ingerer"
+    assert pipeline.run(ingest=True)["ingested_count"] == 1
