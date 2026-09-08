@@ -18,9 +18,9 @@ pipeline stages, including the raw pool. A source can be found and then discarde
 while still contributing to those global scores. These remain visible in a clearly
 labelled diagnostic panel; they are not the final-context KPIs or a new quality gate.
 
-The question matrix shows the recorded question and expected-source excerpts,
-judge verdict, gold presence at five stages, and context recall. A second table
-shows recall at every stage and judge score. **Found** means at least one gold
+The question/source table shows recorded excerpts. A compact matrix shows judge
+verdict, gold presence at five stages and context recall, followed by a table of
+recall at every stage and judge score. **Found** means at least one gold
 source, not all sources. The stage recall is the stored historical metric and can
 count identifier aliases. Expected sources are the stored human labels, not an
 assertion that those labels were individually matched at every stage. No current
@@ -35,7 +35,10 @@ retained, lost (1 to 0), or gained (0 to 1). **Top-12 is an alternative diagnost
 cut**, not an extra step between top-20 and the selector. Partial recall losses
 remain visible in the question recall table.
 
-Baseline verdicts and deltas remain those recorded by the evaluator. Deltas are
+Baseline verdicts and deltas remain those recorded by the automatic evaluator,
+not an independent validation of experimental comparability. The experiment
+journal can reclassify an automatic comparison as diagnostic (notably #240
+against #226); that qualification takes precedence over its stored pass flag. Deltas are
 exported only for an explicitly comparable stored result. A scope fingerprint,
 shared judge or similar sample size alone does not prove comparability.
 
