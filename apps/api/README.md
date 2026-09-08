@@ -89,7 +89,9 @@ concurrency against the database connection budget. `statistics()` exposes pool
 counts without connection details. Pool behavior follows the
 [psycopg pool API](https://www.psycopg.org/psycopg3/docs/api/pool.html).
 Checkout health checks have their own 2-second deadline; expiry or cancellation
-closes the connection before the pool replaces it. The queue and checkout-check
+closes the connection before cancelling the check and letting the pool replace it.
+This prevents psycopg's cancellation handshake from waiting on a lost network
+response. The queue and checkout-check
 deadlines are separate; the statement timeout is enforced by PostgreSQL.
 
 ```python

@@ -61,16 +61,24 @@ class Database:
         await self._pool.close()
 
     async def _check_connection(self, connection: psycopg.AsyncConnection) -> None:
-        # The pool's queue timeout does not bound its checkout-check callback.
+        # Wait without cancelling psycopg: its cancellation handler can itself
+        # wait for a lost server response. Close the socket before cancelling it.
+        check = asyncio.create_task(AsyncConnectionPool.check_connection(connection))
         try:
-            async with asyncio.timeout(self._settings.timeout_seconds):
-                await AsyncConnectionPool.check_connection(connection)
+            done, _ = await asyncio.wait({check}, timeout=self._settings.timeout_seconds)
+            if not done:
+                raise TimeoutError
+            await check
         except asyncio.CancelledError:
             await connection.close()
             raise
         except (TimeoutError, psycopg.Error):
             await connection.close()
             raise psycopg.OperationalError("Database connection check failed") from None
+        finally:
+            if not check.done():
+                check.cancel()
+            await asyncio.gather(check, return_exceptions=True)
 
     @asynccontextmanager
     async def transaction(self, *, read_only: bool = False) -> AsyncIterator[psycopg.AsyncConnection]:
