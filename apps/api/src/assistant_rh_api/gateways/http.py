@@ -36,6 +36,46 @@ def decode_json(raw: bytes | str) -> Any:
         raise invalid() from None
 
 
+class _CancellationSafeStream(httpx.AsyncByteStream):
+    """Protect the underlying close, including HTTPX's automatic close at EOF."""
+
+    def __init__(self, stream: httpx.AsyncByteStream, timeout: float) -> None:
+        self._stream = stream
+        self._timeout = timeout
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        async for chunk in self._stream:
+            yield chunk
+
+    async def _close(self) -> None:
+        async with asyncio.timeout(self._timeout):
+            await self._stream.aclose()
+
+    async def aclose(self) -> None:
+        # AnyIO shielding alone cannot resist Task.cancel()/asyncio.timeout().
+        # Keep ownership of a bounded child task until cleanup has finished.
+        closing = asyncio.create_task(self._close())
+        cancelled = None
+        with anyio.CancelScope(shield=True):
+            while not closing.done():
+                try:
+                    await asyncio.shield(closing)
+                except asyncio.CancelledError as exc:
+                    cancelled = exc
+                except (TimeoutError, httpx.HTTPError):
+                    break
+        try:
+            if cancelled is not None:
+                # Retrieve a possible cleanup error before propagating cancellation.
+                if not closing.cancelled():
+                    closing.exception()
+                raise cancelled
+            closing.result()
+        finally:
+            # A cancellation first received inside the AnyIO shield was deferred.
+            await anyio.lowlevel.checkpoint_if_cancelled()
+
+
 class InferenceHTTP:
     """The caller owns the injected AsyncClient. No global clients or SDK retries."""
 
@@ -65,6 +105,8 @@ class InferenceHTTP:
             )
             async with asyncio.timeout(self.remaining(deadline)):
                 response = await self.client.send(request, stream=True, follow_redirects=False)
+            assert isinstance(response.stream, httpx.AsyncByteStream)
+            response.stream = _CancellationSafeStream(response.stream, self.policy.timeout)
             status = response.status_code
             if status == 429:
                 raise WireFailure("rate_limited", status)
@@ -84,8 +126,7 @@ class InferenceHTTP:
         finally:
             if response is not None:
                 try:
-                    with anyio.move_on_after(self.policy.timeout, shield=True):
-                        await response.aclose()
+                    await response.aclose()
                 except (TimeoutError, httpx.HTTPError):
                     pass
 

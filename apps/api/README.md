@@ -240,7 +240,10 @@ kind: `timeout`, `unavailable`, `rate_limited`, `rejected`, `invalid_response`.
 provider exception for display. No result, trace or `last_*` diagnostic is shared
 between requests. Cancellation propagates and does not initiate fallback or
 open the embedding circuit. Response cleanup is bounded and shielded against
-ASGI/AnyIO cancellation. Early stream consumers must exit the context:
+ASGI/AnyIO cancellation and repeated asyncio task cancellation, including HTTPX's
+automatic close at EOF. Cancellation waits for the underlying cleanup task to
+finish or exhaust its I/O budget, even after HTTPX marks the response closed.
+Early stream consumers must exit the context:
 
 ```python
 async with httpx.AsyncClient(trust_env=False) as client:
