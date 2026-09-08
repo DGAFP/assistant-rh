@@ -17,6 +17,8 @@ import psycopg
 from assistant_rh_shared import get_dsn
 from dotenv import load_dotenv
 
+from assistant_rh_data_engineering.jobs.rag_eval_metrics import EVAL_COLUMNS, EVAL_HELP, MAX_EVAL_RUNS, eval_run_metrics
+
 logger = logging.getLogger(__name__)
 
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -76,10 +78,12 @@ EXPECTED_TABLES = (
     "rag_sections",
     "rag_trace_events",
     "rag_ingestion_runs",
+    "rag_quality_eval_runs",
     *(table.table for table in DIRECT_CHUNK_TABLES),
 )
 
 METRIC_HELP = {
+    **EVAL_HELP,
     "assistant_rh_ingestion_run_available": "Whether a completed PDF ingestion run exists for this ministry and scope.",
     "assistant_rh_ingestion_last_run_timestamp_seconds": "Completion timestamp of the latest PDF ingestion run by ministry and scope.",
     "assistant_rh_ingestion_last_run_documents": "Document counts from the latest completed PDF ingestion run; gauges, not cumulative counters.",
@@ -202,9 +206,10 @@ class RagHealthCollector:
 
         samples.extend(self._trace_metrics(conn, columns, now))
         samples.extend(self._ingestion_metrics(conn, columns))
+        samples.extend(self._eval_metrics(conn, columns))
 
         for table in EXPECTED_TABLES:
-            if table in {"rag_trace_events", "rag_ingestion_runs"}:
+            if table in {"rag_trace_events", "rag_ingestion_runs", "rag_quality_eval_runs"}:
                 continue
             samples.extend(self._freshness_metrics(conn, columns, table, now))
 
@@ -214,6 +219,45 @@ class RagHealthCollector:
     def _set_statement_timeout(self, conn: psycopg.Connection) -> None:
         with conn.cursor() as cur:
             cur.execute("SELECT set_config('statement_timeout', %s, false)", (str(max(0, self.statement_timeout_ms)),))
+
+    def _eval_metrics(self, conn: psycopg.Connection, columns: dict[str, set[str]]) -> list[MetricSample]:
+        available = set(EVAL_COLUMNS).issubset(columns.get("rag_quality_eval_runs", set()))
+        samples = [metric("assistant_rh_rag_eval_schema_available", self.env_label, int(available))]
+        if not available:
+            return samples
+        # The primary-key index supports this bounded window. No item payloads,
+        # prompts, answers, full config, or historical corpus scans are needed.
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT id, goldset_name, status, judge_model, git_sha, config_fingerprint,
+                       EXTRACT(EPOCH FROM created_at)::double precision AS created_epoch,
+                       EXTRACT(EPOCH FROM completed_at - created_at)::double precision AS duration_seconds,
+                       aggregate, metadata->'eval_scope' AS eval_scope, tag_filter
+                FROM {self.schema_sql}.rag_quality_eval_runs
+                ORDER BY id DESC LIMIT %s
+            """,
+                (MAX_EVAL_RUNS,),
+            )
+            rows = cur.fetchall()
+        samples.append(metric("assistant_rh_rag_eval_runs_exposed", self.env_label, len(rows)))
+        names = (
+            "id",
+            "goldset_name",
+            "status",
+            "judge_model",
+            "git_sha",
+            "config_fingerprint",
+            "created_epoch",
+            "duration_seconds",
+            "aggregate",
+            "eval_scope",
+            "tag_filter",
+        )
+        for values in rows:
+            for name, value, labels in eval_run_metrics(dict(zip(names, values, strict=True))):
+                samples.append(metric(name, self.env_label, value, **labels))
+        return samples
 
     def _load_columns(self, conn: psycopg.Connection) -> dict[str, set[str]]:
         with conn.cursor() as cur:
@@ -242,6 +286,8 @@ class RagHealthCollector:
             return "traces"
         if table == "rag_ingestion_runs":
             return "ingestion_runs"
+        if table == "rag_quality_eval_runs":
+            return "eval_runs"
         return "chunks"
 
     def _ingestion_metrics(self, conn: psycopg.Connection, columns: dict[str, set[str]]) -> list[MetricSample]:

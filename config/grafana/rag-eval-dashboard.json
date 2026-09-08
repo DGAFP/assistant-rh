@@ -1,0 +1,1148 @@
+{
+  "uid": "assistant-rh-rag-evals",
+  "title": "Assistant RH - Évaluations RAG",
+  "id": null,
+  "version": 1,
+  "schemaVersion": 39,
+  "editable": true,
+  "tags": [
+    "assistant-rh",
+    "rag",
+    "evals"
+  ],
+  "timezone": "browser",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "refresh": "5m",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Source de métriques",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "refresh": 1
+      },
+      {
+        "name": "env",
+        "label": "Environnement",
+        "type": "custom",
+        "query": "staging,prod",
+        "current": {
+          "text": "staging",
+          "value": "staging",
+          "selected": true
+        },
+        "options": [
+          {
+            "text": "staging",
+            "value": "staging",
+            "selected": true
+          },
+          {
+            "text": "prod",
+            "value": "prod",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "name": "goldset",
+        "label": "Goldset",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$datasource"
+        },
+        "query": "query_result(max by (goldset) (assistant_rh_rag_eval_run_info{env=~\"$env\"}))",
+        "definition": "query_result(max by (goldset) (assistant_rh_rag_eval_run_info{env=~\"$env\"}))",
+        "current": {},
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": false,
+        "multi": false,
+        "regex": "/goldset=\"([^\"]+)\"/"
+      },
+      {
+        "name": "run",
+        "label": "Run",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$datasource"
+        },
+        "query": "query_result(max by (run_id) (assistant_rh_rag_eval_run_info{env=~\"$env\",goldset=~\"$goldset\"}))",
+        "definition": "query_result(max by (run_id) (assistant_rh_rag_eval_run_info{env=~\"$env\",goldset=~\"$goldset\"}))",
+        "current": {},
+        "refresh": 2,
+        "sort": 4,
+        "includeAll": false,
+        "multi": false,
+        "regex": "/run_id=\"([^\"]+)\"/"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 100,
+      "title": "",
+      "type": "text",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "## Évaluations RAG\nRésultats enregistrés · Sélectionnez un goldset puis un run. Le nombre de questions, le juge et le périmètre accompagnent les scores. Les **50 derniers runs par environnement** sont exposés ; les dates correspondent aux évaluations, pas aux collectes."
+      }
+    },
+    {
+      "id": 1,
+      "title": "Runs disponibles",
+      "description": "Fenêtre des 50 derniers runs enregistrés, tous goldsets. Zéro signifie aucune évaluation enregistrée ; Non disponible signifie métriques absentes.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_runs_exposed{env=~\"$env\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showHeader": true
+      }
+    },
+    {
+      "id": 2,
+      "title": "Run sélectionné · $run",
+      "description": "Statut d’exécution. Terminé ne signifie pas que la qualité est satisfaisante.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 3,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_run_status{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Démarré",
+                  "color": "blue"
+                },
+                "1": {
+                  "text": "Terminé",
+                  "color": "blue"
+                },
+                "2": {
+                  "text": "Échec technique",
+                  "color": "red"
+                },
+                "3": {
+                  "text": "Seuil qualité non atteint",
+                  "color": "orange"
+                },
+                "4": {
+                  "text": "Autre statut",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showHeader": true
+      }
+    },
+    {
+      "id": 3,
+      "title": "Questions évaluées",
+      "description": "",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_run_questions{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",result=\"total\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showHeader": true
+      }
+    },
+    {
+      "id": 4,
+      "title": "Durée du run",
+      "description": "",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 3,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_run_duration_seconds{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showHeader": true
+      }
+    },
+    {
+      "id": 5,
+      "title": "Réponses validées par le juge",
+      "description": "Valeur agrégée enregistrée pour ce run. Un juge désactivé ou une mesure absente reste Non disponible. Les seuils de qualité dépendent du protocole d’évaluation.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_run_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=\"judge_pass_rate\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showHeader": true
+      }
+    },
+    {
+      "id": 6,
+      "title": "Rappel documentaire",
+      "description": "Valeur agrégée enregistrée pour ce run. Un juge désactivé ou une mesure absente reste Non disponible. Les seuils de qualité dépendent du protocole d’évaluation.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 7,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_run_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=\"doc_recall_avg\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showHeader": true
+      }
+    },
+    {
+      "id": 7,
+      "title": "Précision documentaire",
+      "description": "Valeur agrégée enregistrée pour ce run. Un juge désactivé ou une mesure absente reste Non disponible. Les seuils de qualité dépendent du protocole d’évaluation.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 7,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_run_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=\"doc_precision_avg\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showHeader": true
+      }
+    },
+    {
+      "id": 8,
+      "title": "Questions sans source attendue",
+      "description": "Valeur agrégée enregistrée pour ce run. Un juge désactivé ou une mesure absente reste Non disponible. Les seuils de qualité dépendent du protocole d’évaluation.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 7,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_run_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=\"retrieval_gap_rate\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showHeader": true
+      }
+    },
+    {
+      "id": 9,
+      "title": "Identité et périmètre du run",
+      "description": "limit=0 signifie sans limite explicite, pas une garantie de couverture complète. scope_id identifie les paramètres du périmètre ; il ne prouve pas la comparabilité des snapshots de sources.",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_run_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\"}",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showHeader": true
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true
+            },
+            "indexByName": {
+              "run_id": 0,
+              "env": 1,
+              "goldset": 2,
+              "limit": 3,
+              "judge_model": 4,
+              "git_sha": 5,
+              "config_id": 6,
+              "scope_id": 7
+            },
+            "renameByName": {
+              "run_id": "Run",
+              "env": "Environnement",
+              "goldset": "Goldset",
+              "limit": "Limite",
+              "judge_model": "Juge",
+              "git_sha": "Commit",
+              "config_id": "Configuration",
+              "scope_id": "Périmètre"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Qualité des réponses et du retrieval",
+      "description": "",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_run_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=~\"judge_score_avg|judge_legal_correctness_avg|judge_completeness_avg|judge_gold_answer_alignment_avg|judge_source_support_avg|ragas_faithfulness_avg|ragas_context_precision_avg|ragas_context_recall_avg|hit_rate_avg|mrr_avg\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "{{metric}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "min": 0,
+          "max": 1
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "judge_score_avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Score global du juge"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "judge_legal_correctness_avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Exactitude juridique"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "judge_completeness_avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Complétude"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "judge_gold_answer_alignment_avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Accord avec la réponse de référence"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "judge_source_support_avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Appui sur les sources"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ragas_faithfulness_avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "RAGAS · fidélité"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ragas_context_precision_avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "RAGAS · précision du contexte"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ragas_context_recall_avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "RAGAS · rappel du contexte"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "hit_rate_avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Présence d’une source attendue"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "mrr_avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Rang réciproque moyen"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "showHeader": true,
+        "displayMode": "basic",
+        "showUnfilled": true
+      }
+    },
+    {
+      "id": 11,
+      "title": "Rappel au fil des étapes",
+      "description": "Diagnostic enregistré par étape et tentative. Les sous-populations et dénominateurs peuvent varier ; ces barres ne constituent pas à elles seules un seuil de validation.",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_stage_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=\"doc_recall_avg\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "{{attempt}} · {{stage}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "showHeader": true,
+        "displayMode": "basic",
+        "showUnfilled": true
+      }
+    },
+    {
+      "id": 12,
+      "title": "Comparaison à la baseline",
+      "description": "Verdict stocké par le runner. Aucune comparaison automatique entre deux runs du dashboard.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 8,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_baseline_status{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Non demandée",
+                  "color": "gray"
+                },
+                "1": {
+                  "text": "Validée",
+                  "color": "green"
+                },
+                "2": {
+                  "text": "Seuil non atteint",
+                  "color": "orange"
+                },
+                "3": {
+                  "text": "Non comparable",
+                  "color": "orange"
+                },
+                "4": {
+                  "text": "Baseline absente",
+                  "color": "gray"
+                },
+                "5": {
+                  "text": "Verdict inconnu",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showHeader": true
+      }
+    },
+    {
+      "id": 13,
+      "title": "Écarts validés comme comparables",
+      "description": "Différence candidat − baseline en points de pourcentage. Présente uniquement si le runner a enregistré comparable=true.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 26,
+        "w": 8,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * assistant_rh_rag_eval_baseline_delta{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "{{metric}} · baseline #{{baseline_run_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: points",
+          "decimals": 0,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showHeader": true
+      }
+    },
+    {
+      "id": 14,
+      "title": "Erreurs du run",
+      "description": "Erreurs d’exécution, du juge et de RAGAS. Les réponses non validées par le juge ne sont pas des erreurs techniques.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 26,
+        "w": 8,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_run_questions{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",result=~\"failed|judge_failed|ragas_failed\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "{{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showHeader": true
+      }
+    },
+    {
+      "id": 15,
+      "title": "Historique récent · $goldset",
+      "description": "Runs exposés dans la fenêtre des 50 derniers IDs de cet environnement, ordonnés par date de création. Pour les scores, sélectionnez le run dans le filtre en haut.",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_run_timestamp_seconds{env=~\"$env\",goldset=~\"$goldset\"} * 1000",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeAsIso",
+          "decimals": 0,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showHeader": true
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value": "Créé le",
+              "run_id": "Run",
+              "env": "Environnement",
+              "goldset": "Goldset"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Créé le",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 101,
+      "title": "Lire les résultats",
+      "type": "text",
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 4
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Les métriques absentes restent **Non disponible**. Un smoke test et un run complet ne sont pas interchangeables. Les évolutions de juge, de questions et de corpus peuvent modifier les scores : utilisez le verdict de comparaison enregistré pour conclure à une régression. Les questions et réponses individuelles restent dans les outils administrateur d’évaluation."
+      }
+    }
+  ],
+  "annotations": {
+    "list": []
+  }
+}
