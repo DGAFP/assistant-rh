@@ -47,7 +47,8 @@ def test_application_factory_does_not_open_a_database_connection(monkeypatch) ->
     def fail_if_called(*args, **kwargs):
         raise AssertionError("application creation must not open Postgres")
 
-    monkeypatch.setattr("assistant_rh_api.db.health.psycopg.AsyncConnection.connect", fail_if_called)
+    monkeypatch.setattr("assistant_rh_api.db.pool.psycopg.AsyncConnection.connect", fail_if_called)
+    monkeypatch.setattr("assistant_rh_api.handlers.app.resolve_dsn", fail_if_called)
 
     create_app()
 
