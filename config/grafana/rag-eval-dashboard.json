@@ -82,6 +82,49 @@
         "includeAll": false,
         "multi": false,
         "regex": "/run_id=\"([^\"]+)\"/"
+      },
+      {
+        "name": "attempt",
+        "label": "Tentative",
+        "type": "custom",
+        "query": "Initiale : initial,Retry sélecteur : selector_retry",
+        "current": {
+          "text": "Initiale",
+          "value": "initial"
+        },
+        "options": [
+          {
+            "text": "Initiale",
+            "value": "initial",
+            "selected": true
+          },
+          {
+            "text": "Retry sélecteur",
+            "value": "selector_retry",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "name": "question",
+        "label": "Question (détail)",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$datasource"
+        },
+        "query": "query_result(max by (question_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\"}))",
+        "regex": "/question_id=\"([^\"]+)\"/",
+        "refresh": 2,
+        "sort": 3,
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
       }
     ]
   },
@@ -98,7 +141,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "## Évaluations RAG\nRésultats enregistrés · Sélectionnez un goldset puis un run. Le nombre de questions, le juge et le périmètre accompagnent les scores. Les **50 derniers runs par environnement** sont exposés ; les dates correspondent aux évaluations, pas aux collectes."
+        "content": "<h2>Évaluations RAG · qualité et parcours du gold</h2><p>Choisissez un run et une tentative. Les indicateurs de contexte utilisent uniquement l’étape <b>contexte construit</b>. Le hit/recall historique « global » combine plusieurs étapes : il ne prouve pas que le gold est encore dans le contexte.</p>"
       }
     },
     {
@@ -390,8 +433,8 @@
     },
     {
       "id": 6,
-      "title": "Rappel documentaire",
-      "description": "Valeur agrégée enregistrée pour ce run. Un juge désactivé ou une mesure absente reste Non disponible. Les seuils de qualité dépendent du protocole d’évaluation.",
+      "title": "Rappel du contexte construit",
+      "description": "Tentative sélectionnée uniquement. Moyenne des questions mesurées ; voir le tableau du funnel pour le dénominateur. Un retry est affiché séparément de la tentative initiale.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -406,7 +449,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "assistant_rh_rag_eval_run_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=\"doc_recall_avg\"}",
+          "expr": "assistant_rh_rag_eval_funnel_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"context_builder_output\",metric=\"doc_recall\"}",
           "instant": true,
           "range": false,
           "format": "time_series",
@@ -442,8 +485,8 @@
     },
     {
       "id": 7,
-      "title": "Précision documentaire",
-      "description": "Valeur agrégée enregistrée pour ce run. Un juge désactivé ou une mesure absente reste Non disponible. Les seuils de qualité dépendent du protocole d’évaluation.",
+      "title": "Gold présent dans le contexte",
+      "description": "Tentative sélectionnée uniquement. Moyenne des questions mesurées ; voir le tableau du funnel pour le dénominateur. Un retry est affiché séparément de la tentative initiale.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -458,7 +501,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "assistant_rh_rag_eval_run_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=\"doc_precision_avg\"}",
+          "expr": "assistant_rh_rag_eval_funnel_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"context_builder_output\",metric=\"hit_rate\"}",
           "instant": true,
           "range": false,
           "format": "time_series",
@@ -494,8 +537,8 @@
     },
     {
       "id": 8,
-      "title": "Questions sans source attendue",
-      "description": "Valeur agrégée enregistrée pour ce run. Un juge désactivé ou une mesure absente reste Non disponible. Les seuils de qualité dépendent du protocole d’évaluation.",
+      "title": "Questions sans trace du contexte",
+      "description": "Questions enregistrées sans mesure à cette étape et cette tentative. Ne sont pas comptées comme des échecs de retrieval.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -510,7 +553,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "assistant_rh_rag_eval_run_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=\"retrieval_gap_rate\"}",
+          "expr": "assistant_rh_rag_eval_funnel_questions{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"context_builder_output\",measure=\"trace_missing\"}",
           "instant": true,
           "range": false,
           "format": "time_series",
@@ -519,8 +562,8 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit",
-          "decimals": 1,
+          "unit": "none",
+          "decimals": 0,
           "noValue": "Non disponible",
           "color": {
             "mode": "fixed",
@@ -807,7 +850,7 @@
     {
       "id": 11,
       "title": "Rappel au fil des étapes",
-      "description": "Diagnostic enregistré par étape et tentative. Les sous-populations et dénominateurs peuvent varier ; ces barres ne constituent pas à elles seules un seuil de validation.",
+      "description": "Recall moyen calculé depuis les diagnostics enregistrés par question. Top-12 est une coupe diagnostique alternative, pas une étape entre top-20 et sélection.",
       "type": "bargauge",
       "datasource": {
         "type": "prometheus",
@@ -822,11 +865,11 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "assistant_rh_rag_eval_stage_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=\"doc_recall_avg\"}",
+          "expr": "assistant_rh_rag_eval_funnel_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",metric=\"doc_recall\"}",
           "instant": true,
           "range": false,
           "format": "time_series",
-          "legendFormat": "{{attempt}} · {{stage}}"
+          "legendFormat": "{{stage}}"
         }
       ],
       "fieldConfig": {
@@ -841,7 +884,68 @@
           "min": 0,
           "max": 1
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pool"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "1 · Pool avant reranking"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "sections_top20"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "2 · Sections top-20"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "sections_top12"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "2b · Top-12 (diagnostic)"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "selector_kept"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "3 · Sélection conservée"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "context_builder_output"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "4 · Contexte construit"
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "colorMode": "value",
@@ -1148,13 +1252,1345 @@
       "type": "text",
       "gridPos": {
         "x": 0,
-        "y": 40,
+        "y": 92,
         "w": 24,
         "h": 4
       },
       "options": {
         "mode": "markdown",
-        "content": "Les métriques absentes restent **Non disponible**. Un smoke test et un run complet ne sont pas interchangeables. Les évolutions de juge, de questions et de corpus peuvent modifier les scores : utilisez le verdict de comparaison enregistré pour conclure à une régression. Les questions et réponses individuelles restent dans les outils administrateur d’évaluation."
+        "content": "<p><b>Lecture :</b> « Retrouvé » = au moins une source gold ; le recall mesure la couverture des identifiants gold selon le matching historique (aliases inclus). Sources attendues = libellés enregistrés, pas une re-résolution avec le corpus actuel. Les traces absentes, scores invalides et questions sans gold sont distingués des absences mesurées. Les transitions comparent uniquement les mêmes questions aux deux extrémités. Top-12 est diagnostique ; les retries ne sont jamais mélangés à la tentative initiale. Les 50 derniers runs sont disponibles ; un run dépassant 200 items est signalé et exclu du détail pour éviter des moyennes partielles. Intitulés et sources sont abrégés à 500 caractères.</p>"
+      }
+    },
+    {
+      "id": 20,
+      "title": "Funnel du gold · mêmes définitions, dénominateurs explicites",
+      "description": "Valeurs recalculées à partir des mesures par question enregistrées. Chaque moyenne utilise son propre dénominateur ; les valeurs absentes ne deviennent pas zéro.",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (stage, stage_order) (assistant_rh_rag_eval_funnel_questions{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",measure=\"hit\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "B",
+          "expr": "max by (stage_order) (assistant_rh_rag_eval_funnel_questions{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",measure=\"hit_measured\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "C",
+          "expr": "max by (stage_order) (assistant_rh_rag_eval_funnel_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",metric=\"hit_rate\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "D",
+          "expr": "max by (stage_order) (assistant_rh_rag_eval_funnel_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",metric=\"doc_recall\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "E",
+          "expr": "max by (stage_order) (assistant_rh_rag_eval_funnel_questions{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",measure=\"recall_measured\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "F",
+          "expr": "max by (stage_order) (assistant_rh_rag_eval_funnel_questions{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",measure=\"trace_missing\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "G",
+          "expr": "max by (stage_order) (assistant_rh_rag_eval_funnel_questions{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",measure=\"no_gold\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "H",
+          "expr": "max by (stage_order) (assistant_rh_rag_eval_funnel_questions{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",measure=\"invalid\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "Non disponible",
+          "custom": {
+            "filterable": true,
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Étape"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "pool": {
+                        "text": "1 · Pool avant reranking"
+                      },
+                      "sections_top20": {
+                        "text": "2 · Sections top-20"
+                      },
+                      "sections_top12": {
+                        "text": "2b · Top-12 (diagnostic)"
+                      },
+                      "selector_kept": {
+                        "text": "3 · Sélection conservée"
+                      },
+                      "context_builder_output": {
+                        "text": "4 · Contexte construit"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.width",
+                "value": 235
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gold retrouvé (%)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Recall moyen"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Ordre"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "md",
+        "sortBy": [
+          {
+            "displayName": "Ordre",
+            "desc": false
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "stage_order",
+            "mode": "outerTabular"
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "stage_order",
+                "stage",
+                "Value #A",
+                "Value #B",
+                "Value #C",
+                "Value #D",
+                "Value #E",
+                "Value #F",
+                "Value #G",
+                "Value #H"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "stage": "Étape",
+              "Value #A": "Questions avec gold",
+              "Value #B": "Questions mesurées (hit)",
+              "Value #C": "Gold retrouvé (%)",
+              "Value #D": "Recall moyen",
+              "Value #E": "Questions mesurées (recall)",
+              "Value #F": "Sans trace",
+              "Value #G": "Sans gold",
+              "Value #H": "Hit invalide",
+              "stage_order": "Ordre"
+            },
+            "indexByName": {
+              "stage_order": 0,
+              "stage": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5,
+              "Value #E": 6,
+              "Value #F": 7,
+              "Value #G": 8,
+              "Value #H": 9
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Où le gold disparaît · questions appariées",
+      "description": "Une perte est comptée seulement si la même question a un hit mesuré à 1 avant et à 0 après. Une baisse entre deux moyennes avec des dénominateurs différents ne suffit pas. Les pertes partielles de recall restent visibles dans le détail.",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 24,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (transition, transition_order) (assistant_rh_rag_eval_transition_questions{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",measure=\"paired\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "B",
+          "expr": "max by (transition_order) (assistant_rh_rag_eval_transition_questions{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",measure=\"retained\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "C",
+          "expr": "max by (transition_order) (assistant_rh_rag_eval_transition_questions{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",measure=\"lost\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "D",
+          "expr": "max by (transition_order) (assistant_rh_rag_eval_transition_questions{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",measure=\"gained\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "Non disponible",
+          "custom": {
+            "filterable": true,
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Transition"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "pool_to_sections_top20": {
+                        "text": "1 · Pool → top-20"
+                      },
+                      "sections_top20_to_selector_kept": {
+                        "text": "2 · Top-20 → sélection"
+                      },
+                      "selector_kept_to_context_builder_output": {
+                        "text": "3 · Sélection → contexte"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.width",
+                "value": 260
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Ordre"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "md",
+        "sortBy": [
+          {
+            "displayName": "Ordre",
+            "desc": false
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "transition_order",
+            "mode": "outerTabular"
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "transition_order",
+                "transition",
+                "Value #A",
+                "Value #B",
+                "Value #C",
+                "Value #D"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "transition": "Transition",
+              "Value #A": "Questions appariées",
+              "Value #B": "Gold conservé",
+              "Value #C": "Gold perdu (oui → non)",
+              "Value #D": "Gold retrouvé (non → oui)",
+              "transition_order": "Ordre"
+            },
+            "indexByName": {
+              "transition_order": 0,
+              "transition": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "title": "Disponibilité du détail par question",
+      "description": "Détail complet des items enregistrés, y compris pour un run en cours. Au-delà de 200 items, aucun sous-échantillon n’est affiché ou moyenné.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 55,
+        "w": 24,
+        "h": 3
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_items_status{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Aucun item enregistré",
+                  "color": "blue"
+                },
+                "1": {
+                  "text": "Tous les items enregistrés sont disponibles",
+                  "color": "blue"
+                },
+                "2": {
+                  "text": "Run trop volumineux (> 200 items) · détail non exporté",
+                  "color": "orange"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showHeader": true
+      }
+    },
+    {
+      "id": 23,
+      "title": "Par question · le gold atteint-il le contexte ?",
+      "description": "Au moins une source gold retrouvée à chaque étape ; un hit ne signifie pas que toutes les sources sont présentes. Filtrez la question en haut ou utilisez les filtres du tableau pour isoler les pertes. Le verdict du juge est indépendant du hit retrieval.",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 16
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (item_id,question_id,question,gold_sources) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "B",
+          "expr": "max by (item_id) (assistant_rh_rag_eval_item_judge_pass{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\"}) and on(item_id) max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "C",
+          "expr": "(max by (item_id) (assistant_rh_rag_eval_item_stage_state{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"pool\"}) or on(item_id) (max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"}) * 0 - 1)) and on(item_id) max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "D",
+          "expr": "(max by (item_id) (assistant_rh_rag_eval_item_stage_state{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"sections_top20\"}) or on(item_id) (max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"}) * 0 - 1)) and on(item_id) max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "E",
+          "expr": "(max by (item_id) (assistant_rh_rag_eval_item_stage_state{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"sections_top12\"}) or on(item_id) (max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"}) * 0 - 1)) and on(item_id) max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "F",
+          "expr": "(max by (item_id) (assistant_rh_rag_eval_item_stage_state{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"selector_kept\"}) or on(item_id) (max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"}) * 0 - 1)) and on(item_id) max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "G",
+          "expr": "(max by (item_id) (assistant_rh_rag_eval_item_stage_state{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"context_builder_output\"}) or on(item_id) (max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"}) * 0 - 1)) and on(item_id) max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "H",
+          "expr": "max by (item_id) (assistant_rh_rag_eval_item_stage_recall{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"context_builder_output\"}) and on(item_id) max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "Non disponible",
+          "custom": {
+            "filterable": true,
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Item"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Question"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 400
+              },
+              {
+                "id": "custom.wrapText",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Sources gold attendues"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 240
+              },
+              {
+                "id": "custom.wrapText",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Verdict juge"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "Non disponible"
+                      },
+                      "0": {
+                        "text": "FAIL",
+                        "color": "red"
+                      },
+                      "1": {
+                        "text": "PASS",
+                        "color": "green"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Recall contexte"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "1 · Pool avant reranking"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-3": {
+                        "text": "Mesure invalide",
+                        "color": "orange"
+                      },
+                      "-2": {
+                        "text": "Sans gold",
+                        "color": "text"
+                      },
+                      "-1": {
+                        "text": "Non tracé",
+                        "color": "text"
+                      },
+                      "0": {
+                        "text": "Absent",
+                        "color": "red"
+                      },
+                      "1": {
+                        "text": "Retrouvé",
+                        "color": "green"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "2 · Sections top-20"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-3": {
+                        "text": "Mesure invalide",
+                        "color": "orange"
+                      },
+                      "-2": {
+                        "text": "Sans gold",
+                        "color": "text"
+                      },
+                      "-1": {
+                        "text": "Non tracé",
+                        "color": "text"
+                      },
+                      "0": {
+                        "text": "Absent",
+                        "color": "red"
+                      },
+                      "1": {
+                        "text": "Retrouvé",
+                        "color": "green"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "2b · Top-12 (diagnostic)"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-3": {
+                        "text": "Mesure invalide",
+                        "color": "orange"
+                      },
+                      "-2": {
+                        "text": "Sans gold",
+                        "color": "text"
+                      },
+                      "-1": {
+                        "text": "Non tracé",
+                        "color": "text"
+                      },
+                      "0": {
+                        "text": "Absent",
+                        "color": "red"
+                      },
+                      "1": {
+                        "text": "Retrouvé",
+                        "color": "green"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "3 · Sélection conservée"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-3": {
+                        "text": "Mesure invalide",
+                        "color": "orange"
+                      },
+                      "-2": {
+                        "text": "Sans gold",
+                        "color": "text"
+                      },
+                      "-1": {
+                        "text": "Non tracé",
+                        "color": "text"
+                      },
+                      "0": {
+                        "text": "Absent",
+                        "color": "red"
+                      },
+                      "1": {
+                        "text": "Retrouvé",
+                        "color": "green"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "4 · Contexte construit"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-3": {
+                        "text": "Mesure invalide",
+                        "color": "orange"
+                      },
+                      "-2": {
+                        "text": "Sans gold",
+                        "color": "text"
+                      },
+                      "-1": {
+                        "text": "Non tracé",
+                        "color": "text"
+                      },
+                      "0": {
+                        "text": "Absent",
+                        "color": "red"
+                      },
+                      "1": {
+                        "text": "Retrouvé",
+                        "color": "green"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "md",
+        "sortBy": [
+          {
+            "displayName": "Item",
+            "desc": false
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "item_id",
+            "mode": "outerTabular"
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "item_id",
+                "question_id",
+                "question",
+                "gold_sources",
+                "Value #B",
+                "Value #C",
+                "Value #D",
+                "Value #E",
+                "Value #F",
+                "Value #G",
+                "Value #H"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "item_id": "Item",
+              "question_id": "Question ID",
+              "question": "Question",
+              "gold_sources": "Sources gold attendues",
+              "Value #B": "Verdict juge",
+              "Value #C": "1 · Pool avant reranking",
+              "Value #D": "2 · Sections top-20",
+              "Value #E": "2b · Top-12 (diagnostic)",
+              "Value #F": "3 · Sélection conservée",
+              "Value #G": "4 · Contexte construit",
+              "Value #H": "Recall contexte"
+            },
+            "indexByName": {
+              "item_id": 0,
+              "question_id": 1,
+              "question": 2,
+              "gold_sources": 3,
+              "Value #B": 4,
+              "Value #C": 5,
+              "Value #D": 6,
+              "Value #E": 7,
+              "Value #F": 8,
+              "Value #G": 9,
+              "Value #H": 10
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "title": "Par question · couverture des sources gold",
+      "description": "Métriques historiques de recall par étape, sans union des étapes ni nouveau matching des sources. Les valeurs manquantes restent non disponibles. Les moyennes du funnel utilisent les dénominateurs explicites ci-dessus.",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 74,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (item_id,question_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "B",
+          "expr": "max by (item_id) (assistant_rh_rag_eval_item_stage_recall{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"pool\"}) and on(item_id) max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "C",
+          "expr": "max by (item_id) (assistant_rh_rag_eval_item_stage_recall{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"sections_top20\"}) and on(item_id) max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "D",
+          "expr": "max by (item_id) (assistant_rh_rag_eval_item_stage_recall{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"sections_top12\"}) and on(item_id) max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "E",
+          "expr": "max by (item_id) (assistant_rh_rag_eval_item_stage_recall{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"selector_kept\"}) and on(item_id) max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "F",
+          "expr": "max by (item_id) (assistant_rh_rag_eval_item_stage_recall{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"context_builder_output\"}) and on(item_id) max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        },
+        {
+          "refId": "G",
+          "expr": "max by(item_id) (assistant_rh_rag_eval_item_judge_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\"}) and on(item_id) max by(item_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "Non disponible",
+          "custom": {
+            "filterable": true,
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Item"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "1 · Pool avant reranking"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "2 · Sections top-20"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "2b · Top-12 (diagnostic)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "3 · Sélection conservée"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "4 · Contexte construit"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Score juge"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "md",
+        "sortBy": [
+          {
+            "displayName": "Item",
+            "desc": false
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "item_id",
+            "mode": "outerTabular"
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "item_id",
+                "question_id",
+                "Value #B",
+                "Value #C",
+                "Value #D",
+                "Value #E",
+                "Value #F",
+                "Value #G"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "item_id": "Item",
+              "question_id": "Question ID",
+              "Value #B": "1 · Pool avant reranking",
+              "Value #C": "2 · Sections top-20",
+              "Value #D": "2b · Top-12 (diagnostic)",
+              "Value #E": "3 · Sélection conservée",
+              "Value #F": "4 · Contexte construit",
+              "Value #G": "Score juge"
+            },
+            "indexByName": {
+              "item_id": 0,
+              "question_id": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4,
+              "Value #E": 5,
+              "Value #F": 6,
+              "Value #G": 7
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "title": "Diagnostic historique · union de plusieurs étapes",
+      "description": "Métriques globales historiques calculées sur une union du pool, du reranking et des contextes. Peuvent être élevées même si le contexte construit est vide. Ne pas utiliser comme verdict sur le contexte ou gate final.",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "assistant_rh_rag_eval_run_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=~\"hit_rate_avg|doc_recall_avg|doc_precision_avg\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "{{metric}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "noValue": "Non disponible",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "min": 0,
+          "max": 1
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "hit_rate_avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Hit · union historique"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "doc_recall_avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Recall · union historique"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "doc_precision_avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Précision · union historique"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "showHeader": true,
+        "displayMode": "basic",
+        "showUnfilled": true
       }
     }
   ],
