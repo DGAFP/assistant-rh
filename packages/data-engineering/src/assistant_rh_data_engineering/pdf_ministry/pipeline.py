@@ -395,6 +395,10 @@ class MedallionPipeline:
                     self._writeback(row.record_id, statut=STATUT_SUPPRIME, nb_chunks=0, corpus_present=False)
 
         finished_at = utc_now_iso()
+        # Un test sur un document ne décrit pas le manifest du ministère.
+        # Conserver la portée pour que les métriques ne remplacent pas le bilan
+        # d'un passage complet par celui d'une exécution ciblée.
+        details["_scope"] = {"kind": "document" if requested else "full", "document_ids": sorted(requested)}
         summary = {
             "run_id": run_id,
             "ministere": identity.ministere,

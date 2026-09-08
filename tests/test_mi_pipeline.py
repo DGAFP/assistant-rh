@@ -631,6 +631,7 @@ def test_removed_manifest_row_triggers_cascade_delete(tmp_path: Path) -> None:
     assert summary["deleted_count"] == 1
     assert writer.cascade_deletes == [["MI-0009"]]
     assert summary["details"]["MI-0009"]["statut"] == "supprime"
+    assert summary["details"]["_scope"] == {"kind": "full", "document_ids": []}
     # Run corpus complet: le balayage des chunks hors manifest tourne (couvre
     # les lignes legacy backfillées sans source_document_id).
     assert writer.purge_keep_lists == [["MI-0001"]]
@@ -712,6 +713,8 @@ def test_doc_id_filter_disables_orphan_deletion(tmp_path: Path) -> None:
     # Run scopé --doc-id: pas de balayage hors manifest (il ne voit qu'une
     # tranche du manifest et balayerait le reste du corpus).
     assert writer.purge_keep_lists == []
+
+    assert summary["details"]["_scope"] == {"kind": "document", "document_ids": ["MI-0001"]}
 
 
 def test_skip_grist_writeback(tmp_path: Path) -> None:
