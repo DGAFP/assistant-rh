@@ -142,3 +142,63 @@ API_SYNTHETIC_POSTGRES_DSN='postgresql://assistant_rh_api:assistant_rh_api@127.0
 
 The fixture rejects nonlocal targets and any database name other than
 `assistant_rh_api_test`. CI supplies this DSN so DB tests cannot be skipped there.
+
+## PostgreSQL runtime repositories (B2, #454)
+
+The adapters take the existing `Database` and implement explicit async core
+ports. They are additive: only `/healthz` is wired to HTTP at this stage.
+
+| Adapter | Contract |
+| --- | --- |
+| `ConfigStore`, `PromptStore`, `AcronymStore` | Fresh immutable snapshots with content revisions; inactive/missing prompts return `None`; DB failures remain errors. No rendering or implicit fallback. |
+| `GroupStore`, `SessionStore` | Existing groups and `is_admin` roles; hashed opaque sessions, expiry/revocation and invalidation on legacy password reset. Public catalogue/auth policy is B4. |
+| `SearchStore` | Separate raw vector, lexical and heading lanes over logical sources; candidate scores/ranks and deterministic ties. No RRF, weighting, gate, deduplication or final selection. |
+| `ContentStore` | Batch documents, sections, legal references and chunks, ordered by stable keys. Legacy Service-Public relations and document metadata remain readable. |
+| `ChatRunStore` | INSERT-only finalization of run, ordered served sources and all trace events in one transaction. A duplicate completion ID fails instead of overwriting the original. |
+| `FeedbackStore` | Group ownership, current feedback, exact retries without writes, atomic audit/replacement, human annotations preserved and AI analysis reset. Analysis writes reject stale generations. |
+
+`core/runtime.py` contains the input/output values; SQL identifiers and driver
+objects stay in `db/`. Callers supply already authorized logical sources,
+complete run records and normalized feedback. `CompletionIds` generates
+`chatcmpl-` plus a full UUID (41 characters); legacy short IDs remain readable.
+`session_hash` on run/feedback writes means an **audit pseudonym supplied by the
+composition root**, never the bearer or its authentication digest. Session
+authentication uses the separate `Session.token_hash`. B4/D1 supply the HMAC
+audit pseudonym and enforce public validation, quotas and session policy.
+Ownership follows the group, including after session renewal.
+
+The stores deliberately have a zero cache TTL: each call reads committed data
+and computes its revision from the same result. They do not hold stale snapshots
+after admin changes. Cross-store request snapshots and packaged prompt fallback
+are composed in C2/C5; B1's optional cache remains available at that boundary.
+Search identifiers are allowlisted; query/vector/limit values are bound. Vector
+probes are transaction-local. An absent legacy tsvector is reconstructed from
+chunk text for an explicitly requested lexical lane. Lexical queries retain the
+historical French OR semantics. Core C3 must still select lanes and prove replay
+parity. Returned metadata includes historical role/theme/legal references and
+canonical document title/URL even when no section can be resolved.
+
+The versioned migration `20260908094542_api_runtime_repositories.sql` requires
+the provisioned historical runtime schema and runs transactionally. It widens
+completion IDs, adds sessions, canonical served sources and feedback audit, then
+archives all older duplicates before enforcing one feedback per non-null turn.
+Ties use `(ts DESC NULLS LAST, id DESC)`. A compatibility trigger accepts legacy
+Streamlit INSERTs, preserves the latest submission and human annotations, and
+archives replacements. The current row retains its original ID; a separate last
+submission ID prevents out-of-order inserts at equal timestamps from winning.
+No runtime repository executes DDL. Apply migrations using the normal deployment
+workflow; this implementation has only been applied to a local synthetic DB.
+Deployment credentials/grants for an audit writer without UPDATE/DELETE remain
+part of the runtime-role provisioning before exposing D1.
+
+Repository tests initialize `tests/fixtures/repositories.sql` plus the actual
+trace and B2 migrations on the guarded synthetic target. They cover every
+repository, all seven logical sources, ordering ties, missing data, database
+unavailability, ownership, concurrency, conflicts, rollback, legacy schemas,
+lossless deduplication and migration replay. The additional baseline contains
+only invented content and three-dimensional vectors, never a database dump.
+
+```bash
+API_SYNTHETIC_POSTGRES_DSN='postgresql://assistant_rh_api:assistant_rh_api@127.0.0.1:55433/assistant_rh_api_test?sslmode=disable' \
+  uv run --no-sync python -m pytest apps/api/tests -q
+```
