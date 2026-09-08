@@ -1,0 +1,197 @@
+name: Data Engineering — cron delta (production)
+
+# Opt-in après validation du correctif et des images épinglées en production.
+# Même verrou que la promotion manuelle ; chaque chaîne reste séquentielle.
+# PDF : delta sha256 natif. SP/Legi : réconciliation Grist + backfill.
+# R2 et les bulk dumps ne font jamais partie du cron.
+on:
+  schedule:
+    - cron: "17 21 * * *" # chaque soir 21:17 UTC
+  workflow_dispatch: {} # lancement manuel (test/rattrapage)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: data-promote-prod
+  cancel-in-progress: false
+
+jobs:
+  cron-delta-production:
+    name: cron-delta-production (${{ matrix.name }})
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.DATA_PROD_CRON_ENABLED == 'true') }}
+    runs-on: ubuntu-latest
+    environment: scaleway-production
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - name: service-public
+            service_public: true
+            legifrance: false
+            pdf_sources: false
+            ministry: ""
+            embedding_source: service_public
+          - name: legifrance
+            service_public: false
+            legifrance: true
+            pdf_sources: false
+            ministry: ""
+            embedding_source: legifrance
+          - name: mi
+            service_public: false
+            legifrance: false
+            pdf_sources: true
+            ministry: mi
+            embedding_source: mi
+          - name: masa
+            service_public: false
+            legifrance: false
+            pdf_sources: true
+            ministry: masa
+            embedding_source: masa
+          - name: matte
+            service_public: false
+            legifrance: false
+            pdf_sources: true
+            ministry: matte
+            embedding_source: matte
+          - name: mso
+            service_public: false
+            legifrance: false
+            pdf_sources: true
+            ministry: mso
+            embedding_source: mso
+    env:
+      PROD_CRON_IMAGE_TAG: ${{ vars.DATA_PROD_CRON_IMAGE_TAG }}
+      SCW_DEFAULT_REGION: fr-par
+      SCW_DEFAULT_PROJECT_ID: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+      SCW_DEFAULT_ORGANIZATION_ID: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+      SCW_CONTAINER_REGISTRY_NAMESPACE: ${{ vars.SCW_CONTAINER_REGISTRY_NAMESPACE }}
+      SCW_BUCKET_BRONZE: assistant-rh-bronze
+      SCW_BUCKET_SILVER: assistant-rh-silver
+      SCW_BUCKET_GOLD: assistant-rh-gold
+      SCW_BUCKET_SOURCES_PDF: assistant-rh-sources-pdf
+      SCW_PREFIX_STAGING: staging
+      SCW_PREFIX_PROD: prod
+      SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
+      SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+      SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
+      SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
+      SCALEWAY_BASE_URL: ${{ vars.SCALEWAY_BASE_URL || 'https://api.scaleway.ai/v1' }}
+      GRIST_API_BASE_URL: ${{ vars.GRIST_API_BASE_URL }}
+      GRIST_API_KEY: ${{ secrets.GRIST_API_KEY }}
+      GRIST_DOC_ID: ${{ vars.GRIST_DOC_ID }}
+      GRIST_TABLE_ID: ${{ vars.GRIST_TABLE_ID }}
+      ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
+      ALBERT_BASE_URL: ${{ vars.ALBERT_BASE_URL || 'https://albert.api.etalab.gouv.fr/v1' }}
+      # Follow-live PISTE (ingest Legi --delta) : activation delta = étape #250.
+      LEGIFRANCE_CLIENT_ID: ${{ secrets.LEGIFRANCE_CLIENT_ID }}
+      LEGIFRANCE_CLIENT_SECRET: ${{ secrets.LEGIFRANCE_CLIENT_SECRET }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Validate pinned production images
+        run: |
+          if [[ ! "$PROD_CRON_IMAGE_TAG" =~ ^prod-[0-9a-f]{40}$ ]]; then
+            echo "DATA_PROD_CRON_IMAGE_TAG must identify validated production images (prod-<full SHA>)." >&2
+            exit 1
+          fi
+
+      - name: Install Scaleway CLI
+        uses: scaleway/action-scw@v0.0.3
+        with:
+          version: v2.54.0
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+      - name: Run ${{ matrix.name }} delta chain on production
+        id: delta_chain
+        run: |
+          python3 .github/scripts/scaleway_data_jobs.py \
+            --target-env prod \
+            --image-tag "$PROD_CRON_IMAGE_TAG" \
+            --mode apply \
+            --delta true \
+            --service-public "${{ matrix.service_public }}" \
+            --legifrance "${{ matrix.legifrance }}" \
+            --pdf-sources "${{ matrix.pdf_sources }}" \
+            --pdf-sources-ministry "${{ matrix.ministry }}" \
+            --embeddings true \
+            --run-ingestion true \
+            --run-embeddings true \
+            --embedding-source "${{ matrix.embedding_source }}" \
+            --wait
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install Python dependencies
+        run: uv sync --frozen
+
+      - name: Run ${{ matrix.name }} structural quality gate
+        if: ${{ matrix.service_public || matrix.legifrance }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/data-quality
+
+          QUALITY_SOURCES=()
+          if [[ "${{ matrix.service_public }}" == "true" ]]; then
+            QUALITY_SOURCES+=(--source service_public)
+          fi
+          if [[ "${{ matrix.legifrance }}" == "true" ]]; then
+            QUALITY_SOURCES+=(--source legifrance)
+          fi
+
+          uv run --no-sync data-ingestion quality gates \
+            --target-env prod \
+            "${QUALITY_SOURCES[@]}" \
+            --blocking \
+            --json-output "artifacts/data-quality/cron-${{ matrix.name }}-report.json" \
+            --markdown-output "artifacts/data-quality/cron-${{ matrix.name }}-summary.md"
+
+      - name: Run ${{ matrix.name }} embedding coverage gate
+        if: ${{ !cancelled() && steps.delta_chain.outcome == 'success' }}
+        env:
+          COVERAGE_MIN_PCT: "100"
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/data-quality
+
+          case "${{ matrix.embedding_source }}" in
+            service_public) EMBEDDING_COMMAND=service-public ;;
+            legifrance) EMBEDDING_COMMAND=legifrance ;;
+            mi|masa|matte|mso) EMBEDDING_COMMAND="${{ matrix.embedding_source }}" ;;
+            *) echo "Unsupported cron embedding source: ${{ matrix.embedding_source }}" >&2; exit 1 ;;
+          esac
+
+          uv run --no-sync data-ingestion embeddings "${EMBEDDING_COMMAND}" \
+            --check-only \
+            --coverage-min-pct "${COVERAGE_MIN_PCT}" \
+            > "artifacts/data-quality/cron-embeddings-${{ matrix.name }}.json"
+
+      - name: Summarize ${{ matrix.name }} data quality gates
+        if: always()
+        run: |
+          if [[ -f "artifacts/data-quality/cron-${{ matrix.name }}-summary.md" ]]; then
+            cat "artifacts/data-quality/cron-${{ matrix.name }}-summary.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload ${{ matrix.name }} data quality reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: data-quality-cron-${{ matrix.name }}-${{ github.run_attempt }}
+          path: artifacts/data-quality/
+          if-no-files-found: ignore

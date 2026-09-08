@@ -351,3 +351,12 @@ def test_statut_ingestion_inactif_rend_la_ligne_abrogee() -> None:
         "uid-4": "en_vigueur",
     }
     assert validation.rejected == []
+
+
+@pytest.mark.parametrize("corpus", ["MI", "MASA", "MATTE", "MSO"])
+@pytest.mark.parametrize("statut", ["a_supprimer", "supprime", " A_SUPPRIMER "])
+def test_canonical_removal_applies_to_every_pdf_ministry(corpus: str, statut: str) -> None:
+    record = {"id": 42, "fields": manifest_fields(source_corpus=corpus, statut=statut, statut_ingestion="ok")}
+    validation = validate_manifest_records([record], corpus)
+    assert validation.rejected == []
+    assert validation.valid[0].statut == "abroge"

@@ -59,6 +59,12 @@ STATUT_SUPPRIME = "supprime"
 # traite comme un document à supprimer/absent, jamais à (ré)ingérer.
 STATUTS_INACTIFS: tuple[str, ...] = (STATUT_A_SUPPRIMER, STATUT_SUPPRIME)
 
+
+def pdf_row_is_inactive(fields: dict[str, Any]) -> bool:
+    """Honor operator removals in the canonical status and the legacy PDF status."""
+    return any(str(fields.get(column) or "").strip().lower() in STATUTS_INACTIFS for column in ("statut", "statut_ingestion"))
+
+
 MANIFEST_STATUTS: tuple[str, ...] = ("en_vigueur", "abroge")
 
 # Valeurs admises pour la colonne abroge du référentiel.
@@ -330,12 +336,10 @@ def validate_manifest_records(
         if statut is None:
             errors.append(f"abroge invalide: {abroge_raw!r} (attendu: vide, 'non' ou 'oui')")
 
-        # Colonne de statut unique: a_supprimer (opérateur) et supprime (job
-        # après cascade) rendent la ligne inactive au même titre que le
-        # drapeau juridique abroge — sans quoi une ligne déjà supprimée
-        # serait ré-ingérée au run suivant.
-        statut_ingestion = str(fields.get("statut_ingestion") or "").strip().lower()
-        if statut == "en_vigueur" and statut_ingestion in STATUTS_INACTIFS:
+        # Statut opérateur canonique + compatibilité du statut PDF historique.
+        # Une suppression dans l'une des colonnes prime sur un ancien « ok ».
+        # L'état terminal reste inactif pour empêcher une ré-ingestion.
+        if statut == "en_vigueur" and pdf_row_is_inactive(fields):
             statut = "abroge"
 
         if errors:
@@ -448,9 +452,8 @@ def build_pdf_writeback_fields(
 ) -> dict[str, Any]:
     """Writeback PDF séparé par environnement, compatible avec le statut legacy.
 
-    Les pipelines PDF utilisent encore ``statut_ingestion`` comme cycle de vie
-    opérateur (``a_supprimer``/``supprime``). La prod reste donc seule à écrire
-    ce statut détaillé et ses métadonnées historiques. Chaque environnement
+    La prod acquitte une suppression dans ``statut`` et ``statut_ingestion``.
+    Elle seule écrit ces statuts détaillés et leurs métadonnées. Chaque environnement
     écrit uniquement son booléen ``ingere_{env}`` quand la présence réelle en
     base est connue.
     """
@@ -463,6 +466,9 @@ def build_pdf_writeback_fields(
                 "erreur_ingestion": erreur,
             }
         )
+        if statut == STATUT_SUPPRIME:
+            fields["statut"] = STATUT_SUPPRIME
+            fields["statut_ingestion_reelle"] = STATUT_REEL_NON_TROUVE
         if nb_chunks is not None:
             fields["nb_chunks"] = nb_chunks
         if hash_contenu:
