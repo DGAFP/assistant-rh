@@ -672,8 +672,8 @@
     },
     {
       "id": 10,
-      "title": "Qualité des réponses et du retrieval",
-      "description": "",
+      "title": "Dimensions du juge et RAGAS",
+      "description": "Dimensions et score du juge ; RAGAS si activé. Les métriques de retrieval calculées sur une union d’étapes figurent dans le diagnostic historique en bas.",
       "type": "bargauge",
       "datasource": {
         "type": "prometheus",
@@ -688,7 +688,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "assistant_rh_rag_eval_run_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=~\"judge_score_avg|judge_legal_correctness_avg|judge_completeness_avg|judge_gold_answer_alignment_avg|judge_source_support_avg|ragas_faithfulness_avg|ragas_context_precision_avg|ragas_context_recall_avg|hit_rate_avg|mrr_avg\"}",
+          "expr": "assistant_rh_rag_eval_run_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=~\"judge_score_avg|judge_legal_correctness_avg|judge_completeness_avg|judge_gold_answer_alignment_avg|judge_source_support_avg|ragas_faithfulness_avg|ragas_context_precision_avg|ragas_context_recall_avg\"}",
           "instant": true,
           "range": false,
           "format": "time_series",
@@ -803,30 +803,6 @@
                 "value": "RAGAS · rappel du contexte"
               }
             ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "hit_rate_avg"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Présence d’une source attendue"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "mrr_avg"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Rang réciproque moyen"
-              }
-            ]
           }
         ]
       },
@@ -865,11 +841,43 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "assistant_rh_rag_eval_funnel_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",metric=\"doc_recall\"}",
+          "expr": "assistant_rh_rag_eval_funnel_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"pool\",metric=\"doc_recall\"}",
           "instant": true,
           "range": false,
           "format": "time_series",
-          "legendFormat": "{{stage}}"
+          "legendFormat": "1 · Pool avant reranking"
+        },
+        {
+          "refId": "B",
+          "expr": "assistant_rh_rag_eval_funnel_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"sections_top20\",metric=\"doc_recall\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "2 · Sections top-20"
+        },
+        {
+          "refId": "C",
+          "expr": "assistant_rh_rag_eval_funnel_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"sections_top12\",metric=\"doc_recall\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "2b · Top-12 (diagnostic)"
+        },
+        {
+          "refId": "D",
+          "expr": "assistant_rh_rag_eval_funnel_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"selector_kept\",metric=\"doc_recall\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "3 · Sélection conservée"
+        },
+        {
+          "refId": "E",
+          "expr": "assistant_rh_rag_eval_funnel_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",attempt=\"$attempt\",stage=\"context_builder_output\",metric=\"doc_recall\"}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "4 · Contexte construit"
         }
       ],
       "fieldConfig": {
@@ -884,68 +892,7 @@
           "min": 0,
           "max": 1
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "pool"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "1 · Pool avant reranking"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "sections_top20"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "2 · Sections top-20"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "sections_top12"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "2b · Top-12 (diagnostic)"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "selector_kept"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "3 · Sélection conservée"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "context_builder_output"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "4 · Contexte construit"
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "colorMode": "value",
@@ -966,8 +913,8 @@
     },
     {
       "id": 12,
-      "title": "Comparaison à la baseline",
-      "description": "Verdict stocké par le runner. Aucune comparaison automatique entre deux runs du dashboard.",
+      "title": "Verdict automatique enregistré",
+      "description": "Résultat du comparateur automatique enregistré dans l’artefact. Ne constitue pas une validation indépendante de l’appariement. Le journal d’expérimentations peut requalifier cette comparaison en diagnostic (notamment #240 → #226).",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -1007,15 +954,15 @@
                   "color": "gray"
                 },
                 "1": {
-                  "text": "Validée",
+                  "text": "Comparaison automatique passée",
                   "color": "green"
                 },
                 "2": {
-                  "text": "Seuil non atteint",
+                  "text": "Comparaison automatique échouée",
                   "color": "orange"
                 },
                 "3": {
-                  "text": "Non comparable",
+                  "text": "Non comparable (automatique)",
                   "color": "orange"
                 },
                 "4": {
@@ -1049,8 +996,8 @@
     },
     {
       "id": 13,
-      "title": "Écarts validés comme comparables",
-      "description": "Différence candidat − baseline en points de pourcentage. Présente uniquement si le runner a enregistré comparable=true.",
+      "title": "Écarts calculés automatiquement",
+      "description": "Résultat du comparateur automatique enregistré dans l’artefact. Ne constitue pas une validation indépendante de l’appariement. Le journal d’expérimentations peut requalifier cette comparaison en diagnostic (notamment #240 → #226).",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -1252,13 +1199,13 @@
       "type": "text",
       "gridPos": {
         "x": 0,
-        "y": 92,
+        "y": 94,
         "w": 24,
-        "h": 4
+        "h": 5
       },
       "options": {
         "mode": "markdown",
-        "content": "<p><b>Lecture :</b> « Retrouvé » = au moins une source gold ; le recall mesure la couverture des identifiants gold selon le matching historique (aliases inclus). Sources attendues = libellés enregistrés, pas une re-résolution avec le corpus actuel. Les traces absentes, scores invalides et questions sans gold sont distingués des absences mesurées. Les transitions comparent uniquement les mêmes questions aux deux extrémités. Top-12 est diagnostique ; les retries ne sont jamais mélangés à la tentative initiale. Les 50 derniers runs sont disponibles ; un run dépassant 200 items est signalé et exclu du détail pour éviter des moyennes partielles. Intitulés et sources sont abrégés à 500 caractères.</p>"
+        "content": "<p><b>Lecture :</b> « Retrouvé » = au moins une source gold ; le recall mesure la couverture des identifiants gold selon le matching historique (aliases inclus). Sources attendues = libellés enregistrés, pas une re-résolution avec le corpus actuel. Les traces absentes, scores invalides et questions sans gold sont distingués des absences mesurées. Les transitions comparent uniquement les mêmes questions aux deux extrémités. Top-12 est diagnostique ; les retries ne sont jamais mélangés à la tentative initiale. Les 50 derniers runs sont disponibles ; un run dépassant 200 items est signalé et exclu du détail pour éviter des moyennes partielles. Intitulés et sources sont abrégés à 500 caractères.</p><p><b>Baseline :</b> le verdict et les écarts proviennent du comparateur automatique. La qualification du protocole dans le journal prévaut : une comparaison peut n’être que diagnostique même si le verdict automatique est passé (ex. #240 → #226).</p>"
       }
     },
     {
@@ -1743,7 +1690,7 @@
     {
       "id": 23,
       "title": "Par question · le gold atteint-il le contexte ?",
-      "description": "Au moins une source gold retrouvée à chaque étape ; un hit ne signifie pas que toutes les sources sont présentes. Filtrez la question en haut ou utilisez les filtres du tableau pour isoler les pertes. Le verdict du juge est indépendant du hit retrieval.",
+      "description": "Au moins une source gold retrouvée à chaque étape ; un hit ne signifie pas que toutes les sources sont présentes. Filtrez la question en haut ou utilisez les filtres du tableau pour isoler les pertes. Le verdict du juge est indépendant du hit retrieval. Top-12* : coupe diagnostique alternative. Les intitulés et sources attendues se lisent dans le tableau précédent.",
       "type": "table",
       "datasource": {
         "type": "prometheus",
@@ -1751,14 +1698,14 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 58,
+        "y": 65,
         "w": 24,
-        "h": 16
+        "h": 12
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (item_id,question_id,question,gold_sources) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "expr": "max by (item_id,question_id) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
           "instant": true,
           "range": false,
           "format": "table",
@@ -1849,38 +1796,6 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Question"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 400
-              },
-              {
-                "id": "custom.wrapText",
-                "value": true
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Sources gold attendues"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 240
-              },
-              {
-                "id": "custom.wrapText",
-                "value": true
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
               "options": "Verdict juge"
             },
             "properties": [
@@ -1932,7 +1847,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "1 · Pool avant reranking"
+              "options": "Pool"
             },
             "properties": [
               {
@@ -1973,14 +1888,14 @@
               },
               {
                 "id": "custom.width",
-                "value": 150
+                "value": 105
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "2 · Sections top-20"
+              "options": "Top-20"
             },
             "properties": [
               {
@@ -2021,14 +1936,14 @@
               },
               {
                 "id": "custom.width",
-                "value": 150
+                "value": 105
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "2b · Top-12 (diagnostic)"
+              "options": "Top-12*"
             },
             "properties": [
               {
@@ -2069,14 +1984,14 @@
               },
               {
                 "id": "custom.width",
-                "value": 150
+                "value": 105
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "3 · Sélection conservée"
+              "options": "Sélection"
             },
             "properties": [
               {
@@ -2117,14 +2032,14 @@
               },
               {
                 "id": "custom.width",
-                "value": 150
+                "value": 105
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "4 · Contexte construit"
+              "options": "Contexte"
             },
             "properties": [
               {
@@ -2165,7 +2080,43 @@
               },
               {
                 "id": "custom.width",
-                "value": 150
+                "value": 105
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Question ID"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Verdict juge"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Recall contexte"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
               }
             ]
           }
@@ -2196,8 +2147,6 @@
               "names": [
                 "item_id",
                 "question_id",
-                "question",
-                "gold_sources",
                 "Value #B",
                 "Value #C",
                 "Value #D",
@@ -2215,21 +2164,17 @@
             "renameByName": {
               "item_id": "Item",
               "question_id": "Question ID",
-              "question": "Question",
-              "gold_sources": "Sources gold attendues",
               "Value #B": "Verdict juge",
-              "Value #C": "1 · Pool avant reranking",
-              "Value #D": "2 · Sections top-20",
-              "Value #E": "2b · Top-12 (diagnostic)",
-              "Value #F": "3 · Sélection conservée",
-              "Value #G": "4 · Contexte construit",
+              "Value #C": "Pool",
+              "Value #D": "Top-20",
+              "Value #E": "Top-12*",
+              "Value #F": "Sélection",
+              "Value #G": "Contexte",
               "Value #H": "Recall contexte"
             },
             "indexByName": {
               "item_id": 0,
               "question_id": 1,
-              "question": 2,
-              "gold_sources": 3,
               "Value #B": 4,
               "Value #C": 5,
               "Value #D": 6,
@@ -2245,7 +2190,7 @@
     {
       "id": 24,
       "title": "Par question · couverture des sources gold",
-      "description": "Métriques historiques de recall par étape, sans union des étapes ni nouveau matching des sources. Les valeurs manquantes restent non disponibles. Les moyennes du funnel utilisent les dénominateurs explicites ci-dessus.",
+      "description": "Métriques historiques de recall par étape, sans union des étapes ni nouveau matching des sources. Les valeurs manquantes restent non disponibles. Les moyennes du funnel utilisent les dénominateurs explicites ci-dessus. Top-12* : coupe diagnostique alternative. Les intitulés et sources attendues se lisent dans le tableau précédent.",
       "type": "table",
       "datasource": {
         "type": "prometheus",
@@ -2253,7 +2198,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 74,
+        "y": 77,
         "w": 24,
         "h": 10
       },
@@ -2343,7 +2288,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "1 · Pool avant reranking"
+              "options": "Pool"
             },
             "properties": [
               {
@@ -2359,7 +2304,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "2 · Sections top-20"
+              "options": "Top-20"
             },
             "properties": [
               {
@@ -2375,7 +2320,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "2b · Top-12 (diagnostic)"
+              "options": "Top-12*"
             },
             "properties": [
               {
@@ -2391,7 +2336,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "3 · Sélection conservée"
+              "options": "Sélection"
             },
             "properties": [
               {
@@ -2407,7 +2352,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "4 · Contexte construit"
+              "options": "Contexte"
             },
             "properties": [
               {
@@ -2433,6 +2378,18 @@
               {
                 "id": "decimals",
                 "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Question ID"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 95
               }
             ]
           }
@@ -2479,11 +2436,11 @@
             "renameByName": {
               "item_id": "Item",
               "question_id": "Question ID",
-              "Value #B": "1 · Pool avant reranking",
-              "Value #C": "2 · Sections top-20",
-              "Value #D": "2b · Top-12 (diagnostic)",
-              "Value #E": "3 · Sélection conservée",
-              "Value #F": "4 · Contexte construit",
+              "Value #B": "Pool",
+              "Value #C": "Top-20",
+              "Value #D": "Top-12*",
+              "Value #E": "Sélection",
+              "Value #F": "Contexte",
               "Value #G": "Score juge"
             },
             "indexByName": {
@@ -2511,14 +2468,14 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 84,
+        "y": 87,
         "w": 24,
-        "h": 8
+        "h": 7
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "assistant_rh_rag_eval_run_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=~\"hit_rate_avg|doc_recall_avg|doc_precision_avg\"}",
+          "expr": "assistant_rh_rag_eval_run_score{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",metric=~\"hit_rate_avg|doc_recall_avg|doc_precision_avg|mrr_avg\"}",
           "instant": true,
           "range": false,
           "format": "time_series",
@@ -2573,6 +2530,18 @@
                 "value": "Précision · union historique"
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "mrr_avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "MRR · union historique"
+              }
+            ]
           }
         ]
       },
@@ -2592,6 +2561,101 @@
         "displayMode": "basic",
         "showUnfilled": true
       }
+    },
+    {
+      "id": 26,
+      "type": "table",
+      "title": "Questions et sources gold attendues",
+      "description": "Intitulés et libellés gold conservés avec les items évalués (extraits limités à 500 caractères). Le filtre Question en haut s’applique aux trois tableaux de détail, sans modifier les moyennes du run.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (item_id,question_id,question,gold_sources) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "Non disponible",
+          "custom": {
+            "wrapText": true,
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Question ID"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Question"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 600
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "lg"
+      },
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "question_id",
+                "question",
+                "gold_sources"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "question_id": 0,
+              "question": 1,
+              "gold_sources": 2
+            },
+            "renameByName": {
+              "question_id": "Question ID",
+              "question": "Question",
+              "gold_sources": "Sources gold attendues"
+            }
+          }
+        }
+      ]
     }
   ],
   "annotations": {
