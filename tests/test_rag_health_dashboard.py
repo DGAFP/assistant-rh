@@ -47,3 +47,14 @@ def test_dashboard_panels_use_prometheus_datasource_variable() -> None:
     assert all(datasource["type"] == "prometheus" for datasource in datasources)
     assert all(datasource["uid"] == "$datasource" for datasource in datasources)
     assert all(not datasource["uid"].startswith("${") for datasource in datasources)
+
+
+def test_ingestion_panels_do_not_compare_scoped_runs_to_the_full_corpus() -> None:
+    panels = {panel["id"]: panel for panel in _dashboard()["panels"]}
+    comparison = panels[13]["targets"][0]["expr"]
+    assert 'scope="full"' in comparison
+    assert 'result="expected"' in comparison
+    assert "on (env, source)" in comparison
+    assert "#294" in panels[13]["description"]
+    assert 'result="deleted"' in panels[12]["targets"][0]["expr"]
+    assert "scope" in panels[12]["targets"][0]["legendFormat"]

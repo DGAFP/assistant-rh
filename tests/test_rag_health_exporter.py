@@ -253,6 +253,75 @@ def test_metrics_state_reports_failure_without_dropping_previous_samples() -> No
     assert state.health_payload()["last_error"] == "db down"
 
 
+def test_ingestion_metrics_keep_full_scoped_and_unknown_runs_separate() -> None:
+    executed = []
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, query, params):
+            executed.append((query, params))
+
+        def fetchall(self):
+            return [
+                ("mso", "full", 100, 27, 0, 27, 0, 1, 0),
+                ("mso", "document", 200, 1, 1, 0, 0, 0, 0),
+                ("matte", "unknown", 50, 49, 27, 22, 0, 0, 2),
+            ]
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+    columns = {
+        "rag_ingestion_runs": {
+            "run_id",
+            "ministere",
+            "target_env",
+            "finished_at",
+            "details",
+            "expected_count",
+            "ingested_count",
+            "skipped_count",
+            "failed_count",
+            "deleted_count",
+            "rejected_count",
+        }
+    }
+    samples = exporter.RagHealthCollector(env_label="production")._ingestion_metrics(Connection(), columns)
+    assert _sample(samples, "assistant_rh_ingestion_last_run_documents", source="mso", scope="full", result="deleted").value == 1
+    assert _sample(samples, "assistant_rh_ingestion_last_run_documents", source="mso", scope="full", result="expected").value == 27
+    assert _sample(samples, "assistant_rh_ingestion_last_run_documents", source="mso", scope="document", result="expected").value == 1
+    assert _sample(samples, "assistant_rh_ingestion_run_available", source="mi", scope="full").value == 0
+    assert _sample(samples, "assistant_rh_ingestion_run_available", source="matte", scope="unknown").value == 1
+    assert _sample(samples, "assistant_rh_ingestion_last_run_success", source="matte", scope="unknown").value == 0
+    assert _sample(samples, "assistant_rh_ingestion_last_run_timestamp_seconds", source="mso", scope="full").value == 100
+    query, params = executed[0]
+    assert params == (["prod", "production"], ["mi", "masa", "matte", "mso"])
+    assert "finished_at IS NOT NULL" in query
+    assert "ELSE 'unknown'" in query
+    assert "DISTINCT ON" in query and "finished_at DESC, run_id DESC" in query
+
+
+def test_ingestion_metrics_do_not_report_success_for_missing_schema() -> None:
+    collector = exporter.RagHealthCollector(env_label="staging")
+    assert collector._ingestion_metrics(object(), {}) == []
+    assert collector._ingestion_metrics(object(), {"rag_ingestion_runs": {"ministere"}}) == []
+
+
+def test_empty_pdf_ministry_remains_visible_in_document_counts(monkeypatch: pytest.MonkeyPatch) -> None:
+    collector = exporter.RagHealthCollector(env_label="prod")
+    monkeypatch.setattr(collector, "_count_by_column", lambda *args: {"mi": 16})
+    samples = collector._document_metrics(object(), {"rag_documents": {"source"}})
+    assert _sample(samples, "assistant_rh_rag_documents_total", source="mso").value == 0
+    assert _sample(samples, "assistant_rh_rag_documents_total", source="mi").value == 16
+    assert collector._document_metrics(object(), {}) == []
+
+
 def test_resolve_dsn_requires_monitoring_dsn_in_deployed_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "staging")
     monkeypatch.delenv("RAG_HEALTH_POSTGRES_DSN", raising=False)
