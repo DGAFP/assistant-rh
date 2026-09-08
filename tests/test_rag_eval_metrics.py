@@ -109,7 +109,7 @@ def test_collector_bounds_query_and_distinguishes_empty_database():
 def test_dashboard_uses_recorded_instant_values_and_exact_selected_run():
     path = Path(__file__).resolve().parents[1] / "config/grafana/rag-eval-dashboard.json"
     dashboard = json.loads(path.read_text())
-    assert dashboard["uid"] == "assistant-rh-rag-evals"
+    assert dashboard["uid"] == "ef5g8p2"
     variables = {v["name"]: v for v in dashboard["templating"]["list"]}
     assert variables["env"]["current"]["value"] == "staging"
     assert variables["run"]["multi"] is False
