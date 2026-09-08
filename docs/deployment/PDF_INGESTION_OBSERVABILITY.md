@@ -53,3 +53,16 @@ incohérence d'état ne doit pas être transformée automatiquement en succès.
 
 Les comptes Grafana et jetons de vérification temporaires sont révoqués après
 utilisation. Cette configuration ne crée aucun contact de notification.
+
+## Lecture du dashboard
+
+La vue ouvre la production par défaut ; le sélecteur permet aussi staging ou
+la comparaison des deux environnements. La synthèse distingue le résultat de
+la dernière collecte de la fraîcheur du dernier snapshot réussi. Une collecte
+réussie ne prouve pas l’exécution du cron.
+
+Les tableaux d’ingestion affichent les valeurs actuelles, avec les périmètres
+« historique », « ciblé » et « complet ». « À établir » signifie qu’aucun run
+complet explicitement identifié n’est disponible. Les bilans complets, la
+qualité détaillée et le diagnostic de collecte sont repliables. Les détails
+d’embeddings conservent le modèle et la colonne physique.
