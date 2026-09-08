@@ -4,7 +4,9 @@ version = "0.12.0"
 description = "OpenAI-compatible HTTP API for Assistant RH"
 requires-python = ">=3.12"
 dependencies = [
+    "anyio>=4.12,<5",
     "fastapi>=0.136.3,<1",
+    "httpx>=0.28.1,<1",
     "psycopg-pool>=3.3,<4",
     "psycopg[binary]>=3.3.3,<4",
     "uvicorn>=0.48.0,<1",
@@ -15,7 +17,6 @@ assistant-rh-api = "assistant_rh_api.__main__:main"
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1,<1",
     "import-linter>=2.14,<3",
     "pytest>=8.0,<10",
     "ruff>=0.15,<1",
@@ -47,6 +48,8 @@ forbidden_modules = [
     "httpx",
     "streamlit",
     "boto3",
+    "openai",
+    "requests",
 ]
 
 [[tool.importlinter.contracts]]

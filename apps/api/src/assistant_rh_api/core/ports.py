@@ -3,13 +3,16 @@
 Read methods distinguish absence (None) from failure (ApplicationError).
 Adapters return immutable snapshots and keep cache/lifecycle state outside core.
 Runtime repositories consume domain values and return explicit records.
-Provider contracts grow separately with B3.
+Provider contracts carry immutable outcomes and per-call diagnostics.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 from typing import Protocol
 
 from assistant_rh_api.core.health import HealthProbe as HealthProbe
+from assistant_rh_api.core.inference import ChatRequest, Completion, Embedding, Reranking, StreamCompleted, TextDelta
 from assistant_rh_api.core.models import Acronym, ConfigValues, Prompt, Snapshot
 from assistant_rh_api.core.runtime import (
     ChatRun,
@@ -88,3 +91,21 @@ class FeedbackStorePort(Protocol):
     async def save(self, value: FeedbackInput, group_slug: str, session_hash: str, now: datetime) -> Feedback | None: ...
     async def for_analysis(self, max_stars: int, limit: int) -> tuple[FeedbackAnalysisData, ...]: ...
     async def save_analysis(self, feedback_id: int, revision: str, category: str, reason: str, now: datetime) -> bool: ...
+
+
+class LLMPort(Protocol):
+    async def complete(self, request: ChatRequest) -> Completion: ...
+
+    def stream(self, request: ChatRequest) -> AbstractAsyncContextManager[AsyncIterator[TextDelta | StreamCompleted]]:
+        """Own the stream context, including on an early break or cancellation."""
+        ...
+
+
+class EmbeddingPort(Protocol):
+    async def embed(self, text: str) -> Embedding:
+        """Raise InferenceFailure on double failure; the core chooses lexical fallback."""
+        ...
+
+
+class RerankerPort(Protocol):
+    async def rerank(self, query: str, documents: tuple[str, ...], *, top_k: int | None = None) -> Reranking: ...

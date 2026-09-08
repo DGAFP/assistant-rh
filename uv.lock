@@ -323,7 +323,9 @@ name = "assistant-rh-api"
 version = "0.12.0"
 source = { editable = "apps/api" }
 dependencies = [
+    { name = "anyio" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
     { name = "uvicorn" },
@@ -331,7 +333,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "import-linter" },
     { name = "pytest" },
     { name = "ruff" },
@@ -339,7 +340,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.12,<5" },
     { name = "fastapi", specifier = ">=0.136.3,<1" },
+    { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.3,<4" },
     { name = "psycopg-pool", specifier = ">=3.3,<4" },
     { name = "uvicorn", specifier = ">=0.48.0,<1" },
@@ -347,7 +350,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "import-linter", specifier = ">=2.14,<3" },
     { name = "pytest", specifier = ">=8.0,<10" },
     { name = "ruff", specifier = ">=0.15,<1" },
