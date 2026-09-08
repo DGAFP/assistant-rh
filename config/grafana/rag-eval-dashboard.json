@@ -24,7 +24,8 @@
         "type": "datasource",
         "query": "prometheus",
         "current": {},
-        "refresh": 1
+        "refresh": 1,
+        "description": "Source Prometheus qui contient les métriques du collecteur RAG Health."
       },
       {
         "name": "env",
@@ -47,7 +48,8 @@
             "value": "prod",
             "selected": false
           }
-        ]
+        ],
+        "description": "Environnement où le run a été enregistré. Les moyennes portent sur ce seul environnement."
       },
       {
         "name": "goldset",
@@ -64,7 +66,8 @@
         "sort": 1,
         "includeAll": false,
         "multi": false,
-        "regex": "/goldset=\"([^\"]+)\"/"
+        "regex": "/goldset=\"([^\"]+)\"/",
+        "description": "Jeu de questions ; les options proviennent des runs actuellement exposés dans la fenêtre des 50 derniers runs."
       },
       {
         "name": "run",
@@ -81,7 +84,8 @@
         "sort": 4,
         "includeAll": false,
         "multi": false,
-        "regex": "/run_id=\"([^\"]+)\"/"
+        "regex": "/run_id=\"([^\"]+)\"/",
+        "description": "Une exécution enregistrée : ses scores, son protocole et ses questions. Aucun nouveau calcul RAG n’est lancé par ce filtre."
       },
       {
         "name": "attempt",
@@ -103,7 +107,8 @@
             "value": "selector_retry",
             "selected": false
           }
-        ]
+        ],
+        "description": "Initiale = première tentative enregistrée. Retry sélecteur = tentative de reprise, si elle existe. Les métriques des deux tentatives restent séparées."
       },
       {
         "name": "question",
@@ -124,7 +129,8 @@
           "text": "All",
           "value": "$__all"
         },
-        "options": []
+        "options": [],
+        "description": "Filtre les tableaux de détail (intitulés, présence du gold, recall). Les indicateurs et moyennes du run restent calculés sur toutes ses questions mesurées."
       }
     ]
   },
@@ -142,12 +148,13 @@
       "options": {
         "mode": "markdown",
         "content": "<h2>Évaluations RAG · qualité et parcours du gold</h2><p>Choisissez un run et une tentative. Les indicateurs de contexte utilisent uniquement l’étape <b>contexte construit</b>. Le hit/recall historique « global » combine plusieurs étapes : il ne prouve pas que le gold est encore dans le contexte.</p>"
-      }
+      },
+      "description": "Mode d’emploi : les icônes d’information décrivent les indicateurs ; les blocs dépliables sous les graphiques expliquent chaque dimension et chaque étape."
     },
     {
       "id": 1,
       "title": "Runs disponibles",
-      "description": "Fenêtre des 50 derniers runs enregistrés, tous goldsets. Zéro signifie aucune évaluation enregistrée ; Non disponible signifie métriques absentes.",
+      "description": "Nombre de runs enregistrés dans la fenêtre des 50 derniers IDs de cet environnement, tous goldsets confondus. Le filtre goldset peut en afficher moins. Zéro = aucune évaluation enregistrée ; Non disponible = aucune métrique reçue.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -199,7 +206,7 @@
     {
       "id": 2,
       "title": "Run sélectionné · $run",
-      "description": "Statut d’exécution. Terminé ne signifie pas que la qualité est satisfaisante.",
+      "description": "Statut d’exécution enregistré : en cours, terminé, erreur technique ou échec du contrôle qualité. Terminé signifie que l’exécution s’est achevée, pas que toutes les réponses sont correctes.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -278,7 +285,7 @@
     {
       "id": 3,
       "title": "Questions évaluées",
-      "description": "",
+      "description": "Nombre total d’items enregistrés pour le run, y compris ceux en erreur. Ce n’est pas le nombre de PASS, ni le dénominateur de chaque métrique : seules les questions disposant d’une mesure valide contribuent au calcul correspondant.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -330,7 +337,7 @@
     {
       "id": 4,
       "title": "Durée du run",
-      "description": "",
+      "description": "Temps écoulé entre la création et la fin du run : retrieval, génération, juge, RAGAS éventuel et orchestration. Ce n’est pas la latence moyenne d’une question. Non disponible tant que la date de fin n’est pas enregistrée.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -382,7 +389,7 @@
     {
       "id": 5,
       "title": "Réponses validées par le juge",
-      "description": "Valeur agrégée enregistrée pour ce run. Un juge désactivé ou une mesure absente reste Non disponible. Les seuils de qualité dépendent du protocole d’évaluation.",
+      "description": "Nombre de verdicts PASS / nombre de jugements terminés. Les jugements absents ou échoués ne contribuent pas à ce taux. Le PASS suit le protocole du run (calibration, seuils, vote majoritaire éventuel) : ne pas le recalculer à partir du seul score affiché ni du hit documentaire.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -434,7 +441,7 @@
     {
       "id": 6,
       "title": "Rappel du contexte construit",
-      "description": "Tentative sélectionnée uniquement. Moyenne des questions mesurées ; voir le tableau du funnel pour le dénominateur. Un retry est affiché séparément de la tentative initiale.",
+      "description": "Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %. Ici : contexte construit de la tentative sélectionnée uniquement. Les traces absentes sont exclues ; le tableau du funnel donne le dénominateur exact.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -486,7 +493,7 @@
     {
       "id": 7,
       "title": "Gold présent dans le contexte",
-      "description": "Tentative sélectionnée uniquement. Moyenne des questions mesurées ; voir le tableau du funnel pour le dénominateur. Un retry est affiché séparément de la tentative initiale.",
+      "description": "Hit d’une question = 1 si au moins une source gold est retrouvée, sinon 0. Taux de hit = questions avec gold / questions dont le hit est mesuré. Retrouvé ne signifie pas que toutes les sources sont présentes, ni que la réponse générée est correcte. Ici : contexte construit de la tentative sélectionnée uniquement. Les traces absentes ne comptent pas comme des absences de gold.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -538,7 +545,7 @@
     {
       "id": 8,
       "title": "Questions sans trace du contexte",
-      "description": "Questions enregistrées sans mesure à cette étape et cette tentative. Ne sont pas comptées comme des échecs de retrieval.",
+      "description": "Nombre d’items enregistrés sans diagnostic du contexte construit pour la tentative sélectionnée. Cela peut signifier qu’aucune telle tentative n’a été exécutée ou que sa trace manque ; cela ne prouve pas un contexte vide.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -590,7 +597,7 @@
     {
       "id": 9,
       "title": "Identité et périmètre du run",
-      "description": "limit=0 signifie sans limite explicite, pas une garantie de couverture complète. scope_id identifie les paramètres du périmètre ; il ne prouve pas la comparabilité des snapshots de sources.",
+      "description": "Identité enregistrée du run : environnement, goldset, limite éventuelle, juge, commit, configuration et périmètre. Une limite à 0 signifie sans limite explicite, pas un goldset nécessairement complet. Un hash identique de périmètre ne prouve pas que les corpus, questions et protocoles sont comparables.\n\n**Run** — Identifiant de l’exécution enregistrée ; utilisez le filtre Run pour afficher son détail.\n\n**Environnement** — Base et environnement dont proviennent les évaluations enregistrées. Les runs de staging et de production ne sont pas mélangés.\n\n**Goldset** — Jeu de questions nommé utilisé pour le run ; un même nom peut évoluer au fil des versions.\n\n**Limite** — Limite de questions prévue par le protocole. 0 = aucune limite explicite ; None/unknown = valeur non précisée. Cela ne prouve pas la complétude du goldset.\n\n**Juge** — Modèle d’évaluation enregistré, distinct du modèle qui a généré la réponse.\n\n**Commit** — Révision de code enregistrée pour ce run ; utile pour retrouver le protocole et le pipeline utilisés.\n\n**Configuration** — Empreinte de la configuration enregistrée. Identique ne prouve pas que les données et sources sont identiques.\n\n**Périmètre** — Empreinte des paramètres de sélection et tags du run, pas une preuve d’appariement des questions ou du corpus.",
       "type": "table",
       "datasource": {
         "type": "prometheus",
@@ -622,7 +629,104 @@
             "fixedColor": "blue"
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Run"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Identifiant de l’exécution enregistrée ; utilisez le filtre Run pour afficher son détail."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Environnement"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Base et environnement dont proviennent les évaluations enregistrées. Les runs de staging et de production ne sont pas mélangés."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Goldset"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Jeu de questions nommé utilisé pour le run ; un même nom peut évoluer au fil des versions."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Limite"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Limite de questions prévue par le protocole. 0 = aucune limite explicite ; None/unknown = valeur non précisée. Cela ne prouve pas la complétude du goldset."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Juge"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Modèle d’évaluation enregistré, distinct du modèle qui a généré la réponse."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Commit"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Révision de code enregistrée pour ce run ; utile pour retrouver le protocole et le pipeline utilisés."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Configuration"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Empreinte de la configuration enregistrée. Identique ne prouve pas que les données et sources sont identiques."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Périmètre"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Empreinte des paramètres de sélection et tags du run, pas une preuve d’appariement des questions ou du corpus."
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "colorMode": "value",
@@ -673,7 +777,7 @@
     {
       "id": 10,
       "title": "Dimensions du juge et RAGAS",
-      "description": "Dimensions et score du juge ; RAGAS si activé. Les métriques de retrieval calculées sur une union d’étapes figurent dans le diagnostic historique en bas.",
+      "description": "Les barres sont des moyennes de scores enregistrés par question, affichés de 0 à 100 %. Un score élevé n’est pas un taux de réponses correctes. Les mesures absentes restent absentes. Dépliez « Comprendre les dimensions » sous le graphique pour lire chaque définition.\n\n**Score global du juge** — Moyenne des scores enregistrés par question, après la calibration et les plafonds prévus par le protocole. Ce n’est ni le taux de PASS, ni une probabilité que la réponse soit correcte. Un plafond de diagnostic retrieval peut abaisser ce score sans annuler un PASS. En protocole multi-votes, ne pas le lire comme la moyenne de tous les votes.\n\n**Exactitude juridique** — Le juge vérifie les règles de droit, obligations, exceptions et nuances de la réponse. Une règle erronée ou une nuance trompeuse baisse la note ; une réponse concise mais juridiquement correcte peut obtenir une note élevée.\n\n**Complétude** — Les éléments nécessaires pour répondre et agir sont-ils présents : conditions, délais, exceptions et points obligatoires de la réponse de référence ? La longueur, les exemples et les détails facultatifs ne sont pas récompensés. Une réponse courte peut être complète.\n\n**Accord avec la réponse de référence** — La conclusion est-elle cohérente avec la réponse gold ? Une contradiction ou une conclusion juridiquement plus forte ou plus faible réduit la note. Ce n’est pas une similarité mot à mot : reformuler ou ajouter une information correcte n’est pas un défaut en soi.\n\n**Appui sur les sources** — Les affirmations sont-elles étayées par la réponse de référence ou par les contextes fournis au juge ? Ce jugement sur le contenu ne vérifie pas la présence d’un identifiant gold dans le retrieval ; il peut donc être élevé alors que le hit documentaire est faible.\n\n**RAGAS · fidélité** — Part des affirmations de la réponse générée que RAGAS peut justifier à partir des contextes fournis. Une valeur élevée indique un bon ancrage dans ces contextes, sans prouver leur exactitude juridique. Moyenne des scores disponibles ; absent si RAGAS n’a pas produit de mesure.\n\n**RAGAS · précision du contexte** — Les extraits utiles pour répondre à la référence sont-ils placés en tête des contextes ? Cette précision tient compte du classement (average precision). Ce n’est pas la proportion d’identifiants gold retrouvés, ni la simple précision documentaire. Moyenne des scores disponibles.\n\n**RAGAS · rappel du contexte** — Part des éléments de la réponse de référence que les contextes fournis permettent de justifier, selon RAGAS. Ce rappel porte sur l’information exprimée, pas sur les identifiants des documents gold. Moyenne des scores disponibles ; une mesure absente n’est pas remplacée par zéro.",
       "type": "bargauge",
       "datasource": {
         "type": "prometheus",
@@ -717,6 +821,10 @@
               {
                 "id": "displayName",
                 "value": "Score global du juge"
+              },
+              {
+                "id": "description",
+                "value": "Moyenne des scores enregistrés par question, après la calibration et les plafonds prévus par le protocole. Ce n’est ni le taux de PASS, ni une probabilité que la réponse soit correcte. Un plafond de diagnostic retrieval peut abaisser ce score sans annuler un PASS. En protocole multi-votes, ne pas le lire comme la moyenne de tous les votes."
               }
             ]
           },
@@ -729,6 +837,10 @@
               {
                 "id": "displayName",
                 "value": "Exactitude juridique"
+              },
+              {
+                "id": "description",
+                "value": "Le juge vérifie les règles de droit, obligations, exceptions et nuances de la réponse. Une règle erronée ou une nuance trompeuse baisse la note ; une réponse concise mais juridiquement correcte peut obtenir une note élevée."
               }
             ]
           },
@@ -741,6 +853,10 @@
               {
                 "id": "displayName",
                 "value": "Complétude"
+              },
+              {
+                "id": "description",
+                "value": "Les éléments nécessaires pour répondre et agir sont-ils présents : conditions, délais, exceptions et points obligatoires de la réponse de référence ? La longueur, les exemples et les détails facultatifs ne sont pas récompensés. Une réponse courte peut être complète."
               }
             ]
           },
@@ -753,6 +869,10 @@
               {
                 "id": "displayName",
                 "value": "Accord avec la réponse de référence"
+              },
+              {
+                "id": "description",
+                "value": "La conclusion est-elle cohérente avec la réponse gold ? Une contradiction ou une conclusion juridiquement plus forte ou plus faible réduit la note. Ce n’est pas une similarité mot à mot : reformuler ou ajouter une information correcte n’est pas un défaut en soi."
               }
             ]
           },
@@ -765,6 +885,10 @@
               {
                 "id": "displayName",
                 "value": "Appui sur les sources"
+              },
+              {
+                "id": "description",
+                "value": "Les affirmations sont-elles étayées par la réponse de référence ou par les contextes fournis au juge ? Ce jugement sur le contenu ne vérifie pas la présence d’un identifiant gold dans le retrieval ; il peut donc être élevé alors que le hit documentaire est faible."
               }
             ]
           },
@@ -777,6 +901,10 @@
               {
                 "id": "displayName",
                 "value": "RAGAS · fidélité"
+              },
+              {
+                "id": "description",
+                "value": "Part des affirmations de la réponse générée que RAGAS peut justifier à partir des contextes fournis. Une valeur élevée indique un bon ancrage dans ces contextes, sans prouver leur exactitude juridique. Moyenne des scores disponibles ; absent si RAGAS n’a pas produit de mesure."
               }
             ]
           },
@@ -789,6 +917,10 @@
               {
                 "id": "displayName",
                 "value": "RAGAS · précision du contexte"
+              },
+              {
+                "id": "description",
+                "value": "Les extraits utiles pour répondre à la référence sont-ils placés en tête des contextes ? Cette précision tient compte du classement (average precision). Ce n’est pas la proportion d’identifiants gold retrouvés, ni la simple précision documentaire. Moyenne des scores disponibles."
               }
             ]
           },
@@ -801,6 +933,10 @@
               {
                 "id": "displayName",
                 "value": "RAGAS · rappel du contexte"
+              },
+              {
+                "id": "description",
+                "value": "Part des éléments de la réponse de référence que les contextes fournis permettent de justifier, selon RAGAS. Ce rappel porte sur l’information exprimée, pas sur les identifiants des documents gold. Moyenne des scores disponibles ; une mesure absente n’est pas remplacée par zéro."
               }
             ]
           }
@@ -826,7 +962,7 @@
     {
       "id": 11,
       "title": "Rappel au fil des étapes",
-      "description": "Recall moyen calculé depuis les diagnostics enregistrés par question. Top-12 est une coupe diagnostique alternative, pas une étape entre top-20 et sélection.",
+      "description": "Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %.\n\nOn applique le même calcul à chaque étape et à la seule tentative sélectionnée. Une baisse peut signaler une perte de sources, mais les dénominateurs peuvent changer : utilisez les transitions appariées pour compter les pertes sur les mêmes questions. Top-12 est une coupe diagnostique alternative.\n\n**Pool avant reranking** — Documents identifiés dans les chunks candidats avant le reranking des sections, pour la tentative choisie. Cette étape indique si la recherche a trouvé le gold dans son ensemble de candidats ; elle ne garantit pas qu’il sera conservé ensuite.\n\n**Sections top-20** — Documents représentés dans les 20 premières sections agrégées après reranking, dans l’ordre enregistré. k compte des sections, pas des documents ni des chunks : un même document peut occuper plusieurs places. S’il reste moins de 20 sections, toutes sont prises en compte.\n\n**Top-12 · diagnostic** — Même liste de sections classées, limitée aux 12 premières. C’est une coupe alternative pour mesurer l’effet d’un k plus petit, pas une étape exécutée entre top-20 et sélection. La différence top-20 / top-12 indique ce que la coupe retire, sur des questions mesurées comparables.\n\n**Sélection conservée** — Documents des sections que le sélecteur a explicitement gardées, selon les décisions enregistrées. Une trace absente n’est pas une sélection vide : elle est marquée Non tracé et exclue des moyennes correspondantes.\n\n**Contexte construit** — Documents référencés dans le contexte produit par ContextBuilder pour la tentative choisie, après construction et budget de contexte. Si un retry remplace cette tentative, cette mesure initiale ne décrit pas à elle seule le contexte finalement envoyé au générateur.",
       "type": "bargauge",
       "datasource": {
         "type": "prometheus",
@@ -892,7 +1028,68 @@
           "min": 0,
           "max": 1
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "1 · Pool avant reranking"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Documents identifiés dans les chunks candidats avant le reranking des sections, pour la tentative choisie. Cette étape indique si la recherche a trouvé le gold dans son ensemble de candidats ; elle ne garantit pas qu’il sera conservé ensuite. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "2 · Sections top-20"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Documents représentés dans les 20 premières sections agrégées après reranking, dans l’ordre enregistré. k compte des sections, pas des documents ni des chunks : un même document peut occuper plusieurs places. S’il reste moins de 20 sections, toutes sont prises en compte. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "2b · Top-12 (diagnostic)"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Même liste de sections classées, limitée aux 12 premières. C’est une coupe alternative pour mesurer l’effet d’un k plus petit, pas une étape exécutée entre top-20 et sélection. La différence top-20 / top-12 indique ce que la coupe retire, sur des questions mesurées comparables. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "3 · Sélection conservée"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Documents des sections que le sélecteur a explicitement gardées, selon les décisions enregistrées. Une trace absente n’est pas une sélection vide : elle est marquée Non tracé et exclue des moyennes correspondantes. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "4 · Contexte construit"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Documents référencés dans le contexte produit par ContextBuilder pour la tentative choisie, après construction et budget de contexte. Si un retry remplace cette tentative, cette mesure initiale ne décrit pas à elle seule le contexte finalement envoyé au générateur. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %."
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "colorMode": "value",
@@ -912,9 +1109,41 @@
       }
     },
     {
+      "id": 200,
+      "type": "text",
+      "title": "Comprendre les dimensions",
+      "description": "Dépliez une ligne pour lire le sens et les limites de cette mesure.",
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 12,
+        "h": 14
+      },
+      "options": {
+        "mode": "html",
+        "content": "<p>Cliquez sur une mesure pour lire sa définition. Les scores sont affichés en pourcentage ; ils ne sont pas tous des taux de PASS.</p><details><summary>Score global du juge</summary><p>Moyenne des scores enregistrés par question, après la calibration et les plafonds prévus par le protocole. Ce n’est ni le taux de PASS, ni une probabilité que la réponse soit correcte. Un plafond de diagnostic retrieval peut abaisser ce score sans annuler un PASS. En protocole multi-votes, ne pas le lire comme la moyenne de tous les votes.</p></details><details><summary>Exactitude juridique</summary><p>Le juge vérifie les règles de droit, obligations, exceptions et nuances de la réponse. Une règle erronée ou une nuance trompeuse baisse la note ; une réponse concise mais juridiquement correcte peut obtenir une note élevée.</p></details><details><summary>Complétude</summary><p>Les éléments nécessaires pour répondre et agir sont-ils présents : conditions, délais, exceptions et points obligatoires de la réponse de référence ? La longueur, les exemples et les détails facultatifs ne sont pas récompensés. Une réponse courte peut être complète.</p></details><details><summary>Accord avec la réponse de référence</summary><p>La conclusion est-elle cohérente avec la réponse gold ? Une contradiction ou une conclusion juridiquement plus forte ou plus faible réduit la note. Ce n’est pas une similarité mot à mot : reformuler ou ajouter une information correcte n’est pas un défaut en soi.</p></details><details><summary>Appui sur les sources</summary><p>Les affirmations sont-elles étayées par la réponse de référence ou par les contextes fournis au juge ? Ce jugement sur le contenu ne vérifie pas la présence d’un identifiant gold dans le retrieval ; il peut donc être élevé alors que le hit documentaire est faible.</p></details><details><summary>RAGAS · fidélité</summary><p>Part des affirmations de la réponse générée que RAGAS peut justifier à partir des contextes fournis. Une valeur élevée indique un bon ancrage dans ces contextes, sans prouver leur exactitude juridique. Moyenne des scores disponibles ; absent si RAGAS n’a pas produit de mesure.</p></details><details><summary>RAGAS · précision du contexte</summary><p>Les extraits utiles pour répondre à la référence sont-ils placés en tête des contextes ? Cette précision tient compte du classement (average precision). Ce n’est pas la proportion d’identifiants gold retrouvés, ni la simple précision documentaire. Moyenne des scores disponibles.</p></details><details><summary>RAGAS · rappel du contexte</summary><p>Part des éléments de la réponse de référence que les contextes fournis permettent de justifier, selon RAGAS. Ce rappel porte sur l’information exprimée, pas sur les identifiants des documents gold. Moyenne des scores disponibles ; une mesure absente n’est pas remplacée par zéro.</p></details>"
+      }
+    },
+    {
+      "id": 201,
+      "type": "text",
+      "title": "Comprendre le rappel et les top-k",
+      "description": "Dépliez une ligne pour lire le sens et les limites de cette mesure.",
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 14
+      },
+      "options": {
+        "mode": "html",
+        "content": "<p>Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %.</p><details><summary>Présence d’une source · hit</summary><p>Hit d’une question = 1 si au moins une source gold est retrouvée, sinon 0. Taux de hit = questions avec gold / questions dont le hit est mesuré. Retrouvé ne signifie pas que toutes les sources sont présentes, ni que la réponse générée est correcte.</p></details><details><summary>Pool avant reranking</summary><p>Documents identifiés dans les chunks candidats avant le reranking des sections, pour la tentative choisie. Cette étape indique si la recherche a trouvé le gold dans son ensemble de candidats ; elle ne garantit pas qu’il sera conservé ensuite.</p></details><details><summary>Sections top-20</summary><p>Documents représentés dans les 20 premières sections agrégées après reranking, dans l’ordre enregistré. k compte des sections, pas des documents ni des chunks : un même document peut occuper plusieurs places. S’il reste moins de 20 sections, toutes sont prises en compte.</p></details><details><summary>Top-12 · diagnostic</summary><p>Même liste de sections classées, limitée aux 12 premières. C’est une coupe alternative pour mesurer l’effet d’un k plus petit, pas une étape exécutée entre top-20 et sélection. La différence top-20 / top-12 indique ce que la coupe retire, sur des questions mesurées comparables.</p></details><details><summary>Sélection conservée</summary><p>Documents des sections que le sélecteur a explicitement gardées, selon les décisions enregistrées. Une trace absente n’est pas une sélection vide : elle est marquée Non tracé et exclue des moyennes correspondantes.</p></details><details><summary>Contexte construit</summary><p>Documents référencés dans le contexte produit par ContextBuilder pour la tentative choisie, après construction et budget de contexte. Si un retry remplace cette tentative, cette mesure initiale ne décrit pas à elle seule le contexte finalement envoyé au générateur.</p></details><details><summary>Lire les baisses de rappel</summary><p>Exemple : 2 golds attendus, 1 conservé donne un hit de 100 % mais un recall de 50 %. Une baisse entre étapes est à lire avec leurs dénominateurs ; les transitions appariées isolent les pertes sur les mêmes questions. Ne pas soustraire directement deux moyennes portant sur des populations différentes.</p></details>"
+      }
+    },
+    {
       "id": 12,
       "title": "Verdict automatique enregistré",
-      "description": "Résultat du comparateur automatique enregistré dans l’artefact. Ne constitue pas une validation indépendante de l’appariement. Le journal d’expérimentations peut requalifier cette comparaison en diagnostic (notamment #240 → #226).",
+      "description": "Verdict du comparateur automatique conservé dans l’artefact : passé, échoué, non comparable, baseline manquante ou comparaison non demandée. Ce n’est pas une validation indépendante du protocole. La qualification du journal prévaut, notamment pour #240 → #226, requalifié en diagnostic.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -922,7 +1151,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 40,
         "w": 8,
         "h": 5
       },
@@ -997,7 +1226,7 @@
     {
       "id": 13,
       "title": "Écarts calculés automatiquement",
-      "description": "Résultat du comparateur automatique enregistré dans l’artefact. Ne constitue pas une validation indépendante de l’appariement. Le journal d’expérimentations peut requalifier cette comparaison en diagnostic (notamment #240 → #226).",
+      "description": "Écart = score agrégé du run sélectionné − score de la baseline, affiché en points de pourcentage. Exemple : 65 % − 60 % = +5 points. Les écarts ne sont exposés que si l’artefact les marque comparables ; cela ne remplace pas l’audit du protocole dans le journal. Le recall comparé ici est l’agrégat historique, pas le recall du contexte construit.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -1005,7 +1234,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 26,
+        "y": 40,
         "w": 8,
         "h": 5
       },
@@ -1049,7 +1278,7 @@
     {
       "id": 14,
       "title": "Erreurs du run",
-      "description": "Erreurs d’exécution, du juge et de RAGAS. Les réponses non validées par le juge ne sont pas des erreurs techniques.",
+      "description": "Erreurs techniques enregistrées par item : failed = exécution de la question ; judge_failed = évaluation par le juge ; ragas_failed = calcul RAGAS. Un verdict FAIL du juge est un résultat qualité, pas une erreur technique. Les catégories peuvent se recouper : ne pas additionner ces compteurs comme un nombre de questions distinctes.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -1057,7 +1286,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 26,
+        "y": 40,
         "w": 8,
         "h": 5
       },
@@ -1101,7 +1330,7 @@
     {
       "id": 15,
       "title": "Historique récent · $goldset",
-      "description": "Runs exposés dans la fenêtre des 50 derniers IDs de cet environnement, ordonnés par date de création. Pour les scores, sélectionnez le run dans le filtre en haut.",
+      "description": "Runs du goldset sélectionné parmi les 50 derniers runs de l’environnement, triés par date de création de l’évaluation. La date ne correspond ni au scrape Prometheus ni à la dernière ouverture du dashboard. Sélectionnez un Run en haut pour en afficher les scores.\n\n**Créé le** — Date de création du run, affichée dans le fuseau du dashboard ; indépendante de la date de collecte des métriques.\n\n**Run** — Identifiant de l’exécution enregistrée ; utilisez le filtre Run pour afficher son détail.\n\n**Environnement** — Base et environnement dont proviennent les évaluations enregistrées. Les runs de staging et de production ne sont pas mélangés.\n\n**Goldset** — Jeu de questions nommé utilisé pour le run ; un même nom peut évoluer au fil des versions.",
       "type": "table",
       "datasource": {
         "type": "prometheus",
@@ -1109,7 +1338,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 31,
+        "y": 45,
         "w": 24,
         "h": 9
       },
@@ -1143,6 +1372,46 @@
               {
                 "id": "unit",
                 "value": "dateTimeAsIso"
+              },
+              {
+                "id": "description",
+                "value": "Date de création du run, affichée dans le fuseau du dashboard ; indépendante de la date de collecte des métriques."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Run"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Identifiant de l’exécution enregistrée ; utilisez le filtre Run pour afficher son détail."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Environnement"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Base et environnement dont proviennent les évaluations enregistrées. Les runs de staging et de production ne sont pas mélangés."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Goldset"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Jeu de questions nommé utilisé pour le run ; un même nom peut évoluer au fil des versions."
               }
             ]
           }
@@ -1194,24 +1463,9 @@
       ]
     },
     {
-      "id": 101,
-      "title": "Lire les résultats",
-      "type": "text",
-      "gridPos": {
-        "x": 0,
-        "y": 94,
-        "w": 24,
-        "h": 5
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "<p><b>Lecture :</b> « Retrouvé » = au moins une source gold ; le recall mesure la couverture des identifiants gold selon le matching historique (aliases inclus). Sources attendues = libellés enregistrés, pas une re-résolution avec le corpus actuel. Les traces absentes, scores invalides et questions sans gold sont distingués des absences mesurées. Les transitions comparent uniquement les mêmes questions aux deux extrémités. Top-12 est diagnostique ; les retries ne sont jamais mélangés à la tentative initiale. Les 50 derniers runs sont disponibles ; un run dépassant 200 items est signalé et exclu du détail pour éviter des moyennes partielles. Intitulés et sources sont abrégés à 500 caractères.</p><p><b>Baseline :</b> le verdict et les écarts proviennent du comparateur automatique. La qualification du protocole dans le journal prévaut : une comparaison peut n’être que diagnostique même si le verdict automatique est passé (ex. #240 → #226).</p>"
-      }
-    },
-    {
       "id": 20,
       "title": "Funnel du gold · mêmes définitions, dénominateurs explicites",
-      "description": "Valeurs recalculées à partir des mesures par question enregistrées. Chaque moyenne utilise son propre dénominateur ; les valeurs absentes ne deviennent pas zéro.",
+      "description": "Hit d’une question = 1 si au moins une source gold est retrouvée, sinon 0. Taux de hit = questions avec gold / questions dont le hit est mesuré. Retrouvé ne signifie pas que toutes les sources sont présentes, ni que la réponse générée est correcte.\n\nRappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %.\n\nLes colonnes « Questions mesurées » donnent séparément les dénominateurs du hit et du recall. Sans trace, sans gold et hit invalide sont distingués. Les moyennes restent celles du run entier, même quand le filtre Question isole un item dans les tableaux de détail.\n\n**Étape** — Emplacement de la mesure dans la tentative choisie : pool, sections top-20, top-12 diagnostique, sélection et contexte construit. k désigne un nombre de sections.\n\n**Gold retrouvé (%)** — Hit d’une question = 1 si au moins une source gold est retrouvée, sinon 0. Taux de hit = questions avec gold / questions dont le hit est mesuré. Retrouvé ne signifie pas que toutes les sources sont présentes, ni que la réponse générée est correcte.\n\n**Recall moyen** — Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %.\n\n**Questions avec gold** — Numérateur du hit : nombre de questions ayant au moins un identifiant gold retrouvé à cette étape.\n\n**Questions mesurées (hit)** — Dénominateur du hit : questions avec un hit valide (0 ou 1) à cette étape et cette tentative. Traces absentes, absence de gold explicite et hits invalides sont exclus.\n\n**Questions mesurées (recall)** — Dénominateur du rappel moyen : questions avec un ratio de recall valide à cette étape. Peut différer du dénominateur du hit.\n\n**Sans trace** — Nombre d’items sans diagnostic de cette étape pour cette tentative. Une tentative non exécutée peut aussi être sans trace.\n\n**Sans gold** — Nombre d’items dont le diagnostic indique explicitement zéro identifiant gold attendu. Aucun rappel documentaire n’est calculable pour ces items.\n\n**Hit invalide** — Nombre d’items dont l’étape existe mais dont le hit n’est pas une mesure binaire exploitable. Ce n’est pas un hit à zéro.",
       "type": "table",
       "datasource": {
         "type": "prometheus",
@@ -1219,7 +1473,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 40,
+        "y": 54,
         "w": 24,
         "h": 8
       },
@@ -1336,6 +1590,10 @@
               {
                 "id": "custom.width",
                 "value": 235
+              },
+              {
+                "id": "description",
+                "value": "Emplacement de la mesure dans la tentative choisie : pool, sections top-20, top-12 diagnostique, sélection et contexte construit. k désigne un nombre de sections."
               }
             ]
           },
@@ -1352,6 +1610,10 @@
               {
                 "id": "decimals",
                 "value": 1
+              },
+              {
+                "id": "description",
+                "value": "Hit d’une question = 1 si au moins une source gold est retrouvée, sinon 0. Taux de hit = questions avec gold / questions dont le hit est mesuré. Retrouvé ne signifie pas que toutes les sources sont présentes, ni que la réponse générée est correcte."
               }
             ]
           },
@@ -1368,6 +1630,10 @@
               {
                 "id": "decimals",
                 "value": 1
+              },
+              {
+                "id": "description",
+                "value": "Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %."
               }
             ]
           },
@@ -1380,6 +1646,78 @@
               {
                 "id": "custom.hidden",
                 "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Questions avec gold"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Numérateur du hit : nombre de questions ayant au moins un identifiant gold retrouvé à cette étape."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Questions mesurées (hit)"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Dénominateur du hit : questions avec un hit valide (0 ou 1) à cette étape et cette tentative. Traces absentes, absence de gold explicite et hits invalides sont exclus."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Questions mesurées (recall)"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Dénominateur du rappel moyen : questions avec un ratio de recall valide à cette étape. Peut différer du dénominateur du hit."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Sans trace"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Nombre d’items sans diagnostic de cette étape pour cette tentative. Une tentative non exécutée peut aussi être sans trace."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Sans gold"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Nombre d’items dont le diagnostic indique explicitement zéro identifiant gold attendu. Aucun rappel documentaire n’est calculable pour ces items."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Hit invalide"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Nombre d’items dont l’étape existe mais dont le hit n’est pas une mesure binaire exploitable. Ce n’est pas un hit à zéro."
               }
             ]
           }
@@ -1456,7 +1794,7 @@
     {
       "id": 21,
       "title": "Où le gold disparaît · questions appariées",
-      "description": "Une perte est comptée seulement si la même question a un hit mesuré à 1 avant et à 0 après. Une baisse entre deux moyennes avec des dénominateurs différents ne suffit pas. Les pertes partielles de recall restent visibles dans le détail.",
+      "description": "Seules les mêmes questions avec un hit valide aux deux extrémités sont appariées. Conservé = oui → oui ; perdu = oui → non ; retrouvé = non → oui. Les questions non → non sont incluses dans le total apparié, mais pas dans ces trois compteurs. Une baisse partielle de recall sans perdre le dernier gold n’est pas une perte de hit ; consultez le tableau de couverture.\n\n**Transition** — Deux étapes mises en regard sur les mêmes questions mesurées. Top-12, coupe alternative, n’est pas intercalé dans ce parcours.\n\n**Questions appariées** — Questions avec un hit valide avant ET après la transition, y compris celles où aucun gold attendu n’a été retrouvé aux deux étapes (hit 0 → 0). Les questions sans gold attendu explicite sont exclues.\n\n**Gold conservé** — Questions appariées avec au moins un gold avant et après : hit 1 → 1. Cela peut masquer une perte partielle de recall.\n\n**Gold perdu (oui → non)** — Questions appariées qui avaient au moins un gold avant et n’en ont plus après : hit 1 → 0.\n\n**Gold retrouvé (non → oui)** — Questions appariées sans gold avant mais avec au moins un gold après : hit 0 → 1.",
       "type": "table",
       "datasource": {
         "type": "prometheus",
@@ -1464,7 +1802,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 48,
+        "y": 62,
         "w": 24,
         "h": 7
       },
@@ -1543,6 +1881,10 @@
               {
                 "id": "custom.width",
                 "value": 260
+              },
+              {
+                "id": "description",
+                "value": "Deux étapes mises en regard sur les mêmes questions mesurées. Top-12, coupe alternative, n’est pas intercalé dans ce parcours."
               }
             ]
           },
@@ -1555,6 +1897,54 @@
               {
                 "id": "custom.hidden",
                 "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Questions appariées"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Questions avec un hit valide avant ET après la transition, y compris celles où aucun gold attendu n’a été retrouvé aux deux étapes (hit 0 → 0). Les questions sans gold attendu explicite sont exclues."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gold conservé"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Questions appariées avec au moins un gold avant et après : hit 1 → 1. Cela peut masquer une perte partielle de recall."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gold perdu (oui → non)"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Questions appariées qui avaient au moins un gold avant et n’en ont plus après : hit 1 → 0."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gold retrouvé (non → oui)"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Questions appariées sans gold avant mais avec au moins un gold après : hit 0 → 1."
               }
             ]
           }
@@ -1619,7 +2009,7 @@
     {
       "id": 22,
       "title": "Disponibilité du détail par question",
-      "description": "Détail complet des items enregistrés, y compris pour un run en cours. Au-delà de 200 items, aucun sous-échantillon n’est affiché ou moyenné.",
+      "description": "Disponibilité des items enregistrés : vide, complète ou run dépassant 200 items. Au-delà de cette limite, aucun sous-échantillon ni moyenne partielle n’est présenté. « Tous disponibles » décrit les items actuellement enregistrés, pas nécessairement un run terminé ou un goldset complet.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -1627,7 +2017,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 55,
+        "y": 69,
         "w": 24,
         "h": 3
       },
@@ -1688,9 +2078,124 @@
       }
     },
     {
+      "id": 26,
+      "type": "table",
+      "title": "Questions et sources gold attendues",
+      "description": "Question et libellés des sources gold conservés avec l’item au moment de l’évaluation. Ils sont abrégés à 500 caractères ; ce ne sont pas des documents re-résolus contre le corpus actuel. Le filtre Question s’applique aux trois tableaux de détail, sans changer les moyennes du run.\n\n**Question ID** — Identifiant de la question dans le goldset. Les jointures utilisent en interne l’ID de l’item pour ne pas confondre deux évaluations de la même question.\n\n**Question** — Intitulé enregistré lors de l’évaluation, éventuellement abrégé. La formulation actuelle dans le goldset peut avoir changé depuis.\n\n**Sources gold attendues** — Libellés de référence enregistrés avec la question. Les métriques utilisent le matching d’identifiants historique, aliases inclus ; cette colonne n’est pas une liste des sources effectivement conservées.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 72,
+        "w": 24,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (item_id,question_id,question,gold_sources) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "Non disponible",
+          "custom": {
+            "wrapText": true,
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Question ID"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 95
+              },
+              {
+                "id": "description",
+                "value": "Identifiant de la question dans le goldset. Les jointures utilisent en interne l’ID de l’item pour ne pas confondre deux évaluations de la même question."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Question"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 600
+              },
+              {
+                "id": "description",
+                "value": "Intitulé enregistré lors de l’évaluation, éventuellement abrégé. La formulation actuelle dans le goldset peut avoir changé depuis."
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Sources gold attendues"
+            },
+            "properties": [
+              {
+                "id": "description",
+                "value": "Libellés de référence enregistrés avec la question. Les métriques utilisent le matching d’identifiants historique, aliases inclus ; cette colonne n’est pas une liste des sources effectivement conservées."
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "lg"
+      },
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "question_id",
+                "question",
+                "gold_sources"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "question_id": 0,
+              "question": 1,
+              "gold_sources": 2
+            },
+            "renameByName": {
+              "question_id": "Question ID",
+              "question": "Question",
+              "gold_sources": "Sources gold attendues"
+            }
+          }
+        }
+      ]
+    },
+    {
       "id": 23,
       "title": "Par question · le gold atteint-il le contexte ?",
-      "description": "Au moins une source gold retrouvée à chaque étape ; un hit ne signifie pas que toutes les sources sont présentes. Filtrez la question en haut ou utilisez les filtres du tableau pour isoler les pertes. Le verdict du juge est indépendant du hit retrieval. Top-12* : coupe diagnostique alternative. Les intitulés et sources attendues se lisent dans le tableau précédent.",
+      "description": "Retrouvé : au moins une source gold ; Absent : mesure valide sans gold retrouvé ; Non tracé : étape absente de l’enregistrement ; Sans gold : aucun gold à mesurer ; Mesure invalide : hit inexploitable. Les trois derniers cas ne deviennent pas des échecs de retrieval. Le verdict du juge est indépendant de la présence du gold. Top-20 et top-12 comptent des sections, pas des documents ; top-12 est une coupe diagnostique alternative. Filtrez Question en haut pour isoler un cas.\n\n**Verdict juge** — Verdict enregistré pour cette question : PASS ou FAIL selon le protocole du run (calibration, seuils, vote majoritaire éventuel). Non disponible = jugement absent ou inexploitable. Ce verdict ne se déduit ni du seul score affiché ni de la présence du gold.\n\n**Recall contexte** — Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %. Étape : contexte construit de la tentative choisie.\n\n**Pool** — Documents identifiés dans les chunks candidats avant le reranking des sections, pour la tentative choisie. Cette étape indique si la recherche a trouvé le gold dans son ensemble de candidats ; elle ne garantit pas qu’il sera conservé ensuite. Retrouvé : au moins une source gold ; Absent : mesure valide sans gold retrouvé ; Non tracé : étape absente de l’enregistrement ; Sans gold : aucun gold à mesurer ; Mesure invalide : hit inexploitable. Les trois derniers cas ne deviennent pas des échecs de retrieval.\n\n**Top-20** — Documents représentés dans les 20 premières sections agrégées après reranking, dans l’ordre enregistré. k compte des sections, pas des documents ni des chunks : un même document peut occuper plusieurs places. S’il reste moins de 20 sections, toutes sont prises en compte. Retrouvé : au moins une source gold ; Absent : mesure valide sans gold retrouvé ; Non tracé : étape absente de l’enregistrement ; Sans gold : aucun gold à mesurer ; Mesure invalide : hit inexploitable. Les trois derniers cas ne deviennent pas des échecs de retrieval.\n\n**Top-12*** — Même liste de sections classées, limitée aux 12 premières. C’est une coupe alternative pour mesurer l’effet d’un k plus petit, pas une étape exécutée entre top-20 et sélection. La différence top-20 / top-12 indique ce que la coupe retire, sur des questions mesurées comparables. Retrouvé : au moins une source gold ; Absent : mesure valide sans gold retrouvé ; Non tracé : étape absente de l’enregistrement ; Sans gold : aucun gold à mesurer ; Mesure invalide : hit inexploitable. Les trois derniers cas ne deviennent pas des échecs de retrieval.\n\n**Sélection** — Documents des sections que le sélecteur a explicitement gardées, selon les décisions enregistrées. Une trace absente n’est pas une sélection vide : elle est marquée Non tracé et exclue des moyennes correspondantes. Retrouvé : au moins une source gold ; Absent : mesure valide sans gold retrouvé ; Non tracé : étape absente de l’enregistrement ; Sans gold : aucun gold à mesurer ; Mesure invalide : hit inexploitable. Les trois derniers cas ne deviennent pas des échecs de retrieval.\n\n**Contexte** — Documents référencés dans le contexte produit par ContextBuilder pour la tentative choisie, après construction et budget de contexte. Si un retry remplace cette tentative, cette mesure initiale ne décrit pas à elle seule le contexte finalement envoyé au générateur. Retrouvé : au moins une source gold ; Absent : mesure valide sans gold retrouvé ; Non tracé : étape absente de l’enregistrement ; Sans gold : aucun gold à mesurer ; Mesure invalide : hit inexploitable. Les trois derniers cas ne deviennent pas des échecs de retrieval.\n\n**Question ID** — Identifiant de la question dans le goldset. Les jointures utilisent en interne l’ID de l’item pour ne pas confondre deux évaluations de la même question.",
       "type": "table",
       "datasource": {
         "type": "prometheus",
@@ -1698,7 +2203,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 65,
+        "y": 79,
         "w": 24,
         "h": 12
       },
@@ -1825,6 +2330,10 @@
                 "value": {
                   "type": "color-text"
                 }
+              },
+              {
+                "id": "description",
+                "value": "Verdict enregistré pour cette question : PASS ou FAIL selon le protocole du run (calibration, seuils, vote majoritaire éventuel). Non disponible = jugement absent ou inexploitable. Ce verdict ne se déduit ni du seul score affiché ni de la présence du gold."
               }
             ]
           },
@@ -1841,6 +2350,10 @@
               {
                 "id": "decimals",
                 "value": 1
+              },
+              {
+                "id": "description",
+                "value": "Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %. Étape : contexte construit de la tentative choisie."
               }
             ]
           },
@@ -1889,6 +2402,10 @@
               {
                 "id": "custom.width",
                 "value": 105
+              },
+              {
+                "id": "description",
+                "value": "Documents identifiés dans les chunks candidats avant le reranking des sections, pour la tentative choisie. Cette étape indique si la recherche a trouvé le gold dans son ensemble de candidats ; elle ne garantit pas qu’il sera conservé ensuite. Retrouvé : au moins une source gold ; Absent : mesure valide sans gold retrouvé ; Non tracé : étape absente de l’enregistrement ; Sans gold : aucun gold à mesurer ; Mesure invalide : hit inexploitable. Les trois derniers cas ne deviennent pas des échecs de retrieval."
               }
             ]
           },
@@ -1937,6 +2454,10 @@
               {
                 "id": "custom.width",
                 "value": 105
+              },
+              {
+                "id": "description",
+                "value": "Documents représentés dans les 20 premières sections agrégées après reranking, dans l’ordre enregistré. k compte des sections, pas des documents ni des chunks : un même document peut occuper plusieurs places. S’il reste moins de 20 sections, toutes sont prises en compte. Retrouvé : au moins une source gold ; Absent : mesure valide sans gold retrouvé ; Non tracé : étape absente de l’enregistrement ; Sans gold : aucun gold à mesurer ; Mesure invalide : hit inexploitable. Les trois derniers cas ne deviennent pas des échecs de retrieval."
               }
             ]
           },
@@ -1985,6 +2506,10 @@
               {
                 "id": "custom.width",
                 "value": 105
+              },
+              {
+                "id": "description",
+                "value": "Même liste de sections classées, limitée aux 12 premières. C’est une coupe alternative pour mesurer l’effet d’un k plus petit, pas une étape exécutée entre top-20 et sélection. La différence top-20 / top-12 indique ce que la coupe retire, sur des questions mesurées comparables. Retrouvé : au moins une source gold ; Absent : mesure valide sans gold retrouvé ; Non tracé : étape absente de l’enregistrement ; Sans gold : aucun gold à mesurer ; Mesure invalide : hit inexploitable. Les trois derniers cas ne deviennent pas des échecs de retrieval."
               }
             ]
           },
@@ -2033,6 +2558,10 @@
               {
                 "id": "custom.width",
                 "value": 105
+              },
+              {
+                "id": "description",
+                "value": "Documents des sections que le sélecteur a explicitement gardées, selon les décisions enregistrées. Une trace absente n’est pas une sélection vide : elle est marquée Non tracé et exclue des moyennes correspondantes. Retrouvé : au moins une source gold ; Absent : mesure valide sans gold retrouvé ; Non tracé : étape absente de l’enregistrement ; Sans gold : aucun gold à mesurer ; Mesure invalide : hit inexploitable. Les trois derniers cas ne deviennent pas des échecs de retrieval."
               }
             ]
           },
@@ -2081,6 +2610,10 @@
               {
                 "id": "custom.width",
                 "value": 105
+              },
+              {
+                "id": "description",
+                "value": "Documents référencés dans le contexte produit par ContextBuilder pour la tentative choisie, après construction et budget de contexte. Si un retry remplace cette tentative, cette mesure initiale ne décrit pas à elle seule le contexte finalement envoyé au générateur. Retrouvé : au moins une source gold ; Absent : mesure valide sans gold retrouvé ; Non tracé : étape absente de l’enregistrement ; Sans gold : aucun gold à mesurer ; Mesure invalide : hit inexploitable. Les trois derniers cas ne deviennent pas des échecs de retrieval."
               }
             ]
           },
@@ -2093,6 +2626,10 @@
               {
                 "id": "custom.width",
                 "value": 95
+              },
+              {
+                "id": "description",
+                "value": "Identifiant de la question dans le goldset. Les jointures utilisent en interne l’ID de l’item pour ne pas confondre deux évaluations de la même question."
               }
             ]
           },
@@ -2190,7 +2727,7 @@
     {
       "id": 24,
       "title": "Par question · couverture des sources gold",
-      "description": "Métriques historiques de recall par étape, sans union des étapes ni nouveau matching des sources. Les valeurs manquantes restent non disponibles. Les moyennes du funnel utilisent les dénominateurs explicites ci-dessus. Top-12* : coupe diagnostique alternative. Les intitulés et sources attendues se lisent dans le tableau précédent.",
+      "description": "Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %. Les cellules correspondent aux mesures enregistrées pour chaque question et chaque étape, sans union d’étapes. Le score juge est distinct du verdict PASS/FAIL. Une mesure manquante ne vaut pas zéro.\n\n**Pool** — Documents identifiés dans les chunks candidats avant le reranking des sections, pour la tentative choisie. Cette étape indique si la recherche a trouvé le gold dans son ensemble de candidats ; elle ne garantit pas qu’il sera conservé ensuite. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %.\n\n**Top-20** — Documents représentés dans les 20 premières sections agrégées après reranking, dans l’ordre enregistré. k compte des sections, pas des documents ni des chunks : un même document peut occuper plusieurs places. S’il reste moins de 20 sections, toutes sont prises en compte. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %.\n\n**Top-12*** — Même liste de sections classées, limitée aux 12 premières. C’est une coupe alternative pour mesurer l’effet d’un k plus petit, pas une étape exécutée entre top-20 et sélection. La différence top-20 / top-12 indique ce que la coupe retire, sur des questions mesurées comparables. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %.\n\n**Sélection** — Documents des sections que le sélecteur a explicitement gardées, selon les décisions enregistrées. Une trace absente n’est pas une sélection vide : elle est marquée Non tracé et exclue des moyennes correspondantes. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %.\n\n**Contexte** — Documents référencés dans le contexte produit par ContextBuilder pour la tentative choisie, après construction et budget de contexte. Si un retry remplace cette tentative, cette mesure initiale ne décrit pas à elle seule le contexte finalement envoyé au générateur. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %.\n\n**Score juge** — Score enregistré pour cette question, après calibration et plafonds du protocole. Ce n’est ni une moyenne du run ni une probabilité de réponse correcte. Un plafond de diagnostic retrieval peut abaisser ce score sans annuler un PASS. En multi-votes, ce score n’est pas nécessairement la moyenne des votes.\n\n**Question ID** — Identifiant de la question dans le goldset. Les jointures utilisent en interne l’ID de l’item pour ne pas confondre deux évaluations de la même question.",
       "type": "table",
       "datasource": {
         "type": "prometheus",
@@ -2198,7 +2735,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 77,
+        "y": 91,
         "w": 24,
         "h": 10
       },
@@ -2298,6 +2835,10 @@
               {
                 "id": "decimals",
                 "value": 1
+              },
+              {
+                "id": "description",
+                "value": "Documents identifiés dans les chunks candidats avant le reranking des sections, pour la tentative choisie. Cette étape indique si la recherche a trouvé le gold dans son ensemble de candidats ; elle ne garantit pas qu’il sera conservé ensuite. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %."
               }
             ]
           },
@@ -2314,6 +2855,10 @@
               {
                 "id": "decimals",
                 "value": 1
+              },
+              {
+                "id": "description",
+                "value": "Documents représentés dans les 20 premières sections agrégées après reranking, dans l’ordre enregistré. k compte des sections, pas des documents ni des chunks : un même document peut occuper plusieurs places. S’il reste moins de 20 sections, toutes sont prises en compte. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %."
               }
             ]
           },
@@ -2330,6 +2875,10 @@
               {
                 "id": "decimals",
                 "value": 1
+              },
+              {
+                "id": "description",
+                "value": "Même liste de sections classées, limitée aux 12 premières. C’est une coupe alternative pour mesurer l’effet d’un k plus petit, pas une étape exécutée entre top-20 et sélection. La différence top-20 / top-12 indique ce que la coupe retire, sur des questions mesurées comparables. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %."
               }
             ]
           },
@@ -2346,6 +2895,10 @@
               {
                 "id": "decimals",
                 "value": 1
+              },
+              {
+                "id": "description",
+                "value": "Documents des sections que le sélecteur a explicitement gardées, selon les décisions enregistrées. Une trace absente n’est pas une sélection vide : elle est marquée Non tracé et exclue des moyennes correspondantes. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %."
               }
             ]
           },
@@ -2362,6 +2915,10 @@
               {
                 "id": "decimals",
                 "value": 1
+              },
+              {
+                "id": "description",
+                "value": "Documents référencés dans le contexte produit par ContextBuilder pour la tentative choisie, après construction et budget de contexte. Si un retry remplace cette tentative, cette mesure initiale ne décrit pas à elle seule le contexte finalement envoyé au générateur. Rappel d’une question = identifiants gold retrouvés / identifiants gold attendus, avec le matching historique et ses aliases. Rappel moyen = moyenne simple des ratios valides des questions mesurées à cette étape ; ce n’est pas le ratio des totaux de documents. Un tiers retrouvé vaut 33,3 %, même si le hit vaut 100 %."
               }
             ]
           },
@@ -2378,6 +2935,10 @@
               {
                 "id": "decimals",
                 "value": 1
+              },
+              {
+                "id": "description",
+                "value": "Score enregistré pour cette question, après calibration et plafonds du protocole. Ce n’est ni une moyenne du run ni une probabilité de réponse correcte. Un plafond de diagnostic retrieval peut abaisser ce score sans annuler un PASS. En multi-votes, ce score n’est pas nécessairement la moyenne des votes."
               }
             ]
           },
@@ -2390,6 +2951,10 @@
               {
                 "id": "custom.width",
                 "value": 95
+              },
+              {
+                "id": "description",
+                "value": "Identifiant de la question dans le goldset. Les jointures utilisent en interne l’ID de l’item pour ne pas confondre deux évaluations de la même question."
               }
             ]
           }
@@ -2460,7 +3025,7 @@
     {
       "id": 25,
       "title": "Diagnostic historique · union de plusieurs étapes",
-      "description": "Métriques globales historiques calculées sur une union du pool, du reranking et des contextes. Peuvent être élevées même si le contexte construit est vide. Ne pas utiliser comme verdict sur le contexte ou gate final.",
+      "description": "Ces métriques historiques fusionnent des identifiants de contextes, de chunks rerankés et du pool brut. Un gold trouvé puis éliminé peut donc continuer à augmenter le hit et le recall. À lire comme diagnostic de présence quelque part, pas comme preuve de présence dans le contexte final.\n\n**Présence d’une source attendue · hit** — Pour une question : 1 si au moins un identifiant gold est retrouvé, sinon 0. Le taux est le nombre de questions avec un hit divisé par le nombre de questions mesurées. Exemple : retrouver 1 source attendue sur 3 donne un hit de 100 %, mais un recall de 33,3 %. Dans le diagnostic historique, la recherche porte sur l’union de plusieurs étapes, pas uniquement sur le contexte construit.\n\n**Rappel documentaire · recall** — Pour chaque question : nombre d’identifiants gold retrouvés / nombre d’identifiants gold attendus, selon le matching enregistré (aliases inclus). On moyenne ensuite les ratios des questions mesurées, sans pondérer par leur nombre de sources. Le diagnostic historique utilise l’union des étapes ; le funnel calcule ce rappel séparément à chaque étape.\n\n**Précision documentaire historique** — Pour chaque question : identifiants gold retrouvés / identifiants retrouvés dans la liste historique fusionnée, puis moyenne des ratios disponibles. Des sources pertinentes non présentes dans le gold peuvent faire baisser cette précision ; une faible valeur ne prouve donc pas que tous les autres documents sont inutiles. Matching historique avec aliases.\n\n**Rang réciproque moyen · MRR** — Pour une question : 1 / rang du premier identifiant gold dans la liste historique, ou 0 si aucun n’est retrouvé, puis moyenne entre questions. Au rang 1 : 100 % ; au rang 3 : 33,3 %. Cette liste fusionne des références de plusieurs étapes : ce n’est pas le rang du seul reranker ni du seul contexte final.",
       "type": "bargauge",
       "datasource": {
         "type": "prometheus",
@@ -2468,7 +3033,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 87,
+        "y": 101,
         "w": 24,
         "h": 7
       },
@@ -2504,6 +3069,10 @@
               {
                 "id": "displayName",
                 "value": "Hit · union historique"
+              },
+              {
+                "id": "description",
+                "value": "Pour une question : 1 si au moins un identifiant gold est retrouvé, sinon 0. Le taux est le nombre de questions avec un hit divisé par le nombre de questions mesurées. Exemple : retrouver 1 source attendue sur 3 donne un hit de 100 %, mais un recall de 33,3 %. Dans le diagnostic historique, la recherche porte sur l’union de plusieurs étapes, pas uniquement sur le contexte construit."
               }
             ]
           },
@@ -2516,6 +3085,10 @@
               {
                 "id": "displayName",
                 "value": "Recall · union historique"
+              },
+              {
+                "id": "description",
+                "value": "Pour chaque question : nombre d’identifiants gold retrouvés / nombre d’identifiants gold attendus, selon le matching enregistré (aliases inclus). On moyenne ensuite les ratios des questions mesurées, sans pondérer par leur nombre de sources. Le diagnostic historique utilise l’union des étapes ; le funnel calcule ce rappel séparément à chaque étape."
               }
             ]
           },
@@ -2528,6 +3101,10 @@
               {
                 "id": "displayName",
                 "value": "Précision · union historique"
+              },
+              {
+                "id": "description",
+                "value": "Pour chaque question : identifiants gold retrouvés / identifiants retrouvés dans la liste historique fusionnée, puis moyenne des ratios disponibles. Des sources pertinentes non présentes dans le gold peuvent faire baisser cette précision ; une faible valeur ne prouve donc pas que tous les autres documents sont inutiles. Matching historique avec aliases."
               }
             ]
           },
@@ -2540,6 +3117,10 @@
               {
                 "id": "displayName",
                 "value": "MRR · union historique"
+              },
+              {
+                "id": "description",
+                "value": "Pour une question : 1 / rang du premier identifiant gold dans la liste historique, ou 0 si aucun n’est retrouvé, puis moyenne entre questions. Au rang 1 : 100 % ; au rang 3 : 33,3 %. Cette liste fusionne des références de plusieurs étapes : ce n’est pas le rang du seul reranker ni du seul contexte final."
               }
             ]
           }
@@ -2563,99 +3144,20 @@
       }
     },
     {
-      "id": 26,
-      "type": "table",
-      "title": "Questions et sources gold attendues",
-      "description": "Intitulés et libellés gold conservés avec les items évalués (extraits limités à 500 caractères). Le filtre Question en haut s’applique aux trois tableaux de détail, sans modifier les moyennes du run.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "$datasource"
-      },
+      "id": 101,
+      "title": "Lire les résultats",
+      "type": "text",
       "gridPos": {
         "x": 0,
-        "y": 58,
+        "y": 108,
         "w": 24,
-        "h": 7
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "max by (item_id,question_id,question,gold_sources) (assistant_rh_rag_eval_item_info{env=~\"$env\",goldset=~\"$goldset\",run_id=\"$run\",question_id=~\"$question\"})",
-          "instant": true,
-          "range": false,
-          "format": "table",
-          "legendFormat": ""
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "Non disponible",
-          "custom": {
-            "wrapText": true,
-            "filterable": true
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Question ID"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 95
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Question"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 600
-              }
-            ]
-          }
-        ]
+        "h": 5
       },
       "options": {
-        "showHeader": true,
-        "cellHeight": "lg"
+        "mode": "markdown",
+        "content": "<p><b>Lecture :</b> « Retrouvé » = au moins une source gold ; le recall mesure la couverture des identifiants gold selon le matching historique (aliases inclus). Sources attendues = libellés enregistrés, pas une re-résolution avec le corpus actuel. Les traces absentes, scores invalides et questions sans gold sont distingués des absences mesurées. Les transitions comparent uniquement les mêmes questions aux deux extrémités. Top-12 est diagnostique ; les retries ne sont jamais mélangés à la tentative initiale. Les 50 derniers runs sont disponibles ; un run dépassant 200 items est signalé et exclu du détail pour éviter des moyennes partielles. Intitulés et sources sont abrégés à 500 caractères.</p><p><b>Baseline :</b> le verdict et les écarts proviennent du comparateur automatique. La qualification du protocole dans le journal prévaut : une comparaison peut n’être que diagnostique même si le verdict automatique est passé (ex. #240 → #226).</p>"
       },
-      "transformations": [
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "question_id",
-                "question",
-                "gold_sources"
-              ]
-            }
-          }
-        },
-        {
-          "id": "organize",
-          "options": {
-            "indexByName": {
-              "question_id": 0,
-              "question": 1,
-              "gold_sources": 2
-            },
-            "renameByName": {
-              "question_id": "Question ID",
-              "question": "Question",
-              "gold_sources": "Sources gold attendues"
-            }
-          }
-        }
-      ]
+      "description": "Règles de lecture communes : mesures enregistrées, dénominateurs explicites et comparabilité à vérifier dans le protocole du run."
     }
   ],
   "annotations": {
