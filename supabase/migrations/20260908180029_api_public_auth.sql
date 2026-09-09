@@ -29,3 +29,7 @@ CREATE TABLE IF NOT EXISTS public.api_auth_limits (
 );
 CREATE INDEX IF NOT EXISTS api_auth_limits_expiry_idx ON public.api_auth_limits(expires_at);
 REVOKE ALL ON public.api_auth_limits FROM PUBLIC;
+
+-- Bounded retention scans expire/revoke time, not the growing live-session set.
+CREATE INDEX IF NOT EXISTS api_sessions_retention_idx ON public.api_sessions
+    (LEAST(expires_at, COALESCE(revoked_at, expires_at)), token_hash);

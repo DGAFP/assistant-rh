@@ -39,8 +39,20 @@ moon run api:local-reset
 moon run api:local
 ```
 
-The API database is a separate volume initialized exclusively from
-`tests/fixtures/runtime.sql`. It must never be seeded from staging or production.
+The API database is a separate volume initialized in one transaction from
+`docker/api/bootstrap-local.txt`: synthetic fixtures, the real B2/B4 migrations,
+and a public local demo group. It must never be seeded from staging or production.
+The initializer only runs on an empty volume; after upgrading an older local
+stack, use `api:local-reset` then `api:local` to recreate its synthetic data.
+
+The loopback-only demo account is `local-demo` / `local-only-password`. Verify
+catalogue, login, `/me`, logout and rejection of the revoked bearer with:
+
+```bash
+uv run --package assistant-rh-api python docker/api/smoke-auth.py
+```
+
+These public demo credentials are local fixtures, never production credentials.
 
 The equivalent direct Compose command is:
 
@@ -305,7 +317,7 @@ bootstrap of static API keys, and token rotation commands are outside this v1.
 
 | Route | Access | Result |
 | --- | --- | --- |
-| `GET /v1/auth/groups` | Public | Display metadata, ordered by priority then slug; no password hash or policy internals. |
+| `GET /v1/auth/groups` | Public | Display metadata, ordered by descending priority then ascending slug; no password hash or policy internals. |
 | `POST /v1/auth/session` | Group slug + password | Bearer, expiration, allowed/default ministries and credential revision. |
 | `GET /v1/auth/me` | Bearer | Current group policy and remaining lifetime; never echoes the bearer. |
 | `DELETE /v1/auth/session` | Bearer | Revokes the current session; 204 with no body. |
@@ -364,14 +376,27 @@ Login bodies are limited to 16 KiB before JSON parsing, including chunked bodies
 passwords are at most 1024 characters. Responses use `Cache-Control: no-store`.
 The frontend must keep the bearer in server session state, never in a URL/cookie.
 
+### Session retention
+
+Expired or revoked sessions are eligible for deletion immediately. An indexed
+purge removes at most 100 inactive rows in each successful session-creation
+transaction. A lifespan-owned worker also removes up to 500 rows at startup and
+every 60 seconds, including periods with no logins. Large backlogs drain across
+multiple batches; active sessions and audit/chat records are preserved. Locked
+rows are skipped and retried by later batches, so replicas do not block each
+other. Temporary database errors are logged without details and retried at the
+next interval. At shutdown, an in-flight purge finishes its bounded transaction
+before the worker exits and the pool closes.
+
 ### Deployment and rollback
 
 Apply B2 then the B4 versioned migration through the existing migration runner
-before starting the B4 API. The local Compose health fixture alone does not create
-these auth tables; the API tests provision the synthetic repository fixture and
-both migrations. Grant the API runtime role access to the new quota table under
-the same deployment role policy as `api_sessions`. No cloud migration is implied
-by local test success.
+before starting the B4 API. Compose and its CI smoke test initialize the same
+migrations on synthetic data using `bootstrap-local.txt`. Existing local volumes
+need `api:local-reset` to run that initializer. Grant the API runtime role access
+to the quota table and DELETE on `api_sessions` for retention, alongside its
+existing SELECT/INSERT/UPDATE permissions. No cloud migration is implied by local
+test success.
 
 Prefer rolling back the API application while retaining this additive schema;
 Streamlit continues using its existing group/password columns. If schema removal

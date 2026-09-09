@@ -3,6 +3,8 @@
 import re
 from datetime import datetime
 
+from psycopg import AsyncConnection
+
 from assistant_rh_api.core.errors import DatabaseConflict
 from assistant_rh_api.core.ports import GroupStorePort, SessionStorePort
 from assistant_rh_api.core.runtime import Group, Session
@@ -24,7 +26,7 @@ class GroupStore(GroupStorePort):
         async with self._database.transaction(read_only=True) as connection:
             rows = await (
                 await connection.execute(
-                    f'SELECT {GROUP_COLUMNS} FROM public.user_groups ORDER BY priority, slug COLLATE "C"',
+                    f'SELECT {GROUP_COLUMNS} FROM public.user_groups ORDER BY priority DESC, slug COLLATE "C"',
                 )
             ).fetchall()
         return tuple(_group(row) for row in rows)
@@ -55,6 +57,7 @@ class SessionStore(SessionStorePort):
             ).fetchone()
             if not row or not row[0] or row[0] != session.credential_hash or row[1] != session.credential_revision:
                 raise DatabaseConflict()
+            await self._purge_inactive(connection, session.created_at, 100)
             await connection.execute(
                 """
                 INSERT INTO public.api_sessions (token_hash, group_slug, created_at, expires_at, credential_hash, credential_revision)
@@ -92,3 +95,24 @@ class SessionStore(SessionStorePort):
                 "UPDATE public.api_sessions SET revoked_at = COALESCE(revoked_at, %s) WHERE token_hash = %s",
                 (now, token_hash),
             )
+
+    async def purge_inactive(self, now: datetime, *, limit: int = 500) -> int:
+        """Delete one indexed batch; active or concurrently locked rows survive."""
+        if now.tzinfo is None or type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError("cleanup requires an aware timestamp and a batch of 1..1000")
+        async with self._database.transaction() as connection:
+            return await self._purge_inactive(connection, now, limit)
+
+    @staticmethod
+    async def _purge_inactive(connection: AsyncConnection, now: datetime, limit: int) -> int:
+        cursor = await connection.execute(
+            """WITH expired AS (
+                SELECT token_hash FROM public.api_sessions
+                WHERE LEAST(expires_at, COALESCE(revoked_at, expires_at)) <= %s
+                ORDER BY LEAST(expires_at, COALESCE(revoked_at, expires_at)), token_hash
+                LIMIT %s FOR UPDATE SKIP LOCKED
+            )
+            DELETE FROM public.api_sessions s USING expired e WHERE s.token_hash = e.token_hash""",
+            (now, limit),
+        )
+        return cursor.rowcount

@@ -71,8 +71,18 @@ async def test_catalog_priority_then_slug_with_display_metadata():
     auth = service()
     group = auth.groups.rows["beta"]
     auth.groups.rows.update({g.slug: g for g in (replace(group, slug="aaa"), replace(group, slug="zzz", priority=0))})
-    assert [g.slug for g in await auth.list_groups()] == ["zzz", "aaa", "beta"]
+    assert [g.slug for g in await auth.list_groups()] == ["aaa", "beta", "zzz"]
     assert (await auth.list_groups())[0].icon == "🏛️"
+
+
+async def test_catalog_preserves_historical_group_priority():
+    from src.ui.groups import GROUPS
+
+    auth = service()
+    prototype = auth.groups.rows["beta"]
+    public_seeds = [group for group in GROUPS if group.slug not in {"default", "dgafpallianceadmin"}]
+    auth.groups.rows = {group.slug: replace(prototype, slug=group.slug, priority=group.priority) for group in reversed(public_seeds)}
+    assert [group.slug for group in await auth.list_groups()] == [group.slug for group in public_seeds]
 
 
 @pytest.mark.parametrize("delta", [timedelta(hours=8), timedelta(hours=9), timedelta(seconds=-1)])

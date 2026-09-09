@@ -65,3 +65,13 @@ jobs:
 
       - name: Build API image
         run: docker build -f docker/api/Dockerfile -t assistant-rh-api:${{ github.sha }} .
+
+      - name: Smoke test local stack authentication
+        env:
+          COMPOSE_PROJECT_NAME: api-auth-smoke
+          API_PORT: "58000"
+          API_POSTGRES_PORT: "55434"
+        run: |
+          trap 'docker compose --project-directory . -f docker/api/compose.yml down -v' EXIT
+          docker compose --project-directory . -f docker/api/compose.yml up --build -d --wait
+          uv run --no-sync python docker/api/smoke-auth.py

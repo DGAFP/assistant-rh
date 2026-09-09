@@ -79,3 +79,16 @@ _(vide — aucun report en attente)_
 - **2026-09-04 — observabilité admin** : évaluer Grafana/Tempo pour métriques et traces opérationnelles, et LangSmith pour l'inspection RAG/LLM si l'hébergement, la rétention et le masquage des données RH sont approuvés. LangSmith reste optionnel et n'impose pas LangChain.
 - **2026-09-04 — agentic RAG** : prototyper après M4 un agent borné (sélection de source, reformulation ou retry limité) et le comparer au pipeline déterministe sur le goldset avant toute bascule produit.
 - **2026-09-04 — admin-hardening** : restreindre l'accès réseau, créer des identifiants DB dédiés et bornés, auditer les actions sensibles, déplacer le DDL runtime historique vers des migrations, repointer tous les consommateurs admin puis supprimer `packages/rag-pipeline`. Réévaluer ensuite une extraction vers endpoints admin ou RAG-ops, sans bloquer la migration publique.
+
+### Correctifs de revue B4 — PR #523
+
+Catalogue aligné sur Streamlit (`priority DESC`, `slug ASC`). La stack locale
+initialise les fixtures synthétiques et les migrations B2/B4 dans une transaction,
+avec un groupe de démonstration public ; la CI vérifie le parcours HTTP réel.
+Les sessions expirées/révoquées sont purgées par lots indexés bornés à la création
+et chaque minute pendant le lifespan, sans supprimer les sessions actives ni
+l'audit. Les tests couvrent les lots concurrents, les lignes verrouillées et la
+reprise après indisponibilité DB et le shutdown pendant une transaction.
+Validation : 267 tests API, 38 tests historiques, mypy sur 39 fichiers et trois
+contrats d’import passent ; bootstrap vierge et smoke HTTP réel validés. Aucun ajout d'utilisateurs individuels ni
+changement des droits ministériels dans cette correction.

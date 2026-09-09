@@ -76,7 +76,7 @@ class AuthService:
         self.clock = clock
 
     async def list_groups(self) -> tuple[Group, ...]:
-        return tuple(sorted((g for g in await self.groups.list_groups() if public_group(g)), key=lambda g: (g.priority, g.slug)))
+        return tuple(sorted((g for g in await self.groups.list_groups() if public_group(g)), key=lambda g: (-g.priority, g.slug)))
 
     async def login(self, slug: str, password: str, source: str) -> IssuedSession:
         await self.limiter.acquire(source, slug)

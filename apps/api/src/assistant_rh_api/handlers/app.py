@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from importlib.metadata import version as distribution_version
 
+import anyio
 from fastapi import FastAPI
 
 from assistant_rh_api.core.auth import AuthService
@@ -16,6 +17,7 @@ from assistant_rh_api.db.dsn import DatabaseSettings, resolve_dsn
 from assistant_rh_api.db.health import PostgresHealthProbe
 from assistant_rh_api.db.login_limits import LoginLimits, PostgresLoginLimiter
 from assistant_rh_api.db.pool import Database
+from assistant_rh_api.db.session_retention import maintain_sessions
 from assistant_rh_api.gateways.auth import LegacyPasswords, SessionTokens, SystemClock
 from assistant_rh_api.handlers.auth import create_auth_router
 from assistant_rh_api.handlers.auth_body import AuthBodyLimit
@@ -45,10 +47,11 @@ def create_app(
             return
         try:
             await runtime_database.open()
+            sessions = SessionStore(runtime_database)
             if auth_service is None:
                 application.state.auth_service = AuthService(
                     GroupStore(runtime_database),
-                    SessionStore(runtime_database),
+                    sessions,
                     LegacyPasswords(),
                     SessionTokens(),
                     PostgresLoginLimiter(runtime_database, LoginLimits.from_environment(environment)),
@@ -56,7 +59,12 @@ def create_app(
                 )
             if health_probe is None:
                 application.state.health_probe = PostgresHealthProbe(runtime_database)
-            yield
+            async with anyio.create_task_group() as tasks:
+                tasks.start_soon(maintain_sessions, sessions)
+                try:
+                    yield
+                finally:
+                    tasks.cancel_scope.cancel()
         finally:
             await runtime_database.close()
             application.state.auth_service = auth_service

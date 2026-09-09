@@ -7,3 +7,4 @@ DROP FUNCTION IF EXISTS public.api_group_credential_revision();
 ALTER TABLE public.api_sessions DROP COLUMN IF EXISTS credential_revision;
 ALTER TABLE public.user_groups DROP COLUMN IF EXISTS credential_revision;
 DROP TABLE IF EXISTS public.api_auth_limits;
+DROP INDEX IF EXISTS public.api_sessions_retention_idx;
