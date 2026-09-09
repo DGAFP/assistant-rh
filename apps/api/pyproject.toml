@@ -18,6 +18,7 @@ assistant-rh-api = "assistant_rh_api.__main__:main"
 [dependency-groups]
 dev = [
     "import-linter>=2.14,<3",
+    "openai>=2.28.0,<3",
     "pytest>=8.0,<10",
     "ruff>=0.15,<1",
 ]

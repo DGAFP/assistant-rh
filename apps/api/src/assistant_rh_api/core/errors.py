@@ -22,3 +22,11 @@ class DatabaseConflict(ApplicationError):
 
 class DatabaseFailure(ApplicationError):
     code = "database_failure"
+
+
+class MinistryConfigurationError(ApplicationError):
+    code = "ministry_configuration_error"
+
+
+class ModelNotFound(ApplicationError):
+    code = "model_not_found"

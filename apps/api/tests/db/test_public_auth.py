@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
+import openai
 import psycopg
 import pytest
 from assistant_rh_api.core.auth import AuthService, InvalidCredentials, LoginRateLimited
@@ -75,12 +76,19 @@ async def test_real_http_lifespan_password_login_indexed_session_and_logout(repo
             headers = {"Authorization": "Bearer " + token}
             me = await client.get("/v1/auth/me", headers=headers)
             assert me.status_code == 200 and "access_token" not in me.json()
+            sdk_http = httpx.AsyncClient(transport=httpx.ASGITransport(app=app))
+            async with openai.AsyncOpenAI(
+                api_key=token, base_url="http://test/v1", http_client=sdk_http, max_retries=0, _strict_response_validation=True
+            ) as sdk:
+                models = await sdk.models.list()
+                assert [model.id for model in models.data] == ["assistant-rh-matte"]
             with psycopg.connect(repository_dsn) as connection:
                 row = connection.execute("SELECT token_hash, credential_hash FROM public.api_sessions WHERE group_slug='http-beta'").fetchone()
                 assert row == (hashlib.sha256(token.encode()).hexdigest(), stored)
                 assert "synthetic-password" not in str(row) and token not in str(row)
             assert (await client.delete("/v1/auth/session", headers=headers)).status_code == 204
             assert (await client.get("/v1/auth/me", headers=headers)).status_code == 401
+            assert (await client.get("/v1/models", headers=headers)).status_code == 401
     assert database.closed and app.state.auth_service is None
 
 

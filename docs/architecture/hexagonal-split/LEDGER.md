@@ -92,3 +92,29 @@ reprise après indisponibilité DB et le shutdown pendant une transaction.
 Validation : 267 tests API, 38 tests historiques, mypy sur 39 fichiers et trois
 contrats d’import passent ; bootstrap vierge et smoke HTTP réel validés. Aucun ajout d'utilisateurs individuels ni
 changement des droits ministériels dans cette correction.
+
+
+Livraison B5 — [PR #538](https://github.com/DGAFP/assistant-rh/pull/538), [issue #457](https://github.com/DGAFP/assistant-rh/issues/457) :
+`GET /v1/models` branché sur le resolver bearer B4 et son groupe courant chargé par
+`GroupStore`. `ModelService` pur, catalogue ministériel canonique commun à l'auth,
+modèles immuables triés par id et dédupliqués, enveloppe OpenAI typée et réponses
+`no-store`. L'alias d'entrée `assistant-rh` résout uniquement le défaut autorisé ;
+modèle inconnu → 404, ministère non autorisé → 403. C1 branchera cette résolution
+sur Chat Completions, absent de B5.
+
+Politique B5 : zéro ministère, ministère inconnu ou défaut absent/interdit donnent
+une erreur de configuration explicite, sans fallback implicite. B4 conserve les
+exclusions du catalogue de groupes et du login ; la résolution vérifie d'abord
+expiration/révocation/révision/identifiants (401), puis la politique d'une session
+encore valide (500 `ministry_configuration_error` si corrompue). Les modifications
+normales de politique en DB continuent de révoquer les sessions via B4.
+
+Preuves B5 : 301 tests API passent sur PostgreSQL 18.4/pgvector éphémère exclusivement
+synthétique, dont les tests du SDK OpenAI Python 2.38.0 avec validation stricte et
+le parcours lifespan PostgreSQL → login → catalogue → révocation. Les tests couvrent
+zéro/un/plusieurs ministères, doublons/ordre, isolation entre groupes, alias, erreurs
+SDK et sessions invalides. 38 tests historiques groupes/ministères/prompts passent ;
+smoke HTTP local et SDK synchrone contre Uvicorn/PostgreSQL réels verts, avec rejet
+après logout. Ruff et les trois contrats d'import passent. Docker indisponible en
+local : build image et smoke Compose à vérifier en CI. Aucun
+changement du runtime RAG servi, aucune migration ou activation distante.
