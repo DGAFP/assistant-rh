@@ -1,4 +1,4 @@
-"""Minimal immutable values shared by runtime stores and their consumers."""
+"""Immutable configuration values and revisioned store snapshots."""
 
 from collections.abc import Mapping
 from dataclasses import dataclass

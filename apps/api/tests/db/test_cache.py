@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 from assistant_rh_api.core.errors import DatabaseUnavailable
-from assistant_rh_api.core.models import Snapshot
+from assistant_rh_api.core.models.configuration import Snapshot
 from assistant_rh_api.db.cache import RevisionCache
 from assistant_rh_api.db.revisions import content_revision, freeze_json
 

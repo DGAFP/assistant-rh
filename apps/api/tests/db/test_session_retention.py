@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import anyio
 import pytest
 from assistant_rh_api.core.errors import DatabaseUnavailable
-from assistant_rh_api.core.runtime import Session
+from assistant_rh_api.core.models.auth import Session
 from assistant_rh_api.db.auth_stores import SessionStore
 from assistant_rh_api.db.dsn import DatabaseSettings
 from assistant_rh_api.db.pool import Database

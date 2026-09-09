@@ -4,8 +4,8 @@ import math
 
 from psycopg import sql
 
-from assistant_rh_api.core.ports import SearchPort
-from assistant_rh_api.core.runtime import RawChunk, SearchRequest
+from assistant_rh_api.core.models.retrieval import RawChunk, SearchRequest
+from assistant_rh_api.core.ports.retrieval import SearchPort
 from assistant_rh_api.db.content_store import columns, immutable_object, metadata_expression, section_expression, table_spec
 from assistant_rh_api.db.pool import Database
 

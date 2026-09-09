@@ -3,8 +3,8 @@
 from collections.abc import Mapping
 
 from assistant_rh_api.core.errors import DatabaseFailure
-from assistant_rh_api.core.models import Acronym, ConfigValues, Prompt, Snapshot
-from assistant_rh_api.core.ports import AcronymStorePort, ConfigStorePort, PromptStorePort
+from assistant_rh_api.core.models.configuration import Acronym, ConfigValues, Prompt, Snapshot
+from assistant_rh_api.core.ports.configuration import AcronymStorePort, ConfigStorePort, PromptStorePort
 from assistant_rh_api.db.pool import Database
 from assistant_rh_api.db.revisions import content_revision, freeze_json
 

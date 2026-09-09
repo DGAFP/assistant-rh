@@ -6,8 +6,8 @@ from datetime import datetime
 from psycopg import AsyncConnection
 
 from assistant_rh_api.core.errors import DatabaseConflict
-from assistant_rh_api.core.ports import GroupStorePort, SessionStorePort
-from assistant_rh_api.core.runtime import Group, Session
+from assistant_rh_api.core.models.auth import Group, Session
+from assistant_rh_api.core.ports.auth import GroupStorePort, SessionStorePort
 from assistant_rh_api.db.pool import Database
 
 GROUP_COLUMNS = "slug, label, priority, visible, is_admin, password_hash, allowed_ministries, default_ministry, icon, color, credential_revision"

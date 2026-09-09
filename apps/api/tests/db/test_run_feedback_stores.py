@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 from assistant_rh_api.core.errors import DatabaseConflict
-from assistant_rh_api.core.runtime import ChatRun, FeedbackInput, RunSource, TraceEvent
+from assistant_rh_api.core.models.conversations import ChatRun, FeedbackInput, RunSource, TraceEvent
 from assistant_rh_api.db.feedback_store import FeedbackStore
 from assistant_rh_api.db.run_store import ChatRunStore
 from assistant_rh_api.gateways.ids import CompletionIds

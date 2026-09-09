@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from assistant_rh_api.core.errors import DatabaseConflict
-from assistant_rh_api.core.runtime import Session
+from assistant_rh_api.core.models.auth import Session
 from assistant_rh_api.db.auth_stores import GroupStore, SessionStore
 
 pytestmark = pytest.mark.anyio

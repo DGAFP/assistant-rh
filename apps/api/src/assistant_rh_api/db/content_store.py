@@ -6,9 +6,9 @@ from typing import cast
 from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 
-from assistant_rh_api.core.models import ConfigValues
-from assistant_rh_api.core.ports import ContentStorePort
-from assistant_rh_api.core.runtime import Document, LegalReference, RawChunk, Section, Source
+from assistant_rh_api.core.models.configuration import ConfigValues
+from assistant_rh_api.core.models.retrieval import Document, LegalReference, RawChunk, Section, Source
+from assistant_rh_api.core.ports.retrieval import ContentStorePort
 from assistant_rh_api.db.pool import Database
 from assistant_rh_api.db.revisions import freeze_json
 

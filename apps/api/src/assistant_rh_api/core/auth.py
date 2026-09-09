@@ -4,8 +4,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from assistant_rh_api.core.errors import ApplicationError, DatabaseConflict
-from assistant_rh_api.core.ports import ClockPort, GroupStorePort, LoginLimiterPort, PasswordVerifierPort, SessionStorePort, SessionTokenPort
-from assistant_rh_api.core.runtime import Group, Session
+from assistant_rh_api.core.models.auth import Group, Session
+from assistant_rh_api.core.ports.auth import GroupStorePort, LoginLimiterPort, PasswordVerifierPort, SessionStorePort, SessionTokenPort
+from assistant_rh_api.core.ports.system import ClockPort
 
 MINISTRIES = frozenset(("matte", "mso", "mi", "masa"))
 SESSION_LIFETIME = timedelta(hours=8)
