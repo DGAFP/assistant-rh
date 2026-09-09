@@ -90,6 +90,12 @@ def test_malformed_settings_are_not_silently_defaulted_or_disclosed(values):
         from_runtime_values(values)
 
 
+@pytest.mark.parametrize("tables", [False, 0, "", {}])
+def test_falsy_malformed_tables_are_rejected_before_defaulting(tables):
+    with pytest.raises(RAGConfigurationError, match="^rag_configuration_error$"):
+        from_runtime_values(freeze_json({"v3_tables": tables}))
+
+
 @pytest.mark.anyio
 async def test_next_request_refreshes_while_inflight_snapshot_is_stable():
     store = AsyncMock()

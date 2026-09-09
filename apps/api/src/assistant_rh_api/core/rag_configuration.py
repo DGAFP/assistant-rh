@@ -38,9 +38,11 @@ def from_runtime_values(values: ConfigValues) -> RAGConfig:
             raise RAGConfigurationError()
         return cast(T, value)
 
-    tables = values.get("v3_tables") or ("matte", "service_public", "dgafp", "rgrh")
-    if not isinstance(tables, tuple) or not all(isinstance(table, str) for table in tables):
+    tables = values.get("v3_tables")
+    if tables is not None and (not isinstance(tables, tuple) or not all(isinstance(table, str) for table in tables)):
         raise RAGConfigurationError()
+    if tables is None or tables == ():
+        tables = ("matte", "service_public", "dgafp", "rgrh")
     return RAGConfig(
         retrieval=RetrievalConfig(
             tables=cast(tuple[str, ...], tables),
