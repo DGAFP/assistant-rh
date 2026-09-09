@@ -60,6 +60,12 @@ Livraison B3 — [PR #514](https://github.com/DGAFP/assistant-rh/pull/514), [iss
 
 Correctif de revue B3 — PR #514 : fermeture HTTPX automatique à EOF et fermeture explicite des streams protégées contre timeouts et annulations asyncio répétées, avec tâche de nettoyage bornée et attendue avant propagation. Huit cas de régression ajoutés, dont sept échouent sur la révision initiale ; les tests HTTPCore vérifient la libération de la connexion et de la requête du pool sans ouvrir de socket. Validation du correctif : 87 tests gateways passent ; suite API sans DSN synthétique, 117 passent / 79 ignorés ; Ruff, mypy et les trois contrats d'import passent. Revue indépendante validée après ajout du point de propagation de l'annulation AnyIO différée. Aucun appel provider ni accès DB dans cette passe.
 
+Livraison B4 — [PR #523](https://github.com/DGAFP/assistant-rh/pull/523), [issue #456](https://github.com/DGAFP/assistant-rh/issues/456) : le périmètre D6/A3 et le contrat API courant remplacent le texte historique de l'issue sur les tokens permanents et le bootstrap admin. Catalogue public filtré, login mot de passe vers session opaque de huit heures, resolver bearer commun, scope ministère explicite, `/me` et logout livrés derrière ports injectés. Empreinte de bearer indexée sans scan PBKDF2 ; vérification des mots de passe compatible Streamlit, travail crypto borné hors boucle async, erreurs uniformes et sans secrets. Aucun endpoint admin ni token permanent ajouté.
+
+Sécurité B4 : révision monotone des identifiants et de la politique groupe maintenue par trigger compatible avec les UPDATEs Streamlit ; reset concurrent et retour A → B → A ne restaurent pas de session. Quotas temporaires source/slug/globaux atomiques en PostgreSQL partagés entre processus ; refus sans prolongation du blocage, identités hachées et purge à échéance. Source réseau directe seulement, en-têtes proxy ignorés au point d'entrée Uvicorn, body login borné avant parsing. Migration additive et script de rollback transactionnel avec révocation préalable ; les mots de passe existants restent intacts. Le quota visiteur Streamlit appartient à E1 et le test ingress à D4 ; pas de bascule ni migration distante dans B4.
+
+Validation B4 : **259 tests API passent** sur PostgreSQL/pgvector synthétique local ; **38 tests historiques** groupes/scope/prompts passent ; Ruff, mypy (38 fichiers) et les trois contrats d'import passent. Couverture domaine/HTTP, PBKDF2 réel avec mot de passe synthétique, parcours FastAPI complet, concurrence quotas, reset/login, absence de résurrection, migration idempotente et rollback. Revue indépendante sans finding restant après corrections Unicode/parsing et maintien du plafond de quatre KDF sous annulations asyncio répétées ; régressions dédiées. Aucun appel provider, migration distante ni déploiement.
+
 ## Reports depuis le runtime existant
 
 > Format : date · commit/PR du runtime existant · fichiers touchés · reporté vers `assistant_rh_api.core` · tests/preuve · statut (`reporté` / `à reporter`).
@@ -73,3 +79,16 @@ _(vide — aucun report en attente)_
 - **2026-09-04 — observabilité admin** : évaluer Grafana/Tempo pour métriques et traces opérationnelles, et LangSmith pour l'inspection RAG/LLM si l'hébergement, la rétention et le masquage des données RH sont approuvés. LangSmith reste optionnel et n'impose pas LangChain.
 - **2026-09-04 — agentic RAG** : prototyper après M4 un agent borné (sélection de source, reformulation ou retry limité) et le comparer au pipeline déterministe sur le goldset avant toute bascule produit.
 - **2026-09-04 — admin-hardening** : restreindre l'accès réseau, créer des identifiants DB dédiés et bornés, auditer les actions sensibles, déplacer le DDL runtime historique vers des migrations, repointer tous les consommateurs admin puis supprimer `packages/rag-pipeline`. Réévaluer ensuite une extraction vers endpoints admin ou RAG-ops, sans bloquer la migration publique.
+
+### Correctifs de revue B4 — PR #523
+
+Catalogue aligné sur Streamlit (`priority DESC`, `slug ASC`). La stack locale
+initialise les fixtures synthétiques et les migrations B2/B4 dans une transaction,
+avec un groupe de démonstration public ; la CI vérifie le parcours HTTP réel.
+Les sessions expirées/révoquées sont purgées par lots indexés bornés à la création
+et chaque minute pendant le lifespan, sans supprimer les sessions actives ni
+l'audit. Les tests couvrent les lots concurrents, les lignes verrouillées et la
+reprise après indisponibilité DB et le shutdown pendant une transaction.
+Validation : 267 tests API, 38 tests historiques, mypy sur 39 fichiers et trois
+contrats d’import passent ; bootstrap vierge et smoke HTTP réel validés. Aucun ajout d'utilisateurs individuels ni
+changement des droits ministériels dans cette correction.

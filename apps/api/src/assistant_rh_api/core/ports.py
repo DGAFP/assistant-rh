@@ -69,6 +69,22 @@ class SessionStorePort(Protocol):
     async def revoke(self, token_hash: str, now: datetime) -> None: ...
 
 
+class PasswordVerifierPort(Protocol):
+    async def verify(self, password: str, stored_hash: str | None) -> bool: ...
+
+
+class SessionTokenPort(Protocol):
+    def issue(self) -> str: ...
+
+    def digest(self, token: str) -> str | None: ...
+
+
+class LoginLimiterPort(Protocol):
+    async def acquire(self, source: str, slug: str) -> None:
+        """Reserve a password attempt or raise LoginRateLimited before hashing."""
+        ...
+
+
 class SearchPort(Protocol):
     async def search(self, request: SearchRequest) -> tuple[RawChunk, ...]: ...
 

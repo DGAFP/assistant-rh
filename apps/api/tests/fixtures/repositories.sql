@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS public.user_groups (
     visible BOOLEAN NOT NULL DEFAULT TRUE, is_admin BOOLEAN NOT NULL DEFAULT FALSE, password_hash TEXT,
     allowed_ministries JSONB NOT NULL DEFAULT '["matte"]', default_ministry TEXT NOT NULL DEFAULT 'matte'
 );
+ALTER TABLE public.user_groups ADD COLUMN IF NOT EXISTS icon VARCHAR(16) NOT NULL DEFAULT '';
+ALTER TABLE public.user_groups ADD COLUMN IF NOT EXISTS color VARCHAR(16) NOT NULL DEFAULT '';
 CREATE TABLE IF NOT EXISTS public.system_prompts (
     name VARCHAR(100) PRIMARY KEY, content TEXT NOT NULL, is_active BOOLEAN DEFAULT TRUE
 );

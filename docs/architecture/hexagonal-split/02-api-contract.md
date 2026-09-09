@@ -33,7 +33,7 @@
 
 ### Authentification du produit Streamlit
 
-`GET /v1/auth/groups` liste uniquement les métadonnées d'affichage des groupes `visible=true`, non-admin, dotés d'un mot de passe et dont le slug n'est pas le sentinel structurel `default`, ordonnées par priorité puis slug :
+`GET /v1/auth/groups` liste uniquement les métadonnées d'affichage des groupes `visible=true`, non-admin, dotés d'un mot de passe et dont le slug n'est pas le sentinel structurel `default`, ordonnées par priorité décroissante puis slug croissant :
 
 ```json
 {
