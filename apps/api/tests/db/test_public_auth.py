@@ -10,7 +10,7 @@ import psycopg
 import pytest
 from assistant_rh_api.core.auth import AuthService, InvalidCredentials, LoginRateLimited
 from assistant_rh_api.core.errors import DatabaseConflict
-from assistant_rh_api.core.runtime import Session
+from assistant_rh_api.core.models.auth import Session
 from assistant_rh_api.db.auth_stores import GroupStore, SessionStore
 from assistant_rh_api.db.dsn import DatabaseSettings
 from assistant_rh_api.db.login_limits import LoginLimits, PostgresLoginLimiter

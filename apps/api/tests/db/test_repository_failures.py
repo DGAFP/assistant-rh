@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 from assistant_rh_api.core.errors import DatabaseUnavailable
-from assistant_rh_api.core.runtime import SearchRequest
+from assistant_rh_api.core.models.retrieval import SearchRequest
 from assistant_rh_api.db.auth_stores import GroupStore, SessionStore
 from assistant_rh_api.db.content_store import ContentStore
 from assistant_rh_api.db.feedback_store import FeedbackStore

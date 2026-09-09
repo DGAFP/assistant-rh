@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 from assistant_rh_api.core.inference import InferenceFailure, RankedDocument
-from assistant_rh_api.core.ports import EmbeddingPort, RerankerPort
+from assistant_rh_api.core.ports.inference import EmbeddingPort, RerankerPort
 from assistant_rh_api.gateways.embeddings import EmbeddingCircuit, EmbeddingGateway
 from assistant_rh_api.gateways.rerank import RerankerGateway
 

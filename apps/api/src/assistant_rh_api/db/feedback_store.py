@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from psycopg.rows import dict_row
 
 from assistant_rh_api.core.errors import DatabaseFailure
-from assistant_rh_api.core.ports import FeedbackStorePort
-from assistant_rh_api.core.runtime import Feedback, FeedbackAnalysisData, FeedbackInput
+from assistant_rh_api.core.models.conversations import Feedback, FeedbackAnalysisData, FeedbackInput
+from assistant_rh_api.core.ports.conversations import FeedbackStorePort
 from assistant_rh_api.db.content_store import immutable_object
 from assistant_rh_api.db.pool import Database
 from assistant_rh_api.db.revisions import content_revision, freeze_json

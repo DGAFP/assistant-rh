@@ -71,7 +71,8 @@ moon run api:docker-build
 
 ## Core contracts and PostgreSQL foundation (B1)
 
-`core/ports.py` defines the initial config, prompt, acronym, clock and ID ports.
+`core/ports/configuration.py` defines config, prompt and acronym ports;
+`core/ports/system.py` defines clock and ID ports.
 Stores are async and return immutable `Snapshot` values with an opaque content
 revision and an explicit origin. A missing row is `None`; an unavailable database
 raises an application error. B2/B3 extend these ports alongside their concrete
@@ -168,7 +169,9 @@ ports. They are additive: only `/healthz` is wired to HTTP at this stage.
 | `ChatRunStore` | INSERT-only finalization of run, ordered served sources and all trace events in one transaction. A duplicate completion ID fails instead of overwriting the original. |
 | `FeedbackStore` | Group ownership, current feedback, exact retries without writes, atomic audit/replacement, human annotations preserved and AI analysis reset. Analysis writes reject stale generations. |
 
-`core/runtime.py` contains the input/output values; SQL identifiers and driver
+`core/models/` groups input/output values by domain: `configuration`, `auth`,
+`retrieval` and `conversations`. The matching `core/ports/` modules define their
+operations; consumers import these modules explicitly. SQL identifiers and driver
 objects stay in `db/`. Callers supply already authorized logical sources,
 complete run records and normalized feedback. `CompletionIds` generates
 `chatcmpl-` plus a full UUID (41 characters); legacy short IDs remain readable.
@@ -229,7 +232,7 @@ API_SYNTHETIC_POSTGRES_DSN='postgresql://assistant_rh_api:assistant_rh_api@127.0
 
 ## Inference gateways (B3, #455)
 
-`core/inference.py` and `core/ports.py` define immutable inference values and
+`core/inference.py` and `core/ports/inference.py` define immutable inference values and
 `LLMPort`, `EmbeddingPort`, `RerankerPort`. `gateways/` implements them through
 an injected `httpx.AsyncClient`; the core imports neither HTTPX nor provider SDKs.
 Construction reads no environment, creates no singleton and performs no I/O.

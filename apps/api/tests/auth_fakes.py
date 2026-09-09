@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 from assistant_rh_api.core.auth import AuthService
-from assistant_rh_api.core.runtime import Group
+from assistant_rh_api.core.models.auth import Group
 from assistant_rh_api.gateways.auth import SessionTokens
 
 

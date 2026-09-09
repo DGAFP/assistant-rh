@@ -1,7 +1,7 @@
 from dataclasses import replace
 
 import pytest
-from assistant_rh_api.core.runtime import SearchRequest
+from assistant_rh_api.core.models.retrieval import SearchRequest
 from assistant_rh_api.db.content_store import TABLES, ContentStore
 from assistant_rh_api.db.search_store import SearchStore
 from psycopg import sql

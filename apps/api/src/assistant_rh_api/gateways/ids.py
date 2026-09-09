@@ -2,7 +2,7 @@
 
 from uuid import uuid4
 
-from assistant_rh_api.core.ports import IdGeneratorPort
+from assistant_rh_api.core.ports.system import IdGeneratorPort
 
 
 class CompletionIds(IdGeneratorPort):

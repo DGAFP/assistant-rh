@@ -1,0 +1,16 @@
+"""Retrieval boundaries; adapters own I/O and lifecycle state."""
+
+from typing import Protocol
+
+from assistant_rh_api.core.models.retrieval import Document, LegalReference, RawChunk, SearchRequest, Section
+
+
+class SearchPort(Protocol):
+    async def search(self, request: SearchRequest) -> tuple[RawChunk, ...]: ...
+
+
+class ContentStorePort(Protocol):
+    async def documents(self, ids: tuple[str, ...]) -> tuple[Document, ...]: ...
+    async def sections(self, ids: tuple[str, ...]) -> tuple[Section, ...]: ...
+    async def references(self, numbers: tuple[str, ...]) -> tuple[LegalReference, ...]: ...
+    async def chunks(self, source: str, ids: tuple[str, ...]) -> tuple[RawChunk, ...]: ...

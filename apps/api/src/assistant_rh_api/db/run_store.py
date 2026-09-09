@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from assistant_rh_api.core.ports import ChatRunStorePort
-from assistant_rh_api.core.runtime import ChatRun, RunSource, TraceEvent
+from assistant_rh_api.core.models.conversations import ChatRun, RunSource, TraceEvent
+from assistant_rh_api.core.ports.conversations import ChatRunStorePort
 from assistant_rh_api.db.pool import Database
 from assistant_rh_api.db.revisions import freeze_json
 

@@ -6,7 +6,7 @@ import anyio
 import httpx
 import pytest
 from assistant_rh_api.core.inference import ChatRequest, InferenceFailure, Message, StreamCompleted, TextDelta
-from assistant_rh_api.core.ports import LLMPort
+from assistant_rh_api.core.ports.inference import LLMPort
 from assistant_rh_api.gateways.chat import ChatGateway
 from assistant_rh_api.gateways.settings import RequestPolicy
 

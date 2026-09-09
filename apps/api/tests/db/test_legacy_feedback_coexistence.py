@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import psycopg
 import pytest
-from assistant_rh_api.core.runtime import ChatRun, FeedbackInput
+from assistant_rh_api.core.models.conversations import ChatRun, FeedbackInput
 from assistant_rh_api.db.feedback_store import FeedbackStore
 from assistant_rh_api.db.run_store import ChatRunStore
 from assistant_rh_api.gateways.ids import CompletionIds
