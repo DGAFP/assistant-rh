@@ -118,3 +118,46 @@ smoke HTTP local et SDK synchrone contre Uvicorn/PostgreSQL réels verts, avec r
 après logout. Ruff et les trois contrats d'import passent. Docker indisponible en
 local : build image et smoke Compose à vérifier en CI. Aucun
 changement du runtime RAG servi, aucune migration ou activation distante.
+
+
+### A5-08 — snapshots de configuration du runtime servi (2026-09-09)
+
+Branche `fix/rag-config-request-snapshots`, depuis `dev` c2092b0. Le chemin
+`01_Chatbot.py` charge et valide la configuration puis assemble le pipeline avant
+la saisie, à chaque exécution de page. Le cache config de 15 secondes est retiré :
+une mise à jour admin committée est relue à l'exécution suivante, sans redémarrage.
+Le snapshot déjà injecté reste stable jusqu'à la fin du stream. Coût explicite :
+une lecture config et une construction des composants par exécution de page,
+y compris les reruns sans question ; aucun cache interprocessus ajouté.
+
+`runtime_config.py` extrait les valeurs et le mapping historiques sans DB ;
+`config.py` conserve des builders mutables compatibles avec les évaluations,
+mais `Pipeline` en capture une copie récursivement figée (tables en tuple,
+sérialisation JSON historique en liste). Le fallback admin est neuf à chaque
+lecture et le défaut exporté est figé. Le catalogue de tables est immuable ; les
+overrides DB/environnement existants sont conservés et les noms des tables de
+comparaison sont résolus au wiring, également pour l'analyse des feedbacks.
+Le chemin d'import public de la configuration ne charge plus les adaptateurs ;
+les anciens exports de helpers DB restent disponibles à la demande.
+
+Validation au chargement : types, nombres finis et clés de tables connues. Pas de
+nouvelles bornes de tuning ; valeurs par défaut, mapping historique (dont narrow
+vers standard) et fallback DB indisponible vers défauts préservés. Pas de fichier
+de paramètres supplémentaire, migration, appel provider ou activation distante.
+
+**A5-08 en cours, non close.** B1 historique est corrigé sur le chemin servi ;
+C2/C5 devront porter cette capture dans `assistant_rh_api.core` via
+`ConfigStorePort`/`Snapshot[ConfigValues]` et composer prompts/acronymes, lorsque
+le moteur API sera branché (le catalogue B5 ne fournit pas ce moteur). Les
+builders et réexports de compatibilité seront retirés en F3/admin-hardening.
+A5-03 reste ouverte pour les prompts/acronymes ; A5-10 conserve CAS et DDL admin.
+Le fallback historique ne distingue toujours pas absence de ligne et panne DB
+(A5-12). Les nouveaux ports API ne dépendent pas du package historique.
+
+Preuves : régressions de chargement initial, validation, update admin committé et
+relecture, stabilité des composants, sérialisation, fallback isolé, overrides
+environnement dans retrieval et feedback, import public sans adaptateur.
+Revue indépendante favorable après correction des alias feedback et test de
+l’import public. Suite complète locale : **1 395 tests passent, 15 ignorés**,
+dont 14 régressions de snapshots ; Ruff et format passent. Les tests HTTP
+utilisent leur serveur synthétique local. Aucun merge ni déploiement.

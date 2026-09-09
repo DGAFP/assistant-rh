@@ -7,10 +7,11 @@ Pure configuration – no DB access, no I/O.  All database helpers live in
 
 from __future__ import annotations
 
-import os
-from dataclasses import asdict, dataclass, field
+from copy import deepcopy
+from dataclasses import FrozenInstanceError, asdict, dataclass, field, fields
 from enum import Enum
-from typing import Dict, List
+from types import MappingProxyType
+from typing import Any, ClassVar, TypeVar
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Enums
@@ -58,75 +59,114 @@ class ChunkTable:
     has_sections: bool = False
 
 
-CHUNK_TABLES: Dict[str, ChunkTable] = {
-    "matte": ChunkTable(
-        "rag_chunks_matte",
-        embed_col_albert="embedding_m3",
-        tsv_col="text_tsv",
-        publisher="MATTE",
-        has_sections=True,
-    ),
-    "mso": ChunkTable(
-        "rag_chunks_mso",
-        embed_col_albert="embedding_m3",
-        tsv_col="text_tsv",
-        publisher="MSO",
-        has_sections=True,
-    ),
-    "mi": ChunkTable(
-        "rag_chunks_mi",
-        embed_col_albert="embedding_m3",
-        tsv_col="text_tsv",
-        publisher="MI",
-        has_sections=True,
-    ),
-    "masa": ChunkTable(
-        "rag_chunks_masa",
-        embed_col_albert="embedding_m3",
-        tsv_col="text_tsv",
-        publisher="MASA",
-        has_sections=True,
-    ),
-    "service_public": ChunkTable(
-        "rag_chunks_service_public",
-        embed_col_albert="embedding_m3",
-        tsv_col="text_tsv",
-        publisher="Service-Public",
-        has_sections=True,
-    ),
-    "service_public_scw": ChunkTable(
-        os.getenv("SERVICE_PUBLIC_COMPARE_TABLE", "rag_chunks_service_public_scw"),
-        embed_col_albert="embedding_m3",
-        tsv_col="text_tsv",
-        publisher="Service-Public (Scaleway)",
-        has_sections=False,
-    ),
-    "dgafp": ChunkTable(
-        "rag_chunks_dgafp",
-        id_col="chunk_id",
-        embed_col_albert="embedding_m3",
-        tsv_col="chunk_text_tsv",
-        publisher="DGAFP",
-        has_sections=False,
-    ),
-    "dgafp_scw": ChunkTable(
-        os.getenv("DGAFP_COMPARE_TABLE", "rag_chunks_dgafp_scw"),
-        id_col="chunk_id",
-        embed_col_albert="embedding_m3",
-        tsv_col="chunk_text_tsv",
-        publisher="DGAFP (Scaleway)",
-        has_sections=False,
-    ),
-    "rgrh": ChunkTable("rag_chunks_rgrh", embed_col_albert="embedding_m3", tsv_col="text_tsv", publisher="RGRH", has_sections=False),
-}
+CHUNK_TABLES = MappingProxyType(
+    {
+        "matte": ChunkTable(
+            "rag_chunks_matte",
+            embed_col_albert="embedding_m3",
+            tsv_col="text_tsv",
+            publisher="MATTE",
+            has_sections=True,
+        ),
+        "mso": ChunkTable(
+            "rag_chunks_mso",
+            embed_col_albert="embedding_m3",
+            tsv_col="text_tsv",
+            publisher="MSO",
+            has_sections=True,
+        ),
+        "mi": ChunkTable(
+            "rag_chunks_mi",
+            embed_col_albert="embedding_m3",
+            tsv_col="text_tsv",
+            publisher="MI",
+            has_sections=True,
+        ),
+        "masa": ChunkTable(
+            "rag_chunks_masa",
+            embed_col_albert="embedding_m3",
+            tsv_col="text_tsv",
+            publisher="MASA",
+            has_sections=True,
+        ),
+        "service_public": ChunkTable(
+            "rag_chunks_service_public",
+            embed_col_albert="embedding_m3",
+            tsv_col="text_tsv",
+            publisher="Service-Public",
+            has_sections=True,
+        ),
+        "service_public_scw": ChunkTable(
+            "rag_chunks_service_public_scw",
+            embed_col_albert="embedding_m3",
+            tsv_col="text_tsv",
+            publisher="Service-Public (Scaleway)",
+            has_sections=False,
+        ),
+        "dgafp": ChunkTable(
+            "rag_chunks_dgafp",
+            id_col="chunk_id",
+            embed_col_albert="embedding_m3",
+            tsv_col="chunk_text_tsv",
+            publisher="DGAFP",
+            has_sections=False,
+        ),
+        "dgafp_scw": ChunkTable(
+            "rag_chunks_dgafp_scw",
+            id_col="chunk_id",
+            embed_col_albert="embedding_m3",
+            tsv_col="chunk_text_tsv",
+            publisher="DGAFP (Scaleway)",
+            has_sections=False,
+        ),
+        "rgrh": ChunkTable("rag_chunks_rgrh", embed_col_albert="embedding_m3", tsv_col="text_tsv", publisher="RGRH", has_sections=False),
+    }
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Pipeline config dataclasses
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+class SnapshotConfig:
+    """Historical mutable builders become read-only when captured for execution."""
+
+    _snapshot: ClassVar[bool] = False
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if self._snapshot:
+            raise FrozenInstanceError("Request configuration is immutable")
+        object.__setattr__(self, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if self._snapshot:
+            raise FrozenInstanceError("Request configuration is immutable")
+        object.__delattr__(self, name)
+
+
+ConfigT = TypeVar("ConfigT", bound=SnapshotConfig)
+
+
+def freeze_config(config: ConfigT) -> ConfigT:
+    """Detach a builder, including nested collections, then freeze every node."""
+    if isinstance(config, SnapshotConfig) and config._snapshot:
+        return config
+    result = deepcopy(config)
+
+    def freeze(value: Any) -> Any:
+        if isinstance(value, SnapshotConfig):
+            for item in fields(value):
+                object.__setattr__(value, item.name, freeze(getattr(value, item.name)))
+            object.__setattr__(value, "_snapshot", True)
+        elif isinstance(value, (list, tuple)):
+            return tuple(freeze(item) for item in value)
+        return value
+
+    return freeze(result)
+
+
 @dataclass
-class RetrievalConfig:
+class RetrievalConfig(SnapshotConfig):
     search_mode: SearchMode = SearchMode.SEMANTIC
     embedding_model: EmbeddingModel = EmbeddingModel.ALBERT
     initial_top_k: int = 30
@@ -140,7 +180,7 @@ class RetrievalConfig:
     # 0 = laisser le défaut serveur.
     ivfflat_probes: int = 5
     alpha: float = 0.5
-    tables: List[str] = field(default_factory=lambda: ["matte", "service_public", "dgafp", "rgrh"])
+    tables: list[str] | tuple[str, ...] = field(default_factory=lambda: ["matte", "service_public", "dgafp", "rgrh"])
     enable_chunk_reranker: bool = False
     chunk_rerank_top_k: int = 30
     enable_selector_retry: bool = True
@@ -150,6 +190,7 @@ class RetrievalConfig:
     def to_dict(self) -> dict:
         return {
             **asdict(self),
+            "tables": list(self.tables),
             "search_mode": self.search_mode.value,
             "embedding_model": self.embedding_model.value,
             "selector_retry_search_mode": self.selector_retry_search_mode.value,
@@ -157,7 +198,7 @@ class RetrievalConfig:
 
 
 @dataclass
-class SectionAggregationConfig:
+class SectionAggregationConfig(SnapshotConfig):
     weight_max_score: float = 0.5
     weight_mean_score: float = 0.3
     weight_chunk_count: float = 0.2
@@ -189,7 +230,7 @@ class SectionAggregationConfig:
 
 
 @dataclass
-class ContextBuildConfig:
+class ContextBuildConfig(SnapshotConfig):
     context_mode: ContextMode = ContextMode.STANDARD
 
     # Standard mode defaults
@@ -236,7 +277,7 @@ class ContextBuildConfig:
 
 
 @dataclass
-class SelectorConfig:
+class SelectorConfig(SnapshotConfig):
     """Optional LLM-based source filter (toggle)."""
 
     enabled: bool = False
@@ -261,7 +302,7 @@ class SelectorConfig:
 
 
 @dataclass
-class GenerationConfig:
+class GenerationConfig(SnapshotConfig):
     provider: LLMProvider = LLMProvider.ALBERT
     model: str = "openweight-large"
     temperature: float = 0.0
@@ -274,7 +315,7 @@ class GenerationConfig:
 
 
 @dataclass
-class QueryProcessorConfig:
+class QueryProcessorConfig(SnapshotConfig):
     enable_acronym_expansion: bool = True
     enable_intent_gating: bool = True
     intent_model: str = "openweight-medium"
@@ -286,7 +327,7 @@ class QueryProcessorConfig:
 
 
 @dataclass
-class RAGConfig:
+class RAGConfig(SnapshotConfig):
     """Complete pipeline configuration for RAG V3 Clean."""
 
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
@@ -313,23 +354,29 @@ def get_default_config() -> RAGConfig:
     return RAGConfig()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Re-exports from db_helpers for backward compatibility
-# ─────────────────────────────────────────────────────────────────────────────
-# Modules that import e.g. `from .config import get_dsn` will keep working.
-
-from .db_helpers import (  # noqa: E402, F401
-    DEFAULT_SYSTEM_PROMPT,
-    PROMPT_TYPES,
-    _db_conn,
-    get_acronym_dict,
-    get_dsn,
-    get_prompt_content,
-    get_runtime_config,
-    list_prompts,
-    list_system_prompts,
-    load_prompt,
-    save_prompt,
-    today_fr,
-    update_runtime_config,
+# Legacy imports remain available lazily; pure config import does not load DB helpers.
+_DB_EXPORTS = frozenset(
+    {
+        "DEFAULT_SYSTEM_PROMPT",
+        "PROMPT_TYPES",
+        "_db_conn",
+        "get_acronym_dict",
+        "get_dsn",
+        "get_prompt_content",
+        "get_runtime_config",
+        "list_prompts",
+        "list_system_prompts",
+        "load_prompt",
+        "save_prompt",
+        "today_fr",
+        "update_runtime_config",
+    }
 )
+
+
+def __getattr__(name: str) -> Any:
+    if name in _DB_EXPORTS:
+        from . import db_helpers
+
+        return getattr(db_helpers, name)
+    raise AttributeError(name)

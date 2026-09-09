@@ -22,6 +22,7 @@ import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from difflib import SequenceMatcher
+from types import MappingProxyType
 from typing import Dict, List, Tuple
 
 import psycopg
@@ -34,6 +35,7 @@ from .config import (
     RetrievalConfig,
     SearchMode,
 )
+from .configuration_wiring import load_chunk_tables
 from .db_helpers import get_dsn
 from .embedder import FallbackEmbedder
 from .models import RetrievedChunk
@@ -94,8 +96,14 @@ class Retriever:
         chunks = r.retrieve("Qu'est-ce que le RIFSEEP ?")
     """
 
-    def __init__(self, config: RetrievalConfig, dsn: str | None = None):
+    chunk_tables = CHUNK_TABLES
+
+    def __init__(self, config: RetrievalConfig, dsn: str | None = None, *, chunk_tables=None):
         self.config = config
+        self.chunk_tables = load_chunk_tables() if chunk_tables is None else MappingProxyType(dict(chunk_tables))
+        self._TABLE_META_COLS = dict(type(self)._TABLE_META_COLS)
+        for key in ("service_public_scw", "dgafp_scw"):
+            self._TABLE_META_COLS[self.chunk_tables[key].name] = self._TABLE_META_COLS[CHUNK_TABLES[key].name]
         self.dsn = dsn or get_dsn()
         self._embedder: FallbackEmbedder | None = None
         self._table_columns_cache: dict[str, set[str]] = {}
@@ -195,9 +203,9 @@ class Retriever:
         Legacy unscoped retrieval keeps the previous partial-result behavior.
         """
         t0 = time.time()
-        _force_names = {CHUNK_TABLES[k].name for k in (force_hybrid_tables or set()) if k in CHUNK_TABLES}
+        _force_names = {self.chunk_tables[k].name for k in (force_hybrid_tables or set()) if k in self.chunk_tables}
         table_keys = self.config.tables if tables is None else tables
-        unknown_table_keys = [k for k in table_keys if k not in CHUNK_TABLES]
+        unknown_table_keys = [k for k in table_keys if k not in self.chunk_tables]
         if unknown_table_keys and strict_table_errors:
             raise ValueError(f"Unknown retrieval table key(s): {', '.join(unknown_table_keys)}")
 
@@ -212,7 +220,7 @@ class Retriever:
         is_hybrid = effective_search_mode == SearchMode.HYBRID
         is_lexical = effective_search_mode == SearchMode.LEXICAL
 
-        chunk_tables = [CHUNK_TABLES[k] for k in table_keys if k in CHUNK_TABLES]
+        chunk_tables = [self.chunk_tables[k] for k in table_keys if k in self.chunk_tables]
         if not chunk_tables:
             return []
 

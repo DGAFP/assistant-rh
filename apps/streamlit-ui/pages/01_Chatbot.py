@@ -46,7 +46,7 @@ load_dotenv()
 
 # RAG V3 Clean pipeline (self-contained, zero external deps)
 from assistant_rh_rag_pipeline import create_pipeline as create_pipeline_v3_clean
-from assistant_rh_rag_pipeline.admin import get_rag_config, init_config_table, runtime_config_to_rag_config
+from assistant_rh_rag_pipeline.admin import init_config_table
 from assistant_rh_rag_pipeline.chat_logger import build_log_row, build_non_rag_row
 from assistant_rh_rag_pipeline.chat_logger import log_run as _log_run_v3
 from assistant_rh_rag_pipeline.chat_logger import log_trace_events as _log_trace_events_v3
@@ -55,6 +55,7 @@ from assistant_rh_rag_pipeline.config import (
     get_prompt_content,
     today_fr,
 )
+from assistant_rh_rag_pipeline.configuration_wiring import load_application_configuration
 from assistant_rh_rag_pipeline.db_helpers import create_engine_from_env, has_dsn
 from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG
 from assistant_rh_rag_pipeline.models import Chunk
@@ -711,12 +712,14 @@ if not is_admin():
     )
 
 
-@st.cache_data(ttl=15, show_spinner=False)
-def load_runtime_config():
-    return get_rag_config()
-
-
-rag_config = load_runtime_config()
+# Compose and validate before accepting a question, on every page/request run.
+try:
+    application_config = load_application_configuration()
+    pipeline_v3 = create_pipeline_v3_clean(application_config.pipeline, chunk_tables=application_config.chunk_tables)
+except ValueError:
+    st.error("Configuration RAG invalide. Contactez un administrateur.")
+    st.stop()
+rag_config = application_config.runtime
 
 
 def _ministry_label(ministry_id: str) -> str:
@@ -1313,9 +1316,7 @@ if query:
     if True:
         try:
             # Créer la config V3 Clean
-            config_v3 = runtime_config_to_rag_config(rag_config)
-
-            pipeline_v3 = create_pipeline_v3_clean(config_v3)
+            config_v3 = application_config.pipeline
 
             # 📜 Construire l'historique de conversation pour intent gating + query enrichment
             MAX_HISTORY_TURNS_V3 = 5

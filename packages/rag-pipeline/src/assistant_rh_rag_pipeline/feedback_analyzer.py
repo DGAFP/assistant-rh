@@ -38,6 +38,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from .config import CHUNK_TABLES
+from .configuration_wiring import load_chunk_tables
 
 logger = logging.getLogger(__name__)
 
@@ -214,14 +215,10 @@ def _save_analysis(engine, feedback_id: int, category: str, reason: str, revisio
 # On-demand content resolution from lightweight IDs
 # ---------------------------------------------------------------------------
 
-_TABLE_ID_COL = {table.name: table.id_col for table in CHUNK_TABLES.values()}
-
-_ALLOWED_TABLES = set(_TABLE_ID_COL.keys())
-_TABLE_BY_ALIAS = {alias.lower(): table.name for key, table in CHUNK_TABLES.items() for alias in (key, table.name, table.publisher) if alias}
 _MINISTRY_CHUNK_TABLES = {key: CHUNK_TABLES[key].name for key in ("matte", "mso", "mi", "masa")}
 
 
-def _chunk_table_for_ref(ref: Dict[str, Any], selected_ministry: Optional[str]) -> str:
+def _chunk_table_for_ref(ref: Dict[str, Any], selected_ministry: Optional[str], *, chunk_tables=None) -> str:
     """Resolve a logged chunk ref to a code-owned, allow-listed table name.
 
     Current traces store shared sources as canonical table names, but ministry
@@ -233,7 +230,9 @@ def _chunk_table_for_ref(ref: Dict[str, Any], selected_ministry: Optional[str]) 
         "",
     )
     source = str(raw_source).strip()
-    table = _TABLE_BY_ALIAS.get(source.lower())
+    chunk_tables = load_chunk_tables() if chunk_tables is None else chunk_tables
+    aliases = {alias.lower(): table.name for key, table in chunk_tables.items() for alias in (key, table.name, table.publisher) if alias}
+    table = aliases.get(source.lower())
     if table:
         return table
 
@@ -253,20 +252,22 @@ def _resolve_chunk_content(engine, chunk_refs, selected_ministry: Optional[str] 
     if not refs or not isinstance(refs, list):
         return []
 
+    chunk_tables = load_chunk_tables()
+    table_id_columns = {table.name: table.id_col for table in chunk_tables.values()}
     by_table: Dict[str, List[str]] = {}
     for r in refs:
         if not isinstance(r, dict):
             continue
         chunk_id = r.get("chunk_id") or r.get("id")
-        tbl = _chunk_table_for_ref(r, selected_ministry)
-        if chunk_id and tbl in _ALLOWED_TABLES:
+        tbl = _chunk_table_for_ref(r, selected_ministry, chunk_tables=chunk_tables)
+        if chunk_id and tbl in table_id_columns:
             by_table.setdefault(tbl, []).append(str(chunk_id))
 
     resolved: Dict[Tuple[str, str], str] = {}
     try:
         with engine.connect() as conn:
             for tbl, ids in by_table.items():
-                id_col = _TABLE_ID_COL[tbl]
+                id_col = table_id_columns[tbl]
                 q = text(f"SELECT {id_col} AS cid, chunk_text FROM {tbl} WHERE {id_col} = ANY(:ids)")
                 rows = conn.execute(q, {"ids": ids})
                 for row in rows:
@@ -280,7 +281,7 @@ def _resolve_chunk_content(engine, chunk_refs, selected_ministry: Optional[str] 
             continue
         entry = dict(r)
         chunk_id = str(r.get("chunk_id") or r.get("id") or "")
-        tbl = _chunk_table_for_ref(r, selected_ministry)
+        tbl = _chunk_table_for_ref(r, selected_ministry, chunk_tables=chunk_tables)
         key = (tbl, chunk_id)
         existing_text = entry.get("text") or entry.get("chunk_text")
         if existing_text:

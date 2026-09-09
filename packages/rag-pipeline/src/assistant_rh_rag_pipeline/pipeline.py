@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, Generator, List, Optional
 
-from .config import RAGConfig, SearchMode
+from .config import RAGConfig, SearchMode, freeze_config
 from .context_builder import ContextBuilder
 from .context_selector import ContextSelector
 from .db_helpers import get_dsn
@@ -161,12 +161,13 @@ class Pipeline:
         print(result.answer)
     """
 
-    def __init__(self, config: RAGConfig, dsn: str | None = None):
+    def __init__(self, config: RAGConfig, dsn: str | None = None, *, chunk_tables=None):
+        config = freeze_config(config)
         self.config = config
         dsn = dsn or get_dsn()
 
         self._query_processor = QueryProcessor(config.query_processor, verbose=config.verbose)
-        self._retriever = Retriever(config.retrieval, dsn=dsn)
+        self._retriever = Retriever(config.retrieval, dsn=dsn, chunk_tables=chunk_tables)
         self._aggregator = SectionAggregator(config.aggregation, dsn=dsn)
         self._context_builder = ContextBuilder(config.context, dsn=dsn)
         # Full pipeline runs create request-scoped selector instances to avoid
