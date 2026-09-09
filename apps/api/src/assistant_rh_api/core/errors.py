@@ -12,6 +12,10 @@ class DatabaseConfigurationError(ApplicationError):
     code = "database_configuration_error"
 
 
+class RAGConfigurationError(ApplicationError):
+    code = "rag_configuration_error"
+
+
 class DatabaseUnavailable(ApplicationError):
     code = "database_unavailable"
 

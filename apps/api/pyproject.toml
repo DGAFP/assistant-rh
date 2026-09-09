@@ -51,6 +51,7 @@ forbidden_modules = [
     "boto3",
     "openai",
     "requests",
+    "assistant_rh_rag_pipeline",
 ]
 
 [[tool.importlinter.contracts]]
