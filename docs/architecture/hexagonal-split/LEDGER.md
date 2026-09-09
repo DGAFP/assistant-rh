@@ -130,10 +130,12 @@ une copie détachée. Les défauts du constructeur et les défauts admin, diffé
 pour le selector et l'intent gating, sont conservés séparément. Aucun nouveau
 fichier de valeurs ni changement de `rag_config`, de l'admin ou du runtime servi.
 
-Le lifespan assemble `RAGConfigurationService` avec le `ConfigStore` B2. Le futur
+Le lifespan assemble `RAGConfigurationService` avec le `ConfigStore` B2 et charge
+un premier snapshot pour valider les types avant de servir les requêtes. Une
+configuration malformée interrompt le démarrage et ferme le pool. Le futur
 point d'entrée moteur devra appeler `load()` une fois par requête puis transmettre
-le même snapshot à chaque étape. Aucun chargement DB ni cache de configuration au
-démarrage : chaque appel relit le store, conserve sa révision et voit les UPDATEs
+le même snapshot à chaque étape. Ce chargement initial ne devient pas un cache :
+chaque appel relit le store, conserve sa révision et voit les UPDATEs
 admin suivants, sans altérer les snapshots déjà remis. Absence/panne DB conservent
 le fallback historique vers des défauts frais, avec motif explicite ; annulation
 et types malformés ne sont pas masqués. La validation ne réapplique pas les bornes
@@ -153,12 +155,14 @@ Streamlit historique (15 s) reste inchangée. Le périmètre livré est une fond
 RAG pour l'API, pas une intégration ni une preuve de parité du moteur C2–C7.
 
 
-Validation A5-08 : **319 tests API** passent sur PostgreSQL 18.4/pgvector local
+Validation A5-08 : **321 tests API** passent sur PostgreSQL 18.4/pgvector local
 exclusivement synthétique. Tests de parité contre le mapping historique, snapshots
 profondément immuables, UPDATE SQL entre deux requêtes, fallback/reprise et lifespan
 couverts. Suite historique : 1367 tests passent et 16 sont ignorés dans le sandbox ;
 les 13 cas HTTP bloqués par les sockets locales sont validés par une relance du
 module replay complet (14/14 passent). Ruff sur les chemins CI, mypy sur les deux
-nouveaux modules et les trois contrats d'import passent ; la garde core interdit
+nouveaux modules et le wiring et les trois contrats d'import passent ; la garde core interdit
 aussi le package RAG historique. Revue indépendante favorable, aucun constat
-bloquant. Aucun appel provider, migration distante, déploiement ni bascule RAG.
+bloquant après correction du test de redémarrage avec un nouveau pool.
+Chargement/validation initial, fermeture du pool sur configuration invalide et
+reprise après correction couverts. Aucun appel provider, migration distante, déploiement ni bascule RAG.

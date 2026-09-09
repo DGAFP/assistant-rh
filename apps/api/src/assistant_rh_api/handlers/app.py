@@ -49,12 +49,17 @@ def create_app(
                 runtime_database = Database(DatabaseSettings(dsn=resolve_dsn(environ=environment)))
         application.state.database = runtime_database
         if runtime_database is None:
+            if rag_configuration_service is not None:
+                await rag_configuration_service.load()
             yield
             return
         try:
             await runtime_database.open()
             if rag_configuration_service is None:
                 application.state.rag_configuration_service = RAGConfigurationService(ConfigStore(runtime_database))
+            # Validate a first snapshot without pinning dynamic admin settings.
+            # Future requests must load their own snapshot from the same service.
+            await application.state.rag_configuration_service.load()
             sessions = SessionStore(runtime_database)
             if auth_service is None:
                 application.state.auth_service = AuthService(

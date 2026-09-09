@@ -448,8 +448,9 @@ lifespan test also lists models after password login and rejects a revoked beare
 ### Configuration RAG par requête (préparation C2–C6)
 
 Le lifespan assemble `app.state.rag_configuration_service` avec le store DB B2 ;
-une instance peut être injectée dans `create_app` pour les tests. Le démarrage ne
-lit pas les valeurs de `rag_config`. À l'entrée du futur moteur, appeler
+une instance peut être injectée dans `create_app` pour les tests. Le démarrage charge et valide un
+premier snapshot de `rag_config` sans le conserver comme cache de requête. Une
+configuration de type invalide bloque le démarrage et ferme le pool. À l'entrée du futur moteur, appeler
 `await service.load()` une seule fois et garder `result.config` jusqu'à la fin de
 la requête. Le snapshot contient la configuration RAG profondément immuable, la
 révision du store et son origine. Le prochain appel relit la DB et voit les
