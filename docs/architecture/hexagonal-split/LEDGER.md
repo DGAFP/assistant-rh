@@ -120,7 +120,7 @@ local : build image et smoke Compose à vérifier en CI. Aucun
 changement du runtime RAG servi, aucune migration ou activation distante.
 
 
-### A5-08 — préparation de la configuration RAG pour le moteur API
+### A5-08 — préparation de la configuration RAG pour le moteur API — [PR #539](https://github.com/DGAFP/assistant-rh/pull/539)
 
 Reconstruction pure du `RAGConfig` historique et du mapping
 `RuntimeRAGConfig → RAGConfig` dans le core API, sans import du package historique,
