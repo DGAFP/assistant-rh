@@ -1,9 +1,11 @@
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 
 import pytest
 from assistant_rh_api.core.errors import RAGConfigurationError
 from assistant_rh_api.core.models.configuration import Snapshot
 from assistant_rh_api.core.rag_configuration import RAGConfigurationService
+from assistant_rh_api.db.settings_stores import ConfigStore
 from assistant_rh_api.handlers.app import create_app
 
 
@@ -27,3 +29,22 @@ async def test_invalid_configuration_prevents_startup():
     with pytest.raises(RAGConfigurationError):
         async with app.router.lifespan_context(app):
             pytest.fail("Invalid configuration must prevent startup")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("invalid_value", [[], None, "secret", 42, False])
+async def test_invalid_stored_structure_prevents_startup(invalid_value):
+    class DatabaseStub:
+        @asynccontextmanager
+        async def transaction(self, *, read_only):
+            cursor = AsyncMock()
+            cursor.fetchone.return_value = (invalid_value,)
+            connection = AsyncMock()
+            connection.execute.return_value = cursor
+            yield connection
+
+    service = RAGConfigurationService(ConfigStore(DatabaseStub()))
+    app = create_app(environ={}, rag_configuration_service=service)
+    with pytest.raises(RAGConfigurationError, match="^rag_configuration_error$"):
+        async with app.router.lifespan_context(app):
+            pytest.fail("Invalid stored structure must prevent startup")

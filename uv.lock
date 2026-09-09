@@ -333,6 +333,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "assistant-rh-rag-pipeline" },
     { name = "import-linter" },
     { name = "openai" },
     { name = "pytest" },
@@ -351,6 +352,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "assistant-rh-rag-pipeline", editable = "packages/rag-pipeline" },
     { name = "import-linter", specifier = ">=2.14,<3" },
     { name = "openai", specifier = ">=2.28.0,<3" },
     { name = "pytest", specifier = ">=8.0,<10" },

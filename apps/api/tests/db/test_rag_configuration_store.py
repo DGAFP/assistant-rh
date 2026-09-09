@@ -37,9 +37,10 @@ async def test_lifespan_assembles_loader_without_caching_config(repository_db):
     assert app.state.rag_configuration_service is None
 
 
-async def test_invalid_initial_db_config_closes_pool_and_allows_restart(repository_db, repository_dsn):
+@pytest.mark.parametrize("invalid_json", ['{"v3_token_budget":"invalid"}', "[]", "null", '"secret"', "42", "false"])
+async def test_invalid_initial_db_config_closes_pool_and_allows_restart(repository_db, repository_dsn, invalid_json):
     async with repository_db.transaction() as connection:
-        await connection.execute('UPDATE public.rag_config SET config = \'{"v3_token_budget":"invalid"}\' WHERE id = 1')
+        await connection.execute("UPDATE public.rag_config SET config = %s::jsonb WHERE id = 1", (invalid_json,))
     database = Database(DatabaseSettings(dsn=repository_dsn))
     app = create_app(database=database)
     try:
