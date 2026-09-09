@@ -94,7 +94,7 @@ contrats d’import passent ; bootstrap vierge et smoke HTTP réel validés. Auc
 changement des droits ministériels dans cette correction.
 
 
-Livraison B5 — [issue #457](https://github.com/DGAFP/assistant-rh/issues/457) :
+Livraison B5 — [PR #538](https://github.com/DGAFP/assistant-rh/pull/538), [issue #457](https://github.com/DGAFP/assistant-rh/issues/457) :
 `GET /v1/models` branché sur le resolver bearer B4 et son groupe courant chargé par
 `GroupStore`. `ModelService` pur, catalogue ministériel canonique commun à l'auth,
 modèles immuables triés par id et dédupliqués, enveloppe OpenAI typée et réponses
