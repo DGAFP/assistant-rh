@@ -11,6 +11,7 @@ import anyio
 from fastapi import FastAPI
 
 from assistant_rh_api.core.auth import AuthService
+from assistant_rh_api.core.catalog import ModelService
 from assistant_rh_api.core.health import HealthProbe
 from assistant_rh_api.db.auth_stores import GroupStore, SessionStore
 from assistant_rh_api.db.dsn import DatabaseSettings, resolve_dsn
@@ -23,6 +24,7 @@ from assistant_rh_api.handlers.auth import create_auth_router
 from assistant_rh_api.handlers.auth_body import AuthBodyLimit
 from assistant_rh_api.handlers.errors import register_error_handlers
 from assistant_rh_api.handlers.health import create_health_router
+from assistant_rh_api.handlers.models import create_models_router
 
 
 def create_app(
@@ -31,6 +33,7 @@ def create_app(
     database: Database | None = None,
     environ: Mapping[str, str] | None = None,
     auth_service: AuthService | None = None,
+    model_service: ModelService | None = None,
 ) -> FastAPI:
     """Create the HTTP application without opening connections or loading RAG."""
 
@@ -73,10 +76,12 @@ def create_app(
     application = FastAPI(title="Assistant RH API", version=distribution_version("assistant-rh-api"), lifespan=lifespan)
     application.state.health_probe = health_probe or PostgresHealthProbe()
     application.state.auth_service = auth_service
+    application.state.model_service = model_service or ModelService()
     application.add_middleware(AuthBodyLimit)
     register_error_handlers(application)
     application.include_router(create_health_router())
     application.include_router(create_auth_router())
+    application.include_router(create_models_router())
     return application
 
 

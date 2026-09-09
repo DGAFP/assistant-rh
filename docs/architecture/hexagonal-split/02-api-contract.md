@@ -90,6 +90,17 @@ Liste les modèles accessibles au token.
 }
 ```
 
+Le catalogue est trié par identifiant croissant et dédupliqué ; l'alias `assistant-rh`
+n'apparaît pas dans la liste. `created=1755734400` est l'époque fixe du catalogue
+(21 août 2025 UTC), indépendante de la date de requête. La réponse porte
+`Cache-Control: no-store`.
+
+Une politique sans ministère, avec un ministère inconnu ou sans défaut autorisé
+est refusée sans fallback implicite (`ministry_configuration_error` dans le core).
+B4 masque ces groupes et refuse leur login ; une session révoquée ou portant une
+ancienne révision reste une 401. Si une session encore valide résout une politique
+corrompue, l'API renvoie une 500 explicite et sans détail interne avec ce code.
+
 ### `POST /v1/chat/completions`
 
 Une réponse RAG complète (retrieval + génération) sur le corpus du ministère routé par `model`.

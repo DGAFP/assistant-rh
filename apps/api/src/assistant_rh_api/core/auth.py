@@ -4,11 +4,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from assistant_rh_api.core.errors import ApplicationError, DatabaseConflict
+from assistant_rh_api.core.ministry_policy import MINISTRIES, valid_ministry_policy, validate_ministry_policy
 from assistant_rh_api.core.models.auth import Group, Session
 from assistant_rh_api.core.ports.auth import GroupStorePort, LoginLimiterPort, PasswordVerifierPort, SessionStorePort, SessionTokenPort
 from assistant_rh_api.core.ports.system import ClockPort
 
-MINISTRIES = frozenset(("matte", "mso", "mi", "masa"))
 SESSION_LIFETIME = timedelta(hours=8)
 
 
@@ -28,17 +28,12 @@ class LoginRateLimited(ApplicationError):
         self.retry_after = retry_after
 
 
+def eligible_group(group: Group | None) -> bool:
+    return bool(group is not None and group.slug != "default" and group.visible and not group.is_admin and group.password_hash)
+
+
 def public_group(group: Group | None) -> bool:
-    return bool(
-        group is not None
-        and group.slug != "default"
-        and group.visible
-        and not group.is_admin
-        and group.password_hash
-        and group.allowed_ministries
-        and set(group.allowed_ministries) <= MINISTRIES
-        and group.default_ministry in group.allowed_ministries
-    )
+    return eligible_group(group) and group is not None and valid_ministry_policy(group)
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,12 +105,14 @@ class AuthService:
             raise InvalidCredentials()
         group = await self.groups.get(session.group_slug)
         if (
-            not public_group(group)
+            not eligible_group(group)
             or group is None
             or group.credential_revision != session.credential_revision
             or group.password_hash != session.credential_hash
         ):
             raise InvalidCredentials()
+        # Authenticate first: stale/revoked sessions remain 401 even with bad policy.
+        validate_ministry_policy(group)
         return AuthContext(group, session)
 
     async def logout(self, context: AuthContext) -> None:

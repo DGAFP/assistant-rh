@@ -2,7 +2,7 @@
 
 Installable FastAPI application that will host the OpenAI-compatible Assistant
 RH contract. It exposes the operational probe `GET /healthz` and public group
-session authentication. It does not initialize the RAG pipeline or any AI provider.
+session authentication and the protected `GET /v1/models` catalogue. It does not initialize the RAG pipeline or any AI provider.
 
 ## Run locally
 
@@ -46,7 +46,7 @@ The initializer only runs on an empty volume; after upgrading an older local
 stack, use `api:local-reset` then `api:local` to recreate its synthetic data.
 
 The loopback-only demo account is `local-demo` / `local-only-password`. Verify
-catalogue, login, `/me`, logout and rejection of the revoked bearer with:
+catalogue, login, `/me`, `/v1/models`, logout and rejection of the revoked bearer with:
 
 ```bash
 uv run --package assistant-rh-api python docker/api/smoke-auth.py
@@ -413,3 +413,33 @@ Validation covers deterministic core/HTTP behavior, real legacy-format password
 verification, the assembled FastAPI lifespan against synthetic PostgreSQL,
 concurrent quotas, reset/login races, A → B → A and migration reapply/rollback.
 It does not migrate Streamlit to HTTP or validate the production ingress (E1/D4).
+
+
+## Ministry model catalogue (B5)
+
+`GET /v1/models` uses the common B4 bearer resolver and its current group from
+`GroupStore`. `ModelService` intersects that policy with the canonical API
+ministries (`masa`, `matte`, `mi`, `mso`), rejects invalid policies, and returns
+unique `assistant-rh-<ministry>` ids sorted lexicographically. Responses use the
+[OpenAI model list envelope](https://developers.openai.com/api/reference/cli/resources/models),
+with `object`, `id`, `created`, and `owned_by`, and are marked `Cache-Control: no-store`.
+`created=1755734400` is the fixed catalogue epoch from the v1 contract, independent
+of request time; `owned_by` is always `assistant-rh`. No provider models are exposed.
+
+`ModelService.resolve(model, group)` prepares C1 routing: `assistant-rh` resolves
+to the configured default and returns a canonical model id and ministry. This
+alias is accepted as input only and is not listed. Unknown ids raise 404
+`model_not_found`; known ministries outside the group raise 403 `ministry_forbidden`.
+Chat Completions is not implemented by B5.
+
+A policy with zero ministries, unknown ministries, or an absent/forbidden default
+raises `ministry_configuration_error` in the service, without implicit fallback.
+B4 still hides invalid groups and rejects their login. Revoked, expired, or stale
+sessions remain 401; an otherwise authenticated current session with corrupt
+policy data produces a safe OpenAI-style 500 configuration error. Normal database
+policy changes revoke sessions through B4's credential revision before this point.
+
+The API dev dependencies include the OpenAI Python SDK. Tests exercise real
+`AsyncOpenAI.models.list()` over the ASGI app, including strict response parsing,
+isolation, stable ordering, invalid policies and SDK errors. The PostgreSQL HTTP
+lifespan test also lists models after password login and rejects a revoked bearer.
