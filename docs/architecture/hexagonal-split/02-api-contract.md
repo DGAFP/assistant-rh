@@ -20,9 +20,10 @@
 | 403 | modèle demandé hors `allowed_ministries` |
 | 404 | modèle inconnu, `completion_id`/ressource inexistante |
 | 422 | body invalide (validation pydantic) |
-| 413 | body HTTP supérieur à 1 Mio, rejeté avant lecture et avant démarrage du stream |
+| 413 | body HTTP supérieur à 1 Mio, rejeté dès la longueur annoncée ou le dépassement mesuré pendant la lecture bornée, avant démarrage du stream |
 | 429 | tentatives de vérification de mot de passe trop nombreuses ; `Retry-After` indique le backoff temporaire |
 | 500 | erreur survenue avant le démarrage d'une réponse non-stream ou SSE |
+| 503 | stockage indisponible, erreur `service_unavailable` conservée de B4/B5 |
 
 - **Modèles exposés** : `assistant-rh-<ministère>` pour chaque id du catalogue (`matte`, `mso`, `mi`, `masa`) présent dans `allowed_ministries` du token. Le nom générique `assistant-rh` est accepté en entrée et résolu sur `default_ministry`.
 - **Compatibilité assumée** : le sous-ensemble exact de Chat Completions supporté est figé par des tests contre le SDK OpenAI et une instance de `conversations` pendant le spike A2. Toute extension non documentée reste rejetée ou ignorée explicitement.
@@ -105,6 +106,8 @@ corrompue, l'API renvoie une 500 explicite et sans détail interne avec ce code.
 
 Une réponse RAG complète (retrieval + génération) sur le corpus du ministère routé par `model`.
 
+Le [contrat détaillé C1](09-chat-completions-contract.md) fixe les types, l'algorithme d'historique, les codes d'erreur, les exemples et la matrice de validation issus de #443, #456 et #457. C1 est documentaire ; le handler HTTP non-stream et ses tests sont livrés en #463 (C6), le SSE en #464 (C7).
+
 **Requête**
 
 ```json
@@ -124,11 +127,11 @@ Règles de mapping :
 - Le **dernier message `user`** est la question. Le serveur conserve au maximum les **5 derniers tours complets** précédents (10 messages user/assistant), comme le Streamlit historique ; les messages plus anciens sont ignorés de façon déterministe. Contrat **stateless** : le client peut renvoyer tout l'historique à chaque appel, mais la politique de fenêtre appartient au serveur.
 - Les messages `system` et `developer` du client sont **acceptés et ignorés** (les prompts système sont la propriété du pipeline — c'est la boucle qualité). `conversations` en envoie plusieurs à chaque tour. `content` accepte une chaîne ou une liste OpenAI composée uniquement de parts `{ "type": "text", "text": "…" }`, concaténées dans l'ordre ; `conversations` utilise cette seconde forme même pour certains tours texte. Les rôles `tool` et les parts image/audio ne font pas partie de la v1 et produisent une 422.
 - Le serveur retire de l'historique les blocs de sources qu'il a lui-même ajoutés aux réponses précédentes, grâce à un marqueur interne stable, avant de passer l'historique au core.
-- `temperature`, `top_p`, `max_tokens`, `n`, `user` : acceptés et ignorés en v1 (la config générateur vient de `rag_config`). `n > 1` → 422.
+- `temperature`, `top_p`, `max_tokens`, `user` : acceptés et ignorés en v1 (la config générateur vient de `rag_config`). `n` absent vaut 1 ; seule la valeur entière 1 est acceptée (`n > 1`, notamment, → 422 `unsupported_n`).
 - `tools`, `tool_choice` et `parallel_tool_calls` sont acceptés et ignorés en v1. C'est nécessaire parce que `conversations` 0.0.22 déclare toujours son outil `self_documentation`; l'API Assistant RH reste pourtant une completion RAG terminale et ne renvoie jamais de `tool_calls`.
 - `stream_options.include_usage` est accepté pour `stream=true`. Si sa valeur est vraie, un chunk final `choices: []` porte `usage`, conformément au SDK OpenAI. Les autres options de stream sont rejetées en v1.
 - Champ d'extension optionnel `metadata.conversation_id` (corrélation côté client, logué dans `chat_runs` comme aujourd'hui).
-- Limites arrêtées par A2 : body HTTP ≤ **1 Mio** (`Content-Length`, dépassement → 413), ≤ **32 messages**, chaque `content` texte ≤ **64 Kio UTF-8** (dépassement → 422). Elles laissent de la marge aux 10 messages d'historique et aux instructions/outils ajoutés par `conversations`, tout en restant sous les limites usuelles de proxy. C1 les applique avant tout démarrage de stream ; D4 revalide que le proxy Scaleway n'impose pas une borne inférieure.
+- Limites arrêtées par A2 : body HTTP ≤ **1 Mio** (longueur annoncée et octets réellement lus, dépassement → 413), ≤ **32 messages**, chaque `content` texte ≤ **64 Kio UTF-8** après concaténation des parts (dépassement → 422). Les messages ignorés comptent aussi. C1 fixe ces bornes ; C6/C7 les appliquent avant tout démarrage de réponse, même sans `Content-Length`. D4 revalide la borne et l'absence de buffering du proxy Scaleway.
 
 **Réponse 200 (non-stream, `stream` absent ou `false`)**
 
@@ -153,7 +156,8 @@ Règles de mapping :
     "turn_id": "<turn_id>",
     "ministry": "matte",
     "sources": [
-      { "title": "…", "url": null, "publisher": "MATTE", "doc_ref": "…", "access": "authenticated" }
+      { "title": "Titre du document interne", "url": null, "publisher": "MATTE", "doc_ref": "document-interne", "access": "authenticated" },
+      { "title": "Titre public", "url": "https://…", "publisher": "Service-Public", "doc_ref": "document-public", "access": "public" }
     ]
   }
 }
