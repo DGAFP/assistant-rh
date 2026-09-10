@@ -99,8 +99,8 @@ Livraison B5 — [PR #538](https://github.com/DGAFP/assistant-rh/pull/538), [iss
 `GroupStore`. `ModelService` pur, catalogue ministériel canonique commun à l'auth,
 modèles immuables triés par id et dédupliqués, enveloppe OpenAI typée et réponses
 `no-store`. L'alias d'entrée `assistant-rh` résout uniquement le défaut autorisé ;
-modèle inconnu → 404, ministère non autorisé → 403. C1 branchera cette résolution
-sur Chat Completions, absent de B5.
+modèle inconnu → 404, ministère non autorisé → 403. C1 fixe l'utilisation de cette
+résolution ; C6 la branchera sur Chat Completions, absent de B5.
 
 Politique B5 : zéro ministère, ministère inconnu ou défaut absent/interdit donnent
 une erreur de configuration explicite, sans fallback implicite. B4 conserve les
@@ -166,3 +166,17 @@ aussi le package RAG historique. Revue indépendante favorable, aucun constat
 bloquant après correction du test de redémarrage avec un nouveau pool.
 Chargement/validation initial, fermeture du pool sur configuration invalide et
 reprise après correction couverts. Aucun appel provider, migration distante, déploiement ni bascule RAG.
+
+## C1 — contrat Chat Completions fixé avant C6 (2026-09-10)
+
+[Issue #458](https://github.com/DGAFP/assistant-rh/issues/458) : [contrat détaillé](09-chat-completions-contract.md), exemples JSON et matrice de cas attendus reliés à la [preuve A2/#443](07-openai-client-spike.md) et aux contrats B4/#456, B5/#457. Le plan et le contrat v1 sont alignés : C1 est documentaire, C2–C5 extraient les étapes indépendamment, #463 porte le handler non-stream et tous ses tests HTTP ; #464 conserve le SSE. Aucun handler ni `ChatService` fake/replay ajouté.
+
+Décisions figées : dernier user et cinq couples complets selon l'algorithme A2 ; instructions système/developer et tools ignorés ; parts texte concaténées ; 1 Mio/32 messages/64 Kio UTF-8 ; résolution B5 et scope B4 ; enveloppe et sources finales cohérentes ; erreurs sûres et succès persisté avant réponse/terminal SSE. Le code 403 retenu est `ministry_forbidden`, déjà livré/testé en B4/B5, remplaçant `model_forbidden` du replay A2. Les types stricts, métadonnées, frontières exactes de taille et lecture sans `Content-Length` sont distingués des comportements déjà éprouvés et attribués à C6 dans la matrice.
+
+Preuve locale du 2026-09-10, sur `dev` de départ `913a80fac356629de641af12f2b3eddb2ec26a74` avec uniquement des modifications documentaires : **48 tests existants passent** (SDK OpenAI 2.38.0, replay A2, `ModelService` et HTTP catalogue/auth avec stores en mémoire). Reproduction après `uv sync --package assistant-rh-api --group dev` :
+
+```bash
+uv run --no-sync python -m pytest tests/test_openai_contract_probe.py apps/api/tests/core/test_model_service.py apps/api/tests/handlers/test_models_http.py -q
+```
+
+Les **15 exemples JSON** des documents concernés sont valides ; les enveloppes completion passent `ChatCompletion.model_validate(..., strict=True)` et les assertions d'identifiants, ministère, nombre/titres des sources. Liens locaux et noms des tests cités vérifiés ; `git diff --check` passe. La preuve de l'instance `conversations`/homelab reste celle d'A2 du 2026-09-02, pas une nouvelle exécution. La matrice indique les validations restant en C6/C7/D4 ; aucun accès à une base distante, appel provider, migration ou déploiement.
