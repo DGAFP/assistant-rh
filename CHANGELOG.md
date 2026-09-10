@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.1](https://github.com/DGAFP/assistant-rh/compare/v0.12.0...v0.12.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* compléter les crons PDF et valider les suppressions Grist ([#548](https://github.com/DGAFP/assistant-rh/issues/548)) ([fe15596](https://github.com/DGAFP/assistant-rh/commit/fe15596da3458bad1a9aa6c5c132b7dd5227a52e))
+* reconcile daily PDF ingestion and Grist removals ([fe15596](https://github.com/DGAFP/assistant-rh/commit/fe15596da3458bad1a9aa6c5c132b7dd5227a52e))
+
 ## [0.12.0](https://github.com/DGAFP/assistant-rh/compare/v0.11.0...v0.12.0) (2026-09-08)
 
 
