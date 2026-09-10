@@ -39,7 +39,7 @@ Use the manual `RAG Health Deploy` GitHub workflow and choose either:
 - `scaleway-staging`
 - `scaleway-production`
 
-The workflow builds `Dockerfile.rag_health_exporter`, pushes `rag-health-exporter`, and upserts a private Scaleway Serverless Container with `min-scale=1`.
+The workflow builds `docker/Dockerfile.rag_health_exporter`, pushes `rag-health-exporter`, and upserts a private Scaleway Serverless Container with `min-scale=1`.
 
 ## Dashboard and alerts
 

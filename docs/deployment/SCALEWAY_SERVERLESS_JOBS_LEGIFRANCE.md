@@ -21,8 +21,8 @@ Recommended registry target:
 Build locally:
 
 ```bash
-docker build -f Dockerfile.legifrance_pipeline -t legifrance-pipeline:latest .
-docker build -f Dockerfile.legifrance_ingestion -t legifrance-ingestion:latest .
+docker build -f docker/Dockerfile.legifrance_pipeline -t legifrance-pipeline:latest .
+docker build -f docker/Dockerfile.legifrance_ingestion -t legifrance-ingestion:latest .
 ```
 
 Login, tag and push:

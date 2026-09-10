@@ -89,7 +89,7 @@ Le job d'ingestion Service-Public est ici :
 
 Image dédiée :
 
-- [Dockerfile.service_public_ingestion](../../Dockerfile.service_public_ingestion)
+- [docker/Dockerfile.service_public_ingestion](../../docker/Dockerfile.service_public_ingestion)
 
 Manifest de référence :
 
@@ -154,7 +154,7 @@ Build de l'image :
 ```bash
 docker buildx build \
   --platform linux/amd64 \
-  -f Dockerfile.service_public_ingestion \
+  -f docker/Dockerfile.service_public_ingestion \
   -t rg.fr-par.scw.cloud/assistant-rh/service-public-ingestion:latest \
   --push \
   .

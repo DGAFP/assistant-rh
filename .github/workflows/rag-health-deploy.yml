@@ -110,7 +110,7 @@ jobs:
           set -euo pipefail
           docker buildx build \
             --platform linux/amd64 \
-            -f Dockerfile.rag_health_exporter \
+            -f docker/Dockerfile.rag_health_exporter \
             -t "${{ steps.target.outputs.image_uri }}" \
             -t "${{ steps.target.outputs.latest_uri }}" \
             --push \
