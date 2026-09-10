@@ -1,13 +1,10 @@
 name: Data Engineering — cron delta (staging)
 
-# Chaîne delta quotidienne (#250) sur STAGING uniquement : pour Service-Public
-# et Légifrance, enchaîne medallion --delta -> ingest --delta -> backfill
-# embeddings, en ne (re)traitant que le new/changed. La prod reste en promotion
-# manuelle (aucun apply prod automatisé). Le dispatcher démarre les jobs
-# Scaleway sélectionnés DANS L'ORDRE du config (medallion < ingest < embeddings)
-# et attend la fin de chacun (--wait). Chaque corpus conserve sa chaîne
-# séquentielle, tandis que Service-Public et Légifrance s'exécutent dans deux
-# cellules de matrice indépendantes.
+# Réconciliation Grist quotidienne : Service-Public, Légifrance et PDF
+# MI/MASA/MATTE/MSO. Les PDF utilisent leur delta sha256 natif et suppriment
+# les documents retirés/inactifs avec leurs sections et chunks avant backfill.
+# Chaque chaîne reste séquentielle (--wait), avec deux corpus en parallèle.
+# La production possède son propre cron et son activation explicite.
 
 on:
   schedule:
@@ -29,16 +26,45 @@ jobs:
     timeout-minutes: 240
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - name: service-public
             service_public: true
             legifrance: false
+            pdf_sources: false
+            ministry: ""
             embedding_source: service_public
           - name: legifrance
             service_public: false
             legifrance: true
+            pdf_sources: false
+            ministry: ""
             embedding_source: legifrance
+          - name: mi
+            service_public: false
+            legifrance: false
+            pdf_sources: true
+            ministry: mi
+            embedding_source: mi
+          - name: masa
+            service_public: false
+            legifrance: false
+            pdf_sources: true
+            ministry: masa
+            embedding_source: masa
+          - name: matte
+            service_public: false
+            legifrance: false
+            pdf_sources: true
+            ministry: matte
+            embedding_source: matte
+          - name: mso
+            service_public: false
+            legifrance: false
+            pdf_sources: true
+            ministry: mso
+            embedding_source: mso
     env:
       SCW_DEFAULT_REGION: fr-par
       SCW_DEFAULT_PROJECT_ID: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
@@ -81,6 +107,7 @@ jobs:
           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
 
       - name: Run ${{ matrix.name }} delta chain on staging
+        id: delta_chain
         # Dans chaque cellule, le dispatcher démarre medallion -> ingest -> embeddings
         # (ordre du config) avec --wait, donc séquentiellement. --delta ajoute
         # --delta aux jobs medallion+ingest SP/Legi (+ --from-grist au medallion
@@ -93,6 +120,8 @@ jobs:
             --delta true \
             --service-public "${{ matrix.service_public }}" \
             --legifrance "${{ matrix.legifrance }}" \
+            --pdf-sources "${{ matrix.pdf_sources }}" \
+            --pdf-sources-ministry "${{ matrix.ministry }}" \
             --embeddings true \
             --run-ingestion true \
             --run-embeddings true \
@@ -109,6 +138,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Run ${{ matrix.name }} structural quality gate
+        if: ${{ matrix.service_public || matrix.legifrance }}
         run: |
           set -euo pipefail
           mkdir -p artifacts/data-quality
@@ -129,21 +159,28 @@ jobs:
             --markdown-output "artifacts/data-quality/cron-${{ matrix.name }}-summary.md"
 
       - name: Run ${{ matrix.name }} embedding coverage gate
+        if: ${{ !cancelled() && steps.delta_chain.outcome == 'success' }}
         env:
           COVERAGE_MIN_PCT: "100"
         run: |
           set -euo pipefail
           mkdir -p artifacts/data-quality
 
+          EMPTY_TABLE_ARGS=()
           case "${{ matrix.embedding_source }}" in
             service_public) EMBEDDING_COMMAND=service-public ;;
             legifrance) EMBEDDING_COMMAND=legifrance ;;
+            mi|masa|matte|mso)
+              EMBEDDING_COMMAND="${{ matrix.embedding_source }}"
+              EMPTY_TABLE_ARGS=(--allow-empty-corpus "${{ matrix.embedding_source }}")
+              ;;
             *) echo "Unsupported cron embedding source: ${{ matrix.embedding_source }}" >&2; exit 1 ;;
           esac
 
           uv run --no-sync data-ingestion embeddings "${EMBEDDING_COMMAND}" \
             --check-only \
             --coverage-min-pct "${COVERAGE_MIN_PCT}" \
+            "${EMPTY_TABLE_ARGS[@]}" \
             > "artifacts/data-quality/cron-embeddings-${{ matrix.name }}.json"
 
       - name: Summarize ${{ matrix.name }} data quality gates
