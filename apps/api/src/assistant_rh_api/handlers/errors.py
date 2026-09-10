@@ -18,6 +18,8 @@ def error_response(status: int, code: str, message: str, *, headers: dict[str, s
 
 
 def register_error_handlers(app: FastAPI) -> None:
+    from assistant_rh_api.core.db_diagnostics import report_database_error
+
     @app.exception_handler(HTTPException)
     async def transport_error(request: Request, exc: HTTPException) -> JSONResponse:
         # Parsing errors can bypass RequestValidationError; never echo details.
@@ -25,6 +27,7 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ApplicationError)
     async def application_error(request: Request, exc: ApplicationError) -> JSONResponse:
+        report_database_error(exc)
         if isinstance(exc, InvalidCredentials):
             return error_response(401, exc.code, "Invalid API key", headers={"WWW-Authenticate": "Bearer"})
         if isinstance(exc, MinistryForbidden):

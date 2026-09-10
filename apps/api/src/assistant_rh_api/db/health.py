@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from assistant_rh_api.core.db_diagnostics import DBOperation, report_database_error
 from assistant_rh_api.core.errors import ApplicationError
 from assistant_rh_api.core.health import HealthReport
 from assistant_rh_api.db.pool import Database
@@ -18,7 +19,7 @@ class PostgresHealthProbe:
             return HealthReport(db="error", config_loaded=False)
 
         try:
-            async with self._database.transaction(read_only=True) as connection:
+            async with self._database.transaction(read_only=True, operation=DBOperation.HEALTH) as connection:
                 async with connection.cursor() as cursor:
                     await cursor.execute("SELECT to_regclass('public.rag_config')")
                     row = await cursor.fetchone()
@@ -27,5 +28,6 @@ class PostgresHealthProbe:
                     await cursor.execute("SELECT EXISTS (SELECT 1 FROM public.rag_config WHERE id = 1)")
                     config_row = await cursor.fetchone()
                     return HealthReport(db="ok", config_loaded=bool(config_row and config_row[0]))
-        except ApplicationError:
+        except ApplicationError as exc:
+            report_database_error(exc, operation=DBOperation.HEALTH)
             return HealthReport(db="error", config_loaded=False)

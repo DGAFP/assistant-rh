@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Literal, cast
 
+from assistant_rh_api.core.db_diagnostics import DBOperation, report_database_error
 from assistant_rh_api.core.errors import DatabaseFailure, DatabaseUnavailable, RAGConfigurationError
 from assistant_rh_api.core.models.configuration import ConfigValues, Snapshot
 from assistant_rh_api.core.models.rag_configuration import (
@@ -105,9 +106,11 @@ class RAGConfigurationService:
         fallback: Literal["missing", "database_unavailable", "database_failure"] | None = None
         try:
             raw = await self._store.load()
-        except DatabaseUnavailable:
+        except DatabaseUnavailable as exc:
+            report_database_error(exc, operation=DBOperation.CONFIG_LOAD, recovered=True)
             raw, fallback = None, "database_unavailable"
-        except DatabaseFailure:
+        except DatabaseFailure as exc:
+            report_database_error(exc, operation=DBOperation.CONFIG_LOAD, recovered=True)
             raw, fallback = None, "database_failure"
         if raw is None:
             return RequestRAGConfiguration(Snapshot(from_runtime_values({}), "rag-default-v1", "default"), fallback or "missing")

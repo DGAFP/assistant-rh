@@ -6,6 +6,7 @@ from typing import cast
 from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 
+from assistant_rh_api.core.db_diagnostics import DBOperation
 from assistant_rh_api.core.models.configuration import ConfigValues
 from assistant_rh_api.core.models.retrieval import Document, LegalReference, RawChunk, Section, Source
 from assistant_rh_api.core.ports.retrieval import ContentStorePort
@@ -124,7 +125,7 @@ class ContentStore(ContentStorePort):
     async def documents(self, ids: tuple[str, ...]) -> tuple[Document, ...]:
         if not ids:
             return ()
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.CONTENT_DOCUMENTS) as connection:
             async with connection.cursor(row_factory=dict_row) as cursor:
                 await cursor.execute(
                     """
@@ -139,7 +140,7 @@ class ContentStore(ContentStorePort):
     async def sections(self, ids: tuple[str, ...]) -> tuple[Section, ...]:
         if not ids:
             return ()
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.CONTENT_SECTIONS) as connection:
             rows = await (
                 await connection.execute(
                     """
@@ -157,7 +158,7 @@ class ContentStore(ContentStorePort):
     async def references(self, numbers: tuple[str, ...]) -> tuple[LegalReference, ...]:
         if not numbers:
             return ()
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.CONTENT_REFERENCES) as connection:
             rows = await (
                 await connection.execute(
                     """
@@ -174,7 +175,7 @@ class ContentStore(ContentStorePort):
         table, id_column, _ = table_spec(source)
         if not ids:
             return ()
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.CONTENT_CHUNKS) as connection:
             existing = await columns(connection, table)
             statement = sql.SQL("""
                 SELECT t.{id}::text, t.chunk_text, {section}, {metadata}

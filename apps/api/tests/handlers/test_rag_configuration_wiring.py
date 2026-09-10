@@ -36,7 +36,7 @@ async def test_invalid_configuration_prevents_startup():
 async def test_invalid_stored_structure_prevents_startup(invalid_value):
     class DatabaseStub:
         @asynccontextmanager
-        async def transaction(self, *, read_only):
+        async def transaction(self, *, read_only, operation):
             cursor = AsyncMock()
             cursor.fetchone.return_value = (invalid_value,)
             connection = AsyncMock()

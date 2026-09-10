@@ -4,6 +4,7 @@ import math
 
 from psycopg import sql
 
+from assistant_rh_api.core.db_diagnostics import DBOperation
 from assistant_rh_api.core.models.retrieval import RawChunk, SearchRequest
 from assistant_rh_api.core.ports.retrieval import SearchPort
 from assistant_rh_api.db.content_store import columns, immutable_object, metadata_expression, section_expression, table_spec
@@ -29,7 +30,7 @@ class SearchStore(SearchPort):
             raise ValueError("unknown embedding model")
         if request.mode == "vector" and (not request.embedding or not all(math.isfinite(v) for v in request.embedding)):
             raise ValueError("finite nonempty embedding required")
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.SEARCH) as connection:
             existing = await columns(connection, table)
             base = sql.SQL("SELECT t.{id} AS chunk_id, t.chunk_text, {section} AS section_id, {meta} AS metadata FROM {table} t").format(
                 id=sql.Identifier(id_column),

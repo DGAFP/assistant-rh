@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from assistant_rh_api.core.db_diagnostics import DBOperation
 from assistant_rh_api.core.models.conversations import ChatRun, RunSource, TraceEvent
 from assistant_rh_api.core.ports.conversations import ChatRunStorePort
 from assistant_rh_api.db.pool import Database
@@ -64,7 +65,7 @@ class ChatRunStore(ChatRunStorePort):
             raise ValueError("new completion IDs must contain a full UUID")
         if run.timestamp is None or run.timestamp.tzinfo is None:
             raise ValueError("run timestamp must be timezone aware")
-        async with self._database.transaction() as connection:
+        async with self._database.transaction(operation=DBOperation.RUN_FINALIZE) as connection:
             # INSERT deliberately refuses collisions; it never overwrites a run
             # or changes the ownership/source authority of an existing answer.
             await connection.execute(
@@ -122,7 +123,7 @@ class ChatRunStore(ChatRunStorePort):
                 )
 
     async def get(self, turn_id: str) -> ChatRun | None:
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.RUN_GET) as connection:
             async with connection.cursor(row_factory=dict_row) as cursor:
                 await cursor.execute("SELECT * FROM public.chat_runs WHERE turn_id = %s", (turn_id,))
                 row = await cursor.fetchone()
@@ -161,7 +162,7 @@ class ChatRunStore(ChatRunStorePort):
         )
 
     async def sources(self, turn_id: str, group_slug: str) -> tuple[RunSource, ...]:
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.RUN_SOURCES) as connection:
             rows = await (
                 await connection.execute(
                     """
