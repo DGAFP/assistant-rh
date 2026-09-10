@@ -180,3 +180,52 @@ uv run --no-sync python -m pytest tests/test_openai_contract_probe.py apps/api/t
 ```
 
 Les **15 exemples JSON** des documents concernés sont valides ; les enveloppes completion passent `ChatCompletion.model_validate(..., strict=True)` et les assertions d'identifiants, ministère, nombre/titres des sources. Liens locaux et noms des tests cités vérifiés ; `git diff --check` passe. La preuve de l'instance `conversations`/homelab reste celle d'A2 du 2026-09-02, pas une nouvelle exécution. La matrice indique les validations restant en C6/C7/D4 ; aucun accès à une base distante, appel provider, migration ou déploiement.
+
+
+## C3 — retrieval métier extrait, gate M0b ouvert (2026-09-10)
+
+[Issue #460](https://github.com/DGAFP/assistant-rh/issues/460) : extraction dans
+`apps/api/src/assistant_rh_api/core/retrieval.py`, derrière `SearchPort` et
+`EmbeddingPort`, sans dépendance SQL/psycopg ni import du package historique.
+Le core possède fusion hybride, rang des absents, RRF inter-sources, plafond de
+normalisation, filtre headings, top-k et dédup R2. Résultats/configuration et
+métadonnées sont immuables ; chaîne embedding sélectionnée par requête, modèle
+réel conservé après fallback, erreurs partielles explicites et scope ministériel
+strict. Les tables de comparaison nécessitent un catalogue injecté ; les alias
+physiques dupliqués sont refusés avant I/O pour garantir le déterminisme.
+
+L'adaptateur expose les deux lanes hybrides brutes dans un unique snapshot SQL,
+sans fusion métier. Il conserve l'ordre et la représentation des scores de
+chaque lane, les probes transactionnels et le pool borné B1. Le fallback B2
+implicite vers `to_tsvector(chunk_text)` quand la colonne manque est retiré :
+le runtime historique échoue dans ce cas. La recherche heading reste indépendante.
+Pas de reranker de chunks ajouté (option historiquement sans implémentation).
+Aucun handler ni branchement Streamlit ; C2/#459 et C6/#463 portent la suite.
+
+Preuve locale : **381 tests API passent** sur PostgreSQL 18.4/pgvector 0.8.2 local
+exclusivement synthétique. Les 15 comparaisons différentielles exécutent les SQL
+historiques et le nouveau core sur le même corpus : modes semantic/lexical/hybrid,
+mode non scopé et quatre ministères, scores exacts, ordre et métadonnées complets.
+S'ajoutent égalités, doublons R2, pools vides, absence d'embedding, erreurs partielles,
+colonne lexicale absente, annulation, immutabilité et isolation des requêtes.
+Ruff CI, mypy sur les quatre modules et les trois contrats d'import passent.
+Revue indépendante favorable pour un brouillon après correction du marqueur
+lexical, des collisions de catalogue et de la sélection embedding par config.
+Suite historique : 1376 tests passent et 16 sont ignorés dans le sandbox ; les
+13 cas HTTP bloqués par les sockets locales sont validés dans une relance du
+module complet `test_openai_contract_probe.py` (14/14). Reproduction API après
+`uv sync --all-packages --group dev`, avec le DSN synthétique local gardé par la
+fixture : `uv run --no-sync python -m pytest apps/api/tests -q`. Aucun test
+historique n'a été supprimé ni assoupli.
+
+**Gate non satisfait, issue maintenue ouverte** : M0b vérifie bien 7 fixtures et
+56 artefacts, mais ne contient pas les inputs bruts du `SearchPort`. Son auto-check
+ne prouve pas la conformance de C3. Le [complément nécessaire](../../../tests/conformance/M0_REPLAYS.md#c3-retrieval-extraction-missing-port-inputs)
+est documenté ; aucun candidat n'est reconstruit depuis les résultats attendus,
+aucune baseline n'est remplacée. L'[audit A5](07-runtime-isolation-audit.md)
+consigne aussi l'ambiguïté de section déjà départagée côté B2 et le fait que
+DGAFP est interrogé même avec `needs_legal_search=false` dans M0b. C3 préserve
+cette politique, sans introduire le nouveau gate suggéré par le libellé de #460.
+A5-02/04/05/08/11 progressent côté API mais ne sont pas déclarés clos : la preuve
+M0b, les étapes C4/C6 et les consommateurs historiques restent à traiter.
+Aucun accès DB distant, appel provider, migration distante ou déploiement.

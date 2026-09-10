@@ -464,3 +464,48 @@ elle ne revalide pas les plages de l'interface admin. Les prompts, acronymes,
 lectures runtime supplémentaires et overrides environnement des tables restent
 à composer dans C2/C3/C5 ; C6 doit brancher le snapshot au moteur. Aucune route
 completion ni modification du runtime Streamlit n'est livrée ici.
+
+
+## Retrieval stage (C3, #460)
+
+`core.retrieval.Retriever` executes the extracted stage independently of HTTP.
+It takes a `SearchPort`, a mapping of embedding gateways keyed by `albert` and
+`bge_scaleway`, and an immutable source catalogue. The preferred gateway is
+selected from each request's `RetrievalConfig`; its actual embedding model
+selects the vector column after fallback. Composition should inject Albert with
+Scaleway fallback for the first chain, and Scaleway alone for the second.
+
+```python
+search = SearchStore(database)
+retriever = Retriever(
+    search,
+    {"albert": albert_then_scaleway, "bge_scaleway": scaleway_only},
+    search.sources,
+)
+snapshot = await rag_configuration_service.load()
+result = await retriever.retrieve(
+    query,
+    snapshot.config.value.retrieval,
+    selected_ministry=authorized_model.ministry,
+)
+```
+
+The selected ministry must first be authorized by B4/B5. It replaces config/eval
+tables with that ministry plus Service-Public and DGAFP, with strict errors.
+DGAFP hybrid search follows the historical frozen policy, even when the query
+processor reports no legal intent. C6 must handle C2 direct responses before
+calling retrieval and apply selector retries using request-local mode/top-k.
+The result contains immutable chunks, the actual embedding outcome and safe
+per-lane failure diagnostics. Cancellation propagates and joins child searches.
+
+`SearchStore.hybrid_candidates()` reads both raw lanes in one statement snapshot;
+alpha, RRF, missing-rank penalties, heading gates and R2 dedup stay in core.
+The pool bounds concurrent DB leases; schema introspection is fresh, with no
+shared cache. `search_catalog(environ)` explicitly enables comparison tables for
+evaluation wiring and resolves its two table overrides without import-time env
+reads. The default public catalogue omits those sources, and physical aliases
+are rejected to prevent completion-order-dependent fusion collisions.
+
+The synthetic differential suite proves parity on its corpus. The existing M0b
+bundle lacks raw port inputs, so its [retrieval replay gate](../../tests/conformance/M0_REPLAYS.md#c3-retrieval-extraction-missing-port-inputs)
+remains open. No completion handler or production RAG switch is supplied here.
