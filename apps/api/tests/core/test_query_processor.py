@@ -224,7 +224,7 @@ async def test_packaged_fallback_is_identical_to_legacy_resource():
     snapshot = await store.get("intent.md")
     assert snapshot.value.content == (ROOT / "packages/rag-pipeline/src/assistant_rh_rag_pipeline/prompts/intent.md").read_text()
     assert snapshot.origin == "packaged"
-    assert await store.get("../core/errors.py") is None
+    assert await store.get("../core/errors/__init__.py") is None
     proc, _, db, _, _ = make_processor()
     proc._packaged_prompts = store
     db.get.side_effect = DatabaseUnavailable()

@@ -285,3 +285,17 @@ replays M0b ; Ruff, mypy sur les trois modules modifiés et les trois contrats
 d'import passent. Revue indépendante favorable après correction de la limite des
 grands entiers JSON. Modification extérieure de `legal_search.py` laissée intacte
 et exclue du commit.
+
+### Rangement des erreurs par domaine — revue PR #545
+
+`core/errors/` remplace le module unique : base commune, stockage, inférence,
+RAG (configuration/classification) et accès (ministère/modèle). Le point d'entrée
+réexporte les mêmes classes ; définitions, héritages, codes et comportement
+restent inchangés, sans cycle. README et test du chemin de ressource adaptés.
+Aucune modification de la politique de repli : le constat de revue sur
+`DatabaseConflict` à la lecture des acronymes reste ouvert pour discussion.
+
+Validation locale : 396 tests API passent, 105 ignorés faute de DSN synthétique ;
+Ruff sur les chemins CI, mypy sur le package et trois contrats d'import passent.
+Identité des réexports, héritages et égalité AST des définitions vérifiés.
+Modification extérieure de `legal_search.py` préservée et exclue du commit.

@@ -251,7 +251,7 @@ requires a proxy. Redirects are disabled even if the injected client enables the
 
 Every actual HTTP attempt records provider/model and an optional stable failure
 kind: `timeout`, `unavailable`, `rate_limited`, `rejected`, `invalid_response`.
-`InferenceFailure` lives in `core/errors.py`. Its `attempts` attribute contains the
+`InferenceFailure` lives in `core/errors/inference.py`. Its `attempts` attribute contains the
 same safe values; it never wraps a raw provider exception for display.
 No result, trace or `last_*` diagnostic is shared
 between requests. Cancellation propagates and does not initiate fallback or
@@ -308,6 +308,11 @@ not a live provider or RAG quality evaluation. Run it without credentials or DB:
 ```bash
 uv run --package assistant-rh-api --group dev python -m pytest apps/api/tests/gateways -q
 ```
+
+The `core/errors/` package groups errors by domain: `base`, `storage`,
+`inference`, `rag` and `access`. Its `__init__.py` re-exports the same classes,
+so existing `from assistant_rh_api.core.errors import ...` imports remain valid.
+Domain modules depend on `errors.base`, not on the package re-exports.
 
 ## Query classification outcomes (C2, #459)
 
