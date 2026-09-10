@@ -2007,11 +2007,17 @@ def test_should_run_pdf_sources_scoped_to_single_ministry(monkeypatch: pytest.Mo
     assert {"pdf-sources-mi-medallion", "pdf-sources-masa-medallion", "pdf-sources-matte-medallion", "pdf-sources-mso-medallion"} <= set(selected)
 
 
-def test_production_cron_matrix_selects_six_scoped_delta_chains(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("target_env", ["staging", "prod"])
+def test_daily_cron_matrix_selects_six_scoped_delta_chains(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, target_env: str) -> None:
+    import shlex
+    import subprocess
+
     import yaml
 
-    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/data-engineering-cron-production.yml").read_text())
-    job = workflow["jobs"]["cron-delta-production"]
+    suffix = "production" if target_env == "prod" else "delta"
+    workflow = yaml.safe_load((REPO_ROOT / f".github/workflows/data-engineering-cron-{suffix}.yml").read_text())
+    job_name = "cron-delta-production" if target_env == "prod" else "cron-delta-staging"
+    job = workflow["jobs"][job_name]
     specs = scaleway_data_jobs.load_config(REPO_ROOT / ".github/data-engineering-jobs.json")["jobs"]
     monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
     expected = {
@@ -2020,22 +2026,46 @@ def test_production_cron_matrix_selects_six_scoped_delta_chains(monkeypatch: pyt
         **{name: [f"pdf-sources-{name}-medallion", f"embeddings-{name}"] for name in ("mi", "masa", "matte", "mso")},
     }
     actual = {}
+    chain = next(step for step in job["steps"] if step.get("id") == "delta_chain")
+    coverage = next(step for step in job["steps"] if "embedding coverage gate" in step.get("name", ""))
     for row in job["strategy"]["matrix"]["include"]:
-        args = SimpleNamespace(
-            delta=True,
-            service_public=row["service_public"],
-            legifrance=row["legifrance"],
-            pdf_sources=row["pdf_sources"],
-            pdf_sources_ministry=row["ministry"],
-            embeddings=True,
-            embedding_source=row["embedding_source"],
-            r2=False,
-            run_ingestion=True,
-            run_embeddings=True,
-        )
+        command = chain["run"]
+        for key, value in row.items():
+            command = command.replace("${{ matrix." + key + " }}", str(value).lower() if isinstance(value, bool) else value)
+        argv = shlex.split(command.replace("\\\n", ""))
+        args = scaleway_data_jobs.build_parser().parse_args(argv[2:])
+        assert args.target_env == target_env
+        assert args.wait is True
+        assert args.mode == "apply"
+        assert args.delta is True
         actual[row["name"]] = [spec["key"] for spec in specs if scaleway_data_jobs.should_run(spec, args)]
+        # Exécuter le shell réel du gate avec uv remplacé par une capture locale.
+        gate = coverage["run"]
+        for key, value in row.items():
+            gate = gate.replace("${{ matrix." + key + " }}", str(value))
+        subprocess.run(
+            ["bash", "-c", 'uv() { printf "%s\\n" "$@" > coverage-args.txt; }; COVERAGE_MIN_PCT=100;\n' + gate],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        gate_args = (tmp_path / "coverage-args.txt").read_text().splitlines()
+        assert ("--allow-empty-corpus" in gate_args) is row["pdf_sources"]
+        if row["pdf_sources"]:
+            assert gate_args[gate_args.index("--allow-empty-corpus") + 1] == row["embedding_source"]
+        assert "--check-only" in gate_args
     assert actual == expected
-    assert job["environment"] == "scaleway-production"
-    assert "refs/heads/main" in job["if"]
-    assert "vars.DATA_PROD_CRON_ENABLED == 'true'" in job["if"]
-    assert workflow["concurrency"]["group"] == "data-promote-prod"
+    assert job["strategy"]["max-parallel"] == 2
+    structural = next(step for step in job["steps"] if "structural quality gate" in step.get("name", ""))
+    assert structural["if"] == "${{ matrix.service_public || matrix.legifrance }}"
+    assert coverage["if"] == "${{ !cancelled() && steps.delta_chain.outcome == 'success' }}"
+    assert "mi|masa|matte|mso)" in coverage["run"]
+    assert 'EMPTY_TABLE_ARGS=(--allow-empty-corpus "${{ matrix.embedding_source }}")' in coverage["run"]
+    if target_env == "prod":
+        assert job["environment"] == "scaleway-production"
+        assert "refs/heads/main" in job["if"]
+        assert "vars.DATA_PROD_CRON_ENABLED == 'true'" in job["if"]
+        assert workflow["concurrency"]["group"] == "data-promote-prod"
+    else:
+        assert job["environment"] == "scaleway-staging"

@@ -208,7 +208,15 @@ class GristClient:
         """
         params = {"filter": json.dumps(filter, ensure_ascii=False)} if filter else None
         payload = self._get(self._table_url(self._resolve_table(table_id), "records"), params=params)
-        return list(payload.get("records", []))
+        # Une réponse malformée ne prouve jamais que le référentiel est vide :
+        # les réconciliations supprimeraient sinon les documents encore en base.
+        if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
+            raise GristContractError("Réponse Grist invalide : liste 'records' absente ou malformée.")
+        records = payload["records"]
+        for record in records:
+            if not isinstance(record, dict) or type(record.get("id")) is not int or record["id"] <= 0 or not isinstance(record.get("fields"), dict):
+                raise GristContractError("Réponse Grist invalide : chaque record doit contenir un id positif et un objet 'fields'.")
+        return records
 
     def add_records(self, records: list[dict[str, Any]], table_id: str | None = None) -> list[int]:
         """records: [{"fields": {...}}, ...] — retourne les ids créés."""

@@ -24,6 +24,8 @@ class FakeCursor:
             self._next_kind = "table_exists"
         elif "information_schema.columns" in text:
             self._next_kind = "columns_probe"
+        elif "SELECT NOT EXISTS" in text:
+            self._next_kind = "empty_corpus"
         elif "FROM" in text.upper():
             self._next_kind = "coverage"
         else:
@@ -36,6 +38,8 @@ class FakeCursor:
             # (1,) si la table porte la colonne index_variant (lignes R2
             # possibles -> exclusion attendue dans le SQL), None sinon.
             return self.conn.columns_probe_result
+        if self._next_kind == "empty_corpus":
+            return (self.conn.empty_corpus,)
         if self._next_kind == "coverage":
             return self.conn.coverage_results.pop(0)
         raise AssertionError(f"FakeCursor.fetchone(): unexpected query kind {self._next_kind!r}")
@@ -54,11 +58,13 @@ class FakeConnection:
         table_exists_results: list[tuple | None] | None = None,
         coverage_results: list[tuple] | None = None,
         columns_probe_result: tuple | None = None,
+        empty_corpus: bool = False,
     ) -> None:
         self.table_exists_results = list(table_exists_results or [])
         self.coverage_results = list(coverage_results or [])
         # None = pas de colonne index_variant (défaut : tables sans lignes R2)
         self.columns_probe_result = columns_probe_result
+        self.empty_corpus = empty_corpus
         self.queries: list[str] = []
         self.params: list[object] = []
         self.committed = False
@@ -138,6 +144,49 @@ def test_missing_table_is_flagged_as_problem() -> None:
     exit_code, problems = embeddings_backfill.evaluate_coverage_report(report, coverage_min_pct=100)
     assert exit_code == 1
     assert any("Table absente" in problem for problem in problems)
+
+
+def test_allow_empty_tables_accepts_last_document_removal_without_hiding_gaps() -> None:
+    report = {
+        "missing_tables": [],
+        "tables": {"rag_chunks_mi": {"embedding_m3": {"total": 0, "non_null": 0, "is_empty": True}}},
+    }
+    assert embeddings_backfill.evaluate_coverage_report(report, coverage_min_pct=100, allow_empty_tables=True) == (0, [])
+
+    report["tables"]["rag_chunks_mi"]["embedding_m3"] = {"total": 2, "non_null": 1}
+    exit_code, problems = embeddings_backfill.evaluate_coverage_report(report, coverage_min_pct=100, allow_empty_tables=True)
+    assert exit_code == 1
+    assert "couverture 50.0%" in problems[0]
+
+    report = {"missing_tables": ["rag_chunks_mi"], "tables": {}}
+    result = embeddings_backfill.evaluate_coverage_report(report, coverage_min_pct=100, allow_empty_tables=True)
+    assert result == (1, ["Table absente: rag_chunks_mi"])
+
+
+@pytest.mark.parametrize(("allow_empty", "empty_corpus", "expected_code"), [(False, True, 1), (True, True, 0), (True, False, 1)])
+def test_check_only_cli_empty_table_requires_empty_corpus_and_opt_in(monkeypatch, tmp_path, capsys, allow_empty, empty_corpus, expected_code):
+    config = tmp_path / "tables.json"
+    config.write_text(json.dumps({"tables": [{**SPEC_ONE_COLUMN[0], "table": "rag_chunks_mi"}]}), encoding="utf-8")
+    conn = FakeConnection(table_exists_results=[(1,)], coverage_results=[(0, 0, 0, 0)], empty_corpus=empty_corpus)
+    monkeypatch.setenv("SCW_POSTGRES_DSN", "postgresql://unused")
+    monkeypatch.setattr(embeddings_backfill, "psycopg", SimpleNamespace(connect=lambda dsn: conn))
+    argv = ["embeddings", "--config", str(config), "--check-only"]
+    if allow_empty:
+        argv.extend(["--allow-empty-corpus", "mi"])
+    monkeypatch.setattr("sys.argv", argv)
+    assert embeddings_backfill.main() == expected_code
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["allow_empty_tables"] is (allow_empty and empty_corpus)
+    assert conn.committed is False
+
+
+def test_allow_empty_corpus_refuses_another_table(monkeypatch, tmp_path):
+    config = tmp_path / "tables.json"
+    config.write_text(json.dumps({"tables": SPEC_ONE_COLUMN}), encoding="utf-8")
+    monkeypatch.setenv("SCW_POSTGRES_DSN", "postgresql://unused")
+    monkeypatch.setattr("sys.argv", ["embeddings", "--config", str(config), "--check-only", "--allow-empty-corpus", "mi"])
+    with pytest.raises(SystemExit, match="unique table PDF"):
+        embeddings_backfill.main()
 
 
 def test_coverage_threshold_returns_non_zero_for_gaps() -> None:
