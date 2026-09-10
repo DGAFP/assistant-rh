@@ -9,7 +9,7 @@ def test_package_and_core_imports_do_not_wire_io() -> None:
 import sys
 import assistant_rh_api
 from assistant_rh_api.core import errors, health, models, ports
-from assistant_rh_api.core.pipeline.steps import query_processor
+from assistant_rh_api.core.pipeline.steps import query_processor, retrieval
 
 forbidden = {
     "fastapi",

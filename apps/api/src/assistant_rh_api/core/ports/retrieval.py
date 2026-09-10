@@ -8,6 +8,10 @@ from assistant_rh_api.core.models.retrieval import Document, LegalReference, Raw
 class SearchPort(Protocol):
     async def search(self, request: SearchRequest) -> tuple[RawChunk, ...]: ...
 
+    async def hybrid_candidates(self, request: SearchRequest) -> tuple[tuple[RawChunk, ...], tuple[RawChunk, ...]]:
+        """Return vector and lexical lanes from the same storage snapshot."""
+        ...
+
 
 class ContentStorePort(Protocol):
     async def documents(self, ids: tuple[str, ...]) -> tuple[Document, ...]: ...

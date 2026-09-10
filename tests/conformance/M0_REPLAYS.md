@@ -133,3 +133,24 @@ entry in `docs/architecture/hexagonal-split/LEDGER.md`.
 
 This C2 evidence covers the extracted stage, not C6 engine wiring, whole-pipeline
 M1 parity or live quality. No baseline refresh or live provider call is needed.
+
+## C3 retrieval extraction: missing port inputs
+
+The C3 audit (#460, 2026-09-10) found that the current bundle records the final
+retrieval projections, **not** the embeddings or raw vector/lexical/heading
+lanes needed to execute the candidate at `SearchPort`. Its integrity check is
+therefore not a candidate parity comparison (`exact_comparison` remains null).
+Reconstructing raw lanes from expected final outputs would be a circular test.
+
+The supplemental C3 tests execute the historical retriever and the API core on
+the same guarded synthetic PostgreSQL corpus, comparing all chunk fields,
+full-precision scores and order across three modes and four ministry scopes.
+These differential tests do **not** fulfill the M0b replay gate.
+
+To close that gate, an explicitly versioned companion recording must capture the
+embedding outcome, every raw lane including ranks and empty/failed lanes, source
+catalogue, effective request configuration and the historical output together.
+It must identify the runtime/corpus revision and be replayed without live I/O.
+An existing recording of those inputs would also suffice. A new live query on
+today's database cannot retroactively recover the frozen M0b search inputs.
+Keep the original bundle untouched; #460 remains open pending this proof.

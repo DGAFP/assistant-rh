@@ -341,3 +341,139 @@ inattendues/configuration. Validation locale : **412 tests API passent**, 105
 ignorés faute de DSN synthétique ; Ruff sur les chemins CI, formatage des deux
 fichiers Python et trois contrats d'import passent. Aucun accès DB distant ou
 appel provider ; validation CI du nouveau commit à vérifier après publication.
+
+## C3 — retrieval métier extrait, gate M0b ouvert (2026-09-10)
+
+[Issue #460](https://github.com/DGAFP/assistant-rh/issues/460) : extraction dans
+`apps/api/src/assistant_rh_api/core/pipeline/steps/retrieval.py`, derrière `SearchPort` et
+`EmbeddingPort`, sans dépendance SQL/psycopg ni import du package historique.
+Le core possède fusion hybride, rang des absents, RRF inter-sources, plafond de
+normalisation, filtre headings, top-k et dédup R2. Résultats/configuration et
+métadonnées sont immuables ; chaîne embedding sélectionnée par requête, modèle
+réel conservé après fallback, erreurs partielles explicites et scope ministériel
+strict. Les tables de comparaison nécessitent un catalogue injecté ; les alias
+physiques dupliqués sont refusés avant I/O pour garantir le déterminisme.
+
+L'adaptateur expose les deux lanes hybrides brutes dans un unique snapshot SQL,
+sans fusion métier. Il conserve l'ordre et la représentation des scores de
+chaque lane, les probes transactionnels et le pool borné B1. Le fallback B2
+implicite vers `to_tsvector(chunk_text)` quand la colonne manque est retiré :
+le runtime historique échoue dans ce cas. La recherche heading reste indépendante.
+Pas de reranker de chunks ajouté (option historiquement sans implémentation).
+Aucun handler ni branchement Streamlit ; C2/#459 est livré par #545, et
+C6/#463 porte l’assemblage des étapes.
+
+Preuve locale : **381 tests API passent** sur PostgreSQL 18.4/pgvector 0.8.2 local
+exclusivement synthétique. Les 15 comparaisons différentielles exécutent les SQL
+historiques et le nouveau core sur le même corpus : modes semantic/lexical/hybrid,
+mode non scopé et quatre ministères, scores exacts, ordre et métadonnées complets.
+S'ajoutent égalités, doublons R2, pools vides, absence d'embedding, erreurs partielles,
+colonne lexicale absente, annulation, immutabilité et isolation des requêtes.
+Ruff CI, mypy sur les quatre modules et les trois contrats d'import passent.
+Revue indépendante favorable pour un brouillon après correction du marqueur
+lexical, des collisions de catalogue et de la sélection embedding par config.
+Suite historique : 1376 tests passent et 16 sont ignorés dans le sandbox ; les
+13 cas HTTP bloqués par les sockets locales sont validés dans une relance du
+module complet `test_openai_contract_probe.py` (14/14). Reproduction API après
+`uv sync --all-packages --group dev`, avec le DSN synthétique local gardé par la
+fixture : `uv run --no-sync python -m pytest apps/api/tests -q`. Aucun test
+historique n'a été supprimé ni assoupli.
+
+**Gate non satisfait, issue maintenue ouverte** : M0b vérifie bien 7 fixtures et
+56 artefacts, mais ne contient pas les inputs bruts du `SearchPort`. Son auto-check
+ne prouve pas la conformance de C3. Le [complément nécessaire](../../../tests/conformance/M0_REPLAYS.md#c3-retrieval-extraction-missing-port-inputs)
+est documenté ; aucun candidat n'est reconstruit depuis les résultats attendus,
+aucune baseline n'est remplacée. L'[audit A5](07-runtime-isolation-audit.md)
+consigne aussi l'ambiguïté de section déjà départagée côté B2 et le fait que
+DGAFP est interrogé même avec `needs_legal_search=false` dans M0b. C3 préserve
+cette politique, sans introduire le nouveau gate suggéré par le libellé de #460.
+A5-02/04/05/08/11 progressent côté API mais ne sont pas déclarés clos : la preuve
+M0b, les étapes C4/C6 et les consommateurs historiques restent à traiter.
+Aucun accès DB distant, appel provider, migration distante ou déploiement.
+
+
+## C3 — intégration de C2 depuis dev / #545 (2026-09-10)
+
+Fusion de `dev` (`a86719f`, #545) dans la branche de #546. Les imports du
+retrieval et de ses tests utilisent désormais `core.models.inference.Embedding`
+et `core.errors.inference.InferenceFailure`. Le test d’isolation importe C2 et
+C3 ensemble et conserve les interdictions I/O des deux branches. Les entrées
+C2/C3 du LEDGER et des replays sont conservées ; #459 est livré, tandis que le
+gate M0b retrieval de #460 reste ouvert et #546 reste en brouillon.
+
+Avant correction, le test d’import reproduit `ModuleNotFoundError` sur
+`assistant_rh_api.core.inference`. Après correction : **204 tests ciblés passent**,
+puis **1 948 tests API et historiques passent, 16 sont ignorés** avec
+`API_SYNTHETIC_POSTGRES_DSN` pointant exclusivement vers PostgreSQL 18.4/pgvector
+0.8.2 local synthétique et `PYTHON_DOTENV_DISABLED=1` :
+`uv run --no-sync python -m pytest apps/api/tests tests --ignore=tests/archive -q`.
+Ruff sur les chemins CI, mypy sur les cinq modules retrieval/modèles/port/catalogue/
+adaptateur et les trois contrats d’import passent. Revue indépendante de la
+fusion favorable. Les règles de retrieval sont inchangées ; aucune preuve M0b
+supplémentaire ni bascule runtime n’est revendiquée. CI à recontrôler sur le
+commit publié ; aucun accès DB distant, appel provider ou déploiement.
+
+
+## C3 — alignement du step et caractérisation des erreurs DB (2026-09-10)
+
+Le retrieval rejoint `core/pipeline/steps/retrieval.py`, conformément au plan
+cible et au placement de C2. Le contenu du module est identique octet pour octet
+à celui de `2a13158` ; seuls son emplacement, les imports et les références
+changent. Le test d’isolation importe les deux steps au même emplacement.
+
+Six caractérisations couvrent une panne `DatabaseUnavailable` dans les trois
+modes, sans scope puis avec ministère : résultat vide avec diagnostics des
+lanes en mode partiel ; `ScopedRetrievalError` en mode ministériel strict.
+La cause DB n’est pas conservée dans ces diagnostics et le step ne journalise
+pas lui-même les erreurs. Le README explicite aussi l’interception large des
+exceptions et l’absence de mapping HTTP completion C6. La politique d’erreur
+reste inchangée par ce déplacement.
+
+Validation : **32 tests ciblés et 565 tests API passent** sur PostgreSQL local
+synthétique, incluant les tests existants de perte de réponse réseau et de
+traduction des erreurs DB. Ruff sur les chemins CI, mypy du module déplacé et
+les trois contrats d’import passent ; revue indépendante favorable. Le gate
+M0b C3 reste ouvert et la PR reste en brouillon. Aucun accès DB distant, appel
+provider ou déploiement ; CI à vérifier sur la nouvelle tête publiée.
+
+
+## C3 — logs d’échec et smoke staging autorisés (2026-09-10)
+
+À la demande explicite de l’utilisateur, ajout d’un `WARNING` par lane échouée
+au point de décision du retrieval, avec source logique, lane, code DB allowlisté
+et politique `strict`/`partial`. Les exceptions non reconnues sont classées
+`unexpected_error` ; aucun message, traceback, DSN ou texte de question n’est
+journalisé. Les mêmes champs sont disponibles dans le `LogRecord`. Réussite et
+annulation ne produisent pas de faux warning. La sélection/fusion, les exceptions
+remontées et les diagnostics retournés restent inchangés ; le mapping HTTP
+completion appartient toujours à C6. Cette exception ciblée de logging standard
+est explicitement autorisée, comme celle de C2.
+
+Validation locale : **43 tests ciblés et 576 tests API passent**, ces derniers
+sur le DSN synthétique local uniquement. Couverture `caplog` des erreurs DB,
+exceptions inattendues, causes/messages/code arbitraire contenant des sentinelles
+sensibles, politique stricte/partielle, succès et annulation. Ruff CI, mypy du
+step et les trois contrats d’import passent ; revue indépendante code/tests
+favorable. CI de la nouvelle tête à vérifier après publication.
+
+**Smoke réel staging, 2026-09-10 à 12:41 UTC** : DSN dédié
+`SCW_POSTGRES_DSN_STAGING`, endpoint distinct de production, PostgreSQL 17.10,
+`default_transaction_read_only=on` et `transaction_read_only=on` vérifiés.
+Connexion avec TLS requis ; sessions forcées en lecture seule, timeout SQL 10 s,
+pool maximal de trois connexions. Aucun pytest/fixture/migration exécuté contre
+staging. Chargement réussi de la configuration par `RAGConfigurationService`
+sans fallback, puis override explicite du mode `hybrid` et du top-k à 5 ; alpha
+0,5 et probes 5. Scope MATTE : MATTE + Service-Public + DGAFP.
+
+Question synthétique : « Quelles sont les conditions du congé de formation
+professionnelle pour un agent contractuel ? ». Vrai `EmbeddingGateway` Albert,
+modèle `openweight-embeddings`, 1 024 dimensions, une tentative réussie et aucun
+fallback provider utilisé. Vrai `SearchStore` et nouveau step : **23 chunks en
+1,593 s**, dont MATTE 10, Service-Public 8 et DGAFP 5 ; 18 chunks rattachés à une
+section, 10 issus de headings, **zéro lane échouée**. Le top-k est par lane,
+puis les résultats sont fusionnés. Aucun contenu complet ni secret conservé
+dans le bilan ; aucune écriture DB, génération de réponse ou bascule runtime.
+
+Ce smoke prouve l’exécution sur le corpus staging courant pour cette requête et
+ce scope. Il ne mesure pas la qualité des réponses et ne reconstitue pas les
+inputs historiques M0b : le gate de #460 reste ouvert et #546 reste en brouillon.

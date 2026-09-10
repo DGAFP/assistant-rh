@@ -155,3 +155,105 @@ async def test_search_input_cannot_inject_sql(corpus):
     assert await store.search(SearchRequest("matte", "lexical", query="'; DROP TABLE rag_config; --")) == ()
     async with corpus.transaction() as connection:
         assert await (await connection.execute("SELECT count(*) FROM public.rag_config")).fetchone() == (1,)
+
+
+async def test_hybrid_candidates_keep_each_lane_rank_and_score(corpus):
+    store = SearchStore(corpus)
+    request = SearchRequest("matte", "vector", query="congés", embedding=(1.0, 0.0, 0.0), limit=1)
+    vector, lexical = await store.hybrid_candidates(request)
+    assert vector == await store.search(request)
+    assert lexical == await store.search(replace(request, mode="lexical"))
+    assert vector[0].rank == lexical[0].rank == 1
+    assert vector[0].score == 1.0
+    assert lexical[0].score != vector[0].score
+
+
+@pytest.mark.parametrize("mode", ["semantic", "lexical", "hybrid"])
+@pytest.mark.parametrize("ministry", [None, "matte", "mso", "mi", "masa"])
+async def test_core_stage_exact_legacy_parity_on_synthetic_postgres(corpus, repository_dsn, mode, ministry):
+    """Execute both real SQL paths; compare every chunk field and full precision.
+
+    This is a supplemental differential fixture, not a replay of M0b outputs.
+    """
+    from types import SimpleNamespace
+
+    import anyio
+    from assistant_rh_api.core.models.inference import Embedding
+    from assistant_rh_api.core.models.rag_configuration import RetrievalConfig, SearchMode
+    from assistant_rh_api.core.pipeline.steps.retrieval import Retriever
+    from assistant_rh_rag_pipeline.config import RetrievalConfig as LegacyConfig
+    from assistant_rh_rag_pipeline.config import SearchMode as LegacyMode
+    from assistant_rh_rag_pipeline.retriever import Retriever as LegacyRetriever
+
+    # Different vector/lexical order, ties, absent lanes, R2 duplicates and
+    # section-backed metadata. Only synthetic content in the guarded test DB.
+    async with corpus.transaction() as connection:
+        # Exact parity requires an unambiguous legacy section relation. The
+        # separate B2 tie tests above retain both sections and assert SEC1;
+        # legacy's LIMIT 1 has no id tie-break and can pick SEC2 instead.
+        await connection.execute("DELETE FROM public.rag_sections WHERE section_id = %s", (SEC2,))
+        await connection.execute("""
+            INSERT INTO public.rag_chunks_dgafp(chunk_id, chunk_text, cid, embedding_m3, embedding_bge_scw)
+            VALUES ('CID_0', 'congés annuels', 'CID', '[1,0,0]', '[0,1,0]'),
+                   ('CID_r2s', 'congés annuels', 'CID', '[1,0,0]', '[0,1,0]'),
+                   ('CID_1', 'mobilité congés', 'CID', '[0.9,0.1,0]', '[0.1,0.9,0]'),
+                   ('vector-only', 'mobilité', 'OTHER', '[1,0,0]', '[0,1,0]'),
+                   ('lexical-only', 'congés congés congés', 'LEX', NULL, NULL)
+        """)
+    tables = [ministry, "service_public", "dgafp"] if ministry else ["matte", "service_public", "dgafp", "rgrh"]
+    legacy = LegacyRetriever(LegacyConfig(search_mode=LegacyMode(mode), tables=tables, initial_top_k=3, alpha=0.3), dsn=repository_dsn)
+    legacy._embedder = SimpleNamespace(embed_query=lambda query: [1.0, 0.0, 0.0], last_model_used="albert")
+    legacy_chunks = await anyio.to_thread.run_sync(
+        lambda: legacy.retrieve("congés", force_hybrid_tables={"dgafp"}, strict_table_errors=ministry is not None)
+    )
+
+    class Embeddings:
+        async def embed(self, text):
+            return Embedding((1.0, 0.0, 0.0), "albert", "albert", ())
+
+    store = SearchStore(corpus)
+    result = await Retriever(store, {"albert": Embeddings()}, store.sources).retrieve(
+        "congés",
+        RetrievalConfig(search_mode=SearchMode(mode), initial_top_k=3, alpha=0.3),
+        selected_ministry=ministry,
+        force_hybrid_tables=frozenset({"dgafp"}),
+    )
+
+    def projection(chunk):
+        return (
+            chunk.chunk_id,
+            chunk.text,
+            chunk.score,
+            chunk.table_source,
+            dict(chunk.metadata),
+            str(chunk.section_id) if chunk.section_id else None,
+            chunk.embedding_model_used,
+        )
+
+    assert [projection(chunk) for chunk in result.chunks] == [projection(chunk) for chunk in legacy_chunks]
+
+
+async def test_missing_lexical_column_is_partial_or_scoped_failure_without_text_fallback(corpus):
+    from assistant_rh_api.core.errors import DatabaseFailure
+    from assistant_rh_api.core.models.inference import Embedding
+    from assistant_rh_api.core.models.rag_configuration import RetrievalConfig
+    from assistant_rh_api.core.pipeline.steps.retrieval import Retriever, ScopedRetrievalError
+
+    class Embeddings:
+        async def embed(self, text):
+            return Embedding((1.0, 0.0, 0.0), "albert", "albert", ())
+
+    store = SearchStore(corpus)
+    try:
+        async with corpus.transaction() as connection:
+            await connection.execute("ALTER TABLE public.rag_chunks_dgafp RENAME COLUMN chunk_text_tsv TO unavailable_tsv")
+        with pytest.raises(DatabaseFailure):
+            await store.hybrid_candidates(SearchRequest("dgafp", "vector", query="congés", embedding=(1.0, 0.0, 0.0)))
+        retriever = Retriever(store, {"albert": Embeddings()}, store.sources)
+        result = await retriever.retrieve("congés", RetrievalConfig(), force_hybrid_tables=frozenset({"dgafp"}))
+        assert result.failures and all(c.table_source != "DGAFP" for c in result.chunks)
+        with pytest.raises(ScopedRetrievalError):
+            await retriever.retrieve("congés", RetrievalConfig(), selected_ministry="mso")
+    finally:
+        async with corpus.transaction() as connection:
+            await connection.execute("ALTER TABLE public.rag_chunks_dgafp RENAME COLUMN unavailable_tsv TO chunk_text_tsv")

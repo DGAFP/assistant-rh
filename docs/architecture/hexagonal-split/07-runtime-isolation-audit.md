@@ -157,6 +157,59 @@ Le `RunContext` ne contient jamais de DSN, secret, pool, connexion, client HTTP/
 
 ## Frontière sensible retrieval métier / SQL
 
+### Ré-audit C3 / #460 — avant extraction, 2026-09-10
+
+- Cible : `apps/api/core` via `SearchPort`/`EmbeddingPort`, sans import du runtime
+  historique. Les consommateurs Streamlit/admin restent sur leur implémentation
+  actuelle ; l'assemblage moteur appartient à C6. C2/#459 a été livré par #545,
+  intégré à cette branche depuis `dev` (`a86719f`).
+- Le port B2 expose les lanes brutes mais pas la fusion hybride SQL historique :
+  conserver alpha, RRF k=60, rang des absents=`fetch_k`, limite avant dédup R2,
+  sur-échantillonnage x2 DGAFP, puis RRF inter-sources et plafond des sources
+  participantes (y compris celles qui retournent un pool vide).
+- Les headings sont un chemin indépendant : filtre métier sur titre/intertitre,
+  pas un reranker provider. RGRH et les tables de comparaison n'en ont pas.
+- Erreur d'une lane hybride : toute la recherche chunks de cette source échoue ;
+  préserver le heading indépendant en mode partiel. Le scope ministère échoue
+  fermé. Modèle d'embedding et diagnostics doivent voyager dans le résultat
+  de chaque requête, sans `last_model_used`, chronomètre ou singleton du core.
+- Écart du libellé #460 : `9bf1cf0` et `dev` interrogent DGAFP et forcent son mode
+  hybride dès qu'il est dans le scope, même si `needs_legal_search=false`.
+  M0b MSO l'atteste. Aucun nouveau gate juridique ne sera introduit dans C3 ;
+  les réponses directes court-circuitent le retrieval en amont.
+- Limite de preuve découverte : M0b contient les **sorties finales** de retrieval,
+  pas les embeddings ni les résultats bruts vectoriels/lexicaux/headings.
+  Il ne permet donc pas de rejouer honnêtement l'extraction au `SearchPort`.
+  La parité différentielle sur corpus synthétique sera distinguée de ce gate,
+  qui reste ouvert sans enregistrement complémentaire approuvé. La référence
+  versionnée ne sera ni écrasée ni reconstruite depuis les sorties attendues.
+- Départages : rang brut puis identifiants ; score hybride puis chunk id ;
+  score métier, heading score, publisher, chunk id et section id ; fusion dans
+  l'ordre stable des sources. L'ordre de complétion asynchrone n'intervient pas.
+
+Résultat de l'extraction : `core/pipeline/steps/retrieval.py` porte ces règles et expose un
+`RetrievalResult` immuable. Le modèle préféré choisit une chaîne `EmbeddingPort`
+par requête ; le modèle effectivement retourné choisit la colonne vectorielle.
+`SearchPort.hybrid_candidates` renvoie deux lanes brutes dans un seul snapshot
+SQL, sans calcul RRF côté DB. Sur demande explicite en revue, le step journalise
+un `WARNING` par lane échouée (source, lane, code DB allowlisté ou
+`unexpected_error`, politique strict/partiel), sans question, DSN, message
+ni traceback d’exception. Comme C2, cette journalisation standard au point de
+décision est une exception d’observabilité ciblée ; elle ne change ni les
+résultats ni la politique de propagation. Un `TaskGroup` joint les tâches, y compris à
+l'annulation ; le pool B1 borne les connexions. L'introspection reste une lecture
+fraîche d'adaptateur (aucun cache global). Les overrides de comparaison sont
+injectés explicitement au catalogue d'évaluation ; doublons physiques rejetés
+avant I/O pour éviter un écrasement de résultats dépendant de l'ordonnancement.
+
+Écart A5-11 constaté par le test différentiel : le résolveur de section historique
+fait `LIMIT 1` sans id secondaire quand deux sections correspondent au même
+chemin. L'adaptateur B2 impose déjà `section_id` comme départage et peut donc
+choisir une autre section dans ce cas ambigu. La fixture de parité C3 a une
+relation unique ; les tests B2 conservent les égalités et vérifient leur ordre.
+Cette divergence préexistante, relevant de C3/C4, reste visible pour la revue du
+gate M0b ; elle n'est pas présentée comme une égalité historique prouvée.
+
 Le port ne doit pas reproduire la classe `Retriever` actuelle sous un autre nom.
 
 ```text
