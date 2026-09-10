@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from assistant_rh_api.core.auth import LoginRateLimited
-from assistant_rh_api.core.db_diagnostics import DBOperation
 from assistant_rh_api.db.pool import Database
 
 
@@ -43,6 +42,8 @@ class PostgresLoginLimiter:
         self._limits = limits
 
     async def acquire(self, source: str, slug: str) -> None:
+        from assistant_rh_api.core.db_diagnostics import DBOperation
+
         limits = self._limits
         subjects = (("global", "all", limits.global_limit), ("source", source, limits.source), ("slug", slug, limits.slug))
         async with self._database.transaction(operation=DBOperation.LOGIN_ACQUIRE) as connection:

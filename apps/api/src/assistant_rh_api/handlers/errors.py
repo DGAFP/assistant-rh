@@ -6,7 +6,6 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from assistant_rh_api.core.auth import InvalidCredentials, LoginRateLimited, MinistryForbidden
-from assistant_rh_api.core.db_diagnostics import report_database_error
 from assistant_rh_api.core.errors import ApplicationError, DatabaseUnavailable, MinistryConfigurationError, ModelNotFound
 
 
@@ -19,6 +18,8 @@ def error_response(status: int, code: str, message: str, *, headers: dict[str, s
 
 
 def register_error_handlers(app: FastAPI) -> None:
+    from assistant_rh_api.core.db_diagnostics import report_database_error
+
     @app.exception_handler(HTTPException)
     async def transport_error(request: Request, exc: HTTPException) -> JSONResponse:
         # Parsing errors can bypass RequestValidationError; never echo details.
