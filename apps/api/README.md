@@ -519,7 +519,7 @@ completion ni modification du runtime Streamlit n'est livrée ici.
 
 ## Retrieval stage (C3, #460)
 
-`core.retrieval.Retriever` executes the extracted stage independently of HTTP.
+`core.pipeline.steps.retrieval.Retriever` executes the extracted stage independently of HTTP.
 It takes a `SearchPort`, a mapping of embedding gateways keyed by `albert` and
 `bge_scaleway`, and an immutable source catalogue. The preferred gateway is
 selected from each request's `RetrievalConfig`; its actual embedding model
@@ -548,6 +548,15 @@ processor reports no legal intent. C6 must handle C2 direct responses before
 calling retrieval and apply selector retries using request-local mode/top-k.
 The result contains immutable chunks, the actual embedding outcome and safe
 per-lane failure diagnostics. Cancellation propagates and joins child searches.
+
+Connection/pool failures become `DatabaseUnavailable` in the DB adapter. The
+retrieval stage catches lane exceptions: unscoped calls return surviving chunks
+(or an empty tuple on a total outage) plus `failures`; ministry-scoped or
+`strict_table_errors=True` calls raise `ScopedRetrievalError` after joining the
+searches. These diagnostics carry only source and lane, not the original DB
+error code. The stage also catches unexpected `Exception` values and emits no
+log itself. C6 must consume these diagnostics; no completion HTTP error mapping
+is supplied here.
 
 `SearchStore.hybrid_candidates()` reads both raw lanes in one statement snapshot;
 alpha, RRF, missing-rank penalties, heading gates and R2 dedup stay in core.

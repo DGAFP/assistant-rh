@@ -187,7 +187,7 @@ Le `RunContext` ne contient jamais de DSN, secret, pool, connexion, client HTTP/
   score métier, heading score, publisher, chunk id et section id ; fusion dans
   l'ordre stable des sources. L'ordre de complétion asynchrone n'intervient pas.
 
-Résultat de l'extraction : `core/retrieval.py` porte ces règles et expose un
+Résultat de l'extraction : `core/pipeline/steps/retrieval.py` porte ces règles et expose un
 `RetrievalResult` immuable. Le modèle préféré choisit une chaîne `EmbeddingPort`
 par requête ; le modèle effectivement retourné choisit la colonne vectorielle.
 `SearchPort.hybrid_candidates` renvoie deux lanes brutes dans un seul snapshot

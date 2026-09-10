@@ -2,12 +2,19 @@ import asyncio
 from dataclasses import FrozenInstanceError, replace
 
 import pytest
-from assistant_rh_api.core.errors import DatabaseFailure, MinistryConfigurationError
+from assistant_rh_api.core.errors import DatabaseFailure, DatabaseUnavailable, MinistryConfigurationError
 from assistant_rh_api.core.errors.inference import InferenceFailure
 from assistant_rh_api.core.models.inference import Embedding
 from assistant_rh_api.core.models.rag_configuration import RetrievalConfig, SearchMode
 from assistant_rh_api.core.models.retrieval import RawChunk, RetrievedChunk
-from assistant_rh_api.core.retrieval import Retriever, ScopedRetrievalError, fuse_hybrid, heading_match_score, merge_r2_pairs, merge_sources
+from assistant_rh_api.core.pipeline.steps.retrieval import (
+    Retriever,
+    ScopedRetrievalError,
+    fuse_hybrid,
+    heading_match_score,
+    merge_r2_pairs,
+    merge_sources,
+)
 from assistant_rh_api.db.search_catalog import search_catalog
 from assistant_rh_rag_pipeline.config import RetrievalConfig as LegacyConfig
 from assistant_rh_rag_pipeline.models import RetrievedChunk as LegacyChunk
@@ -253,3 +260,31 @@ async def test_cross_source_fusion_matches_legacy_with_heading_duplicates_and_em
     assert [(c.chunk_id, c.score, c.table_source, dict(c.metadata)) for c in actual] == [
         (c.chunk_id, c.score, c.table_source, c.metadata) for c in expected
     ]
+
+
+@pytest.mark.parametrize("mode", list(SearchMode))
+@pytest.mark.parametrize("ministry", [None, "mso"])
+async def test_database_outage_is_reported_per_lane_or_raises_for_ministry(mode, ministry):
+    class UnavailableSearch(Search):
+        async def search(self, request):
+            raise DatabaseUnavailable()
+
+    retriever = Retriever(UnavailableSearch(), {"albert": Embeddings()}, SOURCES)
+    config = RetrievalConfig(tables=("rgrh",), search_mode=mode)
+    if ministry is None:
+        result = await retriever.retrieve("albert", config)
+        assert result.chunks == ()
+        assert result.sources == ("rgrh",)
+        assert result.embedding is not None and not result.embedding_failed
+        assert [(failure.source, failure.lane) for failure in result.failures] == [("rgrh", "chunks")]
+    else:
+        with pytest.raises(ScopedRetrievalError) as caught:
+            await retriever.retrieve("albert", config, selected_ministry=ministry)
+        assert str(caught.value) == "scoped_retrieval_failed"
+        assert [(failure.source, failure.lane) for failure in caught.value.failures] == [
+            ("dgafp", "chunks"),
+            ("mso", "chunks"),
+            ("mso", "heading"),
+            ("service_public", "chunks"),
+            ("service_public", "heading"),
+        ]

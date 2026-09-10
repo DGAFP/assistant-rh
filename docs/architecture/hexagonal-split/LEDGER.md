@@ -345,7 +345,7 @@ appel provider ; validation CI du nouveau commit à vérifier après publication
 ## C3 — retrieval métier extrait, gate M0b ouvert (2026-09-10)
 
 [Issue #460](https://github.com/DGAFP/assistant-rh/issues/460) : extraction dans
-`apps/api/src/assistant_rh_api/core/retrieval.py`, derrière `SearchPort` et
+`apps/api/src/assistant_rh_api/core/pipeline/steps/retrieval.py`, derrière `SearchPort` et
 `EmbeddingPort`, sans dépendance SQL/psycopg ni import du package historique.
 Le core possède fusion hybride, rang des absents, RRF inter-sources, plafond de
 normalisation, filtre headings, top-k et dédup R2. Résultats/configuration et
@@ -412,3 +412,26 @@ adaptateur et les trois contrats d’import passent. Revue indépendante de la
 fusion favorable. Les règles de retrieval sont inchangées ; aucune preuve M0b
 supplémentaire ni bascule runtime n’est revendiquée. CI à recontrôler sur le
 commit publié ; aucun accès DB distant, appel provider ou déploiement.
+
+
+## C3 — alignement du step et caractérisation des erreurs DB (2026-09-10)
+
+Le retrieval rejoint `core/pipeline/steps/retrieval.py`, conformément au plan
+cible et au placement de C2. Le contenu du module est identique octet pour octet
+à celui de `2a13158` ; seuls son emplacement, les imports et les références
+changent. Le test d’isolation importe les deux steps au même emplacement.
+
+Six caractérisations couvrent une panne `DatabaseUnavailable` dans les trois
+modes, sans scope puis avec ministère : résultat vide avec diagnostics des
+lanes en mode partiel ; `ScopedRetrievalError` en mode ministériel strict.
+La cause DB n’est pas conservée dans ces diagnostics et le step ne journalise
+pas lui-même les erreurs. Le README explicite aussi l’interception large des
+exceptions et l’absence de mapping HTTP completion C6. La politique d’erreur
+reste inchangée par ce déplacement.
+
+Validation : **32 tests ciblés et 565 tests API passent** sur PostgreSQL local
+synthétique, incluant les tests existants de perte de réponse réseau et de
+traduction des erreurs DB. Ruff sur les chemins CI, mypy du module déplacé et
+les trois contrats d’import passent ; revue indépendante favorable. Le gate
+M0b C3 reste ouvert et la PR reste en brouillon. Aucun accès DB distant, appel
+provider ou déploiement ; CI à vérifier sur la nouvelle tête publiée.
