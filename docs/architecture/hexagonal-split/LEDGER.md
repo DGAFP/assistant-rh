@@ -322,3 +322,22 @@ les diagnostics et la propagation inchangée des bugs/configurations invalides.
 Validation : 403 tests API passent (dont 162 query processor), 105 ignorés faute
 de DSN synthétique ; Ruff, mypy sur le step et trois contrats d'import passent.
 Modification extérieure de `legal_search.py` préservée et exclue du commit.
+
+### Repli prompt sur conflit DB — revue PR #545
+
+Le chargement du prompt récupère également `DatabaseConflict`, traduction B2
+des erreurs de sérialisation et deadlocks, comme `DatabaseFailure` et
+`DatabaseUnavailable`. Il poursuit la résolution DB puis ressource embarquée
+dans l'ordre existant et conserve le code sûr de chaque lecture échouée dans
+`store_errors`. Le runtime historique récupérait déjà ces erreurs SQL ; le step
+API ne doit pas interrompre la classification lorsqu'un prompt embarqué existe.
+Les erreurs de configuration, bugs et annulations continuent de remonter.
+
+Les deux nouvelles régressions conflit échouent sur `e30b2ff` puis passent avec
+le correctif. Neuf cas ajoutés couvrent les trois erreurs DB récupérables avec
+les noms `intent_unified.md` et `intent.md`, l'ordre des lectures, le vrai prompt
+embarqué, les diagnostics, la sortie historique et la propagation des erreurs
+inattendues/configuration. Validation locale : **412 tests API passent**, 105
+ignorés faute de DSN synthétique ; Ruff sur les chemins CI, formatage des deux
+fichiers Python et trois contrats d'import passent. Aucun accès DB distant ou
+appel provider ; validation CI du nouveau commit à vérifier après publication.

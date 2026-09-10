@@ -137,7 +137,7 @@ class QueryProcessor:
         for name in (self._config.intent_prompt_name, "intent.md"):
             try:
                 snapshot = await self._prompts.get(name)
-            except (DatabaseFailure, DatabaseUnavailable) as exc:
+            except (DatabaseConflict, DatabaseFailure, DatabaseUnavailable) as exc:
                 errors.append(exc.code)
                 snapshot = None
             if snapshot is None:

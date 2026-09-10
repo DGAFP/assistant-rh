@@ -344,7 +344,10 @@ Invalid caller data, unexpected implementation/port errors and cancellation
 propagate. Provider rejections (such as invalid credentials/model/payload) and
 partial completion failures also propagate instead of concealing a configuration
 or contract failure. Transient outages and invalid provider envelopes remain
-eligible for degraded operation. Prompt DB fallbacks remain unchanged.
+eligible for degraded operation. Prompt reads fall back to packaged resources on
+`DatabaseConflict`, `DatabaseFailure` or `DatabaseUnavailable`, recording each
+failed lookup's safe code in `store_errors`. Configuration errors and unexpected
+failures still propagate.
 
 Acronym loading falls back to an empty dictionary on `DatabaseConflict`,
 `DatabaseFailure` or `DatabaseUnavailable`, preserving the code in `store_errors`

@@ -6,7 +6,7 @@ import logging
 import unicodedata
 from dataclasses import FrozenInstanceError, asdict
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from assistant_rh_api.core.errors import (
@@ -210,6 +210,37 @@ async def test_prompt_fallback_precedence(database_state):
         assert outcome.diagnostics.prompt == fallback
         packaged.get.assert_not_called()
     assert llm.complete.call_count == 1
+
+
+@pytest.mark.parametrize("error_type", [DatabaseConflict, DatabaseFailure, DatabaseUnavailable])
+@pytest.mark.parametrize("prompt_name", ["intent_unified.md", "intent.md"])
+async def test_prompt_read_failure_uses_packaged_fallback_and_preserves_diagnostics(error_type, prompt_name):
+    proc, _, db, _, llm = make_processor(config=QueryProcessorConfig(intent_prompt_name=prompt_name))
+    proc._packaged_prompts = PackagedPromptStore()
+    db.get.side_effect = error_type()
+
+    outcome = await proc.process("CDD", today=TODAY)
+
+    names = ["intent_unified.md", "intent.md"] if prompt_name == "intent_unified.md" else ["intent.md"]
+    assert db.get.await_args_list == [call(name) for name in names]
+    assert outcome.diagnostics.store_errors == (error_type.code,) * len(names)
+    assert outcome.diagnostics.prompt == await proc._packaged_prompts.get("intent.md")
+    assert outcome.diagnostics.classification_status == "completed"
+    assert outcome.diagnostics.classification_error is None
+    expected, _ = legacy_result("CDD", "{}")
+    assert comparable(outcome.result) == comparable(expected)
+    llm.complete.assert_awaited_once()
+
+
+@pytest.mark.parametrize("error", [DatabaseConfigurationError(), RuntimeError("bug"), TypeError("bad call")])
+async def test_prompt_read_unexpected_failure_propagates(error):
+    proc, _, db, packaged, llm = make_processor()
+    db.get.side_effect = error
+    with pytest.raises(type(error)) as caught:
+        await proc.process("CDD", today=TODAY)
+    assert caught.value is error
+    packaged.get.assert_not_awaited()
+    llm.complete.assert_not_awaited()
 
 
 @pytest.mark.parametrize("template,cause", [(None, FileNotFoundError), ("", FileNotFoundError), ("{unknown}", KeyError), ("{", ValueError)])
