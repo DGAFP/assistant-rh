@@ -1,6 +1,6 @@
 """Stable public error imports; domain modules define each class exactly once."""
 
-from assistant_rh_api.core.errors.access import MinistryConfigurationError, ModelNotFound
+from assistant_rh_api.core.errors.access import InvalidCredentials, LoginRateLimited, MinistryConfigurationError, MinistryForbidden, ModelNotFound
 from assistant_rh_api.core.errors.base import ApplicationError
 from assistant_rh_api.core.errors.inference import InferenceFailure
 from assistant_rh_api.core.errors.rag import ClassificationFailure, RAGConfigurationError
@@ -14,7 +14,10 @@ __all__ = [
     "DatabaseFailure",
     "DatabaseUnavailable",
     "InferenceFailure",
+    "InvalidCredentials",
+    "LoginRateLimited",
     "MinistryConfigurationError",
+    "MinistryForbidden",
     "ModelNotFound",
     "RAGConfigurationError",
 ]

@@ -2,9 +2,8 @@ from dataclasses import FrozenInstanceError, replace
 from itertools import permutations
 
 import pytest
-from assistant_rh_api.core.auth import MinistryForbidden
 from assistant_rh_api.core.catalog import ModelService
-from assistant_rh_api.core.errors import MinistryConfigurationError, ModelNotFound
+from assistant_rh_api.core.errors import MinistryConfigurationError, MinistryForbidden, ModelNotFound
 
 from apps.api.tests.auth_fakes import Groups
 

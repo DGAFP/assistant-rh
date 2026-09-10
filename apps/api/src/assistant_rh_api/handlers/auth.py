@@ -5,8 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
-from assistant_rh_api.core.auth import AuthContext, AuthService, InvalidCredentials
-from assistant_rh_api.core.errors import DatabaseUnavailable
+from assistant_rh_api.core.auth import AuthContext, AuthService
+from assistant_rh_api.core.errors import DatabaseUnavailable, InvalidCredentials
 
 
 class LoginRequest(BaseModel):

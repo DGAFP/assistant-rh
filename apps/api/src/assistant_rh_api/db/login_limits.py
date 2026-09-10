@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 
-from assistant_rh_api.core.auth import LoginRateLimited
+from assistant_rh_api.core.errors import LoginRateLimited
 from assistant_rh_api.db.pool import Database
 
 

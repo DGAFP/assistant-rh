@@ -1,7 +1,6 @@
 """Public model catalogue and routing policy, without storage or transport."""
 
-from assistant_rh_api.core.auth import MinistryForbidden
-from assistant_rh_api.core.errors import ModelNotFound
+from assistant_rh_api.core.errors import MinistryForbidden, ModelNotFound
 from assistant_rh_api.core.ministry_policy import MINISTRIES, validate_ministry_policy
 from assistant_rh_api.core.models.auth import Group
 from assistant_rh_api.core.models.catalog import Model

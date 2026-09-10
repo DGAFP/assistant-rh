@@ -3,29 +3,14 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from assistant_rh_api.core.errors import ApplicationError, DatabaseConflict
+from assistant_rh_api.core.errors import DatabaseConflict, InvalidCredentials, MinistryForbidden
+from assistant_rh_api.core.errors import LoginRateLimited as LoginRateLimited
 from assistant_rh_api.core.ministry_policy import MINISTRIES, valid_ministry_policy, validate_ministry_policy
 from assistant_rh_api.core.models.auth import Group, Session
 from assistant_rh_api.core.ports.auth import GroupStorePort, LoginLimiterPort, PasswordVerifierPort, SessionStorePort, SessionTokenPort
 from assistant_rh_api.core.ports.system import ClockPort
 
 SESSION_LIFETIME = timedelta(hours=8)
-
-
-class InvalidCredentials(ApplicationError):
-    code = "invalid_api_key"
-
-
-class MinistryForbidden(ApplicationError):
-    code = "ministry_forbidden"
-
-
-class LoginRateLimited(ApplicationError):
-    code = "rate_limit_exceeded"
-
-    def __init__(self, retry_after: int) -> None:
-        super().__init__()
-        self.retry_after = retry_after
 
 
 def eligible_group(group: Group | None) -> bool:
