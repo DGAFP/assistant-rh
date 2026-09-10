@@ -299,3 +299,26 @@ Validation locale : 396 tests API passent, 105 ignorés faute de DSN synthétiqu
 Ruff sur les chemins CI, mypy sur le package et trois contrats d'import passent.
 Identité des réexports, héritages et égalité AST des définitions vérifiés.
 Modification extérieure de `legal_search.py` préservée et exclue du commit.
+
+### Repli acronymes sur conflit DB et avertissement — revue PR #545
+
+Correction autorisée du constat `DatabaseConflict` : le chargement des acronymes
+reprend avec un dictionnaire vide pour ce conflit, comme pour `DatabaseFailure`
+et `DatabaseUnavailable`. Le code reste dans `store_errors` ; la classification
+se poursuit normalement. Les bugs, erreurs de configuration et annulations
+continuent de remonter. La politique des prompts reste inchangée.
+
+Chaque repli acronymes émet désormais un vrai record `WARNING` via `logging`
+standard, au point de décision dans le step. Exception ciblée à l'absence de
+logging dans le core : l'adaptateur DB ne connaît pas la décision de poursuivre,
+et aucun consommateur C6 des diagnostics n'existe encore. Aucun handler n'est
+configuré dans le core ; seul le code sûr et la poursuite sans acronymes sont
+journalisés, sans donnée de requête, message d'exception ni traceback. C6 devra
+éviter de réémettre cet avertissement.
+
+Régressions couvrant les trois erreurs récupérables avec/sans classification,
+la capture d'un seul avertissement réel et sûr, la poursuite de l'appel LLM,
+les diagnostics et la propagation inchangée des bugs/configurations invalides.
+Validation : 403 tests API passent (dont 162 query processor), 105 ignorés faute
+de DSN synthétique ; Ruff, mypy sur le step et trois contrats d'import passent.
+Modification extérieure de `legal_search.py` préservée et exclue du commit.

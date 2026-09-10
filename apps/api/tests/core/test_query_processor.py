@@ -2,13 +2,22 @@
 
 import asyncio
 import json
+import logging
 import unicodedata
 from dataclasses import FrozenInstanceError, asdict
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from assistant_rh_api.core.errors import ClassificationFailure, DatabaseFailure, DatabaseUnavailable, InferenceFailure, RAGConfigurationError
+from assistant_rh_api.core.errors import (
+    ClassificationFailure,
+    DatabaseConfigurationError,
+    DatabaseConflict,
+    DatabaseFailure,
+    DatabaseUnavailable,
+    InferenceFailure,
+    RAGConfigurationError,
+)
 from assistant_rh_api.core.models.configuration import Acronym, Prompt, Snapshot
 from assistant_rh_api.core.models.inference import Attempt, Completion
 from assistant_rh_api.core.models.rag_configuration import QueryProcessorConfig
@@ -136,15 +145,49 @@ async def test_flags_case_boundaries_duplicate_order_and_nested_expansion(gating
             assert actual.result.expanded_acronyms == ("ZZ", "AA", "CDD")
 
 
-@pytest.mark.parametrize("error", [DatabaseFailure(), DatabaseUnavailable()])
-async def test_acronym_store_failure_continues_with_empty_detection(error):
-    proc, store, _, _, _ = make_processor()
+@pytest.mark.parametrize("error_type", [DatabaseFailure, DatabaseUnavailable, DatabaseConflict])
+@pytest.mark.parametrize("gating", [True, False])
+async def test_acronym_store_failure_continues_with_empty_detection_and_warning(error_type, gating, caplog):
+    config = QueryProcessorConfig(enable_intent_gating=gating)
+    proc, store, _, _, llm = make_processor(config=config)
+    error = error_type()
+    error.args = ("synthetic sensitive DB detail",)
+    error.__cause__ = RuntimeError("synthetic sensitive cause")
     store.load.side_effect = error
-    outcome = await proc.process("CDD", today=TODAY)
-    expected, _ = legacy_result("CDD", "{}", acronyms=())
+    query = "CDD synthetic private question"
+    with caplog.at_level(logging.WARNING):
+        outcome = await proc.process(query, today=TODAY)
+    assert len(caplog.records) == 1
+    record = caplog.records[0]
+    assert record.levelno == logging.WARNING
+    assert record.name == "assistant_rh_api.core.pipeline.steps.query_processor"
+    assert record.getMessage() == f"Acronym loading failed ({error.code}); continuing query processing without acronyms"
+    assert record.exc_info is None
+    assert record.stack_info is None
+    assert "synthetic" not in caplog.text
+    expected, _ = legacy_result(query, "{}", acronyms=(), config=config)
     assert comparable(outcome.result) == comparable(expected)
+    assert outcome.result.detected_acronyms == ()
+    assert outcome.result.expanded_acronyms == ()
     assert outcome.diagnostics.acronyms is None
     assert outcome.diagnostics.store_errors == (error.code,)
+    assert outcome.diagnostics.classification_status == ("completed" if gating else "disabled")
+    if gating:
+        llm.complete.assert_awaited_once()
+        assert "(Aucun acronyme detecte)" in llm.complete.call_args.args[0].messages[0].content
+    else:
+        llm.complete.assert_not_awaited()
+
+
+@pytest.mark.parametrize("error", [RuntimeError("bug"), TypeError("bad call"), DatabaseConfigurationError()])
+async def test_acronym_store_unexpected_failure_propagates_without_fallback_warning(error, caplog):
+    proc, store, _, _, llm = make_processor()
+    store.load.side_effect = error
+    with caplog.at_level(logging.WARNING), pytest.raises(type(error)) as caught:
+        await proc.process("CDD", today=TODAY)
+    assert caught.value is error
+    llm.complete.assert_not_awaited()
+    assert not caplog.records
 
 
 @pytest.mark.parametrize("database_state", ["absent", "empty", "failed", "present"])

@@ -7,13 +7,21 @@ Stores own I/O; all snapshots, errors and inference evidence belong to this call
 """
 
 import json
+import logging
 import math
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
-from assistant_rh_api.core.errors import ClassificationFailure, DatabaseFailure, DatabaseUnavailable, InferenceFailure, RAGConfigurationError
+from assistant_rh_api.core.errors import (
+    ClassificationFailure,
+    DatabaseConflict,
+    DatabaseFailure,
+    DatabaseUnavailable,
+    InferenceFailure,
+    RAGConfigurationError,
+)
 from assistant_rh_api.core.models.configuration import Acronym, Prompt, Snapshot
 from assistant_rh_api.core.models.inference import Attempt, ChatRequest, Completion, Message
 from assistant_rh_api.core.models.query_processing import (
@@ -28,6 +36,8 @@ from assistant_rh_api.core.models.rag_configuration import QueryProcessorConfig
 from assistant_rh_api.core.pipeline.steps.legal_search import should_force_legal_search
 from assistant_rh_api.core.ports.configuration import AcronymStorePort, PromptStorePort
 from assistant_rh_api.core.ports.inference import LLMPort
+
+logger = logging.getLogger(__name__)
 
 
 def format_history(history: Sequence[Mapping[str, str]] | None) -> str:
@@ -161,8 +171,9 @@ class QueryProcessor:
         if self._config.enable_acronym_expansion:
             try:
                 acronym_snapshot = await self._acronyms.load()
-            except (DatabaseFailure, DatabaseUnavailable) as exc:
+            except (DatabaseConflict, DatabaseFailure, DatabaseUnavailable) as exc:
                 errors.append(exc.code)
+                logger.warning("Acronym loading failed (%s); continuing query processing without acronyms", exc.code)
         # dict preserves the first ordinal but the last expansion for duplicates.
         acronyms = {a.short: a.expansion for a in acronym_snapshot.value} if acronym_snapshot else {}
         detected = {short: full for short, full in acronyms.items() if re.search(r"\b" + re.escape(short) + r"\b", query)}

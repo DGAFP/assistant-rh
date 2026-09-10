@@ -344,8 +344,17 @@ Invalid caller data, unexpected implementation/port errors and cancellation
 propagate. Provider rejections (such as invalid credentials/model/payload) and
 partial completion failures also propagate instead of concealing a configuration
 or contract failure. Transient outages and invalid provider envelopes remain
-eligible for degraded operation. Prompt/acronym DB fallbacks remain unchanged.
-No logging I/O or C6 orchestration is implemented in this step.
+eligible for degraded operation. Prompt DB fallbacks remain unchanged.
+
+Acronym loading falls back to an empty dictionary on `DatabaseConflict`,
+`DatabaseFailure` or `DatabaseUnavailable`, preserving the code in `store_errors`
+and continuing classification normally. At this decision point, the step emits
+one standard-library `logging.WARNING` record stating that query processing
+continues without acronyms, with only the safe error code. No query, exception
+message, traceback or DB detail is logged. The DB adapter cannot announce this
+caller-specific fallback; there is no existing C6 logging boundary to consume
+the diagnostics yet. This narrow logging exception is intentional and requires
+no handler configuration in the core; C6 must not duplicate this warning.
 
 ## Public authentication (B4, #456)
 
