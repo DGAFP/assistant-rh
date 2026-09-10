@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from assistant_rh_api.core.inference import Attempt, Completion
 from assistant_rh_api.core.models.configuration import Acronym, Prompt, Snapshot
+from assistant_rh_api.core.models.inference import Attempt, Completion
 
 
 class Intent(str, Enum):

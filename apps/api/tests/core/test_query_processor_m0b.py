@@ -11,8 +11,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
-from assistant_rh_api.core.inference import Completion
 from assistant_rh_api.core.models.configuration import Snapshot
+from assistant_rh_api.core.models.inference import Completion
 from assistant_rh_api.core.models.rag_configuration import QueryProcessorConfig
 from assistant_rh_api.core.pipeline.steps.query_processor import QueryProcessor
 from assistant_rh_api.gateways.packaged_prompts import PackagedPromptStore

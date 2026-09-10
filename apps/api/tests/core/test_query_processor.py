@@ -8,9 +8,9 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from assistant_rh_api.core.errors import DatabaseFailure, DatabaseUnavailable
-from assistant_rh_api.core.inference import Attempt, Completion, InferenceFailure
+from assistant_rh_api.core.errors import DatabaseFailure, DatabaseUnavailable, InferenceFailure
 from assistant_rh_api.core.models.configuration import Acronym, Prompt, Snapshot
+from assistant_rh_api.core.models.inference import Attempt, Completion
 from assistant_rh_api.core.models.rag_configuration import QueryProcessorConfig
 from assistant_rh_api.core.pipeline.steps.query_processor import QueryProcessor
 from assistant_rh_api.gateways.packaged_prompts import PackagedPromptStore

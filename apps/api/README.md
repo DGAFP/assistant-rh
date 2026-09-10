@@ -232,7 +232,7 @@ API_SYNTHETIC_POSTGRES_DSN='postgresql://assistant_rh_api:assistant_rh_api@127.0
 
 ## Inference gateways (B3, #455)
 
-`core/inference.py` and `core/ports/inference.py` define immutable inference values and
+`core/models/inference.py` and `core/ports/inference.py` define immutable inference values and
 `LLMPort`, `EmbeddingPort`, `RerankerPort`. `gateways/` implements them through
 an injected `httpx.AsyncClient`; the core imports neither HTTPX nor provider SDKs.
 Construction reads no environment, creates no singleton and performs no I/O.
@@ -251,8 +251,9 @@ requires a proxy. Redirects are disabled even if the injected client enables the
 
 Every actual HTTP attempt records provider/model and an optional stable failure
 kind: `timeout`, `unavailable`, `rate_limited`, `rejected`, `invalid_response`.
-`InferenceFailure.attempts` contains the same safe values; it never wraps a raw
-provider exception for display. No result, trace or `last_*` diagnostic is shared
+`InferenceFailure` lives in `core/errors.py`. Its `attempts` attribute contains the
+same safe values; it never wraps a raw provider exception for display.
+No result, trace or `last_*` diagnostic is shared
 between requests. Cancellation propagates and does not initiate fallback or
 open the embedding circuit. Response cleanup is bounded and shielded against
 ASGI/AnyIO cancellation and repeated asyncio task cancellation, including HTTPX's

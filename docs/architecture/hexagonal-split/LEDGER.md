@@ -229,3 +229,13 @@ passent. La roue API construite contient le step et le prompt de fallback
 vérifié octet pour octet. Revue indépendante sans constat bloquant ; la dernière simplification
 préserve aussi la priorité d'erreur historique avec régression dédiée.
 Aucun accès DB distant, appel provider, migration, déploiement ou éval live.
+
+### Rangement C2 — PR #545
+
+Valeurs et types d'inférence déplacés dans `core/models/inference.py` ;
+`InferenceFailure` rejoint `core/errors.py`, sans dépendance circulaire. Tous les
+imports et la référence active du README sont adaptés. Les commentaires et
+docstrings de `legal_search.py` sont raccourcis en conservant les subtilités des
+regex ; son AST exécutable reste identique. Aucun changement fonctionnel.
+Validation : 285 tests core/gateways passent, Ruff, mypy sur 14 modules et les
+3 contrats d'import passent.

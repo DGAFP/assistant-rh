@@ -12,9 +12,9 @@ import unicodedata
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from assistant_rh_api.core.errors import DatabaseFailure, DatabaseUnavailable
-from assistant_rh_api.core.inference import Attempt, ChatRequest, InferenceFailure, Message
+from assistant_rh_api.core.errors import DatabaseFailure, DatabaseUnavailable, InferenceFailure
 from assistant_rh_api.core.models.configuration import Acronym, Prompt, Snapshot
+from assistant_rh_api.core.models.inference import Attempt, ChatRequest, Message
 from assistant_rh_api.core.models.query_processing import (
     _DIRECT_RESPONSES,
     AVAILABLE_THEMES,

@@ -9,7 +9,8 @@ from typing import Any, TypeVar
 import anyio
 import httpx
 
-from assistant_rh_api.core.inference import Attempt, FailureKind, InferenceFailure
+from assistant_rh_api.core.errors import InferenceFailure
+from assistant_rh_api.core.models.inference import Attempt, FailureKind
 from assistant_rh_api.gateways.settings import Endpoint, RequestPolicy
 
 T = TypeVar("T")

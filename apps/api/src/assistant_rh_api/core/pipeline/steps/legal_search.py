@@ -6,9 +6,7 @@ from typing import Any
 
 from assistant_rh_api.core.models.query_processing import Intent
 
-# Word/PDF/Légifrance pastes often carry typographic dashes (U+2010..U+2015,
-# U+2212) that NFKD does NOT decompose to ASCII `-`. Normalize them explicitly
-# so the article regex doesn't miss `article L‑132-1`.
+# NFKD leaves typographic dashes intact; normalize them for citations like L‑132-1.
 _DASH_TRANSLATION = str.maketrans(
     {
         "‐": "-",  # hyphen
@@ -23,12 +21,7 @@ _DASH_TRANSLATION = str.maketrans(
 
 
 def _fold(text: str) -> str:
-    """Lowercase + dash-normalize + NFKD-decompose + strip combining marks.
-
-    Why: regex patterns target French legal vocabulary. Inputs reach us in mixed
-    forms (NFC from browsers, NFD from macOS clipboards, ASCII-only from mobile
-    autocorrect). Folding once at matching time lets patterns stay accent-free.
-    """
+    """Make matching insensitive to case, accents and Unicode dash variants."""
     if not text:
         return ""
     text = text.translate(_DASH_TRANSLATION)
@@ -36,40 +29,22 @@ def _fold(text: str) -> str:
     return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
 
 
-# Patterns operate on the folded haystack (lowercase, no diacritics, ASCII dashes).
 _LEGAL_SEARCH_HINT_PATTERNS = (
-    # Canonical Légifrance article citations: "article L. 132-1", "article L 132",
-    # "articles R123-4", "article 3-2". The section letter may be glued to a
-    # `.`/`-`/digit, OR separated by a space — but the spaced form is restricted
-    # to the real code letters [lrd] so the French verb/preposition "a" in
-    # "cet article a 5 ans" is not mistaken for a citation. A bare number must be
-    # hyphenated ("3-2") or short ("4") — a 4-digit run ("article 2025 du blog")
-    # is rejected as a year, not an article.
+    # Restrict spaced letters to [lrd] to reject "cet article a 5 ans";
+    # reject bare four-digit years such as "article 2025 du blog".
     re.compile(r"\barticles?\s+(?:[a-z]\.\s*\d|[a-z]\s*-\s*\d|[a-z]\d|[lrd]\s+\d|\d+-\d|\d{1,3}(?!\d))"),
-    # Specific legal code names (CGFP, etc.).
     re.compile(r"\b(?:cgfp|code general de la fonction publique|code de la securite sociale|code du travail)\b"),
-    # Decree/circular/jurisprudence keywords. After accent folding, the verb
-    # `arrête` collapses to the same `arrete` as the noun `arrêté`, so the
-    # decree noun is matched two disambiguated ways instead of as a bare word:
-    #   (a) followed by a qualifier (`n°`, `du <date>`, ministériel, …), or
-    #   (b) preceded by a determiner that cannot precede the finite verb
-    #       (`quel/un/cet/des arrêté` is the noun; `il/les arrête` is the verb).
     re.compile(r"\b(?:decret|circulaire|ordonnance|jurisprudence)\b"),
+    # After folding, distinguish "arrêté" from "arrête" by qualifier or determiner.
     re.compile(r"\barretes?\s+(?:n[°o]\s*\d|du\s+\d|ministeriel|prefectoral|interministeriel|royal|conjoint)"),
     re.compile(r"\b(?:un|une|cet|cette|quels?|quelles?|du|des|aux|nouvel|nouvelle)\s+arretes?\b"),
-    # `loi` is excluded as a bare word (matches idioms like "la loi du plus
-    # fort"). The qualifier must include an actual number after `n°`/`no` to
-    # avoid `loi nouvelle/normale/notre/nous` collapsing to `loi n…`.
+    # Qualify "loi" to exclude idioms; require digits after n°/no, not "loi nouvelle".
     re.compile(r"\bloi\s+(?:n[°o]\s*\d|du\s+\d|organique|de\s+finances?|de\s+\d)"),
-    # Explicit asks for the legal basis.
     re.compile(r"\b(?:fondement juridique|base legale|selon quel texte|c'est ecrit ou|preuve reglementaire)\b"),
 )
 
-# RH topic vocabulary. ``is_high_signal=True`` items short-circuit the
-# two-hit-required rule so a single match suffices when combined with
-# ``_LEGAL_SEARCH_RULE_PATTERN``.
+# (pattern, high_signal): a rule question needs two topics, or one high-signal topic.
 _LEGAL_SEARCH_TOPIC_PATTERNS: tuple = (
-    # (pattern, is_high_signal)
     (re.compile(r"\bagents?\s+contractuels?\b"), False),
     (re.compile(r"\bcontrats?\s+de\s+projet\b"), True),
     (re.compile(r"\bemplois?\s+permanents?\b"), True),
@@ -99,19 +74,9 @@ def should_force_legal_search(
     processed_query: str,
     intent_data: dict[str, Any],
 ) -> bool:
-    """Apply deterministic guardrails when the LLM under-classifies legal queries.
+    """Preserve LLM true; otherwise supplement in-scope queries with legal hints.
 
-    ``needs_legal_search`` no longer gates whether DGAFP is retrieved: as of the
-    always-on retrieval change, DGAFP is searched whenever it is in the configured
-    tables, regardless of this flag. The flag now only feeds logging and
-    conformance metadata, but a robust classification still matters there because a
-    narrow prompt-only definition under-counts legal RH questions that mention the
-    rule directly without explicitly asking for the article or decree. The
-    heuristic stays conservative:
-    - always preserve explicit LLM ``true``
-    - force legal search for obvious legal markers
-    - force legal search for legal-ish RH rule questions when at least two
-      domain signals are present (or one high-signal topic)
+    This flag feeds diagnostics, not retrieval: configured DGAFP is always searched.
     """
     llm_decision = bool(intent_data.get("needs_legal", False))
     if llm_decision:
@@ -121,8 +86,6 @@ def should_force_legal_search(
     if intent not in (Intent.RAG_QUERY, Intent.FOLLOW_UP):
         return False
 
-    # Fold once: accent-strip + lowercase so patterns are NFC/NFD/ASCII agnostic
-    # and `re.IGNORECASE` is no longer needed (already lowercase).
     raw = query if processed_query == query else f"{query}\n{processed_query}"
     haystack = _fold(raw)
     if any(pattern.search(haystack) for pattern in _LEGAL_SEARCH_HINT_PATTERNS):
@@ -138,5 +101,5 @@ def should_force_legal_search(
             topic_hits += 1
             if is_high:
                 high_signal_topic = True
-                break  # one high-signal topic is enough
+                break
     return high_signal_topic or topic_hits >= 2

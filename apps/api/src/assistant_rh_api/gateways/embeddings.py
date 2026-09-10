@@ -7,7 +7,8 @@ from typing import Any
 
 import httpx
 
-from assistant_rh_api.core.inference import Attempt, Embedding, EmbeddingModel, InferenceFailure
+from assistant_rh_api.core.errors import InferenceFailure
+from assistant_rh_api.core.models.inference import Attempt, Embedding, EmbeddingModel
 from assistant_rh_api.core.ports.system import ClockPort
 from assistant_rh_api.gateways.http import InferenceHTTP, invalid
 from assistant_rh_api.gateways.settings import Endpoint, RequestPolicy, validate_chain
