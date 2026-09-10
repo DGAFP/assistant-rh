@@ -60,6 +60,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Coverage threshold used by --check-only (compared against raw non_null/total, not rounded). Defaults to 100.",
     )
+    parser.add_argument(
+        "--allow-empty-corpus",
+        choices=("mi", "masa", "matte", "mso"),
+        help="In --check-only, allow the PDF chunk table to be empty only if this source has no remaining rag_documents.",
+    )
     return parser
 
 
@@ -200,20 +205,26 @@ def audit_embedding_coverage(
     return report
 
 
-def evaluate_coverage_report(report: dict[str, Any], *, coverage_min_pct: float | None) -> tuple[int, list[str]]:
+def pdf_corpus_is_empty(conn: psycopg.Connection, schema: str, source: str) -> bool:
+    """Une table sans chunks ne suffit pas : aucun document ne doit subsister."""
+    with conn.cursor() as cur:
+        cur.execute(
+            sql.SQL("SELECT NOT EXISTS (SELECT 1 FROM {}.rag_documents WHERE LOWER(TRIM(source)) = %s)").format(sql.Identifier(schema)),
+            (source,),
+        )
+        return bool(cur.fetchone()[0])
+
+
+def evaluate_coverage_report(report: dict[str, Any], *, coverage_min_pct: float | None, allow_empty_tables: bool = False) -> tuple[int, list[str]]:
     threshold = coverage_min_pct if coverage_min_pct is not None else 100.0
     problems = [f"Table absente: {table}" for table in report.get("missing_tables", [])]
     for table, columns in (report.get("tables") or {}).items():
         for column, stats in columns.items():
             total = int(stats.get("total") or 0)
             non_null = int(stats.get("non_null") or 0)
-            # TODO: "empty table = problem" is hard-coded with no opt-out. A new
-            # table awaiting first load currently hard-fails --check-only with
-            # no escape other than dropping it from the manifest or setting
-            # --coverage-min-pct 0. Consider an --allow-empty-tables flag or a
-            # per-table `allow_empty: true` marker in the manifest.
             if stats.get("is_empty") or total == 0:
-                problems.append(f"{table}.{column}: table vide (0 ligne), aucune couverture possible")
+                if not allow_empty_tables:
+                    problems.append(f"{table}.{column}: table vide (0 ligne), aucune couverture possible")
                 continue
             raw_pct = 100.0 * non_null / total
             if raw_pct < threshold:
@@ -556,6 +567,9 @@ def main() -> int:
             f"Vérifier --only-table / --only-column par rapport au manifest {config_path}."
         )
 
+    if args.allow_empty_corpus and {spec["table"] for spec in table_specs} != {f"rag_chunks_{args.allow_empty_corpus}"}:
+        raise SystemExit("--allow-empty-corpus doit correspondre à l'unique table PDF sélectionnée.")
+
     summary: dict[str, Any] = {
         "config": str(config_path),
         "schema": args.schema,
@@ -567,12 +581,15 @@ def main() -> int:
         if args.check_only:
             conn.autocommit = True
             report = audit_embedding_coverage(conn, args.schema, table_specs)
-            exit_code, problems = evaluate_coverage_report(report, coverage_min_pct=args.coverage_min_pct)
+            allow_empty_tables = bool(args.allow_empty_corpus) and pdf_corpus_is_empty(conn, args.schema, args.allow_empty_corpus)
+            exit_code, problems = evaluate_coverage_report(report, coverage_min_pct=args.coverage_min_pct, allow_empty_tables=allow_empty_tables)
             # TODO: output shape diverges between modes — check-only emits
             # summary["coverage"]["tables"], backfill emits summary["tables"]
             # (line below). Unify once external consumers (Grafana, jq scripts,
             # GH Actions) are known so we don't break them silently.
             summary["coverage"] = report
+            summary["allow_empty_corpus"] = args.allow_empty_corpus
+            summary["allow_empty_tables"] = allow_empty_tables
             summary["problems"] = problems
             summary["exit_code"] = exit_code
             print(json.dumps(summary, ensure_ascii=False, indent=2))

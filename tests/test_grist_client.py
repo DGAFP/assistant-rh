@@ -122,6 +122,34 @@ def test_list_records_requires_a_table(monkeypatch: pytest.MonkeyPatch) -> None:
         make_client(table_id=None).list_records()
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        [],
+        {"records": None},
+        {"records": {}},
+        {"records": [None]},
+        {"records": [{"id": 1}]},
+        {"records": [{"id": True, "fields": {}}]},
+        {"records": [{"id": 0, "fields": {}}]},
+        {"records": [{"id": 1, "fields": None}]},
+    ],
+)
+def test_list_records_rejects_malformed_response_instead_of_empty_manifest(monkeypatch: pytest.MonkeyPatch, payload: Any) -> None:
+    client = make_client()
+    monkeypatch.setattr(client, "_get", lambda *args, **kwargs: payload)
+
+    with pytest.raises(GristContractError, match="Réponse Grist invalide"):
+        client.list_records()
+
+
+def test_list_records_accepts_explicit_empty_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = make_client()
+    monkeypatch.setattr(client, "_get", lambda *args, **kwargs: {"records": []})
+    assert client.list_records() == []
+
+
 def test_get_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         grist_module.requests,
