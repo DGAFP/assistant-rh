@@ -169,16 +169,21 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts/data-quality
 
+          EMPTY_TABLE_ARGS=()
           case "${{ matrix.embedding_source }}" in
             service_public) EMBEDDING_COMMAND=service-public ;;
             legifrance) EMBEDDING_COMMAND=legifrance ;;
-            mi|masa|matte|mso) EMBEDDING_COMMAND="${{ matrix.embedding_source }}" ;;
+            mi|masa|matte|mso)
+              EMBEDDING_COMMAND="${{ matrix.embedding_source }}"
+              EMPTY_TABLE_ARGS=(--allow-empty-corpus "${{ matrix.embedding_source }}")
+              ;;
             *) echo "Unsupported cron embedding source: ${{ matrix.embedding_source }}" >&2; exit 1 ;;
           esac
 
           uv run --no-sync data-ingestion embeddings "${EMBEDDING_COMMAND}" \
             --check-only \
             --coverage-min-pct "${COVERAGE_MIN_PCT}" \
+            "${EMPTY_TABLE_ARGS[@]}" \
             > "artifacts/data-quality/cron-embeddings-${{ matrix.name }}.json"
 
       - name: Summarize ${{ matrix.name }} data quality gates
