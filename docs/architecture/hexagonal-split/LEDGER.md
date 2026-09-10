@@ -180,3 +180,52 @@ uv run --no-sync python -m pytest tests/test_openai_contract_probe.py apps/api/t
 ```
 
 Les **15 exemples JSON** des documents concernés sont valides ; les enveloppes completion passent `ChatCompletion.model_validate(..., strict=True)` et les assertions d'identifiants, ministère, nombre/titres des sources. Liens locaux et noms des tests cités vérifiés ; `git diff --check` passe. La preuve de l'instance `conversations`/homelab reste celle d'A2 du 2026-09-02, pas une nouvelle exécution. La matrice indique les validations restant en C6/C7/D4 ; aucun accès à une base distante, appel provider, migration ou déploiement.
+
+## C2 — query processor dans le core pur (2026-09-10)
+
+[Issue #459](https://github.com/DGAFP/assistant-rh/issues/459) : extraction dans
+`core/pipeline/steps/query_processor.py` et `legal_search.py`, avec résultats et
+diagnostics immuables dans `core/models/query_processing.py`. Ports async B2/B3
+pour acronymes, prompts et classification ; fallback ressource embarqué dans
+l'API, identique au prompt historique. Intent, réponses directes, reformulation,
+NFC, casse/frontières et ordre des acronymes, rendu ministère/date/historique,
+parsing permissif, flag LLM et heuristique légale conservés sans réglage qualité.
+La [carte A5](07-runtime-isolation-audit.md#relecture-c2--query-processor-459-2026-09-10)
+détaille les règles et branches relues sur `dev` au `c3c1786`.
+
+A5-03/11/12 : snapshots et révisions propres à chaque appel, tuples ordonnés,
+erreurs DB consignées, annulation propagée, panne classification conservant la
+question sans expansion ni heuristique. Les remplacements successifs imbriqués,
+doublons et priorité de l'erreur d'historique sur l'absence du prompt sont figés
+par tests. Le step ne trie pas le tuple reçu : les départages SQL et le support
+de `acronyms.priority` appartiennent à B2. Les acronymes API sont relus par
+requête, conformément à A5 ; le snapshot au constructeur du runtime servi reste
+intact. La cohérence entre stores et la propagation au `RunContext` restent C6,
+les autres étapes restent C3–C5 ; A5-03/08/09/11/12 ne sont pas déclarés clos.
+
+**Frontière C6 explicite** : injecter la gateway Albert seule, liée au
+`config.intent_model` (le classifier historique n'utilise pas de fallback
+Scaleway), transmettre le ministère canonique déjà autorisé et la date locale
+capturée via l'horloge. Les retries et erreurs sûres B3 sont conservés ; les
+messages réseau bruts historiques ne sont pas réintroduits. Aucun handler HTTP,
+service replay, wiring du runtime servi ou changement de consommateur historique.
+
+**Preuve de parité** : les sept sorties M0b sont comparées exactement, types JSON
+inclus, ainsi que les réponses directes et métadonnées disponibles. Le bundle
+original ne contient pas les réponses LLM brutes, prompts DB ni acronymes : les
+réponses injectées dans `query_processor_m0b_ports.json` sont explicitement
+**reconstituées**, pas des enregistrements originaux. Voir les
+[limites et commandes](../../../tests/conformance/M0_REPLAYS.md#c2-query-processor-extraction-459).
+Les tests différentiels comparent la sortie complète et le prompt envoyé au
+runtime historique pour les erreurs, coercions et branches absentes de M0b.
+Cette preuve d'étape ne vaut pas validation M1 du moteur complet ou qualité live.
+
+Validation locale : **125 tests C2 passent** (dont sept M0b), suite API **359 passent / 105 ignorés** faute de
+DSN synthétique local ; **139 tests historiques ciblés passent**. Vérificateur
+M0b : sept fixtures et 56 artefacts intacts, fingerprint
+`f5e9ffefe588248a352d7ac18a556df7bff6270a2879e7ddd32acc128733e02b`.
+Ruff, mypy sur six modules, trois contrats d'import et import isolé du step
+passent. La roue API construite contient le step et le prompt de fallback
+vérifié octet pour octet. Revue indépendante sans constat bloquant ; la dernière simplification
+préserve aussi la priorité d'erreur historique avec régression dédiée.
+Aucun accès DB distant, appel provider, migration, déploiement ou éval live.
