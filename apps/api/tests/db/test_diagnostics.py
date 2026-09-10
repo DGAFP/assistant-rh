@@ -21,7 +21,9 @@ from assistant_rh_api.db.settings_stores import AcronymStore, ConfigStore
 from assistant_rh_api.handlers.app import create_app
 from psycopg_pool import PoolClosed, PoolTimeout, TooManyRequests
 
-SECRET = "postgresql://private:password@secret-host/private-db SELECT email FROM people; Bearer private-token alice@example.org\nforged-log"
+SYNTHETIC_DRIVER_MESSAGE = (
+    "postgresql://private:password@secret-host/private-db SELECT email FROM people; Bearer private-token alice@example.org\nforged-log"
+)
 SETTINGS_DSN = "postgresql://synthetic:synthetic@127.0.0.1/assistant_rh_api_test"
 
 
@@ -57,12 +59,12 @@ def test_translated_diagnostic_is_safe_and_logged_once_at_decision(caplog, drive
     with diagnostic_context() as correlation_id:
         with pytest.raises(expected) as caught:
             with translate_database_errors(DBOperation.PROMPT_GET):
-                raise driver(SECRET)
+                raise driver(SYNTHETIC_DRIVER_MESSAGE)
         assert not caplog.records  # Recovery/failure is still the caller's decision.
         report_database_error(caught.value)
         report_database_error(caught.value)
     assert str(caught.value) == expected.code
-    assert SECRET not in "".join(traceback.format_exception(caught.value))
+    assert SYNTHETIC_DRIVER_MESSAGE not in "".join(traceback.format_exception(caught.value))
     [record] = records(caplog)
     assert (record.operation, record.code, record.category, record.sqlstate) == ("prompt.get", expected.code, category, sqlstate)
     assert record.correlation_id == correlation_id
@@ -71,7 +73,7 @@ def test_translated_diagnostic_is_safe_and_logged_once_at_decision(caplog, drive
     assert_safe(caplog)
 
 
-@pytest.mark.parametrize("sqlstate", [SECRET, "TOKEN", "42p01", "23505\n", None, 23505])
+@pytest.mark.parametrize("sqlstate", [SYNTHETIC_DRIVER_MESSAGE, "TOKEN", "42p01", "23505\n", None, 23505])
 def test_untrusted_sqlstate_is_discarded(caplog, sqlstate):
     class HostileError(psycopg.Error):
         pass
@@ -79,14 +81,14 @@ def test_untrusted_sqlstate_is_discarded(caplog, sqlstate):
     HostileError.sqlstate = sqlstate
     with pytest.raises(DatabaseFailure) as caught:
         with translate_database_errors(DBOperation.SEARCH):
-            raise HostileError(SECRET)
+            raise HostileError(SYNTHETIC_DRIVER_MESSAGE)
     report_database_error(caught.value)
     assert records(caplog)[0].sqlstate is None
     assert_safe(caplog)
 
 
 def test_operation_requires_enum_not_user_text():
-    for value in (SECRET, "config.load"):
+    for value in (SYNTHETIC_DRIVER_MESSAGE, "config.load"):
         with pytest.raises(TypeError, match="DBOperation"):
             with translate_database_errors(value):
                 pytest.fail("invalid operation must be rejected before database work")
@@ -95,7 +97,7 @@ def test_operation_requires_enum_not_user_text():
 class FailingPool:
     @asynccontextmanager
     async def connection(self):
-        raise psycopg.errors.UndefinedTable(SECRET)
+        raise psycopg.errors.UndefinedTable(SYNTHETIC_DRIVER_MESSAGE)
         yield  # pragma: no cover
 
 
@@ -171,7 +173,7 @@ async def test_wrapped_conflict_keeps_diagnostic_and_401_contract(caplog):
     async def fail():
         try:
             with translate_database_errors(DBOperation.SESSION_CREATE):
-                raise psycopg.errors.UniqueViolation(SECRET)
+                raise psycopg.errors.UniqueViolation(SYNTHETIC_DRIVER_MESSAGE)
         except DatabaseConflict:
             raise InvalidCredentials() from None
 
@@ -188,7 +190,7 @@ async def test_pool_connection_attempt_and_terminal_timeout_are_distinct_safe_ev
     from assistant_rh_api.db.dsn import DatabaseSettings
 
     # Exercise real pool workers/retry logging; the network connect is replaced.
-    connect = AsyncMock(side_effect=psycopg.errors.InvalidPassword(SECRET))
+    connect = AsyncMock(side_effect=psycopg.errors.InvalidPassword(SYNTHETIC_DRIVER_MESSAGE))
     monkeypatch.setattr(psycopg.AsyncConnection, "connect", connect)
     database = Database(DatabaseSettings(dsn=SETTINGS_DSN, timeout_seconds=0.05))
     with diagnostic_context() as correlation_id:
@@ -219,7 +221,7 @@ async def test_checkout_failure_keeps_repository_operation_and_sqlstate(caplog, 
 
     database = Database(DatabaseSettings(dsn=SETTINGS_DSN))
     database._pool = Pool()
-    monkeypatch.setattr(AsyncConnectionPool, "check_connection", AsyncMock(side_effect=psycopg.errors.ConnectionFailure(SECRET)))
+    monkeypatch.setattr(AsyncConnectionPool, "check_connection", AsyncMock(side_effect=psycopg.errors.ConnectionFailure(SYNTHETIC_DRIVER_MESSAGE)))
     value = await RAGConfigurationService(ConfigStore(database)).load()
     assert value.fallback == "database_unavailable"
     connection.close.assert_awaited_once()
@@ -245,7 +247,7 @@ async def test_pool_background_rollback_does_not_leak_exception_or_connection(ca
 
     pgconn = Mock(transaction_status=TransactionStatus.INERROR)
     connection = _SafeConnection(pgconn)
-    monkeypatch.setattr(connection, "rollback", AsyncMock(side_effect=psycopg.OperationalError(SECRET)))
+    monkeypatch.setattr(connection, "rollback", AsyncMock(side_effect=psycopg.OperationalError(SYNTHETIC_DRIVER_MESSAGE)))
     monkeypatch.setattr(connection, "close", AsyncMock())
     database = Database(DatabaseSettings(dsn=SETTINGS_DSN))
     # No HTTP/driver context: the background pool recognizes its connection.
@@ -262,7 +264,7 @@ def test_transaction_secondary_rollback_error_is_sanitized_without_clobbering_or
     transaction = psycopg.AsyncTransaction(_SafeConnection(Mock()))
 
     def broken_rollback(exc):
-        raise psycopg.errors.ConnectionFailure(SECRET)
+        raise psycopg.errors.ConnectionFailure(SYNTHETIC_DRIVER_MESSAGE)
         yield  # pragma: no cover
 
     monkeypatch.setattr(transaction, "_rollback_gen", broken_rollback)
@@ -278,6 +280,6 @@ def test_transaction_secondary_rollback_error_is_sanitized_without_clobbering_or
 def test_driver_debug_output_inside_owned_call_cannot_expose_details(caplog):
     caplog.set_level(logging.DEBUG)
     with translate_database_errors(DBOperation.CONFIG_LOAD):
-        logging.getLogger("psycopg").debug("connection failed: %s", SECRET)
-        logging.getLogger("psycopg.transaction").debug(SECRET, exc_info=True)
+        logging.getLogger("psycopg").debug("connection failed: %s", SYNTHETIC_DRIVER_MESSAGE)
+        logging.getLogger("psycopg.transaction").debug(SYNTHETIC_DRIVER_MESSAGE, exc_info=True)
     assert not caplog.records
