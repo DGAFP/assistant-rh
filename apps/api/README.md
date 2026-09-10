@@ -309,6 +309,39 @@ not a live provider or RAG quality evaluation. Run it without credentials or DB:
 uv run --package assistant-rh-api --group dev python -m pytest apps/api/tests/gateways -q
 ```
 
+## Query classification outcomes (C2, #459)
+
+`QueryProcessor.process()` returns `QueryProcessing(result, diagnostics)`.
+Expected inference outages and unusable LLM replies preserve the historical
+fallback: `rag_query`, confidence `0.5`, original NFC query, no enrichment or
+acronym expansion, `needs_legal_search=false`, LLM flag `null`, and
+`should_proceed=true`. Out-of-scope intents remain normal classifications.
+
+The future C6 orchestration must consume these diagnostics explicitly:
+
+| Field | Meaning |
+| --- | --- |
+| `classification_status` | `disabled` when gating is off, `completed` for a usable classification (including out of scope), `degraded` for an expected failure. A degraded stage must not be recorded as an ordinary successful classification. |
+| `classification_error` | Safe cause: `provider_failure` or `invalid_response`, otherwise `null`. The fallback's `intent_reason` carries the same code, never an exception message. |
+| `failed_attempts` | Safe B3 provider/model/error/status evidence for inference failure, including invalid provider envelopes. |
+| `completion` | The received completion, if any, retained even when intent parsing fails. Its raw text is internal evidence, not a safe error message to expose. |
+| `store_errors` | Existing DB fallback diagnostics; classification status describes classification only. |
+
+`ClassificationFailure` chains the original inference/decoder/conversion cause
+internally; only its safe reason enters the returned diagnostics. Parsing keeps
+legacy fences, defaults, unknown-intent/theme handling, `bool` coercion and
+convertible numeric confidence (without adding a 0–1 range check). Non-object
+responses, unusable consumed fields, decoder limits and nonfinite confidence
+produce the degraded fallback rather than invalid or unserializable results.
+
+Missing or malformed prompts raise `RAGConfigurationError` with their cause.
+Invalid caller data, unexpected implementation/port errors and cancellation
+propagate. Provider rejections (such as invalid credentials/model/payload) and
+partial completion failures also propagate instead of concealing a configuration
+or contract failure. Transient outages and invalid provider envelopes remain
+eligible for degraded operation. Prompt/acronym DB fallbacks remain unchanged.
+No logging I/O or C6 orchestration is implemented in this step.
+
 ## Public authentication (B4, #456)
 
 This implements the current D6/A3 contract, which supersedes #456's original

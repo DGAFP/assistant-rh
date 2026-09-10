@@ -1,5 +1,7 @@
 """Stable application errors; adapters must never include driver messages."""
 
+from typing import Literal
+
 from assistant_rh_api.core.models.inference import Attempt
 
 
@@ -47,3 +49,13 @@ class InferenceFailure(ApplicationError):
         super().__init__()
         self.attempts = attempts
         self.partial = partial
+
+
+class ClassificationFailure(ApplicationError):
+    """Expected classification failure, chained to its original cause internally."""
+
+    code = "classification_failure"
+
+    def __init__(self, reason: Literal["provider_failure", "invalid_response"]) -> None:
+        super().__init__()
+        self.reason = reason

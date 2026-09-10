@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Literal
 
 from assistant_rh_api.core.models.configuration import Acronym, Prompt, Snapshot
 from assistant_rh_api.core.models.inference import Attempt, Completion
@@ -99,6 +100,8 @@ class QueryDiagnostics:
     completion: Completion | None = None
     failed_attempts: tuple[Attempt, ...] = ()
     store_errors: tuple[str, ...] = ()
+    classification_status: Literal["disabled", "completed", "degraded"] = "disabled"
+    classification_error: Literal["provider_failure", "invalid_response"] | None = None
 
 
 @dataclass(frozen=True, slots=True)

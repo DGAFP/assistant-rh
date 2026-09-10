@@ -125,5 +125,11 @@ parsing, errors, fallbacks and ordering are separately compared to the retained
 legacy implementation under identical injected inputs. The packaged fallback
 prompt is byte-identical to the current legacy resource.
 
+The authorized #545 hardening preserves expected-failure fallback values but
+replaces exception text with a safe cause and explicit degraded diagnostics.
+Configuration errors, bugs and cancellation propagate; their tests assert this
+intentional deviation rather than full historical equality. See the C2 review
+entry in `docs/architecture/hexagonal-split/LEDGER.md`.
+
 This C2 evidence covers the extracted stage, not C6 engine wiring, whole-pipeline
 M1 parity or live quality. No baseline refresh or live provider call is needed.

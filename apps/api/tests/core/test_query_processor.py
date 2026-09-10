@@ -8,11 +8,11 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from assistant_rh_api.core.errors import DatabaseFailure, DatabaseUnavailable, InferenceFailure
+from assistant_rh_api.core.errors import ClassificationFailure, DatabaseFailure, DatabaseUnavailable, InferenceFailure, RAGConfigurationError
 from assistant_rh_api.core.models.configuration import Acronym, Prompt, Snapshot
 from assistant_rh_api.core.models.inference import Attempt, Completion
 from assistant_rh_api.core.models.rag_configuration import QueryProcessorConfig
-from assistant_rh_api.core.pipeline.steps.query_processor import QueryProcessor
+from assistant_rh_api.core.pipeline.steps.query_processor import QueryProcessor, parse_classification
 from assistant_rh_api.gateways.packaged_prompts import PackagedPromptStore
 from assistant_rh_rag_pipeline.config import QueryProcessorConfig as LegacyConfig
 from assistant_rh_rag_pipeline.ministry_scope import get_ministry
@@ -77,20 +77,11 @@ RAW_CASES = [
         for legal in (True, False)
     ],
     '{"confidence":"0.91","theme":"unknown","requested_source":"ministere","is_catalog_query":true}',
-    '{"confidence":null}',
-    '{"intent":[]}',
     '{"needs_legal_search":"false"}',
     '{"reformulated_query":"Une autre question", "query_for_retrieval":"CDD (contrat à durée déterminée)"}',
     '```json\n{"intent":"follow_up"}\n```',
     '```\n{"theme":"formation"}\n```',
     'json {"theme":"psc"}',
-    '```JSON\n{"theme":"psc"}\n```',
-    "[1]",
-    "null",
-    "invalid json",
-    "",
-    TimeoutError("synthetic timeout"),
-    InferenceFailure((Attempt("albert", "openweight-medium", "unavailable"),)),
 ]
 
 
@@ -102,6 +93,8 @@ async def test_full_output_and_llm_request_match_legacy(raw):
     actual = await proc.process(query, history, "mso", today=TODAY)
     expected, legacy_llm = legacy_result(query, raw, history=history, ministry="mso")
     assert comparable(actual.result) == comparable(expected)
+    assert actual.diagnostics.classification_status == "completed"
+    assert actual.diagnostics.classification_error is None
     request = llm.complete.call_args.args[0]
     assert request.temperature == 0.0
     assert len(request.messages) == 1
@@ -110,9 +103,9 @@ async def test_full_output_and_llm_request_match_legacy(raw):
     assert legacy_llm.chat.call_args.kwargs == {"system_prompt": ""}
 
 
-@pytest.mark.parametrize("history", [None, [], [{"role": "user", "content": "ignored"}], [{"role": "user"}, {}]])
+@pytest.mark.parametrize("history", [None, [], [{"role": "user", "content": "ignored"}]])
 @pytest.mark.parametrize("ministry", [None, "matte", "mso", "mi", "masa"])
-async def test_short_or_malformed_history_and_ministry_rendering(history, ministry):
+async def test_short_history_and_ministry_rendering(history, ministry):
     proc, _, _, _, llm = make_processor()
     actual = await proc.process("Question", history, ministry, today=TODAY)
     expected, legacy_llm = legacy_result("Question", "{}", history=history, ministry=ministry)
@@ -133,6 +126,8 @@ async def test_flags_case_boundaries_duplicate_order_and_nested_expansion(gating
     assert comparable(actual.result) == comparable(expected)
     assert store.load.call_count == int(expansion)
     assert llm.complete.call_count == int(gating)
+    assert actual.diagnostics.classification_status == ("completed" if gating else "disabled")
+    assert actual.diagnostics.classification_error is None
     if not gating:
         prompts.get.assert_not_called()
         packaged.get.assert_not_called()
@@ -174,13 +169,14 @@ async def test_prompt_fallback_precedence(database_state):
     assert llm.complete.call_count == 1
 
 
-@pytest.mark.parametrize("template", [None, "", "{unknown}"])
-async def test_missing_or_invalid_prompt_defaults_without_heuristic(template):
+@pytest.mark.parametrize("template,cause", [(None, FileNotFoundError), ("", FileNotFoundError), ("{unknown}", KeyError), ("{", ValueError)])
+async def test_missing_or_invalid_prompt_propagates_configuration_error(template, cause):
+    # Authorized deviation: a broken prompt must no longer look like successful RAG.
     proc, _, _, _, llm = make_processor(template=template)
-    outcome = await proc.process("CDD article L.132-1", today=TODAY)
-    expected, _ = legacy_result("CDD article L.132-1", "{}", template=template)
-    assert comparable(outcome.result) == comparable(expected)
-    assert outcome.result.needs_legal_search is False
+    with pytest.raises(RAGConfigurationError) as caught:
+        await proc.process("CDD article L.132-1", today=TODAY)
+    assert isinstance(caught.value.__cause__, cause)
+    assert str(caught.value) == "rag_configuration_error"
     llm.complete.assert_not_called()
 
 
@@ -293,9 +289,211 @@ async def test_enriched_query_does_not_feed_legal_heuristic():
 async def test_malformed_history_fails_before_prompt_lookup():
     history = [{"role": "user"}, {}]
     proc, _, prompts, packaged, llm = make_processor(template=None)
-    outcome = await proc.process("CDD", history, today=TODAY)
-    expected, _ = legacy_result("CDD", "{}", history=history, template=None)
-    assert comparable(outcome.result) == comparable(expected)
+    # Invalid caller data propagates before prompt lookup, rather than degrading.
+    with pytest.raises(KeyError):
+        await proc.process("CDD", history, today=TODAY)
     prompts.get.assert_not_called()
     packaged.get.assert_not_called()
     llm.complete.assert_not_called()
+
+
+LEGACY_FAILURES = [
+    '{"confidence":null}',
+    '{"confidence":"not-a-number"}',
+    '{"intent":[]}',
+    '```JSON\n{"theme":"psc"}\n```',
+    "[1]",
+    "null",
+    "invalid json",
+    "",
+]
+
+
+@pytest.mark.parametrize("raw", LEGACY_FAILURES)
+async def test_unusable_response_keeps_legacy_fallback_with_safe_reason(raw):
+    query = "CDD article L.132-1"
+    proc, _, _, _, _ = make_processor(raw=raw)
+    outcome = await proc.process(query, today=TODAY)
+    expected, _ = legacy_result(query, raw)
+    expected_values = comparable(expected)
+    # Only the unsafe historical exception message changes; all fallback values
+    # and derived properties remain equal, including lack of expansion/heuristic.
+    expected_values["intent_reason"] = "invalid_response"
+    assert comparable(outcome.result) == expected_values
+    assert outcome.diagnostics.classification_status == "degraded"
+    assert outcome.diagnostics.classification_error == "invalid_response"
+    assert outcome.diagnostics.completion.text == raw
+    assert outcome.diagnostics.failed_attempts == ()
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"query_for_retrieval":["article L132-1"]}',
+        '{"query_for_retrieval":42}',
+        '{"reformulated_query":{"query":"other"}}',
+        '{"reformulated_query":true}',
+        '{"reasoning":{"details":"private text"}}',
+        '{"theme":[]}',
+    ],
+)
+async def test_unusable_field_structure_degrades_instead_of_leaking_mutable_values(raw):
+    proc, _, _, _, _ = make_processor(raw=raw)
+    outcome = await proc.process("CDD article L.132-1", today=TODAY)
+    assert outcome.diagnostics.classification_status == "degraded"
+    assert outcome.diagnostics.classification_error == "invalid_response"
+    assert outcome.result.intent.value == "rag_query"
+    assert outcome.result.intent_confidence == 0.5
+    assert outcome.result.intent_reason == "invalid_response"
+    assert outcome.result.query_for_retrieval == "CDD article L.132-1"
+    assert not outcome.result.was_expanded
+    assert not outcome.result.was_enriched
+    assert not outcome.result.needs_legal_search
+    assert outcome.result.needs_legal_search_llm is None
+    assert outcome.result.should_proceed
+
+
+@pytest.mark.parametrize(
+    "raw,cause",
+    [
+        ("invalid json", json.JSONDecodeError),
+        ("null", json.JSONDecodeError),
+        ("[1]", TypeError),
+        ('{"confidence":"not-a-number"}', ValueError),
+        ('{"query_for_retrieval":42}', TypeError),
+    ],
+)
+async def test_classification_error_chains_original_parser_or_structure_cause(raw, cause):
+    with pytest.raises(ClassificationFailure) as caught:
+        parse_classification(raw)
+    assert caught.value.reason == "invalid_response"
+    assert str(caught.value) == "classification_failure"
+    assert isinstance(caught.value.__cause__, cause)
+
+
+@pytest.mark.parametrize("kind", ["timeout", "unavailable", "rate_limited", "invalid_response", "circuit_open"])
+async def test_expected_provider_failure_keeps_legacy_fallback_and_attempts(kind):
+    failure = InferenceFailure((Attempt("albert", "openweight-medium", kind),))
+    query = "CDD article L.132-1"
+    proc, _, _, _, _ = make_processor(raw=failure)
+    outcome = await proc.process(query, today=TODAY)
+    expected, _ = legacy_result(query, failure)
+    expected_values = comparable(expected)
+    expected_values["intent_reason"] = "provider_failure"
+    assert comparable(outcome.result) == expected_values
+    assert outcome.diagnostics.classification_status == "degraded"
+    assert outcome.diagnostics.classification_error == "provider_failure"
+    assert outcome.diagnostics.failed_attempts == failure.attempts
+    assert outcome.diagnostics.completion is None
+    with pytest.raises(ClassificationFailure) as caught:
+        await proc._complete("synthetic prompt")
+    assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        InferenceFailure((Attempt("albert", "missing-model", "rejected", 404),)),
+        InferenceFailure((Attempt("albert", "openweight-medium", "rejected", 401),)),
+        InferenceFailure((Attempt("albert", "openweight-medium", "unavailable"),), partial=True),
+        RAGConfigurationError(),
+        ValueError("invalid configured request"),
+        RuntimeError("implementation bug"),
+        TypeError("incorrect adapter call"),
+        TimeoutError("untranslated adapter error"),
+    ],
+)
+async def test_configuration_rejection_bug_or_nonconforming_port_error_propagates(failure):
+    proc, _, _, _, _ = make_processor(raw=failure)
+    with pytest.raises(type(failure)) as caught:
+        await proc.process("CDD", today=TODAY)
+    assert caught.value is failure
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "format_history",
+        "render_prompt",
+        "parse_classification",
+        "should_force_legal_search",
+    ],
+)
+async def test_internal_bug_is_never_a_degraded_success(target):
+    proc, _, _, _, _ = make_processor()
+    failure = RuntimeError("synthetic programming bug")
+    with patch(f"assistant_rh_api.core.pipeline.steps.query_processor.{target}", side_effect=failure):
+        with pytest.raises(RuntimeError) as caught:
+            await proc.process("CDD", today=TODAY)
+    assert caught.value is failure
+
+
+@pytest.mark.parametrize("stage", ["acronyms", "prompts", "packaged"])
+async def test_store_configuration_errors_are_not_empty_snapshots(stage):
+    proc, acronyms, prompts, packaged, _ = make_processor()
+    target = {"acronyms": acronyms.load, "prompts": prompts.get, "packaged": packaged.get}[stage]
+    if stage == "packaged":
+        prompts.get.return_value = None
+    failure = RAGConfigurationError()
+    target.side_effect = failure
+    with pytest.raises(RAGConfigurationError) as caught:
+        await proc.process("CDD", today=TODAY)
+    assert caught.value is failure
+
+
+async def test_recovery_does_not_retain_previous_degraded_state():
+    proc, _, _, _, llm = make_processor()
+    success = llm.complete.return_value
+    llm.complete.side_effect = [InferenceFailure((Attempt("albert", "openweight-medium", "timeout"),)), success]
+    degraded = await proc.process("CDD", today=TODAY)
+    recovered = await proc.process("CDD", today=TODAY)
+    assert degraded.diagnostics.classification_status == "degraded"
+    assert recovered.diagnostics.classification_status == "completed"
+    assert recovered.diagnostics.classification_error is None
+    assert recovered.diagnostics.failed_attempts == ()
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"confidence":"1.5","theme":"unknown","needs_legal_search":"false"}',
+        '{"confidence":true,"intent":42}',
+        '{"query_for_retrieval":false,"reformulated_query":0}',
+        '{"theme":{"unknown":"theme"},"requested_source":[]}',
+    ],
+)
+async def test_usable_legacy_coercions_are_preserved(raw):
+    proc, _, _, _, _ = make_processor(raw=raw)
+    outcome = await proc.process("CDD", today=TODAY)
+    expected, _ = legacy_result("CDD", raw)
+    assert comparable(outcome.result) == comparable(expected)
+    assert outcome.diagnostics.classification_status == "completed"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"confidence":"NaN"}',
+        '{"confidence":Infinity}',
+        '{"confidence":"-inf"}',
+        "[" * 2000 + "0" + "]" * 2000,
+        '{"confidence":' + "1" * 5000 + "}",
+    ],
+)
+async def test_nonserializable_or_decoder_limit_response_degrades(raw):
+    proc, _, _, _, _ = make_processor(raw=raw)
+    outcome = await proc.process("CDD", today=TODAY)
+    assert outcome.diagnostics.classification_status == "degraded"
+    assert outcome.diagnostics.classification_error == "invalid_response"
+    assert outcome.result.intent_confidence == 0.5
+    # Parsed fields stay serializable even if raw diagnostics retain bad JSON.
+    json.dumps(asdict(outcome.result), allow_nan=False)
+
+
+async def test_sensitive_exception_message_is_not_a_fallback_reason():
+    failure = InferenceFailure((Attempt("albert", "openweight-medium", "timeout"),))
+    failure.args = ("synthetic private provider details",)
+    proc, _, _, _, _ = make_processor(raw=failure)
+    outcome = await proc.process("CDD", today=TODAY)
+    assert outcome.result.intent_reason == "provider_failure"
+    assert "private provider details" not in json.dumps(asdict(outcome))

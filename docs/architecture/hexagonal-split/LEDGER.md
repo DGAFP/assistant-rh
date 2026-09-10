@@ -239,3 +239,49 @@ docstrings de `legal_search.py` sont raccourcis en conservant les subtilités de
 regex ; son AST exécutable reste identique. Aucun changement fonctionnel.
 Validation : 285 tests core/gateways passent, Ruff, mypy sur 14 modules et les
 3 contrats d'import passent.
+
+### Durcissement du repli de classification — revue PR #545
+
+Décision utilisateur : continuer en mode dégradé pour les échecs attendus de
+classification, comme le runtime historique, plutôt que bloquer systématiquement.
+Le `catch Exception` disparaît : `ClassificationFailure` chaîne sa cause
+provider/décodage/conversion et seul ce type déclenche le repli. Les valeurs
+restent `rag_query`, confiance 0,5, question NFC originale, aucune expansion ni
+reformulation, flag juridique false, signal LLM null et `should_proceed=true`.
+
+Différences de parité **volontaires et autorisées** :
+
+- Le statut de classification est `disabled`, `completed` ou `degraded` ; la cause
+  sûre `provider_failure`/`invalid_response` est explicite dans les diagnostics et
+  remplace `str(exception)` dans `intent_reason`. La cause chaînée reste interne,
+  les tentatives B3 et la completion reçue restent disponibles séparément.
+- Prompt absent/malformé → `RAGConfigurationError` avec cause ; données d'appel
+  invalides, bugs, erreurs de port non traduites et annulations se propagent.
+  Rejets fournisseur (identifiants/modèle/payload) et completion partielle
+  remontent également : ils ne deviennent plus un résultat RAG de repli.
+- JSON non objet, limites du décodeur, confiance non convertible/non finie ou
+  champs textuels consommés inutilisables → repli explicite, sans fuite d'objets
+  mutables ni nombre non sérialisable. Les coercions utilisables sont conservées :
+  fences, intent inconnu, thème inconnu, booléens, confiance numérique convertible
+  sans nouvelle borne 0–1, valeurs falsy de reformulation/retrieval.
+- Les fallbacks attendus des stores DB et le traitement normal du hors-périmètre
+  restent inchangés. Les sept fixtures M0b nominales ne sont pas modifiées.
+
+Les anciens tests de parité totale sur erreurs sont remplacés par assertions
+explicites des changements autorisés : seul le motif sûr diffère pour les
+échecs auparavant dégradés ; prompt/historique invalides doivent maintenant
+lever. De nouvelles régressions couvrent causes chaînées, bugs, configuration,
+annulation, données LLM inutilisables et reprise après panne. La limite des grands
+entiers de `json.loads()` est traduite au seul point de décodage, conformément au
+constat de revue indépendante.
+
+C6 devra consommer le statut dégradé et sa cause pour l'orchestration et la trace,
+au lieu de déduire un statut `ok` de la seule absence d'exception. Le contrat est
+précisé dans `apps/api/README.md` ; aucun logger I/O dans le core, handler HTTP ou
+moteur C6 ajouté. Aucun nouvel appel LLM, accès DB, push ou déploiement.
+
+Validation du durcissement : **322 tests core/gateways passent**, dont les sept
+replays M0b ; Ruff, mypy sur les trois modules modifiés et les trois contrats
+d'import passent. Revue indépendante favorable après correction de la limite des
+grands entiers JSON. Modification extérieure de `legal_search.py` laissée intacte
+et exclue du commit.

@@ -7,14 +7,15 @@ Stores own I/O; all snapshots, errors and inference evidence belong to this call
 """
 
 import json
+import math
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
 
-from assistant_rh_api.core.errors import DatabaseFailure, DatabaseUnavailable, InferenceFailure
+from assistant_rh_api.core.errors import ClassificationFailure, DatabaseFailure, DatabaseUnavailable, InferenceFailure, RAGConfigurationError
 from assistant_rh_api.core.models.configuration import Acronym, Prompt, Snapshot
-from assistant_rh_api.core.models.inference import Attempt, ChatRequest, Message
+from assistant_rh_api.core.models.inference import Attempt, ChatRequest, Completion, Message
 from assistant_rh_api.core.models.query_processing import (
     _DIRECT_RESPONSES,
     AVAILABLE_THEMES,
@@ -59,27 +60,46 @@ def render_prompt(template: str, query: str, history_text: str, acronyms_section
     return template.format(history=history_text, query=query, acronyms_section=acronyms_section)
 
 
+def _classification_text(value: Any) -> str | None:
+    if value is not None and not isinstance(value, str):
+        raise ClassificationFailure("invalid_response") from TypeError("Expected a classification text field")
+    return value
+
+
 def parse_classification(raw: str) -> dict[str, Any]:
-    """Preserve permissive legacy JSON parsing, coercions and defaults."""
+    """Keep legacy coercions; translate only invalid JSON or unusable fields."""
     text = raw.strip()
     match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
     text = match.group(1) if match else text
     if text.startswith("```"):
         text = text.split("```")[1]
-    data = json.loads(text.strip().lstrip("json").strip())
+    try:
+        data = json.loads(text.strip().lstrip("json").strip())
+    except (ValueError, RecursionError) as exc:
+        raise ClassificationFailure("invalid_response") from exc
+    if not isinstance(data, dict):
+        raise ClassificationFailure("invalid_response") from TypeError("Expected a classification object")
     intent_str = data.get("intent", "rag_query")
+    if isinstance(intent_str, (list, dict)):
+        raise ClassificationFailure("invalid_response") from TypeError("Expected a scalar intent")
     intent = Intent(intent_str) if intent_str in Intent._value2member_map_ else Intent.RAG_QUERY
     theme = data.get("theme")
     if theme and theme not in AVAILABLE_THEMES:
         theme = "autre"
+    try:
+        confidence = float(data.get("confidence", 0.8))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ClassificationFailure("invalid_response") from exc
+    if not math.isfinite(confidence):
+        raise ClassificationFailure("invalid_response") from ValueError("Classification confidence must be a finite JSON number")
     return {
         "intent": intent,
-        "confidence": float(data.get("confidence", 0.8)),
-        "reasoning": data.get("reasoning", ""),
+        "confidence": confidence,
+        "reasoning": _classification_text(data.get("reasoning", "")),
         "needs_legal": bool(data.get("needs_legal_search", False)),
-        "theme": theme,
-        "enriched_query": data.get("reformulated_query") or "",
-        "query_for_retrieval": data.get("query_for_retrieval"),
+        "theme": _classification_text(theme),
+        "enriched_query": _classification_text(data.get("reformulated_query") or ""),
+        "query_for_retrieval": _classification_text(data.get("query_for_retrieval") or None),
         "direct_response": _DIRECT_RESPONSES.get(intent),
         "raw": raw,
         "classify_ok": True,
@@ -116,6 +136,16 @@ class QueryProcessor:
                 return snapshot
         raise FileNotFoundError("Intent prompt not found")
 
+    async def _complete(self, prompt: str) -> Completion:
+        try:
+            return await self._llm.complete(ChatRequest((Message("user", prompt),), temperature=0.0))
+        except InferenceFailure as exc:
+            # Rejected requests (credentials/model/payload) and partial outcomes
+            # need caller intervention, not a successful degraded classification.
+            if exc.partial or any(attempt.error == "rejected" for attempt in exc.attempts):
+                raise
+            raise ClassificationFailure("provider_failure") from exc
+
     async def process(
         self,
         query: str,
@@ -139,20 +169,31 @@ class QueryProcessor:
         prompt_snapshot = None
         completion = None
         failed_attempts: tuple[Attempt, ...] = ()
+        classification_status: Literal["disabled", "completed", "degraded"] = "disabled"
+        classification_error: Literal["provider_failure", "invalid_response"] | None = None
         if self._config.enable_intent_gating:
+            history_text = format_history(conversation_history)
+            acronyms_section = format_acronyms(detected)
             try:
-                history_text = format_history(conversation_history)
-                acronyms_section = format_acronyms(detected)
                 prompt_snapshot = await self._load_prompt(errors)
+            except FileNotFoundError as exc:
+                raise RAGConfigurationError() from exc
+            try:
                 prompt = render_prompt(prompt_snapshot.value.content, query, history_text, acronyms_section, ministry, today)
-                completion = await self._llm.complete(ChatRequest((Message("user", prompt),), temperature=0.0))
+            except (KeyError, ValueError, IndexError) as exc:
+                raise RAGConfigurationError() from exc
+            try:
+                completion = await self._complete(prompt)
                 intent_data = parse_classification(completion.text)
-            except Exception as exc:
-                # Cancellation inherits BaseException and propagates. A provider
-                # outage does not expand acronyms or run the legal heuristic.
-                if isinstance(exc, InferenceFailure):
-                    failed_attempts = exc.attempts
-                intent_data = {"intent": Intent.RAG_QUERY, "confidence": 0.5, "reasoning": str(exc), "classify_ok": False}
+                classification_status = "completed"
+            except ClassificationFailure as exc:
+                classification_status = "degraded"
+                classification_error = exc.reason
+                if isinstance(exc.__cause__, InferenceFailure):
+                    failed_attempts = exc.__cause__.attempts
+                # Retain legacy fallback values, but never expose an exception's
+                # message as the reason; it may contain provider/user input.
+                intent_data = {"intent": Intent.RAG_QUERY, "confidence": 0.5, "reasoning": exc.reason, "classify_ok": False}
         else:
             expanded = query
             for short, full in detected.items():
@@ -184,4 +225,15 @@ class QueryProcessor:
             direct_response=intent_data.get("direct_response"),
             intent_raw_response=intent_data.get("raw"),
         )
-        return QueryProcessing(result, QueryDiagnostics(acronym_snapshot, prompt_snapshot, completion, failed_attempts, tuple(errors)))
+        return QueryProcessing(
+            result,
+            QueryDiagnostics(
+                acronyms=acronym_snapshot,
+                prompt=prompt_snapshot,
+                completion=completion,
+                failed_attempts=failed_attempts,
+                store_errors=tuple(errors),
+                classification_status=classification_status,
+                classification_error=classification_error,
+            ),
+        )
