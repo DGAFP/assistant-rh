@@ -48,7 +48,7 @@ Suivi A5 B1 — A5-03 : primitive de cache synchronisée et révisions de conten
 | A5-05 | Le fan-out retrieval ouvre jusqu'à deux connexions par table ; l'introspection est cachée sans TTL et `SET ivfflat.probes` deviendrait fuyant sur un pool réutilisé. | B1 + C3 | ouvert — pool borné, cache synchronisé, `SET LOCAL` |
 | A5-06 | `chat_runs`, sources affichées, `rag_trace_events` et export OTLP ne forment pas aujourd'hui une finalisation canonique unique ; l'export se fait dans un thread daemon non drainé. | B2 + C6/C7 | ouvert — persister atomiquement run + `chat_run_sources` + traces, puis appeler le sink géré |
 | A5-07 | UUID, dates et durées sont générés dans pipeline, tracing, logger, admin et UI ; les `turn_id` historiques sont tronqués à 8 hex. | C6/C7 | ouvert — `ClockPort`/`IdGeneratorPort`, ids complets dans `RunContext` |
-| A5-08 | `config.py` lit l'environnement à l'import, réexporte les helpers DB et expose des dictionnaires mutables ; `admin.DEFAULT_CONFIG` est un singleton mutable de fallback. | B1 | ouvert — config pure/immuable et wiring sans effet de bord |
+| A5-08 | `config.py` lit l'environnement à l'import, réexporte les helpers DB et expose des dictionnaires mutables ; `admin.DEFAULT_CONFIG` est un singleton mutable de fallback. | C2/C3/C5/C6 + admin-hardening | en cours — mapping RAG immuable et chargeur API livrés ci-dessous ; consommateurs historiques et environnement des tables restent à extraire |
 | A5-09 | Des consommateurs utilisent des privés : `09_Pipeline_Evaluation.py` appelle `_retriever/_aggregator/_context_builder`, le logger lit `_context_builder`, le goldset importe `_fold`, le chat importe `_append_csv_row`. | C6 + D3 + F3 + admin-hardening | ouvert — retirer les usages publics en F3 ; repointer séparément l'admin avant suppression du package historique |
 | A5-10 | Updates config read-modify-write sans révision et batch feedback sans claim : perte de mise à jour et double analyse possibles. Le DDL est encore déclenché depuis l'admin. | B2 + D1 + admin-hardening | ouvert — feedback sécurisé dans D1 ; CAS, claim et migrations admin suivis hors chemin critique M4 |
 | A5-11 | Plusieurs départages reposent sur la stabilité implicite de Python ou des ensembles/requêtes sans ordre (`sections.sort(score)`, `list(set(...))`, refs/acronymes sans second tri). | C2/C3/C4 | ouvert — ordinal/clé totale et fixtures d'égalité |
@@ -118,3 +118,51 @@ smoke HTTP local et SDK synchrone contre Uvicorn/PostgreSQL réels verts, avec r
 après logout. Ruff et les trois contrats d'import passent. Docker indisponible en
 local : build image et smoke Compose à vérifier en CI. Aucun
 changement du runtime RAG servi, aucune migration ou activation distante.
+
+
+### A5-08 — préparation de la configuration RAG pour le moteur API — [PR #539](https://github.com/DGAFP/assistant-rh/pull/539)
+
+Reconstruction pure du `RAGConfig` historique et du mapping
+`RuntimeRAGConfig → RAGConfig` dans le core API, sans import du package historique,
+lecture d'environnement ou helper DB. Les sous-configurations sont gelées, les
+tables sont un tuple ordonné ; `to_dict()` conserve le format historique et rend
+une copie détachée. Les défauts du constructeur et les défauts admin, différents
+pour le selector et l'intent gating, sont conservés séparément. Aucun nouveau
+fichier de valeurs ni changement de `rag_config`, de l'admin ou du runtime servi.
+
+Le lifespan assemble `RAGConfigurationService` avec le `ConfigStore` B2 et charge
+un premier snapshot pour valider les types avant de servir les requêtes. Une
+configuration malformée interrompt le démarrage et ferme le pool. Le futur
+point d'entrée moteur devra appeler `load()` une fois par requête puis transmettre
+le même snapshot à chaque étape. Ce chargement initial ne devient pas un cache :
+chaque appel relit le store, conserve sa révision et voit les UPDATEs
+admin suivants, sans altérer les snapshots déjà remis. Absence/panne DB conservent
+le fallback historique vers des défauts frais, avec motif explicite ; annulation
+et types malformés ne sont pas masqués. La validation ne réapplique pas les bornes
+admin, qui excluraient certaines configurations déjà évaluées.
+
+**Reliquats affectés, A5-08 non déclaré clos** : C2/C5 extraient les lectures
+supplémentaires de `get_runtime_config()`, prompts/acronymes et leur cohérence de
+requête (A5-03). C3 résout au wiring les overrides environnement
+`SERVICE_PUBLIC_COMPARE_TABLE` / `DGAFP_COMPARE_TABLE` et le catalogue de tables,
+puis les injecte aux adaptateurs sans global lu à l'import. C6 branche le chargeur
+sur le `ChatService` réel et propage le snapshot au `RunContext` ; il n'existe pas
+encore de route completion utilisant cette configuration. Le retrait des
+réexports DB et du singleton `admin.DEFAULT_CONFIG` dans les consommateurs admin
+historiques appartient à admin-hardening ; ils restent intacts conformément à la
+reconstruction parallèle et à l'exception admin A3. La sémantique du cache
+Streamlit historique (15 s) reste inchangée. Le périmètre livré est une fondation
+RAG pour l'API, pas une intégration ni une preuve de parité du moteur C2–C7.
+
+
+Validation A5-08 : **321 tests API** passent sur PostgreSQL 18.4/pgvector local
+exclusivement synthétique. Tests de parité contre le mapping historique, snapshots
+profondément immuables, UPDATE SQL entre deux requêtes, fallback/reprise et lifespan
+couverts. Suite historique : 1367 tests passent et 16 sont ignorés dans le sandbox ;
+les 13 cas HTTP bloqués par les sockets locales sont validés par une relance du
+module replay complet (14/14 passent). Ruff sur les chemins CI, mypy sur les deux
+nouveaux modules et le wiring et les trois contrats d'import passent ; la garde core interdit
+aussi le package RAG historique. Revue indépendante favorable, aucun constat
+bloquant après correction du test de redémarrage avec un nouveau pool.
+Chargement/validation initial, fermeture du pool sur configuration invalide et
+reprise après correction couverts. Aucun appel provider, migration distante, déploiement ni bascule RAG.

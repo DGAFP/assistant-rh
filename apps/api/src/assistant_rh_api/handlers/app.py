@@ -13,12 +13,14 @@ from fastapi import FastAPI
 from assistant_rh_api.core.auth import AuthService
 from assistant_rh_api.core.catalog import ModelService
 from assistant_rh_api.core.health import HealthProbe
+from assistant_rh_api.core.rag_configuration import RAGConfigurationService
 from assistant_rh_api.db.auth_stores import GroupStore, SessionStore
 from assistant_rh_api.db.dsn import DatabaseSettings, resolve_dsn
 from assistant_rh_api.db.health import PostgresHealthProbe
 from assistant_rh_api.db.login_limits import LoginLimits, PostgresLoginLimiter
 from assistant_rh_api.db.pool import Database
 from assistant_rh_api.db.session_retention import maintain_sessions
+from assistant_rh_api.db.settings_stores import ConfigStore
 from assistant_rh_api.gateways.auth import LegacyPasswords, SessionTokens, SystemClock
 from assistant_rh_api.handlers.auth import create_auth_router
 from assistant_rh_api.handlers.auth_body import AuthBodyLimit
@@ -34,6 +36,7 @@ def create_app(
     environ: Mapping[str, str] | None = None,
     auth_service: AuthService | None = None,
     model_service: ModelService | None = None,
+    rag_configuration_service: RAGConfigurationService | None = None,
 ) -> FastAPI:
     """Create the HTTP application without opening connections or loading RAG."""
 
@@ -46,10 +49,17 @@ def create_app(
                 runtime_database = Database(DatabaseSettings(dsn=resolve_dsn(environ=environment)))
         application.state.database = runtime_database
         if runtime_database is None:
+            if rag_configuration_service is not None:
+                await rag_configuration_service.load()
             yield
             return
         try:
             await runtime_database.open()
+            if rag_configuration_service is None:
+                application.state.rag_configuration_service = RAGConfigurationService(ConfigStore(runtime_database))
+            # Validate a first snapshot without pinning dynamic admin settings.
+            # Future requests must load their own snapshot from the same service.
+            await application.state.rag_configuration_service.load()
             sessions = SessionStore(runtime_database)
             if auth_service is None:
                 application.state.auth_service = AuthService(
@@ -72,11 +82,13 @@ def create_app(
             await runtime_database.close()
             application.state.auth_service = auth_service
             application.state.health_probe = health_probe or PostgresHealthProbe()
+            application.state.rag_configuration_service = rag_configuration_service
 
     application = FastAPI(title="Assistant RH API", version=distribution_version("assistant-rh-api"), lifespan=lifespan)
     application.state.health_probe = health_probe or PostgresHealthProbe()
     application.state.auth_service = auth_service
     application.state.model_service = model_service or ModelService()
+    application.state.rag_configuration_service = rag_configuration_service
     application.add_middleware(AuthBodyLimit)
     register_error_handlers(application)
     application.include_router(create_health_router())

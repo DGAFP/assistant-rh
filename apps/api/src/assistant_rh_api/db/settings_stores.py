@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 
-from assistant_rh_api.core.errors import DatabaseFailure
+from assistant_rh_api.core.errors import RAGConfigurationError
 from assistant_rh_api.core.models.configuration import Acronym, ConfigValues, Prompt, Snapshot
 from assistant_rh_api.core.ports.configuration import AcronymStorePort, ConfigStorePort, PromptStorePort
 from assistant_rh_api.db.pool import Database
@@ -20,7 +20,7 @@ class ConfigStore(ConfigStorePort):
             return None
         value = freeze_json(row[0])
         if not isinstance(value, Mapping):
-            raise DatabaseFailure()
+            raise RAGConfigurationError()
         return Snapshot(value, content_revision(value), "database")
 
 

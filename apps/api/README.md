@@ -443,3 +443,24 @@ The API dev dependencies include the OpenAI Python SDK. Tests exercise real
 `AsyncOpenAI.models.list()` over the ASGI app, including strict response parsing,
 isolation, stable ordering, invalid policies and SDK errors. The PostgreSQL HTTP
 lifespan test also lists models after password login and rejects a revoked bearer.
+
+
+### Configuration RAG par requête (préparation C2–C6)
+
+Le lifespan assemble `app.state.rag_configuration_service` avec le store DB B2 ;
+une instance peut être injectée dans `create_app` pour les tests. Le démarrage charge et valide un
+premier snapshot de `rag_config` sans le conserver comme cache de requête. Une
+configuration de type invalide bloque le démarrage et ferme le pool. À l'entrée du futur moteur, appeler
+`await service.load()` une seule fois et garder `result.config` jusqu'à la fin de
+la requête. Le snapshot contient la configuration RAG profondément immuable, la
+révision du store et son origine. Le prochain appel relit la DB et voit les
+modifications admin ; les requêtes en cours conservent leurs valeurs.
+
+`result.fallback` distingue ligne absente, indisponibilité et échec DB lors du
+repli historique vers les défauts. Les types incorrects lèvent
+`RAGConfigurationError` sans divulguer les valeurs. Cette tranche reproduit le
+mapping historique des paramètres, y compris ses défauts et fallbacks d'enums ;
+elle ne revalide pas les plages de l'interface admin. Les prompts, acronymes,
+lectures runtime supplémentaires et overrides environnement des tables restent
+à composer dans C2/C3/C5 ; C6 doit brancher le snapshot au moteur. Aucune route
+completion ni modification du runtime Streamlit n'est livrée ici.
