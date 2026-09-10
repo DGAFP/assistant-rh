@@ -554,9 +554,14 @@ retrieval stage catches lane exceptions: unscoped calls return surviving chunks
 (or an empty tuple on a total outage) plus `failures`; ministry-scoped or
 `strict_table_errors=True` calls raise `ScopedRetrievalError` after joining the
 searches. These diagnostics carry only source and lane, not the original DB
-error code. The stage also catches unexpected `Exception` values and emits no
-log itself. C6 must consume these diagnostics; no completion HTTP error mapping
-is supplied here.
+error code. The stage emits one `WARNING` per failed lane, with source, lane,
+allowlisted DB error code (or `unexpected_error`) and strict/partial policy,
+also available as structured log fields. It never logs query text, DSNs,
+exception messages or tracebacks. Successful searches and cancellation emit no
+failure warning. This targeted logging at the retrieval decision point is an
+explicit observability exception, following C2. The stage still catches
+unexpected `Exception` values; C6 must consume the result diagnostics and supply
+the completion HTTP error mapping.
 
 `SearchStore.hybrid_candidates()` reads both raw lanes in one statement snapshot;
 alpha, RRF, missing-rank penalties, heading gates and R2 dedup stay in core.

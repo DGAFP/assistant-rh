@@ -435,3 +435,45 @@ traduction des erreurs DB. Ruff sur les chemins CI, mypy du module déplacé et
 les trois contrats d’import passent ; revue indépendante favorable. Le gate
 M0b C3 reste ouvert et la PR reste en brouillon. Aucun accès DB distant, appel
 provider ou déploiement ; CI à vérifier sur la nouvelle tête publiée.
+
+
+## C3 — logs d’échec et smoke staging autorisés (2026-09-10)
+
+À la demande explicite de l’utilisateur, ajout d’un `WARNING` par lane échouée
+au point de décision du retrieval, avec source logique, lane, code DB allowlisté
+et politique `strict`/`partial`. Les exceptions non reconnues sont classées
+`unexpected_error` ; aucun message, traceback, DSN ou texte de question n’est
+journalisé. Les mêmes champs sont disponibles dans le `LogRecord`. Réussite et
+annulation ne produisent pas de faux warning. La sélection/fusion, les exceptions
+remontées et les diagnostics retournés restent inchangés ; le mapping HTTP
+completion appartient toujours à C6. Cette exception ciblée de logging standard
+est explicitement autorisée, comme celle de C2.
+
+Validation locale : **43 tests ciblés et 576 tests API passent**, ces derniers
+sur le DSN synthétique local uniquement. Couverture `caplog` des erreurs DB,
+exceptions inattendues, causes/messages/code arbitraire contenant des sentinelles
+sensibles, politique stricte/partielle, succès et annulation. Ruff CI, mypy du
+step et les trois contrats d’import passent ; revue indépendante code/tests
+favorable. CI de la nouvelle tête à vérifier après publication.
+
+**Smoke réel staging, 2026-09-10 à 12:41 UTC** : DSN dédié
+`SCW_POSTGRES_DSN_STAGING`, endpoint distinct de production, PostgreSQL 17.10,
+`default_transaction_read_only=on` et `transaction_read_only=on` vérifiés.
+Connexion avec TLS requis ; sessions forcées en lecture seule, timeout SQL 10 s,
+pool maximal de trois connexions. Aucun pytest/fixture/migration exécuté contre
+staging. Chargement réussi de la configuration par `RAGConfigurationService`
+sans fallback, puis override explicite du mode `hybrid` et du top-k à 5 ; alpha
+0,5 et probes 5. Scope MATTE : MATTE + Service-Public + DGAFP.
+
+Question synthétique : « Quelles sont les conditions du congé de formation
+professionnelle pour un agent contractuel ? ». Vrai `EmbeddingGateway` Albert,
+modèle `openweight-embeddings`, 1 024 dimensions, une tentative réussie et aucun
+fallback provider utilisé. Vrai `SearchStore` et nouveau step : **23 chunks en
+1,593 s**, dont MATTE 10, Service-Public 8 et DGAFP 5 ; 18 chunks rattachés à une
+section, 10 issus de headings, **zéro lane échouée**. Le top-k est par lane,
+puis les résultats sont fusionnés. Aucun contenu complet ni secret conservé
+dans le bilan ; aucune écriture DB, génération de réponse ou bascule runtime.
+
+Ce smoke prouve l’exécution sur le corpus staging courant pour cette requête et
+ce scope. Il ne mesure pas la qualité des réponses et ne reconstitue pas les
+inputs historiques M0b : le gate de #460 reste ouvert et #546 reste en brouillon.

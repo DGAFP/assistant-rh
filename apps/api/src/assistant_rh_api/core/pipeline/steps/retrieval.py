@@ -5,6 +5,7 @@ heading gates and cross-source calibration preserve the historical algorithm.
 """
 
 import asyncio
+import logging
 import re
 import unicodedata
 from collections.abc import Mapping
@@ -12,7 +13,14 @@ from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from types import MappingProxyType
 
-from assistant_rh_api.core.errors import ApplicationError, MinistryConfigurationError
+from assistant_rh_api.core.errors import (
+    ApplicationError,
+    DatabaseConfigurationError,
+    DatabaseConflict,
+    DatabaseFailure,
+    DatabaseUnavailable,
+    MinistryConfigurationError,
+)
 from assistant_rh_api.core.errors.inference import InferenceFailure
 from assistant_rh_api.core.ministry_policy import MINISTRIES
 from assistant_rh_api.core.models.inference import Embedding
@@ -20,6 +28,8 @@ from assistant_rh_api.core.models.rag_configuration import RetrievalConfig, Sear
 from assistant_rh_api.core.models.retrieval import RawChunk, RetrievalSource, RetrievedChunk, SearchRequest, Source
 from assistant_rh_api.core.ports.inference import EmbeddingPort
 from assistant_rh_api.core.ports.retrieval import SearchPort
+
+logger = logging.getLogger(__name__)
 
 RRF_K = 60
 HEADING_PREFIX = "heading:"
@@ -49,6 +59,15 @@ class RetrievalResult:
     failures: tuple[RetrievalFailure, ...] = ()
     embedding: Embedding | None = None
     embedding_failed: bool = False
+
+
+def _failure_code(error: Exception) -> str:
+    # Only known application codes are safe; arbitrary exception text/code can
+    # contain credentials, query text or server details.
+    for error_type in (DatabaseUnavailable, DatabaseConflict, DatabaseFailure, DatabaseConfigurationError):
+        if isinstance(error, error_type):
+            return error_type.code
+    return "unexpected_error"
 
 
 def _heading_score(chunk: RetrievedChunk) -> float:
@@ -242,7 +261,17 @@ class Retriever:
                 else:
                     chunks = await self._chunks(source, query, embedding, config, mode, limit, source.key in force_hybrid_tables)
                 per_source[name] = chunks
-            except Exception:
+            except Exception as exc:
+                code = _failure_code(exc)
+                policy = "strict" if strict_table_errors else "partial"
+                logger.warning(
+                    "Retrieval search failed (source=%s, lane=%s, code=%s, policy=%s)",
+                    source.key,
+                    lane,
+                    code,
+                    policy,
+                    extra={"retrieval_source": source.key, "retrieval_lane": lane, "error_code": code, "retrieval_error_policy": policy},
+                )
                 # Legacy unscoped _exec_de_table swallowed a failed lane as [],
                 # which still counts in the calibration denominator. Preserve it.
                 failures.append(RetrievalFailure(source.key, lane))

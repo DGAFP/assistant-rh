@@ -1,8 +1,16 @@
 import asyncio
+import logging
 from dataclasses import FrozenInstanceError, replace
 
 import pytest
-from assistant_rh_api.core.errors import DatabaseFailure, DatabaseUnavailable, MinistryConfigurationError
+from assistant_rh_api.core.errors import (
+    ApplicationError,
+    DatabaseConfigurationError,
+    DatabaseConflict,
+    DatabaseFailure,
+    DatabaseUnavailable,
+    MinistryConfigurationError,
+)
 from assistant_rh_api.core.errors.inference import InferenceFailure
 from assistant_rh_api.core.models.inference import Embedding
 from assistant_rh_api.core.models.rag_configuration import RetrievalConfig, SearchMode
@@ -96,10 +104,11 @@ async def test_concurrent_requests_keep_model_scope_config_and_results_separate(
             assert call.embedding_model == ("albert" if call.query == "albert" else "bge_scaleway")
 
 
-async def test_order_does_not_depend_on_task_completion():
+async def test_order_does_not_depend_on_task_completion(caplog):
     config = RetrievalConfig(search_mode=SearchMode.HYBRID)
     runs = [await Retriever(Search(reverse=bool(i % 2)), {"albert": Embeddings()}, SOURCES).retrieve("albert", config) for i in range(10)]
     assert all(result == runs[0] for result in runs)
+    assert not [record for record in caplog.records if record.name == "assistant_rh_api.core.pipeline.steps.retrieval"]
     assert [(c.table_source, c.chunk_id) for c in runs[0].chunks][:4] == [("DGAFP", "a"), ("MATTE", "a"), ("RGRH", "a"), ("Service-Public", "a")]
 
 
@@ -131,7 +140,7 @@ async def test_embedding_failure_and_empty_pools_do_not_invent_fallback():
     assert merge_sources({"empty": ()}) == ()
 
 
-async def test_cancellation_propagates_and_joins_search_children():
+async def test_cancellation_propagates_and_joins_search_children(caplog):
     started = asyncio.Event()
     stopped = asyncio.Event()
 
@@ -149,6 +158,7 @@ async def test_cancellation_propagates_and_joins_search_children():
     with pytest.raises(asyncio.CancelledError):
         await task
     assert stopped.is_set()
+    assert not [record for record in caplog.records if record.name == "assistant_rh_api.core.pipeline.steps.retrieval"]
 
 
 async def test_result_metadata_is_deeply_detached():
@@ -288,3 +298,66 @@ async def test_database_outage_is_reported_per_lane_or_raises_for_ministry(mode,
             ("service_public", "chunks"),
             ("service_public", "heading"),
         ]
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    "error_type,code",
+    [
+        (DatabaseUnavailable, "database_unavailable"),
+        (DatabaseFailure, "database_failure"),
+        (DatabaseConflict, "database_conflict"),
+        (DatabaseConfigurationError, "database_configuration_error"),
+        (RuntimeError, "unexpected_error"),
+    ],
+)
+async def test_failed_lane_logs_one_safe_warning_without_changing_policy(caplog, strict, error_type, code):
+    secret = "postgresql://private-user:secret@private-host/db question-private"
+
+    class FailingSearch(Search):
+        async def search(self, request):
+            if request.source == "mso" and request.mode == "heading":
+                error = error_type()
+                error.args = (secret,)
+                raise error from ValueError(secret)
+            return await super().search(request)
+
+    caplog.set_level(logging.WARNING, logger="assistant_rh_api.core.pipeline.steps.retrieval")
+    retriever = Retriever(FailingSearch(), {"albert": Embeddings()}, SOURCES)
+    if strict:
+        with pytest.raises(ScopedRetrievalError) as caught:
+            await retriever.retrieve(secret, RetrievalConfig(), selected_ministry="mso")
+        failures = caught.value.failures
+    else:
+        result = await retriever.retrieve(secret, RetrievalConfig(tables=("mso", "service_public", "dgafp")))
+        assert result.chunks
+        failures = result.failures
+    assert [(failure.source, failure.lane) for failure in failures] == [("mso", "heading")]
+    records = [record for record in caplog.records if record.name == "assistant_rh_api.core.pipeline.steps.retrieval"]
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelno == logging.WARNING
+    assert (record.retrieval_source, record.retrieval_lane, record.error_code, record.retrieval_error_policy) == (
+        "mso",
+        "heading",
+        code,
+        "strict" if strict else "partial",
+    )
+    assert all(value in record.getMessage() for value in ("mso", "heading", code, "strict" if strict else "partial"))
+    assert record.exc_info is None and record.stack_info is None
+    assert secret not in repr(vars(record))
+
+
+async def test_unknown_application_error_code_is_not_logged(caplog):
+    class CustomError(ApplicationError):
+        code = "private-error-payload"
+
+    class FailingSearch(Search):
+        async def search(self, request):
+            raise CustomError()
+
+    caplog.set_level(logging.WARNING, logger="assistant_rh_api.core.pipeline.steps.retrieval")
+    result = await Retriever(FailingSearch(), {"albert": Embeddings()}, SOURCES).retrieve("q", RetrievalConfig(tables=("rgrh",)))
+    assert result.failures
+    assert caplog.records[0].error_code == "unexpected_error"
+    assert "private-error-payload" not in repr(vars(caplog.records[0]))

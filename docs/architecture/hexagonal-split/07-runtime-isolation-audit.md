@@ -191,7 +191,12 @@ Résultat de l'extraction : `core/pipeline/steps/retrieval.py` porte ces règles
 `RetrievalResult` immuable. Le modèle préféré choisit une chaîne `EmbeddingPort`
 par requête ; le modèle effectivement retourné choisit la colonne vectorielle.
 `SearchPort.hybrid_candidates` renvoie deux lanes brutes dans un seul snapshot
-SQL, sans calcul RRF côté DB. Un `TaskGroup` joint les tâches, y compris à
+SQL, sans calcul RRF côté DB. Sur demande explicite en revue, le step journalise
+un `WARNING` par lane échouée (source, lane, code DB allowlisté ou
+`unexpected_error`, politique strict/partiel), sans question, DSN, message
+ni traceback d’exception. Comme C2, cette journalisation standard au point de
+décision est une exception d’observabilité ciblée ; elle ne change ni les
+résultats ni la politique de propagation. Un `TaskGroup` joint les tâches, y compris à
 l'annulation ; le pool B1 borne les connexions. L'introspection reste une lecture
 fraîche d'adaptateur (aucun cache global). Les overrides de comparaison sont
 injectés explicitement au catalogue d'évaluation ; doublons physiques rejetés
