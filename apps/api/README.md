@@ -445,6 +445,15 @@ isolation, stable ordering, invalid policies and SDK errors. The PostgreSQL HTTP
 lifespan test also lists models after password login and rejects a revoked bearer.
 
 
+### Diagnostics DB
+
+Les erreurs DB conservent une opération stable, une catégorie, un SQLSTATE reconnu
+et une corrélation générée côté serveur, sans SQL ni message psycopg. Les échecs
+sont journalisés au niveau `ERROR`, les replis au niveau `WARNING`, au point de
+décision. HTTP retourne la corrélation dans `X-Request-ID` en conservant ses corps
+d'erreur génériques. Voir le [contrat et les limites](docs/database-diagnostics.md),
+notamment l'intégration future du warning acronymes de #545 et de C6.
+
 ### Configuration RAG par requête (préparation C2–C6)
 
 Le lifespan assemble `app.state.rag_configuration_service` avec le store DB B2 ;

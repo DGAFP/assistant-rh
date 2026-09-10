@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 
+from assistant_rh_api.core.db_diagnostics import DBOperation
 from assistant_rh_api.core.errors import RAGConfigurationError
 from assistant_rh_api.core.models.configuration import Acronym, ConfigValues, Prompt, Snapshot
 from assistant_rh_api.core.ports.configuration import AcronymStorePort, ConfigStorePort, PromptStorePort
@@ -14,7 +15,7 @@ class ConfigStore(ConfigStorePort):
         self._database = database
 
     async def load(self) -> Snapshot[ConfigValues] | None:
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.CONFIG_LOAD) as connection:
             row = await (await connection.execute("SELECT config FROM public.rag_config WHERE id = 1")).fetchone()
         if row is None:
             return None
@@ -29,7 +30,7 @@ class PromptStore(PromptStorePort):
         self._database = database
 
     async def get(self, name: str) -> Snapshot[Prompt] | None:
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.PROMPT_GET) as connection:
             row = await (
                 await connection.execute(
                     "SELECT content FROM public.system_prompts WHERE name = %s AND is_active = TRUE",
@@ -44,7 +45,7 @@ class AcronymStore(AcronymStorePort):
         self._database = database
 
     async def load(self) -> Snapshot[tuple[Acronym, ...]]:
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.ACRONYM_LOAD) as connection:
             # Historical admin schema has no priority; to_jsonb also reads older
             # installations that do have it without issuing speculative DDL.
             rows = await (

@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from assistant_rh_api.core.auth import InvalidCredentials, LoginRateLimited, MinistryForbidden
+from assistant_rh_api.core.db_diagnostics import report_database_error
 from assistant_rh_api.core.errors import ApplicationError, DatabaseUnavailable, MinistryConfigurationError, ModelNotFound
 
 
@@ -25,6 +26,7 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ApplicationError)
     async def application_error(request: Request, exc: ApplicationError) -> JSONResponse:
+        report_database_error(exc)
         if isinstance(exc, InvalidCredentials):
             return error_response(401, exc.code, "Invalid API key", headers={"WWW-Authenticate": "Bearer"})
         if isinstance(exc, MinistryForbidden):

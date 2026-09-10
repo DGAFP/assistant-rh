@@ -24,6 +24,7 @@ from assistant_rh_api.db.settings_stores import ConfigStore
 from assistant_rh_api.gateways.auth import LegacyPasswords, SessionTokens, SystemClock
 from assistant_rh_api.handlers.auth import create_auth_router
 from assistant_rh_api.handlers.auth_body import AuthBodyLimit
+from assistant_rh_api.handlers.diagnostics import DiagnosticContext
 from assistant_rh_api.handlers.errors import register_error_handlers
 from assistant_rh_api.handlers.health import create_health_router
 from assistant_rh_api.handlers.models import create_models_router
@@ -90,6 +91,7 @@ def create_app(
     application.state.model_service = model_service or ModelService()
     application.state.rag_configuration_service = rag_configuration_service
     application.add_middleware(AuthBodyLimit)
+    application.add_middleware(DiagnosticContext)
     register_error_handlers(application)
     application.include_router(create_health_router())
     application.include_router(create_auth_router())

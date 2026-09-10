@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from assistant_rh_api.core.auth import LoginRateLimited
+from assistant_rh_api.core.db_diagnostics import DBOperation
 from assistant_rh_api.db.pool import Database
 
 
@@ -44,7 +45,7 @@ class PostgresLoginLimiter:
     async def acquire(self, source: str, slug: str) -> None:
         limits = self._limits
         subjects = (("global", "all", limits.global_limit), ("source", source, limits.source), ("slug", slug, limits.slug))
-        async with self._database.transaction() as connection:
+        async with self._database.transaction(operation=DBOperation.LOGIN_ACQUIRE) as connection:
             # Serialize only short admission transactions, never password work.
             # All instances lock in the same order, including expiry cleanup.
             await connection.execute("SELECT pg_advisory_xact_lock(456, 1)")

@@ -101,7 +101,11 @@ async def test_retention_worker_retries_safely_and_cancels(caplog):
             await recovered.wait()
         tasks.cancel_scope.cancel()
     assert calls >= 2 and "must-not-be-logged" not in caplog.text
-    assert "retrying next interval" in caplog.text
+    records = [record for record in caplog.records if getattr(record, "event", None) == "database_recovery"]
+    assert len(records) == 1
+    assert records[0].operation == "session.purge_inactive"
+    assert records[0].code == "database_unavailable"
+    assert records[0].levelname == "WARNING"
 
 
 async def test_shutdown_finishes_inflight_transaction_without_forcing_connection_closed(repository_db, monkeypatch, caplog):

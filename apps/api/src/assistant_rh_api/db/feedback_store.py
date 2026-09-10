@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from psycopg.rows import dict_row
 
+from assistant_rh_api.core.db_diagnostics import DBOperation
 from assistant_rh_api.core.errors import DatabaseFailure
 from assistant_rh_api.core.models.conversations import Feedback, FeedbackAnalysisData, FeedbackInput
 from assistant_rh_api.core.ports.conversations import FeedbackStorePort
@@ -47,7 +48,7 @@ class FeedbackStore(FeedbackStorePort):
         self._database = database
 
     async def get(self, turn_id: str) -> Feedback | None:
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.FEEDBACK_GET) as connection:
             async with connection.cursor(row_factory=dict_row) as cursor:
                 await cursor.execute(
                     "SELECT * FROM public.chat_feedbacks WHERE turn_id = %s ORDER BY ts DESC NULLS LAST, id DESC LIMIT 1", (turn_id,)
@@ -60,7 +61,7 @@ class FeedbackStore(FeedbackStorePort):
             raise ValueError("session hash and aware timestamp required")
         reasons_positive = _encode_reasons(value.reasons_positive)
         reasons_negative = _encode_reasons(value.reasons_negative)
-        async with self._database.transaction() as connection:
+        async with self._database.transaction(operation=DBOperation.FEEDBACK_SAVE) as connection:
             async with connection.cursor(row_factory=dict_row) as cursor:
                 # The parent exists before any feedback: this also serializes
                 # concurrent first submissions (locking an absent child cannot).
@@ -129,7 +130,7 @@ class FeedbackStore(FeedbackStorePort):
     async def for_analysis(self, max_stars: int, limit: int) -> tuple[FeedbackAnalysisData, ...]:
         if not 1 <= max_stars <= 5 or not 1 <= limit <= 1000:
             raise ValueError("invalid analysis bounds")
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.FEEDBACK_ANALYSIS) as connection:
             async with connection.cursor(row_factory=dict_row) as cursor:
                 await cursor.execute(
                     """
@@ -151,7 +152,7 @@ class FeedbackStore(FeedbackStorePort):
     async def save_analysis(self, feedback_id: int, revision: str, category: str, reason: str, now: datetime) -> bool:
         if now.tzinfo is None:
             raise ValueError("analysis timestamp must be timezone aware")
-        async with self._database.transaction() as connection:
+        async with self._database.transaction(operation=DBOperation.FEEDBACK_SAVE_ANALYSIS) as connection:
             async with connection.cursor(row_factory=dict_row) as cursor:
                 await cursor.execute("SELECT * FROM public.chat_feedbacks WHERE id = %s FOR UPDATE", (feedback_id,))
                 row = await cursor.fetchone()

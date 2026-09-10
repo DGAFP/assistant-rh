@@ -5,6 +5,7 @@ from datetime import datetime
 
 from psycopg import AsyncConnection
 
+from assistant_rh_api.core.db_diagnostics import DBOperation
 from assistant_rh_api.core.errors import DatabaseConflict
 from assistant_rh_api.core.models.auth import Group, Session
 from assistant_rh_api.core.ports.auth import GroupStorePort, SessionStorePort
@@ -23,7 +24,7 @@ class GroupStore(GroupStorePort):
         self._database = database
 
     async def list_groups(self) -> tuple[Group, ...]:
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.GROUP_LIST) as connection:
             rows = await (
                 await connection.execute(
                     f'SELECT {GROUP_COLUMNS} FROM public.user_groups ORDER BY priority DESC, slug COLLATE "C"',
@@ -32,7 +33,7 @@ class GroupStore(GroupStorePort):
         return tuple(_group(row) for row in rows)
 
     async def get(self, slug: str) -> Group | None:
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.GROUP_GET) as connection:
             row = await (await connection.execute(f"SELECT {GROUP_COLUMNS} FROM public.user_groups WHERE slug = %s", (slug,))).fetchone()
         return _group(row) if row else None
 
@@ -46,7 +47,7 @@ class SessionStore(SessionStorePort):
             raise ValueError("token_hash must be a SHA-256 digest")
         if session.created_at.tzinfo is None or session.expires_at.tzinfo is None or session.expires_at <= session.created_at:
             raise ValueError("session requires aware timestamps and positive lifetime")
-        async with self._database.transaction() as connection:
+        async with self._database.transaction(operation=DBOperation.SESSION_CREATE) as connection:
             # Lock the credential used to authenticate; a concurrent password
             # reset either precedes this comparison or invalidates the session.
             row = await (
@@ -74,7 +75,7 @@ class SessionStore(SessionStorePort):
             )
 
     async def get_active(self, token_hash: str, now: datetime) -> Session | None:
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.transaction(read_only=True, operation=DBOperation.SESSION_GET) as connection:
             row = await (
                 await connection.execute(
                     """
@@ -90,7 +91,7 @@ class SessionStore(SessionStorePort):
         return Session(*row) if row else None
 
     async def revoke(self, token_hash: str, now: datetime) -> None:
-        async with self._database.transaction() as connection:
+        async with self._database.transaction(operation=DBOperation.SESSION_REVOKE) as connection:
             await connection.execute(
                 "UPDATE public.api_sessions SET revoked_at = COALESCE(revoked_at, %s) WHERE token_hash = %s",
                 (now, token_hash),
@@ -100,7 +101,7 @@ class SessionStore(SessionStorePort):
         """Delete one indexed batch; active or concurrently locked rows survive."""
         if now.tzinfo is None or type(limit) is not int or not 1 <= limit <= 1000:
             raise ValueError("cleanup requires an aware timestamp and a batch of 1..1000")
-        async with self._database.transaction() as connection:
+        async with self._database.transaction(operation=DBOperation.SESSION_PURGE) as connection:
             return await self._purge_inactive(connection, now, limit)
 
     @staticmethod
