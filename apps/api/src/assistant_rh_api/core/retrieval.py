@@ -13,8 +13,9 @@ from difflib import SequenceMatcher
 from types import MappingProxyType
 
 from assistant_rh_api.core.errors import ApplicationError, MinistryConfigurationError
-from assistant_rh_api.core.inference import Embedding, InferenceFailure
+from assistant_rh_api.core.errors.inference import InferenceFailure
 from assistant_rh_api.core.ministry_policy import MINISTRIES
+from assistant_rh_api.core.models.inference import Embedding
 from assistant_rh_api.core.models.rag_configuration import RetrievalConfig, SearchMode
 from assistant_rh_api.core.models.retrieval import RawChunk, RetrievalSource, RetrievedChunk, SearchRequest, Source
 from assistant_rh_api.core.ports.inference import EmbeddingPort

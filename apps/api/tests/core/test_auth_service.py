@@ -3,8 +3,7 @@ from dataclasses import FrozenInstanceError, replace
 from datetime import timedelta
 
 import pytest
-from assistant_rh_api.core.auth import InvalidCredentials, LoginRateLimited, MinistryForbidden
-from assistant_rh_api.core.errors import DatabaseConflict
+from assistant_rh_api.core.errors import DatabaseConflict, InvalidCredentials, LoginRateLimited, MinistryForbidden
 
 from apps.api.tests.auth_fakes import service
 

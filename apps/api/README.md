@@ -232,7 +232,7 @@ API_SYNTHETIC_POSTGRES_DSN='postgresql://assistant_rh_api:assistant_rh_api@127.0
 
 ## Inference gateways (B3, #455)
 
-`core/inference.py` and `core/ports/inference.py` define immutable inference values and
+`core/models/inference.py` and `core/ports/inference.py` define immutable inference values and
 `LLMPort`, `EmbeddingPort`, `RerankerPort`. `gateways/` implements them through
 an injected `httpx.AsyncClient`; the core imports neither HTTPX nor provider SDKs.
 Construction reads no environment, creates no singleton and performs no I/O.
@@ -251,8 +251,9 @@ requires a proxy. Redirects are disabled even if the injected client enables the
 
 Every actual HTTP attempt records provider/model and an optional stable failure
 kind: `timeout`, `unavailable`, `rate_limited`, `rejected`, `invalid_response`.
-`InferenceFailure.attempts` contains the same safe values; it never wraps a raw
-provider exception for display. No result, trace or `last_*` diagnostic is shared
+`InferenceFailure` lives in `core/errors/inference.py`. Its `attempts` attribute contains the
+same safe values; it never wraps a raw provider exception for display.
+No result, trace or `last_*` diagnostic is shared
 between requests. Cancellation propagates and does not initiate fallback or
 open the embedding circuit. Response cleanup is bounded and shielded against
 ASGI/AnyIO cancellation and repeated asyncio task cancellation, including HTTPX's
@@ -307,6 +308,56 @@ not a live provider or RAG quality evaluation. Run it without credentials or DB:
 ```bash
 uv run --package assistant-rh-api --group dev python -m pytest apps/api/tests/gateways -q
 ```
+
+The `core/errors/` package groups errors by domain: `base`, `storage`,
+`inference`, `rag` and `access`. Its `__init__.py` re-exports the same classes,
+so existing `from assistant_rh_api.core.errors import ...` imports remain valid.
+Domain modules depend on `errors.base`, not on the package re-exports.
+
+## Query classification outcomes (C2, #459)
+
+`QueryProcessor.process()` returns `QueryProcessing(result, diagnostics)`.
+Expected inference outages and unusable LLM replies preserve the historical
+fallback: `rag_query`, confidence `0.5`, original NFC query, no enrichment or
+acronym expansion, `needs_legal_search=false`, LLM flag `null`, and
+`should_proceed=true`. Out-of-scope intents remain normal classifications.
+
+The future C6 orchestration must consume these diagnostics explicitly:
+
+| Field | Meaning |
+| --- | --- |
+| `classification_status` | `disabled` when gating is off, `completed` for a usable classification (including out of scope), `degraded` for an expected failure. A degraded stage must not be recorded as an ordinary successful classification. |
+| `classification_error` | Safe cause: `provider_failure` or `invalid_response`, otherwise `null`. The fallback's `intent_reason` carries the same code, never an exception message. |
+| `failed_attempts` | Safe B3 provider/model/error/status evidence for inference failure, including invalid provider envelopes. |
+| `completion` | The received completion, if any, retained even when intent parsing fails. Its raw text is internal evidence, not a safe error message to expose. |
+| `store_errors` | Existing DB fallback diagnostics; classification status describes classification only. |
+
+`ClassificationFailure` chains the original inference/decoder/conversion cause
+internally; only its safe reason enters the returned diagnostics. Parsing keeps
+legacy fences, defaults, unknown-intent/theme handling, `bool` coercion and
+convertible numeric confidence (without adding a 0–1 range check). Non-object
+responses, unusable consumed fields, decoder limits and nonfinite confidence
+produce the degraded fallback rather than invalid or unserializable results.
+
+Missing or malformed prompts raise `RAGConfigurationError` with their cause.
+Invalid caller data, unexpected implementation/port errors and cancellation
+propagate. Provider rejections (such as invalid credentials/model/payload) and
+partial completion failures also propagate instead of concealing a configuration
+or contract failure. Transient outages and invalid provider envelopes remain
+eligible for degraded operation. Prompt reads fall back to packaged resources on
+`DatabaseConflict`, `DatabaseFailure` or `DatabaseUnavailable`, recording each
+failed lookup's safe code in `store_errors`. Configuration errors and unexpected
+failures still propagate.
+
+Acronym loading falls back to an empty dictionary on `DatabaseConflict`,
+`DatabaseFailure` or `DatabaseUnavailable`, preserving the code in `store_errors`
+and continuing classification normally. At this decision point, the step emits
+one standard-library `logging.WARNING` record stating that query processing
+continues without acronyms, with only the safe error code. No query, exception
+message, traceback or DB detail is logged. The DB adapter cannot announce this
+caller-specific fallback; there is no existing C6 logging boundary to consume
+the diagnostics yet. This narrow logging exception is intentional and requires
+no handler configuration in the core; C6 must not duplicate this warning.
 
 ## Public authentication (B4, #456)
 

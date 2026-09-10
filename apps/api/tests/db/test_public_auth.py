@@ -9,8 +9,8 @@ import httpx
 import openai
 import psycopg
 import pytest
-from assistant_rh_api.core.auth import AuthService, InvalidCredentials, LoginRateLimited
-from assistant_rh_api.core.errors import DatabaseConflict
+from assistant_rh_api.core.auth import AuthService
+from assistant_rh_api.core.errors import DatabaseConflict, InvalidCredentials, LoginRateLimited
 from assistant_rh_api.core.models.auth import Session
 from assistant_rh_api.db.auth_stores import GroupStore, SessionStore
 from assistant_rh_api.db.dsn import DatabaseSettings

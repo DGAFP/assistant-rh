@@ -2,8 +2,7 @@ import json
 
 import httpx
 import pytest
-from assistant_rh_api.core.auth import LoginRateLimited
-from assistant_rh_api.core.errors import DatabaseUnavailable
+from assistant_rh_api.core.errors import DatabaseUnavailable, LoginRateLimited
 from assistant_rh_api.handlers.app import create_app
 from assistant_rh_api.handlers.auth import Authenticated
 

@@ -178,7 +178,7 @@ async def test_core_stage_exact_legacy_parity_on_synthetic_postgres(corpus, repo
     from types import SimpleNamespace
 
     import anyio
-    from assistant_rh_api.core.inference import Embedding
+    from assistant_rh_api.core.models.inference import Embedding
     from assistant_rh_api.core.models.rag_configuration import RetrievalConfig, SearchMode
     from assistant_rh_api.core.retrieval import Retriever
     from assistant_rh_rag_pipeline.config import RetrievalConfig as LegacyConfig
@@ -235,7 +235,7 @@ async def test_core_stage_exact_legacy_parity_on_synthetic_postgres(corpus, repo
 
 async def test_missing_lexical_column_is_partial_or_scoped_failure_without_text_fallback(corpus):
     from assistant_rh_api.core.errors import DatabaseFailure
-    from assistant_rh_api.core.inference import Embedding
+    from assistant_rh_api.core.models.inference import Embedding
     from assistant_rh_api.core.models.rag_configuration import RetrievalConfig
     from assistant_rh_api.core.retrieval import Retriever, ScopedRetrievalError
 

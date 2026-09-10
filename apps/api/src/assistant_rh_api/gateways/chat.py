@@ -7,7 +7,8 @@ from typing import Any
 
 import httpx
 
-from assistant_rh_api.core.inference import Attempt, ChatRequest, Completion, InferenceFailure, StreamCompleted, TextDelta
+from assistant_rh_api.core.errors import InferenceFailure
+from assistant_rh_api.core.models.inference import Attempt, ChatRequest, Completion, StreamCompleted, TextDelta
 from assistant_rh_api.gateways.http import InferenceHTTP, WireFailure, decode_json, invalid
 from assistant_rh_api.gateways.settings import Endpoint, RequestPolicy, validate_chain
 
