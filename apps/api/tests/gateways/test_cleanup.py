@@ -8,7 +8,8 @@ import anyio
 import httpcore
 import httpx
 import pytest
-from assistant_rh_api.core.inference import ChatRequest, InferenceFailure, Message
+from assistant_rh_api.core.errors import InferenceFailure
+from assistant_rh_api.core.models.inference import ChatRequest, Message
 from assistant_rh_api.gateways.chat import ChatGateway
 
 from .conftest import ALBERT, POLICY, WireStream

@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager
 from typing import Protocol
 
-from assistant_rh_api.core.inference import ChatRequest, Completion, Embedding, Reranking, StreamCompleted, TextDelta
+from assistant_rh_api.core.models.inference import ChatRequest, Completion, Embedding, Reranking, StreamCompleted, TextDelta
 
 
 class LLMPort(Protocol):

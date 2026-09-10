@@ -96,3 +96,40 @@ and the input personal-data guard.
 The manifest is authoritative for observed values. A selector rejection/retry
 fixture may be added only when the frozen runtime produces that branch reliably
 without changing pipeline settings.
+
+## C2 query processor extraction (#459)
+
+Run the API stage comparison and the differential/error/concurrency checks:
+
+```bash
+uv sync --all-packages --group dev --frozen
+uv run --no-sync python -m pytest \
+  apps/api/tests/core/test_query_processor_m0b.py \
+  apps/api/tests/core/test_query_processor.py -q
+```
+
+All seven original `01_query_processor.json` files remain unchanged. The test
+compares the complete input/output JSON with exact value types, the recorded
+direct answers, and the available confidence/acronym metadata.
+
+**Evidence limit:** the original recorder saved stage outputs, not raw intent
+model replies, DB prompt content or the acronym dictionary. The separate
+`apps/api/tests/fixtures/query_processor_m0b_ports.json` explicitly reconstructs
+observable LLM response fields from `01_query_processor.json` and
+`07_pipeline_result.json`. It is synthetic port input, not a recording of the
+original provider response. Fields absent from M0b (raw text/reasoning and
+short-circuit confidence) are not certified by that comparison. Empty acronym
+snapshots reproduce the observed empty expansion metadata; they do not establish
+the historical dictionary's content. Prompt generation, acronym behavior,
+parsing, errors, fallbacks and ordering are separately compared to the retained
+legacy implementation under identical injected inputs. The packaged fallback
+prompt is byte-identical to the current legacy resource.
+
+The authorized #545 hardening preserves expected-failure fallback values but
+replaces exception text with a safe cause and explicit degraded diagnostics.
+Configuration errors, bugs and cancellation propagate; their tests assert this
+intentional deviation rather than full historical equality. See the C2 review
+entry in `docs/architecture/hexagonal-split/LEDGER.md`.
+
+This C2 evidence covers the extracted stage, not C6 engine wiring, whole-pipeline
+M1 parity or live quality. No baseline refresh or live provider call is needed.

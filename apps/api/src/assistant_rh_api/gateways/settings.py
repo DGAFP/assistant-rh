@@ -4,7 +4,7 @@ import math
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
-from assistant_rh_api.core.inference import Provider
+from assistant_rh_api.core.models.inference import Provider
 
 
 @dataclass(frozen=True, slots=True)

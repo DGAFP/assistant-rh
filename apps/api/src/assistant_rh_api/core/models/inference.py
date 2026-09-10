@@ -3,8 +3,6 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from assistant_rh_api.core.errors import ApplicationError
-
 Provider = Literal["albert", "scaleway"]
 FailureKind = Literal["timeout", "unavailable", "rate_limited", "rejected", "invalid_response", "circuit_open"]
 EmbeddingModel = Literal["albert", "bge_scaleway"]
@@ -16,17 +14,6 @@ class Attempt:
     model: str
     error: FailureKind | None = None
     status: int | None = None
-
-
-class InferenceFailure(ApplicationError):
-    """Safe diagnostics only; no URL, credentials, prompt or response body."""
-
-    code = "inference_failure"
-
-    def __init__(self, attempts: tuple[Attempt, ...], *, partial: bool = False) -> None:
-        super().__init__()
-        self.attempts = attempts
-        self.partial = partial
 
 
 @dataclass(frozen=True, slots=True)
