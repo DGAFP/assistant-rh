@@ -135,7 +135,7 @@ jobs:
           set -euo pipefail
           docker buildx build \
             --platform linux/amd64 \
-            -f Dockerfile.streamlit \
+            -f docker/Dockerfile.streamlit \
             -t "${{ steps.image.outputs.image_uri }}" \
             -t "${REGISTRY_HOST}/${SCW_CONTAINER_REGISTRY_NAMESPACE}/${STREAMLIT_IMAGE_NAME}:staging-latest" \
             --push \

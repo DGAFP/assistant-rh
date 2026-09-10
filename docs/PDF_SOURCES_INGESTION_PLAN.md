@@ -48,7 +48,7 @@ Each: `config.py` (SOURCE/PUBLISHER, chunk table, lake paths, uuid5 namespace, r
 ### Job / CLI / infra
 - `jobs/pdf_sources_medallion.py` — one orchestrator, `--ministere {mi,masa,matte,mso}` + SP-style flags + `--doc-id`, `--dry-run`, `--skip-grist-writeback`, `--ocr-provider`, `--force-reocr`. Medallion **and** `--ingest` in one job (small volumes).
 - CLI: `("mi"|"masa"|"matte"|"mso", "medallion")` → `jobs.pdf_sources_medallion` with `default_args=("--ministere", …)`; embedding backfill manifests `config/{mi,masa,mso}_embedding_tables.json` (matte exists).
-- `Dockerfile.pdf_sources_pipeline` (no sentence-transformers → light image), build workflow, 4 entries in `.github/data-engineering-jobs.json`, `pdf_sources` domain in `data_engineering_plan.py`, `config/scaleway_serverless_job_pdf_sources_*.json`, cron workflow `.github/workflows/data-engineering-pdf-sources-cron.yml` (weekly `0 4 * * 1` + dispatch ministere/env/dry_run).
+- `docker/Dockerfile.pdf_sources_pipeline` (no sentence-transformers → light image), build workflow, 4 entries in `.github/data-engineering-jobs.json`, `pdf_sources` domain in `data_engineering_plan.py`, `config/scaleway_serverless_job_pdf_sources_*.json`, cron workflow `.github/workflows/data-engineering-pdf-sources-cron.yml` (weekly `0 4 * * 1` + dispatch ministere/env/dry_run).
 - Legi/SP additions: existing `jobs/{legifrance,service_public}_medallion.py` gain an optional read of the Grist referential (rows with `source_corpus` legi/SP) that widens their document filter (ids `LEGIARTI…`/`FXXXX`).
 
 ### Grist contract — révisé 2026-07-03 (Phase A, vérifié sur le doc réel)

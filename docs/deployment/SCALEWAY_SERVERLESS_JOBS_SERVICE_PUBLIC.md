@@ -16,7 +16,7 @@ Why:
 Build the dedicated image:
 
 ```bash
-docker build -f Dockerfile.service_public_pipeline -t assistant-rh/service-public-pipeline:latest .
+docker build -f docker/Dockerfile.service_public_pipeline -t assistant-rh/service-public-pipeline:latest .
 ```
 
 Recommended Scaleway Container Registry target:
@@ -27,7 +27,7 @@ Local login, tag and push:
 
 ```bash
 echo "$SCW_SECRET_KEY" | docker login rg.fr-par.scw.cloud/assistant-rh -u nologin --password-stdin
-docker build -f Dockerfile.service_public_pipeline -t service-public-pipeline:latest .
+docker build -f docker/Dockerfile.service_public_pipeline -t service-public-pipeline:latest .
 docker tag service-public-pipeline:latest rg.fr-par.scw.cloud/assistant-rh/service-public-pipeline:latest
 docker push rg.fr-par.scw.cloud/assistant-rh/service-public-pipeline:latest
 ```
