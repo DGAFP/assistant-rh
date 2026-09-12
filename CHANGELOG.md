@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.2](https://github.com/DGAFP/assistant-rh/compare/v0.12.1...v0.12.2) (2026-09-12)
+
+
+### Bug Fixes
+
+* preserve verified Legifrance article identities ([#553](https://github.com/DGAFP/assistant-rh/issues/553)) ([0b29fab](https://github.com/DGAFP/assistant-rh/commit/0b29fab4a857f6e74fe05005f926eee800e56f32))
+
 ## [0.12.1](https://github.com/DGAFP/assistant-rh/compare/v0.12.0...v0.12.1) (2026-09-10)
 
 
