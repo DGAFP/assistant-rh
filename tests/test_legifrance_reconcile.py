@@ -476,6 +476,27 @@ def test_mass_stale_guard_exempts_verified_jorf_to_legi_rekeys_with_changed_cont
     assert "max_auto_stale" not in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("prefix", ["LEGIARTI", "JORFARTI"])
+def test_mass_stale_guard_exempts_current_version_to_cid_repair_with_changed_projection(prefix: str) -> None:
+    selection = _selection([_rec(1, **_code())])
+    articles = [CodeArticle(f"{prefix}1{i:03d}", "VIGUEUR", version_id=f"LEGIARTI2{i:03d}") for i in range(60)]
+    corpus = {f"LEGIARTI2{i:03d}": {"doc_id": f"d{i}", "checksum": f"old{i}", "nb_chunks": 1} for i in range(60)}
+    silver = {f"{prefix}1{i:03d}": f"new{i}" for i in range(60)}
+
+    plan = reconcile.build_legifrance_plan(
+        selection,
+        {LEGITEXT: articles},
+        silver,
+        corpus,
+        max_auto_stale=50,
+        verified_version_cids={a.version_id: a.cid for a in articles},
+    )
+
+    assert plan.mass_stale_guard is False
+    assert set(plan.plan.auto_removals) == set(corpus)
+    assert set(plan.plan.to_ingest) == set(silver)
+
+
 def test_mass_stale_guard_not_bypassed_by_coincidental_checksum(capsys: Any) -> None:
     # P2 revue #317 : un stale dont le checksum matche PAR HASARD un nouvel article
     # auquel il n'est PAS lié (alias≠chronique) ne doit PAS être exempté du garde —
@@ -642,7 +663,7 @@ class _FakeLiveMaterializer:
         self.bundle = bundle
         self.error = error
 
-    def materialize(self, expected: CodeArticle, response: dict[str, Any]) -> LiveArtifactBundle:
+    def materialize(self, expected: CodeArticle, response: dict[str, Any], *, as_of_millis: int | None = None) -> LiveArtifactBundle:
         if self.error is not None:
             raise self.error
         assert self.bundle is not None
@@ -944,6 +965,103 @@ def test_ingest_delta_accepts_materialized_current_version_with_stable_jorfarti(
     assert summary["plan"]["changed"]["sample"] == [jorfarti]
     assert summary["plan"]["pending_artifact"]["count"] == 0
     assert summary["applied"] == {"ingested": 1, "skipped": 0, "deleted": 0, "identity_migrations": 0, "failed": 0}
+
+
+@pytest.mark.parametrize("requested", [None, {"JORFARTI000001134093"}, {"LEGIARTI000006211069"}])
+@pytest.mark.parametrize("failure", [None, "piste", "materialize", "insert"])
+def test_ingest_delta_repairs_legacy_version_key_without_losing_old_article(requested: set[str] | None, failure: str | None) -> None:
+    cid = "JORFARTI000001134093"
+    version = "LEGIARTI000006211069"
+    article = CodeArticle(cid, "VIGUEUR", "11", version, (cid, version))
+    grist = _RecordingGrist([_rec(1, **_texte(JORF_D1))])
+    piste = _FakePiste({JORF_D1: [article]})
+    if failure != "piste":
+        piste.article_payloads[version] = {"article": {"id": version, "cid": cid, "etat": "VIGUEUR", "num": "11"}}
+    writer = _DeltaWriter(_corpus(**{version: ("same-hash", 1)}), raise_on_cascade_ingest=failure == "insert")
+    documents = [
+        {
+            "short_id": version,
+            "doc_id": "old-doc",
+            "checksum": "same-hash",
+            "metadata": {"cid": version, "article_id": version, "origin": "legi_bulk_raw"},
+        }
+    ]
+    bundle = LiveArtifactBundle(
+        article,
+        {
+            "short_id": cid,
+            "doc_id": "new-doc",
+            "checksum": "same-hash",
+            "metadata": {"cid": cid, "article_id": version, "origin": "piste_get_article"},
+        },
+        [{"doc_id": "new-doc", "section_id": "new-section", "section_index": 0}],
+        [{"cid": cid, "chunk_id": f"{cid}_0", "text": "Article 11", "_targets": ["legacy"]}],
+    )
+    materializer = _FakeLiveMaterializer(bundle, error=RuntimeError("projection failed") if failure == "materialize" else None)
+
+    summary = legifrance_ingestion.ingest_delta(
+        writer,
+        grist,
+        piste,
+        documents,
+        [],
+        [],
+        requested=requested,
+        live_materializer=materializer,
+        toc_date_millis=1000,
+    )
+
+    assert piste.article_calls == [version]
+    if failure:
+        assert summary["status"] == "partial"
+        assert writer.article_bundles == writer.article_cascades == []
+        assert summary["deferred_removals"] == [version]
+    else:
+        assert summary["status"] == "ok"
+        assert writer.article_bundles == [cid]
+        assert writer.article_cascades == [[version]]
+        assert summary["applied"]["identity_migrations"] == 1
+
+        # A replay with both generations still in Silver must keep the verified
+        # official CID and must neither rematerialize nor migrate it backwards.
+        writer = _DeltaWriter(_corpus(**{cid: ("same-hash", 1)}))
+        piste.article_calls.clear()
+        replay = legifrance_ingestion.ingest_delta(
+            writer,
+            grist,
+            piste,
+            documents,
+            bundle.sections,
+            bundle.chunks,
+            requested=requested,
+            live_materializer=materializer,
+            toc_date_millis=1000,
+        )
+        assert replay["applied"] == {"ingested": 0, "skipped": 1, "deleted": 0, "identity_migrations": 0, "failed": 0}
+        assert piste.article_calls == writer.article_bundles == writer.article_cascades == []
+
+    if failure == "insert":
+        # Silver was synced, but DB still has only the version key. The TOC
+        # may expose that version alone: cached canonicalization must expand
+        # --uid before planning, or the only persisted article is deleted.
+        piste = _FakePiste({JORF_D1: [CodeArticle(version, "VIGUEUR", "11", version, (version,))]})
+        writer = _DeltaWriter(_corpus(**{version: ("same-hash", 1)}))
+        replay = legifrance_ingestion.ingest_delta(
+            writer,
+            grist,
+            piste,
+            documents,
+            bundle.sections,
+            bundle.chunks,
+            requested={version},
+            live_materializer=materializer,
+            toc_date_millis=1000,
+        )
+        assert replay["status"] == "ok"
+        assert writer.article_bundles == [cid]
+        assert writer.article_cascades == [[version]]
+        assert replay["applied"]["identity_migrations"] == 1
+        assert piste.article_calls == []
 
 
 def test_ingest_delta_targeted_jorf_alias_includes_resolved_chronical_id(tmp_path: Path) -> None:

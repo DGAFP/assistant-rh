@@ -108,7 +108,10 @@ class LegifranceBronzeBuilder:
         # stable à travers les versions, l'URL pointe le chronique.
         raw_cid = clean_nullable(payload.get("cid")) or article_id
         mapping = self.config.article_cid_mapping or {}
-        chronical_id = mapping.get(str(raw_cid).strip().upper()) or mapping.get(str(article_id).strip().upper()) or raw_cid
+        if payload.get("origin") == "piste_get_article" and clean_nullable(payload.get("cid")):
+            chronical_id = raw_cid
+        else:
+            chronical_id = mapping.get(str(raw_cid).strip().upper()) or mapping.get(str(article_id).strip().upper()) or raw_cid
         source_url = build_legifrance_article_url(chronical_id, category)
         short_id = chronical_id
 
@@ -195,6 +198,12 @@ class LegifranceBronzeBuilder:
         payloads: dict[str, dict[str, Any]] = {}
         for path in repository.article_json_paths():
             payload = self._normalize_article_payload(json.loads(path.read_text(encoding="utf-8")))
+            current = payloads.get(payload["article_id"])
+            # Deux fichiers peuvent conserver le même ID de version sous un
+            # CID JORF officiel et une ancienne clé LEGI. Ne pas perdre la
+            # réponse live selon l'ordre lexical des chemins avant déduplication.
+            if current and current.get("origin") == "piste_get_article" and payload.get("origin") != "piste_get_article":
+                continue
             payloads[payload["article_id"]] = payload
         return payloads
 
@@ -362,6 +371,9 @@ class LegifranceBronzeBuilder:
             if not object_key.endswith(".json"):
                 continue
             payload = self._normalize_article_payload(json.loads(object_storage.read_text_object(obj)))
+            current = payloads.get(payload["article_id"])
+            if current and current.get("origin") == "piste_get_article" and payload.get("origin") != "piste_get_article":
+                continue
             payloads[payload["article_id"]] = payload
         return payloads
 
