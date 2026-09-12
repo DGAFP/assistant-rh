@@ -2,7 +2,7 @@
 
 > Statut : plan amendé après revue, mise à jour du 2026-09-04.
 > Portée : transformation du monolithe en architecture front & back hexagonale, contrat public OpenAI-compatible.
-> Documents du dossier : [décisions](06-decisions.md) · [architecture cible](01-target-architecture.md) · [contrat API](02-api-contract.md) · [diagrammes de séquence](03-sequence-diagrams.md) · [plan de migration](04-migration-plan.md) · [spike clients A2](07-openai-client-spike.md) · [audit d'isolation A5](07-runtime-isolation-audit.md) · [arbitrage Streamlit A3](08-streamlit-api-parity.md) · [LEDGER](LEDGER.md)
+> Documents du dossier : [décisions](06-decisions.md) · [architecture cible](01-target-architecture.md) · [contrat API](02-api-contract.md) · [diagrammes de séquence](03-sequence-diagrams.md) · [plan de migration](04-migration-plan.md) · [spike clients A2](07-openai-client-spike.md) · [audit d'isolation A5](07-runtime-isolation-audit.md) · [arbitrage Streamlit A3](08-streamlit-api-parity.md) · [LEDGER](LEDGER.md) · [identité et habilitations Conversations](09-conversations-individual-access.md)
 
 ## Problème
 
@@ -12,7 +12,7 @@ Le runtime actuel est couplé à Streamlit : `packages/rag-pipeline` mêle méti
 
 **Temps 1 (ce chantier)** — construire `apps/api` à côté du runtime existant : DB/adaptateurs d'abord, puis extraction progressive de la logique vers `assistant_rh_api/core`. Déployer l'API, adapter le chemin public Streamlit sous feature flag, puis retirer son ancien chemin direct après stabilité. Les pages admin/ops restent dans Streamlit avec accès DB direct et peuvent conserver temporairement leurs dépendances au package historique sous une exception gardée.
 
-**Temps 2 (chantier ultérieur)** — un fork de [suitenumerique/conversations](https://github.com/suitenumerique/conversations) (adapté à nos besoins, dont le feedback) remplace le chat Streamlit ; Streamlit devient une pure interface d'admin ; ProConnect vit dans le front, jamais dans l'API RAG.
+**Temps 2 (chantier ultérieur)** — un fork de [suitenumerique/conversations](https://github.com/suitenumerique/conversations) (adapté à nos besoins, dont le feedback) remplace le chat Streamlit ; Streamlit devient une pure interface d'admin ; la connexion OIDC vit dans le front (ProConnect optionnel), l'API reste indépendante du fournisseur. Voir la [note identité et habilitations](09-conversations-individual-access.md) pour la direction retenue et les arbitrages restants.
 
 ```mermaid
 flowchart LR
@@ -24,7 +24,7 @@ flowchart LR
         OLD --> DB1
     end
     subgraph "Temps 2"
-        CONV[fork conversations + ProConnect] -->|OpenAI-compat| API2[apps/api]
+        CONV[fork conversations + OIDC] -->|OpenAI-compat| API2[apps/api]
         ST2[Streamlit admin/ops] -->|exception directe maintenue| DB2[(Postgres)]
         API2 --> DB2[(Postgres)]
     end
