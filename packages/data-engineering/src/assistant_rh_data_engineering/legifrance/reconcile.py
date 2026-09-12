@@ -267,8 +267,12 @@ def build_legifrance_plan(
     extra_chroniques: Mapping[str, str] | None = None,
     silver_version_ids: Collection[str] | None = None,
     force_ingest: Collection[str] = (),
+    verified_version_cids: Mapping[str, str] | None = None,
 ) -> LegifrancePlan:
     """Adapte référentiel Grist + TOCs PISTE + état corpus au diff ``build_plan``.
+
+    ``verified_version_cids`` : mappings version -> CID issus des projections
+    getArticle, pour distinguer une réparation vérifiée d’un stale ordinaire.
 
     ``extra_attributions`` : ownership VÉRIFIÉE ``uid corpus → uid de texte
     suivi`` pour les articles hors TOC (anciennes versions), établie en amont
@@ -447,8 +451,7 @@ def build_legifrance_plan(
     version_drift = {
         uid
         for uid in plan.unchanged
-        if "version_id" in corpus.get(uid, {})
-        and str(corpus[uid].get("version_id") or "").strip().upper() != current_versions.get(uid, "")
+        if "version_id" in corpus.get(uid, {}) and str(corpus[uid].get("version_id") or "").strip().upper() != current_versions.get(uid, "")
     }
     forced_changed = (force_ingest_set | version_drift).intersection(plan.unchanged)
     if forced_changed:
@@ -474,18 +477,21 @@ def build_legifrance_plan(
     silver_by_uid = {str(u).strip().upper(): str(c or "").strip() for u, c in silver_checksums.items()}
     to_ingest = frozenset(plan.new) | frozenset(plan.changed)
     migration_twin_uids: set[str] = set()
-    jorf_rekey_uids: set[str] = set()
+    verified_rekey_uids: set[str] = set()
     for removal in plan.removals:
         if removal.reason != "stale" or removal.confidence is not Confidence.AUTHORITATIVE:
             continue
         chronique = alias_to_chronique.get(removal.uid)
         if chronique is None or chronique not in to_ingest:
             continue
-        # #424 : un JORFARTI résolu par getArticle vers une chronique LEGIARTI
-        # est une migration vérifiée même lorsque la nouvelle version modifie le
-        # contenu. L'ingestion différera sa cascade si le remplaçant échoue.
-        if removal.uid.startswith("JORFARTI") and chronique.startswith("LEGIARTI"):
-            jorf_rekey_uids.add(removal.uid)
+        # La version courante sous son ancienne clé, ou un alias JORF/LEGI
+        # résolu vers son CID officiel, est une migration d'identité même si
+        # la projection change le contenu.
+        # L'ingestion différera sa cascade si le remplaçant échoue.
+        if (removal.uid.startswith("JORFARTI") and chronique.startswith("LEGIARTI")) or (
+            removal.uid == current_versions.get(chronique) and (verified_version_cids or {}).get(removal.uid) == chronique
+        ):
+            verified_rekey_uids.add(removal.uid)
         entry = corpus_entries.get(removal.uid)
         stale_checksum = str(entry.content_hash or "").strip() if entry else ""
         if stale_checksum and stale_checksum == silver_by_uid.get(chronique, ""):
@@ -495,12 +501,8 @@ def build_legifrance_plan(
     # trahit un manifest partiel, pas une curation opérateur — on rétrograde ces
     # stale en flagged (WEAK). Les jumeaux de migration restent AUTHORITATIVE.
     mass_stale_guard = False
-    guard_exempt_uids = migration_twin_uids | jorf_rekey_uids
-    stale_auto = [
-        r
-        for r in plan.removals
-        if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE and r.uid not in guard_exempt_uids
-    ]
+    guard_exempt_uids = migration_twin_uids | verified_rekey_uids
+    stale_auto = [r for r in plan.removals if r.reason == "stale" and r.confidence is Confidence.AUTHORITATIVE and r.uid not in guard_exempt_uids]
     if max_auto_stale is not None and len(stale_auto) > max_auto_stale:
         mass_stale_guard = True
         downgraded = tuple(
