@@ -277,6 +277,12 @@ def ingest_delta(
             # inattribuables (flagged), jamais cascadés à l'aveugle.
             print(f"[warn] TOC PISTE indisponible pour le texte abrogé {row.uid}: articles laissés en flagged. ({exc})")
 
+    # Une clé historique de dump n'est pas une preuve d'identité. Les mappings
+    # getArticle vérifiés peuvent préciser la TOC ; JORFARTI reste un CID valide.
+    # Résoudre AVANT d'étendre --uid : le remplaçant déjà en Silver doit rester
+    # inclus même si un précédent run a échoué après sync, avant l'insert DB.
+    toc_by_text = canonicalize_toc_from_silver(toc_by_text, documents)
+
     if requested is not None:
         # Un --uid ciblant un alias de version doit embarquer son cid chronique
         # (et inversement) : sinon un run ciblé cascaderait l'ancienne identité
@@ -293,11 +299,11 @@ def ingest_delta(
                     expanded.update(aliases)
         requested = expanded
 
-    # Réutilise d'abord les mappings version→chronique déjà présents en silver.
-    # Les artefacts historiques JORFARTI ne sont volontairement PAS considérés
-    # canoniques : ils seront re-résolus via getArticle puis migrés vers LEGIARTI.
-    toc_by_text = canonicalize_toc_from_silver(toc_by_text, documents)
-    materialized_versions, _ = silver_version_index(documents)
+    materialized_by_uid: dict[str, set[str]] = {}
+    for document in documents:
+        uid = str(document.get("short_id") or "").strip().upper()
+        versions, _ = silver_version_index([document])
+        materialized_by_uid.setdefault(uid, set()).update(versions)
     active_texts = {row.uid for row in selection.followed_rows if row.active}
 
     # Un --uid canonique LEGIARTI peut cibler une entrée TOC encore exposée sous
@@ -331,12 +337,8 @@ def ingest_delta(
                     raise RuntimeError(f"getArticle({requested_uid}) sans objet 'article'.")
                 response_version = str(response_article.get("id") or "").strip().upper()
                 for expected_article in provisional_by_version.get(response_version, []):
-                    canonical = canonical_article_from_response(expected_article, response)
-                    canonical_aliases = {
-                        str(alias).strip().upper()
-                        for alias in (*canonical.alias_ids, canonical.cid, canonical.version_id)
-                        if alias
-                    }
+                    canonical = canonical_article_from_response(expected_article, response, as_of_millis=date_millis)
+                    canonical_aliases = {str(alias).strip().upper() for alias in (*canonical.alias_ids, canonical.cid, canonical.version_id) if alias}
                     if requested_uid not in canonical_aliases:
                         continue
                     requested.update(canonical_aliases)
@@ -357,7 +359,9 @@ def ingest_delta(
             aliases = {str(alias).strip().upper() for alias in (*article.alias_ids, article.cid, version_id) if alias}
             if requested is not None and not (aliases & requested):
                 continue
-            if version_id not in materialized_versions:
+            # La bonne version sous une ancienne clé ne suffit pas : il faut
+            # matérialiser le CID officiel avant de supprimer son alias.
+            if version_id not in materialized_by_uid.get(str(article.cid).strip().upper(), set()):
                 live_candidates[version_id] = article
 
     detected_missing_toc_versions = tuple(sorted(live_candidates))
@@ -374,14 +378,10 @@ def ingest_delta(
             failure_uid = str(expected_article.cid).strip().upper()
             try:
                 response = prefetched_live_responses.get(version_id) or piste.get_article(version_id)
-                canonical = canonical_article_from_response(expected_article, response)
+                canonical = canonical_article_from_response(expected_article, response, as_of_millis=date_millis)
                 failure_uid = canonical.cid
                 if requested is not None:
-                    canonical_aliases = {
-                        str(alias).strip().upper()
-                        for alias in (*canonical.alias_ids, canonical.cid, canonical.version_id)
-                        if alias
-                    }
+                    canonical_aliases = {str(alias).strip().upper() for alias in (*canonical.alias_ids, canonical.cid, canonical.version_id) if alias}
                     if canonical_aliases & requested:
                         requested.update(canonical_aliases)
                 # L'identité getArticle est déjà validée et doit participer au
@@ -390,7 +390,7 @@ def ingest_delta(
                 # failure gating et de writeback.
                 toc_by_text = replace_toc_article(toc_by_text, canonical)
                 if not dry_run:
-                    bundle = live_materializer.materialize(expected_article, response)
+                    bundle = live_materializer.materialize(expected_article, response, as_of_millis=date_millis)
                     canonical = bundle.article
 
                     # Le lake chargé contient encore l'ancienne projection du
@@ -403,17 +403,9 @@ def ingest_delta(
                         for document in documents
                         if str(document.get("short_id") or "").strip().upper() == canonical_uid
                     }
-                    documents[:] = [
-                        document
-                        for document in documents
-                        if str(document.get("short_id") or "").strip().upper() != canonical_uid
-                    ]
+                    documents[:] = [document for document in documents if str(document.get("short_id") or "").strip().upper() != canonical_uid]
                     sections[:] = [section for section in sections if str(section.get("doc_id") or "") not in replaced_doc_ids]
-                    chunks[:] = [
-                        chunk
-                        for chunk in chunks
-                        if str(chunk.get("short_id") or chunk.get("cid") or "").strip().upper() != canonical_uid
-                    ]
+                    chunks[:] = [chunk for chunk in chunks if str(chunk.get("short_id") or chunk.get("cid") or "").strip().upper() != canonical_uid]
                     documents.append(bundle.document)
                     sections.extend(bundle.sections)
                     chunks.extend(bundle.chunks)
@@ -431,7 +423,7 @@ def ingest_delta(
     silver_checksums = {
         str(document.get("short_id") or "").strip().upper(): str(document.get("checksum") or "") for document in documents if document.get("short_id")
     }
-    silver_version_ids, _ = silver_version_index(documents)
+    silver_version_ids, verified_version_cids = silver_version_index(documents)
     corpus = writer.list_legifrance_corpus(source)
     # max_auto_stale : None = défaut du module ; 0 = garde désactivé (migration délibérée).
     effective_max_stale = DEFAULT_MAX_AUTO_STALE if max_auto_stale is None else (max_auto_stale if max_auto_stale > 0 else None)
@@ -493,6 +485,7 @@ def ingest_delta(
         extra_chroniques=extra_chroniques or None,
         silver_version_ids=silver_version_ids,
         force_ingest=materialized_live_uids,
+        verified_version_cids=verified_version_cids,
     )
     plan = lf_plan.plan
 
