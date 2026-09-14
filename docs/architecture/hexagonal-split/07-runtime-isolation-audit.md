@@ -308,3 +308,11 @@ Le runtime conservé plante dans son log de document entier si `title` est NULL
 ce défaut ; la comparaison du titre NULL est bornée au chemin section, tandis
 que URL/publisher NULL sont comparés sur le chemin document entier. Cet écart
 de panne historique n'est pas une nouvelle règle de sélection/ranking.
+
+Complément du 14 septembre : le [replay C4 versionné](../../../tests/conformance/companions/c4-staging-20260914/README.md)
+compare exactement le candidat aux entrées complètes du runtime conservé sur
+quatre scénarios RAG enregistrés sur staging en lecture seule. Avec les tests
+synthétiques, il satisfait la preuve d'acceptation C4. Le bundle M0b original
+reste intact ; les collisions de références non exercées restent hors preuve.
+Les cartes A5-02/05/11 ne sont pas déclarées closes par cette seule preuve :
+leur branchement et les gates d'intégration C6/M1 restent à vérifier.

@@ -195,3 +195,22 @@ nullable metadata and orphan sections. B2 still orders ambiguous reference
 matches; legacy SQL does not order colliding numbers, so these historical
 collisions cannot be certified without a recorded row order. Unexpected bugs/configuration errors and cancellation propagate in
 C4; expected typed failures retain the legacy fallback values with safe codes.
+
+### C4 companion accepted on 2026-09-14
+
+The [versioned companion](companions/c4-staging-20260914/README.md) now supplies
+complete C4 inputs captured from the retained staging-branch runtime against
+read-only staging data. Offline replay matches the extracted candidate exactly
+on all four RAG scenarios: sections, scores, order, metadata and formatted context.
+Three short-circuit scenarios do not reach C4 and are marked `not_exercised`.
+
+Together with synthetic differential coverage, this companion satisfies the C4
+acceptance evidence for #461. It is a new recording, not reconstruction of the
+original historical calls. The original seven-fixture/56-artifact bundle remains
+unchanged. Reference resolution, triangulation and ambiguous reference-row order
+were not exercised by this capture; synthetic coverage and the documented
+collision limitation remain explicit. This does not close C2/C3/C5/C6 or M1 gates.
+
+The archive replays a pinned candidate; future changes to C4 require rerunning
+the comparison with the changed candidate. The publishing commit changes only
+documentation and evidence, preserving the validated runtime source.

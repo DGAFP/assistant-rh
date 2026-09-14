@@ -504,7 +504,7 @@ et de l'adaptateur, sans migration. Une conformance SQL locale couvre aussi
 les champs nulls et les sections sans document. Le défaut historique du log
 sur titre de document NULL est consigné dans A5, sans le reproduire dans le core.
 
-**Gate M0b non satisfait : #461 reste ouverte.** Les 7 fixtures / 56 artefacts
+**État initial, avant le complément ci-dessous : gate M0b non satisfait.** Les 7 fixtures / 56 artefacts
 d'origine sont intacts, mais ne contiennent ni les chunks complets, ni les retours
 bruts du reranker, ni tous les résultats des lectures documentaires. Les tests
 synthétiques différentiels exécutent vraiment les deux runtimes sur les mêmes
@@ -519,4 +519,35 @@ et 5 comparaisons SQL. Ruff sur les chemins CI, mypy sur les six modules touché
 et les trois contrats d'import passent. L'auto-check M0b confirme 7 fixtures et
 56 artefacts, `exact_comparison=null`. Revue indépendante : écart de NULL corrigé,
 aucun autre constat code restant. CI distante à vérifier après publication.
-Aucun accès DB distant, appel provider réel, migration distante ou déploiement.
+Aucun accès DB distant, appel provider réel, migration distante ou déploiement
+dans cette validation initiale.
+
+### Complément de parité C4 accepté — 2026-09-14
+
+Le [paquet versionné et rejouable hors ligne](../../../tests/conformance/companions/c4-staging-20260914/README.md)
+complète la preuve d'acceptation de #461. Le runtime conservé de la branche staging
+`3bd4b912b0ba731a997ddb5257fc0c10d39b62e4` a été exécuté localement avec lectures
+staging forcées en lecture seule et appels providers autorisés. Ses entrées C4
+complètes ont été enregistrées avant traitement, puis rejouées sans réseau dans
+le candidat `39d78476b243e1a7b8dd268cb5362516198368cb`.
+
+**Comparaison exacte sur les quatre scénarios RAG** : 541 chunks entrants,
+80 sections après reranking, 6 context items dont 4 documents entiers ; égalité
+des sections, scores, ordre, métadonnées et texte du contexte. Les trois
+courts-circuits n'atteignent pas C4 et ne sont pas comptés comme replays C4 réussis.
+Le paquet inclut manifeste, empreintes, entrées/sorties et contrôles négatifs
+(fichier altéré, score et prompt modifiés détectés). Replay revérifié après
+extraction, avec la seule bibliothèque standard et les sources core fournies.
+
+Les références et la triangulation n'ont pas été sollicitées par cette capture ;
+elles restent couvertes par la conformance synthétique. Les cinq tests SQL ont
+été rejoués avec succès sur PostgreSQL 17.11 local synthétique. Les collisions
+de références restent hors preuve réelle. Aucun appel de génération finale,
+aucune écriture DB distante ni déploiement. La révision de l'image déployée
+n'a pas été vérifiée : la référence est explicitement le code de branche indiqué.
+
+**Critères d'acceptation C4 couverts par ce complément et les tests synthétiques.**
+Le bundle M0b original reste intact ; cette nouvelle référence ne prétend pas
+reconstituer ses appels historiques. C6/M1 et les cartes A5 dépendantes du
+branchement restent ouverts. Publication de la preuve sans changement du core ;
+aucune fusion dans le cadre de cette mise à jour.

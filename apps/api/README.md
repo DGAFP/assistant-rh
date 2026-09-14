@@ -598,6 +598,9 @@ configuration errors, bugs and cancellation propagate. Reranker provider failure
 retain the aggregate top-k; explicit gateway fallback retains synthetic scores.
 
 The [C4 conformance evidence](../../tests/conformance/M0_REPLAYS.md#c4-aggregation-and-context-extraction-differential-evidence-461)
-is synthetic differential evidence. The historical M0b gate remains open because
-its raw port inputs are missing. No HTTP completion or served-runtime switch is
-part of this extraction.
+combines synthetic differential tests and a [versioned offline companion](../../tests/conformance/companions/c4-staging-20260914/README.md).
+The companion records complete C4 inputs from the retained runtime on staging and
+matches the candidate exactly on four RAG scenarios. It is accepted for C4; the
+original M0b bundle stays intact. Unexercised reference/triangulation branches
+remain covered by synthetic tests. No HTTP completion or served-runtime switch
+is part of this extraction; C6/M1 remain separate gates.
