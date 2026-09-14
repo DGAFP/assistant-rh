@@ -400,3 +400,47 @@ async def test_endpoint_credentials_hidden_and_fallback_order_validated():
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200))) as client:
         with pytest.raises(ValueError):
             ChatGateway(client, SCALEWAY, ALBERT)
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ({"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14}, (10, 4, 14)),
+        ({"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}, (0, 0, 0)),
+        (None, None),
+        ({}, None),
+        ({"prompt_tokens": 10}, None),
+        ({"prompt_tokens": True, "completion_tokens": 1, "total_tokens": 2}, None),
+        ({"prompt_tokens": -1, "completion_tokens": 1, "total_tokens": 0}, None),
+        ({"prompt_tokens": "10", "completion_tokens": 4, "total_tokens": 14}, None),
+    ],
+)
+async def test_optional_usage_is_data_not_invented_or_an_inference_failure(raw, expected):
+    from dataclasses import astuple
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={**reply(), "usage": raw}))) as client:
+        result = await ChatGateway(client, ALBERT, policy=POLICY).complete(REQUEST)
+    assert (astuple(result.usage) if result.usage else None) == expected
+    assert result.text == "answer"
+
+
+async def test_stream_reports_usage_and_does_not_leak_it_into_next_request():
+    from assistant_rh_api.core.models.inference import TokenUsage
+
+    number = 0
+
+    def handle(request):
+        nonlocal number
+        number += 1
+        usage = b'data: {"choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14}}\n\n'
+        body = event("text") + event(reason="stop") + (usage if number == 1 else b"") + b"data: [DONE]\n\n"
+        return httpx.Response(200, content=body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        gateway = ChatGateway(client, ALBERT, policy=POLICY)
+        async with gateway.stream(REQUEST) as stream:
+            first = [event async for event in stream]
+        async with gateway.stream(REQUEST) as stream:
+            second = [event async for event in stream]
+    assert first[-1].usage == TokenUsage(10, 4, 14)
+    assert second[-1].usage is None

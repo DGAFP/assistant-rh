@@ -551,3 +551,45 @@ Le bundle M0b original reste intact ; cette nouvelle référence ne prétend pas
 reconstituer ses appels historiques. C6/M1 et les cartes A5 dépendantes du
 branchement restent ouverts. Publication de la preuve sans changement du core ;
 aucune fusion dans le cadre de cette mise à jour.
+
+## C5 — selector, prompts ministériels et génération / #462 (2026-09-14)
+
+Extraction API dans `core/prompt_policy.py` et
+`core/pipeline/steps/{context_selector,generator}.py`. Ports prompts/LLM injectés,
+valeurs C4 conservées, diagnostics immuables et usage provider optionnel retournés
+par appel ou événement terminal. Aucun provider ni accès DB/horloge dans le core,
+aucun `last_*`, aucun changement du package historique servi.
+
+La [carte A5 préalable](07-runtime-isolation-audit.md#pré-extraction-c5--462-14-septembre-2026)
+fixe la matrice sélection/top-5/keep-all/rejet/no-answer et l'ordre des ressources.
+La revue indépendante a identifié deux dépendances implicites : substitution
+`{today}` dans l'ancien loader et ressource persona gestionnaire en fallback.
+Toutes deux sont préservées, avec date explicite par requête et trois ressources
+C5 copiées sans modification. Aucun prompt, modèle ou seuil qualité modifié.
+
+A5-01/03/08/12 avancent côté API : pas d'état de diagnostic partagé ; snapshots
+bruts révisionnés frais par appel au lieu du cache generator sans invalidation ;
+pannes récupérables DB vers ressources, double échec provider typé, annulation et
+bugs propagés. L'usage absent reste inconnu ; les requêtes B3 de streaming ne
+changent pas. La cohérence de tous les snapshots du run et l'assemblage restent
+C6, le transport SSE C7. Les cartes historiques ne sont pas déclarées closes.
+
+Conformance synthétique différentielle : prompts complets et date, ministères,
+priorités/citations/complémentarité, ordre et top-up, rejet total, contexte
+insuffisant, panne DB/persona, réussite/fallback/double panne, isolation et
+fermeture des streams. L'outillage de complément C5 est éprouvé hors ligne par
+aller-retour recorder/replay et contrôles négatifs, avec services simulés.
+
+**Gate de preuve C5 encore ouvert : aucun enregistrement live effectué.**
+Le recording préparé utiliserait quatre cas et sources figés du complément C4,
+les deux prompts staging en lecture seule, puis de nouveaux appels providers.
+Il requiert une autorisation explicite. Aucun input historique manquant n'est
+reconstitué. Voir [périmètre, preuves et commande](10-c5-parity.md).
+
+Validation locale finale : **632 tests API réussis, 127 tests dépendants de la
+DB synthétique ignorés** ; Ruff, mypy et les trois contrats d'import réussis.
+Suite historique : 1 429 tests réussis sous sandbox et 46 ignorés ; le module
+HTTP initialement bloqué par l'interdiction de bind loopback a été rejoué avec
+succès (**14/14**, soit les 13 erreurs/blocages initiaux résolus). Auto-check M0b :
+7 fixtures / 56 artefacts intacts, `exact_comparison: null`. Revue indépendante
+finale favorable sur le code ; preuve C5 live et intégration restent ouvertes.

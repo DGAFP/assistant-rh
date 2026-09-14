@@ -29,12 +29,20 @@ class ChatRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class TokenUsage:
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+@dataclass(frozen=True, slots=True)
 class Completion:
     text: str
     provider: Provider
     model: str
     attempts: tuple[Attempt, ...]
     finish_reason: str | None = None
+    usage: TokenUsage | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +56,7 @@ class StreamCompleted:
     model: str
     attempts: tuple[Attempt, ...]
     finish_reason: str | None = None
+    usage: TokenUsage | None = None
 
 
 @dataclass(frozen=True, slots=True)
