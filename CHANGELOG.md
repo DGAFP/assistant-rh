@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.2](https://github.com/DGAFP/assistant-rh/compare/v0.12.1...v0.12.2) (2026-09-14)
+
+
+### Bug Fixes
+
+* preserve verified Legifrance article identities ([#553](https://github.com/DGAFP/assistant-rh/issues/553)) ([0b29fab](https://github.com/DGAFP/assistant-rh/commit/0b29fab4a857f6e74fe05005f926eee800e56f32))
+* reject conflicting verified Legifrance CIDs before deduplication ([#556](https://github.com/DGAFP/assistant-rh/issues/556)) ([0db2308](https://github.com/DGAFP/assistant-rh/commit/0db2308d900546ce295d8d96d0825abfe1e72a8a))
+
 ## [0.12.1](https://github.com/DGAFP/assistant-rh/compare/v0.12.0...v0.12.1) (2026-09-10)
 
 

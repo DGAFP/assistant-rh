@@ -79,6 +79,17 @@ def _article_payload(response: Mapping[str, Any]) -> Mapping[str, Any]:
     return article
 
 
+def _instant(value: Any) -> datetime | None:
+    raw = str(value if value is not None else "").strip()
+    if not raw:
+        return None
+    if re.fullmatch(r"-?\d+", raw):
+        timestamp = int(raw)
+        return datetime.fromtimestamp(timestamp / 1000 if abs(timestamp) > 10_000_000_000 else timestamp, tz=timezone.utc)
+    parsed = datetime.fromisoformat(raw)
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+
+
 def _preferred_text_title(article: Mapping[str, Any]) -> Mapping[str, Any]:
     titles = [title for title in article.get("textTitles") or [] if isinstance(title, Mapping)]
     if not titles:
@@ -109,7 +120,7 @@ def _canonical_link(link: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def canonical_article_from_response(expected: CodeArticle, response: Mapping[str, Any]) -> CodeArticle:
+def canonical_article_from_response(expected: CodeArticle, response: Mapping[str, Any], *, as_of_millis: int | None = None) -> CodeArticle:
     """Retient l'identité stable LEGIARTI/JORFARTI fournie par getArticle."""
     article = _article_payload(response)
     version_id = str(article.get("id") or expected.version_id or expected.cid).strip().upper()
@@ -118,24 +129,36 @@ def canonical_article_from_response(expected: CodeArticle, response: Mapping[str
         raise RuntimeError(f"getArticle({expected.version_id or expected.cid}) sans version_id LEGIARTI exploitable.")
     if not cid.startswith(("LEGIARTI", "JORFARTI")):
         raise RuntimeError(f"getArticle({version_id}) sans CID article exploitable (reçu: {cid or 'vide'}).")
+    state = str(article.get("etat") or expected.etat).strip().upper()
+    if state == "ABROGE_DIFF" and str(expected.etat).strip().upper() == "VIGUEUR":
+        # La TOC est datée ; getArticle annonce aussi les abrogations futures.
+        # Confirmer la même version et sa période avant de conserver VIGUEUR.
+        as_of = datetime.fromtimestamp(as_of_millis / 1000, tz=timezone.utc) if as_of_millis is not None else datetime.now(timezone.utc)
+        start, end = _instant(article.get("dateDebut")), _instant(article.get("dateFin"))
+        if version_id != (expected.version_id or expected.cid) or not (start and end and start <= as_of < end):
+            raise RuntimeError(f"getArticle({version_id}): abrogation différée incompatible avec la TOC au {as_of}.")
+        state = "VIGUEUR"
     aliases = {
-        str(alias).strip().upper()
-        for alias in (*expected.alias_ids, expected.cid, expected.version_id, version_id, cid)
-        if str(alias or "").strip()
+        str(alias).strip().upper() for alias in (*expected.alias_ids, expected.cid, expected.version_id, version_id, cid) if str(alias or "").strip()
     }
     return CodeArticle(
         cid=cid,
-        etat=str(article.get("etat") or expected.etat),
+        etat=state,
         num=str(article.get("num") or expected.num or "").strip() or None,
         version_id=version_id,
         alias_ids=tuple(sorted(aliases)),
     )
 
 
-def bronze_payload_from_response(expected: CodeArticle, response: Mapping[str, Any]) -> tuple[CodeArticle, dict[str, Any]]:
+def bronze_payload_from_response(
+    expected: CodeArticle,
+    response: Mapping[str, Any],
+    *,
+    as_of_millis: int | None = None,
+) -> tuple[CodeArticle, dict[str, Any]]:
     """Projette une réponse getArticle officielle vers le contrat bronze."""
     article = _article_payload(response)
-    canonical = canonical_article_from_response(expected, response)
+    canonical = canonical_article_from_response(expected, response, as_of_millis=as_of_millis)
     title = _preferred_text_title(article)
     body = str(article.get("texte") or "").strip() or html_to_legal_text(article.get("texteHtml"))
     if not body:
@@ -184,19 +207,21 @@ def bronze_payload_from_response(expected: CodeArticle, response: Mapping[str, A
 
 
 def silver_version_index(documents: Iterable[Mapping[str, Any]]) -> tuple[set[str], dict[str, str]]:
-    """Versions matérialisées + index version→CID chronique depuis silver."""
+    """Versions présentes et mappings d'identité vérifiés par getArticle.
+
+    Un dump historique peut stocker une version LEGIARTI comme ``cid``.
+    Cette clé de stockage ne doit jamais remplacer l'identité TOC officielle.
+    Seule une projection getArticle avec CID explicite peut la préciser.
+    """
     version_ids: set[str] = set()
     version_to_cid: dict[str, str] = {}
     for document in documents:
         metadata = document.get("metadata") or {}
         short_id = str(document.get("short_id") or "").strip().upper()
-        canonical = str(metadata.get("cid") or short_id).strip().upper()
+        canonical = str(metadata.get("cid") or "").strip().upper()
         explicit_versions = {
-            str(value).strip().upper()
-            for value in (metadata.get("article_id"), metadata.get("version_id"))
-            if str(value or "").strip()
+            str(value).strip().upper() for value in (metadata.get("article_id"), metadata.get("version_id")) if str(value or "").strip()
         }
-        aliases = {*explicit_versions, short_id}
         if explicit_versions:
             version_ids.update(explicit_versions)
         else:
@@ -205,9 +230,12 @@ def silver_version_index(documents: Iterable[Mapping[str, Any]]) -> tuple[set[st
             # être matérialisée (fail-safe plutôt que contenu potentiellement
             # figé et considéré à tort comme à jour).
             version_ids.add(short_id)
-        if canonical.startswith("LEGIARTI"):
-            for alias in aliases:
-                version_to_cid[alias] = canonical
+        if metadata.get("origin") == "piste_get_article" and canonical == short_id and canonical.startswith(("LEGIARTI", "JORFARTI")):
+            for version_id in explicit_versions:
+                previous = version_to_cid.get(version_id)
+                if previous and previous != canonical:
+                    raise RuntimeError(f"CID getArticle contradictoires pour {version_id}: {previous}, {canonical}.")
+                version_to_cid[version_id] = canonical
     return version_ids, version_to_cid
 
 
@@ -215,7 +243,7 @@ def canonicalize_toc_from_silver(
     toc_by_text: Mapping[str, Sequence[CodeArticle]],
     documents: Iterable[Mapping[str, Any]],
 ) -> dict[str, list[CodeArticle]]:
-    """Réutilise les mappings version→chronique déjà matérialisés en silver."""
+    """Réutilise uniquement les mappings getArticle vérifiés, JORF ou LEGI."""
     _, version_to_cid = silver_version_index(documents)
     output: dict[str, list[CodeArticle]] = {}
     for text_uid, articles in toc_by_text.items():
@@ -266,8 +294,8 @@ class LegifranceLiveMaterializer:
         self.target_env = target_env
         self.materialized: list[str] = []
 
-    def materialize(self, expected: CodeArticle, response: Mapping[str, Any]) -> LiveArtifactBundle:
-        canonical, payload = bronze_payload_from_response(expected, response)
+    def materialize(self, expected: CodeArticle, response: Mapping[str, Any], *, as_of_millis: int | None = None) -> LiveArtifactBundle:
+        canonical, payload = bronze_payload_from_response(expected, response, as_of_millis=as_of_millis)
         self.pipeline.bronze_repo.save_piste_article_payload(canonical.version_id, dict(response))
         asset = self.pipeline.bronze_builder.persist_article_payload(self.pipeline.bronze_repo, payload)
         silver_bundle = self.pipeline.run_silver([asset])[0]
