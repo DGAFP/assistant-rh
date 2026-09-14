@@ -176,6 +176,39 @@ def test_conflicting_verified_silver_identities_fail_closed() -> None:
 
 
 @pytest.mark.parametrize("remote", [False, True])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("conflicting", [False, True])
+def test_bronze_replay_validates_duplicate_live_identities(tmp_path: Path, remote: bool, reverse: bool, conflicting: bool) -> None:
+    repository = BronzeRepository(tmp_path / "bronze")
+    builder = LegifranceBronzeBuilder(BronzeConfig())
+    _, live = bronze_payload_from_response(_expected(), _get_article_response())
+    second_cid = JORFARTI if conflicting else CHRONIQUE
+    payloads = [live, {**live, "cid": second_cid, "short_id": second_cid}]
+    if reverse:
+        payloads.reverse()
+    objects = [SimpleNamespace(key=f"{index}.json", payload=payload) for index, payload in enumerate(payloads)]
+    for obj in objects:
+        (repository.articles_dir / obj.key).write_text(json.dumps(obj.payload), encoding="utf-8")
+    storage = SimpleNamespace(
+        list_medallion_objects=lambda *args: objects,
+        read_text_object=lambda obj: json.dumps(obj.payload),
+    )
+
+    def replay() -> dict[str, dict[str, Any]]:
+        if remote:
+            return builder._load_article_payloads_from_remote_json(storage, "prod")
+        return builder._load_article_payloads_from_json(repository)
+
+    if conflicting:
+        with pytest.raises(RuntimeError, match=f"CID.*contradictoires.*{VERSION_2026}"):
+            replay()
+    else:
+        selected = replay()
+        assert list(selected) == [VERSION_2026]
+        assert selected[VERSION_2026]["cid"] == CHRONIQUE
+
+
+@pytest.mark.parametrize("remote", [False, True])
 def test_bronze_replay_keeps_live_cid_when_old_version_file_sorts_after_it(tmp_path: Path, remote: bool) -> None:
     repository = BronzeRepository(tmp_path / "bronze")
     builder = LegifranceBronzeBuilder(BronzeConfig())
