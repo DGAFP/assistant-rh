@@ -108,11 +108,11 @@ def document(row: dict) -> Document:
     return Document(
         str(row["doc_id"]),
         row.get("short_id"),
-        row.get("title") or "",
-        row.get("source_url") or "",
-        row.get("publisher") or "",
+        row.get("title"),
+        row.get("source_url"),
+        row.get("publisher"),
         row.get("doc_markdown") or "",
-        row.get("token_count") or 0,
+        row.get("token_count"),
         str(row["last_updated_date"]) if row.get("last_updated_date") is not None else None,
     )
 
@@ -152,7 +152,10 @@ class ContentStore(ContentStorePort):
                     (list(ids),),
                 )
             ).fetchall()
-        return tuple(Section(str(r[0]), str(r[1]), r[2] or "", r[3] or "", r[4], freeze_json(r[5]), document(r[6]) if r[6] else None) for r in rows)
+        return tuple(
+            Section(str(r[0]), str(r[1]) if r[1] is not None else None, r[2] or "", r[3], r[4], freeze_json(r[5]), document(r[6]) if r[6] else None)
+            for r in rows
+        )
 
     async def references(self, numbers: tuple[str, ...]) -> tuple[LegalReference, ...]:
         if not numbers:

@@ -79,20 +79,20 @@ class RawChunk:
 class Document:
     doc_id: str
     short_id: str | None
-    title: str
-    url: str
-    publisher: str
+    title: str | None
+    url: str | None
+    publisher: str | None
     markdown: str
-    token_count: int
+    token_count: int | None
     updated_date: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class Section:
     section_id: str
-    doc_id: str
+    doc_id: str | None
     heading: str
-    heading_path: str
+    heading_path: str | None
     markdown: str
     legal_references: JsonValue
     document: Document | None

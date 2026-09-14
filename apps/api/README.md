@@ -574,3 +574,33 @@ are rejected to prevent completion-order-dependent fusion collisions.
 The synthetic differential suite proves parity on its corpus. The existing M0b
 bundle lacks raw port inputs, so its [retrieval replay gate](../../tests/conformance/M0_REPLAYS.md#c3-retrieval-extraction-missing-port-inputs)
 remains open. No completion handler or production RAG switch is supplied here.
+
+### C4: section aggregation and context building
+
+`core.pipeline.steps.aggregation.SectionAggregator` receives immutable aggregation
+configuration, a `ContentStorePort` and a `RerankerPort`. Its async `aggregate()`
+returns immutable sections; `aggregate_with_diagnostics()` additionally returns
+chunk trace projections, provider attempts/fallback and safe store error codes.
+
+`core.pipeline.steps.context_builder.ContextBuilder` receives immutable context
+configuration and a `ContentStorePort`. Its async `build()` returns
+`ContextBuildResult(items, resolved_refs, diagnostics)` per call; it has no
+`last_resolved_refs` state. The pure `context_formatting.format_for_prompt()`
+formats the final items for C5. C6 still owns engine/selector wiring and transport.
+
+Ranking, full-document inclusion, standard/wide budgets, stable tie order,
+triangulation beyond the budget and primary-first legal-reference allocation
+preserve the retained runtime. Document reads remain lazy, one eligible document
+at a time, so a skipped document never adds a new failing I/O operation. Section
+and reference reads are batched. Expected storage failures degrade to chunk
+metadata / no full document / unresolved references with safe diagnostics;
+configuration errors, bugs and cancellation propagate. Reranker provider failures
+retain the aggregate top-k; explicit gateway fallback retains synthetic scores.
+
+The [C4 conformance evidence](../../tests/conformance/M0_REPLAYS.md#c4-aggregation-and-context-extraction-differential-evidence-461)
+combines synthetic differential tests and a [versioned offline companion](../../tests/conformance/companions/c4-staging-20260914/README.md).
+The companion records complete C4 inputs from the retained runtime on staging and
+matches the candidate exactly on four RAG scenarios. It is accepted for C4; the
+original M0b bundle stays intact. Unexercised reference/triangulation branches
+remain covered by synthetic tests. No HTTP completion or served-runtime switch
+is part of this extraction; C6/M1 remain separate gates.
