@@ -14,8 +14,10 @@ import hashlib
 import json
 import logging
 import os
+import shutil
 import socket
 import tarfile
+import tempfile
 from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 from datetime import datetime, timezone
@@ -317,8 +319,13 @@ async def replay(output):
                 "id": case["id"],
                 "selector_candidates": len(candidates),
                 "selected": len(selection.sections),
+                "selection_status": selection.diagnostics.status,
                 "context_items": len(case["generator_input"]),
                 "answer_chars": len(result.answer),
+                "generator_provider": result.diagnostics.outcome.provider,
+                "generator_model": result.diagnostics.outcome.model,
+                "generator_fallback_count": result.diagnostics.fallback_count,
+                "generator_usage": plain(result.diagnostics.outcome.usage),
                 "exact": True,
             }
         )
@@ -331,9 +338,39 @@ async def replay(output):
     }
 
 
+async def negative_controls(output):
+    """Prove that a green live replay becomes red on three independent mutations."""
+    await replay(output)
+    results = []
+    for mutation in ("unhashed-fixture", "prompt-with-new-hash", "answer-with-new-hash"):
+        with tempfile.TemporaryDirectory(prefix="c5-negative-") as directory:
+            copied = Path(directory) / "evidence"
+            shutil.copytree(output, copied)
+            if mutation == "prompt-with-new-hash":
+                path = copied / "prompts.json"
+                data = json.loads(path.read_text())
+                data[next(iter(data))]["content"] += " CHANGED POLICY"
+            else:
+                path = next(copied.glob("rag-*.json"))
+                data = json.loads(path.read_text())
+                data["generator_expected"]["answer"] += " UNSUPPORTED CLAIM"
+            dump(path, data)
+            if mutation != "unhashed-fixture":
+                manifest = json.loads((copied / "manifest.json").read_text())
+                manifest["files"][path.name] = digest(path)
+                dump(copied / "manifest.json", manifest)
+            try:
+                await replay(copied)
+            except AssertionError as exc:
+                results.append({"mutation": mutation, "detected": True, "reason": str(exc)})
+            else:
+                raise AssertionError(f"mutation was not detected: {mutation}")
+    return {"baseline_passed": True, "negative_controls": results}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("record", "replay"))
+    parser.add_argument("mode", choices=("record", "replay", "check"))
     parser.add_argument("output", type=Path)
     parser.add_argument("--source", type=Path, help="extracted C4 evidence-v2 directory (record only)")
     parser.add_argument("--env-file", type=Path, help="explicit private dotenv file (record only)")
@@ -351,7 +388,8 @@ def main():
                 side_effect=AssertionError("offline replay forbids network"),
             ),
         ):
-            print(json.dumps(asyncio.run(replay(args.output)), ensure_ascii=False, indent=2))
+            action = replay if args.mode == "replay" else negative_controls
+            print(json.dumps(asyncio.run(action(args.output)), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

@@ -580,16 +580,43 @@ insuffisant, panne DB/persona, réussite/fallback/double panne, isolation et
 fermeture des streams. L'outillage de complément C5 est éprouvé hors ligne par
 aller-retour recorder/replay et contrôles négatifs, avec services simulés.
 
-**Gate de preuve C5 encore ouvert : aucun enregistrement live effectué.**
+**État initial avant la capture autorisée ci-dessous : gate C5 ouvert, aucun enregistrement live effectué.**
 Le recording préparé utiliserait quatre cas et sources figés du complément C4,
 les deux prompts staging en lecture seule, puis de nouveaux appels providers.
-Il requiert une autorisation explicite. Aucun input historique manquant n'est
+Cette autorisation a ensuite été donnée pour la capture ci-dessous. Aucun input historique manquant n'est
 reconstitué. Voir [périmètre, preuves et commande](10-c5-parity.md).
 
-Validation locale finale : **632 tests API réussis, 127 tests dépendants de la
+Validation locale finale après ajout du replay publié : **636 tests API réussis, 127 tests dépendants de la
 DB synthétique ignorés** ; Ruff, mypy et les trois contrats d'import réussis.
 Suite historique : 1 429 tests réussis sous sandbox et 46 ignorés ; le module
 HTTP initialement bloqué par l'interdiction de bind loopback a été rejoué avec
 succès (**14/14**, soit les 13 erreurs/blocages initiaux résolus). Auto-check M0b :
 7 fixtures / 56 artefacts intacts, `exact_comparison: null`. Revue indépendante
-finale favorable sur le code ; preuve C5 live et intégration restent ouvertes.
+finale favorable sur le code ; la preuve C5 enregistrée est décrite ci-dessous,
+l’intégration C6/M1 reste ouverte.
+
+
+### C5 — complément enregistré et rejoué après autorisation
+
+[Rapport et archive autonome](../../../tests/conformance/companions/c5-recorded-20260914/README.md),
+core `99fc62c`, fin de capture le 14 septembre 2026 à 14:22:47 UTC.
+Les quatre cas/config C4 ont été vérifiés octet pour octet puis figés avant I/O.
+Deux lectures de prompts staging sous TLS/read-only ; huit appels Albert réussis
+(`openweight-large` selector, `deepseek-v4-flash` generator). Aucun fallback
+provider, aucune écriture DB ni déploiement.
+
+**Replay exact réussi** : 80 candidats selector, 12 conservés ; 6 context items
+de génération et quatre réponses identiques. Un des quatre selector a produit
+une réponse malformée : le repli historique top-5 et ses diagnostics sont
+préservés exactement. Les trois autres sélections sont normales. Les étapes
+sont indépendantes, le generator consomme les contextes C4 figés et non les
+nouveaux choix selector ; aucun replay d'assemblage C6 n'est revendiqué.
+
+L'archive contient les sources figées, prompts bruts, requêtes/réponses provider,
+sorties attendues et empreintes ; secrets et journal privé exclus. Replay sans
+réseau revérifié après extraction avec la seule bibliothèque standard. Trois
+contrôles négatifs réussissent, y compris prompt et réponse attendue modifiés
+après recalcul de leur hash. Les tests CI rejouent les fixtures publiées contre
+le core du checkout courant. La preuve C5 est disponible pour la revue ; C6/M1
+et les cartes A5 historiques restent distincts. Aucun artefact M0b original
+modifié ; aucune entrée historique absente reconstruite.

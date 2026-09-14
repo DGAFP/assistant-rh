@@ -1,8 +1,10 @@
 # C5 — extraction selector, prompts et génération (#462)
 
 L'extraction conserve le runtime Streamlit et le bundle M0b historique.
-Le candidat API est validé par conformance différentielle synthétique ; **la
-preuve enregistrée C5 reste à produire avant de déclarer le gate satisfait**.
+Le candidat API est validé par conformance différentielle synthétique et par
+[un complément C5 enregistré](../../../tests/conformance/companions/c5-recorded-20260914/README.md) :
+**comparaison exacte réussie sur les quatre cas RAG**. La preuve permet la revue
+de livraison C5 ; elle ne certifie ni l’assemblage C6 ni M1.
 
 ## Contrat livré
 
@@ -53,54 +55,46 @@ même après recalcul du hash, sortie attendue altérée après recalcul du hash
 et entrée C4 différente de l'archive avant tout I/O externe. Cette preuve
 valide l'outillage, **pas une campagne de génération réelle**.
 
-## Complément enregistré préparé, non exécuté
+## Complément enregistré — 14 septembre 2026
 
-`[record|replay]` dans `scripts/conformance/c5_companion.py` prépare une preuve
-C5 indépendante. Le mode `record` nécessite une autorisation explicite pour
-les lectures staging et les appels providers. Cette exécution n'a pas eu lieu.
+Après autorisation explicite, `scripts/conformance/c5_companion.py record` a lu
+les deux prompts staging en transaction read-only, puis enregistré huit appels
+Albert réussis sur les quatre cas C4 figés. Le core exécuté est `99fc62c`.
 
-Il prévoit exactement :
+- Selector : 80 sections entrantes, 12 conservées ; trois sélections normales
+  et un repli de parsing top-5 exactement préservé.
+- Generator : 6 context items C4 figés et quatre réponses exactes au replay ;
+  aucune activation du fallback provider.
+- Prompts complets, décisions/ordre/métadonnées, réponses et provider/fallback
+  comparés exactement hors réseau. Les données d'usage provider sont conservées.
+- Trois contrôles négatifs réussis sur copies : fichier altéré, prompt altéré
+  après recalcul du hash, réponse attendue altérée après recalcul du hash.
+- Replay autonome après extraction de l'archive avec Python 3.12 et sa seule
+  bibliothèque standard. CI : les fixtures sont aussi rejouées contre le core
+  du checkout courant, pour détecter les régressions futures.
 
-1. Vérifier et figer config + quatre cas RAG contre l'archive C4 acceptée.
-2. Lire uniquement les deux prompts configurés sur le DSN explicitement nommé
-   staging, distinct de production, sous TLS et transaction en lecture seule
-   avec délais bornés. Aucune modification DB ni requête documentaire live.
-3. Appeler le selector sur les sections C4 figées, puis le générateur sur les
-   contextes finaux C4 figés. Ce sont deux preuves d'étape indépendantes : les
-   sorties du nouveau selector ne reconstruisent pas un pipeline complet.
-4. Enregistrer requêtes, réponses provider complètes, outputs historiques,
-   snapshots de prompts, empreintes des sources et des fixtures.
-5. Rejouer le core candidat hors réseau et comparer exactement requêtes,
-   décisions, sections, réponses et diagnostics provider.
+Les deux étapes restent indépendantes : le generator reçoit les contextes
+finaux C4, **pas** un contexte reconstruit à partir des nouveaux choix selector.
+La configuration provient de C4 ; seuls les prompts et les réponses LLM sont
+nouveaux. Les trois courts-circuits M0b ne sont pas comptés comme des cas C5
+exercés. Rejet total, insuffisance de contexte, fallback/double panne et stream
+restent couverts par les tests synthétiques.
 
-Les quatre cas portent sur CDD/acronyme, recherche juridique, conversation et
-ministère MSO. La configuration provient du complément C4 ; le recorder ne
-prétend pas vérifier la configuration actuellement déployée. Les réponses
-selector/generator seront nouvelles, jamais reconstruites depuis M0b. Le
-recording exige un succès primaire ; fallback, rejet total et contexte
-insuffisant restent couverts par les scénarios synthétiques.
+Voir le [rapport, les sources figées et l'archive autonome](../../../tests/conformance/companions/c5-recorded-20260914/README.md)
+pour les versions, empreintes, résultats, avertissement de parsing et limites.
+Aucun secret ni journal privé n'est publié, aucune écriture DB ni aucun déploiement.
 
-Exemple **après autorisation**, depuis la racine du checkout :
+Pour rejouer depuis le dossier extrait `c5-parity-companion` :
 
 ```bash
-PYTHON_DOTENV_DISABLED=1 uv run --no-sync python scripts/conformance/c5_companion.py \
-  record /private/tmp/c5-evidence \
-  --source /private/tmp/c4-parity-companion/evidence-v2 \
-  --env-file /chemin/prive/.env
-
-PYTHONPATH=apps/api/src python3.12 -S scripts/conformance/c5_companion.py \
-  replay /private/tmp/c5-evidence
+PYTHONPATH=apps/api/src python3.12 -S scripts/conformance/c5_companion.py replay evidence
+PYTHONPATH=apps/api/src python3.12 -S scripts/conformance/c5_companion.py check evidence
 ```
-
-Le replay teste le **core du checkout courant** et rapporte ses empreintes ;
-il ne suppose pas que ce checkout soit identique au candidat enregistré.
-Le dossier de recording contient un journal privé à exclure de toute publication.
-Les fixtures/prompt/réponses doivent être inspectés avant publication.
 
 ## Gates restants
 
-La PR reste en brouillon jusqu'à l'enregistrement autorisé, au replay et à
-l'acceptation de cette preuve C5. Les 7 fixtures / 56 artefacts M0b originaux
-restent inchangés ; leur auto-check d'intégrité ne prouve pas C5. L'assemblage,
-le retry et le handler non-stream restent #463/C6 ; le transport SSE reste
-#464/C7. A5 et M1 ne sont pas déclarés globalement clos. Aucun déploiement.
+La preuve C5 est disponible pour la revue de livraison ; l'issue reste ouverte
+jusqu'à fusion. Les 7 fixtures / 56 artefacts M0b originaux restent inchangés :
+ce complément repose sur de nouveaux appels et ne reconstitue pas les anciens.
+L'assemblage, le retry et le handler non-stream restent #463/C6 ; le transport
+SSE reste #464/C7. A5 et M1 ne sont pas déclarés globalement clos.

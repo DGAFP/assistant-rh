@@ -340,7 +340,9 @@ et les cartes A5 dépendantes de l'assemblage restent ouverts.
 Bilan C5 après extraction : ressources selector/generator/persona identiques au
 runtime conservé ; date explicite `today` requise par chaque step, rendue avant
 le ministère sans modifier le snapshot brut. La revue a vérifié l'isolation
-concurrente et le cycle de vie des streams. La conformance différentielle reste
-synthétique ; le recorder C5 est prêt et testé hors ligne, mais aucune capture
-live n'a été faite. [Preuves et reliquats C5](10-c5-parity.md). Les lignes A5
+concurrente et le cycle de vie des streams. La conformance différentielle
+synthétique est maintenant complétée par
+quatre cas enregistrés et rejoués exactement : trois sélections, un repli
+parsing top-5 et quatre générations réussies. Les étapes sont indépendantes
+sur les entrées C4 figées, sans preuve d’assemblage C6. [Preuves et reliquats C5](10-c5-parity.md). Les lignes A5
 historiques et les gates C6/M1 restent ouverts.

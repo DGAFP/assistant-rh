@@ -139,3 +139,51 @@ async def test_c4_provenance_checks_run_before_database_or_provider_io(tmp_path,
     with pytest.raises(AssertionError, match="C4 input differs"):
         companion.record(tmp_path / "must-not-be-created", source, tmp_path / "no-env")
     assert not (tmp_path / "must-not-be-created").exists()
+
+
+@pytest.fixture
+def published_c5(tmp_path):
+    archive = ROOT / "tests/conformance/companions/c5-recorded-20260914/c5-parity-companion.tar.gz"
+    checksums = archive.with_name("SHA256SUMS").read_text().splitlines()
+    expected = next(line.split()[0] for line in checksums if line.split()[-1] == archive.name)
+    assert companion.digest(archive) == expected
+    evidence = tmp_path / "published-c5"
+    evidence.mkdir()
+    with tarfile.open(archive) as bundle:
+        for member in bundle.getmembers():
+            if member.name.startswith("c5-parity-companion/evidence/") and member.name.endswith(".json"):
+                (evidence / Path(member.name).name).write_bytes(bundle.extractfile(member).read())
+    return evidence
+
+
+async def test_published_live_companion_replays_current_checkout_without_network(published_c5, monkeypatch):
+    import socket
+
+    def blocked(*args, **kwargs):
+        raise AssertionError("published replay must remain offline")
+
+    monkeypatch.setattr(socket.socket, "connect", blocked)
+    monkeypatch.setattr(socket, "create_connection", blocked)
+    result = await companion.replay(published_c5)
+    assert result["exact_comparison"] is True
+    assert len(result["cases"]) == 4
+    assert sum(case["selector_candidates"] for case in result["cases"]) == 80
+
+
+@pytest.mark.parametrize("mutation", ["unhashed-fixture", "prompt-with-new-hash", "answer-with-new-hash"])
+async def test_published_live_companion_detects_mutations(published_c5, mutation):
+    if mutation == "prompt-with-new-hash":
+        path = published_c5 / "prompts.json"
+        data = json.loads(path.read_text())
+        data[next(iter(data))]["content"] += " CHANGED POLICY"
+    else:
+        path = next(published_c5.glob("rag-*.json"))
+        data = json.loads(path.read_text())
+        data["generator_expected"]["answer"] += " UNSUPPORTED CLAIM"
+    companion.dump(path, data)
+    if mutation != "unhashed-fixture":
+        manifest = json.loads((published_c5 / "manifest.json").read_text())
+        manifest["files"][path.name] = companion.digest(path)
+        companion.dump(published_c5 / "manifest.json", manifest)
+    with pytest.raises(AssertionError):
+        await companion.replay(published_c5)
