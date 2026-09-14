@@ -194,17 +194,24 @@ class LegifranceBronzeBuilder:
                     selected[short_id] = (priority, payload)
         return sorted((item[1] for item in selected.values()), key=LegifranceBronzeBuilder._article_sort_key)
 
+    @staticmethod
+    def _select_article_payload(payloads: dict[str, dict[str, Any]], payload: dict[str, Any]) -> None:
+        article_id = payload["article_id"]
+        current = payloads.get(article_id)
+        if current and current.get("origin") == "piste_get_article":
+            # A legacy alias cannot replace a verified identity. Two live
+            # identities must agree before deduplication hides either one.
+            if payload.get("origin") != "piste_get_article":
+                return
+            if current["cid"] != payload["cid"]:
+                raise RuntimeError(f"CID PISTE contradictoires pour la version {article_id}: {current['cid']} / {payload['cid']}.")
+        payloads[article_id] = payload
+
     def _load_article_payloads_from_json(self, repository: BronzeRepository) -> dict[str, dict[str, Any]]:
         payloads: dict[str, dict[str, Any]] = {}
         for path in repository.article_json_paths():
             payload = self._normalize_article_payload(json.loads(path.read_text(encoding="utf-8")))
-            current = payloads.get(payload["article_id"])
-            # Deux fichiers peuvent conserver le même ID de version sous un
-            # CID JORF officiel et une ancienne clé LEGI. Ne pas perdre la
-            # réponse live selon l'ordre lexical des chemins avant déduplication.
-            if current and current.get("origin") == "piste_get_article" and payload.get("origin") != "piste_get_article":
-                continue
-            payloads[payload["article_id"]] = payload
+            self._select_article_payload(payloads, payload)
         return payloads
 
     def _select_latest_xml_paths(self, repository: BronzeRepository) -> dict[str, Path]:
@@ -371,10 +378,7 @@ class LegifranceBronzeBuilder:
             if not object_key.endswith(".json"):
                 continue
             payload = self._normalize_article_payload(json.loads(object_storage.read_text_object(obj)))
-            current = payloads.get(payload["article_id"])
-            if current and current.get("origin") == "piste_get_article" and payload.get("origin") != "piste_get_article":
-                continue
-            payloads[payload["article_id"]] = payload
+            self._select_article_payload(payloads, payload)
         return payloads
 
     def _load_legacy_text_payloads_from_remote_json(
