@@ -49,3 +49,7 @@
 4. `assistant_rh_api/__init__.py` reste sans effet de bord afin que `src/goldset` importe le core sans créer FastAPI ni ouvrir de connexion.
 5. Le wiring vit dans `handlers/app.py` pour l'API et dans le runner direct-core pour l'éval.
 6. Après F3, le chemin public (`Home.py`, `01_Chatbot`, `_PDF_Viewer` et leurs helpers) n'importe ni client PostgreSQL ni `packages/rag-pipeline` ; il utilise HTTP. Les modules admin autorisés à accéder à la DB figurent dans une allowlist CI distincte et restent protégés par `require_admin()`.
+
+## Direction temps 2 : identité et habilitations
+
+La [note Conversations](09-conversations-individual-access.md) décrit la direction retenue : OIDC côté frontend avec ProConnect optionnel, utilisateur individuel et habilitations administrées côté Assistant RH, session individuelle courte conservée côté serveur Conversations. Le protocole de preuve, le TTL, la composition multi-groupes, le défaut ministère et l’ownership historique restent à finaliser. Cette direction ne modifie pas D6 ni le contrat B4 du temps 1 et ne déclare aucune fonctionnalité livrée.
