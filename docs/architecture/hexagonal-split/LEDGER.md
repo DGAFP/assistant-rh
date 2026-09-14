@@ -477,3 +477,46 @@ dans le bilan ; aucune écriture DB, génération de réponse ou bascule runtime
 Ce smoke prouve l’exécution sur le corpus staging courant pour cette requête et
 ce scope. Il ne mesure pas la qualité des réponses et ne reconstitue pas les
 inputs historiques M0b : le gate de #460 reste ouvert et #546 reste en brouillon.
+
+
+## C4 — agrégation et contexte derrière ports / #461 (2026-09-14)
+
+Extraction dans `core/pipeline/steps/aggregation.py` et `context_builder.py`,
+avec formatter de prompt et projection des traces purs. `ContentStorePort`
+porte les lectures sections/documents/références, `RerankerPort` le reranking.
+Les résultats, métadonnées et références sont détachés et immuables par appel ;
+`ContextBuildResult` remplace `last_resolved_refs`. C6 conserve la responsabilité
+de l'assemblage, du selector et du transport HTTP. Le runtime Streamlit est intact.
+
+Les scores, regroupements R2, ordre d'entrée aux égalités, bornes du reranker,
+texte limité à 1 500 caractères pour le reranking, documents entiers, budgets
+standard/wide, triangulation au-delà du budget et priorité primaire des références
+sont conservés. Aucun réglage opportuniste. Les erreurs DB typées dégradent vers
+les fallbacks historiques avec codes sûrs ; erreurs de configuration, bugs et
+annulations remontent. Les tentatives et le fallback provider sont explicites.
+Les lectures documentaires restent paresseuses pour conserver les points d'échec
+et éviter de charger des documents inéligibles.
+
+La [carte A5 ré-auditée](07-runtime-isolation-audit.md#ré-audit-c4-avant-extraction--461-2026-09-14)
+précède l'extraction. Une revue indépendante a détecté la normalisation B2
+`NULL → ""/0` des champs source ; correction des valeurs `Document`/`Section`
+et de l'adaptateur, sans migration. Une conformance SQL locale couvre aussi
+les champs nulls et les sections sans document. Le défaut historique du log
+sur titre de document NULL est consigné dans A5, sans le reproduire dans le core.
+
+**Gate M0b non satisfait : #461 reste ouverte.** Les 7 fixtures / 56 artefacts
+d'origine sont intacts, mais ne contiennent ni les chunks complets, ni les retours
+bruts du reranker, ni tous les résultats des lectures documentaires. Les tests
+synthétiques différentiels exécutent vraiment les deux runtimes sur les mêmes
+inputs ; ils ne constituent pas un replay historique. Le [complément requis](../../../tests/conformance/M0_REPLAYS.md#c4-aggregation-and-context-extraction-differential-evidence-461)
+précise les inputs, ordres, révisions et sorties à enregistrer. Aucune baseline
+n'est reconstruite ou remplacée. A5-02/05/11 et M1 ne sont pas déclarés clos.
+
+Validation finale locale : **2 106 tests passent, 16 ignorés**, suites API et
+historiques réunies avec `PYTHON_DOTENV_DISABLED=1` et le DSN gardé de PostgreSQL
+18.4/pgvector 0.8.2 local exclusivement synthétique. C4 ajoute 53 tests de core
+et 5 comparaisons SQL. Ruff sur les chemins CI, mypy sur les six modules touchés
+et les trois contrats d'import passent. L'auto-check M0b confirme 7 fixtures et
+56 artefacts, `exact_comparison=null`. Revue indépendante : écart de NULL corrigé,
+aucun autre constat code restant. CI distante à vérifier après publication.
+Aucun accès DB distant, appel provider réel, migration distante ou déploiement.

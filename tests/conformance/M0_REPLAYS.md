@@ -154,3 +154,44 @@ It must identify the runtime/corpus revision and be replayed without live I/O.
 An existing recording of those inputs would also suffice. A new live query on
 today's database cannot retroactively recover the frozen M0b search inputs.
 Keep the original bundle untouched; #460 remains open pending this proof.
+
+## C4 aggregation and context extraction: differential evidence (#461)
+
+Run the extracted core against the retained runtime with the same synthetic
+content and reranker inputs:
+
+```bash
+PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m pytest \
+  apps/api/tests/core/test_context_steps.py apps/api/tests/core/test_imports.py -q
+```
+
+The comparisons cover exact section/chunk fields, scores, trace projections,
+context metadata, resolved references and final prompt bytes. Cases include R2
+pairs, stable ties, rerank input/output caps and fallback, missing sections and
+documents, full documents, standard/wide modes, exhausted budgets, triangulation,
+legal-reference representations, safe error diagnostics and request isolation.
+
+**This is not historical M0b parity.** The frozen aggregation input contains
+retrieved IDs, not complete chunks and section/document responses. Its outputs
+are projections, not the raw reranker response. The context stage records item
+references and a rendered prompt, but lacks the full selected sections and the
+content/reference-store responses needed to execute the candidate independently.
+Do not reconstruct port inputs from these expected outputs.
+
+Closing the C4 gate requires a versioned companion recording of complete ordered
+retrieved chunks (including metadata and unrounded scores), effective configs,
+section/document reads (including missing/error outcomes), reranker request and
+raw outcome, selector output, reference-store rows in observed order, and legacy
+outputs captured together. Record runtime/corpus revisions and artifact hashes.
+Replay the same inputs through the retained and candidate implementations offline.
+The original 7-fixture/56-artifact bundle stays unchanged; its integrity self-check
+is separate evidence and does not satisfy the candidate comparison.
+
+C4 corrects B2 normalization of nullable source fields (title, URL, publisher,
+token count, section document ID and heading path): raw NULL values now cross the
+port intact. `apps/api/tests/db/test_context_conformance.py` compares real SQL
+reads on the guarded synthetic database against the legacy runtime, including
+nullable metadata and orphan sections. B2 still orders ambiguous reference
+matches; legacy SQL does not order colliding numbers, so these historical
+collisions cannot be certified without a recorded row order. Unexpected bugs/configuration errors and cancellation propagate in
+C4; expected typed failures retain the legacy fallback values with safe codes.

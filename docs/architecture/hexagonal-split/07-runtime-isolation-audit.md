@@ -259,3 +259,52 @@ Les tris stables implicites du code historique ne suffisent pas comme contrat ci
 6. Le thread OTLP daemon et les deux transactions de logging ne donnent aucune garantie de complétude à la fin du stream.
 
 Ces risques sont tolérés uniquement dans le chemin historique à courte durée de vie. Le wiring API ne doit pas partager les objets actuels en attendant C6 : les adaptateurs B1/B3 partagés doivent être sûrs avant d'être branchés au core.
+
+
+## Ré-audit C4 avant extraction — #461 (2026-09-14)
+
+Cartes `section_aggregator.py` et `context_builder.py` revérifiées sur `dev`
+`4cef0ce651b2352d6d09115a572b1dbb130ee73c` avant extraction. Les consommateurs historiques restent
+sur le runtime conservé ; les nouveaux steps sont dans
+`assistant_rh_api/core/pipeline/steps/`.
+
+- Agrégation : `ContentStorePort.sections` remplace le lookup SQL ;
+  `RerankerPort` remplace le client lazy. Les pondérations, regroupements R2
+  bornés par source, texte reranker (heading + 1 500 caractères), caps et
+  tris stables sont conservés. L'ordre des chunks entrants départage les
+  scores agrégés égaux ; le port reranker départage par indice d'entrée.
+  Scores et diagnostics deviennent des valeurs immuables par appel.
+- Contexte : documents et références passent par `ContentStorePort` ;
+  `last_resolved_refs` est remplacé par un résultat explicite par appel.
+  L'estimation `len(text) // 4`, les modes standard/wide, le premier jeu de
+  références d'un document entier, les clés de dédoublonnage par section/heading,
+  la priorité des sections sur les documents entiers à score égal et le budget
+  de références primaire-avant-triangulation restent inchangés. La triangulation
+  ignore historiquement le budget et le cap de sections : ne pas corriger dans C4.
+- Les pannes DB typées retrouvent les fallbacks historiques (section depuis
+  chunk, document non chargé, références non résolues), avec codes sûrs dans
+  les diagnostics. Les erreurs de configuration, bugs et annulations remontent.
+  Les erreurs provider attendues conservent le top-k agrégé ; le fallback
+  synthétique explicite du gateway garde ses scores et son statut distinct.
+- A5-11 : le lookup historique de références n'a pas d'ORDER BY. B2 impose
+  `(number, cid, url, title)` ; le dernier CID non vide gagne. Les collisions
+  historiques ne sont pas certifiables sans ordre enregistré.
+- M0b : les projections de chunks sont tronquées à 300 caractères et ne
+  capturent pas les réponses documentaires ni les retours bruts du reranker.
+  La conformance différentielle synthétique ne vaut pas replay historique.
+  Les cartes A5-02/05/11 et le gate M0b restent ouverts jusqu'aux preuves et
+  au branchement C6 ; aucune modification du runtime servi.
+
+Correction du ré-audit C4 après revue indépendante : la normalisation B2
+`NULL → ""/0` perdait la représentation des métadonnées documentaires. Le port
+`Document` conserve désormais les valeurs nulles pour titre, URL, publisher et
+compte de tokens ; `Section` conserve `doc_id`/`heading_path` nulls. Aucun
+changement de schéma. Cinq comparaisons sur le vrai SQL du corpus synthétique
+couvrent les métadonnées complètes, les champs source nulls, les tokens nulls
+et une section sans document.
+
+Le runtime conservé plante dans son log de document entier si `title` est NULL
+(`item.document_title[:40]`). Le core sans logging de contenu ne reproduit pas
+ce défaut ; la comparaison du titre NULL est bornée au chemin section, tandis
+que URL/publisher NULL sont comparés sur le chemin document entier. Cet écart
+de panne historique n'est pas une nouvelle règle de sélection/ranking.
