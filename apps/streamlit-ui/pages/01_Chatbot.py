@@ -76,6 +76,7 @@ from src.ui.chatbot_sources import (
 from src.ui.chatbot_transitions import PENDING_EXIT, apply_ready_exit, cancel_exit, request_exit
 from src.ui.cookies_security import is_production_like_env, resolve_cookies_password
 from src.ui.groups import ADMIN_GROUP, DEFAULT_BADGE, valid_groups
+from src.ui.page_config import configure_page
 from src.ui.user_groups_store import (
     get_group_policy,
     group_badge_display,
@@ -214,7 +215,7 @@ def annotate_original_order(chunks: List["Chunk"]) -> None:
 # Try to set page config to wide layout with sidebar collapsed by default
 # If already set (via Home.py), this will fail silently
 try:
-    st.set_page_config(page_title="Chatbot", page_icon="🪄", layout="wide", initial_sidebar_state="expanded")
+    configure_page(page_title="Chatbot", page_icon="🪄", layout="wide", initial_sidebar_state="expanded")
 except Exception:
     pass  # Config already set, ignore
 

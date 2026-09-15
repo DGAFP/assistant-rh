@@ -29,10 +29,11 @@ from src.ui.feedback_dashboard import (
     visible_available_groups,
 )
 from src.ui.feedback_grist import render_feedback_grist_sync
+from src.ui.page_config import configure_page
 from src.ui.user_groups_store import group_chart_maps, list_groups
 
 try:
-    st.set_page_config(page_title="Feedback Dashboard", page_icon="📊", layout="wide")
+    configure_page(page_title="Feedback Dashboard", page_icon="📊", layout="wide")
 except Exception:
     pass
 

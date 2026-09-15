@@ -11,6 +11,7 @@ from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG
 
 from src.ui.admin_auth import initialize_admin_security, require_admin, show_admin_badge
 from src.ui.groups import DEFAULT_GROUP
+from src.ui.page_config import configure_page
 from src.ui.user_groups_store import (
     PROTECTED_SLUGS,
     create_group,
@@ -21,7 +22,7 @@ from src.ui.user_groups_store import (
     update_group,
 )
 
-st.set_page_config(page_title="Groupes utilisateurs", page_icon="👥", layout="wide")
+configure_page(page_title="Groupes utilisateurs", page_icon="👥", layout="wide")
 
 initialize_admin_security()
 require_admin()
