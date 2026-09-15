@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 import psycopg
 
@@ -72,3 +73,29 @@ def test_identifier_widening_with_legacy_foreign_keys(repository_dsn):
             connection.execute(MIGRATION.read_text())
         finally:
             connection.rollback()
+
+
+def test_migration_is_atomic_in_autocommit_pipeline(synthetic_database_dsn):
+    # Match the CLI's extended-protocol pipeline without a caller transaction.
+    # An isolated schema lets this test commit without changing other fixtures.
+    schema = "migration_" + uuid4().hex
+    baseline = MIGRATION.parents[2] / "apps/api/tests/fixtures/repositories.sql"
+    migration = MIGRATION.read_text().replace("public.", f"{schema}.")
+    with psycopg.connect(synthetic_database_dsn, autocommit=True) as connection:
+        connection.execute(f"CREATE SCHEMA {schema}")
+        try:
+            connection.execute(baseline.read_text().replace("public.", f"{schema}."))
+            connection.execute(f"""
+                INSERT INTO {schema}.chat_feedbacks(turn_id, ts, stars)
+                VALUES ('legacy', '2026-09-01', 1), ('legacy', '2026-09-02', 4)
+            """)
+            for _ in range(2):
+                with connection.pipeline():
+                    connection.execute(migration, prepare=True)
+            assert connection.execute(f"SELECT stars FROM {schema}.chat_feedbacks").fetchall() == [(4,)]
+            assert connection.execute(f"SELECT count(*) FROM {schema}.chat_feedback_audit").fetchone() == (1,)
+            connection.execute(f"INSERT INTO {schema}.chat_feedbacks(turn_id, ts, stars) VALUES ('legacy', '2026-09-03', 2)")
+            assert connection.execute(f"SELECT stars FROM {schema}.chat_feedbacks").fetchall() == [(2,)]
+            assert connection.execute(f"SELECT count(*) FROM {schema}.chat_feedback_audit").fetchone() == (2,)
+        finally:
+            connection.execute(f"DROP SCHEMA {schema} CASCADE")

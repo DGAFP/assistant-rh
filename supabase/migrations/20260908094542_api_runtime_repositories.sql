@@ -1,6 +1,9 @@
 -- B2. Additive API persistence; run against the provisioned runtime schema.
--- The deployment runner wraps migrations in a transaction. Explicit locking
--- prevents legacy inserts racing the feedback archival/uniqueness transition.
+-- Keep the migration in one atomic statement: the CLI may pipeline statements
+-- without an explicit transaction. The lock must cover archival, uniqueness
+-- and installation of the legacy insert trigger, including in autocommit mode.
+DO $migration$
+BEGIN
 ALTER TABLE public.chat_runs ALTER COLUMN turn_id TYPE TEXT;
 ALTER TABLE public.chat_feedbacks ALTER COLUMN turn_id TYPE TEXT;
 ALTER TABLE public.chat_runs ALTER COLUMN user_group TYPE TEXT;
@@ -99,3 +102,5 @@ BEGIN
 END $$;
 CREATE OR REPLACE TRIGGER api_legacy_feedback_insert
 BEFORE INSERT ON public.chat_feedbacks FOR EACH ROW EXECUTE FUNCTION public.api_legacy_feedback_insert();
+END;
+$migration$;
