@@ -21,6 +21,32 @@ if TYPE_CHECKING:
 # CONSTANTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+FEEDBACK_STARS_CSS = """<style>
+/* Feedback V2: cibler uniquement les widgets feedback_stars_ suivi du turn_id.
+   Conserver les couleurs, les étoiles remplies et le focus natifs de Streamlit. */
+[class*="st-key-feedback_stars_"] [data-testid="stFeedback"],
+[class*="st-key-feedback_stars_"] [role="radiogroup"] {
+    min-width: 0;
+}
+[class*="st-key-feedback_stars_"] [role="radiogroup"] {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+[class*="st-key-feedback_stars_"] [role="radio"] {
+    width: 2.75rem;
+    height: 2.75rem;
+    flex: 0 0 2.75rem;
+    padding: 0.375rem;
+}
+/* Le span externe contient soit l'icône contour, soit l'image étoile remplie. */
+[class*="st-key-feedback_stars_"] [role="radio"] > span,
+[class*="st-key-feedback_stars_"] [data-testid="stIconMaterial"] {
+    width: 2rem;
+    height: 2rem;
+    font-size: 2rem;
+}
+</style>"""
+
 FEEDBACK_REASONS_NEGATIVE = [
     "Réponse incorrecte / hors-sujet / hallucination",
     "Informations incomplètes / manquantes / obsolètes",
@@ -144,6 +170,8 @@ def render_feedback_block_v2(turn: "Turn") -> None:
 
     st.markdown("**Comment évaluez-vous la réponse ?**")
     
+    st.html(FEEDBACK_STARS_CSS)
+
     # Widget natif st.feedback avec des étoiles (retourne 0-4, None si rien sélectionné)
     selected = st.feedback("stars", key=f"feedback_stars_{tid}")
     
