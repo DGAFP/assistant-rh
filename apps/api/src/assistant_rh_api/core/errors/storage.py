@@ -1,11 +1,6 @@
-"""Stable application errors; adapters must never include driver messages."""
+"""Storage configuration, availability and transaction errors."""
 
-
-class ApplicationError(Exception):
-    code = "application_error"
-
-    def __init__(self) -> None:
-        super().__init__(self.code)
+from assistant_rh_api.core.errors.base import ApplicationError
 
 
 class DatabaseConfigurationError(ApplicationError):

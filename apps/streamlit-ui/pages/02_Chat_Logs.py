@@ -10,8 +10,9 @@ from sqlalchemy import text
 from src.ui.admin_auth import require_admin, show_admin_badge
 from src.ui.cookies_security import is_production_like_env
 from src.ui.db_utils import get_engine
+from src.ui.page_config import configure_page
 
-st.set_page_config(page_title="Chat Logs", page_icon="📕", layout="wide")
+configure_page(page_title="Chat Logs", page_icon="📕", layout="wide")
 
 require_admin()
 show_admin_badge()

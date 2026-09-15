@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
 from src.ui.admin_auth import require_admin, show_admin_badge
+from src.ui.page_config import configure_page
 
 load_dotenv()
 
@@ -33,7 +34,7 @@ show_admin_badge()
 # PAGE CONFIG
 # ═══════════════════════════════════════════════════════════════════════════════
 
-st.set_page_config(page_title="Intent Gater Eval", page_icon="🎯", layout="wide")
+configure_page(page_title="Intent Gater Eval", page_icon="🎯", layout="wide")
 st.title("🎯 Intent Gater Evaluation")
 st.caption("Évalue la classification d'intent, la détection de thème et la reformulation de query")
 

@@ -494,6 +494,7 @@ class TestAnalyzeSingleFailureHandling:
         category, reason = fa.analyze_single(
             {
                 "id": 41,
+                "api_revision": 0,
                 "question": "Q",
                 "answer": "R",
                 "selected_ministry": None,
@@ -515,7 +516,7 @@ class TestAnalyzeSingleFailureHandling:
         monkeypatch.setattr(fa, "_save_analysis", lambda *args: saved.append(args) or True)
 
         with pytest.raises(RuntimeError, match="Albert indisponible"):
-            fa.analyze_single({"id": 42, "question": "Q", "answer": "R"}, engine=object())
+            fa.analyze_single({"id": 42, "api_revision": 0, "question": "Q", "answer": "R"}, engine=object())
 
         assert saved == []
 
@@ -525,4 +526,9 @@ class TestAnalyzeSingleFailureHandling:
         monkeypatch.setattr(fa, "_save_analysis", lambda *args: False)
 
         with pytest.raises(RuntimeError, match="échec de persistance"):
-            fa.analyze_single({"id": 43, "question": "Q", "answer": "R"}, engine=object())
+            fa.analyze_single({"id": 43, "api_revision": 0, "question": "Q", "answer": "R"}, engine=object())
+
+    def test_missing_revision_is_rejected_before_analysis(self, monkeypatch):
+        monkeypatch.setattr(fa, "_extract_markers", lambda feedback: pytest.fail("No LLM call without a feedback revision"))
+        with pytest.raises(ValueError, match="revision"):
+            fa.analyze_single({"id": 44, "question": "Q", "answer": "R"}, engine=object())

@@ -5,7 +5,7 @@ import json
 from collections.abc import Mapping
 from types import MappingProxyType
 
-from assistant_rh_api.core.models import JsonValue
+from assistant_rh_api.core.models.configuration import JsonValue
 
 
 def freeze_json(value: object) -> JsonValue:

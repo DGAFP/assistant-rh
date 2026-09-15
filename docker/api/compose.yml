@@ -30,7 +30,10 @@ services:
       POSTGRES_DB: assistant_rh_api_test
     volumes:
       - assistant_rh_api_pgdata:/var/lib/postgresql/data
-      - ./apps/api/tests/fixtures/runtime.sql:/docker-entrypoint-initdb.d/10-api-runtime.sql:ro
+      - ./docker/api/init-local-db.sh:/docker-entrypoint-initdb.d/10-api-runtime.sh:ro
+      - ./docker/api/bootstrap-local.txt:/bootstrap/docker/api/bootstrap-local.txt:ro
+      - ./apps/api/tests/fixtures:/bootstrap/apps/api/tests/fixtures:ro
+      - ./supabase/migrations:/bootstrap/supabase/migrations:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U assistant_rh_api -d assistant_rh_api_test"]
       interval: 2s

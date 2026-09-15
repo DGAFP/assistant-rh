@@ -11,6 +11,15 @@ def _dashboard() -> dict:
     return json.loads(DASHBOARD_PATH.read_text(encoding="utf-8"))
 
 
+def _panels() -> list[dict]:
+    def walk(panels):
+        for panel in panels:
+            yield panel
+            yield from walk(panel.get("panels", []))
+
+    return list(walk(_dashboard()["panels"]))
+
+
 def test_dashboard_env_selector_includes_staging_and_prod_without_metric_bootstrap() -> None:
     variables = _dashboard()["templating"]["list"]
     env_variable = next(variable for variable in variables if variable["name"] == "env")
@@ -23,8 +32,7 @@ def test_dashboard_env_selector_includes_staging_and_prod_without_metric_bootstr
 
 
 def test_dashboard_queries_use_shared_env_selector() -> None:
-    dashboard = _dashboard()
-    expressions = [target["expr"] for panel in dashboard["panels"] for target in panel.get("targets", []) if target.get("expr")]
+    expressions = [target["expr"] for panel in _panels() for target in panel.get("targets", []) if target.get("expr")]
 
     assert expressions
     assert all('env=~"$env"' in expression for expression in expressions)
@@ -40,8 +48,7 @@ def test_dashboard_declares_prometheus_datasource_variable() -> None:
 
 
 def test_dashboard_panels_use_prometheus_datasource_variable() -> None:
-    dashboard = _dashboard()
-    datasources = [panel["datasource"] for panel in dashboard["panels"]]
+    datasources = [panel["datasource"] for panel in _panels() if panel.get("targets")]
 
     assert datasources
     assert all(datasource["type"] == "prometheus" for datasource in datasources)
@@ -50,7 +57,7 @@ def test_dashboard_panels_use_prometheus_datasource_variable() -> None:
 
 
 def test_ingestion_panels_do_not_compare_scoped_runs_to_the_full_corpus() -> None:
-    panels = {panel["id"]: panel for panel in _dashboard()["panels"]}
+    panels = {panel["id"]: panel for panel in _panels()}
     comparison = panels[13]["targets"][0]["expr"]
     assert 'scope="full"' in comparison
     assert 'result="expected"' in comparison

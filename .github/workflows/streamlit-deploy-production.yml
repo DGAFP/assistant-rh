@@ -58,6 +58,8 @@ jobs:
       GRIST_API_BASE_URL: ${{ vars.GRIST_API_BASE_URL }}
       GRIST_DOC_ID: ${{ vars.GRIST_DOC_ID }}
       GRIST_TABLE_ID: ${{ vars.GRIST_TABLE_ID }}
+      GRIST_FEEDBACK_DOC_ID: ${{ vars.GRIST_FEEDBACK_DOC_ID }}
+      GRIST_FEEDBACK_TABLE_ID: ${{ vars.GRIST_FEEDBACK_TABLE_ID }}
       STREAMLIT_PRODUCTION_BASE_URL: ${{ vars.STREAMLIT_PRODUCTION_BASE_URL }}
 
       APP_ENV: production
@@ -171,7 +173,7 @@ jobs:
           set -euo pipefail
           docker buildx build \
             --platform linux/amd64 \
-            -f Dockerfile.streamlit \
+            -f docker/Dockerfile.streamlit \
             -t "${{ steps.image.outputs.image_uri }}" \
             -t "${REGISTRY_HOST}/${SCW_CONTAINER_REGISTRY_NAMESPACE}/${STREAMLIT_IMAGE_NAME}:prod-latest" \
             --push \
