@@ -120,6 +120,60 @@ async def test_standalone_replay_cannot_report_success_for_an_empty_panel(tmp_pa
     assert "nine expected unique case IDs and stage kinds" in result.stderr
 
 
+@pytest.mark.parametrize("python_options", [[], ["-O"], ["-OO"]])
+@pytest.mark.parametrize("mutation", ["output", "request", "fixture-hash", "source-hash"])
+async def test_standalone_replay_validates_complete_panels_with_optimization(tmp_path, python_options, mutation):
+    evidence = altered_evidence(tmp_path, "reordered")
+    cases = json.loads((evidence / "cases.json").read_text())
+    case = next(case for case in cases if case["id"] == "generator-primary-success")
+    if mutation == "output":
+        case["expected"]["answer"] = "DELIBERATELY ALTERED"
+    elif mutation == "request":
+        case["calls"][0]["payload"]["model"] = "DELIBERATELY ALTERED"
+    companion.save(evidence / "cases.json", cases)
+    manifest = json.loads((evidence / "manifest.json").read_text())
+    manifest["files"]["cases.json"] = companion.sha(evidence / "cases.json")
+    if mutation == "fixture-hash":
+        manifest["files"]["cases.json"] = "0" * 64
+    elif mutation == "source-hash":
+        manifest["source_hashes"] = {"apps/api/src/assistant_rh_api/core/pipeline/steps/generator.py": "0" * 64}
+    companion.save(evidence / "manifest.json", manifest)
+    options = ["--verify-source-hashes"] if mutation == "source-hash" else []
+    result = subprocess.run(
+        [sys.executable, *python_options, str(SPEC.origin), "replay", "--root", str(ROOT), "--evidence", str(evidence), *options],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert '"exact_comparison": true' not in result.stdout
+    expected_error = {
+        "output": "output mismatch",
+        "request": "exact request mismatch",
+        "fixture-hash": "fixture hash mismatch",
+        "source-hash": "source changed",
+    }[mutation]
+    assert expected_error in result.stderr
+
+
+@pytest.mark.parametrize("python_options", [[], ["-O"], ["-OO"]])
+@pytest.mark.parametrize("mode", ["replay", "check"])
+async def test_standalone_valid_replay_and_controls_work_with_optimization(python_options, mode):
+    result = subprocess.run(
+        [sys.executable, *python_options, str(SPEC.origin), mode, "--root", str(ROOT), "--evidence", str(EVIDENCE / "synthetic-evidence")],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    if mode == "replay":
+        assert report["exact_comparison"] and len(report["cases"]) == 9
+    else:
+        assert report["baseline_passed"] and len(report["controls"]) == 5
+        assert all(control["detected"] for control in report["controls"])
+
+
 async def test_complete_reordered_panel_keeps_negative_controls_meaningful(tmp_path):
     evidence = altered_evidence(tmp_path, "reordered")
     result = await companion.check(ROOT, evidence)

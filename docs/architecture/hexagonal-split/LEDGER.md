@@ -646,3 +646,11 @@ sans attribution Git non vérifiée. Les fixtures historiques restent intactes.
 Les régressions reproduites avant correction passent désormais : **202 tests
 ciblés**, dont la CLI avec panel vide et la provenance sur sources modifiées,
 ainsi que Ruff ; aucun changement de runtime/prompt/seuil.
+
+Correction du faux positif en mode Python optimisé : toutes les assertions de
+validation du compagnon synthétique sont remplacées par des contrôles explicites.
+Les réponses/requêtes altérées et les empreintes incohérentes échouent en CLI
+normale, `-O` et `-OO` ; les replays valides et les cinq contrôles négatifs passent
+dans ces trois modes. Régressions vérifiées avant/après : 10 échecs avant le
+correctif ; **220 tests ciblés** et Ruff passent après correction. Les fixtures
+et le runtime C5 restent inchangés.

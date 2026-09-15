@@ -30,6 +30,12 @@ EXPECTED_CASE_KINDS = {
 }
 
 
+def require(condition, message):
+    """Keep evidence validation active under Python -O and -OO."""
+    if not condition:
+        raise AssertionError(message)
+
+
 def validate_cases(cases):
     error = "C5 replay requires exactly the nine expected unique case IDs and stage kinds"
     if not isinstance(cases, list) or len(cases) != len(EXPECTED_CASE_KINDS):
@@ -161,7 +167,7 @@ def record(root, output):
 
     cases = specifications()  # Fully specified synthetic inputs BEFORE executing reference code.
     validate_cases(cases)
-    assert not output.exists(), "never overwrite a recording"
+    require(not output.exists(), "never overwrite a recording")
     output.mkdir()
     prompts_dir = root / "packages/rag-pipeline/src/assistant_rh_rag_pipeline/prompts"
     prompts = {name: (prompts_dir / name).read_text() for name in ("selector.md", "generator.md")}
@@ -174,7 +180,7 @@ def record(root, output):
 
             def create(**request):
                 response = case["responses"][len(calls)]
-                assert response["provider"] == provider
+                require(response["provider"] == provider, "recording provider mismatch")
                 payload = {key: request[key] for key in ("messages", "model", "temperature")}
                 calls.append(dict(provider=provider, payload=payload, response=response))
                 if response["status"] != 200:
@@ -212,7 +218,7 @@ def record(root, output):
                 try:
                     answer = step.generate(case["query"], [models.ContextItem(**row) for row in case["items"]], resolve_ministry(case["ministry"]))
                 except RuntimeError as exc:
-                    assert str(exc) == "All LLM providers failed"
+                    require(str(exc) == "All LLM providers failed", "unexpected retained-runtime error")
                     error = type(exc).__name__
                 expected = dict(
                     answer=answer,
@@ -239,7 +245,7 @@ def record(root, output):
                 step._build_result = lambda query, answer, items, qr, **kwargs: SimpleNamespace(answer=answer, timing=kwargs["state"].timing)
                 result = step.run(case["query"])
                 expected = dict(answer=result.answer, generation_ms=result.timing["generation_ms"], provider_calls=0)
-            assert len(calls) == len(case["responses"]), case["id"]
+            require(len(calls) == len(case["responses"]), case["id"])
             case["calls"], case["expected"] = calls, expected
     save(output / "prompts.json", prompts)
     save(output / "cases.json", cases)
@@ -273,12 +279,12 @@ async def replay(root, evidence, mutation=None, *, verify_sources=False):
 
     manifest = json.loads((evidence / "manifest.json").read_text())
     for name, digest in manifest["files"].items():
-        assert sha(evidence / name) == digest, f"fixture hash mismatch: {name}"
+        require(sha(evidence / name) == digest, f"fixture hash mismatch: {name}")
     # Source hashes identify the recording revision. CI must exercise today's
     # implementation against frozen inputs, rather than reject every code edit.
     if verify_sources:
         for name, digest in manifest["source_hashes"].items():
-            assert sha(root / name) == digest, f"source changed: {name}"
+            require(sha(root / name) == digest, f"source changed: {name}")
     prompts = json.loads((evidence / "prompts.json").read_text())
     cases = json.loads((evidence / "cases.json").read_text())
     cases_by_id = validate_cases(cases)
@@ -294,12 +300,12 @@ async def replay(root, evidence, mutation=None, *, verify_sources=False):
         seen = []
 
         def handle(request):
-            assert len(seen) < len(case["calls"]), "unexpected extra provider call"
+            require(len(seen) < len(case["calls"]), "unexpected extra provider call")
             recorded = case["calls"][len(seen)]
             payload = json.loads(request.content)
-            assert payload.pop("stream") is False
-            assert request.url.host == recorded["provider"] + ".test", "provider order mismatch"
-            assert payload == recorded["payload"], "exact request mismatch"
+            require(payload.pop("stream") is False, "expected non-streaming request")
+            require(request.url.host == recorded["provider"] + ".test", "provider order mismatch")
+            require(payload == recorded["payload"], "exact request mismatch")
             seen.append(recorded["provider"])
             response = recorded["response"]
             return httpx.Response(
@@ -347,9 +353,9 @@ async def replay(root, evidence, mutation=None, *, verify_sources=False):
                         user_prompt=result.diagnostics.request.messages[-1].content,
                     )
                 except InferenceFailure as exc:
-                    assert not exc.partial and len(exc.attempts) == 2
-                    assert [a.provider for a in exc.attempts] == ["albert", "scaleway"]
-                    assert all(a.error == "unavailable" for a in exc.attempts)
+                    require(not exc.partial and len(exc.attempts) == 2, "expected complete double-provider failure")
+                    require([a.provider for a in exc.attempts] == ["albert", "scaleway"], "failure provider order mismatch")
+                    require(all(a.error == "unavailable" for a in exc.attempts), "expected provider-unavailable failures")
                     failure = dict(type=type(exc).__name__, code=exc.code, partial=exc.partial, attempts=plain(exc.attempts))
                     # Compare the observable failure contract, with the documented RuntimeError
                     # -> InferenceFailure type migration. Requests were already matched exactly.
@@ -365,11 +371,11 @@ async def replay(root, evidence, mutation=None, *, verify_sources=False):
             else:
                 step = Generator(GenerationConfig(), Store(), Store(), gateway)
                 result = await step.generate(case["query"], (), case["ministry"], today=case["today"], all_rejected=True)
-                assert result.diagnostics.outcome is None and result.diagnostics.request is None
+                require(result.diagnostics.outcome is None and result.diagnostics.request is None, "no-answer must not invoke inference")
                 actual = dict(answer=result.answer, generation_ms=0, provider_calls=len(seen))
                 status = result.diagnostics.status
-            assert actual == case["expected"], f"output mismatch: {case['id']}"
-            assert len(seen) == len(case["calls"]), f"missing provider calls: {case['id']}"
+            require(actual == case["expected"], f"output mismatch: {case['id']}")
+            require(len(seen) == len(case["calls"]), f"missing provider calls: {case['id']}")
             report.append(dict(id=case["id"], exact=True, status=status, provider_sequence=seen, candidate_failure=failure))
     return dict(exact_comparison=True, network="denied", provider_data="synthetic", cases=report)
 
