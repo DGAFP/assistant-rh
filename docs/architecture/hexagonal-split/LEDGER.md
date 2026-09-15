@@ -620,3 +620,19 @@ après recalcul de leur hash. Les tests CI rejouent les fixtures publiées contr
 le core du checkout courant. La preuve C5 est disponible pour la revue ; C6/M1
 et les cartes A5 historiques restent distincts. Aucun artefact M0b original
 modifié ; aucune entrée historique absente reconstruite.
+
+### C5 — complément d'acceptation du 15 septembre 2026
+
+[Matrice des critères, replays et revue de sourçage](../../../tests/conformance/companions/c5-acceptance-20260915/README.md) :
+quatre cas enregistrés rejoués sur `a8bb4a0`, neuf cas synthétiques supplémentaires
+(dont rejet total, insuffisance, fallback et double panne), huit contrôles
+négatifs au total. Le vrai gateway API est exécuté sur transport simulé ; aucun
+nouvel accès DB/provider réel. 182 tests ciblés et Ruff passent.
+
+Revue manuelle des 27 unités de réponse contre le contexte effectivement envoyé :
+appuis retrouvés dans le ministère sélectionné. Réserves conservées : portée
+MATTE/proportionnalité des formalités, et exception mobilité sur emploi de
+direction non présentée. Les tests protègent citations, offsets, empreintes et
+couverture des réponses, pas une certification sémantique automatique. Aucun
+prompt/seuil/runtime ni artefact M0b original modifié ; clôture après fusion et
+gates C6/M1 restent distincts.

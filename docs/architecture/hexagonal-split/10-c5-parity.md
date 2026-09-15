@@ -93,6 +93,14 @@ PYTHONPATH=apps/api/src python3.12 -S scripts/conformance/c5_companion.py check 
 
 ## Gates restants
 
+Le [complément d'acceptation du 15 septembre](../../../tests/conformance/companions/c5-acceptance-20260915/README.md)
+ajoute neuf replays de branches synthétiques, cinq contrôles négatifs et la revue
+de sourçage des quatre réponses enregistrées (27 unités de texte avec citations
+exactes). Les éléments sont étayés dans le ministère sélectionné ; les réserves
+de portée/proportionnalité MATTE et de complétude mobilité restent explicites.
+Les tests CI vérifient la fidélité des preuves, sans prétendre automatiser le
+jugement sémantique ni mesurer la qualité globale.
+
 La preuve C5 est disponible pour la revue de livraison ; l'issue reste ouverte
 jusqu'à fusion. Les 7 fixtures / 56 artefacts M0b originaux restent inchangés :
 ce complément repose sur de nouveaux appels et ne reconstitue pas les anciens.
