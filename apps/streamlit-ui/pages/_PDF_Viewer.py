@@ -16,8 +16,10 @@ URLs supportées :
 
 import streamlit as st
 
+from src.ui.page_config import configure_page
+
 # Config minimaliste (AVANT tout autre import Streamlit)
-st.set_page_config(
+configure_page(
     page_title="PDF",
     page_icon="📄",
     layout="wide",
@@ -30,7 +32,7 @@ st.markdown(
     """<style>
 #MainMenu,footer,header,.stDeployButton,[data-testid="stSidebar"]{display:none!important}
 .main .block-container,.main,.element-container,.stApp{padding:0!important;margin:0!important;max-width:100%!important}
-iframe{border:none!important;width:100vw!important;height:100vh!important;position:fixed!important;top:0!important;left:0!important}
+iframe{border:none!important;width:100vw!important;height:calc(100dvh - var(--rh-feedback-banner-height))!important;position:fixed!important;top:var(--rh-feedback-banner-height)!important;left:0!important}
 </style>""",
     unsafe_allow_html=True,
 )

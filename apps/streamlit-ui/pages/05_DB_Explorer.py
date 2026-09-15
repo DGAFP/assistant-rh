@@ -17,6 +17,7 @@ from sqlalchemy import text
 
 from src.ui.admin_auth import require_admin, show_admin_badge
 from src.ui.db_utils import get_engine
+from src.ui.page_config import configure_page
 
 
 def normalize_text(text: str) -> str:
@@ -33,7 +34,7 @@ load_dotenv()
 # PAGE CONFIG
 # ============================================================================
 
-st.set_page_config(
+configure_page(
     page_title="DB Explorer",
     page_icon="🗄️",
     layout="wide"

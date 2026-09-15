@@ -17,8 +17,9 @@ from sqlalchemy import text
 
 from src.ui.admin_auth import require_admin, show_admin_badge
 from src.ui.db_utils import get_engine
+from src.ui.page_config import configure_page
 
-st.set_page_config(page_title="Pipeline Timeline", page_icon="🛰️", layout="wide")
+configure_page(page_title="Pipeline Timeline", page_icon="🛰️", layout="wide")
 
 require_admin()
 show_admin_badge()
