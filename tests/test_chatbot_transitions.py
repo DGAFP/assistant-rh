@@ -185,6 +185,43 @@ def test_dialog_dismiss_callback(app, evaluate):
     assert len(app.session_state["turns"]) == 1
 
 
+@pytest.mark.parametrize("action", ["new", "new_sidebar", "ministry"])
+@pytest.mark.parametrize("choice", ["exit_cancel", "exit_evaluate", "dismiss"])
+@pytest.mark.parametrize("legacy", [False, True])
+def test_reminder_preserves_unsent_feedback(app, action, choice, legacy):
+    app.session_state["use_feedback_v2"] = not legacy
+    app.run()
+    if legacy:
+        app.button(key="down_answer-1").click().run()
+        reason_key, comment_key = "r_answer-1_0", "c_answer-1"
+    else:
+        app.feedback[0].set_value(3).run()
+        reason_key, comment_key = "pos_answer-1_0", "comment_answer-1"
+        app.checkbox(key="neg_answer-1_0").check().run()
+    app.checkbox(key=reason_key).check().run()
+    app.text_area(key=comment_key).set_value("Un avis encore en cours").run()
+
+    start_exit(app, action)
+    app.run()  # The draft must survive more than the first hidden render.
+    if choice == "dismiss":
+        from streamlit.proto.WidgetStates_pb2 import WidgetStates
+
+        states = WidgetStates()
+        states.widgets.add(id=app.get("dialog")[0].proto.dialog.id, trigger_value=True)
+        app._run(states)
+    else:
+        app.button(key=choice).click().run()
+
+    assert not app.exception
+    assert app.checkbox(key=reason_key).value is True
+    assert app.text_area(key=comment_key).value == "Un avis encore en cours"
+    if not legacy:
+        assert app.feedback[0].value == 3
+        assert app.checkbox(key="neg_answer-1_0").value is True
+    assert app.session_state["turns"][0].feedback is None
+    assert app.session_state["conversation_id"] == "original"
+
+
 @pytest.mark.parametrize("rating", ["up", "down"])
 def test_legacy_feedback_is_saved_before_exit(app, monkeypatch, rating):
     recorded = []

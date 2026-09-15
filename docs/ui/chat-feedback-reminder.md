@@ -32,6 +32,8 @@ Une conversation vide ou contenant seulement des réponses vides ne déclenche r
   explicitement « Continuer sans évaluer ».
 - « Continuer sans évaluer » exécute une seule fois la sortie sans créer d’avis.
 - « Annuler », la croix, Échap ou un clic hors de la fenêtre abandonnent la sortie.
+- Les étoiles, raisons et commentaires non envoyés sont conservés pendant le
+  rappel, puis retrouvés dans le dialogue d’évaluation ou après annulation.
 
 La nouvelle conversation reçoit un nouvel identifiant et de nouvelles suggestions.
 La déconnexion supprime aussi toute demande de sortie en attente.

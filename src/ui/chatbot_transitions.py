@@ -36,6 +36,16 @@ def apply_ready_exit(state: MutableMapping[str, Any]) -> bool:
         return False
     saved = pending["evaluate"] and any(turn.id == pending["turn_id"] and turn.feedback for turn in state.get("turns", []))
     if not pending["ready"] and not saved:
+        # Streamlit removes widget state when a widget is not rendered. Keep
+        # the draft while the reminder temporarily hides the target's form.
+        # Reassigning these keys detaches them from widget cleanup, without
+        # retaining transient button values or restoring stale field values.
+        tid = pending["turn_id"]
+        fields = {f"feedback_stars_{tid}", f"comment_{tid}", f"c_{tid}"}
+        prefixes = (f"pos_{tid}_", f"neg_{tid}_", f"r_{tid}_")
+        for key in list(state):
+            if key in fields or key.startswith(prefixes):
+                state[key] = state[key]
         return False
     if pending["ministry"] is not None:
         state["selected_ministry"] = pending["ministry"]
