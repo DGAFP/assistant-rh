@@ -654,3 +654,38 @@ normale, `-O` et `-OO` ; les replays valides et les cinq contrôles négatifs pa
 dans ces trois modes. Régressions vérifiées avant/après : 10 échecs avant le
 correctif ; **220 tests ciblés** et Ruff passent après correction. Les fixtures
 et le runtime C5 restent inchangés.
+
+### C6 — assemblage réel et HTTP non-stream (15 septembre 2026)
+
+[Rapport C6, critères et limites](11-c6-chat-completions.md), issue
+[#463](https://github.com/DGAFP/assistant-rh/issues/463), base `cb76fe3`.
+`Pipeline` compose C2–C5 derrière les ports ; `ChatService` crée le contexte par
+requête, résout le ministère B4/B5 et finalise run/sources/traces atomiquement
+avant succès. Le handler non-stream applique C1, y compris limites reçues sans
+Content-Length, historique, paramètres ignorés, erreurs sûres et sources.
+Statuts completed/failed/cancelled persistés dans `api_record` existant.
+
+Adaptations explicites : UUID de run sans préfixe pour respecter C1 (anciens
+IDs B2 toujours lisibles), sources documentaires finales dédupliquées et URLs
+internes omises. Une double panne embeddings remonte désormais comme échec
+technique C6 au lieu de devenir une génération sans contexte ; l'étape C3 et
+ses fixtures restent intactes. Retry selector, prompts, seuils et absence
+d'historique dans la génération non-stream conservés.
+
+**Validation : 898 tests API réussis sur PostgreSQL/pgvector synthétique local,
+aucun ignoré** ; 1 442 tests historiques réussis, 46 ignorés. Ruff (chemins CI),
+mypy (83 fichiers) et trois contrats d'import passent. SDK OpenAI strict sur
+la vraie route ; concurrence entre groupes/ministères ; panne de source après
+écriture du parent, rollback et run failed ; annulation sans autorité
+documentaire. Composition de production testée avec DB réelle et réponses
+providers simulées au niveau HTTP, Albert primaire et fallback Scaleway.
+Revue indépendante finale favorable. Docker indisponible localement ; image
+et smoke Compose à recontrôler en CI sur le commit publié.
+
+**Gate M0b intégral toujours ouvert**, donc livraison C6 en brouillon et issue
+non close. Auto-check inchangé : 7 fixtures / 56 artefacts,
+`exact_comparison: null`. Les entrées brutes manquantes ne sont pas
+reconstituées ; les preuves C4/C5 ne deviennent pas une preuve d'assemblage
+historique. Événements et annulation coopérative préparés ; transport SSE,
+déconnexion/worker/shielding restent C7. Aucun accès staging/production ou
+provider live, migration distante, déploiement ni GO M1.

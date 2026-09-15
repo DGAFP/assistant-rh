@@ -1,8 +1,31 @@
 # Assistant RH API
 
-Installable FastAPI application that will host the OpenAI-compatible Assistant
-RH contract. It exposes the operational probe `GET /healthz` and public group
-session authentication and the protected `GET /v1/models` catalogue. It does not initialize the RAG pipeline or any AI provider.
+## Chat Completions non-stream (C6)
+
+`POST /v1/chat/completions` now composes the real C2–C5 pipeline behind bearer
+authentication and the ministry model catalogue. Run, ordered final sources,
+stage evidence and status commit atomically before a successful JSON response.
+Client system/tool instructions and generation parameters are ignored according
+to C1. `stream=true` is rejected until C7 supplies the SSE transport.
+
+See [the C6 implementation and validation report](../../docs/architecture/hexagonal-split/11-c6-chat-completions.md)
+for provider configuration, failure/cancellation semantics, ID compatibility,
+source access and the still-open historical M0b replay gate. A running API needs
+its configured PostgreSQL target and Albert credentials; Scaleway credentials
+enable the fallback. No `.env` file is loaded by API wiring.
+
+With a valid bearer obtained from `/v1/auth/session`:
+
+```bash
+curl --fail-with-body http://127.0.0.1:8000/v1/chat/completions \
+  -H "Authorization: Bearer $API_SESSION_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"assistant-rh","messages":[{"role":"user","content":"Quels sont les congés annuels ?"}]}'
+```
+
+The installable FastAPI application also exposes `GET /healthz`, public group
+session authentication and the protected `GET /v1/models` catalogue. Importing
+the package does not connect to PostgreSQL or call providers.
 
 ## Run locally
 
