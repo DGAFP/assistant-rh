@@ -35,6 +35,18 @@ FEEDBACK_REASONS_NEGATIVE_V2 = ["Confus", "Éléments faux", "Non pertinent", "I
 # HELPER FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _save_feedback(turn: "Turn", feedback: dict, row: dict) -> bool:
+    """Only mark feedback submitted after the existing durable writer succeeds."""
+    try:
+        log_feedback_row(row)
+    except Exception:
+        st.error("L'évaluation n'a pas pu être enregistrée. Réessayez ou choisissez de continuer sans évaluer.")
+        return False
+    turn.feedback = feedback
+    st.session_state[f"fb_sub_{turn.id}"] = True
+    return True
+
+
 def is_feedback_pending() -> bool:
     """Vérifie si un feedback est en attente (étoiles sélectionnées mais pas soumis)."""
     if not st.session_state.get("turns"):
@@ -68,10 +80,9 @@ def render_feedback_block_v1(turn: "Turn") -> None:
     c1, c2, c3 = st.columns([1, 1, 4])
 
     if c1.button("👍 Oui", key=f"up_{tid}", width="stretch"):
-        turn.feedback = {"rating": "up", "at": dt.datetime.now(dt.UTC).isoformat()}
-        st.session_state[f"fb_sub_{tid}"] = True
+        feedback = {"rating": "up", "at": dt.datetime.now(dt.UTC).isoformat()}
         idx = turn_index_by_id(tid)
-        log_feedback_row({
+        if not _save_feedback(turn, feedback, {
             "ts": dt.datetime.now(dt.UTC).isoformat(),
             "turn_id": tid,
             "turn_idx": idx if idx is not None else "",
@@ -84,7 +95,8 @@ def render_feedback_block_v1(turn: "Turn") -> None:
             "session_id": st.session_state.get("session_id", ""),
             "question": turn.user,
             "answer": turn.assistant,
-        })
+        }):
+            return
         st.rerun()
         
     if c2.button("👎 Non", key=f"down_{tid}", width="stretch"):
@@ -99,15 +111,14 @@ def render_feedback_block_v1(turn: "Turn") -> None:
                     chosen.append(label)
             comment = st.text_area("Commentaires (optionnel)", key=f"c_{tid}", placeholder="")
             if st.button("Envoyer", key=f"s_{tid}"):
-                turn.feedback = {
+                feedback = {
                     "rating": "down",
                     "reasons": chosen,
                     "comment": comment.strip() or None,
                     "at": dt.datetime.now(dt.UTC).isoformat(),
                 }
-                st.session_state[f"fb_sub_{tid}"] = True
                 idx = turn_index_by_id(tid)
-                log_feedback_row({
+                if not _save_feedback(turn, feedback, {
                     "ts": dt.datetime.now(dt.UTC).isoformat(),
                     "turn_id": tid,
                     "turn_idx": idx if idx is not None else "",
@@ -120,7 +131,8 @@ def render_feedback_block_v1(turn: "Turn") -> None:
                     "session_id": st.session_state.get("session_id", ""),
                     "question": turn.user,
                     "answer": turn.assistant,
-                })
+                }):
+                    return
                 st.toast("Merci pour votre retour 🙏")
                 st.rerun()
 
@@ -203,7 +215,7 @@ def render_feedback_block_v2(turn: "Turn") -> None:
                     st.rerun()
                 else:
                     all_reasons = chosen_positive + chosen_negative
-                    turn.feedback = {
+                    feedback = {
                         "stars": selected,
                         "helpful": helpful,
                         "reasons": all_reasons,
@@ -212,10 +224,9 @@ def render_feedback_block_v2(turn: "Turn") -> None:
                         "comment": comment.strip() or None,
                         "at": dt.datetime.now(dt.UTC).isoformat(),
                     }
-                    st.session_state[f"fb_sub_{tid}"] = True
                     
                     idx = turn_index_by_id(tid)
-                    log_feedback_row({
+                    if not _save_feedback(turn, feedback, {
                         "ts": dt.datetime.now(dt.UTC).isoformat(),
                         "turn_id": tid,
                         "turn_idx": idx if idx is not None else "",
@@ -228,7 +239,8 @@ def render_feedback_block_v2(turn: "Turn") -> None:
                         "session_id": st.session_state.get("session_id", ""),
                         "question": turn.user,
                         "answer": turn.assistant,
-                    })
+                    }):
+                        return
                     
                     st.toast("Merci pour votre retour 🙏")
                     st.rerun()
