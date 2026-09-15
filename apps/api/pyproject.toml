@@ -9,6 +9,7 @@ dependencies = [
     "httpx>=0.28.1,<1",
     "psycopg-pool>=3.3,<4",
     "psycopg[binary]>=3.3.3,<4",
+    "tzdata>=2025.2",
     "uvicorn>=0.48.0,<1",
 ]
 

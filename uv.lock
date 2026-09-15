@@ -328,6 +328,7 @@ dependencies = [
     { name = "httpx" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
+    { name = "tzdata" },
     { name = "uvicorn" },
 ]
 
@@ -347,6 +348,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.3,<4" },
     { name = "psycopg-pool", specifier = ">=3.3,<4" },
+    { name = "tzdata", specifier = ">=2025.2" },
     { name = "uvicorn", specifier = ">=0.48.0,<1" },
 ]
 
