@@ -818,7 +818,9 @@ with st.sidebar:
             st.session_state["_pending_logout"] = True
             st.rerun()
 
-    st.button("**:material/refresh: New chat**", key="new_sidebar", width="stretch", on_click=_request_new_chat)
+    st.button(
+        "**:material/refresh: Nouvelle conversation**", key="new_sidebar", width="stretch", type="primary", on_click=_request_new_chat
+    )
     st.markdown("### 🗂️ Filtres")
 
     retrieval_scope = None
@@ -1042,7 +1044,7 @@ with col1:
 # ═══════════════════════════════════════════════════════════════════════════════
 # SUGGESTIONS HARDCODÉES
 # Questions choisies manuellement pour guider les utilisateurs
-# 3 questions tirées au hasard à chaque "New chat" ou rechargement
+# 3 questions tirées au hasard à chaque "Nouvelle conversation" ou rechargement
 # ═══════════════════════════════════════════════════════════════════════════════
 
 SUGGESTIONS_POOL = [
@@ -1076,7 +1078,9 @@ with col2:
     st.write("")
     st.write("")
     st.write("")
-    st.button(label="**:material/refresh: New chat**", key="new", width="stretch", type="primary", on_click=_request_new_chat)
+    st.button(
+        label="**:material/refresh: Nouvelle conversation**", key="new", width="stretch", type="primary", on_click=_request_new_chat
+    )
 
     # Espacement pour aligner "Suggestions" avec le message d'accueil
     st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True)
