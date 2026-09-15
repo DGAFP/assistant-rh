@@ -188,6 +188,8 @@ def streamlit_runtime_environment(default_app_env: str) -> dict[str, str]:
         "GRIST_API_BASE_URL": env_optional("GRIST_API_BASE_URL"),
         "GRIST_DOC_ID": env_optional("GRIST_DOC_ID"),
         "GRIST_TABLE_ID": env_optional("GRIST_TABLE_ID"),
+        "GRIST_FEEDBACK_DOC_ID": env_optional("GRIST_FEEDBACK_DOC_ID"),
+        "GRIST_FEEDBACK_TABLE_ID": env_optional("GRIST_FEEDBACK_TABLE_ID"),
         "ALBERT_BASE_URL": env_optional("ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1"),
         "SCALEWAY_BASE_URL": env_optional("SCALEWAY_BASE_URL", "https://api.scaleway.ai/v1"),
         "STREAMLIT_BROWSER_GATHER_USAGE_STATS": env_optional("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false"),
