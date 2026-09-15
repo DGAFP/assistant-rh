@@ -604,3 +604,47 @@ matches the candidate exactly on four RAG scenarios. It is accepted for C4; the
 original M0b bundle stays intact. Unexercised reference/triangulation branches
 remain covered by synthetic tests. No HTTP completion or served-runtime switch
 is part of this extraction; C6/M1 remain separate gates.
+
+## C5 — context selection and generation
+
+`core/pipeline/steps/context_selector.py` and `generator.py` consume C4 values
+through injected `LLMPort` and `PromptStorePort` boundaries. Prompt rules live
+in `core/prompt_policy.py`. No provider client, database access, clock read or
+`last_*` diagnostics are owned by these steps.
+
+- Bind the selector's LLM port to its configured provider/model **without a
+  fallback**, as for the retained selector. Keep its temperature and selection
+  floor unchanged. The result distinguishes disabled/empty input, selection,
+  explicit rejection, parse failure and provider failure.
+- Bind generation to B3 `ChatGateway` with the configured Albert primary and
+  Scaleway fallback endpoints. Retries on the primary do not count as fallback.
+  Double failure raises `InferenceFailure`; partial streams never append an
+  alternative provider's answer or an error message.
+- Pass the request's captured `today="YYYY-MM-DD"` to every C5 invocation. Prompt
+  snapshots retain their raw content/revision; date and authorized ministry are
+  rendered only for the outgoing request. `PackagedPromptStore` supplies the
+  selector, generic generator and gestionnaire persona resources unchanged.
+- `generate()` preserves the historical non-stream behavior without history.
+  `stream()` takes immutable `Message` history and exposes `TextDelta` events,
+  then a `GenerationResult`. Consume it inside `async with` so an early break
+  or cancellation releases the upstream stream.
+- After C6's retrieval retry, pass `all_rejected=True` only for the final
+  rejection. Empty context plus that flag returns the unchanged no-answer text
+  without provider I/O. Empty context alone still follows the historical
+  generation path with explicit source-insufficiency instructions.
+- Selection/generation diagnostics carry prompt snapshots, exact requests,
+  completion outcome and safe store failures. `Completion`/`StreamCompleted`
+  carry optional `TokenUsage` when supplied by the provider. Missing/invalid
+  usage remains `None`; no estimate is presented as actual usage. Existing B3
+  stream request payloads are unchanged, so providers requiring usage opt-in
+  may omit it until C7 configures that capability.
+
+Prompt lookup preserves configured-name DB/resource, fallback-name DB/resource,
+then constant. Empty DB content skips that name's resource. Recoverable DB
+failures preserve their safe codes and continue to resources. Generator prompt
+freshness changes deliberately from an infinite instance cache to a snapshot
+per call; whole-run snapshot composition still belongs to C6. Configuration
+errors, unexpected bugs, cancellation and rejected/partial selector calls
+propagate instead of entering a misleading degraded-success path.
+
+See [C5 validation and recording scope](../../docs/architecture/hexagonal-split/10-c5-parity.md).

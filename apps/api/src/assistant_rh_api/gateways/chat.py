@@ -3,12 +3,12 @@
 import math
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import aclosing, asynccontextmanager
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
 from assistant_rh_api.core.errors import InferenceFailure
-from assistant_rh_api.core.models.inference import Attempt, ChatRequest, Completion, StreamCompleted, TextDelta
+from assistant_rh_api.core.models.inference import Attempt, ChatRequest, Completion, StreamCompleted, TextDelta, TokenUsage
 from assistant_rh_api.gateways.http import InferenceHTTP, WireFailure, decode_json, invalid
 from assistant_rh_api.gateways.settings import Endpoint, RequestPolicy, validate_chain
 
@@ -28,12 +28,22 @@ def _choice(data: Any) -> dict[str, Any]:
     return choice
 
 
-def _completion(data: Any) -> tuple[str, str | None]:
+def _usage(data: Any) -> TokenUsage | None:
+    raw = data.get("usage") if isinstance(data, dict) else None
+    if not isinstance(raw, dict):
+        return None
+    values = tuple(raw.get(key) for key in ("prompt_tokens", "completion_tokens", "total_tokens"))
+    if not all(type(value) is int and value >= 0 for value in values):
+        return None
+    return TokenUsage(*(cast(int, value) for value in values))
+
+
+def _completion(data: Any) -> tuple[str, str | None, TokenUsage | None]:
     choice = _choice(data)
     message = choice.get("message")
     if not isinstance(message, dict) or not isinstance(message.get("content"), str):
         raise invalid()
-    return message["content"].strip(), choice.get("finish_reason")
+    return message["content"].strip(), choice.get("finish_reason"), _usage(data)
 
 
 async def _sse(http: InferenceHTTP, response: httpx.Response, deadline: float) -> AsyncGenerator[str]:
@@ -92,7 +102,7 @@ class ChatGateway:
         attempts: list[Attempt] = []
         for endpoint in self._endpoints:
             try:
-                text, reason = await self._http.json(
+                text, reason, usage = await self._http.json(
                     endpoint,
                     "/chat/completions",
                     self._payload(request, endpoint, stream=False),
@@ -100,7 +110,7 @@ class ChatGateway:
                     attempts,
                     self._http.deadline(),
                 )
-                return Completion(text, endpoint.provider, endpoint.model, tuple(attempts), reason)
+                return Completion(text, endpoint.provider, endpoint.model, tuple(attempts), reason, usage)
             except InferenceFailure:
                 continue
         raise InferenceFailure(tuple(attempts)) from None
@@ -118,6 +128,7 @@ class ChatGateway:
             deadline = self._http.deadline()
             for number in range(1, self._http.policy.max_attempts + 1):
                 reason = None
+                usage = None
                 seen_choice = False
                 try:
                     async with self._http.open(endpoint, "/chat/completions", payload, deadline) as response:
@@ -129,6 +140,7 @@ class ChatGateway:
                                     attempts.append(Attempt(endpoint.provider, endpoint.model))
                                     break
                                 data = decode_json(event)
+                                usage = _usage(data) or usage
                                 if (
                                     isinstance(data, dict)
                                     and "error" not in data
@@ -151,7 +163,7 @@ class ChatGateway:
                                     emitted = True
                                     yield TextDelta(content)
                     # Close HTTP before exposing the terminal outcome.
-                    yield StreamCompleted(endpoint.provider, endpoint.model, tuple(attempts), reason)
+                    yield StreamCompleted(endpoint.provider, endpoint.model, tuple(attempts), reason, usage)
                     return
                 except WireFailure as exc:
                     attempts.append(exc.attempt(endpoint))

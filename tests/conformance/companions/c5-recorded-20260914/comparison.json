@@ -1,0 +1,121 @@
+{
+  "exact_comparison": true,
+  "cases": [
+    {
+      "id": "rag-acronym-contract",
+      "selector_candidates": 20,
+      "selected": 5,
+      "selection_status": "parse_failure",
+      "context_items": 1,
+      "answer_chars": 306,
+      "generator_provider": "albert",
+      "generator_model": "deepseek-v4-flash",
+      "generator_fallback_count": 0,
+      "generator_usage": {
+        "prompt_tokens": 3091,
+        "completion_tokens": 77,
+        "total_tokens": 3168
+      },
+      "exact": true
+    },
+    {
+      "id": "rag-conversation-followup",
+      "selector_candidates": 20,
+      "selected": 3,
+      "selection_status": "selected",
+      "context_items": 2,
+      "answer_chars": 2690,
+      "generator_provider": "albert",
+      "generator_model": "deepseek-v4-flash",
+      "generator_fallback_count": 0,
+      "generator_usage": {
+        "prompt_tokens": 4636,
+        "completion_tokens": 678,
+        "total_tokens": 5314
+      },
+      "exact": true
+    },
+    {
+      "id": "rag-legal-dgafp",
+      "selector_candidates": 20,
+      "selected": 2,
+      "selection_status": "selected",
+      "context_items": 1,
+      "answer_chars": 806,
+      "generator_provider": "albert",
+      "generator_model": "deepseek-v4-flash",
+      "generator_fallback_count": 0,
+      "generator_usage": {
+        "prompt_tokens": 2906,
+        "completion_tokens": 194,
+        "total_tokens": 3100
+      },
+      "exact": true
+    },
+    {
+      "id": "rag-ministry-mso",
+      "selector_candidates": 20,
+      "selected": 2,
+      "selection_status": "selected",
+      "context_items": 2,
+      "answer_chars": 988,
+      "generator_provider": "albert",
+      "generator_model": "deepseek-v4-flash",
+      "generator_fallback_count": 0,
+      "generator_usage": {
+        "prompt_tokens": 9138,
+        "completion_tokens": 220,
+        "total_tokens": 9358
+      },
+      "exact": true
+    }
+  ],
+  "scope": "Independent C5 stages on frozen C4 inputs; fresh staging prompts and live primary LLM replies. Not historical M0b or C6/M1.",
+  "candidate_source_hashes": {
+    "apps/api/src/assistant_rh_api/core/__init__.py": "65a87843ff3414db439bf19c4a7fcb2db4b0125de4219d46d7812a91d50dac09",
+    "apps/api/src/assistant_rh_api/core/auth.py": "b8185038a00c8bbb689d7f21951481f1b336e3849cd96a2c580334ed409d3525",
+    "apps/api/src/assistant_rh_api/core/catalog.py": "a5db4d0dcd788ed88b335df7b9a397dae74d28bf8e4ff0263e6ec1e18cbaeef2",
+    "apps/api/src/assistant_rh_api/core/errors/__init__.py": "3ab1dfe3e62f9f7ef54ef2a8a8b1a59403cc6863e003f878b8fb7916508ea1d7",
+    "apps/api/src/assistant_rh_api/core/errors/access.py": "b2d5d6c5f6e961a013fda5a1b2c5c36d1d14f7bd27596ae465a37ba808bfe07f",
+    "apps/api/src/assistant_rh_api/core/errors/base.py": "35bf63d2e659de2fbe7b541272533de0160e9b07ab4759e96f0db7c8b09c2d42",
+    "apps/api/src/assistant_rh_api/core/errors/inference.py": "06e52ff5d42940d31143652b2018cd98b7f6fbbf907d7c0c23ef915d7ed25816",
+    "apps/api/src/assistant_rh_api/core/errors/rag.py": "f1e5bdf237156f400651532e132bb35e8d01b1f1cb5726811117d9a71aeeb66f",
+    "apps/api/src/assistant_rh_api/core/errors/storage.py": "f1a242faa51234d02e32bfcdd5afa3989c2fe23f8859f01021af44cbc9932f8c",
+    "apps/api/src/assistant_rh_api/core/health.py": "ec850e88178bd272ea2a1e761c3fb67b5f5332b2dfe06ca8fa58bed94db24f3f",
+    "apps/api/src/assistant_rh_api/core/ministry_policy.py": "2588dd78e1d1000bd5df8317e60eb4d69e35ae016cfb464439577dcd4cf6ab82",
+    "apps/api/src/assistant_rh_api/core/models/__init__.py": "f6bfa2382a73e28e877484f90d5be84a0a32f12c8fa53f3ce97cef43c8aeb721",
+    "apps/api/src/assistant_rh_api/core/models/auth.py": "c531ebcea2b8a62473a507ab1a45a2ff56840c1fbc1f8828e89130039788c1ec",
+    "apps/api/src/assistant_rh_api/core/models/catalog.py": "b3da0602681eee258184a3c4d4e2043303028811d03b9fd1c331d2b9a9502198",
+    "apps/api/src/assistant_rh_api/core/models/configuration.py": "61b3cd5035de6ed9de50d1a0f03092a9294ee6eb549266170f3ad549168f3be0",
+    "apps/api/src/assistant_rh_api/core/models/context.py": "76b9943f38c9c143909796fa7a5efba533e320d372864173c351c0e96ed4283b",
+    "apps/api/src/assistant_rh_api/core/models/conversations.py": "f1c52ec14caa077884dc3aad89a35d2818ec7d3566a4c9ae387c22ce724be001",
+    "apps/api/src/assistant_rh_api/core/models/generation.py": "d674efeca7418a953c7a5b8a51e4ba8bd4294082a53301b47bc0f3f9613a0367",
+    "apps/api/src/assistant_rh_api/core/models/inference.py": "2286786733655e3287cbc88ddf5d641231816cdc2eaa94f881024b56115cdd6a",
+    "apps/api/src/assistant_rh_api/core/models/query_processing.py": "5ab4838d2601bf333c3b09b50a10da247edb330fe337e891c22d70eb19577ac9",
+    "apps/api/src/assistant_rh_api/core/models/rag_configuration.py": "032e5217e1997f2c2aabf5a696571a40deba1285b8c4df87ea252214867bbcdb",
+    "apps/api/src/assistant_rh_api/core/models/retrieval.py": "01fb33f10f5d780bfcf4baed88d7b2ad5030a2155164d4e17f2a768358047b16",
+    "apps/api/src/assistant_rh_api/core/models/selection.py": "931b40585198bd614188a6b0e6d310612e7f502e27cdc014a9926198f73a128d",
+    "apps/api/src/assistant_rh_api/core/pipeline/__init__.py": "cc753834beda3712b63fc2a1c62fc1963085814b74a05e4690c12bd54cdc7588",
+    "apps/api/src/assistant_rh_api/core/pipeline/steps/__init__.py": "808cddef07f218b4baee17b2d940520e08446d3f8fed83b80dd1c7d0efc4cb70",
+    "apps/api/src/assistant_rh_api/core/pipeline/steps/aggregation.py": "7cf5069a85f7a50fbf4a9bb0b5db5ae07d721982e1d152885d7c6d6d735cdef9",
+    "apps/api/src/assistant_rh_api/core/pipeline/steps/context_builder.py": "13027d6b80e22ef557541bc60f3f8614478219e0b9032c5db2e9f26bc0a06f81",
+    "apps/api/src/assistant_rh_api/core/pipeline/steps/context_formatting.py": "1c4f5e0fd8b0c0e1b39e17347ce377759c84ae015a2e08b56cb34fd30732257d",
+    "apps/api/src/assistant_rh_api/core/pipeline/steps/context_selector.py": "dc947ed3469eae6b66d967bf561f175e3b050d24344119003c1ffe4840b6bfc8",
+    "apps/api/src/assistant_rh_api/core/pipeline/steps/generator.py": "af7ec18f30370136ac79d1be4160afffb468aee560450d45e1176b2eff7c713a",
+    "apps/api/src/assistant_rh_api/core/pipeline/steps/legal_search.py": "82674dc793e8bab0be20f4e4127e4bfa148b009efef7fec5bb202ecae37a3f6f",
+    "apps/api/src/assistant_rh_api/core/pipeline/steps/query_processor.py": "85e5584826cf88f35d335c3c07d79f7a31efd3436a7e0e995d0db26fdfc8fe6a",
+    "apps/api/src/assistant_rh_api/core/pipeline/steps/retrieval.py": "87bdd34f213595520cc2d4fe9738dcc93778f87e548bc094d06223c4354caead",
+    "apps/api/src/assistant_rh_api/core/ports/__init__.py": "10e02549f6bb516cd4cee568f6684eb8379cc9c02a18439612f14199f423c000",
+    "apps/api/src/assistant_rh_api/core/ports/auth.py": "e88d0345643abd1b2514cfabdd3c82171b4604a2185856ae548a8cbc27ff074e",
+    "apps/api/src/assistant_rh_api/core/ports/configuration.py": "dd37c775e675e6258dfa33bef02b1062ef4391ee5c7746f32a01cc468ac51827",
+    "apps/api/src/assistant_rh_api/core/ports/conversations.py": "b94b68650aef36625cc91921eccd602c252f8b5be4d9860cd9df8e7c711d0d19",
+    "apps/api/src/assistant_rh_api/core/ports/inference.py": "58656414789021b6fc71fcba43c439722b20d1bcc814eaf8815162f5f9a97157",
+    "apps/api/src/assistant_rh_api/core/ports/retrieval.py": "6995af98fd63b7feb553632cc9bc07362f09c2ab94e1e98e39927f0bc04ac3ee",
+    "apps/api/src/assistant_rh_api/core/ports/system.py": "c06a43d3b1154b914a0d1bd210bc0407f0cb9da0834a957b9e57bf961b1919a0",
+    "apps/api/src/assistant_rh_api/core/prompt_policy.py": "82d01ea542bc989f6e33f516aa4a12fce6a51435a8ffb8216571b361631eacc2",
+    "apps/api/src/assistant_rh_api/core/rag_configuration.py": "74f487fc0be5cdecc2e06f1127c5755cd0d2f4fe0706bca226f9cec17a53a8dd"
+  },
+  "candidate_sha": "99fc62c620ad3ca0994609218cc01c5fbf7dc87a",
+  "retained_sha": "99fc62c620ad3ca0994609218cc01c5fbf7dc87a",
+  "offline_network_denied": true
+}

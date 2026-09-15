@@ -316,3 +316,33 @@ synthétiques, il satisfait la preuve d'acceptation C4. Le bundle M0b original
 reste intact ; les collisions de références non exercées restent hors preuve.
 Les cartes A5-02/05/11 ne sont pas déclarées closes par cette seule preuve :
 leur branchement et les gates d'intégration C6/M1 restent à vérifier.
+
+### Pré-extraction C5 — #462 (14 septembre 2026)
+
+Base auditée : `287afa0` (`dev`, C4 intégré). Le package historique reste servi
+et inchangé ; ses appelants pipeline, exports, évaluation et tests restent en place.
+
+| Dépendance / état observé | Frontière C5 et règle de parité |
+|---|---|
+| Selector : prompt DB puis ressource par nom, LLM configuré sans fallback ; état `last_*` | `PromptStorePort` et `LLMPort` injectés, résultat immuable par appel. Désactivé/vide : aucun I/O. Parsing invalide : top 5 ; panne provider : toutes les sections ; rejet explicite : vide sans plancher. Déduplication et top-up conservent l'ordre LLM puis le rang entrant. |
+| Generator : prompt en cache d'instance, rendu ministère, formatter C4 et fallback LLM | `core/prompt_policy.py` et `core/pipeline/steps/generator.py`. Prompts bruts révisionnés relus par appel, sans cache métier ; ordre DB/ressource/default inchangé. Le gateway B3 reçoit Albert puis Scaleway ; aucune classe provider importée dans le core. |
+| No-answer : texte constant dans `Pipeline`, seulement si contexte vide ET rejet selector | Décision extraite dans l'étape de génération, après le retry composé par C6. Un contexte vide sans rejet garde l'appel historique avec consigne d'insuffisance de sources. |
+| Diagnostics provider/compteurs, prompts et usage | Valeurs retournées avec le résultat ou événement terminal ; retries distincts du fallback, usage inconnu représenté par absence. Aucun `last_*`. |
+| A5-03/08/12 | Fraîcheur par appel intentionnelle au lieu du cache generator infini ; DB indisponible/conflit/échec vers ressources. Erreurs de programmation/configuration et annulation propagées ; panne stream partiel reste l'erreur typée B3, sans texte injecté. |
+
+Preuve prévue : comparaison différentielle avec le runtime conservé sur entrées
+synthétiques explicites, tests ports/gateways, invariants prompts/ministères,
+rejet total, fallback et isolation concurrente. Le complément C4 ne capture pas
+les réponses brutes selector/generator et ne constitue pas une preuve C5. Aucune
+entrée M0b manquante ne sera reconstruite depuis une sortie attendue ; C6/M1
+et les cartes A5 dépendantes de l'assemblage restent ouverts.
+
+Bilan C5 après extraction : ressources selector/generator/persona identiques au
+runtime conservé ; date explicite `today` requise par chaque step, rendue avant
+le ministère sans modifier le snapshot brut. La revue a vérifié l'isolation
+concurrente et le cycle de vie des streams. La conformance différentielle
+synthétique est maintenant complétée par
+quatre cas enregistrés et rejoués exactement : trois sélections, un repli
+parsing top-5 et quatre générations réussies. Les étapes sont indépendantes
+sur les entrées C4 figées, sans preuve d’assemblage C6. [Preuves et reliquats C5](10-c5-parity.md). Les lignes A5
+historiques et les gates C6/M1 restent ouverts.

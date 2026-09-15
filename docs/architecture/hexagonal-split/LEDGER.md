@@ -551,3 +551,106 @@ Le bundle M0b original reste intact ; cette nouvelle référence ne prétend pas
 reconstituer ses appels historiques. C6/M1 et les cartes A5 dépendantes du
 branchement restent ouverts. Publication de la preuve sans changement du core ;
 aucune fusion dans le cadre de cette mise à jour.
+
+## C5 — selector, prompts ministériels et génération / #462 (2026-09-14)
+
+Extraction API dans `core/prompt_policy.py` et
+`core/pipeline/steps/{context_selector,generator}.py`. Ports prompts/LLM injectés,
+valeurs C4 conservées, diagnostics immuables et usage provider optionnel retournés
+par appel ou événement terminal. Aucun provider ni accès DB/horloge dans le core,
+aucun `last_*`, aucun changement du package historique servi.
+
+La [carte A5 préalable](07-runtime-isolation-audit.md#pré-extraction-c5--462-14-septembre-2026)
+fixe la matrice sélection/top-5/keep-all/rejet/no-answer et l'ordre des ressources.
+La revue indépendante a identifié deux dépendances implicites : substitution
+`{today}` dans l'ancien loader et ressource persona gestionnaire en fallback.
+Toutes deux sont préservées, avec date explicite par requête et trois ressources
+C5 copiées sans modification. Aucun prompt, modèle ou seuil qualité modifié.
+
+A5-01/03/08/12 avancent côté API : pas d'état de diagnostic partagé ; snapshots
+bruts révisionnés frais par appel au lieu du cache generator sans invalidation ;
+pannes récupérables DB vers ressources, double échec provider typé, annulation et
+bugs propagés. L'usage absent reste inconnu ; les requêtes B3 de streaming ne
+changent pas. La cohérence de tous les snapshots du run et l'assemblage restent
+C6, le transport SSE C7. Les cartes historiques ne sont pas déclarées closes.
+
+Conformance synthétique différentielle : prompts complets et date, ministères,
+priorités/citations/complémentarité, ordre et top-up, rejet total, contexte
+insuffisant, panne DB/persona, réussite/fallback/double panne, isolation et
+fermeture des streams. L'outillage de complément C5 est éprouvé hors ligne par
+aller-retour recorder/replay et contrôles négatifs, avec services simulés.
+
+**État initial avant la capture autorisée ci-dessous : gate C5 ouvert, aucun enregistrement live effectué.**
+Le recording préparé utiliserait quatre cas et sources figés du complément C4,
+les deux prompts staging en lecture seule, puis de nouveaux appels providers.
+Cette autorisation a ensuite été donnée pour la capture ci-dessous. Aucun input historique manquant n'est
+reconstitué. Voir [périmètre, preuves et commande](10-c5-parity.md).
+
+Validation locale finale après ajout du replay publié : **636 tests API réussis, 127 tests dépendants de la
+DB synthétique ignorés** ; Ruff, mypy et les trois contrats d'import réussis.
+Suite historique : 1 429 tests réussis sous sandbox et 46 ignorés ; le module
+HTTP initialement bloqué par l'interdiction de bind loopback a été rejoué avec
+succès (**14/14**, soit les 13 erreurs/blocages initiaux résolus). Auto-check M0b :
+7 fixtures / 56 artefacts intacts, `exact_comparison: null`. Revue indépendante
+finale favorable sur le code ; la preuve C5 enregistrée est décrite ci-dessous,
+l’intégration C6/M1 reste ouverte.
+
+
+### C5 — complément enregistré et rejoué après autorisation
+
+[Rapport et archive autonome](../../../tests/conformance/companions/c5-recorded-20260914/README.md),
+core `99fc62c`, fin de capture le 14 septembre 2026 à 14:22:47 UTC.
+Les quatre cas/config C4 ont été vérifiés octet pour octet puis figés avant I/O.
+Deux lectures de prompts staging sous TLS/read-only ; huit appels Albert réussis
+(`openweight-large` selector, `deepseek-v4-flash` generator). Aucun fallback
+provider, aucune écriture DB ni déploiement.
+
+**Replay exact réussi** : 80 candidats selector, 12 conservés ; 6 context items
+de génération et quatre réponses identiques. Un des quatre selector a produit
+une réponse malformée : le repli historique top-5 et ses diagnostics sont
+préservés exactement. Les trois autres sélections sont normales. Les étapes
+sont indépendantes, le generator consomme les contextes C4 figés et non les
+nouveaux choix selector ; aucun replay d'assemblage C6 n'est revendiqué.
+
+L'archive contient les sources figées, prompts bruts, requêtes/réponses provider,
+sorties attendues et empreintes ; secrets et journal privé exclus. Replay sans
+réseau revérifié après extraction avec la seule bibliothèque standard. Trois
+contrôles négatifs réussissent, y compris prompt et réponse attendue modifiés
+après recalcul de leur hash. Les tests CI rejouent les fixtures publiées contre
+le core du checkout courant. La preuve C5 est disponible pour la revue ; C6/M1
+et les cartes A5 historiques restent distincts. Aucun artefact M0b original
+modifié ; aucune entrée historique absente reconstruite.
+
+### C5 — complément d'acceptation du 15 septembre 2026
+
+[Matrice des critères, replays et revue de sourçage](../../../tests/conformance/companions/c5-acceptance-20260915/README.md) :
+quatre cas enregistrés rejoués sur `a8bb4a0`, neuf cas synthétiques supplémentaires
+(dont rejet total, insuffisance, fallback et double panne), huit contrôles
+négatifs au total. Le vrai gateway API est exécuté sur transport simulé ; aucun
+nouvel accès DB/provider réel. 182 tests ciblés et Ruff passent.
+
+Revue manuelle des 27 unités de réponse contre le contexte effectivement envoyé :
+appuis retrouvés dans le ministère sélectionné. Réserves conservées : portée
+MATTE/proportionnalité des formalités, et exception mobilité sur emploi de
+direction non présentée. Les tests protègent citations, offsets, empreintes et
+couverture des réponses, pas une certification sémantique automatique. Aucun
+prompt/seuil/runtime ni artefact M0b original modifié ; clôture après fusion et
+gates C6/M1 restent distincts.
+
+Durcissement de l'outillage C5 après relecture : la commande autonome refuse
+tout panel qui ne contient pas exactement les neuf scénarios uniques attendus
+avec leurs étapes, avant tout client provider. Les contrôles négatifs utilisent
+les identifiants et supportent un ordre différent des cas. Les nouveaux
+enregistrements portent `head: null` / `unverified_snapshot` et leurs empreintes,
+sans attribution Git non vérifiée. Les fixtures historiques restent intactes.
+Les régressions reproduites avant correction passent désormais : **202 tests
+ciblés**, dont la CLI avec panel vide et la provenance sur sources modifiées,
+ainsi que Ruff ; aucun changement de runtime/prompt/seuil.
+
+Correction du faux positif en mode Python optimisé : toutes les assertions de
+validation du compagnon synthétique sont remplacées par des contrôles explicites.
+Les réponses/requêtes altérées et les empreintes incohérentes échouent en CLI
+normale, `-O` et `-OO` ; les replays valides et les cinq contrôles négatifs passent
+dans ces trois modes. Régressions vérifiées avant/après : 10 échecs avant le
+correctif ; **220 tests ciblés** et Ruff passent après correction. Les fixtures
+et le runtime C5 restent inchangés.

@@ -1,0 +1,30 @@
+{
+  "baseline_passed": true,
+  "controls": [
+    {
+      "mutation": "prompt",
+      "detected": true,
+      "reason": "exact request mismatch"
+    },
+    {
+      "mutation": "selector-expected",
+      "detected": true,
+      "reason": "output mismatch: selector-total-rejection"
+    },
+    {
+      "mutation": "fallback-route",
+      "detected": true,
+      "reason": "provider order mismatch"
+    },
+    {
+      "mutation": "fallback-reply",
+      "detected": true,
+      "reason": "output mismatch: generator-fallback"
+    },
+    {
+      "mutation": "no-answer-expected",
+      "detected": true,
+      "reason": "output mismatch: final-rejection-no-answer"
+    }
+  ]
+}
