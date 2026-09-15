@@ -22,6 +22,26 @@ import scaleway_data_jobs  # noqa: E402
 import scaleway_rag_health_deploy  # noqa: E402
 
 
+@pytest.mark.parametrize(
+    ("dockerfile", "domain"),
+    [
+        ("docker/Dockerfile.service_public_pipeline", "service_public"),
+        ("docker/Dockerfile.service_public_ingestion", "service_public"),
+        ("docker/Dockerfile.legifrance_bulk_dump", "legifrance"),
+        ("docker/Dockerfile.legifrance_pipeline", "legifrance"),
+        ("docker/Dockerfile.legifrance_ingestion", "legifrance"),
+        ("docker/Dockerfile.pdf_sources_pipeline", "pdf_sources"),
+        ("docker/Dockerfile.embeddings_job", "embeddings"),
+        ("docker/Dockerfile.rag_health_exporter", None),
+        ("docker/Dockerfile.streamlit", None),
+    ],
+)
+def test_dockerfile_change_selects_only_its_data_domain(dockerfile: str, domain: str | None) -> None:
+    selected = data_engineering_plan.classify_from_files([dockerfile])
+
+    assert {name for name, enabled in selected.items() if enabled} == ({domain} if domain else set())
+
+
 def test_classify_from_files_selects_only_changed_data_domains() -> None:
     selected = data_engineering_plan.classify_from_files(
         [
@@ -121,7 +141,7 @@ def test_changed_files_falls_back_to_all_files_when_git_diff_fails(monkeypatch: 
         if args == ("diff", "--name-only", "base-sha", "HEAD"):
             raise data_engineering_plan.subprocess.CalledProcessError(1, ["git", *args])
         if args == ("ls-files",):
-            return "Dockerfile.embeddings_job\nREADME.md\n"
+            return "docker/Dockerfile.embeddings_job\nREADME.md\n"
         raise AssertionError(f"Unexpected git args: {args}")
 
     monkeypatch.delenv("GITHUB_EVENT_BEFORE", raising=False)
@@ -129,7 +149,7 @@ def test_changed_files_falls_back_to_all_files_when_git_diff_fails(monkeypatch: 
     monkeypatch.delenv("GITHUB_SHA", raising=False)
     monkeypatch.setattr(data_engineering_plan, "git_output", fake_git_output)
 
-    assert data_engineering_plan.changed_files() == ["Dockerfile.embeddings_job", "README.md"]
+    assert data_engineering_plan.changed_files() == ["docker/Dockerfile.embeddings_job", "README.md"]
 
 
 def test_workflow_dispatch_main_writes_legifrance_matrix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -166,7 +186,7 @@ def test_workflow_dispatch_r2_builds_only_embeddings_image_and_own_run(tmp_path:
     outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
     assert outputs["r2"] == "true"
     assert outputs["mode"] == "generate"
-    assert json.loads(outputs["matrix"])["include"] == [{"image": "embeddings-job", "dockerfile": "Dockerfile.embeddings_job"}]
+    assert json.loads(outputs["matrix"])["include"] == [{"image": "embeddings-job", "dockerfile": "docker/Dockerfile.embeddings_job"}]
     assert json.loads(outputs["run_matrix"])["include"] == [
         {
             "name": "legifrance-r2-summaries",
@@ -198,7 +218,7 @@ def test_workflow_dispatch_r2_non_apply_neutralizes_embeddings_companions(tmp_pa
     outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
     assert outputs["r2"] == "true"
     assert outputs["run_embeddings"] == "false"
-    assert json.loads(outputs["matrix"])["include"] == [{"image": "embeddings-job", "dockerfile": "Dockerfile.embeddings_job"}]
+    assert json.loads(outputs["matrix"])["include"] == [{"image": "embeddings-job", "dockerfile": "docker/Dockerfile.embeddings_job"}]
     assert [entry["name"] for entry in json.loads(outputs["run_matrix"])["include"]] == ["legifrance-r2-summaries"]
 
 
@@ -1749,7 +1769,7 @@ def test_classify_from_files_selects_pdf_sources_on_mi_changes() -> None:
 def test_classify_from_files_selects_pdf_sources_on_job_and_dockerfile_changes() -> None:
     for path in (
         "packages/data-engineering/src/assistant_rh_data_engineering/jobs/pdf_sources_medallion.py",
-        "Dockerfile.pdf_sources_pipeline",
+        "docker/Dockerfile.pdf_sources_pipeline",
         "config/scaleway_serverless_job_pdf_sources_mi.json",
     ):
         selected = data_engineering_plan.classify_from_files([path])

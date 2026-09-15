@@ -28,10 +28,12 @@ from src.ui.feedback_dashboard import (
     resolve_period,
     visible_available_groups,
 )
+from src.ui.feedback_grist import render_feedback_grist_sync
+from src.ui.page_config import configure_page
 from src.ui.user_groups_store import group_chart_maps, list_groups
 
 try:
-    st.set_page_config(page_title="Feedback Dashboard", page_icon="📊", layout="wide")
+    configure_page(page_title="Feedback Dashboard", page_icon="📊", layout="wide")
 except Exception:
     pass
 
@@ -68,8 +70,8 @@ def load_feedbacks_with_groups() -> pd.DataFrame:
                 f.comment,
                 f.stars,
                 f.session_id,
-                f.question,
-                f.answer,
+                COALESCE(NULLIF(f.question, ''), r.question) AS question,
+                COALESCE(NULLIF(f.answer, ''), r.answer) AS answer,
                 f.error_category,
                 f.ai_reason,
                 f.ai_analyzed_at,
@@ -79,7 +81,8 @@ def load_feedbacks_with_groups() -> pd.DataFrame:
                 r.selected_ministry,
                 r.dist_after_rerank,
                 r.rag_version,
-                r.chunk_selection_mode
+                r.chunk_selection_mode,
+                r.total_time_ms
             FROM chat_feedbacks f
             LEFT JOIN chat_runs r ON f.turn_id = r.turn_id
             ORDER BY f.ts DESC, f.id DESC
@@ -130,7 +133,9 @@ def load_questions_stats() -> pd.DataFrame:
 def process_feedbacks(df: pd.DataFrame) -> pd.DataFrame:
     """Process and enrich feedback data."""
     if df.empty:
-        return df
+        return df.reindex(columns=df.columns.union(["user_group", "date", "reasons_positive_list", "reasons_negative_list"]))
+
+    df = df.copy()
 
     # Convert timestamps to Paris timezone
     if "ts" in df.columns:
@@ -188,7 +193,9 @@ def process_feedbacks(df: pd.DataFrame) -> pd.DataFrame:
 def process_questions(df: pd.DataFrame) -> pd.DataFrame:
     """Process questions data for stats."""
     if df.empty:
-        return df
+        return df.reindex(columns=df.columns.union(["user_group", "date"]))
+
+    df = df.copy()
 
     # Convert timestamps to Paris timezone
     if "ts" in df.columns:
@@ -866,6 +873,8 @@ st.divider()
 # ------------------------------
 # Export
 # ------------------------------
+render_feedback_grist_sync(df_f, df_feedbacks_raw, applied_period_caption)
+
 unified_export_df = build_unified_feedback_export(df_q, df_f)
 st.caption(
     "Une ligne par question. En cas de feedbacks multiples, l’export retient le plus récent après application des filtres "

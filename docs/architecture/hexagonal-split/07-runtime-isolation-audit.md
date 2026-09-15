@@ -59,12 +59,40 @@ La recherche ne trouve aucun import direct dans `packages/data-engineering` ni `
 | Module | Consommateurs | Dépendances et état actuels | Cible d'extraction |
 |---|---|---|---|
 | `pipeline.py` | `INT` (`__init__`, typing de `chat_logger`); `CHAT`; `EVAL-UI`; `GOLD`; `SCRIPTS`; `TESTS`; `CI` | Résout le DSN si absent ; construit tous les stages ; mesure avec `time.time()` ; crée un trace id aléatoire ; accumule tentatives, timings et traces. `_RunState` est local, mais `last_result`, `last_query_result`, `_timing`, `_selector` et les diagnostics du générateur restent partagés. Le streaming oblige le consommateur à lire `last_result` après épuisement. | `core/pipeline/orchestration.py` reçoit ports, config et un `RunContext` par appel. Les méthodes retournent un résultat explicite ; le flux final transporte aussi son résultat terminal. Horloge et ids sont injectés au cas d'usage. Aucun `last_*`. |
-| `query_processor.py` | `INT` (`pipeline`); `EVAL-UI`; `GOLD` importe aussi le privé `_fold`; `TESTS` | Charge les acronymes par SQL au constructeur ; charge le prompt DB/fichier et instancie un client LLM à chaque classification ; rend le ministère ; normalise NFC ; règles regex légales pures. `_acronyms` est un snapshot mutable dont la fraîcheur dépend de la durée de vie de l'objet. | Règles dans `core/pipeline/steps/query_processor.py`; `AcronymStorePort`, `PromptStorePort`, `LLMPort`. Snapshot acronymes/prompt, révisions et réponse brute vont dans le `RunContext`; regex et parsing restent purs. |
+| `query_processor.py` | `INT` (`pipeline`); `EVAL-UI`; `GOLD` importe aussi le privé `_fold`; `TESTS` | Relecture C2 au `c3c1786` : acronymes SQL au constructeur, prompt DB/fichier par classification, Albert seul (pas `FallbackLLMClient`), NFC, rendu ministère/date, historique et parsing permissif. Ordre et erreurs détaillés ci-dessous. | C2/#459 livre `core/pipeline/steps/query_processor.py` + `legal_search.py`, derrière `AcronymStorePort`, deux `PromptStorePort` (DB/ressources), `LLMPort`. `QueryProcessing` rend résultat et diagnostics immuables par appel ; C6 les intégrera au `RunContext`. Consommateurs historiques conservés. |
 | `retriever.py` | `INT` (`pipeline`); `EVAL-UI` appelle directement `pipe._retriever`; `TESTS` | Appel embeddings, `ThreadPoolExecutor`, connexions psycopg par table et recherche de titres, introspection de schéma, SQL vectoriel/lexical/hybride, `SET ivfflat.probes`, RRF, normalisation, dédup R2 et chronométrage sont mêlés. `_embedder.last_model_used` et `_table_columns_cache` sont partagés. Les erreurs non scopées donnent des résultats partiels ; les erreurs scopées remontent. | `EmbeddingPort` + `SearchPort` retournent candidats/rangs bruts et erreurs typées. `db/search.py` porte uniquement allowlist, SQL, mapping de lignes et session DB. Fusion/RRF, score plafond, heading match, dédup R2, gates, top-k et politique strict/partiel restent dans `core/.../retrieval.py`. Cache de colonnes dans l'adaptateur, borné et synchronisé ; diagnostics dans le `RunContext`. |
 | `section_aggregator.py` | `INT` (`pipeline`); `EVAL-UI` appelle `pipe._aggregator`; `TESTS` | Charge sections/documents par SQL, groupe et score, puis appelle le reranker HTTP. Lazy `_reranker` partagé ; `time.time()` ; mutation du score des objets sélectionnés. Les diagnostics sont déjà retournés comme valeur. | `ContentStorePort` fournit les métadonnées ; `RerankerPort` renvoie indices/scores et issue provider. Agrégation, pondération, fusion R2, troncature et départages restent purs dans `core/.../aggregation.py`; diagnostics ajoutés au `RunContext`. |
 | `context_selector.py` | `INT` (`pipeline`, export package); `EVAL-UI`; `TESTS` | Lit prompt DB/fichier, appelle LLM, rend le ministère. `_last_decisions`, `_last_raw_response`, `_last_reasoning`, `_last_prompt_chars` sont mutés. Échec/parsing invalide conserve le top 5 ou toutes les sections selon le point d'échec ; rejet JSON vide déclenche le no-answer/retry. | `PromptStorePort` + `LLMPort`; composition/parsing/top-up purs. Retourner `SelectionResult(sections, decisions, raw, reason, outcome)` ; copier ses diagnostics dans le `RunContext`. |
 | `context_builder.py` | `INT` (`pipeline`, `generator` pour le formatter); `EVAL-UI` appelle `pipe._context_builder`; `TESTS` | SQL vers `rag_documents` et `rag_chunks_dgafp`, budget, document entier, triangulation et refs dans la même classe. `last_resolved_refs` est partagé ; les `ContextItem` sont enrichis/mutés. | `ContentStorePort` charge documents et références en lot. Les règles de budget/triangulation/ordre restent dans `core/.../context_builder.py`. Retour explicite `ContextBuildResult(items, resolved_refs, diagnostics)` ; refs dans le `RunContext`. Formatter pur séparé pour éviter l'import croisé du générateur. |
 | `generator.py` | `INT` (`pipeline`); `TESTS` | Charge le prompt DB/fichier, ajoute une règle en code, rend le ministère et appelle le fallback LLM. Cache `_base_prompt` sans invalidation, client `_llm` partagé, compteurs/provider par requête et `last_full_prompt`/`last_system_prompt` mutables. | Composition dans `core/prompt_policy.py` et step generator ; `PromptStorePort` + `LLMPort`. `GenerationResult`/événement terminal porte provider, modèle, fallback, prompts ou hashes. Cache par révision dans l'adaptateur ; aucun diagnostic sur le client partagé. |
+
+### Relecture C2 — query processor (#459, 2026-09-10)
+
+La carte a été confrontée aux sources de `dev` au `c3c1786`, avant définition
+de la frontière C2. GitNexus n'est pas disponible dans cette session ; les imports
+et appels ont été recherchés dans `apps/`, `packages/`, `src/`, `tests/` et
+`scripts/`. Le runtime, l'admin, le goldset et les exports historiques restent
+sur le package existant jusqu'aux extractions de leurs consommateurs.
+
+| Règle implicite constatée | Conservation / frontière C2 |
+|---|---|
+| Acronymes SQL `priority DESC`, dict conservant la première position et la dernière expansion en cas de doublon ; regex sensibles à la casse, sans filtre uppercase supplémentaire. | Le step respecte l'ordre du tuple fourni par B2 ; doublons, frontières de mots, casse et remplacements successifs (y compris expansion imbriquée) sont testés. B2 départage déjà les priorités égales par acronyme/id. |
+| Acronymes figés au constructeur historique ; erreurs SQL → dict vide. | Snapshot frais par appel dans l'API, sans état métier partagé ; `DatabaseConflict`/`DatabaseFailure`/`DatabaseUnavailable` → détection vide avec diagnostic et un `WARNING` sûr au point de décision dans le step (exception de logging ciblée autorisée en revue #545). Changement de cycle de vie explicite A5-03 ; le cache historique servi reste intact. |
+| Prompt : nom configuré puis `intent.md` ; pour chaque nom DB puis fichier si absence/panne ; contenu DB vide ne consulte pas le fichier du même nom. | Même ordre, avec ports séparés ; `PackagedPromptStore` embarque `intent.md` octet pour octet. Révision/origine du contenu brut et erreurs DB sont rendues par appel. |
+| Date remplacée avant le ministère, puis `.format(history, query, acronyms_section)` ; moins de deux messages ignorés, sinon huit derniers, 300 caractères chacun, toute autre role affichée comme Assistant. | Rendu pur testé contre le runtime historique. C6 fournit la date locale capturée via son horloge et l'id ministère canonique autorisé ; pas de lecture d'horloge/environnement dans C2. |
+| `LLMClient(provider="albert", model=config.intent_model, temperature=0)` sans fallback Scaleway, sans message système. | Un seul appel `LLMPort.complete`, température 0 ; C6 doit injecter la gateway Albert configurée avec `intent_model`, sans fallback. Les retries/erreurs typées restent le contrat B3. |
+| Exception classification → `rag_query`, confiance 0,5, question inchangée, flag juridique false et signal LLM null, aucune expansion de secours. | Repli conservé pour pannes attendues/réponses inexploitables, désormais explicitement `degraded`. Durcissement autorisé en revue #545 : erreurs de configuration, bugs, rejets provider et annulations remontent ; seules les causes sûres sont rendues. Voir le contrat du README et l'entrée de revue du LEDGER. |
+| Intent inconnu → RAG, thème inconnu → autre, coercions `float`/`bool`, JSON avec fences ; champs catalogue/source ignorés. | Parsing et réponses directes identiques, y compris `clarification` et `follow_up`, sans nouvelle règle qualité. |
+| La reformulation prime pour retrieval, mais seules question originale et `query_for_retrieval` LLM alimentent l'heuristique juridique ; LLM true prime même hors scope. | Ordre inchangé ; heuristique désactivée en cas d'échec ou gating off. `enable_hyde` reste inactif. |
+
+La preuve C2 compare les sept sorties d'étape M0b inchangées et les réponses
+directes enregistrées. Le bundle M0b ne contient pas les réponses LLM brutes,
+le contenu des prompts DB ni le snapshot des acronymes : les entrées LLM du test
+sont **reconstituées**, distinctes des sorties de référence, et cette limite ne
+constitue pas une preuve de replay brut ou de qualité live. Les tests
+différentiels complètent la preuve pour prompts, acronymes, parsing et erreurs.
+La cohérence transactionnelle entre plusieurs stores et la composition du
+`RunContext` restent C6 ; la suite de l'extraction A5-03 reste également C5.
 
 ## Carte des modules de support et de contrôle
 
@@ -129,6 +157,59 @@ Le `RunContext` ne contient jamais de DSN, secret, pool, connexion, client HTTP/
 
 ## Frontière sensible retrieval métier / SQL
 
+### Ré-audit C3 / #460 — avant extraction, 2026-09-10
+
+- Cible : `apps/api/core` via `SearchPort`/`EmbeddingPort`, sans import du runtime
+  historique. Les consommateurs Streamlit/admin restent sur leur implémentation
+  actuelle ; l'assemblage moteur appartient à C6. C2/#459 a été livré par #545,
+  intégré à cette branche depuis `dev` (`a86719f`).
+- Le port B2 expose les lanes brutes mais pas la fusion hybride SQL historique :
+  conserver alpha, RRF k=60, rang des absents=`fetch_k`, limite avant dédup R2,
+  sur-échantillonnage x2 DGAFP, puis RRF inter-sources et plafond des sources
+  participantes (y compris celles qui retournent un pool vide).
+- Les headings sont un chemin indépendant : filtre métier sur titre/intertitre,
+  pas un reranker provider. RGRH et les tables de comparaison n'en ont pas.
+- Erreur d'une lane hybride : toute la recherche chunks de cette source échoue ;
+  préserver le heading indépendant en mode partiel. Le scope ministère échoue
+  fermé. Modèle d'embedding et diagnostics doivent voyager dans le résultat
+  de chaque requête, sans `last_model_used`, chronomètre ou singleton du core.
+- Écart du libellé #460 : `9bf1cf0` et `dev` interrogent DGAFP et forcent son mode
+  hybride dès qu'il est dans le scope, même si `needs_legal_search=false`.
+  M0b MSO l'atteste. Aucun nouveau gate juridique ne sera introduit dans C3 ;
+  les réponses directes court-circuitent le retrieval en amont.
+- Limite de preuve découverte : M0b contient les **sorties finales** de retrieval,
+  pas les embeddings ni les résultats bruts vectoriels/lexicaux/headings.
+  Il ne permet donc pas de rejouer honnêtement l'extraction au `SearchPort`.
+  La parité différentielle sur corpus synthétique sera distinguée de ce gate,
+  qui reste ouvert sans enregistrement complémentaire approuvé. La référence
+  versionnée ne sera ni écrasée ni reconstruite depuis les sorties attendues.
+- Départages : rang brut puis identifiants ; score hybride puis chunk id ;
+  score métier, heading score, publisher, chunk id et section id ; fusion dans
+  l'ordre stable des sources. L'ordre de complétion asynchrone n'intervient pas.
+
+Résultat de l'extraction : `core/pipeline/steps/retrieval.py` porte ces règles et expose un
+`RetrievalResult` immuable. Le modèle préféré choisit une chaîne `EmbeddingPort`
+par requête ; le modèle effectivement retourné choisit la colonne vectorielle.
+`SearchPort.hybrid_candidates` renvoie deux lanes brutes dans un seul snapshot
+SQL, sans calcul RRF côté DB. Sur demande explicite en revue, le step journalise
+un `WARNING` par lane échouée (source, lane, code DB allowlisté ou
+`unexpected_error`, politique strict/partiel), sans question, DSN, message
+ni traceback d’exception. Comme C2, cette journalisation standard au point de
+décision est une exception d’observabilité ciblée ; elle ne change ni les
+résultats ni la politique de propagation. Un `TaskGroup` joint les tâches, y compris à
+l'annulation ; le pool B1 borne les connexions. L'introspection reste une lecture
+fraîche d'adaptateur (aucun cache global). Les overrides de comparaison sont
+injectés explicitement au catalogue d'évaluation ; doublons physiques rejetés
+avant I/O pour éviter un écrasement de résultats dépendant de l'ordonnancement.
+
+Écart A5-11 constaté par le test différentiel : le résolveur de section historique
+fait `LIMIT 1` sans id secondaire quand deux sections correspondent au même
+chemin. L'adaptateur B2 impose déjà `section_id` comme départage et peut donc
+choisir une autre section dans ce cas ambigu. La fixture de parité C3 a une
+relation unique ; les tests B2 conservent les égalités et vérifient leur ordre.
+Cette divergence préexistante, relevant de C3/C4, reste visible pour la revue du
+gate M0b ; elle n'est pas présentée comme une égalité historique prouvée.
+
 Le port ne doit pas reproduire la classe `Retriever` actuelle sous un autre nom.
 
 ```text
@@ -178,3 +259,90 @@ Les tris stables implicites du code historique ne suffisent pas comme contrat ci
 6. Le thread OTLP daemon et les deux transactions de logging ne donnent aucune garantie de complétude à la fin du stream.
 
 Ces risques sont tolérés uniquement dans le chemin historique à courte durée de vie. Le wiring API ne doit pas partager les objets actuels en attendant C6 : les adaptateurs B1/B3 partagés doivent être sûrs avant d'être branchés au core.
+
+
+## Ré-audit C4 avant extraction — #461 (2026-09-14)
+
+Cartes `section_aggregator.py` et `context_builder.py` revérifiées sur `dev`
+`4cef0ce651b2352d6d09115a572b1dbb130ee73c` avant extraction. Les consommateurs historiques restent
+sur le runtime conservé ; les nouveaux steps sont dans
+`assistant_rh_api/core/pipeline/steps/`.
+
+- Agrégation : `ContentStorePort.sections` remplace le lookup SQL ;
+  `RerankerPort` remplace le client lazy. Les pondérations, regroupements R2
+  bornés par source, texte reranker (heading + 1 500 caractères), caps et
+  tris stables sont conservés. L'ordre des chunks entrants départage les
+  scores agrégés égaux ; le port reranker départage par indice d'entrée.
+  Scores et diagnostics deviennent des valeurs immuables par appel.
+- Contexte : documents et références passent par `ContentStorePort` ;
+  `last_resolved_refs` est remplacé par un résultat explicite par appel.
+  L'estimation `len(text) // 4`, les modes standard/wide, le premier jeu de
+  références d'un document entier, les clés de dédoublonnage par section/heading,
+  la priorité des sections sur les documents entiers à score égal et le budget
+  de références primaire-avant-triangulation restent inchangés. La triangulation
+  ignore historiquement le budget et le cap de sections : ne pas corriger dans C4.
+- Les pannes DB typées retrouvent les fallbacks historiques (section depuis
+  chunk, document non chargé, références non résolues), avec codes sûrs dans
+  les diagnostics. Les erreurs de configuration, bugs et annulations remontent.
+  Les erreurs provider attendues conservent le top-k agrégé ; le fallback
+  synthétique explicite du gateway garde ses scores et son statut distinct.
+- A5-11 : le lookup historique de références n'a pas d'ORDER BY. B2 impose
+  `(number, cid, url, title)` ; le dernier CID non vide gagne. Les collisions
+  historiques ne sont pas certifiables sans ordre enregistré.
+- M0b : les projections de chunks sont tronquées à 300 caractères et ne
+  capturent pas les réponses documentaires ni les retours bruts du reranker.
+  La conformance différentielle synthétique ne vaut pas replay historique.
+  Les cartes A5-02/05/11 et le gate M0b restent ouverts jusqu'aux preuves et
+  au branchement C6 ; aucune modification du runtime servi.
+
+Correction du ré-audit C4 après revue indépendante : la normalisation B2
+`NULL → ""/0` perdait la représentation des métadonnées documentaires. Le port
+`Document` conserve désormais les valeurs nulles pour titre, URL, publisher et
+compte de tokens ; `Section` conserve `doc_id`/`heading_path` nulls. Aucun
+changement de schéma. Cinq comparaisons sur le vrai SQL du corpus synthétique
+couvrent les métadonnées complètes, les champs source nulls, les tokens nulls
+et une section sans document.
+
+Le runtime conservé plante dans son log de document entier si `title` est NULL
+(`item.document_title[:40]`). Le core sans logging de contenu ne reproduit pas
+ce défaut ; la comparaison du titre NULL est bornée au chemin section, tandis
+que URL/publisher NULL sont comparés sur le chemin document entier. Cet écart
+de panne historique n'est pas une nouvelle règle de sélection/ranking.
+
+Complément du 14 septembre : le [replay C4 versionné](../../../tests/conformance/companions/c4-staging-20260914/README.md)
+compare exactement le candidat aux entrées complètes du runtime conservé sur
+quatre scénarios RAG enregistrés sur staging en lecture seule. Avec les tests
+synthétiques, il satisfait la preuve d'acceptation C4. Le bundle M0b original
+reste intact ; les collisions de références non exercées restent hors preuve.
+Les cartes A5-02/05/11 ne sont pas déclarées closes par cette seule preuve :
+leur branchement et les gates d'intégration C6/M1 restent à vérifier.
+
+### Pré-extraction C5 — #462 (14 septembre 2026)
+
+Base auditée : `287afa0` (`dev`, C4 intégré). Le package historique reste servi
+et inchangé ; ses appelants pipeline, exports, évaluation et tests restent en place.
+
+| Dépendance / état observé | Frontière C5 et règle de parité |
+|---|---|
+| Selector : prompt DB puis ressource par nom, LLM configuré sans fallback ; état `last_*` | `PromptStorePort` et `LLMPort` injectés, résultat immuable par appel. Désactivé/vide : aucun I/O. Parsing invalide : top 5 ; panne provider : toutes les sections ; rejet explicite : vide sans plancher. Déduplication et top-up conservent l'ordre LLM puis le rang entrant. |
+| Generator : prompt en cache d'instance, rendu ministère, formatter C4 et fallback LLM | `core/prompt_policy.py` et `core/pipeline/steps/generator.py`. Prompts bruts révisionnés relus par appel, sans cache métier ; ordre DB/ressource/default inchangé. Le gateway B3 reçoit Albert puis Scaleway ; aucune classe provider importée dans le core. |
+| No-answer : texte constant dans `Pipeline`, seulement si contexte vide ET rejet selector | Décision extraite dans l'étape de génération, après le retry composé par C6. Un contexte vide sans rejet garde l'appel historique avec consigne d'insuffisance de sources. |
+| Diagnostics provider/compteurs, prompts et usage | Valeurs retournées avec le résultat ou événement terminal ; retries distincts du fallback, usage inconnu représenté par absence. Aucun `last_*`. |
+| A5-03/08/12 | Fraîcheur par appel intentionnelle au lieu du cache generator infini ; DB indisponible/conflit/échec vers ressources. Erreurs de programmation/configuration et annulation propagées ; panne stream partiel reste l'erreur typée B3, sans texte injecté. |
+
+Preuve prévue : comparaison différentielle avec le runtime conservé sur entrées
+synthétiques explicites, tests ports/gateways, invariants prompts/ministères,
+rejet total, fallback et isolation concurrente. Le complément C4 ne capture pas
+les réponses brutes selector/generator et ne constitue pas une preuve C5. Aucune
+entrée M0b manquante ne sera reconstruite depuis une sortie attendue ; C6/M1
+et les cartes A5 dépendantes de l'assemblage restent ouverts.
+
+Bilan C5 après extraction : ressources selector/generator/persona identiques au
+runtime conservé ; date explicite `today` requise par chaque step, rendue avant
+le ministère sans modifier le snapshot brut. La revue a vérifié l'isolation
+concurrente et le cycle de vie des streams. La conformance différentielle
+synthétique est maintenant complétée par
+quatre cas enregistrés et rejoués exactement : trois sélections, un repli
+parsing top-5 et quatre générations réussies. Les étapes sont indépendantes
+sur les entrées C4 figées, sans preuve d’assemblage C6. [Preuves et reliquats C5](10-c5-parity.md). Les lignes A5
+historiques et les gates C6/M1 restent ouverts.

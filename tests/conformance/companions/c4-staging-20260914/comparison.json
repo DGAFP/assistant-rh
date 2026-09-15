@@ -1,0 +1,58 @@
+{
+  "candidate_sha": "39d78476b243e1a7b8dd268cb5362516198368cb",
+  "retained_sha": "3bd4b912b0ba731a997ddb5257fc0c10d39b62e4",
+  "offline_network_denied": true,
+  "scope": "C4 only; no C2/C3/C5/generation parity claim",
+  "fixtures": [
+    {
+      "id": "rag-acronym-contract",
+      "aggregation_calls": 1,
+      "context_calls": 1,
+      "failures": [],
+      "status": "passed"
+    },
+    {
+      "id": "rag-legal-dgafp",
+      "aggregation_calls": 1,
+      "context_calls": 1,
+      "failures": [],
+      "status": "passed"
+    },
+    {
+      "id": "rag-conversation-followup",
+      "aggregation_calls": 1,
+      "context_calls": 1,
+      "failures": [],
+      "status": "passed"
+    },
+    {
+      "id": "rag-ministry-mso",
+      "aggregation_calls": 1,
+      "context_calls": 1,
+      "failures": [],
+      "status": "passed"
+    },
+    {
+      "id": "short-circuit-chit-chat",
+      "aggregation_calls": 0,
+      "context_calls": 0,
+      "failures": [],
+      "status": "not_exercised"
+    },
+    {
+      "id": "short-circuit-document-request",
+      "aggregation_calls": 0,
+      "context_calls": 0,
+      "failures": [],
+      "status": "not_exercised"
+    },
+    {
+      "id": "short-circuit-out-of-scope",
+      "aggregation_calls": 0,
+      "context_calls": 0,
+      "failures": [],
+      "status": "not_exercised"
+    }
+  ],
+  "exact_comparison": true
+}

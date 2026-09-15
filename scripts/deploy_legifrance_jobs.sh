@@ -36,9 +36,9 @@ INGESTION_REMOTE_TAG="${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/legifrance-ingestio
 BUILD_DUMP_REMOTE_TAG="${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/legifrance-bulk-dump:${IMAGE_TAG}"
 
 if (( BUILD )); then
-  docker buildx build --platform "${TARGET_PLATFORM}" --load -f Dockerfile.legifrance_pipeline -t "legifrance-pipeline:${IMAGE_TAG}" .
-  docker buildx build --platform "${TARGET_PLATFORM}" --load -f Dockerfile.legifrance_ingestion -t "legifrance-ingestion:${IMAGE_TAG}" .
-  docker buildx build --platform "${TARGET_PLATFORM}" --load -f Dockerfile.legifrance_bulk_dump -t "legifrance-bulk-dump:${IMAGE_TAG}" .
+  docker buildx build --platform "${TARGET_PLATFORM}" --load -f docker/Dockerfile.legifrance_pipeline -t "legifrance-pipeline:${IMAGE_TAG}" .
+  docker buildx build --platform "${TARGET_PLATFORM}" --load -f docker/Dockerfile.legifrance_ingestion -t "legifrance-ingestion:${IMAGE_TAG}" .
+  docker buildx build --platform "${TARGET_PLATFORM}" --load -f docker/Dockerfile.legifrance_bulk_dump -t "legifrance-bulk-dump:${IMAGE_TAG}" .
 fi
 
 if (( PUSH )); then

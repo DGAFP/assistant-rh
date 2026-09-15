@@ -1,0 +1,6 @@
+apps/api/tests/fixtures/runtime.sql
+apps/api/tests/fixtures/repositories.sql
+supabase/migrations/20260625110000_rag_trace_events.sql
+supabase/migrations/20260908094542_api_runtime_repositories.sql
+supabase/migrations/20260908180029_api_public_auth.sql
+apps/api/tests/fixtures/local_auth.sql

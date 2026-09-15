@@ -23,8 +23,17 @@
 | 2026-09-04 | A3 — clôture de relecture de #469 | Perte d'état Streamlit → réauthentification et logout → révocation API actés. Le deep-link passwordless `?group=<slug>` est discontinué dans les deux modes, rollback compris, et `default` exclu du catalogue. Les quotas login sont placés aux frontières Streamlit/API avec backoff temporaire sans lockout de groupe. Le clic source conserve la session par navigation Streamlit ; `_PDF_Viewer` rédime côté serveur un 200 PDF ou une 302 S3 et retente une seule fois, les refus restant terminaux. L'admin M4 documente ses deux chemins d'auth actuels ; les credentials DB minimaux restent dans `admin-hardening`. |
 | 2026-09-07 | B1 — [PR #476](https://github.com/DGAFP/assistant-rh/pull/476), [issue #453](https://github.com/DGAFP/assistant-rh/issues/453) | Ports minimaux config/prompts/acronymes/horloge/ids et snapshots immuables, résolution DSN explicite, pool async borné géré par lifespan, transactions avec rollback/annulation, erreurs DB stables, révisions de contenu et cache TTL invalidable. Healthcheck branché sur cette fondation. 40 tests API sur PostgreSQL local exclusivement synthétique, mypy, Ruff, 3 gardes d'import et image Docker validés ; revue indépendante sans constat restant. Aucun changement du runtime RAG servi. Contrats search/auth/persistance/provider à préciser avec B2/B3 pour éviter des types métier spéculatifs. |
 | 2026-09-08 | B1 — correction de revue [PR #476](https://github.com/DGAFP/assistant-rh/pull/476) | Contrôle de connexion supervisé sans annulation préalable de psycopg : fermeture du socket avant annulation pour borner les réponses réseau perdues. Deux tests via proxy TCP réel couvrent échéance, annulation du demandeur et remplacement de la connexion ; ils échouent sur le code initial. 42 tests API passent sur PostgreSQL synthétique local avec pgvector, Ruff et 3 gardes d'import verts ; revue indépendante sans constat restant. |
+| 2026-09-08 | B2 — [PR #505](https://github.com/DGAFP/assistant-rh/pull/505), [issue #454](https://github.com/DGAFP/assistant-rh/issues/454) | Repositories PostgreSQL derrière ports typés : groupes/rôles/sessions, snapshots config/prompts/acronymes, recherche brute/contenu, finalisation atomique runs/sources/traces, feedback courant/audit/analyse. Migration additive avec archivage avant unicité, compatibilité INSERT Streamlit, IDs complets et clés étrangères historiques. 98 tests API sur PostgreSQL/pgvector local exclusivement synthétique ; 182 tests des consommateurs historiques passent, 1 test avec tunnel DB ignoré. Ruff, mypy et 3 gardes d'import verts ; deux P2 de revue indépendante corrigés et testés. Aucun déploiement ni accès staging/production. |
 
 ## Écarts d'isolation A5
+
+Revue B2 — [PR #505](https://github.com/DGAFP/assistant-rh/pull/505) : raisons de feedback corrigées en collections immuables `tuple[str, ...]` dans le core, conformément au contrat A3. L'adaptateur seul encode/décode les chaînes historiques séparées par `;` ; aller-retour, retry sans audit, valeurs vides/NULL et représentations ambiguës couverts. 103 tests API sur base synthétique locale, Ruff, mypy et 3 gardes d'import passent.
+
+Correction de coexistence B2 — [PR #505](https://github.com/DGAFP/assistant-rh/pull/505) : l'analyseur Streamlit capture `api_revision` avant l'appel LLM et conditionne l'écriture à cette génération encore non analysée ; le SQL reste compatible avec le schéma antérieur à la migration. Le verrou parent des écritures API devient `FOR NO KEY UPDATE`, compatible avec le `KEY SHARE` implicite des premières insertions legacy sous clé étrangère. Régressions sur remplacements API/legacy, A → B → A, analyse concurrente, schéma pré-migration et concurrence mixte avec FK : 109 tests API et 183 tests historiques passent, 1 test avec tunnel DB ignoré ; Ruff, mypy et 3 gardes d'import verts. Déployer l'analyseur protégé et terminer les anciens workers avant d'activer le trigger de remplacement. Aucun déploiement ni migration distante dans cette validation.
+
+Suivi B2 — [issue #454](https://github.com/DGAFP/assistant-rh/issues/454) : adaptateurs PostgreSQL derrière ports explicites livrés pour groupes/rôles/sessions, config/prompts/acronymes, recherche brute/contenu, runs/sources/traces atomiques et feedback courant/audit/analyse. A5-03 : lectures fraîches sans cache implicite (TTL 0) ; composition du snapshot de requête et fallback ressources restent C2/C5. A5-04/05/11 : SQL allowlisté, probes locaux et départages explicites côté adaptateurs ; extraction/fusion métier et preuve de parité restent C3/C4. A5-06/07 : transaction de finalisation et stockage des IDs complets disponibles ; branchement moteur/stream/OTLP reste C6/C7. A5-10 : unicité feedback précédée d'archivage, verrou du parent, retry sans écriture et génération anti-analyse périmée livrés ; claim de batch admin reste hors M4. A5-12 : absence et indisponibilité distinctes.
+
+Écarts découverts B2 : `acronyms.priority` absent du DDL admin historique (lecture compatible avec/sans colonne) ; markdown de section historiquement nommé `section_markdown` ou `markdown_content` ; Service-Public peut avoir un document sans section résolue (métadonnées canoniques conservées). Le trigger de compatibilité maintient les INSERTs Streamlit après unicité et mémorise l'ID de dernière soumission pour les insertions reçues hors ordre à timestamp égal. Les décisions produit B4/D1, les projections diagnostiques du moteur C6 vers les vues admin et les grants du rôle runtime sur l'audit restent à brancher avant exposition publique ; aucune bascule du runtime ni validation staging/production dans B2.
 
 Suivi A5 B1 — A5-03 : primitive de cache synchronisée et révisions de contenu livrées ; TTL métier et cohérence entre stores/requêtes restent B2/C2/C5. A5-05 : pool borné et isolation transactionnelle `SET LOCAL` éprouvés ; extraction SQL/cache d'introspection reste C3. A5-08 : nouvelle configuration DB explicite, immuable et wiring sans I/O à l'import ; extraction de `RAGConfig` historique reste à faire avec les stores B2. Aucun écart de parité supplémentaire découvert ; ces dettes historiques ne sont pas déclarées closes par la seule fondation.
 
@@ -39,11 +48,23 @@ Suivi A5 B1 — A5-03 : primitive de cache synchronisée et révisions de conten
 | A5-05 | Le fan-out retrieval ouvre jusqu'à deux connexions par table ; l'introspection est cachée sans TTL et `SET ivfflat.probes` deviendrait fuyant sur un pool réutilisé. | B1 + C3 | ouvert — pool borné, cache synchronisé, `SET LOCAL` |
 | A5-06 | `chat_runs`, sources affichées, `rag_trace_events` et export OTLP ne forment pas aujourd'hui une finalisation canonique unique ; l'export se fait dans un thread daemon non drainé. | B2 + C6/C7 | ouvert — persister atomiquement run + `chat_run_sources` + traces, puis appeler le sink géré |
 | A5-07 | UUID, dates et durées sont générés dans pipeline, tracing, logger, admin et UI ; les `turn_id` historiques sont tronqués à 8 hex. | C6/C7 | ouvert — `ClockPort`/`IdGeneratorPort`, ids complets dans `RunContext` |
-| A5-08 | `config.py` lit l'environnement à l'import, réexporte les helpers DB et expose des dictionnaires mutables ; `admin.DEFAULT_CONFIG` est un singleton mutable de fallback. | B1 | ouvert — config pure/immuable et wiring sans effet de bord |
+| A5-08 | `config.py` lit l'environnement à l'import, réexporte les helpers DB et expose des dictionnaires mutables ; `admin.DEFAULT_CONFIG` est un singleton mutable de fallback. | C2/C3/C5/C6 + admin-hardening | en cours — mapping RAG immuable et chargeur API livrés ci-dessous ; consommateurs historiques et environnement des tables restent à extraire |
 | A5-09 | Des consommateurs utilisent des privés : `09_Pipeline_Evaluation.py` appelle `_retriever/_aggregator/_context_builder`, le logger lit `_context_builder`, le goldset importe `_fold`, le chat importe `_append_csv_row`. | C6 + D3 + F3 + admin-hardening | ouvert — retirer les usages publics en F3 ; repointer séparément l'admin avant suppression du package historique |
 | A5-10 | Updates config read-modify-write sans révision et batch feedback sans claim : perte de mise à jour et double analyse possibles. Le DDL est encore déclenché depuis l'admin. | B2 + D1 + admin-hardening | ouvert — feedback sécurisé dans D1 ; CAS, claim et migrations admin suivis hors chemin critique M4 |
 | A5-11 | Plusieurs départages reposent sur la stabilité implicite de Python ou des ensembles/requêtes sans ordre (`sections.sort(score)`, `list(set(...))`, refs/acronymes sans second tri). | C2/C3/C4 | ouvert — ordinal/clé totale et fixtures d'égalité |
 | A5-12 | Les erreurs DB/provider sont traduites de façon hétérogène en vide, fallback, résultat partiel, texte d'erreur streamé ou exception ; origine du fallback souvent perdue. | B2/B3 + C2–C5 | ouvert — erreurs/outcomes typés en conservant la matrice historique |
+
+Livraison B3 — [PR #514](https://github.com/DGAFP/assistant-rh/pull/514), [issue #455](https://github.com/DGAFP/assistant-rh/issues/455) : gateways HTTP async Albert/Scaleway pour chat complet/stream et embeddings, reranker Albert par lots de 40 derrière ports du core sans SDK ni HTTPX. Outcomes immuables et diagnostics par tentative/requête ; fallback avant contenu seulement, vecteur et clé de modèle indissociables, cooldown monotone synchronisé propre à l'adaptateur, erreurs/retries/deadlines/taille bornés et fermeture protégée lors d'annulation ASGI. 188 tests API passent sur PostgreSQL synthétique local, dont 79 tests gateways avec HTTP simulé et réseau réel interdit ; 1334 tests historiques passent, 15 ignorés ; Ruff, mypy et 3 gardes d'import passent. Revue indépendante validée après correction de la fermeture sous annulation AnyIO. Aucun wiring du runtime RAG servi ni déploiement.
+
+Écarts B3 à reprendre en C2–C7 : erreurs de stream partiel typées au lieu de texte injecté ; delta vide ne bloque plus le fallback ; EOF sans `[DONE]`, vecteurs nuls/non finis/de mauvaise dimension et réponses de reranking incomplètes refusés ; score zéro conservé ; retries explicites bornés. La politique lexicale, le rendu des erreurs partielles, la préservation des scores d'entrée en cas de panne reranker et la compatibilité sémantique des modèles d'embedding avec les index restent à composer et rejouer avec le moteur. A5-02/A5-12 : les nouvelles primitives sont livrées, mais les consommateurs historiques et leurs `last_*` restent ouverts jusqu'à l'extraction. L'approximation des scores entre lots de reranker est conservée. Validation locale/fake uniquement, sans preuve de qualité RAG ni appel live aux providers.
+
+Correctif de revue B3 — PR #514 : fermeture HTTPX automatique à EOF et fermeture explicite des streams protégées contre timeouts et annulations asyncio répétées, avec tâche de nettoyage bornée et attendue avant propagation. Huit cas de régression ajoutés, dont sept échouent sur la révision initiale ; les tests HTTPCore vérifient la libération de la connexion et de la requête du pool sans ouvrir de socket. Validation du correctif : 87 tests gateways passent ; suite API sans DSN synthétique, 117 passent / 79 ignorés ; Ruff, mypy et les trois contrats d'import passent. Revue indépendante validée après ajout du point de propagation de l'annulation AnyIO différée. Aucun appel provider ni accès DB dans cette passe.
+
+Livraison B4 — [PR #523](https://github.com/DGAFP/assistant-rh/pull/523), [issue #456](https://github.com/DGAFP/assistant-rh/issues/456) : le périmètre D6/A3 et le contrat API courant remplacent le texte historique de l'issue sur les tokens permanents et le bootstrap admin. Catalogue public filtré, login mot de passe vers session opaque de huit heures, resolver bearer commun, scope ministère explicite, `/me` et logout livrés derrière ports injectés. Empreinte de bearer indexée sans scan PBKDF2 ; vérification des mots de passe compatible Streamlit, travail crypto borné hors boucle async, erreurs uniformes et sans secrets. Aucun endpoint admin ni token permanent ajouté.
+
+Sécurité B4 : révision monotone des identifiants et de la politique groupe maintenue par trigger compatible avec les UPDATEs Streamlit ; reset concurrent et retour A → B → A ne restaurent pas de session. Quotas temporaires source/slug/globaux atomiques en PostgreSQL partagés entre processus ; refus sans prolongation du blocage, identités hachées et purge à échéance. Source réseau directe seulement, en-têtes proxy ignorés au point d'entrée Uvicorn, body login borné avant parsing. Migration additive et script de rollback transactionnel avec révocation préalable ; les mots de passe existants restent intacts. Le quota visiteur Streamlit appartient à E1 et le test ingress à D4 ; pas de bascule ni migration distante dans B4.
+
+Validation B4 : **259 tests API passent** sur PostgreSQL/pgvector synthétique local ; **38 tests historiques** groupes/scope/prompts passent ; Ruff, mypy (38 fichiers) et les trois contrats d'import passent. Couverture domaine/HTTP, PBKDF2 réel avec mot de passe synthétique, parcours FastAPI complet, concurrence quotas, reset/login, absence de résurrection, migration idempotente et rollback. Revue indépendante sans finding restant après corrections Unicode/parsing et maintien du plafond de quatre KDF sous annulations asyncio répétées ; régressions dédiées. Aucun appel provider, migration distante ni déploiement.
 
 ## Reports depuis le runtime existant
 
@@ -58,3 +79,578 @@ _(vide — aucun report en attente)_
 - **2026-09-04 — observabilité admin** : évaluer Grafana/Tempo pour métriques et traces opérationnelles, et LangSmith pour l'inspection RAG/LLM si l'hébergement, la rétention et le masquage des données RH sont approuvés. LangSmith reste optionnel et n'impose pas LangChain.
 - **2026-09-04 — agentic RAG** : prototyper après M4 un agent borné (sélection de source, reformulation ou retry limité) et le comparer au pipeline déterministe sur le goldset avant toute bascule produit.
 - **2026-09-04 — admin-hardening** : restreindre l'accès réseau, créer des identifiants DB dédiés et bornés, auditer les actions sensibles, déplacer le DDL runtime historique vers des migrations, repointer tous les consommateurs admin puis supprimer `packages/rag-pipeline`. Réévaluer ensuite une extraction vers endpoints admin ou RAG-ops, sans bloquer la migration publique.
+
+### Correctifs de revue B4 — PR #523
+
+Catalogue aligné sur Streamlit (`priority DESC`, `slug ASC`). La stack locale
+initialise les fixtures synthétiques et les migrations B2/B4 dans une transaction,
+avec un groupe de démonstration public ; la CI vérifie le parcours HTTP réel.
+Les sessions expirées/révoquées sont purgées par lots indexés bornés à la création
+et chaque minute pendant le lifespan, sans supprimer les sessions actives ni
+l'audit. Les tests couvrent les lots concurrents, les lignes verrouillées et la
+reprise après indisponibilité DB et le shutdown pendant une transaction.
+Validation : 267 tests API, 38 tests historiques, mypy sur 39 fichiers et trois
+contrats d’import passent ; bootstrap vierge et smoke HTTP réel validés. Aucun ajout d'utilisateurs individuels ni
+changement des droits ministériels dans cette correction.
+
+
+Livraison B5 — [PR #538](https://github.com/DGAFP/assistant-rh/pull/538), [issue #457](https://github.com/DGAFP/assistant-rh/issues/457) :
+`GET /v1/models` branché sur le resolver bearer B4 et son groupe courant chargé par
+`GroupStore`. `ModelService` pur, catalogue ministériel canonique commun à l'auth,
+modèles immuables triés par id et dédupliqués, enveloppe OpenAI typée et réponses
+`no-store`. L'alias d'entrée `assistant-rh` résout uniquement le défaut autorisé ;
+modèle inconnu → 404, ministère non autorisé → 403. C1 fixe l'utilisation de cette
+résolution ; C6 la branchera sur Chat Completions, absent de B5.
+
+Politique B5 : zéro ministère, ministère inconnu ou défaut absent/interdit donnent
+une erreur de configuration explicite, sans fallback implicite. B4 conserve les
+exclusions du catalogue de groupes et du login ; la résolution vérifie d'abord
+expiration/révocation/révision/identifiants (401), puis la politique d'une session
+encore valide (500 `ministry_configuration_error` si corrompue). Les modifications
+normales de politique en DB continuent de révoquer les sessions via B4.
+
+Preuves B5 : 301 tests API passent sur PostgreSQL 18.4/pgvector éphémère exclusivement
+synthétique, dont les tests du SDK OpenAI Python 2.38.0 avec validation stricte et
+le parcours lifespan PostgreSQL → login → catalogue → révocation. Les tests couvrent
+zéro/un/plusieurs ministères, doublons/ordre, isolation entre groupes, alias, erreurs
+SDK et sessions invalides. 38 tests historiques groupes/ministères/prompts passent ;
+smoke HTTP local et SDK synchrone contre Uvicorn/PostgreSQL réels verts, avec rejet
+après logout. Ruff et les trois contrats d'import passent. Docker indisponible en
+local : build image et smoke Compose à vérifier en CI. Aucun
+changement du runtime RAG servi, aucune migration ou activation distante.
+
+
+### A5-08 — préparation de la configuration RAG pour le moteur API — [PR #539](https://github.com/DGAFP/assistant-rh/pull/539)
+
+Reconstruction pure du `RAGConfig` historique et du mapping
+`RuntimeRAGConfig → RAGConfig` dans le core API, sans import du package historique,
+lecture d'environnement ou helper DB. Les sous-configurations sont gelées, les
+tables sont un tuple ordonné ; `to_dict()` conserve le format historique et rend
+une copie détachée. Les défauts du constructeur et les défauts admin, différents
+pour le selector et l'intent gating, sont conservés séparément. Aucun nouveau
+fichier de valeurs ni changement de `rag_config`, de l'admin ou du runtime servi.
+
+Le lifespan assemble `RAGConfigurationService` avec le `ConfigStore` B2 et charge
+un premier snapshot pour valider les types avant de servir les requêtes. Une
+configuration malformée interrompt le démarrage et ferme le pool. Le futur
+point d'entrée moteur devra appeler `load()` une fois par requête puis transmettre
+le même snapshot à chaque étape. Ce chargement initial ne devient pas un cache :
+chaque appel relit le store, conserve sa révision et voit les UPDATEs
+admin suivants, sans altérer les snapshots déjà remis. Absence/panne DB conservent
+le fallback historique vers des défauts frais, avec motif explicite ; annulation
+et types malformés ne sont pas masqués. La validation ne réapplique pas les bornes
+admin, qui excluraient certaines configurations déjà évaluées.
+
+**Reliquats affectés, A5-08 non déclaré clos** : C2/C5 extraient les lectures
+supplémentaires de `get_runtime_config()`, prompts/acronymes et leur cohérence de
+requête (A5-03). C3 résout au wiring les overrides environnement
+`SERVICE_PUBLIC_COMPARE_TABLE` / `DGAFP_COMPARE_TABLE` et le catalogue de tables,
+puis les injecte aux adaptateurs sans global lu à l'import. C6 branche le chargeur
+sur le `ChatService` réel et propage le snapshot au `RunContext` ; il n'existe pas
+encore de route completion utilisant cette configuration. Le retrait des
+réexports DB et du singleton `admin.DEFAULT_CONFIG` dans les consommateurs admin
+historiques appartient à admin-hardening ; ils restent intacts conformément à la
+reconstruction parallèle et à l'exception admin A3. La sémantique du cache
+Streamlit historique (15 s) reste inchangée. Le périmètre livré est une fondation
+RAG pour l'API, pas une intégration ni une preuve de parité du moteur C2–C7.
+
+
+Validation A5-08 : **321 tests API** passent sur PostgreSQL 18.4/pgvector local
+exclusivement synthétique. Tests de parité contre le mapping historique, snapshots
+profondément immuables, UPDATE SQL entre deux requêtes, fallback/reprise et lifespan
+couverts. Suite historique : 1367 tests passent et 16 sont ignorés dans le sandbox ;
+les 13 cas HTTP bloqués par les sockets locales sont validés par une relance du
+module replay complet (14/14 passent). Ruff sur les chemins CI, mypy sur les deux
+nouveaux modules et le wiring et les trois contrats d'import passent ; la garde core interdit
+aussi le package RAG historique. Revue indépendante favorable, aucun constat
+bloquant après correction du test de redémarrage avec un nouveau pool.
+Chargement/validation initial, fermeture du pool sur configuration invalide et
+reprise après correction couverts. Aucun appel provider, migration distante, déploiement ni bascule RAG.
+
+## C1 — contrat Chat Completions fixé avant C6 (2026-09-10)
+
+[Issue #458](https://github.com/DGAFP/assistant-rh/issues/458) : [contrat détaillé](09-chat-completions-contract.md), exemples JSON et matrice de cas attendus reliés à la [preuve A2/#443](07-openai-client-spike.md) et aux contrats B4/#456, B5/#457. Le plan et le contrat v1 sont alignés : C1 est documentaire, C2–C5 extraient les étapes indépendamment, #463 porte le handler non-stream et tous ses tests HTTP ; #464 conserve le SSE. Aucun handler ni `ChatService` fake/replay ajouté.
+
+Décisions figées : dernier user et cinq couples complets selon l'algorithme A2 ; instructions système/developer et tools ignorés ; parts texte concaténées ; 1 Mio/32 messages/64 Kio UTF-8 ; résolution B5 et scope B4 ; enveloppe et sources finales cohérentes ; erreurs sûres et succès persisté avant réponse/terminal SSE. Le code 403 retenu est `ministry_forbidden`, déjà livré/testé en B4/B5, remplaçant `model_forbidden` du replay A2. Les types stricts, métadonnées, frontières exactes de taille et lecture sans `Content-Length` sont distingués des comportements déjà éprouvés et attribués à C6 dans la matrice.
+
+Preuve locale du 2026-09-10, sur `dev` de départ `913a80fac356629de641af12f2b3eddb2ec26a74` avec uniquement des modifications documentaires : **48 tests existants passent** (SDK OpenAI 2.38.0, replay A2, `ModelService` et HTTP catalogue/auth avec stores en mémoire). Reproduction après `uv sync --package assistant-rh-api --group dev` :
+
+```bash
+uv run --no-sync python -m pytest tests/test_openai_contract_probe.py apps/api/tests/core/test_model_service.py apps/api/tests/handlers/test_models_http.py -q
+```
+
+Les **15 exemples JSON** des documents concernés sont valides ; les enveloppes completion passent `ChatCompletion.model_validate(..., strict=True)` et les assertions d'identifiants, ministère, nombre/titres des sources. Liens locaux et noms des tests cités vérifiés ; `git diff --check` passe. La preuve de l'instance `conversations`/homelab reste celle d'A2 du 2026-09-02, pas une nouvelle exécution. La matrice indique les validations restant en C6/C7/D4 ; aucun accès à une base distante, appel provider, migration ou déploiement.
+
+## C2 — query processor dans le core pur (2026-09-10)
+
+[Issue #459](https://github.com/DGAFP/assistant-rh/issues/459) : extraction dans
+`core/pipeline/steps/query_processor.py` et `legal_search.py`, avec résultats et
+diagnostics immuables dans `core/models/query_processing.py`. Ports async B2/B3
+pour acronymes, prompts et classification ; fallback ressource embarqué dans
+l'API, identique au prompt historique. Intent, réponses directes, reformulation,
+NFC, casse/frontières et ordre des acronymes, rendu ministère/date/historique,
+parsing permissif, flag LLM et heuristique légale conservés sans réglage qualité.
+La [carte A5](07-runtime-isolation-audit.md#relecture-c2--query-processor-459-2026-09-10)
+détaille les règles et branches relues sur `dev` au `c3c1786`.
+
+A5-03/11/12 : snapshots et révisions propres à chaque appel, tuples ordonnés,
+erreurs DB consignées, annulation propagée, panne classification conservant la
+question sans expansion ni heuristique. Les remplacements successifs imbriqués,
+doublons et priorité de l'erreur d'historique sur l'absence du prompt sont figés
+par tests. Le step ne trie pas le tuple reçu : les départages SQL et le support
+de `acronyms.priority` appartiennent à B2. Les acronymes API sont relus par
+requête, conformément à A5 ; le snapshot au constructeur du runtime servi reste
+intact. La cohérence entre stores et la propagation au `RunContext` restent C6,
+les autres étapes restent C3–C5 ; A5-03/08/09/11/12 ne sont pas déclarés clos.
+
+**Frontière C6 explicite** : injecter la gateway Albert seule, liée au
+`config.intent_model` (le classifier historique n'utilise pas de fallback
+Scaleway), transmettre le ministère canonique déjà autorisé et la date locale
+capturée via l'horloge. Les retries et erreurs sûres B3 sont conservés ; les
+messages réseau bruts historiques ne sont pas réintroduits. Aucun handler HTTP,
+service replay, wiring du runtime servi ou changement de consommateur historique.
+
+**Preuve de parité** : les sept sorties M0b sont comparées exactement, types JSON
+inclus, ainsi que les réponses directes et métadonnées disponibles. Le bundle
+original ne contient pas les réponses LLM brutes, prompts DB ni acronymes : les
+réponses injectées dans `query_processor_m0b_ports.json` sont explicitement
+**reconstituées**, pas des enregistrements originaux. Voir les
+[limites et commandes](../../../tests/conformance/M0_REPLAYS.md#c2-query-processor-extraction-459).
+Les tests différentiels comparent la sortie complète et le prompt envoyé au
+runtime historique pour les erreurs, coercions et branches absentes de M0b.
+Cette preuve d'étape ne vaut pas validation M1 du moteur complet ou qualité live.
+
+Validation locale : **125 tests C2 passent** (dont sept M0b), suite API **359 passent / 105 ignorés** faute de
+DSN synthétique local ; **139 tests historiques ciblés passent**. Vérificateur
+M0b : sept fixtures et 56 artefacts intacts, fingerprint
+`f5e9ffefe588248a352d7ac18a556df7bff6270a2879e7ddd32acc128733e02b`.
+Ruff, mypy sur six modules, trois contrats d'import et import isolé du step
+passent. La roue API construite contient le step et le prompt de fallback
+vérifié octet pour octet. Revue indépendante sans constat bloquant ; la dernière simplification
+préserve aussi la priorité d'erreur historique avec régression dédiée.
+Aucun accès DB distant, appel provider, migration, déploiement ou éval live.
+
+### Rangement C2 — PR #545
+
+Valeurs et types d'inférence déplacés dans `core/models/inference.py` ;
+`InferenceFailure` rejoint `core/errors.py`, sans dépendance circulaire. Tous les
+imports et la référence active du README sont adaptés. Les commentaires et
+docstrings de `legal_search.py` sont raccourcis en conservant les subtilités des
+regex ; son AST exécutable reste identique. Aucun changement fonctionnel.
+Validation : 285 tests core/gateways passent, Ruff, mypy sur 14 modules et les
+3 contrats d'import passent.
+
+### Durcissement du repli de classification — revue PR #545
+
+Décision utilisateur : continuer en mode dégradé pour les échecs attendus de
+classification, comme le runtime historique, plutôt que bloquer systématiquement.
+Le `catch Exception` disparaît : `ClassificationFailure` chaîne sa cause
+provider/décodage/conversion et seul ce type déclenche le repli. Les valeurs
+restent `rag_query`, confiance 0,5, question NFC originale, aucune expansion ni
+reformulation, flag juridique false, signal LLM null et `should_proceed=true`.
+
+Différences de parité **volontaires et autorisées** :
+
+- Le statut de classification est `disabled`, `completed` ou `degraded` ; la cause
+  sûre `provider_failure`/`invalid_response` est explicite dans les diagnostics et
+  remplace `str(exception)` dans `intent_reason`. La cause chaînée reste interne,
+  les tentatives B3 et la completion reçue restent disponibles séparément.
+- Prompt absent/malformé → `RAGConfigurationError` avec cause ; données d'appel
+  invalides, bugs, erreurs de port non traduites et annulations se propagent.
+  Rejets fournisseur (identifiants/modèle/payload) et completion partielle
+  remontent également : ils ne deviennent plus un résultat RAG de repli.
+- JSON non objet, limites du décodeur, confiance non convertible/non finie ou
+  champs textuels consommés inutilisables → repli explicite, sans fuite d'objets
+  mutables ni nombre non sérialisable. Les coercions utilisables sont conservées :
+  fences, intent inconnu, thème inconnu, booléens, confiance numérique convertible
+  sans nouvelle borne 0–1, valeurs falsy de reformulation/retrieval.
+- Les fallbacks attendus des stores DB et le traitement normal du hors-périmètre
+  restent inchangés. Les sept fixtures M0b nominales ne sont pas modifiées.
+
+Les anciens tests de parité totale sur erreurs sont remplacés par assertions
+explicites des changements autorisés : seul le motif sûr diffère pour les
+échecs auparavant dégradés ; prompt/historique invalides doivent maintenant
+lever. De nouvelles régressions couvrent causes chaînées, bugs, configuration,
+annulation, données LLM inutilisables et reprise après panne. La limite des grands
+entiers de `json.loads()` est traduite au seul point de décodage, conformément au
+constat de revue indépendante.
+
+C6 devra consommer le statut dégradé et sa cause pour l'orchestration et la trace,
+au lieu de déduire un statut `ok` de la seule absence d'exception. Le contrat est
+précisé dans `apps/api/README.md` ; aucun logger I/O dans le core, handler HTTP ou
+moteur C6 ajouté. Aucun nouvel appel LLM, accès DB, push ou déploiement.
+
+Validation du durcissement : **322 tests core/gateways passent**, dont les sept
+replays M0b ; Ruff, mypy sur les trois modules modifiés et les trois contrats
+d'import passent. Revue indépendante favorable après correction de la limite des
+grands entiers JSON. Modification extérieure de `legal_search.py` laissée intacte
+et exclue du commit.
+
+### Rangement des erreurs par domaine — revue PR #545
+
+`core/errors/` remplace le module unique : base commune, stockage, inférence,
+RAG (configuration/classification) et accès (ministère/modèle). Le point d'entrée
+réexporte les mêmes classes ; définitions, héritages, codes et comportement
+restent inchangés, sans cycle. README et test du chemin de ressource adaptés.
+Aucune modification de la politique de repli : le constat de revue sur
+`DatabaseConflict` à la lecture des acronymes reste ouvert pour discussion.
+
+Validation locale : 396 tests API passent, 105 ignorés faute de DSN synthétique ;
+Ruff sur les chemins CI, mypy sur le package et trois contrats d'import passent.
+Identité des réexports, héritages et égalité AST des définitions vérifiés.
+Modification extérieure de `legal_search.py` préservée et exclue du commit.
+
+### Repli acronymes sur conflit DB et avertissement — revue PR #545
+
+Correction autorisée du constat `DatabaseConflict` : le chargement des acronymes
+reprend avec un dictionnaire vide pour ce conflit, comme pour `DatabaseFailure`
+et `DatabaseUnavailable`. Le code reste dans `store_errors` ; la classification
+se poursuit normalement. Les bugs, erreurs de configuration et annulations
+continuent de remonter. La politique des prompts reste inchangée.
+
+Chaque repli acronymes émet désormais un vrai record `WARNING` via `logging`
+standard, au point de décision dans le step. Exception ciblée à l'absence de
+logging dans le core : l'adaptateur DB ne connaît pas la décision de poursuivre,
+et aucun consommateur C6 des diagnostics n'existe encore. Aucun handler n'est
+configuré dans le core ; seul le code sûr et la poursuite sans acronymes sont
+journalisés, sans donnée de requête, message d'exception ni traceback. C6 devra
+éviter de réémettre cet avertissement.
+
+Régressions couvrant les trois erreurs récupérables avec/sans classification,
+la capture d'un seul avertissement réel et sûr, la poursuite de l'appel LLM,
+les diagnostics et la propagation inchangée des bugs/configurations invalides.
+Validation : 403 tests API passent (dont 162 query processor), 105 ignorés faute
+de DSN synthétique ; Ruff, mypy sur le step et trois contrats d'import passent.
+Modification extérieure de `legal_search.py` préservée et exclue du commit.
+
+### Repli prompt sur conflit DB — revue PR #545
+
+Le chargement du prompt récupère également `DatabaseConflict`, traduction B2
+des erreurs de sérialisation et deadlocks, comme `DatabaseFailure` et
+`DatabaseUnavailable`. Il poursuit la résolution DB puis ressource embarquée
+dans l'ordre existant et conserve le code sûr de chaque lecture échouée dans
+`store_errors`. Le runtime historique récupérait déjà ces erreurs SQL ; le step
+API ne doit pas interrompre la classification lorsqu'un prompt embarqué existe.
+Les erreurs de configuration, bugs et annulations continuent de remonter.
+
+Les deux nouvelles régressions conflit échouent sur `e30b2ff` puis passent avec
+le correctif. Neuf cas ajoutés couvrent les trois erreurs DB récupérables avec
+les noms `intent_unified.md` et `intent.md`, l'ordre des lectures, le vrai prompt
+embarqué, les diagnostics, la sortie historique et la propagation des erreurs
+inattendues/configuration. Validation locale : **412 tests API passent**, 105
+ignorés faute de DSN synthétique ; Ruff sur les chemins CI, formatage des deux
+fichiers Python et trois contrats d'import passent. Aucun accès DB distant ou
+appel provider ; validation CI du nouveau commit à vérifier après publication.
+
+## C3 — retrieval métier extrait, gate M0b ouvert (2026-09-10)
+
+[Issue #460](https://github.com/DGAFP/assistant-rh/issues/460) : extraction dans
+`apps/api/src/assistant_rh_api/core/pipeline/steps/retrieval.py`, derrière `SearchPort` et
+`EmbeddingPort`, sans dépendance SQL/psycopg ni import du package historique.
+Le core possède fusion hybride, rang des absents, RRF inter-sources, plafond de
+normalisation, filtre headings, top-k et dédup R2. Résultats/configuration et
+métadonnées sont immuables ; chaîne embedding sélectionnée par requête, modèle
+réel conservé après fallback, erreurs partielles explicites et scope ministériel
+strict. Les tables de comparaison nécessitent un catalogue injecté ; les alias
+physiques dupliqués sont refusés avant I/O pour garantir le déterminisme.
+
+L'adaptateur expose les deux lanes hybrides brutes dans un unique snapshot SQL,
+sans fusion métier. Il conserve l'ordre et la représentation des scores de
+chaque lane, les probes transactionnels et le pool borné B1. Le fallback B2
+implicite vers `to_tsvector(chunk_text)` quand la colonne manque est retiré :
+le runtime historique échoue dans ce cas. La recherche heading reste indépendante.
+Pas de reranker de chunks ajouté (option historiquement sans implémentation).
+Aucun handler ni branchement Streamlit ; C2/#459 est livré par #545, et
+C6/#463 porte l’assemblage des étapes.
+
+Preuve locale : **381 tests API passent** sur PostgreSQL 18.4/pgvector 0.8.2 local
+exclusivement synthétique. Les 15 comparaisons différentielles exécutent les SQL
+historiques et le nouveau core sur le même corpus : modes semantic/lexical/hybrid,
+mode non scopé et quatre ministères, scores exacts, ordre et métadonnées complets.
+S'ajoutent égalités, doublons R2, pools vides, absence d'embedding, erreurs partielles,
+colonne lexicale absente, annulation, immutabilité et isolation des requêtes.
+Ruff CI, mypy sur les quatre modules et les trois contrats d'import passent.
+Revue indépendante favorable pour un brouillon après correction du marqueur
+lexical, des collisions de catalogue et de la sélection embedding par config.
+Suite historique : 1376 tests passent et 16 sont ignorés dans le sandbox ; les
+13 cas HTTP bloqués par les sockets locales sont validés dans une relance du
+module complet `test_openai_contract_probe.py` (14/14). Reproduction API après
+`uv sync --all-packages --group dev`, avec le DSN synthétique local gardé par la
+fixture : `uv run --no-sync python -m pytest apps/api/tests -q`. Aucun test
+historique n'a été supprimé ni assoupli.
+
+**Gate non satisfait, issue maintenue ouverte** : M0b vérifie bien 7 fixtures et
+56 artefacts, mais ne contient pas les inputs bruts du `SearchPort`. Son auto-check
+ne prouve pas la conformance de C3. Le [complément nécessaire](../../../tests/conformance/M0_REPLAYS.md#c3-retrieval-extraction-missing-port-inputs)
+est documenté ; aucun candidat n'est reconstruit depuis les résultats attendus,
+aucune baseline n'est remplacée. L'[audit A5](07-runtime-isolation-audit.md)
+consigne aussi l'ambiguïté de section déjà départagée côté B2 et le fait que
+DGAFP est interrogé même avec `needs_legal_search=false` dans M0b. C3 préserve
+cette politique, sans introduire le nouveau gate suggéré par le libellé de #460.
+A5-02/04/05/08/11 progressent côté API mais ne sont pas déclarés clos : la preuve
+M0b, les étapes C4/C6 et les consommateurs historiques restent à traiter.
+Aucun accès DB distant, appel provider, migration distante ou déploiement.
+
+
+## C3 — intégration de C2 depuis dev / #545 (2026-09-10)
+
+Fusion de `dev` (`a86719f`, #545) dans la branche de #546. Les imports du
+retrieval et de ses tests utilisent désormais `core.models.inference.Embedding`
+et `core.errors.inference.InferenceFailure`. Le test d’isolation importe C2 et
+C3 ensemble et conserve les interdictions I/O des deux branches. Les entrées
+C2/C3 du LEDGER et des replays sont conservées ; #459 est livré, tandis que le
+gate M0b retrieval de #460 reste ouvert et #546 reste en brouillon.
+
+Avant correction, le test d’import reproduit `ModuleNotFoundError` sur
+`assistant_rh_api.core.inference`. Après correction : **204 tests ciblés passent**,
+puis **1 948 tests API et historiques passent, 16 sont ignorés** avec
+`API_SYNTHETIC_POSTGRES_DSN` pointant exclusivement vers PostgreSQL 18.4/pgvector
+0.8.2 local synthétique et `PYTHON_DOTENV_DISABLED=1` :
+`uv run --no-sync python -m pytest apps/api/tests tests --ignore=tests/archive -q`.
+Ruff sur les chemins CI, mypy sur les cinq modules retrieval/modèles/port/catalogue/
+adaptateur et les trois contrats d’import passent. Revue indépendante de la
+fusion favorable. Les règles de retrieval sont inchangées ; aucune preuve M0b
+supplémentaire ni bascule runtime n’est revendiquée. CI à recontrôler sur le
+commit publié ; aucun accès DB distant, appel provider ou déploiement.
+
+
+## C3 — alignement du step et caractérisation des erreurs DB (2026-09-10)
+
+Le retrieval rejoint `core/pipeline/steps/retrieval.py`, conformément au plan
+cible et au placement de C2. Le contenu du module est identique octet pour octet
+à celui de `2a13158` ; seuls son emplacement, les imports et les références
+changent. Le test d’isolation importe les deux steps au même emplacement.
+
+Six caractérisations couvrent une panne `DatabaseUnavailable` dans les trois
+modes, sans scope puis avec ministère : résultat vide avec diagnostics des
+lanes en mode partiel ; `ScopedRetrievalError` en mode ministériel strict.
+La cause DB n’est pas conservée dans ces diagnostics et le step ne journalise
+pas lui-même les erreurs. Le README explicite aussi l’interception large des
+exceptions et l’absence de mapping HTTP completion C6. La politique d’erreur
+reste inchangée par ce déplacement.
+
+Validation : **32 tests ciblés et 565 tests API passent** sur PostgreSQL local
+synthétique, incluant les tests existants de perte de réponse réseau et de
+traduction des erreurs DB. Ruff sur les chemins CI, mypy du module déplacé et
+les trois contrats d’import passent ; revue indépendante favorable. Le gate
+M0b C3 reste ouvert et la PR reste en brouillon. Aucun accès DB distant, appel
+provider ou déploiement ; CI à vérifier sur la nouvelle tête publiée.
+
+
+## C3 — logs d’échec et smoke staging autorisés (2026-09-10)
+
+À la demande explicite de l’utilisateur, ajout d’un `WARNING` par lane échouée
+au point de décision du retrieval, avec source logique, lane, code DB allowlisté
+et politique `strict`/`partial`. Les exceptions non reconnues sont classées
+`unexpected_error` ; aucun message, traceback, DSN ou texte de question n’est
+journalisé. Les mêmes champs sont disponibles dans le `LogRecord`. Réussite et
+annulation ne produisent pas de faux warning. La sélection/fusion, les exceptions
+remontées et les diagnostics retournés restent inchangés ; le mapping HTTP
+completion appartient toujours à C6. Cette exception ciblée de logging standard
+est explicitement autorisée, comme celle de C2.
+
+Validation locale : **43 tests ciblés et 576 tests API passent**, ces derniers
+sur le DSN synthétique local uniquement. Couverture `caplog` des erreurs DB,
+exceptions inattendues, causes/messages/code arbitraire contenant des sentinelles
+sensibles, politique stricte/partielle, succès et annulation. Ruff CI, mypy du
+step et les trois contrats d’import passent ; revue indépendante code/tests
+favorable. CI de la nouvelle tête à vérifier après publication.
+
+**Smoke réel staging, 2026-09-10 à 12:41 UTC** : DSN dédié
+`SCW_POSTGRES_DSN_STAGING`, endpoint distinct de production, PostgreSQL 17.10,
+`default_transaction_read_only=on` et `transaction_read_only=on` vérifiés.
+Connexion avec TLS requis ; sessions forcées en lecture seule, timeout SQL 10 s,
+pool maximal de trois connexions. Aucun pytest/fixture/migration exécuté contre
+staging. Chargement réussi de la configuration par `RAGConfigurationService`
+sans fallback, puis override explicite du mode `hybrid` et du top-k à 5 ; alpha
+0,5 et probes 5. Scope MATTE : MATTE + Service-Public + DGAFP.
+
+Question synthétique : « Quelles sont les conditions du congé de formation
+professionnelle pour un agent contractuel ? ». Vrai `EmbeddingGateway` Albert,
+modèle `openweight-embeddings`, 1 024 dimensions, une tentative réussie et aucun
+fallback provider utilisé. Vrai `SearchStore` et nouveau step : **23 chunks en
+1,593 s**, dont MATTE 10, Service-Public 8 et DGAFP 5 ; 18 chunks rattachés à une
+section, 10 issus de headings, **zéro lane échouée**. Le top-k est par lane,
+puis les résultats sont fusionnés. Aucun contenu complet ni secret conservé
+dans le bilan ; aucune écriture DB, génération de réponse ou bascule runtime.
+
+Ce smoke prouve l’exécution sur le corpus staging courant pour cette requête et
+ce scope. Il ne mesure pas la qualité des réponses et ne reconstitue pas les
+inputs historiques M0b : le gate de #460 reste ouvert et #546 reste en brouillon.
+
+
+## C4 — agrégation et contexte derrière ports / #461 (2026-09-14)
+
+Extraction dans `core/pipeline/steps/aggregation.py` et `context_builder.py`,
+avec formatter de prompt et projection des traces purs. `ContentStorePort`
+porte les lectures sections/documents/références, `RerankerPort` le reranking.
+Les résultats, métadonnées et références sont détachés et immuables par appel ;
+`ContextBuildResult` remplace `last_resolved_refs`. C6 conserve la responsabilité
+de l'assemblage, du selector et du transport HTTP. Le runtime Streamlit est intact.
+
+Les scores, regroupements R2, ordre d'entrée aux égalités, bornes du reranker,
+texte limité à 1 500 caractères pour le reranking, documents entiers, budgets
+standard/wide, triangulation au-delà du budget et priorité primaire des références
+sont conservés. Aucun réglage opportuniste. Les erreurs DB typées dégradent vers
+les fallbacks historiques avec codes sûrs ; erreurs de configuration, bugs et
+annulations remontent. Les tentatives et le fallback provider sont explicites.
+Les lectures documentaires restent paresseuses pour conserver les points d'échec
+et éviter de charger des documents inéligibles.
+
+La [carte A5 ré-auditée](07-runtime-isolation-audit.md#ré-audit-c4-avant-extraction--461-2026-09-14)
+précède l'extraction. Une revue indépendante a détecté la normalisation B2
+`NULL → ""/0` des champs source ; correction des valeurs `Document`/`Section`
+et de l'adaptateur, sans migration. Une conformance SQL locale couvre aussi
+les champs nulls et les sections sans document. Le défaut historique du log
+sur titre de document NULL est consigné dans A5, sans le reproduire dans le core.
+
+**État initial, avant le complément ci-dessous : gate M0b non satisfait.** Les 7 fixtures / 56 artefacts
+d'origine sont intacts, mais ne contiennent ni les chunks complets, ni les retours
+bruts du reranker, ni tous les résultats des lectures documentaires. Les tests
+synthétiques différentiels exécutent vraiment les deux runtimes sur les mêmes
+inputs ; ils ne constituent pas un replay historique. Le [complément requis](../../../tests/conformance/M0_REPLAYS.md#c4-aggregation-and-context-extraction-differential-evidence-461)
+précise les inputs, ordres, révisions et sorties à enregistrer. Aucune baseline
+n'est reconstruite ou remplacée. A5-02/05/11 et M1 ne sont pas déclarés clos.
+
+Validation finale locale : **2 106 tests passent, 16 ignorés**, suites API et
+historiques réunies avec `PYTHON_DOTENV_DISABLED=1` et le DSN gardé de PostgreSQL
+18.4/pgvector 0.8.2 local exclusivement synthétique. C4 ajoute 53 tests de core
+et 5 comparaisons SQL. Ruff sur les chemins CI, mypy sur les six modules touchés
+et les trois contrats d'import passent. L'auto-check M0b confirme 7 fixtures et
+56 artefacts, `exact_comparison=null`. Revue indépendante : écart de NULL corrigé,
+aucun autre constat code restant. CI distante à vérifier après publication.
+Aucun accès DB distant, appel provider réel, migration distante ou déploiement
+dans cette validation initiale.
+
+### Complément de parité C4 accepté — 2026-09-14
+
+Le [paquet versionné et rejouable hors ligne](../../../tests/conformance/companions/c4-staging-20260914/README.md)
+complète la preuve d'acceptation de #461. Le runtime conservé de la branche staging
+`3bd4b912b0ba731a997ddb5257fc0c10d39b62e4` a été exécuté localement avec lectures
+staging forcées en lecture seule et appels providers autorisés. Ses entrées C4
+complètes ont été enregistrées avant traitement, puis rejouées sans réseau dans
+le candidat `39d78476b243e1a7b8dd268cb5362516198368cb`.
+
+**Comparaison exacte sur les quatre scénarios RAG** : 541 chunks entrants,
+80 sections après reranking, 6 context items dont 4 documents entiers ; égalité
+des sections, scores, ordre, métadonnées et texte du contexte. Les trois
+courts-circuits n'atteignent pas C4 et ne sont pas comptés comme replays C4 réussis.
+Le paquet inclut manifeste, empreintes, entrées/sorties et contrôles négatifs
+(fichier altéré, score et prompt modifiés détectés). Replay revérifié après
+extraction, avec la seule bibliothèque standard et les sources core fournies.
+
+Les références et la triangulation n'ont pas été sollicitées par cette capture ;
+elles restent couvertes par la conformance synthétique. Les cinq tests SQL ont
+été rejoués avec succès sur PostgreSQL 17.11 local synthétique. Les collisions
+de références restent hors preuve réelle. Aucun appel de génération finale,
+aucune écriture DB distante ni déploiement. La révision de l'image déployée
+n'a pas été vérifiée : la référence est explicitement le code de branche indiqué.
+
+**Critères d'acceptation C4 couverts par ce complément et les tests synthétiques.**
+Le bundle M0b original reste intact ; cette nouvelle référence ne prétend pas
+reconstituer ses appels historiques. C6/M1 et les cartes A5 dépendantes du
+branchement restent ouverts. Publication de la preuve sans changement du core ;
+aucune fusion dans le cadre de cette mise à jour.
+
+## C5 — selector, prompts ministériels et génération / #462 (2026-09-14)
+
+Extraction API dans `core/prompt_policy.py` et
+`core/pipeline/steps/{context_selector,generator}.py`. Ports prompts/LLM injectés,
+valeurs C4 conservées, diagnostics immuables et usage provider optionnel retournés
+par appel ou événement terminal. Aucun provider ni accès DB/horloge dans le core,
+aucun `last_*`, aucun changement du package historique servi.
+
+La [carte A5 préalable](07-runtime-isolation-audit.md#pré-extraction-c5--462-14-septembre-2026)
+fixe la matrice sélection/top-5/keep-all/rejet/no-answer et l'ordre des ressources.
+La revue indépendante a identifié deux dépendances implicites : substitution
+`{today}` dans l'ancien loader et ressource persona gestionnaire en fallback.
+Toutes deux sont préservées, avec date explicite par requête et trois ressources
+C5 copiées sans modification. Aucun prompt, modèle ou seuil qualité modifié.
+
+A5-01/03/08/12 avancent côté API : pas d'état de diagnostic partagé ; snapshots
+bruts révisionnés frais par appel au lieu du cache generator sans invalidation ;
+pannes récupérables DB vers ressources, double échec provider typé, annulation et
+bugs propagés. L'usage absent reste inconnu ; les requêtes B3 de streaming ne
+changent pas. La cohérence de tous les snapshots du run et l'assemblage restent
+C6, le transport SSE C7. Les cartes historiques ne sont pas déclarées closes.
+
+Conformance synthétique différentielle : prompts complets et date, ministères,
+priorités/citations/complémentarité, ordre et top-up, rejet total, contexte
+insuffisant, panne DB/persona, réussite/fallback/double panne, isolation et
+fermeture des streams. L'outillage de complément C5 est éprouvé hors ligne par
+aller-retour recorder/replay et contrôles négatifs, avec services simulés.
+
+**État initial avant la capture autorisée ci-dessous : gate C5 ouvert, aucun enregistrement live effectué.**
+Le recording préparé utiliserait quatre cas et sources figés du complément C4,
+les deux prompts staging en lecture seule, puis de nouveaux appels providers.
+Cette autorisation a ensuite été donnée pour la capture ci-dessous. Aucun input historique manquant n'est
+reconstitué. Voir [périmètre, preuves et commande](10-c5-parity.md).
+
+Validation locale finale après ajout du replay publié : **636 tests API réussis, 127 tests dépendants de la
+DB synthétique ignorés** ; Ruff, mypy et les trois contrats d'import réussis.
+Suite historique : 1 429 tests réussis sous sandbox et 46 ignorés ; le module
+HTTP initialement bloqué par l'interdiction de bind loopback a été rejoué avec
+succès (**14/14**, soit les 13 erreurs/blocages initiaux résolus). Auto-check M0b :
+7 fixtures / 56 artefacts intacts, `exact_comparison: null`. Revue indépendante
+finale favorable sur le code ; la preuve C5 enregistrée est décrite ci-dessous,
+l’intégration C6/M1 reste ouverte.
+
+
+### C5 — complément enregistré et rejoué après autorisation
+
+[Rapport et archive autonome](../../../tests/conformance/companions/c5-recorded-20260914/README.md),
+core `99fc62c`, fin de capture le 14 septembre 2026 à 14:22:47 UTC.
+Les quatre cas/config C4 ont été vérifiés octet pour octet puis figés avant I/O.
+Deux lectures de prompts staging sous TLS/read-only ; huit appels Albert réussis
+(`openweight-large` selector, `deepseek-v4-flash` generator). Aucun fallback
+provider, aucune écriture DB ni déploiement.
+
+**Replay exact réussi** : 80 candidats selector, 12 conservés ; 6 context items
+de génération et quatre réponses identiques. Un des quatre selector a produit
+une réponse malformée : le repli historique top-5 et ses diagnostics sont
+préservés exactement. Les trois autres sélections sont normales. Les étapes
+sont indépendantes, le generator consomme les contextes C4 figés et non les
+nouveaux choix selector ; aucun replay d'assemblage C6 n'est revendiqué.
+
+L'archive contient les sources figées, prompts bruts, requêtes/réponses provider,
+sorties attendues et empreintes ; secrets et journal privé exclus. Replay sans
+réseau revérifié après extraction avec la seule bibliothèque standard. Trois
+contrôles négatifs réussissent, y compris prompt et réponse attendue modifiés
+après recalcul de leur hash. Les tests CI rejouent les fixtures publiées contre
+le core du checkout courant. La preuve C5 est disponible pour la revue ; C6/M1
+et les cartes A5 historiques restent distincts. Aucun artefact M0b original
+modifié ; aucune entrée historique absente reconstruite.
+
+### C5 — complément d'acceptation du 15 septembre 2026
+
+[Matrice des critères, replays et revue de sourçage](../../../tests/conformance/companions/c5-acceptance-20260915/README.md) :
+quatre cas enregistrés rejoués sur `a8bb4a0`, neuf cas synthétiques supplémentaires
+(dont rejet total, insuffisance, fallback et double panne), huit contrôles
+négatifs au total. Le vrai gateway API est exécuté sur transport simulé ; aucun
+nouvel accès DB/provider réel. 182 tests ciblés et Ruff passent.
+
+Revue manuelle des 27 unités de réponse contre le contexte effectivement envoyé :
+appuis retrouvés dans le ministère sélectionné. Réserves conservées : portée
+MATTE/proportionnalité des formalités, et exception mobilité sur emploi de
+direction non présentée. Les tests protègent citations, offsets, empreintes et
+couverture des réponses, pas une certification sémantique automatique. Aucun
+prompt/seuil/runtime ni artefact M0b original modifié ; clôture après fusion et
+gates C6/M1 restent distincts.
+
+Durcissement de l'outillage C5 après relecture : la commande autonome refuse
+tout panel qui ne contient pas exactement les neuf scénarios uniques attendus
+avec leurs étapes, avant tout client provider. Les contrôles négatifs utilisent
+les identifiants et supportent un ordre différent des cas. Les nouveaux
+enregistrements portent `head: null` / `unverified_snapshot` et leurs empreintes,
+sans attribution Git non vérifiée. Les fixtures historiques restent intactes.
+Les régressions reproduites avant correction passent désormais : **202 tests
+ciblés**, dont la CLI avec panel vide et la provenance sur sources modifiées,
+ainsi que Ruff ; aucun changement de runtime/prompt/seuil.
+
+Correction du faux positif en mode Python optimisé : toutes les assertions de
+validation du compagnon synthétique sont remplacées par des contrôles explicites.
+Les réponses/requêtes altérées et les empreintes incohérentes échouent en CLI
+normale, `-O` et `-OO` ; les replays valides et les cinq contrôles négatifs passent
+dans ces trois modes. Régressions vérifiées avant/après : 10 échecs avant le
+correctif ; **220 tests ciblés** et Ruff passent après correction. Les fixtures
+et le runtime C5 restent inchangés.

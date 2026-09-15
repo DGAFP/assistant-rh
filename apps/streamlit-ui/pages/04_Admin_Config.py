@@ -15,13 +15,15 @@ import streamlit as st
 from assistant_rh_rag_pipeline.db_helpers import create_engine_from_env
 from dotenv import load_dotenv
 
+from src.ui.page_config import configure_page
+
 load_dotenv()
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PAGE CONFIG
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-st.set_page_config(
+configure_page(
     page_title="Admin Config",
     page_icon="⚙️",
     layout="wide",

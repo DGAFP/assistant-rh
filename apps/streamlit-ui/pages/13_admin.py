@@ -12,11 +12,12 @@ passe (ADMIN_PASSWORD) quand l'utilisateur n'est pas déjà administrateur.
 import streamlit as st
 
 from src.ui.admin_auth import require_admin
+from src.ui.page_config import configure_page
 
 # Page d'administration cible du raccourci (modifiable).
 _ADMIN_LANDING = "pages/04_Admin_Config.py"
 
-st.set_page_config(page_title="Admin", page_icon="🔧", layout="wide")
+configure_page(page_title="Admin", page_icon="🔧", layout="wide")
 
 require_admin()
 st.switch_page(_ADMIN_LANDING)

@@ -17,6 +17,9 @@ import psycopg
 from assistant_rh_shared import get_dsn
 from dotenv import load_dotenv
 
+from assistant_rh_data_engineering.jobs.rag_eval_items import ITEM_COLUMNS, ITEM_HELP, MAX_EVAL_ITEMS_PER_RUN, eval_item_metrics
+from assistant_rh_data_engineering.jobs.rag_eval_metrics import EVAL_COLUMNS, EVAL_HELP, MAX_EVAL_RUNS, eval_run_metrics
+
 logger = logging.getLogger(__name__)
 
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -76,10 +79,14 @@ EXPECTED_TABLES = (
     "rag_sections",
     "rag_trace_events",
     "rag_ingestion_runs",
+    "rag_quality_eval_runs",
+    "rag_quality_eval_items",
     *(table.table for table in DIRECT_CHUNK_TABLES),
 )
 
 METRIC_HELP = {
+    **EVAL_HELP,
+    **ITEM_HELP,
     "assistant_rh_ingestion_run_available": "Whether a completed PDF ingestion run exists for this ministry and scope.",
     "assistant_rh_ingestion_last_run_timestamp_seconds": "Completion timestamp of the latest PDF ingestion run by ministry and scope.",
     "assistant_rh_ingestion_last_run_documents": "Document counts from the latest completed PDF ingestion run; gauges, not cumulative counters.",
@@ -202,9 +209,10 @@ class RagHealthCollector:
 
         samples.extend(self._trace_metrics(conn, columns, now))
         samples.extend(self._ingestion_metrics(conn, columns))
+        samples.extend(self._eval_metrics(conn, columns))
 
         for table in EXPECTED_TABLES:
-            if table in {"rag_trace_events", "rag_ingestion_runs"}:
+            if table in {"rag_trace_events", "rag_ingestion_runs", "rag_quality_eval_runs", "rag_quality_eval_items"}:
                 continue
             samples.extend(self._freshness_metrics(conn, columns, table, now))
 
@@ -214,6 +222,79 @@ class RagHealthCollector:
     def _set_statement_timeout(self, conn: psycopg.Connection) -> None:
         with conn.cursor() as cur:
             cur.execute("SELECT set_config('statement_timeout', %s, false)", (str(max(0, self.statement_timeout_ms)),))
+
+    def _eval_metrics(self, conn: psycopg.Connection, columns: dict[str, set[str]]) -> list[MetricSample]:
+        available = set(EVAL_COLUMNS).issubset(columns.get("rag_quality_eval_runs", set()))
+        samples = [metric("assistant_rh_rag_eval_schema_available", self.env_label, int(available))]
+        if not available:
+            return samples
+        # The primary-key index supports this bounded window. No item payloads,
+        # prompts, answers, full config, or historical corpus scans are needed.
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT id, goldset_name, status, judge_model, git_sha, config_fingerprint,
+                       EXTRACT(EPOCH FROM created_at)::double precision AS created_epoch,
+                       EXTRACT(EPOCH FROM completed_at - created_at)::double precision AS duration_seconds,
+                       aggregate, metadata->'eval_scope' AS eval_scope, tag_filter
+                FROM {self.schema_sql}.rag_quality_eval_runs
+                ORDER BY id DESC LIMIT %s
+            """,
+                (MAX_EVAL_RUNS,),
+            )
+            rows = cur.fetchall()
+        samples.append(metric("assistant_rh_rag_eval_runs_exposed", self.env_label, len(rows)))
+        names = (
+            "id",
+            "goldset_name",
+            "status",
+            "judge_model",
+            "git_sha",
+            "config_fingerprint",
+            "created_epoch",
+            "duration_seconds",
+            "aggregate",
+            "eval_scope",
+            "tag_filter",
+        )
+        for values in rows:
+            for name, value, labels in eval_run_metrics(dict(zip(names, values, strict=True))):
+                samples.append(metric(name, self.env_label, value, **labels))
+        samples.extend(self._eval_item_metrics(conn, columns, [{"id": row[0], "goldset_name": row[1]} for row in rows]))
+        return samples
+
+    def _eval_item_metrics(self, conn: psycopg.Connection, columns: dict[str, set[str]], runs: list[dict]) -> list[MetricSample]:
+        available = set(ITEM_COLUMNS).issubset(columns.get("rag_quality_eval_items", set()))
+        samples = [metric("assistant_rh_rag_eval_items_schema_available", self.env_label, int(available))]
+        if not available or not runs:
+            return samples
+        # The run_id index bounds each lookup. Fetch one extra item to detect an
+        # oversized run, which is omitted entirely rather than silently averaged.
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT i.id, i.run_id, i.question_id, i.question, i.gold_sources, i.deterministic_metrics, i.judge_result
+                FROM unnest(%s::bigint[]) AS r(run_id)
+                CROSS JOIN LATERAL (
+                    SELECT id, run_id, question_id, left(question, 501) AS question, gold_sources[1:20] AS gold_sources,
+                           jsonb_build_object('gold_count', deterministic_metrics->'gold_count',
+                                              'stages', deterministic_metrics->'stages') AS deterministic_metrics,
+                           jsonb_build_object('pass', judge_result->'pass', 'score', judge_result->'score',
+                                              'status', judge_result->'status') AS judge_result
+                    FROM {self.schema_sql}.rag_quality_eval_items
+                    WHERE run_id = r.run_id ORDER BY id LIMIT %s
+                ) AS i
+                """,
+                ([r["id"] for r in runs], MAX_EVAL_ITEMS_PER_RUN + 1),
+            )
+            rows = cur.fetchall()
+        grouped: dict[int, list[dict]] = {}
+        for row in rows:
+            grouped.setdefault(row[1], []).append(dict(zip(ITEM_COLUMNS, row, strict=True)))
+        for run in runs:
+            for name, value, labels in eval_item_metrics(run, grouped.get(run["id"], [])):
+                samples.append(metric(name, self.env_label, value, **labels))
+        return samples
 
     def _load_columns(self, conn: psycopg.Connection) -> dict[str, set[str]]:
         with conn.cursor() as cur:
@@ -242,6 +323,8 @@ class RagHealthCollector:
             return "traces"
         if table == "rag_ingestion_runs":
             return "ingestion_runs"
+        if table in {"rag_quality_eval_runs", "rag_quality_eval_items"}:
+            return "eval_runs"
         return "chunks"
 
     def _ingestion_metrics(self, conn: psycopg.Connection, columns: dict[str, set[str]]) -> list[MetricSample]:
@@ -647,7 +730,7 @@ class MetricsState:
             self._poll_errors += 1.0
             self._last_error = str(exc)
 
-    def render(self) -> str:
+    def render(self, group: str = "all") -> str:
         with self._lock:
             samples = [
                 *self._data_samples,
@@ -657,6 +740,8 @@ class MetricsState:
                 metric("assistant_rh_rag_poll_duration_seconds", self.env_label, self._last_duration),
                 metric("assistant_rh_rag_poll_errors_total", self.env_label, self._poll_errors),
             ]
+        if group != "all":
+            samples = [sample for sample in samples if sample.name.startswith("assistant_rh_rag_eval_") == (group == "evals")]
         return render_prometheus(samples)
 
     def health_payload(self) -> dict[str, Any]:
@@ -689,8 +774,9 @@ def poll_once(collector: RagHealthCollector, state: MetricsState, dsn: str) -> N
 def make_handler(state: MetricsState) -> type[BaseHTTPRequestHandler]:
     class RagHealthHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802 - stdlib handler API.
-            if self.path == "/metrics":
-                body = state.render().encode("utf-8")
+            if self.path in {"/metrics", "/metrics/health", "/metrics/evals"}:
+                group = {"/metrics": "all", "/metrics/health": "health", "/metrics/evals": "evals"}[self.path]
+                body = state.render(group).encode("utf-8")
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))

@@ -1,0 +1,20 @@
+{
+  "baseline_passed": true,
+  "negative_controls": [
+    {
+      "mutation": "unhashed-fixture",
+      "detected": true,
+      "reason": "fixture hash mismatch: rag-ministry-mso.json"
+    },
+    {
+      "mutation": "prompt-with-new-hash",
+      "detected": true,
+      "reason": "exact LLM request mismatch"
+    },
+    {
+      "mutation": "answer-with-new-hash",
+      "detected": true,
+      "reason": "generator differs: rag-ministry-mso"
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+"""Immutable inference values, independent of provider SDKs and HTTP transports."""
+
+from dataclasses import dataclass
+from typing import Literal
+
+Provider = Literal["albert", "scaleway"]
+FailureKind = Literal["timeout", "unavailable", "rate_limited", "rejected", "invalid_response", "circuit_open"]
+EmbeddingModel = Literal["albert", "bge_scaleway"]
+
+
+@dataclass(frozen=True, slots=True)
+class Attempt:
+    provider: Provider
+    model: str
+    error: FailureKind | None = None
+    status: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Message:
+    role: Literal["system", "user", "assistant"]
+    content: str
+
+
+@dataclass(frozen=True, slots=True)
+class ChatRequest:
+    messages: tuple[Message, ...]
+    temperature: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class TokenUsage:
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+@dataclass(frozen=True, slots=True)
+class Completion:
+    text: str
+    provider: Provider
+    model: str
+    attempts: tuple[Attempt, ...]
+    finish_reason: str | None = None
+    usage: TokenUsage | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TextDelta:
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class StreamCompleted:
+    provider: Provider
+    model: str
+    attempts: tuple[Attempt, ...]
+    finish_reason: str | None = None
+    usage: TokenUsage | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Embedding:
+    """The logical model and dimensions travel with the normalized vector."""
+
+    vector: tuple[float, ...]
+    model: EmbeddingModel
+    provider: Provider
+    attempts: tuple[Attempt, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RankedDocument:
+    index: int
+    score: float
+
+
+@dataclass(frozen=True, slots=True)
+class Reranking:
+    documents: tuple[RankedDocument, ...]
+    attempts: tuple[Attempt, ...]
+    fallback: bool = False

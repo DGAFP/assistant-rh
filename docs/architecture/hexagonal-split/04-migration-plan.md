@@ -40,19 +40,19 @@ Cette phase construit les bords de l'hexagone avant d'extraire le pipeline. Les 
 
 ## Phase C — completion, extraite étape par étape
 
-La DB et les providers existent déjà. Le handler de transport est posé avant l'extraction métier, puis chaque étape remplace une dépendance fake/replay par une règle pure nouvelle. L'ancien package n'est jamais modifié en façade et reste le runtime servi.
+La DB et les providers existent déjà. C1 fixe le contrat à partir du spike A2 ; C2–C5 extraient et valident les étapes sans handler de replay. C6 intègre le moteur et le transport non-stream, puis C7 ajoute le SSE. L'ancien package n'est jamais modifié en façade et reste le runtime servi.
 
 **Gate A5 obligatoire** : avant chaque extraction C2 à C7, appliquer la [règle de re-audit](07-runtime-isolation-audit.md#règle-bloquante-avant-une-extraction-de-phase-c). La PR doit mettre à jour la carte du module, assigner les nouveaux écarts dans le LEDGER et figer les règles d'ordre touchées.
 
 | PR | Contenu | Preuve minimale |
 |---|---|---|
-| **C1** | Handler non-stream `/v1/chat/completions` branché sur un `ChatService` fake/replay : validation messages, historique 5 tours, modèle, erreurs et enveloppe sources | Tests de contrat HTTP sans moteur réel |
+| **C1** ([#458](https://github.com/DGAFP/assistant-rh/issues/458)) | [Contrat Chat Completions](09-chat-completions-contract.md) : messages, historique 5 tours, auth/modèle/scope, paramètres, limites, sources et erreurs ; aucun handler ni service fake/replay requis | Contrat, exemples et matrice de cas attendus reliés au spike A2, fixés avant C6 |
 | **C2** | Extraction du query processor : intent, acronymes, reformulation et legal-search ; prompts/acronymes/LLM derrière ports | Conformance exacte sur fixtures M0b |
 | **C3** | Extraction du retrieval : recherche brute via adaptateurs B2, fusion, scores, gates et déterminisme dans le core | Conformance d'étape + tests d'égalité de scores |
 | **C4** | Extraction du section aggregator et du context builder : accès sections/documents/références via `ContentStorePort` | Conformance agrégation/contexte |
 | **C5** | Extraction du context selector, de la composition du prompt ministère et du generator | Replays + anti-hallucination/no-answer/fallback |
-| **C6** | `Pipeline`/`ChatService` réel, `RunContext` par requête, événements de toutes les étapes et persistance atomique du run, de ses sources finales ordonnées et de ses traces | Conformance bout en bout + tests de concurrence et d'atomicité |
-| **C7** | Streaming SSE : worker borné, file async, pings, erreur post-headers, annulation et persistance avant `[DONE]` | Tests stream/déconnexion/erreur sur local et homelab |
+| **C6** ([#463](https://github.com/DGAFP/assistant-rh/issues/463)) | Handler HTTP non-stream `/v1/chat/completions` et tous ses tests de transport selon C1 ; `Pipeline`/`ChatService` réel, `RunContext` par requête, événements de toutes les étapes et persistance atomique du run, de ses sources finales ordonnées et de ses traces | Matrice HTTP C1 + conformance bout en bout + tests de concurrence et d'atomicité |
+| **C7** ([#464](https://github.com/DGAFP/assistant-rh/issues/464)) | Streaming SSE selon C1/A2 : worker borné, file async, pings, erreur post-headers, annulation et persistance avant `[DONE]` | Tests stream/déconnexion/erreur sur local et homelab |
 
 **Jalon M1 — parité moteur** :
 

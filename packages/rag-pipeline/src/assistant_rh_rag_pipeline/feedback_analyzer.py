@@ -141,6 +141,7 @@ def _get_unanalyzed_feedbacks(engine, limit: int = 50) -> List[Dict[str, Any]]:
     query = text("""
         SELECT
             f.id,
+            COALESCE((to_jsonb(f)->>'api_revision')::bigint, 0) AS api_revision,
             f.turn_id,
             f.question,
             f.answer,
@@ -176,28 +177,34 @@ def _get_unanalyzed_feedbacks(engine, limit: int = 50) -> List[Dict[str, Any]]:
         return [dict(r._mapping) for r in rows]
 
 
-def _save_analysis(engine, feedback_id: int, category: str, reason: str) -> bool:
-    """Write analysis results back to chat_feedbacks."""
+def _save_analysis(engine, feedback_id: int, category: str, reason: str, revision: int) -> bool:
+    """Save only if the feedback generation selected before the LLM is current.
+
+    Before B2, feedback INSERTs have distinct IDs and no revision column. Reading
+    the optional column through JSON keeps that schema compatible during rollout.
+    """
     query = text("""
-        UPDATE chat_feedbacks
+        UPDATE chat_feedbacks AS f
         SET error_category = :cat,
             ai_reason = :reason,
             ai_analyzed_at = :ts
-        WHERE id = :fid
+        WHERE f.id = :fid AND f.error_category IS NULL
+          AND COALESCE((to_jsonb(f)->>'api_revision')::bigint, 0) = :revision
     """)
     try:
         with engine.connect() as conn:
-            conn.execute(
+            result = conn.execute(
                 query,
                 {
                     "cat": category,
                     "reason": reason,
                     "ts": datetime.now(timezone.utc),
                     "fid": feedback_id,
+                    "revision": revision,
                 },
             )
             conn.commit()
-        return True
+            return result.rowcount == 1
     except SQLAlchemyError as exc:
         logger.error("Failed to save analysis for feedback %s: %s", feedback_id, exc)
         return False
@@ -755,6 +762,8 @@ def analyze_single(feedback: Dict[str, Any], engine=None) -> Tuple[str, str]:
     search the corpus for markers and persist the analysis result.
     """
     feedback = dict(feedback)
+    if engine and feedback.get("id") and "api_revision" not in feedback:
+        raise ValueError("Persisted feedback analysis requires the revision read with the feedback")
 
     selected_ministry = feedback.get("selected_ministry")
 
@@ -822,7 +831,7 @@ def analyze_single(feedback: Dict[str, Any], engine=None) -> Tuple[str, str]:
         category, reason = _call_albert(system_prompt, user_prompt)
 
     if engine and feedback.get("id"):
-        if not _save_analysis(engine, feedback["id"], category, reason):
+        if not _save_analysis(engine, feedback["id"], category, reason, feedback["api_revision"]):
             raise RuntimeError(f"échec de persistance de l'analyse du feedback {feedback['id']}")
 
     return category, reason

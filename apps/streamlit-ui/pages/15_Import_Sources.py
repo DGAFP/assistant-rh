@@ -13,9 +13,11 @@ warnings.filterwarnings("ignore", message=".*st.cache.*")
 import streamlit as st
 from dotenv import load_dotenv
 
+from src.ui.page_config import configure_page
+
 load_dotenv()
 
-st.set_page_config(page_title="Import de sources", page_icon="📤", layout="wide")
+configure_page(page_title="Import de sources", page_icon="📤", layout="wide")
 
 from src.ui.admin_auth import require_admin, show_admin_badge
 
