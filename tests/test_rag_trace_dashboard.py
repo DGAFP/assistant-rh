@@ -108,6 +108,18 @@ def test_selected_trace_uses_native_traces_panel() -> None:
     assert panel["targets"][0]["queryType"] == "traceql"
 
 
+def test_evidence_table_keeps_each_stage_and_attempt_of_the_selected_trace() -> None:
+    panel = next(panel for panel in _dashboard()["panels"] if panel["id"] == 8)
+    target = panel["targets"][0]
+    assert target["tableType"] == "spans"
+    assert target["spss"] >= 12  # Includes both initial retrieval and selector retry.
+    assert 'span.rag.trace_id = "$trace_id"' in target["query"]
+    for attribute in ("rag.stage", "rag.attempt_name", "rag.evidence", "rag.evidence.truncated", "rag.selection.reason"):
+        assert f"span.{attribute}" in target["query"]
+    assert all(transform["id"] != "reduce" for transform in panel["transformations"])
+    assert panel["options"]["enablePagination"] is False
+
+
 def test_selected_trace_query_does_not_use_match_all_filter_default() -> None:
     variables = {variable["name"]: variable for variable in _dashboard()["templating"]["list"]}
     selected_trace_id = variables["trace_id"]["current"]["value"]

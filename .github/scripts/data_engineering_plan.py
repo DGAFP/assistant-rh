@@ -7,22 +7,22 @@ from pathlib import Path
 
 IMAGE_MATRIX = {
     "service_public": [
-        {"image": "service-public-pipeline", "dockerfile": "Dockerfile.service_public_pipeline"},
-        {"image": "service-public-ingestion", "dockerfile": "Dockerfile.service_public_ingestion"},
+        {"image": "service-public-pipeline", "dockerfile": "docker/Dockerfile.service_public_pipeline"},
+        {"image": "service-public-ingestion", "dockerfile": "docker/Dockerfile.service_public_ingestion"},
     ],
     "legifrance": [
-        {"image": "legifrance-bulk-dump", "dockerfile": "Dockerfile.legifrance_bulk_dump"},
-        {"image": "legifrance-pipeline", "dockerfile": "Dockerfile.legifrance_pipeline"},
-        {"image": "legifrance-ingestion", "dockerfile": "Dockerfile.legifrance_ingestion"},
+        {"image": "legifrance-bulk-dump", "dockerfile": "docker/Dockerfile.legifrance_bulk_dump"},
+        {"image": "legifrance-pipeline", "dockerfile": "docker/Dockerfile.legifrance_pipeline"},
+        {"image": "legifrance-ingestion", "dockerfile": "docker/Dockerfile.legifrance_ingestion"},
     ],
     "pdf_sources": [
-        {"image": "pdf-sources-pipeline", "dockerfile": "Dockerfile.pdf_sources_pipeline"},
+        {"image": "pdf-sources-pipeline", "dockerfile": "docker/Dockerfile.pdf_sources_pipeline"},
     ],
     "embeddings": [
-        {"image": "embeddings-job", "dockerfile": "Dockerfile.embeddings_job"},
+        {"image": "embeddings-job", "dockerfile": "docker/Dockerfile.embeddings_job"},
     ],
     "r2": [
-        {"image": "embeddings-job", "dockerfile": "Dockerfile.embeddings_job"},
+        {"image": "embeddings-job", "dockerfile": "docker/Dockerfile.embeddings_job"},
     ],
 }
 
@@ -116,8 +116,8 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
                 "packages/data-engineering/src/assistant_rh_data_engineering/jobs/service_public_",
             ),
         ) or path in {
-            "Dockerfile.service_public_pipeline",
-            "Dockerfile.service_public_ingestion",
+            "docker/Dockerfile.service_public_pipeline",
+            "docker/Dockerfile.service_public_ingestion",
             "config/service_public_fiches.json",
             "config/scaleway_serverless_job_service_public.json",
             "config/scaleway_serverless_job_service_public_ingestion.json",
@@ -131,9 +131,9 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
                 "packages/data-engineering/src/assistant_rh_data_engineering/jobs/legifrance_",
             ),
         ) or path in {
-            "Dockerfile.legifrance_bulk_dump",
-            "Dockerfile.legifrance_pipeline",
-            "Dockerfile.legifrance_ingestion",
+            "docker/Dockerfile.legifrance_bulk_dump",
+            "docker/Dockerfile.legifrance_pipeline",
+            "docker/Dockerfile.legifrance_ingestion",
             "config/legifrance_article_cids.json",
             "config/legifrance_articles.json",
             "config/legifrance_articles_smoke.json",
@@ -154,7 +154,7 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
                 "packages/data-engineering/src/assistant_rh_data_engineering/jobs/pdf_sources_",
             ),
         ) or path in {
-            "Dockerfile.pdf_sources_pipeline",
+            "docker/Dockerfile.pdf_sources_pipeline",
             "config/scaleway_serverless_job_pdf_sources_mi.json",
             "config/scaleway_serverless_job_pdf_sources_masa.json",
             "config/scaleway_serverless_job_pdf_sources_matte.json",
@@ -166,7 +166,7 @@ def classify_from_files(files: list[str]) -> dict[str, bool]:
             result["pdf_sources"] = True
 
         if (
-            path == "Dockerfile.embeddings_job"
+            path == "docker/Dockerfile.embeddings_job"
             or path == "packages/data-engineering/src/assistant_rh_data_engineering/jobs/embeddings_backfill.py"
             # Les *_embedding_tables.json des ministères PDF appartiennent au
             # domaine pdf_sources: leur ajout ne doit pas déclencher les
@@ -311,9 +311,7 @@ def resolve_mode(raw: str | None) -> str:
 def main() -> int:
     pdf_sources_ministry = ""
     mode = resolve_mode(os.getenv("INPUT_MODE"))
-    explicit_selection = (
-        os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch" or os.getenv("INPUT_AUTOMATED_RELEASE", "").strip().lower() == "true"
-    )
+    explicit_selection = os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch" or os.getenv("INPUT_AUTOMATED_RELEASE", "").strip().lower() == "true"
     if explicit_selection:
         source = os.getenv("INPUT_SOURCE") or "all"
         selected = classify_from_source(source)
@@ -380,7 +378,7 @@ def main() -> int:
         "has_runs": str(
             selected["service_public"] or selected["legifrance"] or selected["pdf_sources"] or selected["embeddings"] or selected["r2"]
         ).lower(),
-        "matrix": json.dumps({"include": matrix or [{"image": "noop", "dockerfile": "Dockerfile.service_public_pipeline"}]}),
+        "matrix": json.dumps({"include": matrix or [{"image": "noop", "dockerfile": "docker/Dockerfile.service_public_pipeline"}]}),
         "run_matrix": json.dumps({"include": run_matrix or [noop_run]}),
         "changed_files": json.dumps(files),
     }

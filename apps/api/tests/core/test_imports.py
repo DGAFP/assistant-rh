@@ -8,13 +8,20 @@ def test_package_and_core_imports_do_not_wire_io() -> None:
     script = """
 import sys
 import assistant_rh_api
-from assistant_rh_api.core import errors, health, models, ports
+from assistant_rh_api.core import errors, health, models, ports, prompt_policy
+from assistant_rh_api.core.pipeline.steps import (
+    aggregation, context_builder, context_formatting, context_selector, generator, query_processor, retrieval,
+)
 
 forbidden = {
     "fastapi",
     "psycopg",
     "psycopg_pool",
     "httpx",
+    "openai",
+    "requests",
+    "streamlit",
+    "assistant_rh_rag_pipeline",
     "assistant_rh_api.handlers.app",
     "assistant_rh_api.db.health",
 }

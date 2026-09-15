@@ -10,479 +10,76 @@
   "liveNow": false,
   "panels": [
     {
+      "id": 100,
+      "title": "",
+      "type": "text",
+      "transparent": true,
+      "options": {
+        "mode": "markdown",
+        "content": "## Santé du corpus\n**Assistant RH** · Vue opérationnelle des données et des ingestions. Choisissez un environnement pour une lecture claire ; « All » permet la comparaison."
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      }
+    },
+    {
       "datasource": {
         "type": "prometheus",
         "uid": "$datasource"
       },
       "fieldConfig": {
         "defaults": {
+          "unit": "none",
+          "decimals": 0,
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 12,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 2,
-            "pointSize": 4,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "En échec",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "Réussie",
+                  "color": "green"
+                }
+              }
             }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
+          ],
+          "noValue": "Non disponible"
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
         "x": 0,
-        "y": 0
-      },
-      "id": 1,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum(assistant_rh_rag_documents_total{env=~\"$env\"}) by (env, source)",
-          "legendFormat": "{{env}} / {{source}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Documents by source",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "$datasource"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 0
-      },
-      "id": 2,
-      "options": {
-        "displayMode": "gradient",
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "minVizHeight": 10,
-        "minVizWidth": 0,
-        "namePlacement": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true,
-        "sizing": "auto",
-        "valueMode": "color"
-      },
-      "targets": [
-        {
-          "expr": "sum(assistant_rh_rag_chunks_total{env=~\"$env\"}) by (env, table)",
-          "legendFormat": "{{env}} / {{table}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Chunks by table",
-      "type": "bargauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "$datasource"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 0.95
-              },
-              {
-                "color": "green",
-                "value": 0.99
-              }
-            ]
-          },
-          "unit": "percentunit"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 0,
-        "y": 8
-      },
-      "id": 3,
-      "options": {
-        "displayMode": "gradient",
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "minVizHeight": 10,
-        "minVizWidth": 0,
-        "namePlacement": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true,
-        "sizing": "auto",
-        "valueMode": "color"
-      },
-      "targets": [
-        {
-          "expr": "assistant_rh_rag_embedding_coverage_ratio{env=~\"$env\"}",
-          "legendFormat": "{{env}} / {{table}} / {{model}} / {{column}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Embedding coverage",
-      "type": "bargauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "$datasource"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisPlacement": "auto",
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "lineInterpolation": "linear",
-            "lineWidth": 2,
-            "pointSize": 4,
-            "showPoints": "never",
-            "spanNulls": false
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 8
-      },
-      "id": 4,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum(assistant_rh_rag_embeddings_missing_total{env=~\"$env\"}) by (env, table, model, column)",
-          "legendFormat": "{{env}} / {{table}} / {{model}} / {{column}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Missing embeddings",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "$datasource"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 0,
-        "y": 17
-      },
-      "id": 5,
-      "options": {
-        "displayMode": "gradient",
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "minVizHeight": 10,
-        "minVizWidth": 0,
-        "namePlacement": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true,
-        "sizing": "auto",
-        "valueMode": "color"
-      },
-      "targets": [
-        {
-          "expr": "sum(assistant_rh_rag_integrity_issues_total{env=~\"$env\"}) by (env, table, reason)",
-          "legendFormat": "{{env}} / {{table}} / {{reason}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Integrity issues",
-      "type": "bargauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "$datasource"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 86400
-              },
-              {
-                "color": "red",
-                "value": 604800
-              }
-            ]
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 12,
-        "y": 17
-      },
-      "id": 6,
-      "options": {
-        "displayMode": "gradient",
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "minVizHeight": 10,
-        "minVizWidth": 0,
-        "namePlacement": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true,
-        "sizing": "auto",
-        "valueMode": "color"
-      },
-      "targets": [
-        {
-          "expr": "assistant_rh_rag_table_freshness_seconds{env=~\"$env\"}",
-          "legendFormat": "{{env}} / {{table}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Table freshness",
-      "type": "bargauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "$datasource"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 0,
-        "y": 24
+        "y": 3,
+        "w": 6,
+        "h": 4
       },
       "id": 7,
       "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
@@ -491,19 +88,245 @@
           "fields": "",
           "values": false
         },
-        "showPercentChange": false,
         "textMode": "auto",
-        "wideLayout": true
+        "wideLayout": true,
+        "text": {
+          "titleSize": 14,
+          "valueSize": 30
+        }
       },
       "targets": [
         {
           "expr": "min(assistant_rh_rag_last_poll_success{env=~\"$env\"})",
-          "legendFormat": "last poll success",
-          "refId": "A"
+          "legendFormat": "Dernière collecte",
+          "refId": "A",
+          "instant": true,
+          "range": false
         }
       ],
-      "title": "Exporter DB poll status",
-      "type": "stat"
+      "title": "Collecte des métriques",
+      "type": "stat",
+      "description": "Résultat de la dernière collecte en base. À lire avec son âge : une dernière collecte réussie peut devenir ancienne."
+    },
+    {
+      "id": 16,
+      "title": "Fraîcheur des données",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "targets": [
+        {
+          "expr": "max(time() - assistant_rh_rag_last_successful_poll_timestamp_seconds{env=~\"$env\"})",
+          "refId": "A",
+          "legendFormat": "Fraîcheur des données",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "type": "stat",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 600
+              },
+              {
+                "color": "red",
+                "value": 1800
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "Non disponible"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 14,
+          "valueSize": 30
+        }
+      },
+      "description": "Âge de la dernière collecte réussie, attendue toutes les 5 minutes. Orange après 10 minutes, rouge après 30 minutes. Une nouvelle tentative en échec ne remet pas cet âge à zéro.",
+      "gridPos": {
+        "x": 6,
+        "y": 3,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "id": 17,
+      "title": "Documents en base",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "targets": [
+        {
+          "expr": "sum(assistant_rh_rag_documents_total{env=~\"$env\"})",
+          "refId": "A",
+          "legendFormat": "Documents en base",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "type": "stat",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "Non disponible"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 14,
+          "valueSize": 30
+        }
+      },
+      "description": "Total des documents dans les environnements sélectionnés. Il ne prouve pas la complétude du référentiel.",
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "id": 18,
+      "title": "Anomalies de structure",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "targets": [
+        {
+          "expr": "sum(assistant_rh_rag_integrity_issues_total{env=~\"$env\"})",
+          "refId": "A",
+          "legendFormat": "Anomalies de structure",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "type": "stat",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "Non disponible"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 14,
+          "valueSize": 30
+        }
+      },
+      "description": "Somme des liens vers un document ou une section absents. Un même chunk peut avoir plusieurs anomalies.",
+      "gridPos": {
+        "x": 18,
+        "y": 3,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "id": 101,
+      "title": "01 · Ingestion des ministères",
+      "type": "row",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 24,
+        "h": 1
+      }
     },
     {
       "datasource": {
@@ -512,10 +335,140 @@
       },
       "fieldConfig": {
         "defaults": {
+          "unit": "none",
+          "decimals": 0,
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              },
+              {
+                "color": "blue",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "À établir",
+                  "color": "orange"
+                },
+                "1": {
+                  "text": "Disponible",
+                  "color": "blue"
+                }
+              }
+            }
+          ],
+          "noValue": "Non disponible"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 24,
+        "h": 5
+      },
+      "id": 15,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 14,
+          "valueSize": 24
+        }
+      },
+      "targets": [
+        {
+          "expr": "max by (env, source) (assistant_rh_ingestion_run_available{env=~\"$env\",scope=\"full\"})",
+          "legendFormat": "{{source}} · {{env}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "Passage complet connu — par ministère",
+      "type": "stat",
+      "description": "1 : un passage complet est connu ; 0 : aucun passage complet avec portée explicite. Les anciens runs de portée inconnue ne prouvent pas la couverture du manifest.",
+      "transformations": [
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmasa\\b/g",
+            "renamePattern": "MASA"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmatte\\b/g",
+            "renamePattern": "MATTE"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmso\\b/g",
+            "renamePattern": "MSO"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmi\\b/g",
+            "renamePattern": "MI"
+          }
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "title": "",
+      "type": "text",
+      "transparent": true,
+      "options": {
+        "mode": "markdown",
+        "content": "**À établir** : aucun passage complet identifié. Le bilan et l’écart au référentiel restent alors indisponibles.\n\n**Historique** : portée non renseignée · **Ciblé** : un ou plusieurs documents · **Complet** : ensemble du référentiel. Une collecte de métriques réussie ne prouve pas que le cron a tourné."
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 3
+      }
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: j",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -529,46 +482,151 @@
               },
               {
                 "color": "red",
-                "value": 10
+                "value": 7
               }
             ]
           },
-          "unit": "s"
+          "mappings": [],
+          "noValue": "Non disponible",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Ancienneté"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.width",
+                "value": 135
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 8,
-        "y": 24
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 9
       },
-      "id": 8,
+      "id": 11,
       "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
           ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
+          "countRows": false,
+          "fields": ""
+        }
       },
       "targets": [
         {
-          "expr": "max(assistant_rh_rag_poll_duration_seconds{env=~\"$env\"})",
-          "legendFormat": "poll duration",
-          "refId": "A"
+          "expr": "(time() - max by (env, source, scope) (assistant_rh_ingestion_last_run_timestamp_seconds{env=~\"$env\"})) / 86400",
+          "legendFormat": "{{source}} · {{scope}} · {{env}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
         }
       ],
-      "title": "DB poll duration",
-      "type": "stat"
+      "title": "Derniers passages PDF",
+      "type": "table",
+      "description": "full : manifest complet ; document : exécution ciblée ; unknown : historique sans portée prouvée. Un job bloqué avant exécution ne met pas à jour cette date.",
+      "transformations": [
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmasa\\b/g",
+            "renamePattern": "MASA"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmatte\\b/g",
+            "renamePattern": "MATTE"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmso\\b/g",
+            "renamePattern": "MSO"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmi\\b/g",
+            "renamePattern": "MI"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bunknown\\b/g",
+            "renamePattern": "historique"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bdocument\\b/g",
+            "renamePattern": "ciblé"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bfull\\b/g",
+            "renamePattern": "complet"
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false,
+            "mode": "seriesToRows"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "Field": 0,
+              "Last *": 1
+            },
+            "renameByName": {
+              "Field": "Source / périmètre",
+              "Last *": "Ancienneté"
+            }
+          }
+        }
+      ]
     },
     {
       "datasource": {
@@ -577,10 +635,11 @@
       },
       "fieldConfig": {
         "defaults": {
+          "unit": "none",
+          "decimals": 0,
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -594,472 +653,161 @@
               }
             ]
           },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 16,
-        "y": 24
-      },
-      "id": 9,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "expr": "increase(assistant_rh_rag_poll_errors_total{env=~\"$env\"}[1h])",
-          "legendFormat": "errors in 1h",
-          "refId": "A"
-        }
-      ],
-      "title": "Poll errors",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "$datasource"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 12,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 2,
-            "pointSize": 4,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
+          "noValue": "Non disponible",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Documents"
+            },
+            "properties": [
               {
-                "color": "green",
-                "value": null
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.width",
+                "value": 135
               }
             ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 29,
-        "w": 12,
-        "h": 9
-      },
-      "id": 10,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "expr": "max by (env, source, result) (assistant_rh_ingestion_last_run_documents{env=~\"$env\",scope=\"full\"})",
-          "legendFormat": "{{env}} / {{source}} / {{result}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Ingestion PDF — bilan du dernier passage complet",
-      "type": "timeseries",
-      "description": "Les compteurs décrivent le dernier passage complet, pas le total historique. Un test sur un document ne remplace pas ce bilan."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "$datasource"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 12,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 2,
-            "pointSize": 4,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "s"
-        },
-        "overrides": []
+          }
+        ]
       },
       "gridPos": {
         "x": 12,
-        "y": 29,
-        "w": 12,
-        "h": 9
-      },
-      "id": 11,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "expr": "time() - max by (env, source, scope) (assistant_rh_ingestion_last_run_timestamp_seconds{env=~\"$env\"})",
-          "legendFormat": "{{env}} / {{source}} / {{scope}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Ingestion PDF — âge des derniers passages",
-      "type": "timeseries",
-      "description": "full : manifest complet ; document : exécution ciblée ; unknown : historique sans portée prouvée. Un job bloqué avant exécution ne met pas à jour cette date."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "$datasource"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 12,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 2,
-            "pointSize": 4,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 38,
-        "w": 12,
-        "h": 9
-      },
-      "id": 12,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "expr": "max by (env, source, scope) (assistant_rh_ingestion_last_run_documents{env=~\"$env\",result=\"deleted\"})",
-          "legendFormat": "{{env}} / {{source}} / {{scope}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Ingestion PDF — suppressions au dernier passage",
-      "type": "timeseries",
-      "description": "Suppressions réellement effectuées et consignées en base. Valeur du dernier run de chaque portée, pas un compteur cumulatif."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "$datasource"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 12,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 2,
-            "pointSize": 4,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 38,
-        "w": 12,
-        "h": 9
-      },
-      "id": 13,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "expr": "max by (env, source) (assistant_rh_rag_documents_total{env=~\"$env\",source=~\"mi|masa|matte|mso\"}) - on (env, source) max by (env, source) (assistant_rh_ingestion_last_run_documents{env=~\"$env\",scope=\"full\",result=\"expected\"})",
-          "legendFormat": "{{env}} / {{source}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Ingestion PDF — écart au dernier manifest complet",
-      "type": "timeseries",
-      "description": "Documents actuels moins documents attendus au dernier passage complet. Un écart peut inclure des rejets protégés ; zéro ne prouve pas une égalité des identifiants. Ce panel ne remplace pas le rapprochement indépendant Grist/corpus (#294)."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "$datasource"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 12,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 2,
-            "pointSize": 4,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 47,
+        "y": 16,
         "w": 12,
         "h": 9
       },
       "id": 14,
       "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
           ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
+          "countRows": false,
+          "fields": ""
         }
       },
       "targets": [
         {
           "expr": "max by (env, source, scope, result) (assistant_rh_ingestion_last_run_documents{env=~\"$env\",result=~\"failed|rejected\"})",
-          "legendFormat": "{{env}} / {{source}} / {{scope}} / {{result}}",
-          "refId": "A"
+          "legendFormat": "{{source}} · {{scope}} · {{result}} · {{env}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
         }
       ],
-      "title": "Ingestion PDF — erreurs et rejets",
-      "type": "timeseries",
-      "description": "Erreurs et rejets du dernier passage de chaque portée. Les documents rejetés restent protégés de la suppression."
+      "title": "Échecs et rejets des passages",
+      "type": "table",
+      "description": "Erreurs et rejets du dernier passage de chaque portée. Les documents rejetés restent protégés de la suppression.",
+      "transformations": [
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmasa\\b/g",
+            "renamePattern": "MASA"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmatte\\b/g",
+            "renamePattern": "MATTE"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmso\\b/g",
+            "renamePattern": "MSO"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmi\\b/g",
+            "renamePattern": "MI"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bunknown\\b/g",
+            "renamePattern": "historique"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bdocument\\b/g",
+            "renamePattern": "ciblé"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bfull\\b/g",
+            "renamePattern": "complet"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bfailed\\b/g",
+            "renamePattern": "échecs"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\brejected\\b/g",
+            "renamePattern": "rejets"
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false,
+            "mode": "seriesToRows"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "Field": 0,
+              "Last *": 1
+            },
+            "renameByName": {
+              "Field": "Source / périmètre",
+              "Last *": "Documents"
+            }
+          }
+        }
+      ]
     },
     {
       "datasource": {
@@ -1068,84 +816,1803 @@
       },
       "fieldConfig": {
         "defaults": {
+          "unit": "none",
+          "decimals": 0,
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 12,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 2,
-            "pointSize": 4,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "blue",
                 "value": null
               }
             ]
           },
-          "unit": "short"
+          "mappings": [],
+          "noValue": "Non disponible",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Documents"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.width",
+                "value": 135
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
-        "x": 12,
-        "y": 47,
-        "w": 12,
-        "h": 9
+        "x": 0,
+        "y": 25,
+        "w": 24,
+        "h": 8
       },
-      "id": 15,
+      "id": 12,
       "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
           ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
+          "countRows": false,
+          "fields": ""
         }
       },
       "targets": [
         {
-          "expr": "max by (env, source) (assistant_rh_ingestion_run_available{env=~\"$env\",scope=\"full\"})",
-          "legendFormat": "{{env}} / {{source}}",
-          "refId": "A"
+          "expr": "max by (env, source, scope) (assistant_rh_ingestion_last_run_documents{env=~\"$env\",result=\"deleted\"})",
+          "legendFormat": "{{source}} · {{scope}} · {{env}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
         }
       ],
-      "title": "Ingestion PDF — passage complet disponible",
-      "type": "timeseries",
-      "description": "1 : un passage complet est connu ; 0 : aucun passage complet avec portée explicite. Les anciens runs de portée inconnue ne prouvent pas la couverture du manifest."
+      "title": "Suppressions enregistrées",
+      "type": "table",
+      "description": "Suppressions réellement effectuées et consignées en base. Valeur du dernier run de chaque portée, pas un compteur cumulatif.",
+      "transformations": [
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmasa\\b/g",
+            "renamePattern": "MASA"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmatte\\b/g",
+            "renamePattern": "MATTE"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmso\\b/g",
+            "renamePattern": "MSO"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmi\\b/g",
+            "renamePattern": "MI"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bunknown\\b/g",
+            "renamePattern": "historique"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bdocument\\b/g",
+            "renamePattern": "ciblé"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bfull\\b/g",
+            "renamePattern": "complet"
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false,
+            "mode": "seriesToRows"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "Field": 0,
+              "Last *": 1
+            },
+            "renameByName": {
+              "Field": "Source / périmètre",
+              "Last *": "Documents"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "title": "Bilans complets · ouvrir lorsqu’un passage est disponible",
+      "type": "row",
+      "collapsed": true,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "Non disponible",
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Documents"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.align",
+                    "value": "right"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 135
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 34,
+            "w": 12,
+            "h": 10
+          },
+          "id": 10,
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false,
+              "reducer": [
+                "sum"
+              ],
+              "countRows": false,
+              "fields": ""
+            }
+          },
+          "targets": [
+            {
+              "expr": "max by (env, source, result) (assistant_rh_ingestion_last_run_documents{env=~\"$env\",scope=\"full\"})",
+              "legendFormat": "{{source}} · {{result}} · {{env}}",
+              "refId": "A",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "title": "Bilan du dernier passage complet",
+          "type": "table",
+          "description": "Les compteurs décrivent le dernier passage complet, pas le total historique. Un test sur un document ne remplace pas ce bilan.",
+          "transformations": [
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmasa\\b/g",
+                "renamePattern": "MASA"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmatte\\b/g",
+                "renamePattern": "MATTE"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmso\\b/g",
+                "renamePattern": "MSO"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmi\\b/g",
+                "renamePattern": "MI"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bfailed\\b/g",
+                "renamePattern": "échecs"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\brejected\\b/g",
+                "renamePattern": "rejets"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bexpected\\b/g",
+                "renamePattern": "attendus"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bingested\\b/g",
+                "renamePattern": "ingérés"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bskipped\\b/g",
+                "renamePattern": "inchangés"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bdeleted\\b/g",
+                "renamePattern": "supprimés"
+              }
+            },
+            {
+              "id": "reduce",
+              "options": {
+                "reducers": [
+                  "lastNotNull"
+                ],
+                "includeTimeField": false,
+                "mode": "seriesToRows"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "indexByName": {
+                  "Field": 0,
+                  "Last *": 1
+                },
+                "renameByName": {
+                  "Field": "Source / périmètre",
+                  "Last *": "Documents"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "orange",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "Non disponible",
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Écart"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.align",
+                    "value": "right"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 135
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 34,
+            "w": 12,
+            "h": 10
+          },
+          "id": 13,
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false,
+              "reducer": [
+                "sum"
+              ],
+              "countRows": false,
+              "fields": ""
+            }
+          },
+          "targets": [
+            {
+              "expr": "max by (env, source) (assistant_rh_rag_documents_total{env=~\"$env\",source=~\"mi|masa|matte|mso\"}) - on (env, source) max by (env, source) (assistant_rh_ingestion_last_run_documents{env=~\"$env\",scope=\"full\",result=\"expected\"})",
+              "legendFormat": "{{source}} · {{env}}",
+              "refId": "A",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "title": "Écart au référentiel complet",
+          "type": "table",
+          "description": "Documents actuels moins documents attendus au dernier passage complet. Un écart peut inclure des rejets protégés ; zéro ne prouve pas une égalité des identifiants. Ce panel ne remplace pas le rapprochement indépendant Grist/corpus (#294).",
+          "transformations": [
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmasa\\b/g",
+                "renamePattern": "MASA"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmatte\\b/g",
+                "renamePattern": "MATTE"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmso\\b/g",
+                "renamePattern": "MSO"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmi\\b/g",
+                "renamePattern": "MI"
+              }
+            },
+            {
+              "id": "reduce",
+              "options": {
+                "reducers": [
+                  "lastNotNull"
+                ],
+                "includeTimeField": false,
+                "mode": "seriesToRows"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "indexByName": {
+                  "Field": 0,
+                  "Last *": 1
+                },
+                "renameByName": {
+                  "Field": "Source / périmètre",
+                  "Last *": "Écart"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 104,
+      "title": "02 · Volumes du corpus",
+      "type": "row",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "Non disponible",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Documents"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.width",
+                "value": 135
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 12,
+        "h": 9
+      },
+      "id": 1,
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(assistant_rh_rag_documents_total{env=~\"$env\"}) by (env, source)",
+          "legendFormat": "{{source}} · {{env}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "Documents par source",
+      "type": "table",
+      "transformations": [
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\brag_chunks_/g",
+            "renamePattern": ""
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bservice_public\\b/g",
+            "renamePattern": "Service-Public"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\blegifrance\\b/g",
+            "renamePattern": "Légifrance"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bdgafp\\b/g",
+            "renamePattern": "DGAFP"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\brgrh\\b/g",
+            "renamePattern": "RGRH"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmasa\\b/g",
+            "renamePattern": "MASA"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmatte\\b/g",
+            "renamePattern": "MATTE"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmso\\b/g",
+            "renamePattern": "MSO"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmi\\b/g",
+            "renamePattern": "MI"
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false,
+            "mode": "seriesToRows"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "Field": 0,
+              "Last *": 1
+            },
+            "renameByName": {
+              "Field": "Source / périmètre",
+              "Last *": "Documents"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "Non disponible",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fragments"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.width",
+                "value": 135
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 35,
+        "w": 12,
+        "h": 9
+      },
+      "id": 2,
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(assistant_rh_rag_chunks_total{env=~\"$env\"}) by (env, table)",
+          "legendFormat": "{{table}} · {{env}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "Fragments par source",
+      "type": "table",
+      "transformations": [
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\brag_chunks_/g",
+            "renamePattern": ""
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bservice_public\\b/g",
+            "renamePattern": "Service-Public"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\blegifrance\\b/g",
+            "renamePattern": "Légifrance"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bdgafp\\b/g",
+            "renamePattern": "DGAFP"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\brgrh\\b/g",
+            "renamePattern": "RGRH"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmasa\\b/g",
+            "renamePattern": "MASA"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmatte\\b/g",
+            "renamePattern": "MATTE"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmso\\b/g",
+            "renamePattern": "MSO"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "/\\bmi\\b/g",
+            "renamePattern": "MI"
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ],
+            "includeTimeField": false,
+            "mode": "seriesToRows"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "Field": 0,
+              "Last *": 1
+            },
+            "renameByName": {
+              "Field": "Source / périmètre",
+              "Last *": "Fragments"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 105,
+      "title": "03 · Qualité et intégrité · détails",
+      "type": "row",
+      "collapsed": true,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 1,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.95
+                  },
+                  {
+                    "color": "green",
+                    "value": 0.99
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "Non disponible",
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Couverture"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.align",
+                    "value": "right"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 135
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 45,
+            "w": 12,
+            "h": 14
+          },
+          "id": 3,
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false,
+              "reducer": [
+                "sum"
+              ],
+              "countRows": false,
+              "fields": ""
+            }
+          },
+          "targets": [
+            {
+              "expr": "assistant_rh_rag_embedding_coverage_ratio{env=~\"$env\"}",
+              "legendFormat": "{{table}} · {{model}} · {{column}} · {{env}}",
+              "refId": "A",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "title": "Couverture des embeddings",
+          "type": "table",
+          "transformations": [
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\brag_chunks_/g",
+                "renamePattern": ""
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bservice_public\\b/g",
+                "renamePattern": "Service-Public"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\blegifrance\\b/g",
+                "renamePattern": "Légifrance"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bdgafp\\b/g",
+                "renamePattern": "DGAFP"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\brgrh\\b/g",
+                "renamePattern": "RGRH"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmasa\\b/g",
+                "renamePattern": "MASA"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmatte\\b/g",
+                "renamePattern": "MATTE"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmso\\b/g",
+                "renamePattern": "MSO"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmi\\b/g",
+                "renamePattern": "MI"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bbge_scaleway\\b/g",
+                "renamePattern": "BGE"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\balbert\\b/g",
+                "renamePattern": "Albert"
+              }
+            },
+            {
+              "id": "reduce",
+              "options": {
+                "reducers": [
+                  "lastNotNull"
+                ],
+                "includeTimeField": false,
+                "mode": "seriesToRows"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "indexByName": {
+                  "Field": 0,
+                  "Last *": 1
+                },
+                "renameByName": {
+                  "Field": "Source / périmètre",
+                  "Last *": "Couverture"
+                }
+              }
+            }
+          ],
+          "description": "Couverture par source et modèle. Les colonnes techniques restent accessibles dans la requête du panneau."
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "Non disponible",
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Manquants"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.align",
+                    "value": "right"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 135
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 45,
+            "w": 12,
+            "h": 14
+          },
+          "id": 4,
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false,
+              "reducer": [
+                "sum"
+              ],
+              "countRows": false,
+              "fields": ""
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(assistant_rh_rag_embeddings_missing_total{env=~\"$env\"}) by (env, table, model, column)",
+              "legendFormat": "{{table}} · {{model}} · {{column}} · {{env}}",
+              "refId": "A",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "title": "Embeddings manquants",
+          "type": "table",
+          "transformations": [
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\brag_chunks_/g",
+                "renamePattern": ""
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bservice_public\\b/g",
+                "renamePattern": "Service-Public"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\blegifrance\\b/g",
+                "renamePattern": "Légifrance"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bdgafp\\b/g",
+                "renamePattern": "DGAFP"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\brgrh\\b/g",
+                "renamePattern": "RGRH"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmasa\\b/g",
+                "renamePattern": "MASA"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmatte\\b/g",
+                "renamePattern": "MATTE"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmso\\b/g",
+                "renamePattern": "MSO"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmi\\b/g",
+                "renamePattern": "MI"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bbge_scaleway\\b/g",
+                "renamePattern": "BGE"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\balbert\\b/g",
+                "renamePattern": "Albert"
+              }
+            },
+            {
+              "id": "reduce",
+              "options": {
+                "reducers": [
+                  "lastNotNull"
+                ],
+                "includeTimeField": false,
+                "mode": "seriesToRows"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "indexByName": {
+                  "Field": 0,
+                  "Last *": 1
+                },
+                "renameByName": {
+                  "Field": "Source / périmètre",
+                  "Last *": "Manquants"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "Non disponible",
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Anomalies"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.align",
+                    "value": "right"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 135
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 59,
+            "w": 12,
+            "h": 12
+          },
+          "id": 5,
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false,
+              "reducer": [
+                "sum"
+              ],
+              "countRows": false,
+              "fields": ""
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(assistant_rh_rag_integrity_issues_total{env=~\"$env\"}) by (env, table, reason)",
+              "legendFormat": "{{table}} · {{reason}} · {{env}}",
+              "refId": "A",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "title": "Anomalies de structure — détail",
+          "type": "table",
+          "transformations": [
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\brag_chunks_/g",
+                "renamePattern": ""
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bservice_public\\b/g",
+                "renamePattern": "Service-Public"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\blegifrance\\b/g",
+                "renamePattern": "Légifrance"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bdgafp\\b/g",
+                "renamePattern": "DGAFP"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\brgrh\\b/g",
+                "renamePattern": "RGRH"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmasa\\b/g",
+                "renamePattern": "MASA"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmatte\\b/g",
+                "renamePattern": "MATTE"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmso\\b/g",
+                "renamePattern": "MSO"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmi\\b/g",
+                "renamePattern": "MI"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmissing_document\\b/g",
+                "renamePattern": "document absent"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmissing_section\\b/g",
+                "renamePattern": "section absente"
+              }
+            },
+            {
+              "id": "reduce",
+              "options": {
+                "reducers": [
+                  "lastNotNull"
+                ],
+                "includeTimeField": false,
+                "mode": "seriesToRows"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "indexByName": {
+                  "Field": 0,
+                  "Last *": 1
+                },
+                "renameByName": {
+                  "Field": "Source / périmètre",
+                  "Last *": "Anomalies"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "Non disponible",
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Ancienneté"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.align",
+                    "value": "right"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 135
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 59,
+            "w": 12,
+            "h": 12
+          },
+          "id": 6,
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false,
+              "reducer": [
+                "sum"
+              ],
+              "countRows": false,
+              "fields": ""
+            }
+          },
+          "targets": [
+            {
+              "expr": "assistant_rh_rag_table_freshness_seconds{env=~\"$env\"}",
+              "legendFormat": "{{table}} · {{env}}",
+              "refId": "A",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "title": "Dernière modification du corpus",
+          "type": "table",
+          "transformations": [
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\brag_chunks_/g",
+                "renamePattern": ""
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bservice_public\\b/g",
+                "renamePattern": "Service-Public"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\blegifrance\\b/g",
+                "renamePattern": "Légifrance"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bdgafp\\b/g",
+                "renamePattern": "DGAFP"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\brgrh\\b/g",
+                "renamePattern": "RGRH"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmasa\\b/g",
+                "renamePattern": "MASA"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmatte\\b/g",
+                "renamePattern": "MATTE"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmso\\b/g",
+                "renamePattern": "MSO"
+              }
+            },
+            {
+              "id": "renameByRegex",
+              "options": {
+                "regex": "/\\bmi\\b/g",
+                "renamePattern": "MI"
+              }
+            },
+            {
+              "id": "reduce",
+              "options": {
+                "reducers": [
+                  "lastNotNull"
+                ],
+                "includeTimeField": false,
+                "mode": "seriesToRows"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "indexByName": {
+                  "Field": 0,
+                  "Last *": 1
+                },
+                "renameByName": {
+                  "Field": "Source / périmètre",
+                  "Last *": "Ancienneté"
+                }
+              }
+            }
+          ],
+          "description": "Âge de la dernière modification des données, pas du dernier cron. Un corpus stable peut être ancien sans erreur de traitement."
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 106,
+      "title": "04 · Collecte des métriques · diagnostic",
+      "type": "row",
+      "collapsed": true,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 2
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "Non disponible"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 47,
+            "w": 12,
+            "h": 5
+          },
+          "id": 8,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto",
+            "wideLayout": true,
+            "text": {
+              "titleSize": 14,
+              "valueSize": 30
+            }
+          },
+          "targets": [
+            {
+              "expr": "max(assistant_rh_rag_poll_duration_seconds{env=~\"$env\"})",
+              "legendFormat": "poll duration",
+              "refId": "A",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "title": "Durée de collecte",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "Non disponible"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 47,
+            "w": 12,
+            "h": 5
+          },
+          "id": 9,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto",
+            "wideLayout": true,
+            "text": {
+              "titleSize": 14,
+              "valueSize": 30
+            }
+          },
+          "targets": [
+            {
+              "expr": "increase(assistant_rh_rag_poll_errors_total{env=~\"$env\"}[1h])",
+              "legendFormat": "{{env}}",
+              "refId": "A",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "title": "Erreurs de collecte · dernière heure",
+          "type": "stat",
+          "description": "Estimation Prometheus sur une heure (increase), affichée arrondie. Les erreurs passées ne décrivent pas nécessairement la dernière collecte."
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 24,
+        "h": 1
+      }
     }
   ],
   "refresh": "1m",
@@ -1153,7 +2620,8 @@
   "tags": [
     "assistant-rh",
     "rag",
-    "data-health"
+    "data-health",
+    "ingestion"
   ],
   "templating": {
     "list": [
@@ -1161,7 +2629,7 @@
         "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Source de métriques",
         "multi": false,
         "name": "datasource",
         "options": [],
@@ -1175,24 +2643,24 @@
         "allValue": "staging|prod",
         "current": {
           "selected": true,
-          "text": "All",
-          "value": "$__all"
+          "text": "Production",
+          "value": "prod"
         },
         "definition": "staging,prod",
         "hide": 0,
         "includeAll": true,
-        "label": "Environment",
+        "label": "Environnement",
         "multi": true,
         "name": "env",
         "options": [
           {
             "selected": false,
-            "text": "staging",
+            "text": "Staging",
             "value": "staging"
           },
           {
-            "selected": false,
-            "text": "prod",
+            "selected": true,
+            "text": "Production",
             "value": "prod"
           }
         ],
@@ -1210,5 +2678,6 @@
   "title": "Assistant RH - RAG Data Health",
   "uid": "assistant-rh-rag-data-health",
   "version": 1,
-  "weekStart": ""
+  "weekStart": "",
+  "description": "Santé du corpus Assistant RH : collecte des métriques, passages PDF, suppressions et qualité des données. Les détails techniques sont regroupés en sections repliables."
 }

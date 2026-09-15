@@ -21,6 +21,32 @@ if TYPE_CHECKING:
 # CONSTANTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+FEEDBACK_STARS_CSS = """<style>
+/* Feedback V2: cibler uniquement les widgets feedback_stars_ suivi du turn_id.
+   Conserver les couleurs, les étoiles remplies et le focus natifs de Streamlit. */
+[class*="st-key-feedback_stars_"] [data-testid="stFeedback"],
+[class*="st-key-feedback_stars_"] [role="radiogroup"] {
+    min-width: 0;
+}
+[class*="st-key-feedback_stars_"] [role="radiogroup"] {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+[class*="st-key-feedback_stars_"] [role="radio"] {
+    width: 2.75rem;
+    height: 2.75rem;
+    flex: 0 0 2.75rem;
+    padding: 0.375rem;
+}
+/* Le span externe contient soit l'icône contour, soit l'image étoile remplie. */
+[class*="st-key-feedback_stars_"] [role="radio"] > span,
+[class*="st-key-feedback_stars_"] [data-testid="stIconMaterial"] {
+    width: 2rem;
+    height: 2rem;
+    font-size: 2rem;
+}
+</style>"""
+
 FEEDBACK_REASONS_NEGATIVE = [
     "Réponse incorrecte / hors-sujet / hallucination",
     "Informations incomplètes / manquantes / obsolètes",
@@ -34,6 +60,18 @@ FEEDBACK_REASONS_NEGATIVE_V2 = ["Confus", "Éléments faux", "Non pertinent", "I
 # ═══════════════════════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
+
+def _save_feedback(turn: "Turn", feedback: dict, row: dict) -> bool:
+    """Only mark feedback submitted after the existing durable writer succeeds."""
+    try:
+        log_feedback_row(row)
+    except Exception:
+        st.error("L'évaluation n'a pas pu être enregistrée. Réessayez ou choisissez de continuer sans évaluer.")
+        return False
+    turn.feedback = feedback
+    st.session_state[f"fb_sub_{turn.id}"] = True
+    return True
+
 
 def is_feedback_pending() -> bool:
     """Vérifie si un feedback est en attente (étoiles sélectionnées mais pas soumis)."""
@@ -68,10 +106,9 @@ def render_feedback_block_v1(turn: "Turn") -> None:
     c1, c2, c3 = st.columns([1, 1, 4])
 
     if c1.button("👍 Oui", key=f"up_{tid}", width="stretch"):
-        turn.feedback = {"rating": "up", "at": dt.datetime.now(dt.UTC).isoformat()}
-        st.session_state[f"fb_sub_{tid}"] = True
+        feedback = {"rating": "up", "at": dt.datetime.now(dt.UTC).isoformat()}
         idx = turn_index_by_id(tid)
-        log_feedback_row({
+        if not _save_feedback(turn, feedback, {
             "ts": dt.datetime.now(dt.UTC).isoformat(),
             "turn_id": tid,
             "turn_idx": idx if idx is not None else "",
@@ -84,7 +121,8 @@ def render_feedback_block_v1(turn: "Turn") -> None:
             "session_id": st.session_state.get("session_id", ""),
             "question": turn.user,
             "answer": turn.assistant,
-        })
+        }):
+            return
         st.rerun()
         
     if c2.button("👎 Non", key=f"down_{tid}", width="stretch"):
@@ -99,15 +137,14 @@ def render_feedback_block_v1(turn: "Turn") -> None:
                     chosen.append(label)
             comment = st.text_area("Commentaires (optionnel)", key=f"c_{tid}", placeholder="")
             if st.button("Envoyer", key=f"s_{tid}"):
-                turn.feedback = {
+                feedback = {
                     "rating": "down",
                     "reasons": chosen,
                     "comment": comment.strip() or None,
                     "at": dt.datetime.now(dt.UTC).isoformat(),
                 }
-                st.session_state[f"fb_sub_{tid}"] = True
                 idx = turn_index_by_id(tid)
-                log_feedback_row({
+                if not _save_feedback(turn, feedback, {
                     "ts": dt.datetime.now(dt.UTC).isoformat(),
                     "turn_id": tid,
                     "turn_idx": idx if idx is not None else "",
@@ -120,7 +157,8 @@ def render_feedback_block_v1(turn: "Turn") -> None:
                     "session_id": st.session_state.get("session_id", ""),
                     "question": turn.user,
                     "answer": turn.assistant,
-                })
+                }):
+                    return
                 st.toast("Merci pour votre retour 🙏")
                 st.rerun()
 
@@ -144,6 +182,8 @@ def render_feedback_block_v2(turn: "Turn") -> None:
 
     st.markdown("**Comment évaluez-vous la réponse ?**")
     
+    st.html(FEEDBACK_STARS_CSS)
+
     # Widget natif st.feedback avec des étoiles (retourne 0-4, None si rien sélectionné)
     selected = st.feedback("stars", key=f"feedback_stars_{tid}")
     
@@ -203,7 +243,7 @@ def render_feedback_block_v2(turn: "Turn") -> None:
                     st.rerun()
                 else:
                     all_reasons = chosen_positive + chosen_negative
-                    turn.feedback = {
+                    feedback = {
                         "stars": selected,
                         "helpful": helpful,
                         "reasons": all_reasons,
@@ -212,10 +252,9 @@ def render_feedback_block_v2(turn: "Turn") -> None:
                         "comment": comment.strip() or None,
                         "at": dt.datetime.now(dt.UTC).isoformat(),
                     }
-                    st.session_state[f"fb_sub_{tid}"] = True
                     
                     idx = turn_index_by_id(tid)
-                    log_feedback_row({
+                    if not _save_feedback(turn, feedback, {
                         "ts": dt.datetime.now(dt.UTC).isoformat(),
                         "turn_id": tid,
                         "turn_idx": idx if idx is not None else "",
@@ -228,7 +267,8 @@ def render_feedback_block_v2(turn: "Turn") -> None:
                         "session_id": st.session_state.get("session_id", ""),
                         "question": turn.user,
                         "answer": turn.assistant,
-                    })
+                    }):
+                        return
                     
                     st.toast("Merci pour votre retour 🙏")
                     st.rerun()

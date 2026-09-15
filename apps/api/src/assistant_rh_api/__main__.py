@@ -13,6 +13,7 @@ def main() -> None:
         "assistant_rh_api.handlers.app:app",
         host=os.getenv("API_HOST", "0.0.0.0"),
         port=int(os.getenv("API_PORT", "8000")),
+        proxy_headers=False,
     )
 
 

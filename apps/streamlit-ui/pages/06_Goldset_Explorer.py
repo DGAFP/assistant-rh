@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 from src.ui.admin_auth import require_admin, show_admin_badge
 from src.ui.db_utils import get_engine
+from src.ui.page_config import configure_page
 
 load_dotenv()
 
@@ -20,7 +21,7 @@ require_admin()
 show_admin_badge()
 
 # Page config
-st.set_page_config(page_title="Goldset Explorer", page_icon="🏆", layout="wide")
+configure_page(page_title="Goldset Explorer", page_icon="🏆", layout="wide")
 
 st.title("🏆 Goldset Explorer")
 st.markdown("Visualisation et catégorisation du goldset de questions pour l'évaluation RAG")

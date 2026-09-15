@@ -1,0 +1,14 @@
+[
+  {
+    "control": "integrity",
+    "detected": true
+  },
+  {
+    "control": "section_score",
+    "detected": true
+  },
+  {
+    "control": "prompt",
+    "detected": true
+  }
+]

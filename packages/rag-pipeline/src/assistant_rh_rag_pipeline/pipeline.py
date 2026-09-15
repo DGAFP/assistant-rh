@@ -624,6 +624,7 @@ class Pipeline:
             attempt.selector_rejection_reason = selector.last_reasoning if selector.all_rejected else ""
             self._selector = selector
             selector_status = "all_rejected" if selector.all_rejected else "ok" if sections_before else "skipped_no_sections"
+            kept_section_objects = {id(section) for section in sections}
             state.trace_events.append(
                 make_trace_event(
                     stage="context-selector",
@@ -636,6 +637,10 @@ class Pipeline:
                     },
                     output_ref={
                         "selector_decisions": selector.last_decisions,
+                        "candidate_sections": [
+                            dict(section_ref(section), selection_state="kept" if id(section) in kept_section_objects else "removed")
+                            for section in aggregation_result.sections
+                        ],
                         "selected_sections": [section_ref(section, include_chunks=False) for section in sections],
                         "reason": bounded_preview(selector.last_reasoning, 2_000),
                     },
@@ -659,7 +664,7 @@ class Pipeline:
                     duration_ms=0,
                     status="disabled",
                     input_ref={"section_ids": [str(section.section_id or "") for section in sections]},
-                    output_ref={"selected_sections": [section_ref(section, include_chunks=False) for section in sections]},
+                    output_ref={"selected_sections": [section_ref(section) for section in sections]},
                     metrics={"items_before": len(sections), "items_after": len(sections), "all_rejected": False},
                 )
             )
@@ -794,7 +799,9 @@ class Pipeline:
             "generator_model_used": (
                 self.config.generation.fallback_model
                 if self._generator.used_fallback
-                else self.config.generation.model if self._generator.provider_used else None
+                else self.config.generation.model
+                if self._generator.provider_used
+                else None
             ),
             "embedding_model": self.config.retrieval.embedding_model.value,
             "retrieved_chunks": state.stage_refs.get("retrieved_chunks", []),
@@ -901,6 +908,7 @@ class Pipeline:
                     "query": bounded_preview(qr.query_for_retrieval, 1_000),
                     "context_item_count": len(context_items),
                     "context_section_ids": [str(item.section_id or "") for item in context_items],
+                    "context_items": [context_item_ref(item) for item in context_items],
                     "model": self.config.generation.model,
                     "provider": self.config.generation.provider.value,
                 },

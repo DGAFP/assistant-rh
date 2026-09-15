@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.12.2](https://github.com/DGAFP/assistant-rh/compare/v0.12.1...v0.12.2) (2026-09-14)
+
+
+### Bug Fixes
+
+* preserve verified Legifrance article identities ([#553](https://github.com/DGAFP/assistant-rh/issues/553)) ([0b29fab](https://github.com/DGAFP/assistant-rh/commit/0b29fab4a857f6e74fe05005f926eee800e56f32))
+* reject conflicting verified Legifrance CIDs before deduplication ([#556](https://github.com/DGAFP/assistant-rh/issues/556)) ([0db2308](https://github.com/DGAFP/assistant-rh/commit/0db2308d900546ce295d8d96d0825abfe1e72a8a))
+
+## [0.12.1](https://github.com/DGAFP/assistant-rh/compare/v0.12.0...v0.12.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* compléter les crons PDF et valider les suppressions Grist ([#548](https://github.com/DGAFP/assistant-rh/issues/548)) ([fe15596](https://github.com/DGAFP/assistant-rh/commit/fe15596da3458bad1a9aa6c5c132b7dd5227a52e))
+* reconcile daily PDF ingestion and Grist removals ([fe15596](https://github.com/DGAFP/assistant-rh/commit/fe15596da3458bad1a9aa6c5c132b7dd5227a52e))
+
+## [0.12.0](https://github.com/DGAFP/assistant-rh/compare/v0.11.0...v0.12.0) (2026-09-08)
+
+
+### Features
+
+* **data:** expose PDF ingestion runs in Grafana ([#509](https://github.com/DGAFP/assistant-rh/issues/509)) ([022f491](https://github.com/DGAFP/assistant-rh/commit/022f491ec7251faa795b82115dd47a05f0cc977c))
+
 ## [0.11.0](https://github.com/DGAFP/assistant-rh/compare/v0.10.1...v0.11.0) (2026-09-08)
 
 
