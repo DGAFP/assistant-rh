@@ -78,7 +78,7 @@ Cette matrice étaye les huit critères **dans le périmètre d'extraction C5** 
 
 ## Validation et reproduction
 
-**182 tests ciblés réussis**, dont les quatre nouveaux tests d'acceptation, plus Ruff `E,F,I`.
+**202 tests ciblés réussis**, dont 24 tests d'acceptation, plus Ruff `E,F,I`.
 Les tests CI rejouent les fixtures contre le core courant, régénèrent la référence synthétique dans un dossier temporaire pour vérifier sa reproductibilité, et contrôlent les citations/offsets/empreintes ainsi que la couverture de chaque bloc de réponse.
 Ces derniers contrôles sont mécaniques : ils ne remplacent pas la revue sémantique du sourçage menée ici par l’assistant et ne sont pas un juge de qualité automatisé.
 
@@ -94,5 +94,11 @@ uv run --no-sync python -m pytest apps/api/tests/core/test_c5_acceptance_evidenc
 
 `--verify-source-hashes` vérifie également le code exact de l'enregistrement. Il est optionnel : la CI doit confronter le core courant à des entrées figées et non bloquer toute évolution de fichier par un simple hash.
 Le mode `record` de ce nouveau script est exclusivement synthétique, interdit le réseau et refuse d'écraser une référence existante. Le recorder live d'origine n'a pas été relancé.
+
+### Durcissement après relecture
+
+La commande autonome exige les neuf identifiants de scénario attendus, chacun une seule fois avec la bonne étape. Les panels vides, incomplets, dupliqués, inconnus ou mal formés sont rejetés avant construction du client provider, même si leurs empreintes ont été recalculées. Le refus du panel vide reste actif avec `python -O`. Un ordre différent des neuf cas est accepté ; les contrôles négatifs ciblent désormais les scénarios par identifiant.
+
+Les nouveaux enregistrements déclarent `head: null` et `source_revision_status: unverified_snapshot`, avec les empreintes des fichiers utilisés. Le recorder ne vérifie pas un arbre Git et ne doit donc pas attribuer un commit au snapshot fourni par `--root`, même si celui-ci se trouve dans un checkout. Les manifestes historiques et toutes les fixtures publiées restent inchangés ; leur provenance d'origine n'est pas réécrite.
 
 Livrables : [replay publié](published-replay.json), [ses contrôles](published-negative-controls.json), [replay synthétique](synthetic-replay.json), [ses contrôles](synthetic-negative-controls.json), [audit de sourçage](grounding-audit.json), [empreintes](SHA256SUMS).

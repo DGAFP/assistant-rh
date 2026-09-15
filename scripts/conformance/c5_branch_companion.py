@@ -17,6 +17,33 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+EXPECTED_CASE_KINDS = {
+    "selector-selection-topup": "selector",
+    "selector-total-rejection": "selector",
+    "selector-parse-failure": "selector",
+    "selector-provider-outage": "selector",
+    "generator-primary-success": "generator",
+    "generator-empty-context": "generator",
+    "generator-fallback": "generator",
+    "generator-double-outage": "generator",
+    "final-rejection-no-answer": "no_answer",
+}
+
+
+def validate_cases(cases):
+    error = "C5 replay requires exactly the nine expected unique case IDs and stage kinds"
+    if not isinstance(cases, list) or len(cases) != len(EXPECTED_CASE_KINDS):
+        raise ValueError(error)
+    by_id = {}
+    for case in cases:
+        if not isinstance(case, dict) or not isinstance(case.get("id"), str):
+            raise ValueError(error)
+        case_id = case["id"]
+        if case_id not in EXPECTED_CASE_KINDS or case_id in by_id or case.get("kind") != EXPECTED_CASE_KINDS[case_id]:
+            raise ValueError(error)
+        by_id[case_id] = case
+    return by_id
+
 
 def plain(value):
     if is_dataclass(value):
@@ -132,11 +159,12 @@ def record(root, output):
     from assistant_rh_rag_pipeline import config, context_selector, generator, llm_client, models, pipeline
     from assistant_rh_rag_pipeline.ministry_scope import resolve_ministry
 
+    cases = specifications()  # Fully specified synthetic inputs BEFORE executing reference code.
+    validate_cases(cases)
     assert not output.exists(), "never overwrite a recording"
     output.mkdir()
     prompts_dir = root / "packages/rag-pipeline/src/assistant_rh_rag_pipeline/prompts"
     prompts = {name: (prompts_dir / name).read_text() for name in ("selector.md", "generator.md")}
-    cases = specifications()  # Fully specified synthetic inputs BEFORE executing reference code.
     for case in cases:
         calls = []
 
@@ -221,7 +249,10 @@ def record(root, output):
         output / "manifest.json",
         dict(
             schema="c5-synthetic-branch-replays-v1",
-            head="a8bb4a0b6f78bc5777a99f494582469c198da93a",
+            # --root may be an archive or a dirty checkout. File hashes alone
+            # do not establish a Git revision; never invent a verified HEAD.
+            head=None,
+            source_revision_status="unverified_snapshot",
             provenance="Synthetic scripted provider replies/outages; expected values executed from retained runtime before API replay",
             files={name: sha(output / name) for name in ("prompts.json", "cases.json")},
             source_hashes={str(path.relative_to(root)): sha(path) for path in sorted(sources)},
@@ -250,8 +281,9 @@ async def replay(root, evidence, mutation=None, *, verify_sources=False):
             assert sha(root / name) == digest, f"source changed: {name}"
     prompts = json.loads((evidence / "prompts.json").read_text())
     cases = json.loads((evidence / "cases.json").read_text())
+    cases_by_id = validate_cases(cases)
     if mutation:
-        mutation(prompts, cases)
+        mutation(prompts, cases_by_id)
 
     class Store:
         async def get(self, name):
@@ -346,10 +378,10 @@ async def check(root, evidence, *, verify_sources=False):
     controls = []
     mutations = {
         "prompt": lambda prompts, cases: prompts.update({"generator.md": prompts["generator.md"] + " MODIFIED"}),
-        "selector-expected": lambda prompts, cases: cases[1]["expected"].update(sections=[{"unexpected": True}]),
-        "fallback-route": lambda prompts, cases: cases[6]["calls"][1].update(provider="albert"),
-        "fallback-reply": lambda prompts, cases: cases[6]["calls"][1]["response"].update(text="UNSUPPORTED"),
-        "no-answer-expected": lambda prompts, cases: cases[8]["expected"].update(answer="UNSUPPORTED"),
+        "selector-expected": lambda prompts, cases: cases["selector-total-rejection"]["expected"].update(sections=[{"unexpected": True}]),
+        "fallback-route": lambda prompts, cases: cases["generator-fallback"]["calls"][1].update(provider="albert"),
+        "fallback-reply": lambda prompts, cases: cases["generator-fallback"]["calls"][1]["response"].update(text="UNSUPPORTED"),
+        "no-answer-expected": lambda prompts, cases: cases["final-rejection-no-answer"]["expected"].update(answer="UNSUPPORTED"),
     }
     await replay(root, evidence, verify_sources=verify_sources)
     for name, mutation in mutations.items():

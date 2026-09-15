@@ -8,7 +8,10 @@ import hashlib
 import importlib.util
 import json
 import re
+import shutil
 import socket
+import subprocess
+import sys
 import tarfile
 from pathlib import Path
 
@@ -52,6 +55,97 @@ async def test_synthetic_reference_is_reproducible_from_retained_runtime(tmp_pat
     # the API replay. Never regenerate/overwrite the published expected values.
     for name in ("prompts.json", "cases.json"):
         assert (output / name).read_bytes() == (EVIDENCE / "synthetic-evidence" / name).read_bytes()
+    manifest = json.loads((output / "manifest.json").read_text())
+    assert manifest["head"] is None
+    assert manifest["source_revision_status"] == "unverified_snapshot"
+    assert manifest["source_hashes"]
+
+
+def altered_evidence(tmp_path, mutation):
+    evidence = tmp_path / "altered-evidence"
+    shutil.copytree(EVIDENCE / "synthetic-evidence", evidence)
+    cases = json.loads((evidence / "cases.json").read_text())
+    if mutation == "empty":
+        cases = []
+    elif mutation == "missing":
+        cases.pop()
+    elif mutation == "duplicate":
+        cases[-1] = cases[0]
+    elif mutation == "extra":
+        cases.append(cases[0])
+    elif mutation == "unknown":
+        cases[-1]["id"] = "unknown-scenario"
+    elif mutation == "wrong-kind":
+        cases[-1]["kind"] = "generator"
+    elif mutation == "not-a-list":
+        cases = {}
+    elif mutation == "malformed-entry":
+        cases[-1] = None
+    elif mutation == "reordered":
+        cases.reverse()
+    else:
+        raise AssertionError(mutation)
+    companion.save(evidence / "cases.json", cases)
+    manifest = json.loads((evidence / "manifest.json").read_text())
+    manifest["files"]["cases.json"] = companion.sha(evidence / "cases.json")
+    companion.save(evidence / "manifest.json", manifest)
+    return evidence
+
+
+@pytest.mark.parametrize("mode", ["replay", "check"])
+@pytest.mark.parametrize("mutation", ["empty", "missing", "duplicate", "extra", "unknown", "wrong-kind", "not-a-list", "malformed-entry"])
+async def test_incomplete_or_invalid_case_panel_is_rejected_before_provider_io(tmp_path, monkeypatch, mode, mutation):
+    import httpx
+
+    def unexpected_client(*args, **kwargs):
+        pytest.fail("invalid case panels must be rejected before constructing a provider client")
+
+    monkeypatch.setattr(httpx, "AsyncClient", unexpected_client)
+    evidence = altered_evidence(tmp_path, mutation)
+    with pytest.raises(ValueError, match="nine expected unique case IDs and stage kinds"):
+        await getattr(companion, mode)(ROOT, evidence)
+
+
+@pytest.mark.parametrize("python_options", [[], ["-O"]])
+async def test_standalone_replay_cannot_report_success_for_an_empty_panel(tmp_path, python_options):
+    evidence = altered_evidence(tmp_path, "empty")
+    result = subprocess.run(
+        [sys.executable, *python_options, str(SPEC.origin), "replay", "--root", str(ROOT), "--evidence", str(evidence)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert '"exact_comparison": true' not in result.stdout
+    assert "nine expected unique case IDs and stage kinds" in result.stderr
+
+
+async def test_complete_reordered_panel_keeps_negative_controls_meaningful(tmp_path):
+    evidence = altered_evidence(tmp_path, "reordered")
+    result = await companion.check(ROOT, evidence)
+    assert result["baseline_passed"] and len(result["controls"]) == 5
+
+
+async def test_record_modified_sources_declares_an_unverified_snapshot(tmp_path):
+    snapshot = tmp_path / "snapshot"
+    for path in ("apps/api/src", "packages/rag-pipeline/src", "packages/shared-config/src", "packages/data-engineering/src"):
+        shutil.copytree(ROOT / path, snapshot / path, ignore=shutil.ignore_patterns("__pycache__"))
+    relative = "apps/api/src/assistant_rh_api/core/pipeline/steps/generator.py"
+    modified = snapshot / relative
+    modified.write_text(modified.read_text() + "\n# Synthetic provenance regression check.\n")
+    output = tmp_path / "recorded"
+    result = subprocess.run(
+        [sys.executable, str(SPEC.origin), "record", "--root", str(snapshot), "--evidence", str(output)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    manifest = json.loads((output / "manifest.json").read_text())
+    assert manifest["head"] is None
+    assert manifest["source_revision_status"] == "unverified_snapshot"
+    assert manifest["source_hashes"][relative] == companion.sha(modified)
+    assert manifest["source_hashes"][relative] != companion.sha(ROOT / relative)
 
 
 async def test_synthetic_negative_controls_detect_semantic_changes():

@@ -636,3 +636,13 @@ direction non présentée. Les tests protègent citations, offsets, empreintes e
 couverture des réponses, pas une certification sémantique automatique. Aucun
 prompt/seuil/runtime ni artefact M0b original modifié ; clôture après fusion et
 gates C6/M1 restent distincts.
+
+Durcissement de l'outillage C5 après relecture : la commande autonome refuse
+tout panel qui ne contient pas exactement les neuf scénarios uniques attendus
+avec leurs étapes, avant tout client provider. Les contrôles négatifs utilisent
+les identifiants et supportent un ordre différent des cas. Les nouveaux
+enregistrements portent `head: null` / `unverified_snapshot` et leurs empreintes,
+sans attribution Git non vérifiée. Les fixtures historiques restent intactes.
+Les régressions reproduites avant correction passent désormais : **202 tests
+ciblés**, dont la CLI avec panel vide et la provenance sur sources modifiées,
+ainsi que Ruff ; aucun changement de runtime/prompt/seuil.
