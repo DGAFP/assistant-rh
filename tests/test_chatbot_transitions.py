@@ -14,7 +14,10 @@ def turn(answer="Une réponse", feedback=None, tid="answer-1"):
     return SimpleNamespace(id=tid, assistant=answer, user="Question", feedback=feedback)
 
 
-@pytest.mark.parametrize("turns", [[], [turn("")], [turn("  ")], [turn(feedback={"stars": 0})], [turn(feedback={"rating": "up"}), turn()]])
+@pytest.mark.parametrize(
+    "turns",
+    [[], [turn("")], [turn("  ")], [turn(feedback={"stars": 0})], [turn(feedback={"rating": "up"}), turn(feedback={"stars": 4})]],
+)
 def test_no_reminder(turns):
     state = {"turns": turns, "selected_ministry": "matte", "conversation_id": "original"}
     assert feedback_target(turns) is None
@@ -28,6 +31,15 @@ def test_no_reminder(turns):
 def test_target_last_evaluable_response():
     first, last = turn(tid="first"), turn(tid="last")
     assert feedback_target([first, last, turn("")]) is last
+
+
+@pytest.mark.parametrize("rated_feedback", [{"stars": 0}, {"stars": 4}, {"rating": "up"}, {"rating": "down"}])
+@pytest.mark.parametrize("rated_last", [False, True])
+def test_rated_response_does_not_hide_an_unrated_response(rated_feedback, rated_last):
+    rated = turn(feedback=rated_feedback, tid="rated")
+    unrated = turn(tid="unrated")
+    turns = [unrated, rated] if rated_last else [rated, unrated]
+    assert feedback_target(turns) is unrated
 
 
 @pytest.mark.parametrize("ministry", [None, "other"])
@@ -55,22 +67,28 @@ def app_script():
             for kw in node.keywords:
                 if kw.arg == "key" and isinstance(kw.value, ast.Constant) and kw.value.value in {"new", "new_sidebar", "selected_ministry_picker"}:
                     widgets[kw.value.value] = ast.unparse(node)
-    return '''
+    return (
+        """
 import streamlit as st
 from src.ui.chatbot_feedback import render_feedback_block
 from src.ui.chatbot_transitions import PENDING_EXIT, apply_ready_exit, cancel_exit, request_exit
-''' + definitions + '''
+"""
+        + definitions
+        + """
 apply_ready_exit(st.session_state)
 ministere_options = ["matte", "other"]
 initial_ministry = st.session_state.selected_ministry
 _ministry_label = str
-''' + "\n".join(widgets.values()) + '''
+"""
+        + "\n".join(widgets.values())
+        + """
 if st.session_state.get(PENDING_EXIT):
     _chat_exit_dialog()
 for t in st.session_state.turns:
     if st.session_state.get(PENDING_EXIT, {}).get("turn_id") != t.id:
         render_feedback_block(t)
-'''
+"""
+    )
 
 
 @pytest.fixture
@@ -122,6 +140,52 @@ def test_three_exits_and_choices(app, monkeypatch, action, choice):
     expected_ministry = "other" if action == "ministry" and choice != "exit_cancel" else "matte"
     assert app.selectbox(key="selected_ministry_picker").value == expected_ministry
     assert len(recorded) == (1 if choice == "exit_evaluate" else 0)
+
+
+@pytest.mark.parametrize("action", ["new", "new_sidebar", "ministry"])
+@pytest.mark.parametrize("choice", ["exit_cancel", "exit_skip", "exit_evaluate"])
+def test_second_unrated_response_prompts_after_first_response_was_rated(app, monkeypatch, action, choice):
+    recorded = []
+
+    def save(row):
+        assert app.session_state["selected_ministry"] == "matte"
+        assert app.session_state["conversation_id"] == "original"
+        recorded.append(row)
+
+    monkeypatch.setattr("src.ui.chatbot_feedback.log_feedback_row", save)
+    app.feedback[0].set_value(0).run()
+    app.text_area[0].set_value("Premier avis").run()
+    app.button(key="submit_answer-1").click().run()
+    assert not app.exception
+    assert app.session_state["turns"][0].feedback["stars"] == 0
+
+    # Simulate the next generated answer without calling a provider.
+    app.session_state["turns"].append(turn(answer="Deuxième réponse", tid="answer-2"))
+    # The submitted form's widgets were removed; do not resend their stale state.
+    app._run()
+    start_exit(app, action)
+    assert app.session_state[PENDING_EXIT]["turn_id"] == "answer-2"
+    assert app.get("dialog")
+
+    app.button(key=choice).click().run()
+    if choice == "exit_evaluate":
+        app.feedback[0].set_value(4).run()
+        app.text_area[0].set_value("Deuxième avis").run()
+        app.button(key="submit_answer-2").click().run()
+
+    assert not app.exception
+    assert PENDING_EXIT not in app.session_state
+    assert [row["turn_id"] for row in recorded] == (["answer-1", "answer-2"] if choice == "exit_evaluate" else ["answer-1"])
+    if choice == "exit_cancel":
+        assert app.session_state["conversation_id"] == "original"
+        assert len(app.session_state["turns"]) == 2
+        assert app.session_state["turns"][1].feedback is None
+    else:
+        assert app.session_state["conversation_id"] != "original"
+        assert app.session_state["turns"] == []
+    expected_ministry = "other" if action == "ministry" and choice != "exit_cancel" else "matte"
+    assert app.session_state["selected_ministry"] == expected_ministry
+    assert app.selectbox(key="selected_ministry_picker").value == expected_ministry
 
 
 @pytest.mark.parametrize("recovery", ["retry", "skip"])
