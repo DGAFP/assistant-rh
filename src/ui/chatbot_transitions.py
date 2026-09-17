@@ -1,4 +1,4 @@
-"""Deferred chat exits. One persisted response evaluation evaluates the chat."""
+"""Deferred chat exits with a reminder for unanswered feedback requests."""
 
 import uuid
 from collections.abc import MutableMapping
@@ -10,10 +10,11 @@ PENDING_EXIT = "pending_chat_exit"
 
 
 def feedback_target(turns):
-    """Return the last evaluable response, unless any response is already rated."""
-    if any(turn.feedback for turn in turns):
-        return None
-    return next((turn for turn in reversed(turns) if turn.assistant.strip() and not is_negative_response(turn.assistant)), None)
+    """Return the latest evaluable response without persisted feedback."""
+    for turn in reversed(turns):
+        if not turn.feedback and turn.assistant.strip() and not is_negative_response(turn.assistant):
+            return turn
+    return None
 
 
 def cancel_exit(state: MutableMapping[str, Any]) -> None:

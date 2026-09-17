@@ -743,7 +743,7 @@ def _cancel_chat_exit():
 @st.dialog("Évaluer avant de continuer ?", width="large", on_dismiss=_cancel_chat_exit)
 def _chat_exit_dialog():
     pending = st.session_state[PENDING_EXIT]
-    st.write("Votre conversation n'a pas encore été évaluée. Souhaitez-vous laisser un avis avant de continuer ?")
+    st.write("Il reste une réponse non évaluée dans votre conversation. Souhaitez-vous laisser un avis avant de continuer ?")
     if st.button("Évaluer puis continuer", key="exit_evaluate", type="primary"):
         pending["evaluate"] = True
     if st.button("Continuer sans évaluer", key="exit_skip"):
@@ -755,7 +755,7 @@ def _chat_exit_dialog():
         st.rerun()
     if pending["evaluate"]:
         turn = next(t for t in st.session_state.turns if t.id == pending["turn_id"])
-        st.caption("Votre avis porte sur la dernière réponse ci-dessous. Il sera enregistré avant de continuer.")
+        st.caption("Votre avis porte sur la réponse non évaluée ci-dessous. Il sera enregistré avant de continuer.")
         st.markdown(turn.assistant)
         render_feedback_block(turn)
 
@@ -818,9 +818,7 @@ with st.sidebar:
             st.session_state["_pending_logout"] = True
             st.rerun()
 
-    st.button(
-        "**:material/refresh: Nouvelle conversation**", key="new_sidebar", width="stretch", type="primary", on_click=_request_new_chat
-    )
+    st.button("**:material/refresh: Nouvelle conversation**", key="new_sidebar", width="stretch", type="primary", on_click=_request_new_chat)
     st.markdown("### 🗂️ Filtres")
 
     retrieval_scope = None
@@ -1078,9 +1076,7 @@ with col2:
     st.write("")
     st.write("")
     st.write("")
-    st.button(
-        label="**:material/refresh: Nouvelle conversation**", key="new", width="stretch", type="primary", on_click=_request_new_chat
-    )
+    st.button(label="**:material/refresh: Nouvelle conversation**", key="new", width="stretch", type="primary", on_click=_request_new_chat)
 
     # Espacement pour aligner "Suggestions" avec le message d'accueil
     st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True)
