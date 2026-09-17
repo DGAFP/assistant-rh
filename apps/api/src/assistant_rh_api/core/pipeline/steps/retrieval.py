@@ -122,7 +122,7 @@ def heading_match_score(heading: str, heading_path: str, query: str) -> float:
 
 
 def _raw_order(chunks: tuple[RawChunk, ...]) -> tuple[RawChunk, ...]:
-    # Ranks are assigned by the adapter before LIMIT with explicit id tie breaks.
+    # Adapter ranks preserve query order and explicit identifier tie breaks.
     return tuple(sorted(chunks, key=lambda chunk: (chunk.rank, chunk.chunk_id, chunk.section_id or "")))
 
 
