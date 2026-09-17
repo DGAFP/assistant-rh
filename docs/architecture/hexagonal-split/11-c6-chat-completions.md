@@ -5,7 +5,7 @@ Issue [#463](https://github.com/DGAFP/assistant-rh/issues/463), base d'implémen
 
 ## Assemblage
 
-`handlers/chat_runtime.py` compose les vrais adaptateurs B2/B3 et les étapes
+`bootstrap.py` compose les vrais adaptateurs B2/B3 et les étapes
 C2–C5. Le lifespan possède le pool PostgreSQL et le client HTTP providers
 (`trust_env=False`) ; il ferme le client avant le pool. Chaque appel charge une
 configuration serveur immuable, résout le modèle dans le groupe B4/B5 et crée

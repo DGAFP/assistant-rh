@@ -4,11 +4,11 @@ import json
 
 import httpx
 import pytest
+from assistant_rh_api.bootstrap import create_chat_service
 from assistant_rh_api.core.rag_configuration import RAGConfigurationService
 from assistant_rh_api.db.run_store import ChatRunStore, json_data
 from assistant_rh_api.db.settings_stores import ConfigStore
 from assistant_rh_api.handlers.app import create_app
-from assistant_rh_api.handlers.chat_runtime import create_chat_service
 from psycopg.types.json import Jsonb
 
 from apps.api.tests.auth_fakes import service

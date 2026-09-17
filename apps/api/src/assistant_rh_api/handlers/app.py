@@ -11,6 +11,7 @@ import anyio
 import httpx
 from fastapi import FastAPI
 
+from assistant_rh_api.bootstrap import create_chat_service
 from assistant_rh_api.core.auth import AuthService
 from assistant_rh_api.core.catalog import ModelService
 from assistant_rh_api.core.chat import ChatService
@@ -27,7 +28,6 @@ from assistant_rh_api.gateways.auth import LegacyPasswords, SessionTokens, Syste
 from assistant_rh_api.handlers.auth import create_auth_router
 from assistant_rh_api.handlers.auth_body import AuthBodyLimit
 from assistant_rh_api.handlers.chat import create_chat_router
-from assistant_rh_api.handlers.chat_runtime import create_chat_service
 from assistant_rh_api.handlers.errors import register_error_handlers
 from assistant_rh_api.handlers.health import create_health_router
 from assistant_rh_api.handlers.models import create_models_router

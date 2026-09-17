@@ -23,6 +23,7 @@ forbidden = {
     "requests",
     "streamlit",
     "assistant_rh_rag_pipeline",
+    "assistant_rh_api.bootstrap",
     "assistant_rh_api.handlers.app",
     "assistant_rh_api.db.health",
 }

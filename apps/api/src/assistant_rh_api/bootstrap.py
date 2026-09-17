@@ -1,4 +1,4 @@
-"""C6 composition root. Shared objects own only resources/configuration, not runs."""
+"""Assemble chat services from database and provider adapters."""
 
 from collections.abc import Mapping
 

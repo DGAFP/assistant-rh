@@ -715,3 +715,14 @@ l'intégrité des entrées providers.
 local jetable (`pgvector/pgvector:pg17`). Ruff, mypy (86 fichiers) et les trois
 contrats d'import passent. Auto-check M0b : 7 fixtures / 56 artefacts,
 `exact_comparison: null`. Le gate de conformance intégrale reste ouvert.
+
+### C6 — emplacement du câblage (17 septembre 2026)
+
+L'assemblage du chat est déplacé de `handlers/chat_runtime.py` vers
+`assistant_rh_api/bootstrap.py`. Le module assemble core, DB et providers ;
+`handlers/app.py` conserve le cycle de vie HTTP et fournit les ressources.
+Les règles d'import interdisent au core et aux adaptateurs d'importer le
+bootstrap, et au bootstrap de dépendre des handlers ou de FastAPI.
+Validation : 84 tests ciblés passent (imports, démarrage, configuration, HTTP
+chat et composition PostgreSQL réelle), ainsi que Ruff, mypy et les quatre
+contrats d'import. Aucun changement du comportement RAG.
