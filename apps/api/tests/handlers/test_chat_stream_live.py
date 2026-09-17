@@ -7,6 +7,7 @@ import httpx
 import openai
 import pytest
 import uvicorn
+from assistant_rh_api.__main__ import main
 from assistant_rh_api.core.errors import InferenceFailure
 from assistant_rh_api.handlers.app import create_app
 from assistant_rh_api.handlers.chat_stream import StreamSettings
@@ -19,7 +20,7 @@ pytestmark = pytest.mark.anyio
 
 
 @pytest.fixture
-async def live():
+async def live(monkeypatch):
     auth = service()
     issued = await auth.login("beta", "password", "local")
     runtime = Runtime()
@@ -27,7 +28,12 @@ async def live():
     app = create_app(auth_service=auth, chat_service=runtime.service, environ={}, stream_settings=StreamSettings(ping_seconds=0.01))
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
-    server = uvicorn.Server(uvicorn.Config(app, log_level="error", lifespan="on", timeout_graceful_shutdown=2))
+    # Exercise the entrypoint's shutdown policy, not a test-only timeout.
+    server_options = {}
+    with monkeypatch.context() as patch:
+        patch.setattr(uvicorn, "run", lambda app_path, **options: server_options.update(options))
+        main()
+    server = uvicorn.Server(uvicorn.Config(app, log_level="error", **server_options))
     task = asyncio.create_task(server.serve(sockets=[sock]))
     try:
         async with asyncio.timeout(3):
@@ -35,15 +41,15 @@ async def live():
                 if task.done():
                     task.result()
                 await asyncio.sleep(0.01)
-        yield app, runtime, issued, "http://127.0.0.1:" + str(sock.getsockname()[1])
+        yield app, runtime, issued, "http://127.0.0.1:" + str(sock.getsockname()[1]), server, task
     finally:
         server.should_exit = True
-        await asyncio.wait_for(task, 5)
+        await asyncio.wait_for(task, 8)
         sock.close()
 
 
 async def test_sdk_consumes_live_stream_and_post_header_error(live):
-    app, runtime, issued, base = live
+    app, runtime, issued, base, _, _ = live
     async with openai.AsyncOpenAI(api_key=issued.access_token, base_url=base + "/v1", max_retries=0) as sdk:
         stream = await sdk.chat.completions.create(model="assistant-rh", messages=BODY["messages"], stream=True)
         chunks = [chunk async for chunk in stream]
@@ -58,7 +64,7 @@ async def test_sdk_consumes_live_stream_and_post_header_error(live):
 
 
 async def test_live_ping_while_retrieval_waits_and_socket_close_cancels(live):
-    app, runtime, issued, base = live
+    app, runtime, issued, base, _, _ = live
     entered, release = asyncio.Event(), asyncio.Event()
     original = runtime.search.search
 
@@ -82,3 +88,57 @@ async def test_live_ping_while_retrieval_waits_and_socket_close_cancels(live):
             await asyncio.sleep(0.01)
     run = next(iter(runtime.runs.rows.values()))
     assert run.status == "cancelled" and not run.sources and not run.answer
+
+
+@pytest.mark.parametrize("pending", ["generation", "commit"])
+async def test_server_shutdown_with_connected_client_waits_for_finalization(live, pending):
+    app, runtime, issued, base, server, serving = live
+    if pending == "generation":
+        runtime.llm.stream_release = asyncio.Event()
+    runtime.runs.entered, runtime.runs.release = asyncio.Event(), asyncio.Event()
+    received_content = asyncio.Event()
+    lines = []
+
+    async def consume():
+        async with httpx.AsyncClient(base_url=base, headers={"Authorization": "Bearer " + issued.access_token}, timeout=3) as client:
+            try:
+                async with client.stream("POST", "/v1/chat/completions", json=BODY) as response:
+                    assert response.status_code == 200
+                    async for line in response.aiter_lines():
+                        lines.append(line)
+                        if '"content":"Réponse ' in line:
+                            received_content.set()
+            except httpx.RemoteProtocolError:
+                # Cancelling an ASGI response may close chunked HTTP without a terminator.
+                pass
+
+    reader = asyncio.create_task(consume())
+    try:
+        await asyncio.wait_for(received_content.wait(), 3)
+        if pending == "commit":
+            await asyncio.wait_for(runtime.runs.entered.wait(), 3)
+        # Keep the client reading. Only the real server shutdown may cancel work.
+        server.should_exit = True
+        async with asyncio.timeout(8):
+            await runtime.runs.entered.wait()
+            while not app.state.stream_workers.closed:
+                await asyncio.sleep(0.01)
+        assert runtime.llm.closed
+        assert not serving.done() and not runtime.runs.rows
+
+        # Shutdown must join the shielded transaction before it can finish.
+        runtime.runs.release.set()
+        await asyncio.wait_for(serving, 3)
+        await asyncio.wait_for(reader, 3)
+        expected_status = "cancelled" if pending == "generation" else "completed"
+        assert [run.status for run in runtime.runs.calls] == [expected_status]
+        run = next(iter(runtime.runs.rows.values()))
+        assert run.status == expected_status and run.answer
+        assert bool(run.sources) is (pending == "commit")
+        assert not app.state.stream_workers.active
+        assert not server.server_state.tasks
+        assert "data: [DONE]" not in lines
+    finally:
+        runtime.runs.release.set()
+        reader.cancel()
+        await asyncio.gather(reader, return_exceptions=True)

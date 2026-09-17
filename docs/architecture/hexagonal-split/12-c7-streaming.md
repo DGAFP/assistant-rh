@@ -23,6 +23,7 @@ thread supplémentaire ou client lié à une autre boucle n'est introduit.
 | Ping | 10 secondes | Commentaire `: ping`, indépendant des deltas et événements d'étape |
 | Envoi ASGI | 30 secondes par envoi | Client bloqué → annulation et finalisation ; aucun worker abandonné |
 | Finalisation DB | 10 secondes par tentative | Transaction protégée contre la déconnexion et les annulations répétées ; erreur contrôlée à l'expiration |
+| Arrêt Uvicorn | 5 secondes d'attente des requêtes | Annulation des requêtes encore ouvertes, puis attente du nettoyage dans le lifespan |
 
 Les bornes existantes B3 sur les réponses providers et les délais HTTP/DB
 restent applicables. La limite de workers est par processus ; un déploiement
@@ -48,6 +49,19 @@ Si le commit de succès avait déjà commencé, il se termine : un run déjà co
 n'est ni réécrit ni doublé par un run annulé. Cela ne promet pas que le client
 absent reçoive la fin du flux. L'arrêt applicatif joint également le transport,
 même si l'envoi était bloqué, avant la fermeture des ressources DB/provider.
+
+Uvicorn attend les requêtes **avant** d'appeler le shutdown du lifespan. Le point
+d'entrée `assistant-rh-api` borne cette attente à cinq secondes pour atteindre
+le nettoyage même avec un client SSE toujours connecté. Aucun gestionnaire de
+signal ni serveur personnalisé n'est ajouté. Compose laisse 150 secondes avant
+SIGKILL : attente Uvicorn, fermeture provider pouvant durer 120 secondes,
+finalisation DB et marge. Un lancement Uvicorn externe doit également fixer
+`--timeout-graceful-shutdown 5` et laisser ce budget au processus.
+
+Les tests TCP utilisent la configuration du point d'entrée et demandent l'arrêt
+du serveur pendant que le client continue de lire. Ils vérifient l'annulation
+en génération et la préservation d'un commit déjà commencé, avec une
+persistance retenue volontairement jusqu'à la vérification de l'attente d'arrêt.
 
 ## Historique : arbitrage C1 / C5
 

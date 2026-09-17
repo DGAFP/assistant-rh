@@ -802,3 +802,14 @@ bearer. Exécution locale et TCP/Docker sur la VM homelab
 Les warnings de teardown/cache Django sont documentés ; conteneurs jetables
 supprimés après preuve. Aucun accès distant, provider live ou déploiement.
 M1/#465, proxy D4 et présentation d'erreur UI du fork restent distincts.
+
+**Correction de revue PR #579 — arrêt du serveur** : Uvicorn attend les requêtes
+avant le shutdown du lifespan. Le point d'entrée borne maintenant cette attente
+à cinq secondes ; les annulations rejoignent ensuite le nettoyage existant.
+Compose réserve 150 secondes avant SIGKILL pour la fermeture provider et la
+finalisation DB. Aucun changement du core ni gestionnaire de signal ajouté.
+Deux tests TCP utilisent les options du vrai point d'entrée avec un client
+toujours connecté : génération annulée et commit déjà commencé préservé, avec
+attente de la persistance dans les deux cas. **184 tests ciblés passent**, Ruff,
+mypy (87 fichiers), quatre contrats d'import et validation Compose réussissent.
+Les ports de ces tests sont synthétiques ; aucune DB distante ni provider live.

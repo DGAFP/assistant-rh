@@ -5,6 +5,8 @@ services:
       dockerfile: docker/api/Dockerfile
     image: assistant-rh-api:local
     init: true
+    # 5s request drain + up to 120s provider close + DB finalization and margin.
+    stop_grace_period: 150s
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     environment:
