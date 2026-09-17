@@ -1,0 +1,29 @@
+{
+  "negative_controls": [
+    {
+      "mutation": "unhashed-fixture",
+      "detected": true,
+      "error_type": "AssertionError"
+    },
+    {
+      "mutation": "changed-provider-request",
+      "detected": true,
+      "error_type": "AssertionError"
+    },
+    {
+      "mutation": "changed-raw-rank",
+      "detected": true,
+      "error_type": "AssertionError"
+    },
+    {
+      "mutation": "changed-expected-answer",
+      "detected": true,
+      "error_type": "AssertionError"
+    },
+    {
+      "mutation": "extra-port-call",
+      "detected": true,
+      "error_type": "AssertionError"
+    }
+  ]
+}

@@ -60,8 +60,10 @@ class ChatRunStore(ChatRunStorePort):
         self._database = database
 
     async def finalize(self, run: ChatRun) -> None:
-        if not re.fullmatch(r"chatcmpl-[0-9a-f]{32}", run.turn_id):
+        if not re.fullmatch(r"(?:chatcmpl-)?[0-9a-f]{32}", run.turn_id):
             raise ValueError("new completion IDs must contain a full UUID")
+        if run.status not in ("completed", "failed", "cancelled") or (run.status != "completed" and run.sources):
+            raise ValueError("only completed runs may grant source authority")
         if run.timestamp is None or run.timestamp.tzinfo is None:
             raise ValueError("run timestamp must be timezone aware")
         async with self._database.transaction() as connection:
@@ -134,7 +136,16 @@ class ChatRunStore(ChatRunStorePort):
                 """,
                     (turn_id,),
                 )
-                sources = tuple(RunSource(**r) for r in await cursor.fetchall())
+                records = (row.get("api_record") or {}).get("sources", [])
+                source_metadata = {source["doc_ref"]: source for source in records}
+                sources = tuple(
+                    RunSource(
+                        **r,
+                        publisher=source_metadata.get(r["doc_ref"], {}).get("publisher", ""),
+                        access=source_metadata.get(r["doc_ref"], {}).get("access", "authenticated"),
+                    )
+                    for r in await cursor.fetchall()
+                )
                 await cursor.execute(
                     """
                     SELECT stage, duration_ms, status, attempt_name, input_ref, output_ref, metrics, error_type, error_message
@@ -158,6 +169,7 @@ class ChatRunStore(ChatRunStorePort):
             sources,
             events,
             freeze_json(record.get("diagnostics")),
+            record.get("status", "completed"),
         )
 
     async def sources(self, turn_id: str, group_slug: str) -> tuple[RunSource, ...]:
@@ -165,11 +177,15 @@ class ChatRunStore(ChatRunStorePort):
             rows = await (
                 await connection.execute(
                     """
-                SELECT s.doc_ref, s.title, s.url, s.document_id FROM public.chat_run_sources s
+                SELECT s.doc_ref, s.title, s.url, s.document_id, r.api_record FROM public.chat_run_sources s
                 JOIN public.chat_runs r ON r.turn_id = s.turn_id
                 WHERE r.turn_id = %s AND r.user_group = %s ORDER BY s.ordinal
             """,
                     (turn_id, group_slug),
                 )
             ).fetchall()
-        return tuple(RunSource(*r) for r in rows)
+        sources = []
+        for row in rows:
+            metadata: dict = next((s for s in (row[4] or {}).get("sources", []) if s["doc_ref"] == row[0]), {})
+            sources.append(RunSource(row[0], row[1], row[2], row[3], metadata.get("publisher", ""), metadata.get("access", "authenticated")))
+        return tuple(sources)
