@@ -323,7 +323,9 @@ name = "assistant-rh-api"
 version = "0.12.2"
 source = { editable = "apps/api" }
 dependencies = [
+    { name = "anyio" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
     { name = "uvicorn" },
@@ -331,15 +333,18 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
+    { name = "assistant-rh-rag-pipeline" },
     { name = "import-linter" },
+    { name = "openai" },
     { name = "pytest" },
     { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.12,<5" },
     { name = "fastapi", specifier = ">=0.136.3,<1" },
+    { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.3,<4" },
     { name = "psycopg-pool", specifier = ">=3.3,<4" },
     { name = "uvicorn", specifier = ">=0.48.0,<1" },
@@ -347,8 +352,9 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28.1,<1" },
+    { name = "assistant-rh-rag-pipeline", editable = "packages/rag-pipeline" },
     { name = "import-linter", specifier = ">=2.14,<3" },
+    { name = "openai", specifier = ">=2.28.0,<3" },
     { name = "pytest", specifier = ">=8.0,<10" },
     { name = "ruff", specifier = ">=0.15,<1" },
 ]

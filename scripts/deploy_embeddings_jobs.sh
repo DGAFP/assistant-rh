@@ -34,7 +34,7 @@ done
 EMBEDDINGS_REMOTE_TAG="${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/embeddings-job:${IMAGE_TAG}"
 
 if (( BUILD )); then
-  docker buildx build --platform "${TARGET_PLATFORM}" --load -f Dockerfile.embeddings_job -t "embeddings-job:${IMAGE_TAG}" .
+  docker buildx build --platform "${TARGET_PLATFORM}" --load -f docker/Dockerfile.embeddings_job -t "embeddings-job:${IMAGE_TAG}" .
 fi
 
 if (( PUSH )); then

@@ -58,6 +58,8 @@ def test_streamlit_deploy_passes_source_import_runtime_environment(monkeypatch: 
     monkeypatch.setenv("GRIST_API_BASE_URL", "https://grist.example")
     monkeypatch.setenv("GRIST_DOC_ID", "doc123")
     monkeypatch.setenv("GRIST_TABLE_ID", "Sources")
+    monkeypatch.setenv("GRIST_FEEDBACK_DOC_ID", "feedback-doc")
+    monkeypatch.setenv("GRIST_FEEDBACK_TABLE_ID", "Feedbacks")
 
     env = scaleway_streamlit_deploy.streamlit_runtime_environment("staging")
 
@@ -66,6 +68,8 @@ def test_streamlit_deploy_passes_source_import_runtime_environment(monkeypatch: 
     assert env["GRIST_API_BASE_URL"] == "https://grist.example"
     assert env["GRIST_DOC_ID"] == "doc123"
     assert env["GRIST_TABLE_ID"] == "Sources"
+    assert env["GRIST_FEEDBACK_DOC_ID"] == "feedback-doc"
+    assert env["GRIST_FEEDBACK_TABLE_ID"] == "Feedbacks"
 
 
 def test_streamlit_deploy_rejects_enabled_tracing_without_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:

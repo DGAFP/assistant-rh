@@ -1,0 +1,106 @@
+{
+  "exact_comparison": true,
+  "network": "denied",
+  "provider_data": "synthetic",
+  "cases": [
+    {
+      "id": "selector-selection-topup",
+      "exact": true,
+      "status": "selected",
+      "provider_sequence": [
+        "albert"
+      ],
+      "candidate_failure": null
+    },
+    {
+      "id": "selector-total-rejection",
+      "exact": true,
+      "status": "all_rejected",
+      "provider_sequence": [
+        "albert"
+      ],
+      "candidate_failure": null
+    },
+    {
+      "id": "selector-parse-failure",
+      "exact": true,
+      "status": "parse_failure",
+      "provider_sequence": [
+        "albert"
+      ],
+      "candidate_failure": null
+    },
+    {
+      "id": "selector-provider-outage",
+      "exact": true,
+      "status": "provider_failure",
+      "provider_sequence": [
+        "albert"
+      ],
+      "candidate_failure": null
+    },
+    {
+      "id": "generator-primary-success",
+      "exact": true,
+      "status": "completed",
+      "provider_sequence": [
+        "albert"
+      ],
+      "candidate_failure": null
+    },
+    {
+      "id": "generator-empty-context",
+      "exact": true,
+      "status": "completed",
+      "provider_sequence": [
+        "albert"
+      ],
+      "candidate_failure": null
+    },
+    {
+      "id": "generator-fallback",
+      "exact": true,
+      "status": "completed",
+      "provider_sequence": [
+        "albert",
+        "scaleway"
+      ],
+      "candidate_failure": null
+    },
+    {
+      "id": "generator-double-outage",
+      "exact": true,
+      "status": "failure",
+      "provider_sequence": [
+        "albert",
+        "scaleway"
+      ],
+      "candidate_failure": {
+        "type": "InferenceFailure",
+        "code": "inference_failure",
+        "partial": false,
+        "attempts": [
+          {
+            "provider": "albert",
+            "model": "primary",
+            "error": "unavailable",
+            "status": 503
+          },
+          {
+            "provider": "scaleway",
+            "model": "backup",
+            "error": "unavailable",
+            "status": 503
+          }
+        ]
+      }
+    },
+    {
+      "id": "final-rejection-no-answer",
+      "exact": true,
+      "status": "no_answer",
+      "provider_sequence": [],
+      "candidate_failure": null
+    }
+  ]
+}

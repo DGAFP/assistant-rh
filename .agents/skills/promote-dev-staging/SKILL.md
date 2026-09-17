@@ -72,7 +72,7 @@ workflows from the promoted file set:
   - `.github/data-engineering-jobs.json`
   - `apps/data-ingestion-cli/**`, `packages/data-engineering/**`,
     `packages/shared-config/**`, `config/**`
-  - any `Dockerfile.{service_public,legifrance,embeddings}_*`
+  - any `docker/Dockerfile.{service_public,legifrance,embeddings}_*`
 
   If it runs, predict **full vs scoped** using the same logic as
   `classify_from_files` in `.github/scripts/data_engineering_plan.py`:

@@ -530,6 +530,14 @@ class TestPipelineE2E:
         assert result.metadata["selector_prompt_chars"] == 300
         assert result.metadata["selector_response_chars"] == len(initial_selector.last_raw_response) + len(retry_selector.last_raw_response)
         assert result.metadata["stage_trace"]["stages"]["context-selector"]["output"]["selector_retry_triggered"] is True
+        events = result.metadata["rag_trace_events"]
+        selections = [event for event in events if event["stage"] == "context-selector"]
+        assert [event["attempt_name"] for event in selections] == ["initial", "selector_retry"]
+        assert selections[0]["output_ref"]["candidate_sections"][0]["selection_state"] == "removed"
+        assert selections[1]["output_ref"]["candidate_sections"][0]["selection_state"] == "kept"
+        generator_event = next(event for event in events if event["stage"] == "generator")
+        assert generator_event["input_ref"]["context_items"][0]["section_id"] == str(context_items[0].section_id)
+        assert generator_event["input_ref"]["context_items"][0]["preview"] == "## Congé de mobilité Contenu complet de la section 10..."
 
     @patch("assistant_rh_rag_pipeline.pipeline.StreamingGenerator")
     @patch("assistant_rh_rag_pipeline.pipeline.ContextBuilder")
