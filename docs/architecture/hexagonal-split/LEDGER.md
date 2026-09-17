@@ -726,3 +726,31 @@ bootstrap, et au bootstrap de dépendre des handlers ou de FastAPI.
 Validation : 84 tests ciblés passent (imports, démarrage, configuration, HTTP
 chat et composition PostgreSQL réelle), ainsi que Ruff, mypy et les quatre
 contrats d'import. Aucun changement du comportement RAG.
+
+### C6 — compagnon M0b intégral (17 septembre 2026)
+
+[Protocole, archive et résultats](../../../tests/conformance/companions/m0b-full-20260917/README.md) :
+sept scénarios capturés sur un snapshot staging en lecture seule, avec appels
+providers réels autorisés. Rejeu hors réseau du bootstrap, ChatService et moteur
+courants : **7/7 exacts**, soit 27 sorties d'étapes et sept résultats métier.
+Cinq contrôles négatifs détectés ; 18 tests du compagnon passent, y compris
+sous Python `-O`/`-OO`. Les sources exactes de la capture et leurs empreintes
+sont archivées ; `source_commit` désigne seulement la base du checkout.
+
+Le compagnon ferme le manque de preuve d'assemblage C6 selon le protocole de
+complément prévu, sans réécrire le bundle original 7/56 ni prétendre récupérer
+ses appels manquants. Les replays CI exécutent les sources du checkout courant.
+Les traitements HTTP, sources C1, stockage et erreurs restent des preuves
+distinctes ; pas de GO M1/qualité ou C7/SSE.
+
+La sonde réelle a détecté une régression de plan SQL dans la recherche
+sémantique seule : le `ROW_NUMBER` avant `LIMIT` modifiait les candidats via
+IVFFlat. Numérotation déplacée après sélection, voies hybrides conservées.
+Régression reproduite avant correction puis test vert sur 2 500 vecteurs
+synthétiques indexés. Les 13 résolutions de sections ambiguës différentes
+observées dans la sonde restent une limite B2 explicite ; le compagnon compare
+le moteur sur les mêmes entrées héritées, pas l'équivalence de ces SQL ambigus.
+
+Validation finale : **924 tests API réussis, aucun ignoré**, dont le test SQL
+indexé et les 18 contrôles du compagnon ; Ruff, mypy (86 fichiers), quatre
+contrats d'import et auto-check du bundle historique 7/56 passent.

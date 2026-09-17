@@ -97,7 +97,7 @@ Les traces conservent les références et scores avant/après reranking, mais ne
 dupliquent plus le texte intégral de chaque chunk/section ni les vecteurs
 d'embedding. Ce sont des diagnostics opérationnels bornés, pas un bundle de
 replay intégral ; les entrées complètes de conformance doivent rester des
-artefacts dédiés. Le gate M0b demeure ouvert.
+artefacts dédiés. Le complément intégral enregistré est décrit ci-dessous.
 
 Une double panne embeddings conserve désormais provider, modèle, type d'erreur
 et statut HTTP dans l'exception, le run et l'événement échoué, y compris lors du
@@ -142,7 +142,7 @@ restent à vérifier en CI sur le commit publié.
 
 | Critère #463 | Preuve locale |
 |---|---|
-| Conformance historique intégrale M0b | **Ouverte** : entrées brutes manquantes, aucune reconstruction |
+| Conformance intégrale du moteur, panel M0b | **Compagnon du 17 septembre : 7/7 exacts** ; appels historiques du 1er septembre toujours indisponibles |
 | Pas de singleton / `last_*` métier | Core sans état de résultat, tests d'import et concurrence |
 | Isolation groupe/ministère | `test_concurrent_ministries_do_not_share_prompt_source_result_or_traces` et tests HTTP B4/B5/C6 |
 | IDs complets | UUID v4, égalité enveloppe/run, tests collision du vrai store |
@@ -171,6 +171,38 @@ uv run --no-sync python scripts/verify_stage_baselines.py \
 Le test de composition simule uniquement le fil HTTP des providers. Il ne
 mesure ni la qualité RAG actuelle ni la parité avec la réponse d'un modèle
 live. Le bundle M0b original n'a pas été modifié ; son auto-check d'intégrité
-ne prouve pas le replay du nouveau moteur. C6 reste en brouillon et #463
-ouverte pour cette preuve. Aucun enregistrement staging/provider réel,
-déploiement, migration distante ou GO M1 n'est réalisé.
+ne prouve pas le replay du nouveau moteur. La preuve complémentaire enregistrée
+le 17 septembre ci-dessous couvre maintenant l'assemblage C6 ; la PR reste en
+brouillon pour revue, #463 n'est pas fermée automatiquement. Aucun déploiement,
+migration distante ou GO M1 n'est réalisé.
+
+## Compagnon M0b intégral du 17 septembre 2026
+
+Le [bundle versionné](../../../tests/conformance/companions/m0b-full-20260917/README.md)
+enregistre les sept scénarios avec staging en lecture seule et les providers
+réels autorisés. Le rejeu hors réseau passe par `bootstrap.create_chat_service`,
+`ChatService` et les six étapes, avec réponses des ports enregistrées :
+**27 sorties d'étapes et sept résultats métier exactement égaux** au runtime
+hérité retenu. Cinq contrôles négatifs passent ; la CI vérifie aussi l'inventaire,
+les empreintes et la validation sous Python `-O`/`-OO`.
+
+Ce nouveau compagnon satisfait la preuve d'assemblage par le protocole prévu
+dans M0_REPLAYS ; il ne reconstitue pas les appels manquants du 1er septembre.
+Le bundle original reste identique. Le rendu C1 des sources et la persistance
+restent couverts séparément par les tests HTTP/DB.
+
+La sonde sur les adaptateurs réels a trouvé une régression de sélection
+sémantique avec IVFFlat : numéroter avant `LIMIT` changeait le plan SQL et les
+candidats. Le rang est maintenant ajouté après la sélection héritée, sans
+changer les voies hybrides. Un test PostgreSQL synthétique indexé échoue avant
+correction et passe après. La différence B2 déjà documentée sur les sections
+ambiguës reste présente : le replay moteur utilise les entrées héritées et ne
+certifie pas l'équivalence des adaptateurs sur ces collisions.
+
+Ce panel n'exerce pas de fallback ni de retry selector ; les preuves
+synthétiques existantes restent nécessaires. M1/qualité live et SSE/C7 restent
+des gates distincts.
+
+Validation finale : **924 tests API réussis, aucun ignoré**, sur PostgreSQL
+synthétique local ; Ruff (chemins CI et scripts M0b), mypy (86 fichiers),
+quatre contrats d'import et intégrité du bundle historique passent.

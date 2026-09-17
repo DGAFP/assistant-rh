@@ -214,3 +214,25 @@ collision limitation remain explicit. This does not close C2/C3/C5/C6 or M1 gate
 The archive replays a pinned candidate; future changes to C4 require rerunning
 the comparison with the changed candidate. The publishing commit changes only
 documentation and evidence, preserving the validated runtime source.
+
+## Full-engine companion recorded on 2026-09-17 (#560)
+
+The [M0b full-engine companion](companions/m0b-full-20260917/README.md) captures
+fresh retained-runtime outputs and raw search/content/provider inputs together
+on one read-only staging snapshot. The current production bootstrap, ChatService
+and pipeline replay all seven scenarios offline: 27 executed stage outputs and
+seven business results match exactly. Five negative controls detect changes to
+inputs, expected outputs and port-call inventory. CI replays the published
+recording against the current checkout, including optimized Python validation.
+
+This fulfills the C6 assembly evidence through the explicitly versioned
+companion route. It does not recover the missing September 1 calls or refresh
+the historical reference. The original 7/56 integrity check remains separate
+with `exact_comparison: null`; the companion comparison is true. The known B2
+resolution difference for ambiguous sections is outside this engine-at-ports
+comparison. Live goldset quality, M1 and SSE/C7 remain separate gates.
+
+The recording also exposed and reproduced a semantic SQL plan regression with
+IVFFlat. Candidate numbering now occurs after the retained selection query;
+the hybrid lane ranking is unchanged. A guarded synthetic PostgreSQL test
+fails with the old query and passes with the correction.
