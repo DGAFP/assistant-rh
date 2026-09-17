@@ -4,9 +4,9 @@ import json
 
 from fastapi import Request
 
-from assistant_rh_api.core.chat import SOURCES_MARKER
 from assistant_rh_api.core.models.chat import ChatInput
 from assistant_rh_api.core.models.inference import Message
+from assistant_rh_api.core.sources import SOURCES_MARKER
 
 MAX_BODY = 1_048_576
 MAX_CONTENT = 65_536
@@ -64,7 +64,20 @@ def validate_chat(payload: dict) -> ChatInput:
     correlation = (metadata or {}).get("conversation_id")
     if correlation is not None and not isinstance(correlation, str):
         raise ChatRequestError("invalid_request")
-    messages = payload.get("messages")
+    messages = _parse_messages(payload.get("messages"))
+    question, history = _select_question_and_history(messages)
+    # Streaming is rejected until the SSE transport is available.
+    if stream:
+        raise ChatRequestError("invalid_stream")
+    try:
+        model.encode("utf-8")
+        (correlation or "").encode("utf-8")
+    except UnicodeError:
+        raise ChatRequestError("invalid_request") from None
+    return ChatInput(model=model, question=question, history=history, conversation_id=correlation or "")
+
+
+def _parse_messages(messages: object) -> list[tuple[str, str]]:
     if not isinstance(messages, list) or not messages:
         raise ChatRequestError("invalid_messages")
     if len(messages) > 32:
@@ -90,6 +103,10 @@ def validate_chat(payload: dict) -> ChatInput:
         if size > MAX_CONTENT:
             raise ChatRequestError("content_too_large")
         parsed.append((role, content))
+    return parsed
+
+
+def _select_question_and_history(parsed: list[tuple[str, str]]) -> tuple[str, tuple[Message, ...]]:
     last_user = next((index for index in range(len(parsed) - 1, -1, -1) if parsed[index][0] == "user"), None)
     if last_user is None:
         raise ChatRequestError("missing_user_message")
@@ -101,13 +118,4 @@ def validate_chat(payload: dict) -> ChatInput:
         elif role == "assistant" and pending is not None:
             history.extend((Message("user", pending), Message("assistant", content.split(SOURCES_MARKER, 1)[0])))
             pending = None
-    # C7 will consume the same validated input. Until that transport exists,
-    # reject stream=true explicitly rather than returning misleading JSON 200.
-    if stream:
-        raise ChatRequestError("invalid_stream")
-    try:
-        model.encode("utf-8")
-        (correlation or "").encode("utf-8")
-    except UnicodeError:
-        raise ChatRequestError("invalid_request") from None
-    return ChatInput(model, parsed[last_user][1], tuple(history[-10:]), correlation or "")
+    return parsed[last_user][1], tuple(history[-10:])

@@ -2,9 +2,10 @@ import asyncio
 from dataclasses import replace
 
 import pytest
-from assistant_rh_api.core.chat import SOURCES_MARKER
 from assistant_rh_api.core.errors import ApplicationError, DatabaseFailure, InferenceFailure
 from assistant_rh_api.core.models.chat import Cancellation, ChatInput
+from assistant_rh_api.core.models.inference import Attempt
+from assistant_rh_api.core.sources import SOURCES_MARKER
 
 from apps.api.tests.auth_fakes import service
 from apps.api.tests.chat_fakes import Runtime
@@ -143,21 +144,31 @@ async def test_embedding_outage_initial_or_retry_never_becomes_no_answer(monkeyp
 
     calls = 0
     original = Embeddings.embed
+    attempts = (
+        Attempt("albert", "openweight-embeddings", "timeout"),
+        Attempt("scaleway", "bge-multilingual-gemma2", "unavailable", 503),
+    )
 
     async def fail_embedding(self, text):
         nonlocal calls
         calls += 1
         if calls == failed_call:
-            raise InferenceFailure(())
+            raise InferenceFailure(attempts)
         return await original(self, text)
 
     monkeypatch.setattr(Embeddings, "embed", fail_embedding)
     runtime = Runtime()
     runtime.llm.selector_responses = ['{"selected_ids":[]}']
-    with pytest.raises(InferenceFailure):
+    with pytest.raises(InferenceFailure) as caught:
         await runtime.service.complete(ChatInput("assistant-rh", "Question"), await auth())
+    assert caught.value.attempts == attempts
     run = next(iter(runtime.runs.rows.values()))
     assert run.status == "failed" and not run.sources and not run.answer
+    assert [(a["provider"], a["error"], a["status"]) for a in run.diagnostics["inference_attempts"]] == [
+        ("albert", "timeout", None),
+        ("scaleway", "unavailable", 503),
+    ]
+    assert run.events[-1].metrics["inference_attempts"] == run.diagnostics["inference_attempts"]
     assert not any(request.messages[0].content.startswith("GENERATE") for request in runtime.llm.calls)
 
 

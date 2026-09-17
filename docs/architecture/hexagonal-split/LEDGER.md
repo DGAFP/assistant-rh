@@ -689,3 +689,29 @@ reconstituées ; les preuves C4/C5 ne deviennent pas une preuve d'assemblage
 historique. Événements et annulation coopérative préparés ; transport SSE,
 déconnexion/worker/shielding restent C7. Aucun accès staging/production ou
 provider live, migration distante, déploiement ni GO M1.
+
+### C6 — corrections de revue et lisibilité (17 septembre 2026)
+
+Les projections de trace sont explicites et bornées : références, scores,
+décisions et diagnostics providers sont conservés, sans sérialisation générique
+de tous les champs des résultats. Les URL privées sont filtrées avant
+troncature, y compris dans les prompts. Les textes sont limités à 4 096
+caractères, les collections à 40 éléments et chaque payload de sortie/diagnostic
+à 64 Kio, avec marqueur explicite en cas de dépassement. Les résultats du
+moteur et les requêtes providers restent complets ; ces traces opérationnelles
+ne remplacent pas les artefacts de replay.
+
+Le signal d'échec embeddings conserve désormais les tentatives Albert/Scaleway
+dans `RetrievalResult`, l'exception finale, les diagnostics du run et
+l'événement échoué, pour l'essai initial comme pour le retry selector.
+La politique de retrieval et les fixtures historiques ne sont pas modifiées.
+
+Sources déplacées dans un module dédié, constructeurs nommés, orchestration
+retrieval/contexte extraite et validation des messages séparée du choix de
+question/historique. Tests de régression sur le run persisté, les pannes et
+l'intégrité des entrées providers.
+
+**905 tests API réussis, aucun ignoré**, dont 166 tests DB sur PostgreSQL/pgvector
+local jetable (`pgvector/pgvector:pg17`). Ruff, mypy (86 fichiers) et les trois
+contrats d'import passent. Auto-check M0b : 7 fixtures / 56 artefacts,
+`exact_comparison: null`. Le gate de conformance intégrale reste ouvert.

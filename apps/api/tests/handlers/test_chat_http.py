@@ -6,8 +6,8 @@ from datetime import timedelta
 import httpx
 import openai
 import pytest
-from assistant_rh_api.core.chat import SOURCES_MARKER
 from assistant_rh_api.core.errors import DatabaseFailure
+from assistant_rh_api.core.sources import SOURCES_MARKER
 from assistant_rh_api.handlers.app import create_app
 from assistant_rh_api.handlers.chat_body import MAX_BODY, MAX_CONTENT
 

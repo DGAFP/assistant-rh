@@ -23,7 +23,7 @@ from assistant_rh_api.core.errors import (
 )
 from assistant_rh_api.core.errors.inference import InferenceFailure
 from assistant_rh_api.core.ministry_policy import MINISTRIES
-from assistant_rh_api.core.models.inference import Embedding
+from assistant_rh_api.core.models.inference import Attempt, Embedding
 from assistant_rh_api.core.models.rag_configuration import RetrievalConfig, SearchMode
 from assistant_rh_api.core.models.retrieval import RawChunk, RetrievalSource, RetrievedChunk, SearchRequest, Source
 from assistant_rh_api.core.ports.inference import EmbeddingPort
@@ -59,6 +59,7 @@ class RetrievalResult:
     failures: tuple[RetrievalFailure, ...] = ()
     embedding: Embedding | None = None
     embedding_failed: bool = False
+    embedding_attempts: tuple[Attempt, ...] = ()
 
 
 def _failure_code(error: Exception) -> str:
@@ -246,8 +247,8 @@ class Retriever:
             raise ValueError("embedding model has no configured gateway")
         try:
             embedding = await self._embeddings[config.embedding_model.value].embed(query)
-        except InferenceFailure:
-            return RetrievalResult(sources=keys, embedding_failed=True)
+        except InferenceFailure as exc:
+            return RetrievalResult(sources=keys, embedding_failed=True, embedding_attempts=exc.attempts)
 
         per_source: dict[str, tuple[RetrievedChunk, ...]] = {}
         failures: list[RetrievalFailure] = []

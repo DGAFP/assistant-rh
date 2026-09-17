@@ -4,89 +4,24 @@ import asyncio
 import logging
 from collections.abc import Callable
 from datetime import timezone
-from hashlib import sha256
 from typing import Literal
-from urllib.parse import urlsplit
-from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from assistant_rh_api.core.auth import AuthContext
 from assistant_rh_api.core.catalog import ModelService
 from assistant_rh_api.core.errors import ApplicationError, InferenceFailure
-from assistant_rh_api.core.models.chat import Cancellation, CancellationPort, ChatInput, EventSinkPort, PipelineResult, RunContext, evidence
-from assistant_rh_api.core.models.context import ContextItem
+from assistant_rh_api.core.models.chat import Cancellation, CancellationPort, ChatInput, EventSinkPort, PipelineResult, RunContext
 from assistant_rh_api.core.models.conversations import ChatRun, RunSource
 from assistant_rh_api.core.models.rag_configuration import RAGConfig
 from assistant_rh_api.core.pipeline.pipeline import Pipeline
+from assistant_rh_api.core.pipeline.trace_projection import configuration_trace
 from assistant_rh_api.core.ports.conversations import ChatRunStorePort
 from assistant_rh_api.core.ports.system import ClockPort, IdGeneratorPort
 from assistant_rh_api.core.rag_configuration import RAGConfigurationService
+from assistant_rh_api.core.sources import final_sources, with_sources
+from assistant_rh_api.core.trace_values import attempt_trace, trace_payload
 
 logger = logging.getLogger(__name__)
-SOURCES_MARKER = "\n\n---\n**Sources :**\n"
-
-
-def final_sources(items: tuple[ContextItem, ...]) -> tuple[RunSource, ...]:
-    """Only served context grants source authority; internal URLs never escape."""
-    sources: list[RunSource] = []
-    seen: set[str] = set()
-    for item in items:
-        metadata = item.metadata
-        raw_document_id = str(metadata.get("doc_id") or "")
-        try:
-            document_id = str(UUID(raw_document_id))
-        except ValueError:
-            document_id = None
-        title = item.document_title or str(metadata.get("full_title") or metadata.get("title") or item.heading or "Document")
-        reference = str(document_id or metadata.get("doc_short_id") or raw_document_id or metadata.get("cid") or "")
-        if not reference:
-            reference = "source-" + sha256(f"{item.publisher}\n{item.section_id}\n{title}\n{item.document_url}".encode()).hexdigest()
-        if reference in seen:
-            continue
-        seen.add(reference)
-        raw_url = item.document_url or ""
-        try:
-            url = urlsplit(raw_url)
-            public = (
-                url.scheme == "https"
-                and url.hostname
-                in {
-                    "www.service-public.fr",
-                    "www.service-public.gouv.fr",
-                    "www.legifrance.gouv.fr",
-                    "legifrance.gouv.fr",
-                }
-                and not (url.username or url.password or url.query or url.fragment)
-                and url.port in (None, 443)
-            )
-        except ValueError:
-            public = False
-        sources.append(
-            RunSource(reference, title, raw_url if public else "", document_id, item.publisher or "", "public" if public else "authenticated")
-        )
-    return tuple(sources)
-
-
-def source_text(value: str) -> str:
-    # Metadata remains plain text even if a document title contains Markdown/HTML.
-    value = " ".join(value.split()).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    for character in "\\`*_{}[]()#!|":
-        value = value.replace(character, "\\" + character)
-    return value
-
-
-def with_sources(answer: str, sources: tuple[RunSource, ...]) -> str:
-    if not sources:
-        return answer
-    lines = []
-    for index, source in enumerate(sources, 1):
-        title = source_text(source.title)
-        if source.url:
-            safe_url = source.url.replace("(", "%28").replace(")", "%29").replace(" ", "%20").replace("<", "%3C").replace(">", "%3E")
-            title = f"[{title}]({safe_url})"
-        publisher = f" — {source_text(source.publisher)}" if source.publisher else ""
-        lines.append(f"{index}. {title}{publisher}")
-    return answer + SOURCES_MARKER + "\n".join(lines)
 
 
 class ChatService:
@@ -112,35 +47,35 @@ class ChatService:
         model = self._models.resolve(request.model, auth.group)
         created = self._clock.now().astimezone(timezone.utc)
         context = RunContext(
-            self._ids.new_id(),
-            self._ids.new_id(),
-            created,
-            created.astimezone(ZoneInfo("Europe/Paris")).date().isoformat(),
-            self._clock,
-            cancellation or Cancellation(),
-            sink,
+            turn_id=self._ids.new_id(),
+            trace_id=self._ids.new_id(),
+            created=created,
+            today=created.astimezone(ZoneInfo("Europe/Paris")).date().isoformat(),
+            clock=self._clock,
+            cancellation=cancellation or Cancellation(),
+            sink=sink,
         )
 
         def record(status: Literal["completed", "failed", "cancelled"], answer: str = "", sources: tuple[RunSource, ...] = ()) -> ChatRun:
             return ChatRun(
-                context.turn_id,
-                context.trace_id,
-                created,
-                auth.group.slug,
-                auth.session.token_hash,
-                request.conversation_id,
-                request.question,
-                answer,
-                model.ministry,
-                model.id,
-                sources,
-                tuple(context.events),
-                evidence(context.diagnostics),
-                status,
+                turn_id=context.turn_id,
+                trace_id=context.trace_id,
+                timestamp=created,
+                group_slug=auth.group.slug,
+                session_hash=auth.session.token_hash,
+                conversation_id=request.conversation_id,
+                question=request.question,
+                answer=answer,
+                selected_ministry=model.ministry,
+                model=model.id,
+                sources=sources,
+                events=tuple(context.events),
+                diagnostics=trace_payload(context.diagnostics),
+                status=status,
             )
 
         try:
-            configuration = await context.stage("configuration", self._configurations.load)
+            configuration = await context.stage("configuration", self._configurations.load, project=configuration_trace)
             context.diagnostics["configuration_revision"] = configuration.config.revision
             context.diagnostics["configuration_fallback"] = configuration.fallback
             pipeline = self._pipeline_factory(configuration.config.value)
@@ -151,15 +86,14 @@ class ChatService:
             await self._runs.finalize(run)
             return run, result
         except asyncio.CancelledError:
-            # C7 owns disconnect/worker shielding. Cooperative cancellation reaches
-            # this boundary after a stage stops, with no candidate source authority.
+            # A cancelled run never grants access to candidate documents.
             context.diagnostics["partial"] = bool(context.partial_answer)
             await self._runs.finalize(record("cancelled", context.partial_answer))
             raise
         except Exception as exc:
             context.diagnostics["error"] = "execution_failed"
             if isinstance(exc, InferenceFailure):
-                context.diagnostics["inference_attempts"] = evidence(exc.attempts)
+                context.diagnostics["inference_attempts"] = attempt_trace(exc.attempts)
                 context.diagnostics["partial"] = exc.partial
             try:
                 await self._runs.finalize(record("failed", context.partial_answer))

@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 from assistant_rh_api.core.rag_configuration import RAGConfigurationService
-from assistant_rh_api.db.run_store import ChatRunStore
+from assistant_rh_api.db.run_store import ChatRunStore, json_data
 from assistant_rh_api.db.settings_stores import ConfigStore
 from assistant_rh_api.handlers.app import create_app
 from assistant_rh_api.handlers.chat_runtime import create_chat_service
@@ -90,6 +90,7 @@ async def test_real_runtime_wiring_nonstream_and_provider_fallback(repository_db
     run = await ChatRunStore(repository_db).get(body["x_assistant_rh"]["turn_id"])
     assert run.status == "completed" and run.sources[0].document_id == DOC
     assert body["x_assistant_rh"]["sources"][0]["url"] is None and "SECRET" not in response.text
+    assert "X-Amz-Signature" not in json.dumps(json_data(run))
     assert run.events[-1].output_ref["diagnostics"]["outcome"]["provider"] == ("scaleway" if fallback else "albert")
     assert all(payload.get("stream") is False for _, path, payload in calls if path.endswith("/chat/completions"))
     assert any(path.endswith("/embeddings") for _, path, _ in calls)

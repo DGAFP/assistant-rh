@@ -63,8 +63,9 @@ est indéterminée n'est jamais annoncé comme succès.
   vers ce `turn_id` ; elles ne sont pas livrées par C6.
 - Le signal `Retriever.embedding_failed` conservé en C3 devient un **échec
   technique C6**, pour l'essai initial comme pour le retry. Générer un succès
-  sans contexte après une double panne serait contraire à C1. La fonction C3
-  et ses fixtures historiques restent inchangées.
+  sans contexte après une double panne serait contraire à C1. Le résultat C3
+  conserve aussi les tentatives providers échouées ; le signal vide et les
+  règles de retrieval restent inchangés.
 - Le Markdown C1 déduplique les sources documentaires finales ; les sorties
   internes de C2–C5 restent disponibles dans les événements de trace.
 
@@ -77,8 +78,42 @@ l'attente provider et finalise `cancelled` sans source finale. Le contexte
 réserve `partial_answer` et le diagnostic `partial` pour le streaming.
 Le transport SSE, les files/workers/pings, le pilotage de la déconnexion et
 le shielding de finalisation sous un cancel-scope de transport restent C7.
-Les traces d'étapes contiennent leurs sorties immuables, prompts et usage ;
-elles ne sont jamais incluses dans la réponse publique.
+Les traces d'étapes contiennent des projections explicites des identifiants,
+scores, décisions, prompts et usage ; elles ne sont jamais incluses dans la
+réponse publique. Les résultats complets restent disponibles au moteur.
+
+## Corrections de revue du 17 septembre 2026
+
+La persistance ne sérialise plus automatiquement tous les champs des résultats.
+`core/pipeline/trace_projection.py` choisit les champs de chaque étape ;
+`core/trace_values.py` filtre les URL HTTP(S) non publiques, même dans un prompt,
+puis borne les textes à 4 096 caractères et les collections à 40 éléments.
+Une troncature est signalée explicitement. Si le JSON ainsi projeté dépasse
+64 Kio, le payload est remplacé par un marqueur de dépassement avec sa taille.
+Ces limites s'appliquent aux sorties/diagnostics de trace, jamais aux entrées
+providers, à la réponse servie ni à la liste des sources finales.
+
+Les traces conservent les références et scores avant/après reranking, mais ne
+dupliquent plus le texte intégral de chaque chunk/section ni les vecteurs
+d'embedding. Ce sont des diagnostics opérationnels bornés, pas un bundle de
+replay intégral ; les entrées complètes de conformance doivent rester des
+artefacts dédiés. Le gate M0b demeure ouvert.
+
+Une double panne embeddings conserve désormais provider, modèle, type d'erreur
+et statut HTTP dans l'exception, le run et l'événement échoué, y compris lors du
+retry selector. Les tests couvrent aussi l'absence d'URL signée dans le record
+persisté et l'absence de modification du prompt réellement envoyé au provider.
+
+La politique et le rendu des sources vivent dans `core/sources.py`. Les
+constructeurs du run et du câblage utilisent des arguments nommés ; la tentative
+retrieval/contexte et l'extraction question/historique ont des fonctions dédiées.
+Les commentaires locaux expliquent les invariants plutôt que la chronologie
+du chantier.
+
+Validation de cette correction : **905 tests API réussis, aucun ignoré**, dont
+166 tests DB sur un conteneur local jetable `pgvector/pgvector:pg17`. Ruff,
+mypy (86 fichiers) et les trois contrats d'import passent. L'auto-check M0b
+reste inchangé : 7 fixtures, 56 artefacts, `exact_comparison: null`.
 
 ## Configuration providers
 

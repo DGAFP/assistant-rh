@@ -1,7 +1,7 @@
 from dataclasses import replace
 
-from assistant_rh_api.core.chat import SOURCES_MARKER, final_sources, with_sources
 from assistant_rh_api.core.models.context import ContextItem
+from assistant_rh_api.core.sources import SOURCES_MARKER, final_sources, with_sources
 
 
 def item(**changes):

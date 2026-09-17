@@ -30,6 +30,13 @@ La conformance historique exacte reste un gate ouvert ; ne pas reconstruire
 ses entrées manquantes ni modifier cette baseline. Les différences de schéma
 de traces/identifiants/sources HTTP sont des adaptations C1/B2 explicites.
 
+Complément de revue du 17 septembre 2026 : chaque étape fournit une projection
+explicite de trace. Les URL privées sont masquées et les payloads sont bornés,
+sans modifier les résultats utilisés par le moteur. Les tentatives embeddings
+échouées traversent le résultat retrieval et restent disponibles dans le run
+et l'événement d'échec. Les bornes et la distinction avec les artefacts de
+replay sont détaillées dans le [rapport C6](11-c6-chat-completions.md#corrections-de-revue-du-17-septembre-2026).
+
 
 Toute PR de phase C qui extrait ou remplace un module du runtime historique doit, **avant le déplacement du code** :
 

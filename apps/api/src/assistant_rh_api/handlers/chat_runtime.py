@@ -45,16 +45,21 @@ def create_chat_service(
     def endpoint(provider: str, model: str) -> Endpoint:
         if provider == "albert":
             return Endpoint(
-                "albert", model, environment.get("ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1"), environment.get("ALBERT_API_KEY", "")
+                provider="albert",
+                model=model,
+                base_url=environment.get("ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1"),
+                api_key=environment.get("ALBERT_API_KEY", ""),
             )
         if provider == "scaleway":
             return Endpoint(
-                "scaleway", model, environment.get("SCALEWAY_BASE_URL", "https://api.scaleway.ai/v1"), environment.get("SCALEWAY_API_KEY", "")
+                provider="scaleway",
+                model=model,
+                base_url=environment.get("SCALEWAY_BASE_URL", "https://api.scaleway.ai/v1"),
+                api_key=environment.get("SCALEWAY_API_KEY", ""),
             )
         raise ValueError("unsupported inference provider")
 
     def pipeline(config: RAGConfig) -> Pipeline:
-        # Resolve model names from this request's immutable server configuration.
         albert_embed = endpoint("albert", environment.get("ALBERT_EMBED_MODEL", "openweight-embeddings"))
         scaleway_embed = endpoint("scaleway", "bge-multilingual-gemma2") if environment.get("SCALEWAY_API_KEY") else None
         embeddings = {
@@ -62,29 +67,21 @@ def create_chat_service(
         }
         if scaleway_embed is not None:
             embeddings["bge_scaleway"] = EmbeddingGateway(client, scaleway_embed)
+        intent_llm = ChatGateway(client, endpoint("albert", config.query_processor.intent_model))
+        selector_llm = ChatGateway(client, endpoint(config.selector.provider.value, config.selector.model))
+        fallback = (
+            endpoint(config.generation.fallback_provider.value, config.generation.fallback_model) if environment.get("SCALEWAY_API_KEY") else None
+        )
+        generator_llm = ChatGateway(client, primary=endpoint(config.generation.provider.value, config.generation.model), fallback=fallback)
+        reranker = RerankerGateway(client, endpoint("albert", environment.get("ALBERT_RERANK_MODEL", "openweight-rerank")))
         return Pipeline(
-            config,
-            QueryProcessor(
-                config.query_processor, acronyms, prompts, packaged, ChatGateway(client, endpoint("albert", config.query_processor.intent_model))
-            ),
-            Retriever(search, embeddings, tuple(table.source for table in catalogue)),
-            SectionAggregator(
-                config.aggregation, content, RerankerGateway(client, endpoint("albert", environment.get("ALBERT_RERANK_MODEL", "openweight-rerank")))
-            ),
-            ContextSelector(config.selector, prompts, packaged, ChatGateway(client, endpoint(config.selector.provider.value, config.selector.model))),
-            ContextBuilder(config.context, content),
-            Generator(
-                config.generation,
-                prompts,
-                packaged,
-                ChatGateway(
-                    client,
-                    endpoint(config.generation.provider.value, config.generation.model),
-                    endpoint(config.generation.fallback_provider.value, config.generation.fallback_model)
-                    if environment.get("SCALEWAY_API_KEY")
-                    else None,
-                ),
-            ),
+            config=config,
+            query=QueryProcessor(config=config.query_processor, acronyms=acronyms, prompts=prompts, packaged_prompts=packaged, llm=intent_llm),
+            retriever=Retriever(search=search, embeddings=embeddings, sources=tuple(table.source for table in catalogue)),
+            aggregator=SectionAggregator(config=config.aggregation, content_store=content, reranker=reranker),
+            selector=ContextSelector(config=config.selector, prompts=prompts, packaged_prompts=packaged, llm=selector_llm),
+            builder=ContextBuilder(config=config.context, content_store=content),
+            generator=Generator(config=config.generation, prompts=prompts, packaged_prompts=packaged, llm=generator_llm),
         )
 
-    return ChatService(configurations, pipeline, ChatRunStore(database), clock, RunIds())
+    return ChatService(configurations=configurations, pipeline_factory=pipeline, runs=ChatRunStore(database), clock=clock, ids=RunIds())

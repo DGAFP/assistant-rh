@@ -1,32 +1,18 @@
 """Request-owned execution state and values shared by C6 and future C7."""
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field, fields, is_dataclass
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from typing import Literal, Protocol, cast
+from typing import Literal, Protocol
 
+from assistant_rh_api.core.errors import InferenceFailure
 from assistant_rh_api.core.models.configuration import JsonValue
-from assistant_rh_api.core.models.context import ContextItem, freeze_value
+from assistant_rh_api.core.models.context import ContextItem
 from assistant_rh_api.core.models.conversations import TraceEvent
 from assistant_rh_api.core.models.inference import Message, TokenUsage
 from assistant_rh_api.core.ports.system import ClockPort
-
-
-def evidence(value: object) -> JsonValue:
-    """Detach stage evidence, never serialize a service/auth context or exception."""
-    if is_dataclass(value) and not isinstance(value, type):
-        return freeze_value({f.name: evidence(getattr(value, f.name)) for f in fields(value)})
-    if isinstance(value, Mapping):
-        return freeze_value({str(key): evidence(child) for key, child in value.items()})
-    if isinstance(value, (tuple, list)):
-        return tuple(evidence(child) for child in value)
-    if isinstance(value, Enum):
-        return evidence(value.value)
-    if value is None or isinstance(value, (str, bool, int, float)):
-        return cast(JsonValue, value)
-    raise TypeError("unsupported stage evidence")
+from assistant_rh_api.core.trace_values import attempt_trace, trace_payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,21 +73,23 @@ class RunContext:
         if self.sink is not None:
             await self.sink.publish(PipelineEvent(self.turn_id, stage, phase, attempt))
 
-    async def stage[T](self, name: str, operation: Callable[[], Awaitable[T]], *, attempt: str = "") -> T:
+    async def stage[T](self, name: str, operation: Callable[[], Awaitable[T]], *, project: Callable[[T], JsonValue], attempt: str = "") -> T:
         self.cancellation.checkpoint()
         start = self.clock.monotonic()
         try:
             await self.publish(name, "started", attempt)
             result = await operation()
             self.cancellation.checkpoint()
+            output = trace_payload(project(result))
         except (Exception, asyncio.CancelledError) as exc:
             status = "cancelled" if isinstance(exc, asyncio.CancelledError) else "failed"
             self.events.append(
                 TraceEvent(
-                    name,
-                    max(0, int((self.clock.monotonic() - start) * 1000)),
-                    status,
-                    attempt,
+                    stage=name,
+                    duration_ms=max(0, int((self.clock.monotonic() - start) * 1000)),
+                    status=status,
+                    attempt_name=attempt,
+                    metrics=trace_payload({"inference_attempts": attempt_trace(exc.attempts)}) if isinstance(exc, InferenceFailure) else None,
                     error_type="cancelled" if status == "cancelled" else "stage_failed",
                 )
             )
@@ -111,7 +99,15 @@ class RunContext:
                 # A disconnected observer must not replace the stage's failure.
                 pass
             raise
-        self.events.append(TraceEvent(name, max(0, int((self.clock.monotonic() - start) * 1000)), "ok", attempt, output_ref=evidence(result)))
+        self.events.append(
+            TraceEvent(
+                stage=name,
+                duration_ms=max(0, int((self.clock.monotonic() - start) * 1000)),
+                status="ok",
+                attempt_name=attempt,
+                output_ref=output,
+            )
+        )
         await self.publish(name, "completed", attempt)
         return result
 
