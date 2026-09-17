@@ -28,6 +28,7 @@ from assistant_rh_api.gateways.auth import LegacyPasswords, SessionTokens, Syste
 from assistant_rh_api.handlers.auth import create_auth_router
 from assistant_rh_api.handlers.auth_body import AuthBodyLimit
 from assistant_rh_api.handlers.chat import create_chat_router
+from assistant_rh_api.handlers.chat_stream import StreamSettings, StreamWorkers
 from assistant_rh_api.handlers.errors import register_error_handlers
 from assistant_rh_api.handlers.health import create_health_router
 from assistant_rh_api.handlers.models import create_models_router
@@ -42,6 +43,7 @@ def create_app(
     model_service: ModelService | None = None,
     rag_configuration_service: RAGConfigurationService | None = None,
     chat_service: ChatService | None = None,
+    stream_settings: StreamSettings | None = None,
 ) -> FastAPI:
     """Create the HTTP application without opening connections or loading RAG."""
 
@@ -98,12 +100,21 @@ def create_app(
             application.state.rag_configuration_service = rag_configuration_service
             application.state.chat_service = chat_service
 
-    application = FastAPI(title="Assistant RH API", version=distribution_version("assistant-rh-api"), lifespan=lifespan)
+    @asynccontextmanager
+    async def managed_lifespan(application: FastAPI) -> AsyncIterator[None]:
+        async with lifespan(application):
+            try:
+                yield
+            finally:
+                await application.state.stream_workers.aclose()
+
+    application = FastAPI(title="Assistant RH API", version=distribution_version("assistant-rh-api"), lifespan=managed_lifespan)
     application.state.health_probe = health_probe or PostgresHealthProbe()
     application.state.auth_service = auth_service
     application.state.model_service = model_service or ModelService()
     application.state.rag_configuration_service = rag_configuration_service
     application.state.chat_service = chat_service
+    application.state.stream_workers = StreamWorkers(stream_settings or StreamSettings.from_environment(os.environ if environ is None else environ))
     application.add_middleware(AuthBodyLimit)
     register_error_handlers(application)
     application.include_router(create_health_router())

@@ -2,10 +2,11 @@
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 
 from assistant_rh_api.core.chat import ChatService
 from assistant_rh_api.core.models.configuration import Prompt, Snapshot
-from assistant_rh_api.core.models.inference import Attempt, Completion, Embedding, RankedDocument, Reranking, TokenUsage
+from assistant_rh_api.core.models.inference import Attempt, Completion, Embedding, RankedDocument, Reranking, StreamCompleted, TextDelta, TokenUsage
 from assistant_rh_api.core.models.retrieval import RawChunk
 from assistant_rh_api.core.pipeline.pipeline import Pipeline
 from assistant_rh_api.core.pipeline.steps.aggregation import SectionAggregator
@@ -74,6 +75,17 @@ class LLM:
             ministry = first.split()[1]
             text = f"Réponse {ministry} selon le document fourni."
         return Completion(text, "albert", "synthetic", (Attempt("albert", "synthetic"),), "stop", TokenUsage(10, 4, 14))
+
+    @asynccontextmanager
+    async def stream(self, request):
+        result = await self.complete(request)
+
+        async def events():
+            for start in range(0, len(result.text), 8):
+                yield TextDelta(result.text[start : start + 8])
+            yield StreamCompleted(result.provider, result.model, result.attempts, result.finish_reason, result.usage)
+
+        yield events()
 
 
 class Search:

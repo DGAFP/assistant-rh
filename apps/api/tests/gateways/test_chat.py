@@ -432,6 +432,7 @@ async def test_stream_reports_usage_and_does_not_leak_it_into_next_request():
     def handle(request):
         nonlocal number
         number += 1
+        assert json.loads(request.content)["stream_options"] == {"include_usage": True}
         usage = b'data: {"choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14}}\n\n'
         body = event("text") + event(reason="stop") + (usage if number == 1 else b"") + b"data: [DONE]\n\n"
         return httpx.Response(200, content=body)

@@ -754,3 +754,51 @@ le moteur sur les mêmes entrées héritées, pas l'équivalence de ces SQL ambi
 Validation finale : **924 tests API réussis, aucun ignoré**, dont le test SQL
 indexé et les 18 contrôles du compagnon ; Ruff, mypy (86 fichiers), quatre
 contrats d'import et auto-check du bundle historique 7/56 passent.
+
+### C7 — streaming SSE résilient (17 septembre 2026)
+
+[#464](https://github.com/DGAFP/assistant-rh/issues/464), base C6 `67fe730` :
+[rapport et reproduction](12-c7-streaming.md), avec carte d'entrée A5 mise à
+jour avant implémentation. La route accepte `stream=true`, réutilise les
+événements/annulations C6 et le générateur C5, puis persiste avant sources,
+terminal, usage optionnel et `[DONE]`. Erreurs post-headers → `stream_error`,
+sans marqueur de succès. Runs failed/cancelled avec texte partiel, traces et
+diagnostics ; aucune source autorisante partielle. Double panne journalisée
+avec `turn_id`, sans erreur interne exposée.
+
+**Adaptations explicites, propriétaire C7** :
+
+- Le moteur C6 étant désormais async, admission de **8 workers asyncio** par
+  processus au lieu d'exécuter le runtime synchrone historique dans un thread.
+  File de 32 événements, fragments de 4 096 caractères, pings 10 s ; saturation
+  avant headers et backpressure jusqu'au provider. Bornes configurables et
+  testées ; pas de nouvelle boucle pour les clients HTTP/DB partagés.
+- Le transport API stream reprend les mêmes entrées générateur que C6 pour
+  respecter C1 : historique au query processor, sans ajout exclusivement en
+  génération stream. La capacité historique de `Generator.stream` C5 et le
+  runtime Streamlit restent inchangés. Égalité des requêtes, texte et sources
+  vérifiée avec ports déterministes ; pas de promesse d'égalité LLM live.
+- Finalisation protégée et bornée à 10 s par tentative. Une déconnexion pendant
+  un commit déjà commencé attend son résultat ; elle ne réécrit pas un succès
+  commité. L'arrêt attend aussi le transport en cas d'envoi bloqué. La limite
+  d'envoi est 30 s, les délais I/O B3/B2 restent applicables.
+- Le gateway demande désormais `stream_options.include_usage=true`. L'usage
+  inconnu conserve les zéros C1. La garde C6 temporaire refusant `stream=true`
+  est remplacée par les preuves positives ; les types invalides restent rejetés.
+
+**Validation finale** : **956 tests API passent, aucun ignoré**, avec PostgreSQL
+17/pgvector jetable ; **1 548 tests historiques passent, 46 ignorés** ; Ruff,
+mypy (87 fichiers) et **4 contrats d'import** passent. Les tests TCP Uvicorn
+vérifient SDK complet/erreur, ping pendant retrieval, disponibilité concurrente
+et annulation réelle après fermeture socket. Les tests DB lisent le run commité
+au moment de l'envoi terminal et couvrent rollback/annulation/droits sources.
+
+**Instance `conversations` : 2 tests passent**, image A2 épinglée (0.0.22,
+Pydantic-AI 2.22.0, SDK 2.52.0), contre la vraie route/pipeline et des ports
+synthétiques, via bearer B4 éphémère. SDK du dépôt 2.38.0. Succès avec sources
+et `chatcmpl-*`, et propagation `APIError(stream_error)` sans exposition du
+bearer. Exécution locale et TCP/Docker sur la VM homelab
+`assistant-rh.discus-iguana.ts.net` ; aucune seconde machine revendiquée.
+Les warnings de teardown/cache Django sont documentés ; conteneurs jetables
+supprimés après preuve. Aucun accès distant, provider live ou déploiement.
+M1/#465, proxy D4 et présentation d'erreur UI du fork restent distincts.

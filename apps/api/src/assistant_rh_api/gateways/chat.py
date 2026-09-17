@@ -125,6 +125,7 @@ class ChatGateway:
         emitted = False
         for endpoint in self._endpoints:
             payload = self._payload(request, endpoint, stream=True)
+            payload["stream_options"] = {"include_usage": True}
             deadline = self._http.deadline()
             for number in range(1, self._http.policy.max_attempts + 1):
                 reason = None

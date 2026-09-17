@@ -108,7 +108,7 @@ async def test_history_validation_pairing_and_text_parts(chat):
         ],
         ({"messages": [{"role": "user"}]}, "unsupported_content"),
         ({"messages": [{"role": "assistant", "content": "x"}]}, "missing_user_message"),
-        *[({"stream": value}, "invalid_stream") for value in [None, 0, 1, "false", True]],
+        *[({"stream": value}, "invalid_stream") for value in [None, 0, 1, "false"]],
         *[({"n": value}, "unsupported_n") for value in [0, -1, 2, None, "1", True, 1.0]],
         *[({"stream_options": value}, "invalid_stream_options") for value in [{}, [], "x", 1]],
         ({"stream": True, "stream_options": {"extra": True}}, "unsupported_stream_option"),

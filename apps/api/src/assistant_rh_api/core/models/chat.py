@@ -1,4 +1,4 @@
-"""Request-owned execution state and values shared by C6 and future C7."""
+"""Request-owned execution state and values shared by non-stream and streaming execution."""
 
 import asyncio
 from collections.abc import Awaitable, Callable
@@ -34,7 +34,7 @@ class PipelineEvent:
 
 class EventSinkPort(Protocol):
     async def publish(self, event: PipelineEvent) -> None:
-        """Observe progress with backpressure; a future C7 sink owns its queue."""
+        """Observe progress with backpressure; the transport sink owns its bounded queue."""
         ...
 
 
@@ -72,6 +72,12 @@ class RunContext:
     async def publish(self, stage: str, phase: Literal["started", "completed", "failed", "cancelled", "delta"], attempt: str = "") -> None:
         if self.sink is not None:
             await self.sink.publish(PipelineEvent(self.turn_id, stage, phase, attempt))
+
+    async def delta(self, text: str) -> None:
+        self.cancellation.checkpoint()
+        self.partial_answer += text
+        if self.sink is not None and text:
+            await self.sink.publish(PipelineEvent(self.turn_id, "generator", "delta", text=text))
 
     async def stage[T](self, name: str, operation: Callable[[], Awaitable[T]], *, project: Callable[[T], JsonValue], attempt: str = "") -> T:
         self.cancellation.checkpoint()

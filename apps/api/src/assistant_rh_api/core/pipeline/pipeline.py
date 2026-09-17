@@ -3,6 +3,8 @@
 from assistant_rh_api.core.errors import InferenceFailure
 from assistant_rh_api.core.models.chat import ChatInput, PipelineResult, RunContext
 from assistant_rh_api.core.models.context import ContextBuildDiagnostics, ContextBuildResult
+from assistant_rh_api.core.models.generation import GenerationResult
+from assistant_rh_api.core.models.inference import TextDelta
 from assistant_rh_api.core.models.rag_configuration import RAGConfig, SearchMode
 from assistant_rh_api.core.pipeline.steps.aggregation import SectionAggregator
 from assistant_rh_api.core.pipeline.steps.context_builder import ContextBuilder
@@ -39,7 +41,7 @@ class Pipeline:
         self._builder = builder
         self._generator = generator
 
-    async def run(self, request: ChatInput, ministry: str, context: RunContext) -> PipelineResult:
+    async def run(self, request: ChatInput, ministry: str, context: RunContext, *, stream: bool = False) -> PipelineResult:
         history = tuple({"role": message.role, "content": message.content} for message in request.history)
         processing = await context.stage(
             "query-processor",
@@ -48,6 +50,8 @@ class Pipeline:
         )
         query = processing.result
         if not query.should_proceed:
+            if stream:
+                await context.delta(query.direct_response or "")
             return PipelineResult(answer=query.direct_response or "")
 
         config = self._config.retrieval
@@ -74,11 +78,23 @@ class Pipeline:
             rejected = rejected or not built.items
             context.diagnostics["selector_retry_succeeded"] = bool(built.items) and not rejected
         context.diagnostics["selector_all_rejected"] = rejected
-        generated = await context.stage(
-            "generator",
-            lambda: self._generator.generate(query.query_for_retrieval, built.items, ministry, today=context.today, all_rejected=rejected),
-            project=generation_trace,
-        )
+        async def generate() -> GenerationResult:
+            if not stream:
+                return await self._generator.generate(query.query_for_retrieval, built.items, ministry, today=context.today, all_rejected=rejected)
+            # C1 keeps API generation inputs identical across transports.
+            # C6 passes history only to the query processor.
+            async with self._generator.stream(
+                query.query_for_retrieval, built.items, ministry=ministry, today=context.today, all_rejected=rejected
+            ) as events:
+                async for event in events:
+                    context.cancellation.checkpoint()
+                    if isinstance(event, TextDelta):
+                        await context.delta(event.text)
+                    else:
+                        return event
+            raise InferenceFailure((), partial=bool(context.partial_answer))
+
+        generated = await context.stage("generator", generate, project=generation_trace)
         outcome = generated.diagnostics.outcome
         if outcome is not None and outcome.usage is not None:
             return PipelineResult(answer=generated.answer, items=built.items, usage=outcome.usage)
