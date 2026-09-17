@@ -73,8 +73,10 @@ from src.ui.chatbot_sources import (
     render_sources,
     should_hide_sources,
 )
+from src.ui.chatbot_transitions import PENDING_EXIT, apply_ready_exit, cancel_exit, request_exit
 from src.ui.cookies_security import is_production_like_env, resolve_cookies_password
 from src.ui.groups import ADMIN_GROUP, DEFAULT_BADGE, valid_groups
+from src.ui.page_config import configure_page
 from src.ui.user_groups_store import (
     get_group_policy,
     group_badge_display,
@@ -213,7 +215,7 @@ def annotate_original_order(chunks: List["Chunk"]) -> None:
 # Try to set page config to wide layout with sidebar collapsed by default
 # If already set (via Home.py), this will fail silently
 try:
-    st.set_page_config(page_title="Chatbot", page_icon="🪄", layout="wide", initial_sidebar_state="expanded")
+    configure_page(page_title="Chatbot", page_icon="🪄", layout="wide", initial_sidebar_state="expanded")
 except Exception:
     pass  # Config already set, ignore
 
@@ -724,6 +726,44 @@ def _ministry_label(ministry_id: str) -> str:
     return ministry.label if ministry else ministry_id
 
 
+def _request_new_chat():
+    request_exit(st.session_state)
+
+
+def _request_ministry_change():
+    requested = st.session_state.selected_ministry_picker
+    if requested != st.session_state.get("selected_ministry"):
+        request_exit(st.session_state, requested)
+
+
+def _cancel_chat_exit():
+    cancel_exit(st.session_state)
+
+
+@st.dialog("Évaluer avant de continuer ?", width="large", on_dismiss=_cancel_chat_exit)
+def _chat_exit_dialog():
+    pending = st.session_state[PENDING_EXIT]
+    st.write("Il reste une réponse non évaluée dans votre conversation. Souhaitez-vous laisser un avis avant de continuer ?")
+    if st.button("Évaluer puis continuer", key="exit_evaluate", type="primary"):
+        pending["evaluate"] = True
+    if st.button("Continuer sans évaluer", key="exit_skip"):
+        pending["ready"] = True
+        st.rerun()
+    if st.button("Annuler", key="exit_cancel"):
+        # The request callback already restored the ministry picker.
+        st.session_state.pop(PENDING_EXIT, None)
+        st.rerun()
+    if pending["evaluate"]:
+        turn = next(t for t in st.session_state.turns if t.id == pending["turn_id"])
+        st.caption("Votre avis porte sur la réponse non évaluée ci-dessous. Il sera enregistré avant de continuer.")
+        st.markdown(turn.assistant)
+        render_feedback_block(turn)
+
+
+# Apply deferred actions before the ministry selector is instantiated.
+apply_ready_exit(st.session_state)
+
+
 # ------------------------------
 # Sidebar avec filtres utilisateur (VERSION PRODUCTION - épurée)
 # ------------------------------
@@ -772,11 +812,13 @@ with st.sidebar:
                 "conversation_id",
                 "selected_ministry",
                 "selected_ministry_picker",
+                PENDING_EXIT,
             ):
                 st.session_state.pop(_k, None)
             st.session_state["_pending_logout"] = True
             st.rerun()
 
+    st.button("**:material/refresh: Nouvelle conversation**", key="new_sidebar", width="stretch", type="primary", on_click=_request_new_chat)
     st.markdown("### 🗂️ Filtres")
 
     retrieval_scope = None
@@ -798,12 +840,8 @@ with st.sidebar:
             format_func=_ministry_label,
             help="Le ministère sélectionné détermine les sources ministérielles interrogées pour cette requête.",
             key="selected_ministry_picker",
+            on_change=_request_ministry_change,
         )
-        if previous_ministry and previous_ministry != selected_ministere:
-            st.session_state.turns = []
-            st.session_state.conversation_id = str(uuid.uuid4())[:8]
-            st.session_state.selected_ministry = selected_ministere
-            st.rerun()
         st.session_state.selected_ministry = selected_ministere
         retrieval_scope, retrieval_scope_error = resolve_group_retrieval_scope(user_group, selected_ministere)
         if retrieval_scope_error:
@@ -960,7 +998,7 @@ def show_disclaimer_modal():
 disclaimer_accepted = cookies.get("disclaimer_accepted") == "true"
 
 # Afficher la modale si pas encore accepté
-if not disclaimer_accepted and not st.session_state.get("disclaimer_accepted", False):
+if not disclaimer_accepted and not st.session_state.get("disclaimer_accepted", False) and not st.session_state.get(PENDING_EXIT):
     show_disclaimer_modal()
 
 # ========== DSFR Header ==========
@@ -1004,7 +1042,7 @@ with col1:
 # ═══════════════════════════════════════════════════════════════════════════════
 # SUGGESTIONS HARDCODÉES
 # Questions choisies manuellement pour guider les utilisateurs
-# 3 questions tirées au hasard à chaque "New chat" ou rechargement
+# 3 questions tirées au hasard à chaque "Nouvelle conversation" ou rechargement
 # ═══════════════════════════════════════════════════════════════════════════════
 
 SUGGESTIONS_POOL = [
@@ -1038,14 +1076,7 @@ with col2:
     st.write("")
     st.write("")
     st.write("")
-    new_chat = st.button(label="**:material/refresh: New chat**", key="new", width="stretch", type="primary")
-    if new_chat:
-        st.session_state.turns = []
-        # Générer un nouveau conversation_id pour le nouveau fil de discussion
-        st.session_state.conversation_id = str(uuid.uuid4())[:8]
-        # 🔄 Régénérer 3 nouvelles suggestions aléatoires
-        st.session_state.suggestions = random.sample(SUGGESTIONS_POOL, 3)
-        st.rerun()
+    st.button(label="**:material/refresh: Nouvelle conversation**", key="new", width="stretch", type="primary", on_click=_request_new_chat)
 
     # Espacement pour aligner "Suggestions" avec le message d'accueil
     st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True)
@@ -1263,6 +1294,10 @@ def render_debug_chunks(
             )
 
 
+if st.session_state.get(PENDING_EXIT):
+    _chat_exit_dialog()
+
+
 # Render history
 for idx, t in enumerate(st.session_state.turns):
     with st.chat_message("user", avatar="🧑‍💻"):
@@ -1278,7 +1313,8 @@ for idx, t in enumerate(st.session_state.turns):
                 st.json([{"id": c.id, "score": round(c.score, 3), "source": c.metadata.get("source_name", "")} for c in (t.retrieved or [])])
 
         # Feedback seulement si réponse positive
-        if not is_negative_response(t.assistant):
+        pending_exit = st.session_state.get(PENDING_EXIT, {})
+        if not is_negative_response(t.assistant) and pending_exit.get("turn_id") != t.id:
             render_feedback_block(t)
         # render_feedback_block(i, t, llm_config)
 

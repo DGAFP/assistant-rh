@@ -1,0 +1,58 @@
+{
+  "rag-acronym-contract": {
+    "intent": "rag_query",
+    "theme": "typologie_contrats",
+    "needs_legal_search": false,
+    "query_for_retrieval": "Quelle est la durée maximale d'un contrat à durée déterminée (CDD) pour un agent contractuel ?",
+    "reformulated_query": "",
+    "confidence": 0.95
+  },
+  "rag-conversation-followup": {
+    "intent": "rag_query",
+    "theme": "typologie_contrats",
+    "needs_legal_search": false,
+    "query_for_retrieval": "Et quelles sont les règles lors de son renouvellement ?",
+    "reformulated_query": "Quelles sont les règles de renouvellement d'un CDD dans la fonction publique d'État ?",
+    "confidence": 0.95
+  },
+  "rag-legal-dgafp": {
+    "intent": "rag_query",
+    "theme": "conges",
+    "needs_legal_search": false,
+    "query_for_retrieval": "Dans quels cas l'administration est-elle subrogée aux indemnités journalières dues à un agent contractuel en congé de maladie, maternité, paternité, adoption ou accident du travail ?",
+    "reformulated_query": "",
+    "confidence": 0.95
+  },
+  "rag-ministry-mso": {
+    "intent": "rag_query",
+    "theme": "renouvellement_mobilite",
+    "needs_legal_search": false,
+    "query_for_retrieval": "Au ministère chargé des affaires sociales, un agent contractuel peut-il bénéficier d'un congé de mobilité ?",
+    "reformulated_query": "",
+    "confidence": 0.95
+  },
+  "short-circuit-chit-chat": {
+    "intent": "chit_chat",
+    "theme": null,
+    "needs_legal_search": false,
+    "query_for_retrieval": "Bonjour, comment ça va ?",
+    "reformulated_query": "",
+    "confidence": 0.95
+  },
+  "short-circuit-document-request": {
+    "intent": "document_request",
+    "theme": null,
+    "needs_legal_search": false,
+    "query_for_retrieval": "Peux-tu me donner le texte intégral du décret n°86-83 ?",
+    "reformulated_query": "",
+    "confidence": 0.95
+  },
+  "short-circuit-out-of-scope": {
+    "intent": "out_of_scope",
+    "theme": null,
+    "needs_legal_search": false,
+    "query_for_retrieval": "Quel temps fera-t-il demain à Paris ?",
+    "reformulated_query": "",
+    "confidence": 0.95
+  }
+}

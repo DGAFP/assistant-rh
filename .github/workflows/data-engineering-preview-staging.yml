@@ -14,13 +14,13 @@ on:
       - "packages/data-engineering/**"
       - "packages/shared-config/**"
       - "config/**"
-      - "Dockerfile.service_public_pipeline"
-      - "Dockerfile.service_public_ingestion"
-      - "Dockerfile.legifrance_pipeline"
-      - "Dockerfile.legifrance_ingestion"
-      - "Dockerfile.legifrance_bulk_dump"
-      - "Dockerfile.embeddings_job"
-      - "Dockerfile.pdf_sources_pipeline"
+      - "docker/Dockerfile.service_public_pipeline"
+      - "docker/Dockerfile.service_public_ingestion"
+      - "docker/Dockerfile.legifrance_pipeline"
+      - "docker/Dockerfile.legifrance_ingestion"
+      - "docker/Dockerfile.legifrance_bulk_dump"
+      - "docker/Dockerfile.embeddings_job"
+      - "docker/Dockerfile.pdf_sources_pipeline"
   pull_request:
     branches:
       - staging
@@ -34,13 +34,13 @@ on:
       - "packages/data-engineering/**"
       - "packages/shared-config/**"
       - "config/**"
-      - "Dockerfile.service_public_pipeline"
-      - "Dockerfile.service_public_ingestion"
-      - "Dockerfile.legifrance_pipeline"
-      - "Dockerfile.legifrance_ingestion"
-      - "Dockerfile.legifrance_bulk_dump"
-      - "Dockerfile.embeddings_job"
-      - "Dockerfile.pdf_sources_pipeline"
+      - "docker/Dockerfile.service_public_pipeline"
+      - "docker/Dockerfile.service_public_ingestion"
+      - "docker/Dockerfile.legifrance_pipeline"
+      - "docker/Dockerfile.legifrance_ingestion"
+      - "docker/Dockerfile.legifrance_bulk_dump"
+      - "docker/Dockerfile.embeddings_job"
+      - "docker/Dockerfile.pdf_sources_pipeline"
   workflow_dispatch:
     inputs:
       source:

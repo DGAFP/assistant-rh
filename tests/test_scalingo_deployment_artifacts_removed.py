@@ -12,7 +12,7 @@ DEPRECATED_ACTIVE_DEPLOYMENT_ARTIFACTS = (
 ACTIVE_DEPLOYMENT_PATHS = (
     REPO_ROOT / ".github" / "workflows",
     REPO_ROOT / ".github" / "scripts",
-    REPO_ROOT / "Dockerfile.streamlit",
+    REPO_ROOT / "docker/Dockerfile.streamlit",
 )
 
 

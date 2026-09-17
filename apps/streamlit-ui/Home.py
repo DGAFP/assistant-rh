@@ -7,6 +7,7 @@ warnings.filterwarnings("ignore", message=".*st.cache.*", category=FutureWarning
 
 import streamlit as st  # noqa: E402
 
+from src.ui.page_config import configure_page  # noqa: E402
 from src.ui.cookies_security import resolve_cookies_password  # noqa: E402
 from src.ui.groups import ADMIN_GROUP, valid_groups  # noqa: E402
 from src.ui.user_groups_store import (  # noqa: E402
@@ -31,7 +32,7 @@ resolve_cookies_password()
 
 
 # Hide sidebar on the landing page (user not identified yet)
-st.set_page_config(page_title="Assistant RH", page_icon="📚", layout="wide", initial_sidebar_state="collapsed")
+configure_page(page_title="Assistant RH", page_icon="📚", layout="wide", initial_sidebar_state="collapsed")
 st.markdown(
     """
     <style>

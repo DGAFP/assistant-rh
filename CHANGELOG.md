@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.13.0](https://github.com/DGAFP/assistant-rh/compare/v0.12.2...v0.13.0) (2026-09-17)
+
+
+### Features
+
+* **api:** extract section aggregation and context building ([39d7847](https://github.com/DGAFP/assistant-rh/commit/39d78476b243e1a7b8dd268cb5362516198368cb))
+* **api:** extract selector and generation policies (C5) ([cb76fe3](https://github.com/DGAFP/assistant-rh/commit/cb76fe33cd4832d2c413cf646ff4502c41c8ffce))
+* **api:** extract selector and generation policies (C5) ([cb76fe3](https://github.com/DGAFP/assistant-rh/commit/cb76fe33cd4832d2c413cf646ff4502c41c8ffce))
+* **api:** extract selector and generation policies (C5) ([99fc62c](https://github.com/DGAFP/assistant-rh/commit/99fc62c620ad3ca0994609218cc01c5fbf7dc87a))
+* **api:** extraire l’agrégation et le contexte (C4) ([287afa0](https://github.com/DGAFP/assistant-rh/commit/287afa03b979b24cfb69e7e6a0082fafd54f24dc))
+* **api:** extraire l’agrégation et le contexte (C4) ([287afa0](https://github.com/DGAFP/assistant-rh/commit/287afa03b979b24cfb69e7e6a0082fafd54f24dc))
+* **streamlit:** add persistent evaluation reminder on all pages ([5acf7a9](https://github.com/DGAFP/assistant-rh/commit/5acf7a9ca47f90f383e6ddba7972a92c367ecb58))
+* **streamlit:** afficher un rappel permanent d’évaluation ([#569](https://github.com/DGAFP/assistant-rh/issues/569)) ([5acf7a9](https://github.com/DGAFP/assistant-rh/commit/5acf7a9ca47f90f383e6ddba7972a92c367ecb58))
+* **streamlit:** agrandir les étoiles d’évaluation des réponses ([28889d9](https://github.com/DGAFP/assistant-rh/commit/28889d9b051fad39e080303d439861f70027dbc8))
+* **streamlit:** agrandir les étoiles d’évaluation des réponses ([28889d9](https://github.com/DGAFP/assistant-rh/commit/28889d9b051fad39e080303d439861f70027dbc8))
+* **streamlit:** enlarge answer rating stars ([d652fb6](https://github.com/DGAFP/assistant-rh/commit/d652fb61bb932a7a70a4244013a4a95b46484e6e))
+* **streamlit:** rappeler d’évaluer le chat avant de le quitter ([#566](https://github.com/DGAFP/assistant-rh/issues/566)) ([97a1a6a](https://github.com/DGAFP/assistant-rh/commit/97a1a6a205be7124b02e1f1e67760dba43d0eac1))
+* sync Streamlit feedback to Grist with human annotations ([55a5d8a](https://github.com/DGAFP/assistant-rh/commit/55a5d8a2a9b5890e4a73858cba6a46cc810fd35b))
+* synchroniser les feedbacks Streamlit vers Grist ([f070f43](https://github.com/DGAFP/assistant-rh/commit/f070f43c63e1544f2fcfa7d1b4f742fbdf039876))
+* synchroniser les feedbacks Streamlit vers Grist ([f070f43](https://github.com/DGAFP/assistant-rh/commit/f070f43c63e1544f2fcfa7d1b4f742fbdf039876))
+
+
+### Bug Fixes
+
+* **db:** make runtime migration atomic in CLI pipelines ([ddd402c](https://github.com/DGAFP/assistant-rh/commit/ddd402c74e004602f50ca9d1ca11a61892dfd55a))
+* **db:** rendre la migration runtime atomique avec le CLI ([9e7087d](https://github.com/DGAFP/assistant-rh/commit/9e7087d869d6658d6893b295627b2378e341418a))
+* preserve C5 replay validation under Python optimization ([1090f80](https://github.com/DGAFP/assistant-rh/commit/1090f80ceebd1c12e9b34e2dac71fd7a6679aa22))
+* **streamlit:** harmoniser les boutons nouvelle conversation ([2f9f21d](https://github.com/DGAFP/assistant-rh/commit/2f9f21d7d92c2930551580409d415c4ff2c56b7f))
+* **streamlit:** harmoniser les boutons Nouvelle conversation ([a819f6c](https://github.com/DGAFP/assistant-rh/commit/a819f6cbfcb08a2fa9e598c8de1e9d5e5beafec7))
+* **streamlit:** harmoniser les boutons Nouvelle conversation ([a819f6c](https://github.com/DGAFP/assistant-rh/commit/a819f6cbfcb08a2fa9e598c8de1e9d5e5beafec7))
+* **streamlit:** rappeler les réponses non évaluées avant de quitter le chat ([d7c4860](https://github.com/DGAFP/assistant-rh/commit/d7c4860cd2e7cb369b0805fa38b3be968b04a045))
+* **streamlit:** rappeler les réponses non évaluées avant de quitter le chat ([d7c4860](https://github.com/DGAFP/assistant-rh/commit/d7c4860cd2e7cb369b0805fa38b3be968b04a045))
+* **test:** reject incomplete C5 replays and false provenance ([c976877](https://github.com/DGAFP/assistant-rh/commit/c976877af27a132e86e440a7ce2aa86a578a908f))
+
+
+### Documentation
+
+* **api:** consigner la preuve de parité C4 ([1bc7901](https://github.com/DGAFP/assistant-rh/commit/1bc7901a1bd84e0749efd63c18a66f9803fe5066))
+
 ## [0.12.2](https://github.com/DGAFP/assistant-rh/compare/v0.12.1...v0.12.2) (2026-09-14)
 
 
