@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 
 import anyio
 from starlette.responses import Response
@@ -15,7 +15,7 @@ from assistant_rh_api.core.chat import ChatService
 from assistant_rh_api.core.models.catalog import Model
 from assistant_rh_api.core.models.chat import Cancellation, ChatInput, PipelineEvent, PipelineResult
 from assistant_rh_api.core.models.conversations import ChatRun
-from assistant_rh_api.handlers.errors import StreamUnavailable
+from assistant_rh_api.handlers.errors import ChatUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ class StreamWorkers:
 
     def response(self, service: ChatService, request: ChatInput, auth: AuthContext, model: Model, *, include_usage: bool) -> "ChatStreamResponse":
         if self.closed or len(self.active) >= self.settings.workers:
-            raise StreamUnavailable()
+            raise ChatUnavailable()
         response = ChatStreamResponse(self, service, request, auth, model, include_usage=include_usage)
         self.active.add(response)
         return response
@@ -102,7 +102,7 @@ class ChatStreamResponse(Response):
         self.raw_headers = [(key, value) for key, value in self.raw_headers if key != b"content-length"]
         self.owner = owner
         self.settings = owner.settings
-        self.queue: asyncio.Queue[PipelineEvent] = asyncio.Queue(maxsize=self.settings.queue_size)
+        self.queue: asyncio.Queue[str] = asyncio.Queue(maxsize=self.settings.queue_size)
         self.cancellation = Cancellation()
         self.context = service.new_context(sink=self, cancellation=self.cancellation)
         self.service, self.request, self.auth = service, request, auth
@@ -121,12 +121,12 @@ class ChatStreamResponse(Response):
 
     async def publish(self, event: PipelineEvent) -> None:
         self.cancellation.checkpoint()
-        if event.text:
-            for start in range(0, len(event.text), self.settings.delta_chars):
-                await self.queue.put(replace(event, text=event.text[start : start + self.settings.delta_chars]))
-                self.cancellation.checkpoint()
-        else:
-            await self.queue.put(event)
+        # Stage diagnostics already belong to RunContext; only text is sent.
+        if event.phase != "delta":
+            return
+        for start in range(0, len(event.text), self.settings.delta_chars):
+            await self.queue.put(event.text[start : start + self.settings.delta_chars])
+            self.cancellation.checkpoint()
 
     def chunk(self, delta: dict, *, finish: str | None = None, **extra: object) -> bytes:
         return data({**self.base, "choices": [{"index": 0, "delta": delta, "finish_reason": finish}], **extra})
@@ -160,19 +160,18 @@ class ChatStreamResponse(Response):
                 await self._send(send, b": ping\n\n")
                 next_ping = loop.time() + self.settings.ping_seconds
             if not self.queue.empty():
-                event = self.queue.get_nowait()
+                text = self.queue.get_nowait()
             else:
                 reading = asyncio.create_task(self.queue.get())
                 try:
                     await asyncio.wait({reading, self.worker}, timeout=max(0, next_ping - loop.time()), return_when=asyncio.FIRST_COMPLETED)
                     if not reading.done():
                         continue
-                    event = reading.result()
+                    text = reading.result()
                 finally:
                     reading.cancel()
                     await asyncio.gather(reading, return_exceptions=True)
-            if event.phase == "delta":
-                await self._send(send, self.chunk({"content": event.text}))
+            await self._send(send, self.chunk({"content": text}))
 
     async def _send_error(self, send: Send) -> None:
         await self._send(

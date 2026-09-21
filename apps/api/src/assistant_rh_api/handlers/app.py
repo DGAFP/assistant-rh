@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncIterator, Mapping
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -27,7 +28,7 @@ from assistant_rh_api.db.settings_stores import ConfigStore
 from assistant_rh_api.gateways.auth import LegacyPasswords, SessionTokens, SystemClock
 from assistant_rh_api.handlers.auth import create_auth_router
 from assistant_rh_api.handlers.auth_body import AuthBodyLimit
-from assistant_rh_api.handlers.chat import create_chat_router
+from assistant_rh_api.handlers.chat import NonStreamRequests, create_chat_router
 from assistant_rh_api.handlers.chat_stream import StreamSettings, StreamWorkers
 from assistant_rh_api.handlers.errors import register_error_handlers
 from assistant_rh_api.handlers.health import create_health_router
@@ -106,7 +107,7 @@ def create_app(
             try:
                 yield
             finally:
-                await application.state.stream_workers.aclose()
+                await asyncio.gather(application.state.stream_workers.aclose(), application.state.non_stream_requests.aclose())
 
     application = FastAPI(title="Assistant RH API", version=distribution_version("assistant-rh-api"), lifespan=managed_lifespan)
     application.state.health_probe = health_probe or PostgresHealthProbe()
@@ -114,6 +115,7 @@ def create_app(
     application.state.model_service = model_service or ModelService()
     application.state.rag_configuration_service = rag_configuration_service
     application.state.chat_service = chat_service
+    application.state.non_stream_requests = NonStreamRequests()
     application.state.stream_workers = StreamWorkers(stream_settings or StreamSettings.from_environment(os.environ if environ is None else environ))
     application.add_middleware(AuthBodyLimit)
     register_error_handlers(application)

@@ -18,7 +18,7 @@ thread supplémentaire ou client lié à une autre boucle n'est introduit.
 | Borne par processus API | Valeur par défaut | Comportement |
 |---|---|---|
 | Workers / réponses actives | `API_STREAM_WORKERS=8` | Admission immédiate ; saturation → 503 `service_unavailable` avant headers, sans exécution ni file d'attente de requêtes |
-| Événements en file par réponse | `API_STREAM_QUEUE_SIZE=32` | `await queue.put` jusqu'au provider ; événements de toutes les étapes C6, sans tâche de publication détachée |
+| Fragments de texte en file par réponse | `API_STREAM_QUEUE_SIZE=32` | `await queue.put` jusqu'au provider ; les événements d'étape restent dans `RunContext`, sans passer par la file SSE |
 | Fragment de texte | 4 096 caractères | Gros deltas découpés avant mise en file ; nombre **et** taille des éléments bornés |
 | Ping | 10 secondes | Commentaire `: ping`, indépendant des deltas et événements d'étape |
 | Envoi ASGI | 30 secondes par envoi | Client bloqué → annulation et finalisation ; aucun worker abandonné |
@@ -48,7 +48,11 @@ La finalisation du run `cancelled` est attendue, même sous annulations répét�
 Si le commit de succès avait déjà commencé, il se termine : un run déjà commité
 n'est ni réécrit ni doublé par un run annulé. Cela ne promet pas que le client
 absent reçoive la fin du flux. L'arrêt applicatif joint également le transport,
-même si l'envoi était bloqué, avant la fermeture des ressources DB/provider.
+même si l'envoi était bloqué, ainsi que les exécutions **non-stream**, avant la
+fermeture des ressources DB/provider. Le handler non-stream possède et attend
+sa tâche d'exécution ; le lifespan peut ainsi attendre sa finalisation sans
+dépendre de l'envoi de la réponse JSON au client. Les deux admissions ferment
+au début de cet arrêt.
 
 Uvicorn attend les requêtes **avant** d'appeler le shutdown du lifespan. Le point
 d'entrée `assistant-rh-api` borne cette attente à cinq secondes pour atteindre
@@ -73,6 +77,12 @@ continue de recevoir les cinq couples complets validés par C1. Un test compare
 les requêtes de toutes les étapes, le texte final et les sources dans les deux
 modes avec des ports déterministes. Le comportement du runtime Streamlit reste
 inchangé ; aucune égalité de réponses stochastiques live n'est inférée.
+
+Le gateway normalise les bords du texte streamé comme le `.strip()` du
+non-stream, avant d'émettre les deltas. Les blancs initiaux sont ignorés ; les
+blancs terminaux sont retenus jusqu'au fragment suivant, puis conservés s'ils
+s'avèrent internes au texte. Le texte utile reste émis progressivement. Cette
+normalisation ne change pas l'interdiction de fallback après du contenu provider.
 
 La validation C6 qui refusait temporairement le booléen `stream=true` est
 remplacée par les tests positifs SDK/transport. Les refus de types invalides,
@@ -107,7 +117,8 @@ machine indépendante. Aucun provider live, base distante ou déploiement.
 Code validé : `21a424586d8fefac67460cd531021e7f8bb134ff`. Le transport sépare
 maintenant la lecture des événements, la terminaison réussie et l'envoi d'une
 erreur. L'attente protégée du nettoyage est mutualisée et la propriété des
-tâches est documentée. La saturation et l'arrêt utilisent `StreamUnavailable`,
+tâches est documentée. La saturation et l'arrêt utilisent `StreamUnavailable`
+(renommée `ChatUnavailable` dans la correction ci-dessous),
 une erreur de transport, au lieu d'une erreur d'accès à la base. Les garanties
 d'annulation et de persistance restent vérifiées.
 
@@ -183,3 +194,25 @@ les assertions ; les conteneurs DB sont supprimés après preuve.
 Le buffering/proxy de la plateforme reste D4 ; le GO M1 et la qualité goldset
 restent #465. L'adaptation du frontend `conversations` pour afficher l'erreur
 OpenAI sous forme d'erreur UI reste au fork, comme en A2.
+
+### Corrections après contre-revue du 21 septembre 2026
+
+Deux défauts ont été reproduits : le shutdown pouvait fermer les ressources
+avant la finalisation d'une requête non-stream ; les vrais deltas providers
+conservaient des blancs externes retirés par le non-stream. Les handlers suivent
+désormais les exécutions non-stream jusqu'à leur fin et le gateway normalise
+les blancs avant émission. La file SSE ne transporte plus les événements
+d'étape inutilisés ; les traces persistées les conservent.
+
+Les nouveaux cas de régression échouent avant correction. Après correction,
+**970 tests API passent**, dont les transactions PostgreSQL synthétiques locales,
+les arrêts Uvicorn en génération et en commit dans les deux transports, et la
+comparaison HTTP/persistance via le vrai gateway sur réponse synthétique. Les
+tests couvrent aussi les blancs Unicode, les fragments entièrement blancs,
+la conservation des espaces internes, l'émission progressive et l'interdiction
+de fallback après du contenu provider. Ruff, mypy (87 fichiers) et les quatre
+contrats d'import passent. Aucun test existant n'est supprimé ou assoupli.
+
+Cette correction ne relance pas les providers externes et ne constitue pas une
+nouvelle mesure goldset. Le commit M1 mesuré et ses résultats restent identifiés
+séparément ; le proxy et le déploiement restent à vérifier en D4/M2.
