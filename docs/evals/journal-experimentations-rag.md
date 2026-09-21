@@ -1248,3 +1248,54 @@ ne doit pas être forcé par un réglage qualité.
 **Décision** : M0a et M0b sont figés comme références du chantier API. Aucune
 curation goldset ni amélioration pipeline n'a été introduite ; #421 reste une
 dette distincte à traiter hors de ce jalon.
+
+## M1 — `m1_local_smoke_20260921` (21/09/2026, préparé)
+
+**Avant lancement** : vérification du runner apparié sur q1 (MATTE) et q27
+(MSO), sur la copie PostgreSQL locale du corpus staging. Deux paires au maximum
+s'exécutent simultanément, avec une instance historique par question et le
+service core partagé. Les deux runtimes écrivent leurs runs/traces localement ;
+les items d'évaluation référencent leur `turn_id`. Aucun log utilisateur distant
+n'est copié. Le run de référence M0a #240 et ses 98 items sont copiés localement.
+
+Configuration inchangée, fingerprint `51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce` ;
+générateur Albert `deepseek-v4-flash`, selector Albert `openweight-large`, juge
+Scaleway `mistral-medium-3.5-128b`, majorité de trois votes, RAGAS désactivé,
+scope `per-question`. Empreintes du code, questions et prompt enregistrées par
+le runner. Les modifications mesurées ajoutent les métriques et projections SQL
+manquantes et corrigent l’attribution des fallbacks dans le logger historique,
+sans changement des décisions RAG. pgvector local 0.8.6, staging
+0.8.2 : les résultats live seront appariés sur le même clone, avec #240 comme
+référence historique complémentaire. Ce smoke de deux questions ne donne pas
+à lui seul de GO M1.
+
+**Résultats** : runs **locaux #241 (legacy) / #242 (core)** terminés, 2/2
+items chacun sans erreur ni échec du juge ; hit_rate 1,0 des deux côtés.
+Judge pass : 1,0 historique et 0,5 core. Ce petit panel valide le câblage,
+pas la parité qualité. Les quatre runs de chat et leurs 26 événements sont
+présents en base ; environnement `local` et métriques des six étapes métier
+renseignés. Les questions, réponses gold et références des 98 questions sont
+identiques aux items M0a #240 après normalisation du format des références.
+Artefacts privés dans `_local/m1-20260921/smoke`. Le premier démarrage a
+échoué à la validation des arguments avant création de run ou appel provider.
+
+
+## M1 — `m1_local_paired_98_20260921` (21/09/2026, préparé)
+
+**Avant lancement** : comparaison appariée complète des 98 questions M0a sur
+le même snapshot local, ancien runtime et nouveau core. Même configuration
+`51d6256b…`, juge Scaleway `mistral-medium-3.5-128b` en majorité de trois votes,
+RAGAS désactivé, scope `per-question`, deux paires concurrentes au maximum.
+Appels Albert/Scaleway et juge autorisés explicitement ; toutes les écritures
+de chat, traces et évaluation restent locales. Le logger historique attribue
+désormais les fallbacks au provider/modèle réellement utilisés.
+
+Tolérances conservées du runner M0a : baisse maximale de 0,05 pour
+`judge_pass_rate` et `doc_recall_avg`, avec lecture par corpus. Comparer le core
+au runtime historique apparié et au run M0a #240 ; les écarts de corpus/pgvector
+depuis M0a restent une limite explicite. Empreintes des sources, questions et
+prompt dans les métadonnées des runs. Aucun réglage qualité entre les bras.
+
+**Résultats** : à compléter après le run détaché ; artefacts privés dans
+`_local/m1-20260921/full`. La décision GO/NO-GO attend aussi les preuves de
+replay exact, concurrence, fallbacks/no-answer et l'audit du LEDGER.

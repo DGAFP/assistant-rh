@@ -101,6 +101,7 @@ class ChatService:
                 events=tuple(context.events),
                 diagnostics=trace_payload(context.diagnostics),
                 status=status,
+                metrics=context.metrics(stream=stream),
             )
 
         try:

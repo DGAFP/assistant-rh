@@ -6,6 +6,14 @@ from assistant_rh_api.core.models.context import ContextBuildDiagnostics, Contex
 from assistant_rh_api.core.models.generation import GenerationResult
 from assistant_rh_api.core.models.inference import TextDelta
 from assistant_rh_api.core.models.rag_configuration import RAGConfig, SearchMode
+from assistant_rh_api.core.pipeline.stage_metrics import (
+    aggregation_metrics,
+    context_metrics,
+    generation_metrics,
+    query_metrics,
+    retrieval_metrics,
+    selection_metrics,
+)
 from assistant_rh_api.core.pipeline.steps.aggregation import SectionAggregator
 from assistant_rh_api.core.pipeline.steps.context_builder import ContextBuilder
 from assistant_rh_api.core.pipeline.steps.context_selector import ContextSelector
@@ -47,6 +55,7 @@ class Pipeline:
             "query-processor",
             lambda: self._query.process(request.question, history, ministry, today=context.today),
             project=query_trace,
+            measure=query_metrics,
         )
         query = processing.result
         if not query.should_proceed:
@@ -94,7 +103,7 @@ class Pipeline:
                         return event
             raise InferenceFailure((), partial=bool(context.partial_answer))
 
-        generated = await context.stage("generator", generate, project=generation_trace)
+        generated = await context.stage("generator", generate, project=generation_trace, measure=generation_metrics)
         outcome = generated.diagnostics.outcome
         if outcome is not None and outcome.usage is not None:
             return PipelineResult(answer=generated.answer, items=built.items, usage=outcome.usage)
@@ -107,23 +116,28 @@ class Pipeline:
             "retriever",
             lambda: self._retrieve(query, ministry, context, search_mode=search_mode, top_k=top_k),
             project=retrieval_trace,
+            measure=retrieval_metrics,
             attempt=attempt,
         )
         aggregated = await context.stage(
             "section-aggregator",
             lambda: self._aggregator.aggregate_with_diagnostics(retrieved.chunks, query=query),
             project=aggregation_trace,
+            measure=aggregation_metrics,
             attempt=attempt,
         )
         selected = await context.stage(
             "context-selector",
             lambda: self._selector.select(query, aggregated.sections, ministry, today=context.today),
             project=selection_trace,
+            measure=selection_metrics,
             attempt=attempt,
         )
         if selected.all_rejected and not selected.sections:
             return ContextBuildResult(items=(), resolved_refs={}, diagnostics=ContextBuildDiagnostics()), True
-        built = await context.stage("context-builder", lambda: self._builder.build(selected.sections), project=context_trace, attempt=attempt)
+        built = await context.stage(
+            "context-builder", lambda: self._builder.build(selected.sections), project=context_trace, measure=context_metrics, attempt=attempt
+        )
         return built, selected.all_rejected
 
     async def _retrieve(self, query: str, ministry: str, context: RunContext, *, search_mode: SearchMode, top_k: int) -> RetrievalResult:

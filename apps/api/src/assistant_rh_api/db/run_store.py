@@ -6,13 +6,15 @@ from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 from datetime import datetime, timezone
 
+from psycopg import sql
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from assistant_rh_api.core.models.conversations import ChatRun, RunSource, TraceEvent
+from assistant_rh_api.core.models.conversations import ChatRun, RunMetrics, RunSource, TraceEvent
 from assistant_rh_api.core.ports.conversations import ChatRunStorePort
 from assistant_rh_api.db.pool import Database
 from assistant_rh_api.db.revisions import freeze_json
+from assistant_rh_api.db.run_summary import legacy_summary
 
 
 def json_data(value: object) -> object:
@@ -56,8 +58,9 @@ def trace_event(row: dict) -> TraceEvent:
 
 
 class ChatRunStore(ChatRunStorePort):
-    def __init__(self, database: Database) -> None:
+    def __init__(self, database: Database, *, environment: str = "local") -> None:
         self._database = database
+        self._environment = "prod" if environment == "production" else environment
 
     async def finalize(self, run: ChatRun) -> None:
         if not re.fullmatch(r"(?:chatcmpl-)?[0-9a-f]{32}", run.turn_id):
@@ -69,27 +72,25 @@ class ChatRunStore(ChatRunStorePort):
         async with self._database.transaction() as connection:
             # INSERT deliberately refuses collisions; it never overwrites a run
             # or changes the ownership/source authority of an existing answer.
+            row = {
+                "turn_id": run.turn_id,
+                "trace_id": run.trace_id,
+                "ts": run.timestamp.astimezone(timezone.utc).replace(tzinfo=None),
+                "user_group": run.group_slug,
+                "api_session_hash": run.session_hash,
+                "conversation_id": run.conversation_id,
+                "question": run.question,
+                "answer": run.answer,
+                "selected_ministry": run.selected_ministry,
+                "retrieved": as_jsonb([{"id": s.doc_ref, "source": s.title, "doc_title": s.title, "url": s.url} for s in run.sources]),
+                "api_record": as_jsonb(run),
+                **legacy_summary(run),
+            }
             await connection.execute(
-                """
-                INSERT INTO public.chat_runs
-                    (turn_id, trace_id, ts, user_group, api_session_hash, conversation_id, question, answer,
-                     selected_ministry, model, retrieved, api_record)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-                (
-                    run.turn_id,
-                    run.trace_id,
-                    run.timestamp.astimezone(timezone.utc).replace(tzinfo=None),
-                    run.group_slug,
-                    run.session_hash,
-                    run.conversation_id,
-                    run.question,
-                    run.answer,
-                    run.selected_ministry,
-                    run.model,
-                    as_jsonb([{"id": s.doc_ref, "source": s.title, "doc_title": s.title, "url": s.url} for s in run.sources]),
-                    as_jsonb(run),
+                sql.SQL("INSERT INTO public.chat_runs ({}) VALUES ({})").format(
+                    sql.SQL(", ").join(map(sql.Identifier, row)), sql.SQL(", ").join(sql.Placeholder() for _ in row)
                 ),
+                tuple(row.values()),
             )
             for ordinal, source in enumerate(run.sources):
                 await connection.execute(
@@ -103,13 +104,14 @@ class ChatRunStore(ChatRunStorePort):
                 await connection.execute(
                     """
                     INSERT INTO public.rag_trace_events
-                        (turn_id, trace_id, event_index, stage, duration_ms, status, attempt_name,
+                        (turn_id, trace_id, env, event_index, stage, duration_ms, status, attempt_name,
                          input_ref, output_ref, metrics, error_type, error_message)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                     (
                         run.turn_id,
                         run.trace_id,
+                        self._environment,
                         index,
                         event.stage,
                         event.duration_ms,
@@ -165,11 +167,12 @@ class ChatRunStore(ChatRunStorePort):
             row.get("question") or "",
             row.get("answer") or "",
             row.get("selected_ministry") or "",
-            row.get("model") or "",
+            record.get("model", row.get("model")) or "",
             sources,
             events,
             freeze_json(record.get("diagnostics")),
             record.get("status", "completed"),
+            RunMetrics(**record["metrics"]) if record.get("metrics") else None,
         )
 
     async def sources(self, turn_id: str, group_slug: str) -> tuple[RunSource, ...]:
