@@ -56,14 +56,33 @@ retourné, temps du commit, latence réseau client, files d'attente/saturation e
 échecs HTTP avant création du run. Ces mesures relèvent de l'opérabilité D4/M2.
 Les tokens exacts, statuts et timings qui n'ont jamais été enregistrés dans les
 anciens runs ne peuvent pas être reconstitués fidèlement.
+Le logger historique peut aussi garder le provider/modèle configuré lors d'un
+court-circuit sans génération. Ces colonnes seules ne comptent donc pas les
+appels LLM ; l'API les laisse `null` dans ce cas.
+
+Les agrégats historiques d'évaluation `generator_albert_est` et
+`selector_albert_est` reposent sur des longueurs de texte, avec l'hypothèse d'un
+provider Albert gratuit. Le pont M1 core n'alimente pas tous ces champs : leurs
+zéros ne mesurent pas un usage nul. Ils sont exclus du rapport de comparaison
+M1 ; les compteurs réels des appels réussis se lisent dans les métriques des
+traces, séparément de l'usage du juge. La consolidation du coût complet reste
+à faire avec D4/M2, notamment pour les appels interrompus et les fallbacks.
 
 ## Preuves et protocole M1
 
-Code mesuré : `16e6afe`. Les sept scénarios du compagnon M0b restent exacts,
+Le premier panel mesure `16e6afe`. L'inspection du cas q4 révèle un écart
+déterministe : `freeze_json` triait les clés des références Service-Public
+retournées par PostgreSQL, puis le contexte rendait ces objets en chaînes.
+Les mêmes documents produisaient ainsi un texte de prompt différent.
+Le correctif `17c1955` conserve l'ordre des données, tout en gardant le tri
+canonique dans le calcul des révisions. Le nouveau cas SQL synthétique
+`service-public-references` échoue avant correction et passe après. Il complète
+le replay aux ports, qui n'exerçait pas cette transformation de l'adaptateur DB.
+
+Les sept scénarios du compagnon M0b restent exacts après correction,
 sur 27 sorties d'étapes et sept résultats finaux ; cinq mutations négatives
-sont détectées. La suite API valide 963 tests distincts (962 lors du passage
-complet, puis les quatre tests de finalisation après correction de l'assertion
-du modèle public canonique). Suite historique : 1 551 réussis, 45 ignorés,
+sont détectées. La suite API complète valide **964 tests** sur le correctif.
+Suite historique pour les corrections de métriques : 1 551 réussis, 45 ignorés,
 dont le contrôle de colonnes historiques en lecture seule. Ruff, mypy
 (89 fichiers) et les quatre contrats d'import passent. Les tests couvrent
 la concurrence entre ministères, les fallbacks, le rejet sans réponse,
@@ -72,6 +91,10 @@ l'annulation, l'atomicité et la conservation des compteurs malgré la troncatur
 Le smoke apparié local #241/#242 vérifie q1 MATTE et q27 MSO : quatre runs et
 26 événements persistés, zéro erreur d'item/juge. Le juge valide 2/2 réponses
 historiques et 1/2 réponses core ; ce panel est trop petit pour conclure.
+Un tour streamé supplémentaire sur le correctif valide 87 deltas, un run et
+sept événements relus : TTFT du run 6 063 ms, TTFT génération/SQL 298 ms,
+usage Albert déclaré 2 545 tokens d'entrée et 330 de sortie. Il exerce le
+service streamé et la persistance ; les preuves de transport restent C7.
 
 Le panel complet utilise les 98 questions de M0a #240, leurs mêmes questions,
 réponses gold et références, la configuration `51d6256b…`, le juge Scaleway
@@ -82,8 +105,32 @@ des questions sont attachées aux runs. Le clone a des index ANN reconstruits ;
 staging était en pgvector 0.8.2. Le replay exact et la qualité live restent des
 preuves distinctes.
 
-Runs complets **locaux #243 (historique) et #244 (core)** : décision en attente
-de leurs résultats. Tolérances conservées : baisse maximale de 0,05 sur
-`judge_pass_rate` et `doc_recall_avg`, puis analyse par corpus. Le GO M1 n'est
-pas déduit du seul smoke. Paramétrage et résultats sont consignés dans le
+Les trois runs **locaux #243 (historique), #244 (core initial) et #245 (core
+corrigé)** sont terminés, 98/98 chacun et zéro erreur d'item/juge. #245 réutilise
+le témoin #243, sans recalculer ses générations ou ses votes juge.
+
+| Mesure | M0a #240 | Historique #243 | Core corrigé #245 |
+|---|---:|---:|---:|
+| Réponses validées | 64/98 | 64/98 | **67/98** |
+| Rappel documentaire | 0,7243 | 0,7291 | **0,7291** |
+| Hit rate | 0,8061 | 0,8265 | **0,8265** |
+
+Les baisses maximales autorisées de 0,05 sur `judge_pass_rate` et
+`doc_recall_avg` sont respectées contre les deux références. Hors des huit
+questions déjà taguées `juge_borderline`, les deux bras locaux sont à 62/90 :
+le gain global ne prouve pas une amélioration due au correctif. Le sous-panel
+MATTE recule de 7 à 5 PASS sur 12 (q4 et q33), avec le même rappel documentaire ;
+ces cas restent suivis en canary. Le détail par corpus figure au journal.
+
+La relecture finale rapproche 98 items core avec **98 chats, 676 événements et
+206 sources**, sans incohérence. Les 290 appels LLM réussis ont des compteurs
+d'usage ; trois tentatives de classification échouées avant reprise restent
+sans usage factice. Deux requêtes MSO/MATTE se chevauchent réellement. Les
+comptages du corpus et les empreintes du code/questions n'ont pas changé.
+
+**GO technique M1 vers D1–D4 après intégration de #579/#580.** La dette de
+parité du LEDGER est vide ; les fallbacks, no-answer, concurrence et atomicité
+sont couverts. Le déploiement dark, le proxy et l'opérabilité restent D4/M2.
+Code mesuré `17c1955`, empreinte sources `5ddfa118…`, preuve `96809b97…` :
+[rapport agrégé](../../evals/evidence/m1_api_parity_local_20260921.json) et
 [journal d'expérimentations](../../evals/journal-experimentations-rag.md).

@@ -841,3 +841,41 @@ sans revendication de parité exacte de retrieval ou de qualité goldset.
 [Détails et limites](12-c7-streaming.md#revue-et-validation-complémentaire-du-21-septembre-2026).
 Aucun déploiement ; M0/#439 est clos, M1/#465 et la validation proxy D4 restent
 les étapes suivantes.
+
+### M1 — parité et métriques des runs — 2026-09-21
+
+[#465](https://github.com/DGAFP/assistant-rh/issues/465),
+[PR #580](https://github.com/DGAFP/assistant-rh/pull/580), prérequis C7 #579.
+**Décision : GO technique vers D1–D4 après intégration de ces PRs.**
+
+L'audit des écritures corrige les métriques SQL manquantes du nouveau runtime,
+le provider/modèle après fallback, l'environnement des traces et la mesure
+séparée des TTFT run/génération. Le gel JSON conserve désormais l'ordre des
+références fourni par PostgreSQL pour préserver leur rendu dans le prompt ;
+un test différentiel SQL reproduit le défaut avant correction et passe après.
+La mesure reste dans le core, sa projection SQL dans l'adaptateur.
+
+Code final mesuré `17c1955`, configuration `51d6256b…`, sources `5ddfa118…`.
+Replays M0b exacts **7/7**, 27 sorties d'étapes et cinq contrôles négatifs ;
+**964 tests API** réussis, **1 551 historiques / 45 ignorés**, Ruff, mypy
+(89 fichiers) et quatre contrats d'import passent. La section « Reports
+depuis le runtime existant » est vide ; fallbacks, no-answer, isolation
+concurrente, annulation et finalisation atomique sont couverts.
+
+Panel final local **#243 historique / #245 core corrigé**, 98/98 chacun,
+zéro erreur d'item/juge : **64/98 vs 67/98 PASS**, rappel **0,729138** identique.
+Les seuils de baisse maximale de 0,05 passent aussi contre M0a #240. Hors
+questions déjà taguées instables, les deux sont à 62/90 ; MATTE passe de 7 à
+5 PASS sur 12 et reste un point à suivre en canary. Aucun réglage qualité.
+
+Relecture finale : 98 chats core, 676 événements locaux, 206 sources, aucune
+incohérence. Le smoke streamé vérifie 87 deltas et les deux TTFT en DB.
+Le corpus et les empreintes sont préservés. Coût complet, usage non retourné,
+temps de commit/réseau, saturation et proxy réel restent des sujets D4/M2.
+
+[Rapport et limites](13-m1-run-metrics.md),
+[journal](../../evals/journal-experimentations-rag.md),
+[preuve agrégée](../../evals/evidence/m1_api_parity_local_20260921.json)
+`96809b97…`. Les artefacts détaillés restent privés et locaux. Le clone
+pgvector 0.8.6, les index reconstruits et la réutilisation du témoin #243
+bornent la portée de la preuve live ; aucun déploiement effectué.
