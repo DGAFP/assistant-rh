@@ -12,10 +12,10 @@ from starlette.types import Receive, Scope, Send
 
 from assistant_rh_api.core.auth import AuthContext
 from assistant_rh_api.core.chat import ChatService
-from assistant_rh_api.core.errors import DatabaseUnavailable
 from assistant_rh_api.core.models.catalog import Model
-from assistant_rh_api.core.models.chat import Cancellation, ChatInput, PipelineEvent
+from assistant_rh_api.core.models.chat import Cancellation, ChatInput, PipelineEvent, PipelineResult
 from assistant_rh_api.core.models.conversations import ChatRun
+from assistant_rh_api.handlers.errors import StreamUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,19 @@ def extension(run: ChatRun) -> dict:
 
 def data(payload: dict) -> bytes:
     return ("data: " + json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n\n").encode("utf-8")
+
+
+async def _wait_for_cleanup(task: asyncio.Task[None]) -> None:
+    """Wait for owned cleanup despite caller cancellation; propagate cleanup errors."""
+    # AnyIO shielding handles cancel scopes; asyncio.shield handles Task.cancel().
+    # Repeated cancellation must not let the caller abandon its cleanup task.
+    with anyio.CancelScope(shield=True):
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+    task.result()
 
 
 @dataclass(frozen=True)
@@ -61,7 +74,7 @@ class StreamWorkers:
 
     def response(self, service: ChatService, request: ChatInput, auth: AuthContext, model: Model, *, include_usage: bool) -> "ChatStreamResponse":
         if self.closed or len(self.active) >= self.settings.workers:
-            raise DatabaseUnavailable()
+            raise StreamUnavailable()
         response = ChatStreamResponse(self, service, request, auth, model, include_usage=include_usage)
         self.active.add(response)
         return response
@@ -72,6 +85,15 @@ class StreamWorkers:
 
 
 class ChatStreamResponse(Response):
+    """Own the pipeline worker and HTTP sender for one request.
+
+    The worker runs the pipeline and persists its outcome; the sender drains
+    the queue and emits pings. The ASGI call watches the sender and disconnects,
+    then joins both transport tasks and the worker in its final cleanup.
+    stop() shares one worker cleanup task with shutdown(); shutdown() also waits
+    for finished, which is set only after the ASGI cleanup releases admission.
+    """
+
     media_type = "text/event-stream"
 
     def __init__(self, owner: StreamWorkers, service: ChatService, request: ChatInput, auth: AuthContext, model: Model, *, include_usage: bool):
@@ -91,10 +113,10 @@ class ChatStreamResponse(Response):
             "created": int(self.context.created.timestamp()),
             "model": model.id,
         }
-        self.worker: asyncio.Task | None = None
-        self.stopping: asyncio.Task | None = None
+        self.worker: asyncio.Task[tuple[ChatRun, PipelineResult]] | None = None
+        self.stopping: asyncio.Task[None] | None = None
         self.finished = asyncio.Event()
-        self.serving: asyncio.Task | None = None
+        self.serving: asyncio.Task[None] | None = None
         self.shutting_down = False
 
     async def publish(self, event: PipelineEvent) -> None:
@@ -118,6 +140,19 @@ class ChatStreamResponse(Response):
         async with asyncio.timeout(self.settings.send_timeout):
             await send({"type": "http.response.start", "status": 200, "headers": self.raw_headers})
         await self._send(send, self.chunk({"role": "assistant", "content": ""}))
+        await self._forward_events(send)
+        try:
+            run, result = self.worker.result()
+        except (Exception, asyncio.CancelledError):
+            await self._send_error(send)
+        else:
+            await self._send_success(send, run, result)
+        async with asyncio.timeout(self.settings.send_timeout):
+            await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    async def _forward_events(self, send: Send) -> None:
+        """Drain events in order and keep pinging until the worker has finished."""
+        assert self.worker is not None
         loop = asyncio.get_running_loop()
         next_ping = loop.time() + self.settings.ping_seconds
         while not self.worker.done() or not self.queue.empty():
@@ -138,32 +173,22 @@ class ChatStreamResponse(Response):
                     await asyncio.gather(reading, return_exceptions=True)
             if event.phase == "delta":
                 await self._send(send, self.chunk({"content": event.text}))
-        try:
-            run, result = self.worker.result()
-        except (Exception, asyncio.CancelledError):
-            await self._send(
-                send,
-                data(
-                    {
-                        "error": {
-                            "message": "Service momentanément indisponible",
-                            "type": "server_error",
-                            "code": "stream_error",
-                        }
-                    }
-                ),
-            )
-        else:
-            # complete() returns only after the atomic run/source/trace commit.
-            suffix = run.answer[len(result.answer) :]
-            for start in range(0, len(suffix), self.settings.delta_chars):
-                await self._send(send, self.chunk({"content": suffix[start : start + self.settings.delta_chars]}))
-            await self._send(send, self.chunk({}, finish="stop", x_assistant_rh=extension(run)))
-            if self.include_usage:
-                await self._send(send, data({**self.base, "choices": [], "usage": asdict(result.usage)}))
-            await self._send(send, b"data: [DONE]\n\n")
-        async with asyncio.timeout(self.settings.send_timeout):
-            await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    async def _send_error(self, send: Send) -> None:
+        await self._send(
+            send,
+            data({"error": {"message": "Service momentanément indisponible", "type": "server_error", "code": "stream_error"}}),
+        )
+
+    async def _send_success(self, send: Send, run: ChatRun, result: PipelineResult) -> None:
+        # complete() returns only after the atomic run/source/trace commit.
+        suffix = run.answer[len(result.answer) :]
+        for start in range(0, len(suffix), self.settings.delta_chars):
+            await self._send(send, self.chunk({"content": suffix[start : start + self.settings.delta_chars]}))
+        await self._send(send, self.chunk({}, finish="stop", x_assistant_rh=extension(run)))
+        if self.include_usage:
+            await self._send(send, data({**self.base, "choices": [], "usage": asdict(result.usage)}))
+        await self._send(send, b"data: [DONE]\n\n")
 
     async def _disconnect(self, receive: Receive) -> None:
         while (await receive())["type"] != "http.disconnect":
@@ -182,14 +207,7 @@ class ChatStreamResponse(Response):
                     await asyncio.gather(self.worker, return_exceptions=True)
 
             self.stopping = asyncio.create_task(stop_worker(), name="chat-stop-" + self.context.turn_id)
-        # A response owns cleanup even if its ASGI task is cancelled repeatedly.
-        with anyio.CancelScope(shield=True):
-            while not self.stopping.done():
-                try:
-                    await asyncio.shield(self.stopping)
-                except asyncio.CancelledError:
-                    continue
-        self.stopping.result()
+        await _wait_for_cleanup(self.stopping)
 
     async def shutdown(self) -> None:
         self.shutting_down = True
@@ -224,10 +242,4 @@ class ChatStreamResponse(Response):
                 self.finished.set()
 
             closing = asyncio.create_task(cleanup())
-            with anyio.CancelScope(shield=True):
-                while not closing.done():
-                    try:
-                        await asyncio.shield(closing)
-                    except asyncio.CancelledError:
-                        continue
-            closing.result()
+            await _wait_for_cleanup(closing)
