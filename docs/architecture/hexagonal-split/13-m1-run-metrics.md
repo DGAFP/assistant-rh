@@ -145,3 +145,22 @@ après ; les trois tests du pont M1 et Ruff passent. Les quatre contrats d'impor
 ont aussi été revérifiés. Aucun fichier du runtime API ou historique ne change.
 Les panels ci-dessus ont été exécutés en journée, sans changement de date entre
 UTC et Paris ; leurs preuves restent rattachées au code effectivement mesuré.
+
+## Revalidation après les corrections C7
+
+Le correctif C7 `e8b8917`, reporté ici dans `731f075`, joint les exécutions
+non-stream avant fermeture des ressources, normalise les blancs externes du
+texte streamé et retire les événements d'étape inutilisés de la file SSE.
+Les événements restent dans les traces. Le core métier, le stockage et le
+runtime historique restent inchangés par ce correctif.
+
+Sur la branche M1 corrigée, **979 tests passent : 976 API et trois tests du
+runner**. Les sept replays M0b restent exacts ; les cinq contrôles négatifs
+sont détectés. Ruff, mypy (89 fichiers) et les quatre contrats d'import passent.
+Les preuves de shutdown et de normalisation figurent dans la
+[validation C7](12-c7-streaming.md#corrections-après-contre-revue-du-21-septembre-2026).
+
+Le panel live #243/#245 reste une mesure de `17c1955`, antérieure à cette
+correction de transport. Aucune nouvelle campagne provider n'est lancée et
+ses résultats ne sont pas réattribués au nouveau commit. La réserve MATTE et
+les validations du proxy en D4/M2 restent ouvertes.
