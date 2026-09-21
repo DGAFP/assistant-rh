@@ -109,9 +109,10 @@ async def evaluate(args, environment):
         "concurrency": args.concurrency,
         "m0a_run_id": 240,
     }
+    runtimes = ("legacy", "core") if args.runtime == "both" else (args.runtime,)
     run_ids = {}
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
-        for runtime in ("legacy", "core"):
+        for runtime in runtimes:
             run_ids[runtime] = quality.create_eval_run(
                 conn,
                 goldset_name=baseline["goldset_name"],
@@ -139,10 +140,11 @@ async def evaluate(args, environment):
 
             async def run_pair(question):
                 async with semaphore:
-                    evaluators = {
-                        "legacy": LegacyEvaluator(config, runtime_config, dsn, engine, args.run_label),
-                        "core": CoreEvaluator(service, loop, SystemClock(), args.run_label),
-                    }
+                    evaluators = {}
+                    if "legacy" in run_ids:
+                        evaluators["legacy"] = LegacyEvaluator(config, runtime_config, dsn, engine, args.run_label)
+                    if "core" in run_ids:
+                        evaluators["core"] = CoreEvaluator(service, loop, SystemClock(), args.run_label)
 
                     async def run_one(runtime):
                         item = await asyncio.to_thread(
@@ -225,6 +227,10 @@ def main():
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--question-ids", type=int, nargs="+")
     parser.add_argument("--concurrency", type=int, choices=(1, 2), default=2)
+    parser.add_argument(
+        "--runtime", choices=("both", "legacy", "core"), default="both",
+        help="Use core to remeasure a fix against an existing legacy run",
+    )
     args = parser.parse_args()
     environment = load_environment(args.local_env, args.providers_env)
     asyncio.run(evaluate(args, environment))

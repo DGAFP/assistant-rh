@@ -1299,3 +1299,30 @@ prompt dans les métadonnées des runs. Aucun réglage qualité entre les bras.
 **Résultats** : à compléter après le run détaché ; artefacts privés dans
 `_local/m1-20260921/full`. La décision GO/NO-GO attend aussi les preuves de
 replay exact, concurrence, fallbacks/no-answer et l'audit du LEDGER.
+
+## M1 — `m1_local_core_orderfix_20260921` (21/09/2026, préparé)
+
+**Avant lancement** : le premier panel a révélé un écart déterministe dans
+le texte des références Service-Public : l'adaptateur DB triait les clés JSON
+avant leur rendu historique en chaîne dans le prompt. Le test SQL synthétique
+`service-public-references` échoue avant correction et passe après. Le snapshot
+immuable conserve désormais l'ordre reçu ; seul le calcul de révision trie les
+clés. Aucun réglage de modèle, prompt, retrieval ou juge.
+
+Réévaluation des **98 questions côté core uniquement**, comparées au bras
+historique local #243 et à M0a #240. Le premier panel #243/#244 termine dans
+son checkout figé ; le correctif est mesuré dans un checkout séparé. Cette
+réutilisation du témoin évite 98 générations et 294 votes juge supplémentaires.
+Même clone, configuration `51d6256b…`, questions, gold, scope `per-question`,
+juge Scaleway `mistral-medium-3.5-128b` en majorité de trois votes, sans RAGAS.
+Deux questions core simultanées au maximum. Les exécutions se chevauchent : les
+latences mesurées décrivent ces runs, sans servir de benchmark de performance.
+Les appels providers restent dans l'autorisation du smoke et du panel M1 ;
+toutes les écritures DB et les artefacts restent locaux.
+
+Tolérances inchangées : baisse maximale de 0,05 de `judge_pass_rate` et de
+`doc_recall_avg`, contre le témoin #243 et M0a #240 ; analyse par corpus.
+Empreintes du code, des questions et du prompt attachées au nouveau run.
+
+**Résultats** : à compléter ; artefacts privés dans
+`_local/m1-20260921/core-orderfix`.
