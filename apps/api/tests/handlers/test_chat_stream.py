@@ -9,12 +9,17 @@ import httpx
 import openai
 import pytest
 from assistant_rh_api.core.errors import InferenceFailure
+from assistant_rh_api.core.models.chat import ChatInput, PipelineEvent
 from assistant_rh_api.core.models.inference import Attempt, StreamCompleted, TextDelta, TokenUsage
+from assistant_rh_api.core.sources import SOURCES_MARKER
+from assistant_rh_api.gateways.chat import ChatGateway
 from assistant_rh_api.handlers.app import create_app
 from assistant_rh_api.handlers.chat_stream import StreamSettings
 
 from apps.api.tests.auth_fakes import service
 from apps.api.tests.chat_fakes import LLM, Runtime
+from apps.api.tests.gateways.conftest import ALBERT, POLICY, WireStream
+from apps.api.tests.gateways.test_chat import event, reply
 
 pytestmark = pytest.mark.anyio
 BODY = {"model": "assistant-rh", "messages": [{"role": "user", "content": "Question RH"}], "stream": True}
@@ -473,3 +478,50 @@ async def test_transport_choice_keeps_generation_inputs_answer_and_sources_ident
     chunks = [json.loads(line[6:]) for line in streamed.text.splitlines() if line.startswith("data: {")]
     assert "".join(c["choices"][0]["delta"].get("content", "") for c in chunks) == plain["choices"][0]["message"]["content"]
     assert chunks[-1]["x_assistant_rh"]["sources"] == plain["x_assistant_rh"]["sources"]
+
+
+async def test_real_gateway_normalizes_received_and_persisted_answers_in_both_transports(setup):
+    app, runtime, issued = setup
+    raw_answer = " \nRéponse test. \n"
+
+    def provider(request):
+        body = json.loads(request.content)
+        prompt = body["messages"][0]["content"]
+        if prompt.startswith("INTENT"):
+            return httpx.Response(200, json=reply('{"intent":"rag_query","confidence":0.9}'))
+        if prompt.startswith("SELECT"):
+            return httpx.Response(200, json=reply('{"selected_ids":[0]}'))
+        if body["stream"]:
+            return httpx.Response(
+                200, stream=WireStream(event(" \n"), event("Réponse test."), event(" \n"), event(reason="stop"), b"data: [DONE]\n\n")
+            )
+        return httpx.Response(200, json=reply(raw_answer))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(provider)) as upstream:
+        runtime.llm = ChatGateway(upstream, ALBERT, policy=POLICY)
+        async with client_for(app, issued) as client:
+            plain = await client.post("/v1/chat/completions", json={**BODY, "stream": False})
+            streamed = await client.post("/v1/chat/completions", json=BODY)
+    chunks = [json.loads(line[6:]) for line in streamed.text.splitlines() if line.startswith("data: {")]
+    text = "".join(chunk["choices"][0]["delta"].get("content", "") for chunk in chunks)
+    full = plain.json()["choices"][0]["message"]["content"]
+    assert text == full
+    assert full.split(SOURCES_MARKER)[0] == raw_answer.strip()
+    assert len(runtime.runs.rows) == 2
+    assert all(run.answer == full for run in runtime.runs.rows.values())
+
+
+async def test_stage_notifications_do_not_consume_stream_queue_capacity(setup):
+    app, runtime, issued = setup
+    auth = issued.context
+    model = app.state.model_service.resolve("assistant-rh", auth.group)
+    response = app.state.stream_workers.response(runtime.service, ChatInput("assistant-rh", "Question"), auth, model, include_usage=False)
+    try:
+        for stage in ("configuration", "retriever", "generator"):
+            for phase in ("started", "completed"):
+                await asyncio.wait_for(response.publish(PipelineEvent(response.context.turn_id, stage, phase)), 0.1)
+        assert response.queue.empty()
+    finally:
+        # This test owns a response that was intentionally never served.
+        app.state.stream_workers.active.discard(response)
+        response.finished.set()

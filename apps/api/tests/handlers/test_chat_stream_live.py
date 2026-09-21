@@ -9,6 +9,7 @@ import pytest
 import uvicorn
 from assistant_rh_api.__main__ import main
 from assistant_rh_api.core.errors import InferenceFailure
+from assistant_rh_api.core.rag_configuration import RAGConfigurationService
 from assistant_rh_api.handlers.app import create_app
 from assistant_rh_api.handlers.chat_stream import StreamSettings
 
@@ -25,7 +26,28 @@ async def live(monkeypatch):
     issued = await auth.login("beta", "password", "local")
     runtime = Runtime()
     runtime.llm = StreamLLM()
-    app = create_app(auth_service=auth, chat_service=runtime.service, environ={}, stream_settings=StreamSettings(ping_seconds=0.01))
+    resource_closed = asyncio.Event()
+
+    class DatabaseResource:
+        async def open(self):
+            pass
+
+        async def close(self):
+            resource_closed.set()
+
+    async def maintain_sessions(_):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr("assistant_rh_api.handlers.app.maintain_sessions", maintain_sessions)
+    app = create_app(
+        database=DatabaseResource(),
+        auth_service=auth,
+        chat_service=runtime.service,
+        rag_configuration_service=RAGConfigurationService(runtime.config),
+        environ={},
+        stream_settings=StreamSettings(ping_seconds=0.01),
+    )
+    app.state.test_resource_closed = resource_closed
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
     # Exercise the entrypoint's shutdown policy, not a test-only timeout.
@@ -142,3 +164,48 @@ async def test_server_shutdown_with_connected_client_waits_for_finalization(live
         runtime.runs.release.set()
         reader.cancel()
         await asyncio.gather(reader, return_exceptions=True)
+
+
+@pytest.mark.parametrize("pending", ["generation", "commit"])
+async def test_non_stream_shutdown_waits_for_finalization_before_closing_resources(live, pending):
+    app, runtime, issued, base, server, serving = live
+    entered, release = asyncio.Event(), asyncio.Event()
+    complete = runtime.llm.complete
+
+    async def delayed_generation(request):
+        if request.messages[0].content.startswith("GENERATE"):
+            entered.set()
+            await release.wait()
+        return await complete(request)
+
+    if pending == "generation":
+        runtime.llm.complete = delayed_generation
+    runtime.runs.entered, runtime.runs.release = asyncio.Event(), asyncio.Event()
+    async with httpx.AsyncClient(base_url=base, headers={"Authorization": "Bearer " + issued.access_token}, timeout=15) as client:
+        reader = asyncio.create_task(client.post("/v1/chat/completions", json={**BODY, "stream": False}))
+        try:
+            await asyncio.wait_for((entered if pending == "generation" else runtime.runs.entered).wait(), 3)
+            server.should_exit = True
+            async with asyncio.timeout(8):
+                await runtime.runs.entered.wait()
+                while not app.state.stream_workers.closed:
+                    await asyncio.sleep(0.01)
+            await asyncio.sleep(0.05)
+            assert not app.state.test_resource_closed.is_set()
+            assert not serving.done() and not runtime.runs.rows
+
+            runtime.runs.release.set()
+            await asyncio.wait_for(serving, 3)
+            await asyncio.gather(reader, return_exceptions=True)
+            expected_status = "cancelled" if pending == "generation" else "completed"
+            assert [run.status for run in runtime.runs.calls] == [expected_status]
+            run = next(iter(runtime.runs.rows.values()))
+            assert run.status == expected_status
+            assert bool(run.sources) is (pending == "commit")
+            assert app.state.test_resource_closed.is_set()
+            assert not server.server_state.tasks
+        finally:
+            release.set()
+            runtime.runs.release.set()
+            reader.cancel()
+            await asyncio.gather(reader, return_exceptions=True)

@@ -1,15 +1,47 @@
 """OpenAI-compatible Chat Completions backed by ChatService."""
 
+import asyncio
 from dataclasses import asdict
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
+from assistant_rh_api.core.auth import AuthContext
+from assistant_rh_api.core.chat import ChatService
 from assistant_rh_api.core.errors import DatabaseUnavailable
+from assistant_rh_api.core.models.chat import ChatInput, PipelineResult
+from assistant_rh_api.core.models.conversations import ChatRun
 from assistant_rh_api.handlers.auth import Authenticated
 from assistant_rh_api.handlers.chat_body import ChatRequestError, read_chat_body, validate_chat
 from assistant_rh_api.handlers.chat_stream import extension
-from assistant_rh_api.handlers.errors import error_response
+from assistant_rh_api.handlers.errors import ChatUnavailable, error_response
+
+
+class NonStreamRequests:
+    """Join non-stream executions before their provider and DB resources close."""
+
+    def __init__(self) -> None:
+        self.active: set[asyncio.Task[tuple[ChatRun, PipelineResult]]] = set()
+        self.closed = False
+
+    async def complete(self, service: ChatService, request: ChatInput, auth: AuthContext) -> tuple[ChatRun, PipelineResult]:
+        if self.closed:
+            raise ChatUnavailable()
+        working = asyncio.create_task(service.complete(request, auth))
+        self.active.add(working)
+        try:
+            # Caller cancellation reaches the core, which owns finalization.
+            return await working
+        finally:
+            self.active.discard(working)
+
+    async def aclose(self) -> None:
+        self.closed = True
+        pending = tuple(self.active)
+        for working in pending:
+            if not working.cancelling():
+                working.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
 def create_chat_router() -> APIRouter:
@@ -31,7 +63,7 @@ def create_chat_router() -> APIRouter:
             return request.app.state.stream_workers.response(
                 service, body, auth, model, include_usage=(payload.get("stream_options") or {}).get("include_usage", False),
             )
-        run, result = await service.complete(body, auth)
+        run, result = await request.app.state.non_stream_requests.complete(service, body, auth)
         assert run.timestamp is not None
         return JSONResponse(
             {

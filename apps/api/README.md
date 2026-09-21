@@ -680,15 +680,17 @@ sources and traces commit before the success terminal. Pings continue every
 10 seconds while retrieval or persistence is pending.
 
 `API_STREAM_WORKERS` (default 8) bounds concurrent streams per process;
-`API_STREAM_QUEUE_SIZE` (default 32) bounds each event queue. Deltas are split
+`API_STREAM_QUEUE_SIZE` (default 32) bounds each text queue. Stage events stay
+in the run traces. Deltas are split
 at 4,096 characters. Saturation returns 503 before response headers. A stalled
 send times out after 30 seconds. Disconnect and application shutdown cancel
 pending work, close providers, and wait for finalization/transport cleanup.
 
 The `assistant-rh-api` entrypoint gives requests 5 seconds to finish on shutdown,
-then Uvicorn cancels them. The lifespan joins stream cleanup before closing shared
-resources. Local Compose allows 150 seconds before a forced kill, covering the
-provider close deadline (up to 120 seconds) and DB finalization. Other launchers
+then Uvicorn cancels them. The lifespan joins stream cleanup and non-stream
+executions before closing shared resources. Local Compose allows 150 seconds
+before a forced kill, covering the provider close deadline (up to 120 seconds)
+and DB finalization. Other launchers
 must also set `--timeout-graceful-shutdown 5` and allow the same cleanup budget.
 
 Post-header failures emit a safe `stream_error` and close without `[DONE]`.
@@ -696,6 +698,10 @@ Failed/cancelled runs preserve partial text and diagnostics without granting
 source access. Once a success commit starts, it is allowed to finish despite
 a disconnect; the already committed run is not overwritten. Finalization has
 a 10-second deadline per attempt, and a storage failure suppresses success.
+
+The provider gateway trims outer whitespace in both transports. Streaming keeps
+internal whitespace and emits useful text immediately, holding only trailing
+whitespace until the next fragment or completion.
 
 Both API transports use C6's generation inputs; validated history remains with
 the query processor. Standalone C5 streaming still accepts history. Provider

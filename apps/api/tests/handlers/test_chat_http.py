@@ -310,3 +310,15 @@ async def test_missing_bearer_and_unexpected_error_use_safe_envelopes():
         response = await client.post("/v1/chat/completions", json=BODY, headers={"Authorization": "Bearer " + issued.access_token})
         assert response.status_code == 500 and response.json()["error"]["code"] == "internal_error"
         assert "SECRET" not in response.text and response.headers["cache-control"] == "no-store"
+
+
+async def test_non_stream_rejects_new_work_after_shutdown():
+    auth = service()
+    issued = await auth.login("beta", "password", "local")
+    runtime = Runtime()
+    app = create_app(auth_service=auth, chat_service=runtime.service, environ={})
+    await app.state.non_stream_requests.aclose()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/v1/chat/completions", json=BODY, headers={"Authorization": "Bearer " + issued.access_token})
+    assert response.status_code == 503 and response.json()["error"]["code"] == "service_unavailable"
+    assert runtime.config.calls == 0 and not runtime.runs.rows

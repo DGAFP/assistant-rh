@@ -16,8 +16,8 @@ from assistant_rh_api.core.errors import (
 )
 
 
-class StreamUnavailable(Exception):
-    """Stream admission is saturated or has closed for application shutdown."""
+class ChatUnavailable(Exception):
+    """Stream admission is saturated or chat execution has closed for shutdown."""
 
 
 def error_response(status: int, code: str, message: str, *, headers: dict[str, str] | None = None) -> JSONResponse:
@@ -29,8 +29,8 @@ def error_response(status: int, code: str, message: str, *, headers: dict[str, s
 
 
 def register_error_handlers(app: FastAPI) -> None:
-    @app.exception_handler(StreamUnavailable)
-    async def stream_unavailable(request: Request, exc: StreamUnavailable) -> JSONResponse:
+    @app.exception_handler(ChatUnavailable)
+    async def chat_unavailable(request: Request, exc: ChatUnavailable) -> JSONResponse:
         return error_response(503, "service_unavailable", "Service unavailable")
 
     @app.exception_handler(Exception)
