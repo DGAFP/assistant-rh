@@ -80,6 +80,8 @@ les limites et les autres erreurs C1 restent vérifiés.
 
 ## Preuves reproductibles
 
+### Validation initiale du 17 septembre 2026
+
 Exécution locale sur la VM homelab `assistant-rh.discus-iguana.ts.net` : tests
 ASGI en mémoire, transactions PostgreSQL synthétiques, sockets Uvicorn sur
 `127.0.0.1`, puis instance Django `conversations`. Il ne s'agit pas d'une seconde
@@ -99,6 +101,50 @@ machine indépendante. Aucun provider live, base distante ou déploiement.
   réponse et ses sources, conserve le `chatcmpl-*`, n'expose pas le bearer et
   propage `openai.APIError(code="stream_error")` sur erreur post-headers.
 - Ruff, mypy et les quatre contrats d'import sont vérifiés.
+
+### Revue et validation complémentaire du 21 septembre 2026
+
+Code validé : `21a424586d8fefac67460cd531021e7f8bb134ff`. Le transport sépare
+maintenant la lecture des événements, la terminaison réussie et l'envoi d'une
+erreur. L'attente protégée du nettoyage est mutualisée et la propriété des
+tâches est documentée. La saturation et l'arrêt utilisent `StreamUnavailable`,
+une erreur de transport, au lieu d'une erreur d'accès à la base. Les garanties
+d'annulation et de persistance restent vérifiées.
+
+- **958 tests API distincts validés**, sur une base PostgreSQL synthétique
+  locale séparée du corpus. Première exécution : 953 réussis, un échec et
+  quatre erreurs dus au DSN libpq refusé par SQLAlchemy. Après correction de
+  la configuration locale en URI PostgreSQL, les six tests du fichier
+  `test_legacy_feedback_coexistence.py` passent, dont un déjà réussi.
+- **1 548 tests historiques réussis, 46 ignorés**, et **2 tests Conversations
+  réussis**, avec le même checkout A2 épinglé. La sonde confirme les runs
+  `completed`/`failed` finalisés et l'absence de worker de stream actif.
+- **178 tests ciblés** passent après la simplification du transport ; Ruff,
+  mypy (87 fichiers), les quatre contrats d'import et les CI Tests/CodeQL du
+  commit passent aussi.
+
+Un snapshot cohérent du seul corpus RAG de staging a ensuite été restauré sur
+PostgreSQL local : **4 882 documents, 10 397 sections, 25 890 chunks**, avec
+embeddings, configuration, prompts et acronymes. Les comptes, conversations,
+feedbacks et logs de staging sont exclus. Les douze comptages du corpus sont
+inchangés après les tests. Archive, configuration et lanceur local restent
+hors Git ; le conteneur RAG et son volume sont conservés pour les essais suivants.
+
+Avec les appels Albert/Scaleway autorisés, un test réel de question fictive
+traverse les **sept étapes** du pipeline et le transport TCP/SSE : réponse de
+842 caractères, une source, deux pings, **27,7 secondes**. Le run `completed`
+et ses sources sont lisibles en base locale avant `[DONE]` ; le texte persisté
+correspond au texte reçu. La session de test est révoquée à la fin.
+
+Ce test vérifie l'intégration. Il ne remplace pas la comparaison goldset M1 :
+le pgvector local est en **0.8.6**, staging en **0.8.2**, et les index ANN ont
+été reconstruits. Aucune identité des plans ou classements n'est déduite.
+Le proxy Scaleway reste à valider en D4. La baseline M0
+([#439](https://github.com/DGAFP/assistant-rh/issues/439), close) fournit la
+référence ; le GO de parité relève de M1
+([#465](https://github.com/DGAFP/assistant-rh/issues/465)).
+
+### Reproduire les tests synthétiques
 
 Après `uv sync --all-packages --group dev`, lancer un PostgreSQL synthétique
 local pour les tests API :

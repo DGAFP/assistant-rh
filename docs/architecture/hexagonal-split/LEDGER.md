@@ -813,3 +813,31 @@ toujours connecté : génération annulée et commit déjà commencé préservé
 attente de la persistance dans les deux cas. **184 tests ciblés passent**, Ruff,
 mypy (87 fichiers), quatre contrats d'import et validation Compose réussissent.
 Les ports de ces tests sont synthétiques ; aucune DB distante ni provider live.
+
+### C7 — lisibilité et validation locale complète (21 septembre 2026)
+
+PR [#579](https://github.com/DGAFP/assistant-rh/pull/579), code `21a4245` :
+lecture des événements, succès et erreur séparés dans le transport ; attente
+protégée du nettoyage mutualisée, propriété des tâches documentée. Une erreur
+de transport `StreamUnavailable` représente la saturation et l'arrêt, sans
+les assimiler à une panne de base. Les quatre contrats d'import passent.
+
+**958 tests API distincts validés** sur PostgreSQL synthétique local : 953 au
+premier passage, puis six tests de coexistence SQLAlchemy réussis après
+correction du DSN local en URI, dont un déjà réussi. **1 548 tests historiques
+réussis, 46 ignorés ; 2 tests Conversations réussis**. Les 178 tests ciblés du
+refactoring, Ruff, mypy (87 fichiers) et les CI Tests/CodeQL passent également.
+
+Snapshot cohérent du corpus staging lu sans écriture distante et restauré
+dans une base locale dédiée : 4 882 documents, 10 397 sections, 25 890 chunks.
+Aucun compte, conversation, feedback ou log distant copié. Les fixtures pytest
+utilisent une autre base synthétique ; les comptages du corpus sont préservés.
+
+Test réel Albert/Scaleway autorisé : sept étapes RAG, deux pings SSE, une source,
+run `completed` lisible avant `[DONE]`, 27,7 secondes. Archive et configuration
+privées restent hors Git ; base locale persistante conservée. pgvector local
+0.8.6 contre 0.8.2 en staging et index ANN reconstruits : preuve d'intégration,
+sans revendication de parité exacte de retrieval ou de qualité goldset.
+[Détails et limites](12-c7-streaming.md#revue-et-validation-complémentaire-du-21-septembre-2026).
+Aucun déploiement ; M0/#439 est clos, M1/#465 et la validation proxy D4 restent
+les étapes suivantes.
