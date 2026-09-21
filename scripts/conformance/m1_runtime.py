@@ -3,7 +3,7 @@
 import asyncio
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from uuid import uuid4
 
 import psycopg
@@ -90,8 +90,8 @@ def core_eval_result(query, result, run, context):
 
 
 class CoreEvaluator:
-    def __init__(self, service, loop, clock, label):
-        self.service, self.loop, self.clock, self.label = service, loop, clock, label
+    def __init__(self, service, loop, label):
+        self.service, self.loop, self.label = service, loop, label
         self.last_full_prompt = self.last_system_prompt = ""
 
     def run_with_trace(self, query, *, retrieval_scope):
@@ -103,17 +103,18 @@ class CoreEvaluator:
             raise
 
     async def run(self, query, ministry):
-        created = datetime.now(timezone.utc)
+        base = self.service.new_context()
+        created = base.created
         auth = AuthContext(
             Group("m1-core-" + ministry, "M1", 0, False, False, None, (ministry,), ministry),
             Session("0" * 64, "m1-core-" + ministry, created, created + timedelta(hours=8), "local-eval"),
         )
         context = CapturedContext(
-            turn_id=uuid4().hex,
-            trace_id=uuid4().hex,
+            turn_id=base.turn_id,
+            trace_id=base.trace_id,
             created=created,
-            today=created.date().isoformat(),
-            clock=self.clock,
+            today=base.today,
+            clock=base.clock,
         )
         run, result = await self.service.complete(
             ChatInput("assistant-rh-" + ministry, query, conversation_id=self.label),

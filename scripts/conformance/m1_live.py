@@ -47,7 +47,6 @@ async def evaluate(args, environment):
     from assistant_rh_api.db.dsn import DatabaseSettings
     from assistant_rh_api.db.pool import Database
     from assistant_rh_api.db.settings_stores import ConfigStore
-    from assistant_rh_api.gateways.auth import SystemClock
     from psycopg.rows import dict_row
     from sqlalchemy import create_engine
 
@@ -144,7 +143,7 @@ async def evaluate(args, environment):
                     if "legacy" in run_ids:
                         evaluators["legacy"] = LegacyEvaluator(config, runtime_config, dsn, engine, args.run_label)
                     if "core" in run_ids:
-                        evaluators["core"] = CoreEvaluator(service, loop, SystemClock(), args.run_label)
+                        evaluators["core"] = CoreEvaluator(service, loop, args.run_label)
 
                     async def run_one(runtime):
                         item = await asyncio.to_thread(

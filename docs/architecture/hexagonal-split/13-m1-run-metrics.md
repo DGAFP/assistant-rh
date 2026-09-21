@@ -134,3 +134,14 @@ sont couverts. Le déploiement dark, le proxy et l'opérabilité restent D4/M2.
 Code mesuré `17c1955`, empreinte sources `5ddfa118…`, preuve `96809b97…` :
 [rapport agrégé](../../evals/evidence/m1_api_parity_local_20260921.json) et
 [journal d'expérimentations](../../evals/journal-experimentations-rag.md).
+
+## Revue finale du runner
+
+Le pont M1 réutilise désormais `ChatService.new_context()` pour ses identifiants,
+son horloge et la date française injectée dans les prompts. Il reconstruisait
+auparavant une date UTC, qui pouvait différer de l'API autour de minuit.
+Deux cas de régression, en hiver et en été, échouent avant correction et passent
+après ; les trois tests du pont M1 et Ruff passent. Les quatre contrats d'import
+ont aussi été revérifiés. Aucun fichier du runtime API ou historique ne change.
+Les panels ci-dessus ont été exécutés en journée, sans changement de date entre
+UTC et Paris ; leurs preuves restent rattachées au code effectivement mesuré.
