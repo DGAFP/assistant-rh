@@ -49,6 +49,54 @@ async def test_complete_payload_and_immutable_outcome():
 
 
 @pytest.mark.parametrize(
+    "pieces",
+    [
+        [" \n", "Réponse", " \n"],
+        ["A ", "\t\n", " B", " "],
+        ["\u2003", "Réponse\u2003", "suite", "\u00a0"],
+        [" \t", "\n"],
+        ["Réponse"],
+    ],
+)
+async def test_stream_trims_only_outer_whitespace_like_complete(pieces):
+    def handle(request):
+        if json.loads(request.content)["stream"]:
+            return httpx.Response(200, stream=WireStream(*(event(piece) for piece in pieces), event(reason="stop"), b"data: [DONE]\n\n"))
+        return httpx.Response(200, json=reply("".join(pieces)))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        gateway = ChatGateway(client, ALBERT, policy=POLICY)
+        complete = await gateway.complete(REQUEST)
+        async with gateway.stream(REQUEST) as stream:
+            chunks = [chunk async for chunk in stream]
+    assert isinstance(chunks[-1], StreamCompleted)
+    assert "".join(chunk.text for chunk in chunks if isinstance(chunk, TextDelta)) == complete.text == "".join(pieces).strip()
+
+
+async def test_stream_emits_text_without_waiting_for_provider_completion():
+    body = WireStream(event(" first "), wait_after=True)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200, stream=body))) as client:
+        async with ChatGateway(client, ALBERT, policy=POLICY).stream(REQUEST) as stream:
+            assert await anext(stream) == TextDelta("first")
+        assert body.closed
+
+
+async def test_whitespace_normalization_does_not_allow_fallback_after_provider_content():
+    body = WireStream(event(" \n"), httpx.ReadError("interrupted"))
+    hosts = []
+
+    def handle(request):
+        hosts.append(request.url.host)
+        return httpx.Response(200, stream=body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        async with ChatGateway(client, ALBERT, SCALEWAY, policy=POLICY).stream(REQUEST) as stream:
+            with pytest.raises(InferenceFailure) as caught:
+                _ = [chunk async for chunk in stream]
+    assert caught.value.partial and hosts == ["albert.test"] and body.closed
+
+
+@pytest.mark.parametrize(
     "response,error",
     [
         (httpx.Response(401, text="private provider body"), "rejected"),
@@ -432,6 +480,7 @@ async def test_stream_reports_usage_and_does_not_leak_it_into_next_request():
     def handle(request):
         nonlocal number
         number += 1
+        assert json.loads(request.content)["stream_options"] == {"include_usage": True}
         usage = b'data: {"choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14}}\n\n'
         body = event("text") + event(reason="stop") + (usage if number == 1 else b"") + b"data: [DONE]\n\n"
         return httpx.Response(200, content=body)

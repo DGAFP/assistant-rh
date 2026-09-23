@@ -125,11 +125,14 @@ class ChatGateway:
         emitted = False
         for endpoint in self._endpoints:
             payload = self._payload(request, endpoint, stream=True)
+            payload["stream_options"] = {"include_usage": True}
             deadline = self._http.deadline()
             for number in range(1, self._http.policy.max_attempts + 1):
                 reason = None
                 usage = None
                 seen_choice = False
+                text_started = False
+                trailing_whitespace = ""
                 try:
                     async with self._http.open(endpoint, "/chat/completions", payload, deadline) as response:
                         async with aclosing(_sse(self._http, response, deadline)) as events:
@@ -161,7 +164,15 @@ class ChatGateway:
                                 reason = choice.get("finish_reason") or reason
                                 if content:
                                     emitted = True
-                                    yield TextDelta(content)
+                                    # Match complete().strip() before text reaches the
+                                    # caller: discard leading whitespace and defer a
+                                    # trailing suffix until more non-whitespace arrives.
+                                    content = trailing_whitespace + content if text_started else content.lstrip()
+                                    text = content.rstrip()
+                                    trailing_whitespace = content[len(text) :]
+                                    if text:
+                                        text_started = True
+                                        yield TextDelta(text)
                     # Close HTTP before exposing the terminal outcome.
                     yield StreamCompleted(endpoint.provider, endpoint.model, tuple(attempts), reason, usage)
                     return

@@ -108,7 +108,7 @@ async def test_history_validation_pairing_and_text_parts(chat):
         ],
         ({"messages": [{"role": "user"}]}, "unsupported_content"),
         ({"messages": [{"role": "assistant", "content": "x"}]}, "missing_user_message"),
-        *[({"stream": value}, "invalid_stream") for value in [None, 0, 1, "false", True]],
+        *[({"stream": value}, "invalid_stream") for value in [None, 0, 1, "false"]],
         *[({"n": value}, "unsupported_n") for value in [0, -1, 2, None, "1", True, 1.0]],
         *[({"stream_options": value}, "invalid_stream_options") for value in [{}, [], "x", 1]],
         ({"stream": True, "stream_options": {"extra": True}}, "unsupported_stream_option"),
@@ -310,3 +310,15 @@ async def test_missing_bearer_and_unexpected_error_use_safe_envelopes():
         response = await client.post("/v1/chat/completions", json=BODY, headers={"Authorization": "Bearer " + issued.access_token})
         assert response.status_code == 500 and response.json()["error"]["code"] == "internal_error"
         assert "SECRET" not in response.text and response.headers["cache-control"] == "no-store"
+
+
+async def test_non_stream_rejects_new_work_after_shutdown():
+    auth = service()
+    issued = await auth.login("beta", "password", "local")
+    runtime = Runtime()
+    app = create_app(auth_service=auth, chat_service=runtime.service, environ={})
+    await app.state.non_stream_requests.aclose()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/v1/chat/completions", json=BODY, headers={"Authorization": "Bearer " + issued.access_token})
+    assert response.status_code == 503 and response.json()["error"]["code"] == "service_unavailable"
+    assert runtime.config.calls == 0 and not runtime.runs.rows

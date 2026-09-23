@@ -19,7 +19,7 @@ pytestmark = pytest.mark.anyio
 async def test_real_service_persists_entire_run_and_sources_before_http_success(repository_db):
     auth = service()
     issued = await auth.login("beta", "password", "local")
-    store = ChatRunStore(repository_db)
+    store = ChatRunStore(repository_db, environment="Local ")
     runtime = Runtime(runs=store)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=create_app(auth_service=auth, chat_service=runtime.service)), base_url="http://test"
@@ -40,6 +40,22 @@ async def test_real_service_persists_entire_run_and_sources_before_http_success(
     async with repository_db.transaction(read_only=True) as connection:
         count = await (await connection.execute("SELECT count(*) FROM public.rag_trace_events WHERE turn_id = %s", (run.turn_id,))).fetchone()
         assert count[0] == 7
+        summary = await (
+            await connection.execute(
+                "SELECT provider, model, pipeline_latency_ms, v3_context_items_count, v3_context_tokens, v3_intent_name, "
+                "sources_used_count, api_record->>'model' FROM public.chat_runs WHERE turn_id = %s",
+                (run.turn_id,),
+            )
+        ).fetchone()
+        assert summary[0:2] == ("albert", "synthetic")
+        assert summary[2] == run.metrics.elapsed_ms and summary[3] == 1 and summary[4] > 0
+        assert summary[5:] == ("rag_query", 1, "assistant-rh-matte")
+        event = await (
+            await connection.execute(
+                "SELECT env, metrics->>'total_tokens' FROM public.rag_trace_events WHERE turn_id = %s AND stage='generator'", (run.turn_id,)
+            )
+        ).fetchone()
+        assert event == ("local", "14")
 
 
 async def test_source_insert_failure_rolls_back_completed_run_then_persists_failed(repository_db):

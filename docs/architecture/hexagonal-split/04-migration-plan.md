@@ -52,13 +52,20 @@ La DB et les providers existent déjà. C1 fixe le contrat à partir du spike A2
 | **C4** | Extraction du section aggregator et du context builder : accès sections/documents/références via `ContentStorePort` | Conformance agrégation/contexte |
 | **C5** | Extraction du context selector, de la composition du prompt ministère et du generator | Replays + anti-hallucination/no-answer/fallback |
 | **C6** ([#463](https://github.com/DGAFP/assistant-rh/issues/463)) | Handler HTTP non-stream `/v1/chat/completions` et tous ses tests de transport selon C1 ; `Pipeline`/`ChatService` réel, `RunContext` par requête, événements de toutes les étapes et persistance atomique du run, de ses sources finales ordonnées et de ses traces | Matrice HTTP C1 + conformance bout en bout + tests de concurrence et d'atomicité |
-| **C7** ([#464](https://github.com/DGAFP/assistant-rh/issues/464)) | Streaming SSE selon C1/A2 : worker borné, file async, pings, erreur post-headers, annulation et persistance avant `[DONE]` | Tests stream/déconnexion/erreur sur local et homelab |
+| **C7** ([#464](https://github.com/DGAFP/assistant-rh/issues/464)) | Streaming SSE selon C1/A2 : worker borné, file async, pings, erreur post-headers, annulation et persistance avant `[DONE]` | [Preuves C7](12-c7-streaming.md) : 958 tests API validés, SDK/TCP, instance `conversations` et test réel sur copie locale du corpus |
 
 **Jalon M1 — parité moteur** :
 
 - ancien runtime → nouveau core : sorties d'étapes et résultat structuré exacts sur M0b ;
 - goldset live apparié : aucune régression au-delà des tolérances M0a ;
 - deux requêtes simultanées de ministères différents ne partagent ni prompt, ni résultat, ni trace.
+
+**GO technique documenté le 21/09/2026** dans la [preuve M1](13-m1-run-metrics.md)
+et la [PR #580](https://github.com/DGAFP/assistant-rh/pull/580), après le prérequis
+[C7 #579](https://github.com/DGAFP/assistant-rh/pull/579). Replays exacts 7/7,
+panel local 98/98 sans erreur, 67/98 PASS core contre 64/98 historique et rappel
+documentaire identique ; seuils M0a respectés. L'intégration de ces PRs permet
+d'enchaîner D1–D4 ; le proxy réel et l'opérabilité restent M2.
 
 ## Phase D — fonctions API restantes et déploiement dark
 

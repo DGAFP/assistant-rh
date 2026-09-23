@@ -658,9 +658,8 @@ in `core/prompt_policy.py`. No provider client, database access, clock read or
 - Selection/generation diagnostics carry prompt snapshots, exact requests,
   completion outcome and safe store failures. `Completion`/`StreamCompleted`
   carry optional `TokenUsage` when supplied by the provider. Missing/invalid
-  usage remains `None`; no estimate is presented as actual usage. Existing B3
-  stream request payloads are unchanged, so providers requiring usage opt-in
-  may omit it until C7 configures that capability.
+  usage remains `None`; no estimate is presented as actual usage. C7 now opts in to provider
+  stream usage; client usage delivery remains controlled by `stream_options`.
 
 Prompt lookup preserves configured-name DB/resource, fallback-name DB/resource,
 then constant. Empty DB content skips that name's resource. Recoverable DB
@@ -671,3 +670,40 @@ errors, unexpected bugs, cancellation and rejected/partial selector calls
 propagate instead of entering a misleading degraded-success path.
 
 See [C5 validation and recording scope](../../docs/architecture/hexagonal-split/10-c5-parity.md).
+
+## C7 — resilient Chat Completions streaming
+
+Set `stream=true` on `POST /v1/chat/completions`. The response emits assistant
+content, final Markdown sources, a terminal chunk with `x_assistant_rh`, optional
+usage (`stream_options.include_usage=true`), and `[DONE]`. The run, ordered
+sources and traces commit before the success terminal. Pings continue every
+10 seconds while retrieval or persistence is pending.
+
+`API_STREAM_WORKERS` (default 8) bounds concurrent streams per process;
+`API_STREAM_QUEUE_SIZE` (default 32) bounds each text queue. Stage events stay
+in the run traces. Deltas are split
+at 4,096 characters. Saturation returns 503 before response headers. A stalled
+send times out after 30 seconds. Disconnect and application shutdown cancel
+pending work, close providers, and wait for finalization/transport cleanup.
+
+The `assistant-rh-api` entrypoint gives requests 5 seconds to finish on shutdown,
+then Uvicorn cancels them. The lifespan joins stream cleanup and non-stream
+executions before closing shared resources. Local Compose allows 150 seconds
+before a forced kill, covering the provider close deadline (up to 120 seconds)
+and DB finalization. Other launchers
+must also set `--timeout-graceful-shutdown 5` and allow the same cleanup budget.
+
+Post-header failures emit a safe `stream_error` and close without `[DONE]`.
+Failed/cancelled runs preserve partial text and diagnostics without granting
+source access. Once a success commit starts, it is allowed to finish despite
+a disconnect; the already committed run is not overwritten. Finalization has
+a 10-second deadline per attempt, and a storage failure suppresses success.
+
+The provider gateway trims outer whitespace in both transports. Streaming keeps
+internal whitespace and emits useful text immediately, holding only trailing
+whitespace until the next fragment or completion.
+
+Both API transports use C6's generation inputs; validated history remains with
+the query processor. Standalone C5 streaming still accepts history. Provider
+stream requests now opt in to usage; missing usage retains C1's zero counters.
+See [C7 design, validation and Conversations reproduction](../../docs/architecture/hexagonal-split/12-c7-streaming.md).

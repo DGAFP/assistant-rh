@@ -66,9 +66,6 @@ def validate_chat(payload: dict) -> ChatInput:
         raise ChatRequestError("invalid_request")
     messages = _parse_messages(payload.get("messages"))
     question, history = _select_question_and_history(messages)
-    # Streaming is rejected until the SSE transport is available.
-    if stream:
-        raise ChatRequestError("invalid_stream")
     try:
         model.encode("utf-8")
         (correlation or "").encode("utf-8")

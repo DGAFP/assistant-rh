@@ -1248,3 +1248,172 @@ ne doit pas être forcé par un réglage qualité.
 **Décision** : M0a et M0b sont figés comme références du chantier API. Aucune
 curation goldset ni amélioration pipeline n'a été introduite ; #421 reste une
 dette distincte à traiter hors de ce jalon.
+
+## M1 — `m1_local_smoke_20260921` (21/09/2026, préparé)
+
+**Avant lancement** : vérification du runner apparié sur q1 (MATTE) et q27
+(MSO), sur la copie PostgreSQL locale du corpus staging. Deux paires au maximum
+s'exécutent simultanément, avec une instance historique par question et le
+service core partagé. Les deux runtimes écrivent leurs runs/traces localement ;
+les items d'évaluation référencent leur `turn_id`. Aucun log utilisateur distant
+n'est copié. Le run de référence M0a #240 et ses 98 items sont copiés localement.
+
+Configuration inchangée, fingerprint `51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce` ;
+générateur Albert `deepseek-v4-flash`, selector Albert `openweight-large`, juge
+Scaleway `mistral-medium-3.5-128b`, majorité de trois votes, RAGAS désactivé,
+scope `per-question`. Empreintes du code, questions et prompt enregistrées par
+le runner. Les modifications mesurées ajoutent les métriques et projections SQL
+manquantes et corrigent l’attribution des fallbacks dans le logger historique,
+sans changement des décisions RAG. pgvector local 0.8.6, staging
+0.8.2 : les résultats live seront appariés sur le même clone, avec #240 comme
+référence historique complémentaire. Ce smoke de deux questions ne donne pas
+à lui seul de GO M1.
+
+**Résultats** : runs **locaux #241 (legacy) / #242 (core)** terminés, 2/2
+items chacun sans erreur ni échec du juge ; hit_rate 1,0 des deux côtés.
+Judge pass : 1,0 historique et 0,5 core. Ce petit panel valide le câblage,
+pas la parité qualité. Les quatre runs de chat et leurs 26 événements sont
+présents en base ; environnement `local` et métriques des six étapes métier
+renseignés. Les questions, réponses gold et références des 98 questions sont
+identiques aux items M0a #240 après normalisation du format des références.
+Artefacts privés dans `_local/m1-20260921/smoke`. Le premier démarrage a
+échoué à la validation des arguments avant création de run ou appel provider.
+
+
+## M1 — `m1_local_paired_98_20260921` (21/09/2026, terminé)
+
+**Avant lancement** : comparaison appariée complète des 98 questions M0a sur
+le même snapshot local, ancien runtime et nouveau core. Même configuration
+`51d6256b…`, juge Scaleway `mistral-medium-3.5-128b` en majorité de trois votes,
+RAGAS désactivé, scope `per-question`, deux paires concurrentes au maximum.
+Appels Albert/Scaleway et juge autorisés explicitement ; toutes les écritures
+de chat, traces et évaluation restent locales. Le logger historique attribue
+désormais les fallbacks au provider/modèle réellement utilisés.
+
+Tolérances conservées du runner M0a : baisse maximale de 0,05 pour
+`judge_pass_rate` et `doc_recall_avg`, avec lecture par corpus. Comparer le core
+au runtime historique apparié et au run M0a #240 ; les écarts de corpus/pgvector
+depuis M0a restent une limite explicite. Empreintes des sources, questions et
+prompt dans les métadonnées des runs. Aucun réglage qualité entre les bras.
+
+**Résultats** : runs locaux **#243 (historique) et #244 (core)** terminés,
+98/98 chacun, sans erreur d'item ni de juge. Les deux obtiennent **64/98**
+PASS (`0,653061`), un rappel documentaire `0,729138` et un hit rate `0,826531`.
+Les seuils passent entre les deux bras et contre M0a #240 : delta juge nul,
+delta rappel contre M0a `+0,004859`.
+
+Relecture DB : 196 chats associés aux 196 items, 578 événements historiques et
+676 événements core, tous `local`, aucune incohérence de configuration,
+scope, provider/modèle, métriques, sources ou trace. Deux courts-circuits par
+moteur ; l'API conserve correctement provider/modèle SQL `null` sans génération.
+Les 290 appels LLM core réussis disposent de compteurs d'usage ; une tentative
+de classification a échoué avant reprise, sans échec de run. Les tokens de cette
+tentative interrompue ne sont pas inventés.
+
+Code `16e6afe`, empreinte sources
+`885ad582ee104e2b713d54dfd0d6e14885c8b1bcf8d128c04556f89752434582`.
+Artefacts privés : `_local/m1-20260921/full` et `assessment-final.json`.
+La décision finale utilise néanmoins le run corrigé suivant : l'égalité des
+scores globaux ne dispense pas de corriger l'ordre des références découvert
+pendant cette évaluation.
+
+## M1 — `m1_local_core_orderfix_20260921` (21/09/2026, terminé — GO technique)
+
+**Avant lancement** : le premier panel a révélé un écart déterministe dans
+le texte des références Service-Public : l'adaptateur DB triait les clés JSON
+avant leur rendu historique en chaîne dans le prompt. Le test SQL synthétique
+`service-public-references` échoue avant correction et passe après. Le snapshot
+immuable conserve désormais l'ordre reçu ; seul le calcul de révision trie les
+clés. Aucun réglage de modèle, prompt, retrieval ou juge.
+
+Réévaluation des **98 questions côté core uniquement**, comparées au bras
+historique local #243 et à M0a #240. Le premier panel #243/#244 termine dans
+son checkout figé ; le correctif est mesuré dans un checkout séparé. Cette
+réutilisation du témoin évite 98 générations et 294 votes juge supplémentaires.
+Même clone, configuration `51d6256b…`, questions, gold, scope `per-question`,
+juge Scaleway `mistral-medium-3.5-128b` en majorité de trois votes, sans RAGAS.
+Deux questions core simultanées au maximum. Les exécutions se chevauchent : les
+latences mesurées décrivent ces runs, sans servir de benchmark de performance.
+Les appels providers restent dans l'autorisation du smoke et du panel M1 ;
+toutes les écritures DB et les artefacts restent locaux.
+
+Tolérances inchangées : baisse maximale de 0,05 de `judge_pass_rate` et de
+`doc_recall_avg`, contre le témoin #243 et M0a #240 ; analyse par corpus.
+Empreintes du code, des questions et du prompt attachées au nouveau run.
+
+**Résultats** : run local **#245**, 98/98, sans erreur d'item ni de juge.
+Code mesuré `17c1955abd5d78e828b03bd86115dc36dc52d932` ; configuration
+`51d6256b…`, empreinte des sources
+`5ddfa118df1133323e9325ed9837911dbdb8fbe207edc27169678030210a41a8`,
+questions `afd6cfc9…`, prompt `108979e4…`. Code et questions inchangés entre le
+lancement et la fin ; les douze comptages du corpus sont également inchangés.
+
+| Mesure | M0a #240 | Historique local #243 | Core corrigé local #245 |
+|---|---:|---:|---:|
+| judge_pass (majorité de 3) | 64/98 · 0,6531 | 64/98 · 0,6531 | **67/98 · 0,6837** |
+| doc_recall | 0,7243 | 0,7291 | **0,7291** |
+| hit_rate | 0,8061 | 0,8265 | **0,8265** |
+| Erreurs d'item / juge | 0 / 0 | 0 / 0 | **0 / 0** |
+
+Les deux gates globaux passent contre #243 et #240 : delta juge `+0,030612`,
+delta rappel `0` contre #243 et `+0,004859` contre M0a. Hors des huit questions
+déjà taguées `juge_borderline`, les deux bras locaux sont à **62/90** ; ce run
+ne démontre donc pas une amélioration de qualité attribuable au correctif.
+
+| Corpus | n | PASS historique | PASS core corrigé | Rappel documentaire, identique entre bras |
+|---|---:|---:|---:|---:|
+| DGAFP | 2 | 2 | 2 | 0,0349 |
+| MATTE | 12 | 7 | 5 | 0,7907 |
+| MSO | 4 | 3 | 4 | 0,6786 |
+| Service-Public | 14 | 7 | 9 | 0,9286 |
+| manual | 55 | 36 | 37 | 0,6579 |
+| synthetic | 11 | 9 | 10 | 0,9091 |
+
+L'analyse appariée compte sept passages FAIL→PASS et quatre PASS→FAIL.
+Sur MATTE, q4 et q33 reculent malgré un rappel documentaire égal à 1 dans les
+deux bras : refus de réponse jugé insuffisant pour q4, incomplétude pour q33.
+Les deux contextes communs de q4 sont désormais textuellement identiques après
+la correction d'ordre. Ces cas restent à surveiller en canary ; les petits
+dénominateurs par corpus ne remplacent pas les tolérances globales fixées avant
+lancement. Aucun réglage de qualité ni exclusion de question pour obtenir le GO.
+
+Relecture DB finale : **98 chats core, 676 événements, 206 sources servies**,
+aucun item orphelin ni incohérence de trace, scope, configuration, compteurs,
+provider/modèle ou latence. 290 appels LLM réussis disposent de leur usage ;
+trois tentatives de classification ont échoué avant reprise, sans échec final.
+Leurs tokens non retournés restent inconnus. Les requêtes q30/MSO et q31/MATTE
+se chevauchent réellement ; leur isolation complète est aussi couverte par les
+tests de concurrence. Le smoke streamé ci-dessous valide les TTFT en DB.
+
+**Décision : GO technique M1 vers D1–D4 après intégration des PR #579 et #580.**
+Replays exacts 7/7, 27 sorties d'étapes, cinq contrôles négatifs détectés ;
+964 tests API, 1 551 tests historiques (45 ignorés), mypy, Ruff et quatre
+contrats d'import passent. La section « Reports depuis le runtime existant »
+du LEDGER est vide. L'opérabilité du proxy et les métriques de coût complet
+restent D4/M2. La différence pgvector 0.8.6 local / 0.8.2 staging et les index
+reconstruits restent une limite explicite de cette preuve live locale.
+
+[Preuve agrégée publiée](evidence/m1_api_parity_local_20260921.json), empreinte
+`96809b972c5a83fd9deedde1ed0c65f2888bfee467771d34c71091283b53125d`.
+Artefacts détaillés privés : `_local/m1-20260921/core-orderfix` et
+`orderfix-assessment-final.json` ; aucun texte de question/réponse/contexte dans
+la preuve publiée.
+
+## Smoke streaming — `m1_local_stream_metrics_20260921` (21/09/2026, terminé)
+
+**Avant lancement** : un tour q27/MSO sur le core corrigé `17c1955`, mêmes
+providers Albert/Scaleway et clone local, sans juge. Vérifier avec des deltas
+réels que les TTFT du run et de la génération sont distincts, puis relire le
+run, ses sources, les compteurs d'usage et les timings SQL. Ce contrôle de
+persistance complète les tests SSE/TCP de C7 ; il passe directement par le
+service et ne constitue pas un nouveau test de proxy HTTP. Exécution détachée,
+logs et écritures locaux, dans le périmètre du smoke autorisé.
+
+**Résultats** : run `29c79ac84f3748d6ad79c93496e69d5b`, statut `completed`,
+87 deltas et 1 332 caractères ; une source et sept événements `local` relus.
+Durée du run `12 645 ms`, premier token depuis le début du run `6 063 ms`,
+premier token depuis le début de génération `298 ms` ; les colonnes SQL
+`ttft_ms` et `v3_ttft_ms` valent bien `298`. Provider réel Albert,
+modèle `deepseek-v4-flash`, usage déclaré : 2 545 tokens d'entrée et 330 de
+sortie, aucun fallback. Les valeurs JSON et SQL concordent.
+Artefact privé : `_local/m1-20260921/stream-metrics.json`.
