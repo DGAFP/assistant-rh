@@ -47,5 +47,5 @@
 2. `handlers/` n'importe pas `psycopg` et ne contient pas de logique métier ; il valide le transport puis appelle un cas d'usage.
 3. `db/` et `gateways/` n'importent pas `handlers` ; ils implémentent les `Protocol` de `assistant_rh_api.core.ports`.
 4. `assistant_rh_api/__init__.py` reste sans effet de bord afin que `src/goldset` importe le core sans créer FastAPI ni ouvrir de connexion.
-5. Le wiring vit dans `handlers/app.py` pour l'API et dans le runner direct-core pour l'éval.
+5. `bootstrap.py` assemble les services avec les adaptateurs DB/providers sans dépendre des handlers. `handlers/app.py` gère le cycle de vie HTTP et lui fournit les ressources ouvertes. Le core et les adaptateurs n'importent pas `bootstrap`. Le runner direct-core d'évaluation possède son propre câblage explicite.
 6. Après F3, le chemin public (`Home.py`, `01_Chatbot`, `_PDF_Viewer` et leurs helpers) n'importe ni client PostgreSQL ni `packages/rag-pipeline` ; il utilise HTTP. Les modules admin autorisés à accéder à la DB figurent dans une allowlist CI distincte et restent protégés par `require_admin()`.

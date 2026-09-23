@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from importlib.metadata import version as distribution_version
 
 import anyio
+import httpx
 from fastapi import FastAPI
 
+from assistant_rh_api.bootstrap import create_chat_service
 from assistant_rh_api.core.auth import AuthService
 from assistant_rh_api.core.catalog import ModelService
+from assistant_rh_api.core.chat import ChatService
 from assistant_rh_api.core.health import HealthProbe
 from assistant_rh_api.core.rag_configuration import RAGConfigurationService
 from assistant_rh_api.db.auth_stores import GroupStore, SessionStore
@@ -24,6 +27,7 @@ from assistant_rh_api.db.settings_stores import ConfigStore
 from assistant_rh_api.gateways.auth import LegacyPasswords, SessionTokens, SystemClock
 from assistant_rh_api.handlers.auth import create_auth_router
 from assistant_rh_api.handlers.auth_body import AuthBodyLimit
+from assistant_rh_api.handlers.chat import create_chat_router
 from assistant_rh_api.handlers.errors import register_error_handlers
 from assistant_rh_api.handlers.health import create_health_router
 from assistant_rh_api.handlers.models import create_models_router
@@ -37,6 +41,7 @@ def create_app(
     auth_service: AuthService | None = None,
     model_service: ModelService | None = None,
     rag_configuration_service: RAGConfigurationService | None = None,
+    chat_service: ChatService | None = None,
 ) -> FastAPI:
     """Create the HTTP application without opening connections or loading RAG."""
 
@@ -72,7 +77,15 @@ def create_app(
                 )
             if health_probe is None:
                 application.state.health_probe = PostgresHealthProbe(runtime_database)
-            async with anyio.create_task_group() as tasks:
+            async with AsyncExitStack() as resources, anyio.create_task_group() as tasks:
+                if chat_service is None:
+                    client = await resources.enter_async_context(httpx.AsyncClient(trust_env=False))
+                    application.state.chat_service = create_chat_service(
+                        runtime_database,
+                        application.state.rag_configuration_service,
+                        client,
+                        environment,
+                    )
                 tasks.start_soon(maintain_sessions, sessions)
                 try:
                     yield
@@ -83,17 +96,20 @@ def create_app(
             application.state.auth_service = auth_service
             application.state.health_probe = health_probe or PostgresHealthProbe()
             application.state.rag_configuration_service = rag_configuration_service
+            application.state.chat_service = chat_service
 
     application = FastAPI(title="Assistant RH API", version=distribution_version("assistant-rh-api"), lifespan=lifespan)
     application.state.health_probe = health_probe or PostgresHealthProbe()
     application.state.auth_service = auth_service
     application.state.model_service = model_service or ModelService()
     application.state.rag_configuration_service = rag_configuration_service
+    application.state.chat_service = chat_service
     application.add_middleware(AuthBodyLimit)
     register_error_handlers(application)
     application.include_router(create_health_router())
     application.include_router(create_auth_router())
     application.include_router(create_models_router())
+    application.include_router(create_chat_router())
     return application
 
 

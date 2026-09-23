@@ -25,6 +25,10 @@ def error_response(status: int, code: str, message: str, *, headers: dict[str, s
 
 
 def register_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(Exception)
+    async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+        return error_response(500, "internal_error", "Internal server error")
+
     @app.exception_handler(HTTPException)
     async def transport_error(request: Request, exc: HTTPException) -> JSONResponse:
         # Parsing errors can bypass RequestValidationError; never echo details.

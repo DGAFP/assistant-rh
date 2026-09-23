@@ -72,6 +72,7 @@ apps/api/
 ├── moon.yml                  
 ├── src/assistant_rh_api/
 │   ├── __init__.py           
+│   ├── bootstrap.py          # Assemblage des services avec leurs adaptateurs
 │   ├── core/                 
 │   │   ├── chat_service.py   
 │   │   ├── feedback_service.py 

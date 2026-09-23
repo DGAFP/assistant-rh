@@ -7,6 +7,37 @@ Cet inventaire est la baseline d'isolation du runtime Python servi. Il couvre le
 
 ## Règle bloquante avant une extraction de phase C
 
+### Carte d'entrée C6 — orchestration (2026-09-15, `cb76fe3`)
+
+Lecture préalable de `pipeline.py:run`, `_retrieve_and_build`,
+`_run_retrieval_attempt` et `_build_result` :
+
+| Dépendance / état historique | Remplacement C6 | Invariant / preuve attendue |
+|---|---|---|
+| `last_*`, `_RunState`, `_timing`, selector mutable | `RunContext` créé par appel, événements et résultats retournés | Concurrence sur le même service entre deux groupes/ministères |
+| Constructeurs providers/DB et chargements implicites | Composition explicite, ports C2–C5, configuration capturée une fois par requête | Aucun import legacy ni I/O dans le core |
+| `run` et `run_stream` | Orchestration non-stream, interfaces événements/annulation | C7 conserve la responsabilité transport SSE et déconnexion |
+| Gate direct avant retrieval | `QueryProcessResult.should_proceed` | Même réponse directe, aucun corpus consulté |
+| Scope public | Ministère autorisé B4/B5, puis ministère + Service-Public + DGAFP | Conserver le DGAFP hybride inconditionnel dans ce scope, même sans intent juridique |
+| Rejet total selector | Un retry configuré ; retry vide conserve no-answer | Aucun nouvel ajustement de seuil/prompt |
+| Historique | C1 choisit cinq couples ; C2 applique sa fenêtre historique ; C5 non-stream sans historique | Ne pas modifier ces politiques d'étapes pendant l'assemblage |
+| Logging après réponse et sources candidates | `ChatRunStorePort.finalize` atomique avant succès | Run, sources finales ordonnées, traces et statut dans une transaction |
+| Date/identifiants implicites | Horloge et UUID complets injectés | Un instant/date capturé par requête ; identifiants non tronqués |
+
+Le bundle M0b original ne contient pas les entrées brutes de tous les ports.
+Les preuves C4/C5 complémentaires ne constituent pas un replay intégral C6.
+La conformance historique exacte reste un gate ouvert ; ne pas reconstruire
+ses entrées manquantes ni modifier cette baseline. Les différences de schéma
+de traces/identifiants/sources HTTP sont des adaptations C1/B2 explicites.
+
+Complément de revue du 17 septembre 2026 : chaque étape fournit une projection
+explicite de trace. Les URL privées sont masquées et les payloads sont bornés,
+sans modifier les résultats utilisés par le moteur. Les tentatives embeddings
+échouées traversent le résultat retrieval et restent disponibles dans le run
+et l'événement d'échec. Les bornes et la distinction avec les artefacts de
+replay sont détaillées dans le [rapport C6](11-c6-chat-completions.md#corrections-de-revue-du-17-septembre-2026).
+
+
 Toute PR de phase C qui extrait ou remplace un module du runtime historique doit, **avant le déplacement du code** :
 
 1. repartir de la ligne correspondante de cet audit et refaire les recherches de consommateurs dans `apps/`, `packages/`, `src/`, `tests/`, `scripts/` et `.github/workflows/` ;

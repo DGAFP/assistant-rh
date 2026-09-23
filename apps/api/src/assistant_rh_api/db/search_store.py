@@ -18,7 +18,7 @@ TSQUERY = sql.SQL("""CASE WHEN plainto_tsquery('french', %s)::text = ''
     ELSE to_tsquery('french', replace(plainto_tsquery('french', %s)::text, ' & ', ' | ')) END""")
 
 
-def _query(request: SearchRequest, spec: SearchTable, existing: set[str]) -> tuple[sql.Composed, tuple]:
+def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hybrid: bool = False) -> tuple[sql.Composed, tuple]:
     table, id_column, tsv_column = spec.source.name, spec.id_column, spec.tsv_column
     base = sql.SQL("SELECT t.{id} AS chunk_id, t.chunk_text, {section} AS section_id, {meta} AS metadata FROM {table} t").format(
         id=sql.Identifier(id_column),
@@ -29,9 +29,15 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str]) -> tup
     params: tuple
     if request.mode == "vector":
         column = "embedding_m3" if request.embedding_model == "albert" else "embedding_bge_scw"
+        ranking = (
+            sql.SQL(", ROW_NUMBER() OVER (ORDER BY t.{vector} <=> %s::vector, t.{id}) AS rank").format(
+                vector=sql.Identifier(column), id=sql.Identifier(id_column)
+            )
+            if hybrid
+            else sql.SQL("")
+        )
         statement = sql.SQL("""
-            SELECT t.{id}::text, t.chunk_text, {section}, {meta}, 1 - (t.{vector} <=> %s::vector) AS score,
-                   ROW_NUMBER() OVER (ORDER BY t.{vector} <=> %s::vector, t.{id}) AS rank
+            SELECT t.{id}::text, t.chunk_text, {section}, {meta}, 1 - (t.{vector} <=> %s::vector) AS score {ranking}
             FROM {table} t WHERE t.{vector} IS NOT NULL
             ORDER BY t.{vector} <=> %s::vector, t.{id} LIMIT %s
         """).format(
@@ -40,9 +46,14 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str]) -> tup
             meta=metadata_expression(existing),
             vector=sql.Identifier(column),
             table=sql.Identifier("public", table),
+            ranking=ranking,
         )
         vector = "[" + ",".join(str(v) for v in request.embedding) + "]"
-        params = (vector, vector, vector, request.limit)
+        params = (vector, vector, vector, request.limit) if hybrid else (vector, vector, request.limit)
+        if not hybrid:
+            # Ranking before LIMIT can switch exact semantic search to an ANN
+            # index plan. Preserve the legacy query, then number its candidates.
+            statement = sql.SQL("SELECT candidates.*, ROW_NUMBER() OVER () AS rank FROM ({}) candidates").format(statement)
     elif request.mode == "lexical":
         # Missing tsvector fails this lane, as in the frozen runtime.
         # Rebuilding it from text would silently tune candidate recall.
@@ -127,7 +138,7 @@ class SearchStore(SearchPort):
         spec = self._validate(vector_request)
         async with self._database.transaction(read_only=True) as connection:
             existing = await columns(connection, spec.source.name)
-            vector_sql, vector_params = _query(vector_request, spec, existing)
+            vector_sql, vector_params = _query(vector_request, spec, existing, hybrid=True)
             lexical_sql, lexical_params = _query(replace(request, mode="lexical"), spec, existing)
             statement = sql.SQL("""
                 WITH vector_candidates(chunk_id, chunk_text, section_id, metadata, score, rank) AS ({vector}),
