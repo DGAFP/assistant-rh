@@ -375,6 +375,47 @@ async def test_short_circuits_stream_as_success_without_sources(setup, mode):
     assert not any(c.messages[0].content.startswith("GENERATE") for c in runtime.llm.calls)
 
 
+async def test_server_cancellation_of_asgi_task_is_recorded_as_shutdown(setup):
+    app, runtime, issued = setup
+    runtime.llm.stream_release = asyncio.Event()
+    exchange = Exchange(app, issued)
+    await exchange.until(b'"content":"R')
+    exchange.task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await exchange.finish()
+    run = next(iter(runtime.runs.rows.values()))
+    assert run.status == "cancelled" and run.diagnostics["cancellation"] == "shutdown"
+    assert not app.state.stream_workers.active
+
+
+async def test_successful_stream_never_marks_its_run_cancelled(setup):
+    app, runtime, issued = setup
+    exchange = Exchange(app, issued)
+    await exchange.finish()
+    run = next(iter(runtime.runs.rows.values()))
+    assert run.status == "completed" and "cancellation" not in run.diagnostics
+    assert "cancellation" not in next(iter(runtime.runs.calls)).diagnostics
+
+
+async def test_shutdown_before_asgi_call_releases_admission_and_refuses_late_call(setup):
+    app, runtime, issued = setup
+    model = app.state.model_service.resolve("assistant-rh", issued.context.group)
+    response = app.state.stream_workers.response(runtime.service, ChatInput("assistant-rh", "Question"), issued.context, model, include_usage=False)
+    assert app.state.stream_workers.active == {response}
+    await asyncio.wait_for(app.state.stream_workers.aclose(), 0.5)
+    assert not app.state.stream_workers.active and not runtime.runs.calls
+    sent = []
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        sent.append(message)
+
+    await asyncio.wait_for(response({"type": "http"}, receive, send), 0.5)
+    assert sent[0]["status"] == 503 and not runtime.runs.calls and not runtime.llm.calls
+
+
 async def test_shutdown_cancels_active_stream_before_resources_close(setup):
     app, runtime, issued = setup
     runtime.llm.stream_release = asyncio.Event()

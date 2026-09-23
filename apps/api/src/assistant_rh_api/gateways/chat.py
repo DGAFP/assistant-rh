@@ -163,7 +163,6 @@ class ChatGateway:
                                     raise invalid()
                                 reason = choice.get("finish_reason") or reason
                                 if content:
-                                    emitted = True
                                     # Match complete().strip() before text reaches the
                                     # caller: discard leading whitespace and defer a
                                     # trailing suffix until more non-whitespace arrives.
@@ -171,7 +170,8 @@ class ChatGateway:
                                     text = content.rstrip()
                                     trailing_whitespace = content[len(text) :]
                                     if text:
-                                        text_started = True
+                                        # Only text the caller has seen forbids a fallback.
+                                        emitted = text_started = True
                                         yield TextDelta(text)
                     # Close HTTP before exposing the terminal outcome.
                     yield StreamCompleted(endpoint.provider, endpoint.model, tuple(attempts), reason, usage)

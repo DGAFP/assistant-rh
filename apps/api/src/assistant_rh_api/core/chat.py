@@ -24,6 +24,10 @@ from assistant_rh_api.core.trace_values import attempt_trace, trace_payload
 logger = logging.getLogger(__name__)
 
 
+class FinalizationTimeout(Exception):
+    """The finalize transaction outran its deadline; its commit state is unknown."""
+
+
 class ChatService:
     def __init__(
         self,
@@ -69,6 +73,8 @@ class ChatService:
                 await asyncio.shield(saving)
             except asyncio.CancelledError:
                 continue
+            except TimeoutError:
+                raise FinalizationTimeout() from None
         saving.result()
 
     async def complete(
@@ -124,6 +130,11 @@ class ChatService:
                 logger.error("Chat cancellation finalization failed (turn_id=%s)", context.turn_id)
                 raise ApplicationError() from None
             raise
+        except FinalizationTimeout:
+            # The completed run may already be committed: a second record would
+            # collide with it or shadow a delivered answer. Report, never retry.
+            logger.error("Chat finalization timed out (turn_id=%s)", context.turn_id)
+            raise ApplicationError() from None
         except Exception as exc:
             context.diagnostics["error"] = "execution_failed"
             context.diagnostics["partial"] = bool(context.partial_answer)

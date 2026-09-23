@@ -12,7 +12,7 @@ from assistant_rh_api.core.errors import DatabaseUnavailable
 from assistant_rh_api.core.models.chat import ChatInput, PipelineResult
 from assistant_rh_api.core.models.conversations import ChatRun
 from assistant_rh_api.handlers.auth import Authenticated
-from assistant_rh_api.handlers.chat_body import ChatRequestError, read_chat_body, validate_chat
+from assistant_rh_api.handlers.chat_body import ChatRequestError, read_chat_body, validate_chat, validate_stream
 from assistant_rh_api.handlers.chat_stream import extension
 from assistant_rh_api.handlers.errors import ChatUnavailable, error_response
 
@@ -52,6 +52,7 @@ def create_chat_router() -> APIRouter:
         try:
             payload = await read_chat_body(request)
             body = validate_chat(payload)
+            transport = validate_stream(payload)
         except ChatRequestError as exc:
             return error_response(exc.status, exc.code, "Request body is too large" if exc.status == 413 else "Invalid request")
         # Authorization precedes service availability and all configuration/corpus I/O.
@@ -59,10 +60,8 @@ def create_chat_router() -> APIRouter:
         service = request.app.state.chat_service
         if service is None:
             raise DatabaseUnavailable()
-        if payload.get("stream", False):
-            return request.app.state.stream_workers.response(
-                service, body, auth, model, include_usage=(payload.get("stream_options") or {}).get("include_usage", False),
-            )
+        if transport.stream:
+            return request.app.state.stream_workers.response(service, body, auth, model, include_usage=transport.include_usage)
         run, result = await request.app.state.non_stream_requests.complete(service, body, auth)
         assert run.timestamp is not None
         return JSONResponse(

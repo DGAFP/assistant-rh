@@ -78,6 +78,7 @@ class Pipeline:
             rejected = rejected or not built.items
             context.diagnostics["selector_retry_succeeded"] = bool(built.items) and not rejected
         context.diagnostics["selector_all_rejected"] = rejected
+
         async def generate() -> GenerationResult:
             if not stream:
                 return await self._generator.generate(query.query_for_retrieval, built.items, ministry, today=context.today, all_rejected=rejected)
@@ -87,11 +88,11 @@ class Pipeline:
                 query.query_for_retrieval, built.items, ministry=ministry, today=context.today, all_rejected=rejected
             ) as events:
                 async for event in events:
-                    context.cancellation.checkpoint()
                     if isinstance(event, TextDelta):
                         await context.delta(event.text)
                     else:
                         return event
+            # Generator.stream() raises before exhausting; this guards a port that ends silently.
             raise InferenceFailure((), partial=bool(context.partial_answer))
 
         generated = await context.stage("generator", generate, project=generation_trace)

@@ -81,8 +81,10 @@ inchangé ; aucune égalité de réponses stochastiques live n'est inférée.
 Le gateway normalise les bords du texte streamé comme le `.strip()` du
 non-stream, avant d'émettre les deltas. Les blancs initiaux sont ignorés ; les
 blancs terminaux sont retenus jusqu'au fragment suivant, puis conservés s'ils
-s'avèrent internes au texte. Le texte utile reste émis progressivement. Cette
-normalisation ne change pas l'interdiction de fallback après du contenu provider.
+s'avèrent internes au texte. Le texte utile reste émis progressivement. Seul
+un texte visible transmis à l'appelant interdit le fallback : un premier
+fragment entièrement blanc n'est pas du contenu et laisse le provider secondaire
+répondre.
 
 La validation C6 qui refusait temporairement le booléen `stream=true` est
 remplacée par les tests positifs SDK/transport. Les refus de types invalides,
@@ -216,3 +218,18 @@ contrats d'import passent. Aucun test existant n'est supprimé ou assoupli.
 Cette correction ne relance pas les providers externes et ne constitue pas une
 nouvelle mesure goldset. Le commit M1 mesuré et ses résultats restent identifiés
 séparément ; le proxy et le déploiement restent à vérifier en D4/M2.
+
+### Corrections après revue du 23 septembre 2026
+
+- Un dépassement du délai de finalisation d'un run réussi ne provoque plus une
+  seconde insertion « failed » : l'état du commit étant inconnu, le core
+  journalise et renvoie l'erreur applicative sans écrire de second enregistrement.
+- Une réponse admise mais jamais servie par ASGI libère son slot à l'arrêt et
+  refuse en 503 tout appel tardif ; `aclose()` ne peut plus attendre indéfiniment.
+- La raison d'annulation distingue `disconnect`, `send_failed` et `shutdown`
+  (annulation de la tâche ASGI par le serveur) ; un flux terminé avec succès
+  n'est plus marqué après coup.
+- Le fallback n'est interdit qu'après du texte visible ; un premier fragment
+  entièrement blanc ne compte pas comme contenu provider.
+- Le handler lit `stream`/`stream_options` depuis la validation, plus depuis le
+  JSON brut.

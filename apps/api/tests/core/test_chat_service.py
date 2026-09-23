@@ -107,6 +107,17 @@ async def test_storage_failure_never_returns_success():
     assert [r.status for r in runtime.runs.calls] == ["completed", "failed"]
 
 
+async def test_finalization_timeout_on_success_never_writes_a_second_record(caplog):
+    runtime = Runtime()
+    runtime.runs.release = asyncio.Event()
+    runtime.service._finalization_timeout = 0.02
+    with pytest.raises(ApplicationError):
+        await runtime.service.complete(ChatInput("assistant-rh", "Question"), await auth())
+    # The commit state is unknown: no "failed" record may race the possibly committed run.
+    assert [r.status for r in runtime.runs.calls] == ["completed"] and not runtime.runs.rows
+    assert "finalization timed out" in caplog.text
+
+
 async def test_cooperative_cancellation_and_stage_events_prepare_c7():
     runtime = Runtime()
     cancellation = Cancellation()

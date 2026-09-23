@@ -81,19 +81,21 @@ async def test_stream_emits_text_without_waiting_for_provider_completion():
         assert body.closed
 
 
-async def test_whitespace_normalization_does_not_allow_fallback_after_provider_content():
-    body = WireStream(event(" \n"), httpx.ReadError("interrupted"))
+async def test_whitespace_only_delta_is_not_content_and_still_allows_fallback():
+    first = WireStream(event(" \n"), httpx.ReadError("interrupted"))
+    second = WireStream(event("backup"), event(reason="stop"), b"data: [DONE]\n\n")
     hosts = []
 
     def handle(request):
         hosts.append(request.url.host)
-        return httpx.Response(200, stream=body)
+        return httpx.Response(200, stream=first if request.url.host == "albert.test" else second)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
         async with ChatGateway(client, ALBERT, SCALEWAY, policy=POLICY).stream(REQUEST) as stream:
-            with pytest.raises(InferenceFailure) as caught:
-                _ = [chunk async for chunk in stream]
-    assert caught.value.partial and hosts == ["albert.test"] and body.closed
+            chunks = [chunk async for chunk in stream]
+    # Nothing visible reached the caller, so the secondary provider may still answer.
+    assert chunks[0] == TextDelta("backup") and chunks[-1].provider == "scaleway"
+    assert hosts == ["albert.test", "scaleway.test"] and first.closed and second.closed
 
 
 @pytest.mark.parametrize(

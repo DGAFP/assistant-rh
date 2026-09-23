@@ -15,7 +15,7 @@ from assistant_rh_api.core.chat import ChatService
 from assistant_rh_api.core.models.catalog import Model
 from assistant_rh_api.core.models.chat import Cancellation, ChatInput, PipelineEvent, PipelineResult
 from assistant_rh_api.core.models.conversations import ChatRun
-from assistant_rh_api.handlers.errors import ChatUnavailable
+from assistant_rh_api.handlers.errors import ChatUnavailable, error_response
 
 logger = logging.getLogger(__name__)
 
@@ -210,12 +210,20 @@ class ChatStreamResponse(Response):
 
     async def shutdown(self) -> None:
         self.shutting_down = True
+        if self.serving is None:
+            # Admitted but never served: there is nothing to join, and a late
+            # ASGI call is refused instead of starting a worker after shutdown.
+            self.owner.active.discard(self)
+            self.finished.set()
+            return
         await self.stop("shutdown")
-        if self.serving is not None:
-            self.serving.cancel()
+        self.serving.cancel()
         await self.finished.wait()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if self.shutting_down:
+            await error_response(503, "service_unavailable", "Service unavailable")(scope, receive, send)
+            return
         self.worker = asyncio.create_task(
             self.service.complete(self.request, self.auth, context=self.context, stream=True),
             name="chat-stream-" + self.context.turn_id,
@@ -230,13 +238,19 @@ class ChatStreamResponse(Response):
         except (OSError, TimeoutError):
             reason = "send_failed"
             logger.warning("Chat stream send failed (turn_id=%s)", self.context.turn_id)
+        except asyncio.CancelledError:
+            # Only the server cancels the ASGI task (graceful-shutdown deadline).
+            reason = "shutdown"
+            raise
         finally:
             # Run the whole cleanup in an independent task, not the cancelled ASGI scope.
             async def cleanup() -> None:
                 serving.cancel()
                 disconnect.cancel()
                 await asyncio.gather(serving, disconnect, return_exceptions=True)
-                await self.stop(reason)
+                # A finished worker has already persisted its outcome; nothing to stop.
+                if self.worker is None or not self.worker.done():
+                    await self.stop(reason)
                 self.owner.active.discard(self)
                 self.finished.set()
 
