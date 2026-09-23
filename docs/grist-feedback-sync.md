@@ -1,4 +1,4 @@
-# Synchronisation du dashboard Feedback vers Grist
+# Synchronisation des feedbacks vers Grist
 
 Issue [#561](https://github.com/DGAFP/assistant-rh/issues/561). Périmètre :
 Streamlit et `assistant-rh-rag-pipeline`. Aucun composant de l’API Assistant RH.
@@ -38,8 +38,8 @@ depuis le dashboard sur l’environnement et la période retenus.
 ### Déploiement et identité de la source
 
 En déploiement, définir `GRIST_FEEDBACK_DOC_ID` et `GRIST_FEEDBACK_TABLE_ID` comme
-variables GitHub de l’environnement concerné. Les workflows et le script de
-déploiement Streamlit les transmettent au conteneur. La clé reste le secret
+variables du conteneur Scaleway. Elles peuvent aussi être fournies par les
+variables GitHub de l’environnement si cette méthode de déploiement est utilisée. La clé reste le secret
 `GRIST_API_KEY`. Aucune nouvelle dépendance ni migration PostgreSQL.
 
 `APP_SCALEWAY_ENV` est prioritaire sur `APP_ENV` ; ce dernier sert de repli.
@@ -61,8 +61,8 @@ même table, leurs identifiants restent distincts.
 5. Vérifier le nombre de feedbacks, l’environnement et la destination affichés,
    puis cliquer **Synchroniser vers Grist**. La table est créée si absente.
 
-Le déclenchement est **manuel**, sans planification ni envoi à l’ouverture de la
-page. Répéter cette opération après de nouveaux feedbacks ou une analyse
+Le bouton du dashboard déclenche une synchronisation **manuelle**, sans envoi à
+l’ouverture de la page. Le job planifié décrit ci-dessous fonctionne indépendamment. Répéter cette opération après de nouveaux feedbacks ou une analyse
 automatique. Chaque relance renvoie l’ensemble du périmètre choisi, ce qui reprend
 aussi les corrections anciennes. La fréquence dépend des séances de revue ;
 aucun curseur incrémental ne peut masquer une mise à jour.
@@ -121,3 +121,98 @@ timeout **après** écriture, création/reprise de table, contrat de colonnes et
 déclenchement Streamlit. La création et la validation du schéma ont aussi été
 exécutées sur le document retenu ; la synchronisation des lignes réelles reste
 à déclencher après configuration et déploiement de Streamlit.
+
+
+## Synchronisation automatique dans Scaleway
+
+Le module `assistant_rh_rag_pipeline.feedback_grist_sync` est une commande à
+exécution unique pour un **Serverless Job** Scaleway. Le cron fonctionne même
+si personne n’ouvre le dashboard. La configuration du job reste dans Scaleway ;
+il n’y a pas de cron GitHub ni de nouvelles variables GitHub obligatoires.
+
+- Périmètre : **tous les groupes**, y compris futurs, masqués et sans run associé,
+  à partir de `GRIST_FEEDBACK_SINCE`. Une date seule commence à minuit à Paris.
+  La date est obligatoire : aucun import implicite des anciens tests historiques.
+- Chaque passage relit la période entière et applique l’upsert existant : nouveaux
+  retours, modifications de notes et corrections d’analyse sont repris. Aucun
+  curseur sur les nouveaux IDs ne peut oublier une analyse tardive.
+- Les trois annotations humaines restent exclues des écritures. Une relance après
+  un timeout ne crée pas de doublon. Aucune suppression Grist ou écriture PostgreSQL.
+- Un verrou PostgreSQL de session empêche deux jobs de synchroniser simultanément
+  la même base. Une interruption libère le verrou à la fermeture de connexion.
+- Les logs JSON donnent le périmètre, les comptes par groupe, le total et le
+  nombre confirmé. Un échec ou un lot non confirmé sort avec un code non nul ;
+  Scaleway réessaie une fois, puis le prochain passage reprend toute la période.
+  Les logs n’incluent ni clé API, ni DSN, ni contenu des retours.
+
+### Construction, vérification et activation
+
+Construire et publier `docker/Dockerfile.feedback_grist_sync` avec un tag immuable
+lié au commit. Aucun fichier `.env` n’est copié dans l’image :
+
+```bash
+docker build --platform linux/amd64 -f docker/Dockerfile.feedback_grist_sync -t "$FEEDBACK_SYNC_IMAGE" .
+docker push "$FEEDBACK_SYNC_IMAGE"
+```
+
+La plateforme `linux/amd64` est requise par Scaleway, y compris pour une
+construction depuis un Mac Apple Silicon.
+
+Fournir au processus de déploiement les variables de la destination Scaleway
+existante (`GRIST_API_BASE_URL`, `GRIST_API_KEY`, `GRIST_FEEDBACK_DOC_ID`,
+`GRIST_FEEDBACK_TABLE_ID`), `SCW_POSTGRES_DSN` correspondant à la production et
+`APP_SCALEWAY_ENV=production`. Le job reçoit seulement ces paramètres ; il ne
+reçoit ni clés des fournisseurs IA, ni droits de gestion Scaleway.
+
+Valider d’abord la lecture et le mapping, sans écrire dans Grist :
+
+```bash
+uv run python -m assistant_rh_rag_pipeline.feedback_grist_sync --since 2026-08-21 --dry-run
+```
+
+Avec `SCW_SECRET_KEY`, `SCW_DEFAULT_PROJECT_ID` et `SCW_DEFAULT_REGION` disponibles
+uniquement pour le déploiement, créer le job et lancer une première exécution :
+
+```bash
+uv run python scripts/deploy_feedback_grist_job.py \
+  --image "$FEEDBACK_SYNC_IMAGE" --since 2026-08-21 --start
+```
+
+Vérifier l’état `succeeded` du run dans Scaleway, le rapprochement par
+`(environment, feedback_id)` et la conservation des annotations, puis activer
+le cron (toutes les 15 minutes par défaut opérationnel) :
+
+```bash
+uv run python scripts/deploy_feedback_grist_job.py \
+  --image "$FEEDBACK_SYNC_IMAGE" --since 2026-08-21 --schedule '*/15 * * * *'
+```
+
+Le script actualise le job nommé `assistant-rh-feedback-grist-production` sans
+créer de doublon. `--dry-run` affiche le plan sans secrets ni appel Scaleway.
+Pour changer la fréquence ou suspendre la synchro, modifier ou supprimer le
+cron de la définition dans **Scaleway → Serverless Jobs → Settings** ; le bouton
+manuel reste utilisable. Le script utilise le champ `cron_schedule` de la
+définition (également exposé par `scw jobs definition update`), sans ajouter
+un second trigger dans l’API multi-triggers. Pour mettre à jour le code, publier une nouvelle image puis relancer
+le script avec ce tag et le même périmètre. Les valeurs de connexion du job sont
+indépendantes de celles du conteneur Streamlit : les maintenir ensemble lors
+d’une rotation de clé ou d’un changement de destination.
+
+
+### Mise en service vérifiée le 23 septembre 2026
+
+- Job : `assistant-rh-feedback-grist-production`, région `fr-par`.
+- Image : `rg.fr-par.scw.cloud/assistant-rh/feedback-grist-sync:87c8ba2`.
+- Source : production ; tous groupes depuis le **21 août 2026**, sans exclusions
+  qualité. Destination : document Suivi Feedback, table `Feedbacks`.
+- Planification enregistrée : `*/15 * * * *`, fuseau `Europe/Paris`.
+- Deux exécutions Scaleway réussies ; **411 lignes** dans Grist lors du
+  dernier contrôle, **42 lignes ajoutées** par rapport aux 369 initiales.
+  Les annotations des **369 lignes existantes** sont identiques, aucun doublon,
+  aucun feedback antérieur au dernier passage ne manque. Les retours arrivent
+  encore pendant les contrôles et sont repris au passage suivant.
+- Validation locale : **94 tests ciblés**, Ruff, construction Docker, lecture
+  seule réelle depuis le module et depuis l’image Docker.
+
+Le job utilise sa propre image et sa propre configuration Scaleway : il est déjà
+actif indépendamment d’une promotion ou d’un redéploiement de Streamlit.
