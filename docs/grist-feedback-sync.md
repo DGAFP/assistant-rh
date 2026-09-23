@@ -187,8 +187,29 @@ uv run python scripts/deploy_feedback_grist_job.py \
 Le script actualise le job nommé `assistant-rh-feedback-grist-production` sans
 créer de doublon. `--dry-run` affiche le plan sans secrets ni appel Scaleway.
 Pour changer la fréquence ou suspendre la synchro, modifier ou supprimer le
-trigger dans **Scaleway → Serverless Jobs → Triggers** ; le bouton manuel reste
-utilisable. Pour mettre à jour le code, publier une nouvelle image puis relancer
+cron de la définition dans **Scaleway → Serverless Jobs → Settings** ; le bouton
+manuel reste utilisable. Le script utilise le champ `cron_schedule` de la
+définition (également exposé par `scw jobs definition update`), sans ajouter
+un second trigger dans l’API multi-triggers. Pour mettre à jour le code, publier une nouvelle image puis relancer
 le script avec ce tag et le même périmètre. Les valeurs de connexion du job sont
 indépendantes de celles du conteneur Streamlit : les maintenir ensemble lors
 d’une rotation de clé ou d’un changement de destination.
+
+
+### Mise en service vérifiée le 23 septembre 2026
+
+- Job : `assistant-rh-feedback-grist-production`, région `fr-par`.
+- Image : `rg.fr-par.scw.cloud/assistant-rh/feedback-grist-sync:87c8ba2`.
+- Source : production ; tous groupes depuis le **21 août 2026**, sans exclusions
+  qualité. Destination : document Suivi Feedback, table `Feedbacks`.
+- Planification enregistrée : `*/15 * * * *`, fuseau `Europe/Paris`.
+- Deux exécutions Scaleway réussies ; **411 lignes** dans Grist lors du
+  dernier contrôle, **42 lignes ajoutées** par rapport aux 369 initiales.
+  Les annotations des **369 lignes existantes** sont identiques, aucun doublon,
+  aucun feedback antérieur au dernier passage ne manque. Les retours arrivent
+  encore pendant les contrôles et sont repris au passage suivant.
+- Validation locale : **94 tests ciblés**, Ruff, construction Docker, lecture
+  seule réelle depuis le module et depuis l’image Docker.
+
+Le job utilise sa propre image et sa propre configuration Scaleway : il est déjà
+actif indépendamment d’une promotion ou d’un redéploiement de Streamlit.
