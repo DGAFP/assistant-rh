@@ -26,7 +26,9 @@ Ce contrat est fixé avant l'intégration C6. Il reprend la [preuve A2/#443](07-
 | `tools`, `tool_choice`, `parallel_tool_calls` | Acceptés et ignorés, même si le client demande un outil obligatoire ; aucune exécution, aucun `tool_calls` en sortie. Nécessaires pour `self_documentation` de `conversations`. |
 | Autres champs | Champs supplémentaires du body, des messages, des parts texte et de `metadata` ignorés, sans transmission au core/provider ni journalisation automatique. Cela inclut `name`, les métadonnées de tools et les paramètres OpenAI non pris en charge tels que `max_completion_tokens`/`response_format`. Les clés supplémentaires de `stream_options` restent rejetées. |
 
-Les champs ignorés n'acquièrent aucune sémantique OpenAI implicite : ni format JSON imposé, ni outil, ni identité tirée de `user`. Le plafond du body s'applique à tout leur contenu. Le contenu vide (`""` ou liste vide) reste un texte valide comme dans A2 ; le refus métier/no-answer appartient au pipeline. Aucun message n'est converti implicitement en chaîne.
+Les champs ignorés n'acquièrent aucune sémantique OpenAI implicite : ni format JSON imposé, ni outil, ni identité tirée de `user`. Le plafond du body s'applique à tout leur contenu. La question finale vide (`""`, liste vide ou seulement des espaces après concaténation) est rejetée avec 422 `empty_user_message` avant tout appel au moteur. Un contenu vide reste autorisé dans les autres messages. Aucun message n'est converti implicitement en chaîne.
+
+Les caractères NUL (`\u0000`) sont rejetés dans tous les contenus, même ceux des messages ignorés, avec 422 `unsupported_content`, et dans `model` ou `metadata.conversation_id` avec 422 `invalid_request`. Ils ne peuvent pas être persistés dans les champs texte/JSON PostgreSQL.
 
 ## Question et historique déterministes
 
@@ -158,6 +160,8 @@ Question effective : `Et pour un contractuel ?`. Historique effectif : `Question
 Le markdown utilise le marqueur exact d'A2 et une liste numérotée des **seules sources finales**, dans le même ordre que `x_assistant_rh.sources` et `chat_run_sources`. Chaque source expose `title`, `publisher`, `doc_ref`, `access` (`public` ou `authenticated`) et `url` (URL canonique publique ou null pour une source interne). Une URL signée/capability n'entre jamais dans le chat ni l'historique : elle se demande au clic via le [contrat documentaire A3](02-api-contract.md#accès-documentaire). Le titre/référence interne demeure affichable par un client générique sans lien cliquable.
 
 Un refus hors périmètre ou un no-answer pour sources insuffisantes est une completion 200 contenant le texte du pipeline, sans source inventée. S'il n'y a aucune source finale, `sources=[]` et aucun bloc markdown vide n'est ajouté. Exemple de contenu : `Les sources disponibles ne permettent pas de répondre.` Cela ne transforme pas une panne technique en refus métier. La persistance atomique run/sources/traces précède le succès non-stream ; les identifiants doivent être utilisables immédiatement pour feedback/accès documentaire.
+
+Un contexte final vide, même sans rejet explicite du sélecteur, déclenche la réponse d'insuffisance déterministe sans appel au provider de génération. Les URL privées recopiées par le modèle dans le texte sont remplacées avant stockage et réponse HTTP ; les liens HTTPS canoniques Service-Public/Légifrance restent autorisés selon la même règle que les sources.
 
 ## Succès SSE et erreurs après headers
 

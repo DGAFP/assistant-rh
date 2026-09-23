@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -31,6 +31,10 @@ def parse_since(value: str) -> datetime:
 
 
 def reconcile(since: datetime, *, dry_run: bool = False) -> dict:
+    # Legacy feedback timestamps store UTC without a timezone. Bind the same
+    # PostgreSQL type so the session TimeZone cannot shift the comparison.
+    since = since if since.tzinfo else since.replace(tzinfo=ZoneInfo("Europe/Paris"))
+    cutoff = since.astimezone(timezone.utc).replace(tzinfo=None)
     config = FeedbackGristConfig.from_env()
     environment = feedback_source_environment()
     with psycopg.connect(
@@ -42,7 +46,7 @@ def reconcile(since: datetime, *, dry_run: bool = False) -> dict:
     ) as connection:
         if not connection.execute("SELECT pg_try_advisory_lock(%s) AS acquired", (SYNC_LOCK,)).fetchone()["acquired"]:
             return {"status": "already_running", "environment": environment}
-        rows = connection.execute(FEEDBACK_SELECT + " WHERE f.ts >= %s ORDER BY f.ts, f.id", (since,)).fetchall()
+        rows = connection.execute(FEEDBACK_SELECT + " WHERE f.ts >= %s ORDER BY f.ts, f.id", (cutoff,)).fetchall()
         data = pd.DataFrame(rows)
         # Validate even in dry-run mode, without contacting Grist.
         records = build_feedback_records(data, environment)

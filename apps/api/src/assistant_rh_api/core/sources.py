@@ -1,5 +1,6 @@
 """Final source identities, public links and Markdown presentation."""
 
+import re
 from hashlib import sha256
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -8,6 +9,24 @@ from assistant_rh_api.core.models.context import ContextItem
 from assistant_rh_api.core.models.conversations import RunSource
 
 SOURCES_MARKER = "\n\n---\n**Sources :**\n"
+_ANSWER_URL = re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s<>\"'`]+|(?<![\w:])//[^\s<>\"'`]+", re.IGNORECASE)
+
+
+def redact_private_urls(text: str) -> str:
+    """Apply the source-link allowlist to URLs echoed in generated Markdown/HTML."""
+
+    def redact(match: re.Match[str]) -> str:
+        token = match.group()
+        # Keep Markdown closers and prose punctuation outside the URL.
+        url = token.rstrip(".,;:!?)]}")
+        suffix = token[len(url) :]
+        # Adjacent Markdown links can form one token; the first hostname must
+        # not grant permission to a second URL embedded in that token.
+        if public_source_url(url) and not _ANSWER_URL.search(url, url.index("://") + 3):
+            return token
+        return "[lien privé retiré]" + suffix
+
+    return _ANSWER_URL.sub(redact, text)
 
 
 def public_source_url(raw_url: str) -> str:
@@ -65,6 +84,7 @@ def source_text(value: str) -> str:
 
 
 def with_sources(answer: str, sources: tuple[RunSource, ...]) -> str:
+    answer = redact_private_urls(answer)
     if not sources:
         return answer
     lines = []

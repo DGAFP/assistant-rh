@@ -76,7 +76,10 @@ class Pipeline:
         context.diagnostics["selector_all_rejected"] = rejected
         generated = await context.stage(
             "generator",
-            lambda: self._generator.generate(query.query_for_retrieval, built.items, ministry, today=context.today, all_rejected=rejected),
+            # No candidates or an empty build also require the deterministic no-answer path.
+            lambda: self._generator.generate(
+                query.query_for_retrieval, built.items, ministry, today=context.today, all_rejected=rejected or not built.items
+            ),
             project=generation_trace,
         )
         outcome = generated.diagnostics.outcome

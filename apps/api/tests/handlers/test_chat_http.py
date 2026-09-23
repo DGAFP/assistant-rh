@@ -96,6 +96,7 @@ async def test_history_validation_pairing_and_text_parts(chat):
         ({"model": None}, "invalid_request"),
         ({"model": ""}, "invalid_request"),
         ({"model": 42}, "invalid_request"),
+        ({"model": "assistant-rh\x00"}, "invalid_request"),
         ({"messages": []}, "invalid_messages"),
         ({"messages": None}, "invalid_messages"),
         ({"messages": {}}, "invalid_messages"),
@@ -115,6 +116,16 @@ async def test_history_validation_pairing_and_text_parts(chat):
         ({"stream": True, "stream_options": {"include_usage": "true"}}, "invalid_stream_options"),
         ({"metadata": []}, "invalid_request"),
         ({"metadata": {"conversation_id": 3}}, "invalid_request"),
+        ({"metadata": {"conversation_id": "correlation\x00"}}, "invalid_request"),
+        *[
+            ({"messages": [{"role": "user", "content": content}]}, "empty_user_message")
+            for content in ["", " \t\n\u00a0", [], [{"type": "text", "text": " "}, {"type": "text", "text": "\n"}]]
+        ],
+        *[
+            ({"messages": [{"role": role, "content": content}, *BODY["messages"]]}, "unsupported_content")
+            for role in ["user", "assistant", "system", "developer"]
+            for content in ["text\x00", [{"type": "text", "text": "text\x00"}]]
+        ],
         ({"messages": BODY["messages"] * 33}, "too_many_messages"),
         ({"messages": [{"role": "system", "content": "é" * (MAX_CONTENT // 2 + 1)}, *BODY["messages"]]}, "content_too_large"),
         (
@@ -144,8 +155,7 @@ async def test_invalid_json_is_safe(chat, content, code):
 
 async def test_content_and_body_limits_are_inclusive_with_or_without_length(chat):
     client, runtime, *_ = chat
-    for content in ["", [], "é" * (MAX_CONTENT // 2)]:
-        # Empty questions are legal HTTP input; the synthetic classifier handles them.
+    for content in ["é" * (MAX_CONTENT // 2), [{"type": "text", "text": "é" * (MAX_CONTENT // 2)}]]:
         response = await client.post("/v1/chat/completions", json={**BODY, "messages": [{"role": "user", "content": content}]})
         assert response.status_code == 200
     data = json.dumps(BODY).encode()
@@ -164,6 +174,37 @@ async def test_content_and_body_limits_are_inclusive_with_or_without_length(chat
         assert len(runtime.runs.calls) == count + (0 if overflow else 1)
     response = await client.post("/v1/chat/completions", content=exact, headers={"Content-Length": str(MAX_BODY + 1)})
     assert response.status_code == 413
+
+
+async def test_blank_last_question_does_not_fall_back_to_a_previous_question(chat):
+    client, runtime, *_ = chat
+    response = await client.post(
+        "/v1/chat/completions", json={**BODY, "messages": [*BODY["messages"], {"role": "user", "content": " "}]}
+    )
+    assert response.status_code == 422 and response.json()["error"]["code"] == "empty_user_message"
+    assert not runtime.llm.calls and not runtime.runs.calls and runtime.config.calls == 0
+
+
+async def test_generated_private_url_is_redacted_in_http_response_and_persisted_answer(chat, monkeypatch):
+    client, runtime, *_ = chat
+    complete = runtime.llm.complete
+    private_url = "https://storage.invalid/private.pdf?X-Amz-Signature=PRIVATE_CAPABILITY"
+    public_url = "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI123"
+
+    async def echo_link(request):
+        result = await complete(request)
+        if request.messages[0].content.startswith("GENERATE"):
+            return replace(result, text=f"Consulter [le guide]({private_url}) et {public_url}.")
+        return result
+
+    monkeypatch.setattr(runtime.llm, "complete", echo_link)
+    response = await client.post("/v1/chat/completions", json=BODY)
+    assert response.status_code == 200
+    answer = response.json()["choices"][0]["message"]["content"]
+    run = next(iter(runtime.runs.rows.values()))
+    assert run.answer == answer and public_url in answer
+    assert "PRIVATE_CAPABILITY" not in response.text and "storage.invalid" not in run.answer
+    assert "lien privé retiré" in answer
 
 
 async def test_announced_oversize_is_rejected_without_consuming_body(chat):

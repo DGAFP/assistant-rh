@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+import pytest
 from assistant_rh_api.core.models.context import ContextItem
 from assistant_rh_api.core.sources import SOURCES_MARKER, final_sources, with_sources
 
@@ -52,3 +53,37 @@ def test_unknown_source_reference_is_stable_and_nonempty():
     unknown = item(metadata={})
     assert final_sources((unknown,))[0].doc_ref == final_sources((unknown,))[0].doc_ref
     assert final_sources((unknown,))[0].doc_ref.startswith("source-")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://storage.invalid/PRIVATE_CAPABILITY?X-Amz-Signature=token",
+        "https://www.service-public.fr/F1?signature=PRIVATE_CAPABILITY",
+        "https://www.legifrance.gouv.fr/path#PRIVATE_CAPABILITY",
+        "https://user:PRIVATE_CAPABILITY@www.service-public.fr/F1",
+        "http://internal/PRIVATE_CAPABILITY",
+        "s3://private/PRIVATE_CAPABILITY",
+        "//storage.invalid/PRIVATE_CAPABILITY",
+    ],
+)
+@pytest.mark.parametrize("template", ["Voir {}.", "[guide]({})", "<{}>", '<a href="{}">guide</a>', "[guide]: {}", "`{}`"])
+@pytest.mark.parametrize("has_sources", [False, True])
+def test_generated_links_follow_the_same_allowlist_even_without_sources(url, template, has_sources):
+    answer = with_sources(template.format(url), final_sources((item(),)) if has_sources else ())
+    assert "PRIVATE_CAPABILITY" not in answer
+    assert "lien privé retiré" in answer
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://www.service-public.gouv.fr/particuliers/vosdroits/F1", "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI123"],
+)
+def test_generated_public_links_and_surrounding_text_are_preserved(url):
+    answer = f"Voir [la référence]({url}), puis <{url}> ou {url}."
+    assert with_sources(answer, ()) == answer
+
+
+def test_adjacent_private_link_cannot_borrow_a_public_hostname():
+    answer = "[public](https://www.service-public.fr/F1),[interne](https://storage.invalid/PRIVATE_CAPABILITY)"
+    assert "PRIVATE_CAPABILITY" not in with_sources(answer, ())
