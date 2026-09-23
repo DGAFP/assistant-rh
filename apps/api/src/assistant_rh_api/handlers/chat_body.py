@@ -1,6 +1,7 @@
 """C1 bounded request validation, before model resolution or pipeline execution."""
 
 import json
+from dataclasses import dataclass
 
 from fastapi import Request
 
@@ -42,6 +43,27 @@ async def read_chat_body(request: Request) -> dict:
     return payload
 
 
+@dataclass(frozen=True, slots=True)
+class StreamRequest:
+    stream: bool = False
+    include_usage: bool = False
+
+
+def validate_stream(payload: dict) -> StreamRequest:
+    """Validated transport options; the handler never reads them from the raw payload."""
+    stream = payload.get("stream", False)
+    if type(stream) is not bool:
+        raise ChatRequestError("invalid_stream")
+    options = payload.get("stream_options")
+    if options is None:
+        return StreamRequest(stream)
+    if not stream or not isinstance(options, dict) or type(options.get("include_usage", False)) is not bool:
+        raise ChatRequestError("invalid_stream_options")
+    if set(options) - {"include_usage"}:
+        raise ChatRequestError("unsupported_stream_option")
+    return StreamRequest(stream, options.get("include_usage", False))
+
+
 def validate_chat(payload: dict) -> ChatInput:
     model = payload.get("model")
     if not isinstance(model, str) or not model:
@@ -52,12 +74,7 @@ def validate_chat(payload: dict) -> ChatInput:
     n = payload.get("n", 1)
     if type(n) is not int or n != 1:
         raise ChatRequestError("unsupported_n")
-    options = payload.get("stream_options")
-    if options is not None:
-        if not stream or not isinstance(options, dict) or type(options.get("include_usage", False)) is not bool:
-            raise ChatRequestError("invalid_stream_options")
-        if set(options) - {"include_usage"}:
-            raise ChatRequestError("unsupported_stream_option")
+    validate_stream(payload)
     metadata = payload.get("metadata")
     if metadata is not None and not isinstance(metadata, dict):
         raise ChatRequestError("invalid_request")
@@ -66,9 +83,6 @@ def validate_chat(payload: dict) -> ChatInput:
         raise ChatRequestError("invalid_request")
     messages = _parse_messages(payload.get("messages"))
     question, history = _select_question_and_history(messages)
-    # Streaming is rejected until the SSE transport is available.
-    if stream:
-        raise ChatRequestError("invalid_stream")
     try:
         model.encode("utf-8")
         (correlation or "").encode("utf-8")
