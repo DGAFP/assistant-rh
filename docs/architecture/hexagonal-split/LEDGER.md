@@ -841,3 +841,14 @@ sans revendication de parité exacte de retrieval ou de qualité goldset.
 [Détails et limites](12-c7-streaming.md#revue-et-validation-complémentaire-du-21-septembre-2026).
 Aucun déploiement ; M0/#439 est clos, M1/#465 et la validation proxy D4 restent
 les étapes suivantes.
+
+### C7 — corrections après revue (23 septembre 2026)
+
+[PR #579](https://github.com/DGAFP/assistant-rh/pull/579). Le délai de
+finalisation d'un run réussi ne déclenche plus de second enregistrement
+« failed » ; une réponse admise mais jamais servie libère son slot à l'arrêt ;
+la raison d'annulation distingue déconnexion, envoi échoué et arrêt serveur, et
+un flux réussi n'est plus marqué a posteriori ; seul du texte visible interdit
+le fallback provider ; le handler lit les options de stream validées.
+[Détails](12-c7-streaming.md#corrections-après-revue-du-23-septembre-2026).
+Aucun nouveau panel provider.
