@@ -84,5 +84,5 @@ def create_chat_service(
             generator=Generator(config=config.generation, prompts=prompts, packaged_prompts=packaged, llm=generator_llm),
         )
 
-    runs = ChatRunStore(database, environment=environment.get("APP_ENV") or environment.get("APP_SCALEWAY_ENV") or "local")
+    runs = ChatRunStore(database, environment=environment.get("APP_ENV") or environment.get("APP_SCALEWAY_ENV") or "")
     return ChatService(configurations=configurations, pipeline_factory=pipeline, runs=runs, clock=clock, ids=RunIds())

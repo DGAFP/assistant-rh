@@ -43,6 +43,13 @@ def aware(timestamp: datetime | None) -> datetime | None:
     return timestamp.replace(tzinfo=timezone.utc) if timestamp.tzinfo is None else timestamp
 
 
+def run_metrics(value: object) -> RunMetrics | None:
+    # Ignore keys written by newer releases instead of failing every read of the run.
+    if not isinstance(value, Mapping):
+        return None
+    return RunMetrics(**{f.name: value[f.name] for f in fields(RunMetrics) if f.name in value})
+
+
 def trace_event(row: dict) -> TraceEvent:
     return TraceEvent(
         row["stage"],
@@ -58,9 +65,11 @@ def trace_event(row: dict) -> TraceEvent:
 
 
 class ChatRunStore(ChatRunStorePort):
-    def __init__(self, database: Database, *, environment: str = "local") -> None:
+    def __init__(self, database: Database, *, environment: str = "") -> None:
         self._database = database
-        self._environment = "prod" if environment == "production" else environment
+        # Same label as the legacy logger's _env_label, so both runtimes share rag_trace_events.env.
+        label = environment.strip().lower()
+        self._environment = "prod" if label == "production" else label
 
     async def finalize(self, run: ChatRun) -> None:
         if not re.fullmatch(r"(?:chatcmpl-)?[0-9a-f]{32}", run.turn_id):
@@ -172,7 +181,7 @@ class ChatRunStore(ChatRunStorePort):
             events,
             freeze_json(record.get("diagnostics")),
             record.get("status", "completed"),
-            RunMetrics(**record["metrics"]) if record.get("metrics") else None,
+            run_metrics(record.get("metrics")),
         )
 
     async def sources(self, turn_id: str, group_slug: str) -> tuple[RunSource, ...]:

@@ -26,16 +26,21 @@ def legacy_summary(run: ChatRun) -> dict:
     timing = {key: sum(event.duration_ms for event in run.events if event.stage == stage) for stage, key in STAGE_TIMINGS.items()}
     generation_ms = timing["generation_ms"]
     answer_chars = generation.get("answer_characters")
+    # Service-produced runs always carry metrics; only runs read back from legacy rows lack them.
+    metrics = run.metrics
+    elapsed_ms = metrics.elapsed_ms if metrics else None
+    # Historical TTFT starts at generation; request TTFT lives in api_record.metrics.
+    ttft_ms = metrics.generation_first_token_ms if metrics else None
     return {
         "provider": generation.get("provider"),
-        "model": generation.get("model") if run.metrics else run.model,
+        # The legacy logger never left model empty: fall back to the requested catalogue model.
+        "model": generation.get("model") or run.model,
         "backend": "hexagonal_api",
         "rag_version": "v3",
-        "total_time_ms": run.metrics.elapsed_ms if run.metrics else None,
-        "pipeline_latency_ms": run.metrics.elapsed_ms if run.metrics else None,
-        # Historical TTFT starts at generation; request TTFT lives in api_record.metrics.
-        "ttft_ms": run.metrics.generation_first_token_ms if run.metrics else None,
-        "v3_ttft_ms": run.metrics.generation_first_token_ms if run.metrics else None,
+        "total_time_ms": elapsed_ms,
+        "pipeline_latency_ms": elapsed_ms,
+        "ttft_ms": ttft_ms,
+        "v3_ttft_ms": ttft_ms,
         "v3_chars_per_second": round(answer_chars * 1000 / generation_ms, 1)
         if isinstance(answer_chars, int) and generation_ms > 0 and generation.get("provider")
         else None,

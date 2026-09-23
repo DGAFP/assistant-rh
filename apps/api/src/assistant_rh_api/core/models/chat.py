@@ -89,10 +89,17 @@ class RunContext:
         if self.sink is not None:
             await self.sink.publish(PipelineEvent(self.turn_id, stage, phase, attempt))
 
+    def generation_started(self) -> None:
+        self.generation_started_at = self.clock.monotonic()
+
+    def first_token(self) -> None:
+        if self.first_token_at is None:
+            self.first_token_at = self.clock.monotonic()
+
     async def delta(self, text: str) -> None:
         self.cancellation.checkpoint()
-        if text and self.first_token_at is None:
-            self.first_token_at = self.clock.monotonic()
+        if text:
+            self.first_token()
         self.partial_answer += text
         if self.sink is not None and text:
             await self.sink.publish(PipelineEvent(self.turn_id, "generator", "delta", text=text))
@@ -108,8 +115,6 @@ class RunContext:
     ) -> T:
         self.cancellation.checkpoint()
         start = self.clock.monotonic()
-        if name == "generator":
-            self.generation_started_at = start
         try:
             await self.publish(name, "started", attempt)
             result = await operation()

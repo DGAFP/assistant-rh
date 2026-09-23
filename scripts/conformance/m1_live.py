@@ -136,9 +136,13 @@ async def evaluate(args, environment):
             service = create_chat_service(database, RAGConfigurationService(ConfigStore(database)), client, environment)
             semaphore = asyncio.Semaphore(args.concurrency)
             loop = asyncio.get_running_loop()
+            failed = asyncio.Event()
 
             async def run_pair(question):
                 async with semaphore:
+                    # A systematic failure must not burn the remaining panel on both runtimes.
+                    if failed.is_set():
+                        return
                     evaluators = {}
                     if "legacy" in run_ids:
                         evaluators["legacy"] = LegacyEvaluator(config, runtime_config, dsn, engine, args.run_label)
@@ -179,7 +183,11 @@ async def evaluate(args, environment):
                             flush=True,
                         )
 
-                    await asyncio.gather(*(run_one(runtime) for runtime in run_ids))
+                    try:
+                        await asyncio.gather(*(run_one(runtime) for runtime in run_ids))
+                    except BaseException:
+                        failed.set()
+                        raise
 
             outcomes = await asyncio.gather(*(run_pair(question) for question in questions), return_exceptions=True)
             failures = [outcome for outcome in outcomes if isinstance(outcome, BaseException)]
@@ -227,7 +235,9 @@ def main():
     parser.add_argument("--question-ids", type=int, nargs="+")
     parser.add_argument("--concurrency", type=int, choices=(1, 2), default=2)
     parser.add_argument(
-        "--runtime", choices=("both", "legacy", "core"), default="both",
+        "--runtime",
+        choices=("both", "legacy", "core"),
+        default="both",
         help="Use core to remeasure a fix against an existing legacy run",
     )
     args = parser.parse_args()

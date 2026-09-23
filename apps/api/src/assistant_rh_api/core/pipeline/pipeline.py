@@ -87,9 +87,17 @@ class Pipeline:
             rejected = rejected or not built.items
             context.diagnostics["selector_retry_succeeded"] = bool(built.items) and not rejected
         context.diagnostics["selector_all_rejected"] = rejected
+
         async def generate() -> GenerationResult:
+            context.generation_started()
             if not stream:
-                return await self._generator.generate(query.query_for_retrieval, built.items, ministry, today=context.today, all_rejected=rejected)
+                generated = await self._generator.generate(
+                    query.query_for_retrieval, built.items, ministry, today=context.today, all_rejected=rejected
+                )
+                # Without deltas, the whole answer is the first token.
+                if generated.answer:
+                    context.first_token()
+                return generated
             # C1 keeps API generation inputs identical across transports.
             # C6 passes history only to the query processor.
             async with self._generator.stream(

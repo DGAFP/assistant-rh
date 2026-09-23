@@ -19,7 +19,7 @@ pytestmark = pytest.mark.anyio
 async def test_real_service_persists_entire_run_and_sources_before_http_success(repository_db):
     auth = service()
     issued = await auth.login("beta", "password", "local")
-    store = ChatRunStore(repository_db)
+    store = ChatRunStore(repository_db, environment="Local ")
     runtime = Runtime(runs=store)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=create_app(auth_service=auth, chat_service=runtime.service)), base_url="http://test"

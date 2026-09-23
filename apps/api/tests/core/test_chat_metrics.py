@@ -27,8 +27,9 @@ async def test_measured_latency_distinguishes_request_and_generation_ttft(stream
     auth = (await service().login("beta", "password", "local")).context
     run, _ = await runtime.service.complete(ChatInput("assistant-rh", "Question"), auth, stream=stream)
     assert run.metrics.elapsed_ms == 5000
-    assert run.metrics.first_token_ms == (5000 if stream else None)
-    assert run.metrics.generation_first_token_ms == (3000 if stream else None)
+    # Non-stream generation has no deltas: its whole answer counts as the first token.
+    assert run.metrics.first_token_ms == 5000
+    assert run.metrics.generation_first_token_ms == 3000
     assert next(event.duration_ms for event in run.events if event.stage == "query-processor") == 2000
     assert next(event.duration_ms for event in run.events if event.stage == "generator") == 3000
 
