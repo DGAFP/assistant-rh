@@ -1,0 +1,11 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+COPY packages/rag-pipeline ./packages/rag-pipeline
+RUN pip install --no-cache-dir "pandas>=2.3.3,<3" ./packages/rag-pipeline
+
+USER 10001
+ENTRYPOINT ["python", "-m", "assistant_rh_rag_pipeline.feedback_grist_sync"]
