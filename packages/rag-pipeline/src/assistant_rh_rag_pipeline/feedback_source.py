@@ -1,7 +1,7 @@
 """Shared source query for the dashboard and scheduled Grist reconciliation."""
 
 FEEDBACK_SELECT = """
-SELECT 
+SELECT
     f.id,
     f.ts,
     f.turn_id,
