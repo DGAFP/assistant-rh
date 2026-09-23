@@ -158,24 +158,13 @@ docker push "$FEEDBACK_SYNC_IMAGE"
 La plateforme `linux/amd64` est requise par Scaleway, y compris pour une
 construction depuis un Mac Apple Silicon.
 
-Fournir au processus de déploiement la destination existante (`GRIST_API_BASE_URL`,
-`GRIST_FEEDBACK_DOC_ID`, `GRIST_FEEDBACK_TABLE_ID`) et `APP_SCALEWAY_ENV=production`.
-Créer dans **Scaleway Secret Manager**, dans la région du job, deux secrets
-contenant respectivement le DSN PostgreSQL de production et la clé API Grist.
-Fournir leurs UUID comme `SCW_POSTGRES_DSN_SECRET_ID` et `GRIST_API_KEY_SECRET_ID`.
-Les versions sont `latest` par défaut ; `SCW_POSTGRES_DSN_SECRET_VERSION` et
-`GRIST_API_KEY_SECRET_VERSION` permettent de choisir une version précise.
-Configurer les droits IAM nécessaires à l’injection des secrets par Serverless Jobs.
+Fournir au processus de déploiement les variables de la destination Scaleway
+existante (`GRIST_API_BASE_URL`, `GRIST_API_KEY`, `GRIST_FEEDBACK_DOC_ID`,
+`GRIST_FEEDBACK_TABLE_ID`), `SCW_POSTGRES_DSN` correspondant à la production et
+`APP_SCALEWAY_ENV=production`. Le job reçoit seulement ces paramètres ; il ne
+reçoit ni clés des fournisseurs IA, ni droits de gestion Scaleway.
 
-Le déploiement utilise les [références de secrets de l’API Jobs](https://www.scaleway.com/en/developers/api/serverless-jobs/secrets),
-pas le champ `secret-environment-variables` des Serverless Containers. Les valeurs
-`SCW_POSTGRES_DSN` et `GRIST_API_KEY` sont injectées uniquement à l’exécution ;
-le script de déploiement n’a pas besoin de les lire. Le job ne reçoit ni clés des
-fournisseurs IA, ni droits de gestion Scaleway.
-
-Valider d’abord la lecture et le mapping, sans écrire dans Grist. Pour cette
-exécution locale uniquement, fournir aussi `SCW_POSTGRES_DSN` et `GRIST_API_KEY`
-dans l’environnement du processus :
+Valider d’abord la lecture et le mapping, sans écrire dans Grist :
 
 ```bash
 uv run python -m assistant_rh_rag_pipeline.feedback_grist_sync --since 2026-08-21 --dry-run
@@ -200,22 +189,6 @@ uv run python scripts/deploy_feedback_grist_job.py \
 
 Le script actualise le job nommé `assistant-rh-feedback-grist-production` sans
 créer de doublon. `--dry-run` affiche le plan sans secrets ni appel Scaleway.
-Les références sont créées ou leur version est actualisée avant l’activation du
-cron et avant `--start`. Une nouvelle définition reste sans cron si cette étape
-échoue ; relancer la commande reprend la configuration. Un changement d’UUID
-de secret ou des références en double provoquent un arrêt : vérifier et corriger
-les références du job dans Scaleway avant de relancer. Pour une rotation normale,
-ajouter une version au même secret et actualiser la version configurée si elle
-est figée.
-
-Lors de la mise à jour d’un job créé avec l’ancien script, les références sont
-attachées avant le remplacement des variables ordinaires. Le script vérifie
-alors que `SCW_POSTGRES_DSN` et `GRIST_API_KEY` n’y figurent plus. La migration
-concerne la définition ; les anciens runs peuvent encore exposer leur ancien
-environnement. Prévoir une rotation des identifiants précédemment exposés,
-coordonnée avec le conteneur Streamlit. La fusion de la PR ne migre pas le job
-déjà actif : exécuter ce déploiement avec les références configurées.
-
 Pour changer la fréquence ou suspendre la synchro, modifier ou supprimer le
 cron de la définition dans **Scaleway → Serverless Jobs → Settings** ; le bouton
 manuel reste utilisable. Le script utilise le champ `cron_schedule` de la

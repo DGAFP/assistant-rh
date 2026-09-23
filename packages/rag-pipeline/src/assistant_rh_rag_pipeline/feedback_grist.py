@@ -55,25 +55,24 @@ class FeedbackGristError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class FeedbackGristDestination:
-    """Non-secret destination, also used when provisioning secret references."""
-
+class FeedbackGristConfig:
     base_url: str
     doc_id: str
     table_id: str
+    api_key: str = field(repr=False)
 
     def __post_init__(self) -> None:
         url = urlsplit(self.base_url)
         if url.scheme != "https" or not url.netloc or url.username or url.password or url.query or url.fragment:
             raise FeedbackGristError("GRIST_API_BASE_URL doit être une URL HTTPS sans identifiants, paramètres ou fragment.")
-        if not self.doc_id:
-            raise FeedbackGristError("Document Grist requis.")
+        if not self.doc_id or not self.api_key:
+            raise FeedbackGristError("Document et clé API Grist requis.")
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", self.table_id):
             raise FeedbackGristError("GRIST_FEEDBACK_TABLE_ID doit être un identifiant de table Grist (lettres, chiffres, underscore).")
 
     @classmethod
-    def from_env(cls) -> FeedbackGristDestination:
-        names = ("GRIST_API_BASE_URL", "GRIST_FEEDBACK_DOC_ID", "GRIST_FEEDBACK_TABLE_ID")
+    def from_env(cls) -> FeedbackGristConfig:
+        names = ("GRIST_API_BASE_URL", "GRIST_FEEDBACK_DOC_ID", "GRIST_FEEDBACK_TABLE_ID", "GRIST_API_KEY")
         values = [os.getenv(name, "").strip() for name in names]
         missing = [name for name, value in zip(names, values) if not value]
         if missing:
@@ -86,24 +85,6 @@ class FeedbackGristDestination:
     @property
     def document_url(self) -> str:
         return f"{self.base_url.rstrip('/')}/doc/{quote(self.doc_id, safe='')}"
-
-
-@dataclass(frozen=True)
-class FeedbackGristConfig(FeedbackGristDestination):
-    api_key: str = field(repr=False)
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        if not self.api_key:
-            raise FeedbackGristError("Clé API Grist requise.")
-
-    @classmethod
-    def from_env(cls) -> FeedbackGristConfig:
-        destination = FeedbackGristDestination.from_env()
-        api_key = os.getenv("GRIST_API_KEY", "").strip()
-        if not api_key:
-            raise FeedbackGristError("Configuration Grist manquante : GRIST_API_KEY")
-        return cls(destination.base_url, destination.doc_id, destination.table_id, api_key)
 
 
 def feedback_source_environment() -> str:

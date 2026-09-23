@@ -1,7 +1,7 @@
 """Provision a native Scaleway schedule using configuration supplied at runtime.
 
-Credentials are injected through Secret Manager references. Never print API
-responses: an existing job may still contain legacy plaintext credentials.
+No GitHub variables are required. Never print the job environment or API bodies:
+they contain the source DSN and the Grist key, as with existing ingestion jobs.
 """
 
 from __future__ import annotations
@@ -9,29 +9,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from uuid import UUID
 
 import requests
-from assistant_rh_rag_pipeline.feedback_grist import FeedbackGristDestination, feedback_source_environment
+from assistant_rh_rag_pipeline.db_helpers import get_dsn
+from assistant_rh_rag_pipeline.feedback_grist import FeedbackGristConfig, feedback_source_environment
 from assistant_rh_rag_pipeline.feedback_grist_sync import parse_since
-
-SECRET_NAMES = ("SCW_POSTGRES_DSN", "GRIST_API_KEY")
-
-
-def job_secrets() -> list[dict]:
-    """Only Secret Manager IDs/versions are needed by the deployment process."""
-    return [
-        {
-            "env_var_name": name,
-            "secret_manager_id": str(UUID(os.environ[f"{name}_SECRET_ID"].strip())),
-            "secret_manager_version": os.getenv(f"{name}_SECRET_VERSION", "latest").strip() or "latest",
-        }
-        for name in SECRET_NAMES
-    ]
 
 
 def job_settings(image: str, since: str, schedule: str | None) -> dict:
-    config = FeedbackGristDestination.from_env()
+    config = FeedbackGristConfig.from_env()
     environment = feedback_source_environment()
     settings = {
         "name": f"assistant-rh-feedback-grist-{environment}",
@@ -48,7 +34,9 @@ def job_settings(image: str, since: str, schedule: str | None) -> dict:
             "APP_ENV": environment,
             "APP_SCALEWAY_ENV": environment,
             "APP_DB_TARGET": "scaleway",
+            "SCW_POSTGRES_DSN": get_dsn(),
             "GRIST_API_BASE_URL": config.base_url,
+            "GRIST_API_KEY": config.api_key,
             "GRIST_FEEDBACK_DOC_ID": config.doc_id,
             "GRIST_FEEDBACK_TABLE_ID": config.table_id,
             "GRIST_FEEDBACK_SINCE": parse_since(since).isoformat(),
@@ -59,7 +47,7 @@ def job_settings(image: str, since: str, schedule: str | None) -> dict:
     return settings
 
 
-def deploy(settings: dict, secrets: list[dict], *, start: bool = False) -> dict:
+def deploy(settings: dict, *, start: bool = False) -> dict:
     project = os.environ["SCW_DEFAULT_PROJECT_ID"]
     region = os.getenv("SCW_DEFAULT_REGION", "fr-par")
     base = f"https://api.scaleway.com/serverless-jobs/v1alpha2/regions/{region}"
@@ -86,32 +74,9 @@ def deploy(settings: dict, secrets: list[dict], *, start: bool = False) -> dict:
     if len(matches) > 1:
         raise RuntimeError("Plusieurs jobs portent ce nom ; aucun job modifié.")
     if matches:
-        result = matches[0]
+        result = request("PATCH", "/job-definitions/" + matches[0]["id"], json=settings)
     else:
-        # A new job must not run on its cron before both secrets are attached.
-        initial = {k: v for k, v in settings.items() if k != "cron_schedule"}
-        result = request("POST", "/job-definitions", json={**initial, "project_id": project})
-    job_id = result["id"]
-    references = request("GET", "/secrets", params={"job_definition_id": job_id})["secrets"]
-    existing = {}
-    for desired in secrets:
-        name = desired["env_var_name"]
-        found = [ref for ref in references if (ref.get("env_var") or {}).get("name") == name]
-        if len(found) > 1 or (found and found[0]["secret_manager_id"] != desired["secret_manager_id"]):
-            raise RuntimeError(f"Référence Secret Manager ambiguë ou différente pour {name} ; vérifiez le job avant de relancer.")
-        if found:
-            existing[name] = found[0]
-    for desired in secrets:
-        current = existing.get(desired["env_var_name"])
-        if current is None:
-            request("POST", "/secrets", json={"job_definition_id": job_id, "secrets": [desired]})
-        elif current["secret_manager_version"] != desired["secret_manager_version"]:
-            request("PATCH", "/secrets/" + current["secret_id"], json={"secret_manager_version": desired["secret_manager_version"]})
-    # Replace ordinary variables only once the required references exist. This
-    # also removes credentials from definitions created by the old script.
-    result = request("PATCH", "/job-definitions/" + job_id, json=settings)
-    if any(name in result["environment_variables"] for name in SECRET_NAMES):
-        raise RuntimeError("Des identifiants restent dans les variables ordinaires du job ; déploiement non confirmé.")
+        result = request("POST", "/job-definitions", json={**settings, "project_id": project})
     report = {"job_id": result["id"], "name": settings["name"], "image": settings["image_uri"]}
     if start:
         run = request("POST", "/job-definitions/" + result["id"] + "/start", json={})
@@ -129,13 +94,11 @@ def main() -> int:
     args = parser.parse_args()
     try:
         settings = job_settings(args.image, args.since, args.schedule)
-        secrets = job_secrets()
         if args.dry_run:
             report = {k: v for k, v in settings.items() if k != "environment_variables"}
             report["environment_variable_names"] = sorted(settings["environment_variables"])
-            report["secret_references"] = secrets
         else:
-            report = deploy(settings, secrets, start=args.start)
+            report = deploy(settings, start=args.start)
         print(json.dumps(report, ensure_ascii=False))
         return 0
     except Exception as exc:
