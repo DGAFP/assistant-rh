@@ -868,6 +868,13 @@ Les seuils de baisse maximale de 0,05 passent aussi contre M0a #240. Hors
 questions déjà taguées instables, les deux sont à 62/90 ; MATTE passe de 7 à
 5 PASS sur 12 et reste un point à suivre en canary. Aucun réglage qualité.
 
+Revue du 23/09/2026 (`fbd3428`) : la colonne `model` n'est plus vide sans
+étape générateur, le TTFT non-stream prend la fin de génération, le label
+`env` suit la normalisation du logger historique, les repères de génération
+sont posés par le pipeline et non par le nom d'étape, la relecture des
+métriques tolère les clés inconnues et le runner M1 cesse d'ouvrir de
+nouvelles paires après une première panne. Aucun nouveau panel provider.
+
 Relecture finale : 98 chats core, 676 événements locaux, 206 sources, aucune
 incohérence. Le smoke streamé vérifie 87 deltas et les deux TTFT en DB.
 Le corpus et les empreintes sont préservés. Coût complet, usage non retourné,

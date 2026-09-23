@@ -12,10 +12,10 @@ du corpus. Les nouveaux essais écrivent uniquement sur PostgreSQL local.
 
 | Mesure | Historique observé | API avant correction | Correction |
 |---|---|---|---|
-| Provider et modèle de génération | 200 providers renseignés ; attribution incorrecte possible après fallback | `model` contenait le modèle public API, provider SQL vide | Provider/modèle effectivement utilisés dans les colonnes historiques ; modèle public conservé dans `api_record.model` |
+| Provider et modèle de génération | 200 providers renseignés ; attribution incorrecte possible après fallback | `model` contenait le modèle public API, provider SQL vide | Provider/modèle effectivement utilisés dans les colonnes historiques ; sans étape générateur (réponse directe, échec, annulation), `model` retombe sur le modèle public demandé ; modèle public conservé dans `api_record.model` |
 | Latence totale | 199/200 valeurs positives | Absente | Mesure monotone de l'exécution, avant finalisation DB |
 | Durées des étapes | Colonnes `v3_*_ms` et événements | Présentes dans les événements seulement | Projection vers les colonnes historiques ; durées des retries additionnées |
-| Temps au premier token | 196/200 valeurs positives ; mesuré depuis le début de génération | Non mesuré | Mesures distinctes depuis le début du run et depuis le début de génération ; `null` en non-stream |
+| Temps au premier token | 196/200 valeurs positives ; mesuré depuis le début de génération | Non mesuré | Mesures distinctes depuis le début du run et depuis le début de génération ; en non-stream, la fin de génération vaut premier token |
 | Comptages retrieval/contexte | 199/200 runs renseignés | Dans les traces détaillées, colonnes SQL vides | Compteurs dédiés avant troncature des traces, également projetés dans les colonnes historiques |
 | Usage LLM | Estimation de longueur de réponse ; pas de compteurs réels complets | Usage dans les diagnostics détaillés | Compteurs déclarés par le provider pour chaque appel intent/selector/génération ; usage absent conservé `null` |
 | Environnement des traces | `staging` pour les 1 400 événements échantillonnés | Chaîne vide pour les sept événements du run local | Environnement fourni par le bootstrap, `production` normalisé en `prod` |
@@ -39,6 +39,12 @@ anciens chats. Aucune migration distante n'est nécessaire pour ces corrections.
   core depuis le début du run. `generation_first_token_ms` commence à l'étape
   générateur ; c'est cette seconde mesure qui alimente `v3_ttft_ms`/`ttft_ms`
   pour conserver la définition historique. Aucun ping SSE n'est un token.
+  Sans delta (non-stream), la réponse complète est le premier token : les
+  colonnes TTFT ne restent jamais `null` pour le trafic non-stream. Le pipeline
+  pose lui-même les repères de génération ; `RunContext` ne connaît aucune
+  étape par son nom.
+- `rag_trace_events.env` reprend le label du logger historique : valeur
+  normalisée (`strip`, minuscules, `production` → `prod`), vide par défaut.
 - L'usage se lit dans `rag_trace_events.metrics` : `usage_known`,
   `prompt_tokens`, `completion_tokens`, `total_tokens`, `provider`, `model`.
   Les appels de retry restent séparés par `attempt_name`. Une absence de
