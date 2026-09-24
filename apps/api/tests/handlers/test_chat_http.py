@@ -228,14 +228,16 @@ async def test_announced_oversize_is_rejected_without_consuming_body(chat):
     assert response.status_code == 413 and not runtime.runs.calls
 
 
-async def test_generated_sources_cannot_override_authoritative_http_or_persisted_sources(chat, monkeypatch):
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+async def test_generated_sources_cannot_override_authoritative_http_or_persisted_sources(chat, monkeypatch, newline):
     client, runtime, *_ = chat
     complete = runtime.llm.complete
 
     async def invent_source(request):
         result = await complete(request)
         if request.messages[0].content.startswith("GENERATE"):
-            return replace(result, text="Réponse" + SOURCES_MARKER + "1. [Invented](https://www.legifrance.gouv.fr/fake)")
+            marker = SOURCES_MARKER.replace("\n", newline)
+            return replace(result, text="Réponse" + marker + "1. [Invented](https://www.legifrance.gouv.fr/fake)")
         return result
 
     monkeypatch.setattr(runtime.llm, "complete", invent_source)
@@ -276,6 +278,36 @@ async def test_scoped_retrieval_outages_are_503_and_internal_errors_remain_500(c
     run = next(iter(runtime.runs.rows.values()))
     assert run.status == "failed" and run.answer == "" and run.sources == ()
     assert not any(call.messages[0].content.startswith("GENERATE") for call in runtime.llm.calls)
+
+
+@pytest.mark.parametrize("failure_at", ["configuration", "retrieval", "finalization"])
+@pytest.mark.parametrize(
+    "persistence_error,status,code", [(DatabaseUnavailable, 503, "service_unavailable"), (DatabaseFailure, 500, "internal_error")]
+)
+async def test_failed_finalization_preserves_database_outages(chat, monkeypatch, caplog, failure_at, persistence_error, status, code):
+    client, runtime, *_ = chat
+    secret = "postgresql://private-user:SECRET@private-host/db"
+    error = persistence_error()
+    error.args = (secret,)
+    runtime.runs.failure = error
+
+    async def unavailable(*args):
+        raise DatabaseUnavailable()
+
+    if failure_at == "configuration":
+        monkeypatch.setattr(runtime.config, "load", unavailable)
+    elif failure_at == "retrieval":
+        monkeypatch.setattr(runtime.search, "search", unavailable)
+
+    response = await client.post("/v1/chat/completions", json=BODY)
+    assert response.status_code == status and response.json()["error"]["code"] == code
+    assert response.headers["cache-control"] == "no-store"
+    assert "SECRET" not in response.text and secret not in caplog.text
+    assert not runtime.runs.rows
+    # Configuration outages retain the existing default-config fallback.
+    assert [run.status for run in runtime.runs.calls] == (["failed"] if failure_at == "retrieval" else ["completed", "failed"])
+    failed = runtime.runs.calls[-1]
+    assert failed.answer == "" and failed.sources == ()
 
 
 @pytest.mark.parametrize(
