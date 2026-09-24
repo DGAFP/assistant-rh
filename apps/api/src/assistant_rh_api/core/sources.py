@@ -1,5 +1,6 @@
 """Final source identities, public links and Markdown presentation."""
 
+import re
 from hashlib import sha256
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -8,6 +9,30 @@ from assistant_rh_api.core.models.context import ContextItem
 from assistant_rh_api.core.models.conversations import RunSource
 
 SOURCES_MARKER = "\n\n---\n**Sources :**\n"
+_ANSWER_URL = re.compile(
+    r"(?:(?<![\w+.-])[a-z][a-z0-9+.-]*://|(?<![\w:])//"
+    # Bare hosts need a path/query/fragment, so filenames and versions stay text.
+    r"|(?<![\w@.-])(?:[a-z0-9-]+\.)+[a-z0-9-]+(?::[0-9]+)?(?=[/?#]))"
+    # Stop between adjacent Markdown links without splitting parentheses inside URLs.
+    r"(?:(?!\)[.,;:!?]*\[)[^\s<>\"'`])+",
+    re.IGNORECASE,
+)
+
+
+def redact_private_urls(text: str, *, replacement: str = "[lien privé retiré]") -> str:
+    """Apply the source-link allowlist to URLs echoed in generated Markdown/HTML."""
+
+    def redact(match: re.Match[str]) -> str:
+        token = match.group()
+        # Keep Markdown closers and prose punctuation outside the URL.
+        url = token.rstrip(".,;:!?)]}")
+        suffix = token[len(url) :]
+        # An allowed hostname must not authorize another URL embedded in its path.
+        if public_source_url(url) and not _ANSWER_URL.search(urlsplit(url).path):
+            return token
+        return replacement + suffix
+
+    return _ANSWER_URL.sub(redact, text)
 
 
 def public_source_url(raw_url: str) -> str:
@@ -65,6 +90,7 @@ def source_text(value: str) -> str:
 
 
 def with_sources(answer: str, sources: tuple[RunSource, ...]) -> str:
+    answer = redact_private_urls(answer)
     if not sources:
         return answer
     lines = []

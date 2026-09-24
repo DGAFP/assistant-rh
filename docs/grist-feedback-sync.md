@@ -132,6 +132,8 @@ il n’y a pas de cron GitHub ni de nouvelles variables GitHub obligatoires.
 
 - Périmètre : **tous les groupes**, y compris futurs, masqués et sans run associé,
   à partir de `GRIST_FEEDBACK_SINCE`. Une date seule commence à minuit à Paris.
+  La borne est convertie en UTC sans fuseau pour être comparée aux timestamps
+  historiques du feedback, indépendamment du fuseau de la session PostgreSQL.
   La date est obligatoire : aucun import implicite des anciens tests historiques.
 - Chaque passage relit la période entière et applique l’upsert existant : nouveaux
   retours, modifications de notes et corrections d’analyse sont repris. Aucun

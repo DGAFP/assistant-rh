@@ -4,7 +4,10 @@ from dataclasses import replace
 import pytest
 from assistant_rh_api.core.errors import ApplicationError, DatabaseFailure, InferenceFailure
 from assistant_rh_api.core.models.chat import Cancellation, ChatInput
+from assistant_rh_api.core.models.context import ContextBuildDiagnostics, ContextBuildResult
 from assistant_rh_api.core.models.inference import Attempt
+from assistant_rh_api.core.pipeline.steps.context_builder import ContextBuilder
+from assistant_rh_api.core.prompt_policy import NO_ANSWER
 from assistant_rh_api.core.sources import SOURCES_MARKER
 
 from apps.api.tests.auth_fakes import service
@@ -183,6 +186,28 @@ async def test_retry_empty_candidates_keeps_initial_no_answer():
 
     run, _ = await runtime.service.complete(ChatInput("assistant-rh", "Question"), await auth(), sink=Sink())
     assert "pas trouvé" in run.answer and not run.sources and run.diagnostics["selector_all_rejected"]
+
+
+@pytest.mark.parametrize("empty_at", ["retrieval", "context_builder"])
+@pytest.mark.parametrize("selector_enabled", [False, True])
+async def test_empty_final_context_never_calls_generation_without_explicit_rejection(monkeypatch, empty_at, selector_enabled):
+    runtime = Runtime(v3_enable_selector=selector_enabled)
+    if empty_at == "retrieval":
+        runtime.search.empty = True
+    else:
+
+        async def empty_build(self, sections):
+            assert sections
+            return ContextBuildResult(items=(), resolved_refs={}, diagnostics=ContextBuildDiagnostics())
+
+        monkeypatch.setattr(ContextBuilder, "build", empty_build)
+    run, result = await runtime.service.complete(ChatInput("assistant-rh", "Question"), await auth())
+    assert run.status == "completed" and run.answer == NO_ANSWER and not run.sources
+    assert result.usage.total_tokens == 0
+    assert runtime.runs.rows[run.turn_id] is run
+    assert not run.diagnostics["selector_all_rejected"] and not run.diagnostics["selector_retry_triggered"]
+    assert run.events[-1].output_ref["diagnostics"]["status"] == "no_answer"
+    assert not any(request.messages[0].content.startswith("GENERATE") for request in runtime.llm.calls)
 
 
 async def test_failure_observer_is_not_allowed_to_mask_error():
