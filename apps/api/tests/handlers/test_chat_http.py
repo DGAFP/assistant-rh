@@ -6,7 +6,7 @@ from datetime import timedelta
 import httpx
 import openai
 import pytest
-from assistant_rh_api.core.errors import DatabaseFailure
+from assistant_rh_api.core.errors import DatabaseFailure, DatabaseUnavailable
 from assistant_rh_api.core.sources import SOURCES_MARKER
 from assistant_rh_api.db.run_store import json_data
 from assistant_rh_api.handlers.app import create_app
@@ -226,6 +226,56 @@ async def test_announced_oversize_is_rejected_without_consuming_body(chat):
 
     response = await client.post("/v1/chat/completions", content=unreadable(), headers={"Content-Length": str(MAX_BODY + 1)})
     assert response.status_code == 413 and not runtime.runs.calls
+
+
+async def test_generated_sources_cannot_override_authoritative_http_or_persisted_sources(chat, monkeypatch):
+    client, runtime, *_ = chat
+    complete = runtime.llm.complete
+
+    async def invent_source(request):
+        result = await complete(request)
+        if request.messages[0].content.startswith("GENERATE"):
+            return replace(result, text="Réponse" + SOURCES_MARKER + "1. [Invented](https://www.legifrance.gouv.fr/fake)")
+        return result
+
+    monkeypatch.setattr(runtime.llm, "complete", invent_source)
+    response = await client.post("/v1/chat/completions", json=BODY)
+    assert response.status_code == 200
+    body = response.json()
+    answer = body["choices"][0]["message"]["content"]
+    run = runtime.runs.rows[body["x_assistant_rh"]["turn_id"]]
+    assert answer == run.answer == "Réponse" + SOURCES_MARKER + "1. Guide matte — MATTE"
+    assert [source["doc_ref"] for source in body["x_assistant_rh"]["sources"]] == [source.doc_ref for source in run.sources] == ["guide-matte"]
+
+
+@pytest.mark.parametrize(
+    "heading_error,chunks_error,status,code",
+    [
+        (DatabaseUnavailable, DatabaseUnavailable, 503, "service_unavailable"),
+        (DatabaseUnavailable, None, 503, "service_unavailable"),
+        (DatabaseUnavailable, DatabaseFailure, 500, "internal_error"),
+        (DatabaseFailure, DatabaseFailure, 500, "internal_error"),
+    ],
+)
+async def test_scoped_retrieval_outages_are_503_and_internal_errors_remain_500(chat, monkeypatch, heading_error, chunks_error, status, code):
+    client, runtime, *_ = chat
+    search = runtime.search.search
+
+    async def fail_search(request):
+        error_type = heading_error if request.mode == "heading" else chunks_error
+        if error_type is not None:
+            error = error_type()
+            error.args = ("postgresql://private-user:SECRET@private-host/db",)
+            raise error
+        return await search(request)
+
+    monkeypatch.setattr(runtime.search, "search", fail_search)
+    response = await client.post("/v1/chat/completions", json=BODY)
+    assert response.status_code == status and response.json()["error"]["code"] == code
+    assert "SECRET" not in response.text and "private-host" not in response.text
+    run = next(iter(runtime.runs.rows.values()))
+    assert run.status == "failed" and run.answer == "" and run.sources == ()
+    assert not any(call.messages[0].content.startswith("GENERATE") for call in runtime.llm.calls)
 
 
 @pytest.mark.parametrize(

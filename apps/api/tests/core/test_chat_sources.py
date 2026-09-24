@@ -41,6 +41,15 @@ def test_full_document_and_section_use_same_canonical_reference():
     assert len(sources) == 1 and sources[0].doc_ref == document_id and sources[0].document_id == document_id
 
 
+@pytest.mark.parametrize("has_sources", [False, True])
+def test_generated_sources_are_replaced_by_served_context_only(has_sources):
+    sources = final_sources((item(),)) if has_sources else ()
+    generated = "Réponse" + SOURCES_MARKER + "1. [Invented](https://www.legifrance.gouv.fr/fake)" + SOURCES_MARKER + "2. Invented again"
+    answer = with_sources(generated, sources)
+    assert answer == ("Réponse" + SOURCES_MARKER + "1. Guide — MATTE" if has_sources else "Réponse")
+    assert with_sources(answer, sources) == answer
+
+
 def test_source_metadata_cannot_inject_markdown_links_or_signed_public_urls():
     sources = final_sources(
         (item(document_title="[evil](javascript:alert)\n<script>", document_url="https://www.service-public.fr/path?signature=secret"),)

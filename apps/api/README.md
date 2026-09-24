@@ -576,8 +576,11 @@ Connection/pool failures become `DatabaseUnavailable` in the DB adapter. The
 retrieval stage catches lane exceptions: unscoped calls return surviving chunks
 (or an empty tuple on a total outage) plus `failures`; ministry-scoped or
 `strict_table_errors=True` calls raise `ScopedRetrievalError` after joining the
-searches. These diagnostics carry only source and lane, not the original DB
-error code. The stage emits one `WARNING` per failed lane, with source, lane,
+searches. If every failed lane is a database outage, its subtype
+`ScopedRetrievalUnavailable` also preserves `DatabaseUnavailable`, giving HTTP
+503; other or mixed failures remain HTTP 500. These diagnostics carry only
+source and lane, not the original DB exception. The stage emits one `WARNING`
+per failed lane, with source, lane,
 allowlisted DB error code (or `unexpected_error`) and strict/partial policy,
 also available as structured log fields. It never logs query text, DSNs,
 exception messages or tracebacks. Successful searches and cancellation emit no

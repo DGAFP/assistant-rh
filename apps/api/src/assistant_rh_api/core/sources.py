@@ -90,7 +90,8 @@ def source_text(value: str) -> str:
 
 
 def with_sources(answer: str, sources: tuple[RunSource, ...]) -> str:
-    answer = redact_private_urls(answer)
+    # This reserved block is owned by served context, never by generated text.
+    answer = redact_private_urls(answer.split(SOURCES_MARKER, 1)[0])
     if not sources:
         return answer
     lines = []
