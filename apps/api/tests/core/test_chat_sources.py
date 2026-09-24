@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+import pytest
 from assistant_rh_api.core.models.context import ContextItem
 from assistant_rh_api.core.sources import SOURCES_MARKER, final_sources, with_sources
 
@@ -52,3 +53,65 @@ def test_unknown_source_reference_is_stable_and_nonempty():
     unknown = item(metadata={})
     assert final_sources((unknown,))[0].doc_ref == final_sources((unknown,))[0].doc_ref
     assert final_sources((unknown,))[0].doc_ref.startswith("source-")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://storage.invalid/PRIVATE_CAPABILITY?X-Amz-Signature=token",
+        "https://www.service-public.fr/F1?signature=PRIVATE_CAPABILITY",
+        "https://www.legifrance.gouv.fr/path#PRIVATE_CAPABILITY",
+        "https://user:PRIVATE_CAPABILITY@www.service-public.fr/F1",
+        "http://internal/PRIVATE_CAPABILITY",
+        "s3://private/PRIVATE_CAPABILITY",
+        "//storage.invalid/PRIVATE_CAPABILITY",
+        "storage.invalid/file?X-Amz-Signature=PRIVATE_CAPABILITY",
+        "storage.invalid:8443/file?signature=PRIVATE_CAPABILITY",
+        "127.0.0.1/private/PRIVATE_CAPABILITY",
+        "https://[::1]/PRIVATE_CAPABILITY",
+        "https://storage.invalid/file(PRIVATE_CAPABILITY).pdf",
+        "https://storage.invalid/file((PRIVATE_CAPABILITY)).pdf",
+    ],
+)
+@pytest.mark.parametrize("template", ["Voir {}.", "[guide]({})", "<{}>", '<a href="{}">guide</a>', "[guide]: {}", "`{}`"])
+@pytest.mark.parametrize("has_sources", [False, True])
+def test_generated_links_follow_the_same_allowlist_even_without_sources(url, template, has_sources):
+    answer = with_sources(template.format(url), final_sources((item(),)) if has_sources else ())
+    assert "PRIVATE_CAPABILITY" not in answer
+    assert "lien privé retiré" in answer
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.service-public.gouv.fr/particuliers/vosdroits/F1",
+        "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI123",
+        "https://www.service-public.fr/F1(foo(bar))",
+    ],
+)
+def test_generated_public_links_and_surrounding_text_are_preserved(url):
+    answer = f"Voir [la référence]({url}), puis <{url}> ou {url}."
+    assert with_sources(answer, ()) == answer
+
+
+def test_adjacent_private_link_cannot_borrow_a_public_hostname():
+    answer = "[public](https://www.service-public.fr/F1),[interne](https://storage.invalid/PRIVATE_CAPABILITY)"
+    assert "PRIVATE_CAPABILITY" not in with_sources(answer, ())
+
+
+@pytest.mark.parametrize("separator", ["", ",", "; "])
+@pytest.mark.parametrize("private_index", [None, 0, 1])
+def test_adjacent_links_are_redacted_individually(separator, private_index):
+    urls = ["https://www.service-public.fr/F1", "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI123"]
+    expected_urls = urls.copy()
+    if private_index is not None:
+        urls[private_index] = "storage.invalid/file?X-Amz-Signature=PRIVATE_CAPABILITY"
+        expected_urls[private_index] = "[lien privé retiré]"
+    answer = separator.join(f"[{index}]({url})" for index, url in enumerate(urls))
+    expected = separator.join(f"[{index}]({url})" for index, url in enumerate(expected_urls))
+    assert with_sources(answer, ()) == expected
+
+
+def test_filenames_versions_and_normal_prose_are_not_links():
+    answer = "Lire config.json et guide.pdf avec Python 3.12. Le délai est de 2.5 jours."
+    assert with_sources(answer, ()) == answer

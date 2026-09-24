@@ -3,7 +3,7 @@
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
 import psycopg
@@ -39,7 +39,8 @@ def source(monkeypatch):
     db.execute("INSERT INTO chat_runs (turn_id, question, answer, user_group) VALUES ('t1', 'Question', 'Réponse', 'new-group')")
     db.executemany(
         "INSERT INTO chat_feedbacks (id, ts, turn_id) VALUES (?, ?, ?)",
-        [(1, "2026-08-20T23:59:59+02:00", None), (2, "2026-08-21T00:00:00+02:00", "t1"), (3, "2026-09-21T12:00:00+02:00", None)],
+        # Match the legacy PostgreSQL column: naive UTC timestamps.
+        [(1, "2026-08-20T21:59:59", None), (2, "2026-08-20T22:00:00", "t1"), (3, "2026-09-21T10:00:00", None)],
     )
     server = GristServer()
     monkeypatch.setattr("requests.request", server.request)
@@ -148,3 +149,29 @@ def test_empty_scope_does_not_create_grist_table(source, capsys):
 
 def test_explicit_timezone_is_preserved():
     assert job.parse_since("2026-08-21T00:00:00Z") == datetime(2026, 8, 21, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("2026-08-21", datetime(2026, 8, 20, 22)),
+        ("2026-01-21", datetime(2026, 1, 20, 23)),
+        ("2026-08-21T00:00:00Z", datetime(2026, 8, 21)),
+        ("2026-08-21T00:00:00-04:00", datetime(2026, 8, 21, 4)),
+    ],
+)
+def test_cutoff_binds_naive_utc_and_includes_exact_boundary(source, value, expected):
+    db, _, connection = source
+    db.execute("DELETE FROM chat_feedbacks")
+    db.executemany(
+        "INSERT INTO chat_feedbacks (id, ts) VALUES (?, ?)",
+        [(1, (expected - timedelta(microseconds=1)).isoformat()), (2, expected.isoformat())],
+    )
+    report = job.reconcile(job.parse_since(value), dry_run=True)
+    assert report["total"] == 1
+    bound = connection.execute.call_args.args[1][0]
+    assert bound == expected and bound.tzinfo is None
+    # psycopg must use timestamp, never timestamptz (which depends on TimeZone).
+    from psycopg.adapt import PyFormat, Transformer
+
+    assert Transformer().get_dumper(bound, PyFormat.AUTO).oid == 1114

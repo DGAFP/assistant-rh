@@ -44,7 +44,7 @@ async def read_chat_body(request: Request) -> dict:
 
 def validate_chat(payload: dict) -> ChatInput:
     model = payload.get("model")
-    if not isinstance(model, str) or not model:
+    if not isinstance(model, str) or not model or "\x00" in model:
         raise ChatRequestError("invalid_request")
     stream = payload.get("stream", False)
     if type(stream) is not bool:
@@ -62,7 +62,7 @@ def validate_chat(payload: dict) -> ChatInput:
     if metadata is not None and not isinstance(metadata, dict):
         raise ChatRequestError("invalid_request")
     correlation = (metadata or {}).get("conversation_id")
-    if correlation is not None and not isinstance(correlation, str):
+    if correlation is not None and (not isinstance(correlation, str) or "\x00" in correlation):
         raise ChatRequestError("invalid_request")
     messages = _parse_messages(payload.get("messages"))
     question, history = _select_question_and_history(messages)
@@ -94,7 +94,7 @@ def _parse_messages(messages: object) -> list[tuple[str, str]]:
             if any(not isinstance(part, dict) or part.get("type") != "text" or not isinstance(part.get("text"), str) for part in content):
                 raise ChatRequestError("unsupported_content")
             content = "".join(part["text"] for part in content)
-        if not isinstance(content, str):
+        if not isinstance(content, str) or "\x00" in content:
             raise ChatRequestError("unsupported_content")
         try:
             size = len(content.encode("utf-8"))
@@ -110,6 +110,9 @@ def _select_question_and_history(parsed: list[tuple[str, str]]) -> tuple[str, tu
     last_user = next((index for index in range(len(parsed) - 1, -1, -1) if parsed[index][0] == "user"), None)
     if last_user is None:
         raise ChatRequestError("missing_user_message")
+    question = parsed[last_user][1]
+    if not question.strip():
+        raise ChatRequestError("empty_user_message")
     history: list[Message] = []
     pending = None
     for role, content in parsed[:last_user]:
@@ -118,4 +121,4 @@ def _select_question_and_history(parsed: list[tuple[str, str]]) -> tuple[str, tu
         elif role == "assistant" and pending is not None:
             history.extend((Message("user", pending), Message("assistant", content.split(SOURCES_MARKER, 1)[0])))
             pending = None
-    return parsed[last_user][1], tuple(history[-10:])
+    return question, tuple(history[-10:])
