@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from assistant_rh_api.core.auth import AuthContext
 from assistant_rh_api.core.catalog import ModelService
-from assistant_rh_api.core.errors import ApplicationError, InferenceFailure
+from assistant_rh_api.core.errors import ApplicationError, DatabaseUnavailable, InferenceFailure
 from assistant_rh_api.core.models.chat import Cancellation, CancellationPort, ChatInput, EventSinkPort, PipelineResult, RunContext
 from assistant_rh_api.core.models.conversations import ChatRun, RunSource
 from assistant_rh_api.core.models.rag_configuration import RAGConfig
@@ -97,8 +97,10 @@ class ChatService:
                 context.diagnostics["partial"] = exc.partial
             try:
                 await self._runs.finalize(record("failed", context.partial_answer))
-            except Exception:
+            except Exception as finalization_error:
                 logger.error("Chat finalization failed (turn_id=%s)", context.turn_id)
+                if isinstance(finalization_error, DatabaseUnavailable):
+                    raise DatabaseUnavailable() from None
                 raise ApplicationError() from None
             logger.error("Chat execution failed (turn_id=%s)", context.turn_id)
             if isinstance(exc, ApplicationError):
