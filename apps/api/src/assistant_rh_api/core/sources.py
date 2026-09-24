@@ -90,7 +90,12 @@ def source_text(value: str) -> str:
 
 
 def with_sources(answer: str, sources: tuple[RunSource, ...]) -> str:
-    answer = redact_private_urls(answer)
+    # This reserved block is owned by served context, never by generated text.
+    answer = answer.replace("\r\n", "\n").replace("\r", "\n")
+    # The provider gateway strips leading whitespace from completions.
+    if answer.startswith(SOURCES_MARKER.lstrip("\n")):
+        answer = ""
+    answer = redact_private_urls(answer.split(SOURCES_MARKER, 1)[0])
     if not sources:
         return answer
     lines = []
