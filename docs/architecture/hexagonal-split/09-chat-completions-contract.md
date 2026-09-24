@@ -161,7 +161,7 @@ Le markdown utilise le marqueur exact d'A2 et une liste numérotée des **seules
 
 Un refus hors périmètre ou un no-answer pour sources insuffisantes est une completion 200 contenant le texte du pipeline, sans source inventée. S'il n'y a aucune source finale, `sources=[]` et aucun bloc markdown vide n'est ajouté. Exemple de contenu : `Les sources disponibles ne permettent pas de répondre.` Cela ne transforme pas une panne technique en refus métier. La persistance atomique run/sources/traces précède le succès non-stream ; les identifiants doivent être utilisables immédiatement pour feedback/accès documentaire.
 
-Un contexte final vide, même sans rejet explicite du sélecteur, déclenche la réponse d'insuffisance déterministe sans appel au provider de génération. Les URL privées recopiées par le modèle dans le texte sont remplacées avant stockage et réponse HTTP ; les liens HTTPS canoniques Service-Public/Légifrance restent autorisés selon la même règle que les sources.
+Un contexte final vide, même sans rejet explicite du sélecteur, déclenche la réponse d'insuffisance déterministe sans appel au provider de génération. Les URL privées recopiées par le modèle dans le texte sont remplacées avant stockage et réponse HTTP ; les liens HTTPS canoniques Service-Public/Légifrance restent autorisés selon la même règle que les sources. Le même filtrage s'applique aux traces avant troncature, y compris pour les liens sans schéma contenant un chemin, une query ou un fragment. Les liens Markdown adjacents sont traités séparément pour préserver les références publiques.
 
 ## Succès SSE et erreurs après headers
 

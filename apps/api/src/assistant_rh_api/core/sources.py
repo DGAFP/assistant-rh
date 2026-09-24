@@ -9,10 +9,17 @@ from assistant_rh_api.core.models.context import ContextItem
 from assistant_rh_api.core.models.conversations import RunSource
 
 SOURCES_MARKER = "\n\n---\n**Sources :**\n"
-_ANSWER_URL = re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s<>\"'`]+|(?<![\w:])//[^\s<>\"'`]+", re.IGNORECASE)
+_ANSWER_URL = re.compile(
+    r"(?:(?<![\w+.-])[a-z][a-z0-9+.-]*://|(?<![\w:])//"
+    # Bare hosts need a path/query/fragment, so filenames and versions stay text.
+    r"|(?<![\w@.-])(?:[a-z0-9-]+\.)+[a-z0-9-]+(?::[0-9]+)?(?=[/?#]))"
+    # Stop between adjacent Markdown links without splitting parentheses inside URLs.
+    r"(?:(?!\)[.,;:!?]*\[)[^\s<>\"'`])+",
+    re.IGNORECASE,
+)
 
 
-def redact_private_urls(text: str) -> str:
+def redact_private_urls(text: str, *, replacement: str = "[lien privé retiré]") -> str:
     """Apply the source-link allowlist to URLs echoed in generated Markdown/HTML."""
 
     def redact(match: re.Match[str]) -> str:
@@ -20,11 +27,10 @@ def redact_private_urls(text: str) -> str:
         # Keep Markdown closers and prose punctuation outside the URL.
         url = token.rstrip(".,;:!?)]}")
         suffix = token[len(url) :]
-        # Adjacent Markdown links can form one token; the first hostname must
-        # not grant permission to a second URL embedded in that token.
-        if public_source_url(url) and not _ANSWER_URL.search(url, url.index("://") + 3):
+        # An allowed hostname must not authorize another URL embedded in its path.
+        if public_source_url(url) and not _ANSWER_URL.search(urlsplit(url).path):
             return token
-        return "[lien privé retiré]" + suffix
+        return replacement + suffix
 
     return _ANSWER_URL.sub(redact, text)
 

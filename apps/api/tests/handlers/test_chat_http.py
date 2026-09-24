@@ -8,6 +8,7 @@ import openai
 import pytest
 from assistant_rh_api.core.errors import DatabaseFailure
 from assistant_rh_api.core.sources import SOURCES_MARKER
+from assistant_rh_api.db.run_store import json_data
 from assistant_rh_api.handlers.app import create_app
 from assistant_rh_api.handlers.chat_body import MAX_BODY, MAX_CONTENT
 
@@ -185,16 +186,24 @@ async def test_blank_last_question_does_not_fall_back_to_a_previous_question(cha
     assert not runtime.llm.calls and not runtime.runs.calls and runtime.config.calls == 0
 
 
-async def test_generated_private_url_is_redacted_in_http_response_and_persisted_answer(chat, monkeypatch):
+@pytest.mark.parametrize(
+    "private_url",
+    [
+        "https://storage.invalid/private.pdf?X-Amz-Signature=PRIVATE_CAPABILITY",
+        "storage.invalid/private.pdf?X-Amz-Signature=PRIVATE_CAPABILITY",
+        "s3://private/PRIVATE_CAPABILITY",
+        "//storage.invalid/PRIVATE_CAPABILITY",
+    ],
+)
+async def test_generated_private_url_is_redacted_in_http_response_and_persisted_answer(chat, monkeypatch, private_url):
     client, runtime, *_ = chat
     complete = runtime.llm.complete
-    private_url = "https://storage.invalid/private.pdf?X-Amz-Signature=PRIVATE_CAPABILITY"
     public_url = "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI123"
 
     async def echo_link(request):
         result = await complete(request)
         if request.messages[0].content.startswith("GENERATE"):
-            return replace(result, text=f"Consulter [le guide]({private_url}) et {public_url}.")
+            return replace(result, text=f"Consulter [le guide]({private_url})[la loi]({public_url}).")
         return result
 
     monkeypatch.setattr(runtime.llm, "complete", echo_link)
@@ -205,6 +214,7 @@ async def test_generated_private_url_is_redacted_in_http_response_and_persisted_
     assert run.answer == answer and public_url in answer
     assert "PRIVATE_CAPABILITY" not in response.text and "storage.invalid" not in run.answer
     assert "lien privé retiré" in answer
+    assert "PRIVATE_CAPABILITY" not in json.dumps(json_data(run))
 
 
 async def test_announced_oversize_is_rejected_without_consuming_body(chat):
