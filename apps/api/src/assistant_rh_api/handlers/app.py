@@ -85,6 +85,7 @@ def create_app(
                         application.state.rag_configuration_service,
                         client,
                         environment,
+                        models=application.state.model_service,
                     )
                 tasks.start_soon(maintain_sessions, sessions)
                 try:
