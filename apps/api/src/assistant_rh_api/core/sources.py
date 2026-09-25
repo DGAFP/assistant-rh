@@ -71,10 +71,10 @@ def final_sources(items: tuple[ContextItem, ...]) -> tuple[RunSource, ...]:
         sources.append(
             RunSource(
                 doc_ref=reference,
-                title=title,
+                title=redact_private_urls(title),
                 url=public_url,
                 document_id=document_id,
-                publisher=item.publisher or "",
+                publisher=redact_private_urls(item.publisher or ""),
                 access="public" if public_url else "authenticated",
             )
         )
