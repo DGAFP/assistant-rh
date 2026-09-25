@@ -1,8 +1,31 @@
 # Assistant RH API
 
-Installable FastAPI application that will host the OpenAI-compatible Assistant
-RH contract. It exposes the operational probe `GET /healthz` and public group
-session authentication and the protected `GET /v1/models` catalogue. It does not initialize the RAG pipeline or any AI provider.
+## Chat Completions non-stream (C6)
+
+`POST /v1/chat/completions` now composes the real C2–C5 pipeline behind bearer
+authentication and the ministry model catalogue. Run, ordered final sources,
+stage evidence and status commit atomically before a successful JSON response.
+Client system/tool instructions and generation parameters are ignored according
+to C1. `stream=true` is rejected until C7 supplies the SSE transport.
+
+See [the C6 implementation and validation report](../../docs/architecture/hexagonal-split/11-c6-chat-completions.md)
+for provider configuration, failure/cancellation semantics, ID compatibility,
+source access and the still-open historical M0b replay gate. A running API needs
+its configured PostgreSQL target and Albert credentials; Scaleway credentials
+enable the fallback. No `.env` file is loaded by API wiring.
+
+With a valid bearer obtained from `/v1/auth/session`:
+
+```bash
+curl --fail-with-body http://127.0.0.1:8000/v1/chat/completions \
+  -H "Authorization: Bearer $API_SESSION_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"assistant-rh","messages":[{"role":"user","content":"Quels sont les congés annuels ?"}]}'
+```
+
+The installable FastAPI application also exposes `GET /healthz`, public group
+session authentication and the protected `GET /v1/models` catalogue. Importing
+the package does not connect to PostgreSQL or call providers.
 
 ## Run locally
 
@@ -177,8 +200,9 @@ complete run records and normalized feedback. `CompletionIds` generates
 `chatcmpl-` plus a full UUID (41 characters); legacy short IDs remain readable.
 `session_hash` on run/feedback writes means an **audit pseudonym supplied by the
 composition root**, never the bearer or its authentication digest. Session
-authentication uses the separate `Session.token_hash`. B4/D1 supply the HMAC
-audit pseudonym and enforce public validation, quotas and session policy.
+authentication uses the separate `Session.token_hash`. `AuthContext.audit_session_hash`
+is the dedicated input for a HMAC audit pseudonym. Until authentication wiring
+supplies one, it stays empty on run writes: the token digest is never a fallback.
 Ownership follows the group, including after session renewal.
 Feedback reasons are immutable tuples in the core (JSON arrays at the HTTP
 boundary). Only the PostgreSQL adapter joins/splits the legacy `; `-separated
@@ -553,8 +577,12 @@ Connection/pool failures become `DatabaseUnavailable` in the DB adapter. The
 retrieval stage catches lane exceptions: unscoped calls return surviving chunks
 (or an empty tuple on a total outage) plus `failures`; ministry-scoped or
 `strict_table_errors=True` calls raise `ScopedRetrievalError` after joining the
-searches. These diagnostics carry only source and lane, not the original DB
-error code. The stage emits one `WARNING` per failed lane, with source, lane,
+searches. If every failed lane is a database outage, its subtype
+`ScopedRetrievalUnavailable` also preserves `DatabaseUnavailable`, giving HTTP
+503; other or mixed retrieval failures remain HTTP 500. An outage while
+persisting a failed run also preserves HTTP 503 instead of masking it as an
+internal error. These diagnostics carry only source and lane, not the original
+DB exception. The stage emits one `WARNING` per failed lane, with source, lane,
 allowlisted DB error code (or `unexpected_error`) and strict/partial policy,
 also available as structured log fields. It never logs query text, DSNs,
 exception messages or tracebacks. Successful searches and cancellation emit no

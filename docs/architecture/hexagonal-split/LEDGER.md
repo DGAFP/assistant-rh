@@ -654,3 +654,103 @@ normale, `-O` et `-OO` ; les replays valides et les cinq contrôles négatifs pa
 dans ces trois modes. Régressions vérifiées avant/après : 10 échecs avant le
 correctif ; **220 tests ciblés** et Ruff passent après correction. Les fixtures
 et le runtime C5 restent inchangés.
+
+### C6 — assemblage réel et HTTP non-stream (15 septembre 2026)
+
+[Rapport C6, critères et limites](11-c6-chat-completions.md), issue
+[#463](https://github.com/DGAFP/assistant-rh/issues/463), base `cb76fe3`.
+`Pipeline` compose C2–C5 derrière les ports ; `ChatService` crée le contexte par
+requête, résout le ministère B4/B5 et finalise run/sources/traces atomiquement
+avant succès. Le handler non-stream applique C1, y compris limites reçues sans
+Content-Length, historique, paramètres ignorés, erreurs sûres et sources.
+Statuts completed/failed/cancelled persistés dans `api_record` existant.
+
+Adaptations explicites : UUID de run sans préfixe pour respecter C1 (anciens
+IDs B2 toujours lisibles), sources documentaires finales dédupliquées et URLs
+internes omises. Une double panne embeddings remonte désormais comme échec
+technique C6 au lieu de devenir une génération sans contexte ; l'étape C3 et
+ses fixtures restent intactes. Retry selector, prompts, seuils et absence
+d'historique dans la génération non-stream conservés.
+
+**Validation : 898 tests API réussis sur PostgreSQL/pgvector synthétique local,
+aucun ignoré** ; 1 442 tests historiques réussis, 46 ignorés. Ruff (chemins CI),
+mypy (83 fichiers) et trois contrats d'import passent. SDK OpenAI strict sur
+la vraie route ; concurrence entre groupes/ministères ; panne de source après
+écriture du parent, rollback et run failed ; annulation sans autorité
+documentaire. Composition de production testée avec DB réelle et réponses
+providers simulées au niveau HTTP, Albert primaire et fallback Scaleway.
+Revue indépendante finale favorable. Docker indisponible localement ; image
+et smoke Compose à recontrôler en CI sur le commit publié.
+
+**Gate M0b intégral toujours ouvert**, donc livraison C6 en brouillon et issue
+non close. Auto-check inchangé : 7 fixtures / 56 artefacts,
+`exact_comparison: null`. Les entrées brutes manquantes ne sont pas
+reconstituées ; les preuves C4/C5 ne deviennent pas une preuve d'assemblage
+historique. Événements et annulation coopérative préparés ; transport SSE,
+déconnexion/worker/shielding restent C7. Aucun accès staging/production ou
+provider live, migration distante, déploiement ni GO M1.
+
+### C6 — corrections de revue et lisibilité (17 septembre 2026)
+
+Les projections de trace sont explicites et bornées : références, scores,
+décisions et diagnostics providers sont conservés, sans sérialisation générique
+de tous les champs des résultats. Les URL privées sont filtrées avant
+troncature, y compris dans les prompts. Les textes sont limités à 4 096
+caractères, les collections à 40 éléments et chaque payload de sortie/diagnostic
+à 64 Kio, avec marqueur explicite en cas de dépassement. Les résultats du
+moteur et les requêtes providers restent complets ; ces traces opérationnelles
+ne remplacent pas les artefacts de replay.
+
+Le signal d'échec embeddings conserve désormais les tentatives Albert/Scaleway
+dans `RetrievalResult`, l'exception finale, les diagnostics du run et
+l'événement échoué, pour l'essai initial comme pour le retry selector.
+La politique de retrieval et les fixtures historiques ne sont pas modifiées.
+
+Sources déplacées dans un module dédié, constructeurs nommés, orchestration
+retrieval/contexte extraite et validation des messages séparée du choix de
+question/historique. Tests de régression sur le run persisté, les pannes et
+l'intégrité des entrées providers.
+
+**905 tests API réussis, aucun ignoré**, dont 166 tests DB sur PostgreSQL/pgvector
+local jetable (`pgvector/pgvector:pg17`). Ruff, mypy (86 fichiers) et les trois
+contrats d'import passent. Auto-check M0b : 7 fixtures / 56 artefacts,
+`exact_comparison: null`. Le gate de conformance intégrale reste ouvert.
+
+### C6 — emplacement du câblage (17 septembre 2026)
+
+L'assemblage du chat est déplacé de `handlers/chat_runtime.py` vers
+`assistant_rh_api/bootstrap.py`. Le module assemble core, DB et providers ;
+`handlers/app.py` conserve le cycle de vie HTTP et fournit les ressources.
+Les règles d'import interdisent au core et aux adaptateurs d'importer le
+bootstrap, et au bootstrap de dépendre des handlers ou de FastAPI.
+Validation : 84 tests ciblés passent (imports, démarrage, configuration, HTTP
+chat et composition PostgreSQL réelle), ainsi que Ruff, mypy et les quatre
+contrats d'import. Aucun changement du comportement RAG.
+
+### C6 — compagnon M0b intégral (17 septembre 2026)
+
+[Protocole, archive et résultats](../../../tests/conformance/companions/m0b-full-20260917/README.md) :
+sept scénarios capturés sur un snapshot staging en lecture seule, avec appels
+providers réels autorisés. Rejeu hors réseau du bootstrap, ChatService et moteur
+courants : **7/7 exacts**, soit 27 sorties d'étapes et sept résultats métier.
+Cinq contrôles négatifs détectés ; 18 tests du compagnon passent, y compris
+sous Python `-O`/`-OO`. Les sources exactes de la capture et leurs empreintes
+sont archivées ; `source_commit` désigne seulement la base du checkout.
+
+Le compagnon ferme le manque de preuve d'assemblage C6 selon le protocole de
+complément prévu, sans réécrire le bundle original 7/56 ni prétendre récupérer
+ses appels manquants. Les replays CI exécutent les sources du checkout courant.
+Les traitements HTTP, sources C1, stockage et erreurs restent des preuves
+distinctes ; pas de GO M1/qualité ou C7/SSE.
+
+La sonde réelle a détecté une régression de plan SQL dans la recherche
+sémantique seule : le `ROW_NUMBER` avant `LIMIT` modifiait les candidats via
+IVFFlat. Numérotation déplacée après sélection, voies hybrides conservées.
+Régression reproduite avant correction puis test vert sur 2 500 vecteurs
+synthétiques indexés. Les 13 résolutions de sections ambiguës différentes
+observées dans la sonde restent une limite B2 explicite ; le compagnon compare
+le moteur sur les mêmes entrées héritées, pas l'équivalence de ces SQL ambigus.
+
+Validation finale : **924 tests API réussis, aucun ignoré**, dont le test SQL
+indexé et les 18 contrôles du compagnon ; Ruff, mypy (86 fichiers), quatre
+contrats d'import et auto-check du bundle historique 7/56 passent.

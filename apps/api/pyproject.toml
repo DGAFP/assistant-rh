@@ -9,6 +9,7 @@ dependencies = [
     "httpx>=0.28.1,<1",
     "psycopg-pool>=3.3,<4",
     "psycopg[binary]>=3.3.3,<4",
+    "tzdata>=2025.2",
     "uvicorn>=0.48.0,<1",
 ]
 
@@ -41,6 +42,7 @@ name = "Core does not depend on transport, adapters, or I/O frameworks"
 type = "forbidden"
 source_modules = ["assistant_rh_api.core"]
 forbidden_modules = [
+    "assistant_rh_api.bootstrap",
     "assistant_rh_api.handlers",
     "assistant_rh_api.db",
     "assistant_rh_api.gateways",
@@ -71,4 +73,11 @@ source_modules = [
     "assistant_rh_api.db",
     "assistant_rh_api.gateways",
 ]
-forbidden_modules = ["assistant_rh_api.handlers"]
+forbidden_modules = ["assistant_rh_api.handlers", "assistant_rh_api.bootstrap"]
+
+[[tool.importlinter.contracts]]
+id = "bootstrap-does-not-import-handlers"
+name = "Service composition does not depend on HTTP handlers"
+type = "forbidden"
+source_modules = ["assistant_rh_api.bootstrap"]
+forbidden_modules = ["assistant_rh_api.handlers", "fastapi"]

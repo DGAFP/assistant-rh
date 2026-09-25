@@ -25,6 +25,8 @@ def public_group(group: Group | None) -> bool:
 class AuthContext:
     group: Group
     session: Session
+    # Only a separately derived audit pseudonym may leave the auth boundary.
+    audit_session_hash: str = field(default="", repr=False)
 
     def authorize_ministry(self, ministry: str | None = None) -> str:
         selected = self.group.default_ministry if ministry is None else ministry
