@@ -9,6 +9,7 @@ from assistant_rh_api.core.models.inference import Attempt
 from assistant_rh_api.core.pipeline.steps.context_builder import ContextBuilder
 from assistant_rh_api.core.prompt_policy import NO_ANSWER
 from assistant_rh_api.core.sources import SOURCES_MARKER
+from assistant_rh_api.db.run_store import json_data
 
 from apps.api.tests.auth_fakes import service
 from apps.api.tests.chat_fakes import Runtime
@@ -46,11 +47,12 @@ async def test_real_pipeline_all_stages_are_persisted_before_return():
 
 async def test_concurrent_ministries_do_not_share_prompt_source_result_or_traces():
     runtime = Runtime()
-    one = await auth()
+    one = replace(await auth(), audit_session_hash="first-audit-pseudonym")
     two = replace(
         one,
         group=replace(one.group, slug="second", allowed_ministries=("mi",), default_ministry="mi"),
         session=replace(one.session, group_slug="second", token_hash="second-hash"),
+        audit_session_hash="second-audit-pseudonym",
     )
     results = await asyncio.gather(
         runtime.service.complete(ChatInput("assistant-rh", "Question MATTE"), one),
@@ -66,6 +68,28 @@ async def test_concurrent_ministries_do_not_share_prompt_source_result_or_traces
         assert "GENERATE " + expected.upper() in prompt
         assert "GENERATE " + other.upper() not in prompt
     assert runs[0].group_slug != runs[1].group_slug and runs[0].session_hash != runs[1].session_hash
+
+
+@pytest.mark.parametrize("status", ["completed", "failed", "cancelled"])
+@pytest.mark.parametrize("audit_hash", ["", "separate-audit-pseudonym"])
+async def test_runs_never_persist_the_authentication_digest(status, audit_hash):
+    runtime = Runtime()
+    context = replace(await auth(), audit_session_hash=audit_hash)
+    cancellation = Cancellation()
+    if status == "failed":
+        runtime.llm.failure = RuntimeError("synthetic failure")
+    elif status == "cancelled":
+        cancellation.cancel()
+    request = ChatInput("assistant-rh", "Question RH")
+    if status == "completed":
+        await runtime.service.complete(request, context)
+    else:
+        with pytest.raises(ApplicationError if status == "failed" else asyncio.CancelledError):
+            await runtime.service.complete(request, context, cancellation=cancellation)
+    run = next(iter(runtime.runs.rows.values()))
+    assert run.status == status and run.session_hash == audit_hash
+    assert json_data(run)["session_hash"] == audit_hash
+    assert context.session.token_hash not in str(json_data(run))
 
 
 async def test_direct_response_skips_corpus_and_no_answer_preserves_retry_rules():
