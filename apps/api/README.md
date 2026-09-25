@@ -200,8 +200,9 @@ complete run records and normalized feedback. `CompletionIds` generates
 `chatcmpl-` plus a full UUID (41 characters); legacy short IDs remain readable.
 `session_hash` on run/feedback writes means an **audit pseudonym supplied by the
 composition root**, never the bearer or its authentication digest. Session
-authentication uses the separate `Session.token_hash`. B4/D1 supply the HMAC
-audit pseudonym and enforce public validation, quotas and session policy.
+authentication uses the separate `Session.token_hash`. `AuthContext.audit_session_hash`
+is the dedicated input for a HMAC audit pseudonym. Until authentication wiring
+supplies one, it stays empty on run writes: the token digest is never a fallback.
 Ownership follows the group, including after session renewal.
 Feedback reasons are immutable tuples in the core (JSON arrays at the HTTP
 boundary). Only the PostgreSQL adapter joins/splits the legacy `; `-separated

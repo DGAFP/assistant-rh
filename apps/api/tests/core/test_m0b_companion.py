@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -14,12 +15,14 @@ from scripts.conformance import m0b_companion as companion
 from scripts.conformance.m0b_values import ROOT, digest, dump
 
 EVIDENCE = ROOT / "tests/conformance/companions/m0b-full-20260917"
-ARCHIVE = EVIDENCE / "m0b-full-companion.tar.gz"
+ARCHIVE = Path(os.environ["M0B_PRIVATE_ARCHIVE"]) if os.environ.get("M0B_PRIVATE_ARCHIVE") else None
 pytestmark = pytest.mark.anyio
 
 
 @pytest.fixture
 def published(tmp_path, monkeypatch):
+    if ARCHIVE is None or not ARCHIVE.is_file():
+        pytest.fail("M0B_PRIVATE_ARCHIVE must point to the privately downloaded conformance archive")
     def blocked(*args, **kwargs):
         raise AssertionError("M0b replay must remain offline")
 

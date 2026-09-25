@@ -62,7 +62,7 @@ class ChatService:
                 trace_id=context.trace_id,
                 timestamp=created,
                 group_slug=auth.group.slug,
-                session_hash=auth.session.token_hash,
+                session_hash=auth.audit_session_hash,
                 conversation_id=request.conversation_id,
                 question=request.question,
                 answer=answer,
