@@ -23,7 +23,7 @@ from assistant_rh_api.core.errors import (
 )
 from assistant_rh_api.core.errors.inference import InferenceFailure
 from assistant_rh_api.core.ministry_policy import MINISTRIES
-from assistant_rh_api.core.models.inference import Embedding
+from assistant_rh_api.core.models.inference import Attempt, Embedding
 from assistant_rh_api.core.models.rag_configuration import RetrievalConfig, SearchMode
 from assistant_rh_api.core.models.retrieval import RawChunk, RetrievalSource, RetrievedChunk, SearchRequest, Source
 from assistant_rh_api.core.ports.inference import EmbeddingPort
@@ -52,6 +52,10 @@ class ScopedRetrievalError(ApplicationError):
         self.failures = failures
 
 
+class ScopedRetrievalUnavailable(ScopedRetrievalError, DatabaseUnavailable):
+    """Keep scoped diagnostics while preserving the database outage classification."""
+
+
 @dataclass(frozen=True, slots=True)
 class RetrievalResult:
     chunks: tuple[RetrievedChunk, ...] = ()
@@ -59,6 +63,7 @@ class RetrievalResult:
     failures: tuple[RetrievalFailure, ...] = ()
     embedding: Embedding | None = None
     embedding_failed: bool = False
+    embedding_attempts: tuple[Attempt, ...] = ()
 
 
 def _failure_code(error: Exception) -> str:
@@ -121,7 +126,7 @@ def heading_match_score(heading: str, heading_path: str, query: str) -> float:
 
 
 def _raw_order(chunks: tuple[RawChunk, ...]) -> tuple[RawChunk, ...]:
-    # Ranks are assigned by the adapter before LIMIT with explicit id tie breaks.
+    # Adapter ranks preserve query order and explicit identifier tie breaks.
     return tuple(sorted(chunks, key=lambda chunk: (chunk.rank, chunk.chunk_id, chunk.section_id or "")))
 
 
@@ -246,11 +251,12 @@ class Retriever:
             raise ValueError("embedding model has no configured gateway")
         try:
             embedding = await self._embeddings[config.embedding_model.value].embed(query)
-        except InferenceFailure:
-            return RetrievalResult(sources=keys, embedding_failed=True)
+        except InferenceFailure as exc:
+            return RetrievalResult(sources=keys, embedding_failed=True, embedding_attempts=exc.attempts)
 
         per_source: dict[str, tuple[RetrievedChunk, ...]] = {}
         failures: list[RetrievalFailure] = []
+        failure_codes: set[str] = set()
 
         async def run(source: RetrievalSource, *, heading: bool) -> None:
             lane = "heading" if heading else "chunks"
@@ -275,6 +281,7 @@ class Retriever:
                 # Legacy unscoped _exec_de_table swallowed a failed lane as [],
                 # which still counts in the calibration denominator. Preserve it.
                 failures.append(RetrievalFailure(source.key, lane))
+                failure_codes.add(code)
                 per_source[name] = ()
 
         async with asyncio.TaskGroup() as tasks:
@@ -284,6 +291,8 @@ class Retriever:
                     tasks.create_task(run(source, heading=True))
         ordered_failures = tuple(sorted(failures, key=lambda failure: (failure.source, failure.lane)))
         if strict_table_errors and ordered_failures:
+            if failure_codes == {DatabaseUnavailable.code}:
+                raise ScopedRetrievalUnavailable(ordered_failures)
             raise ScopedRetrievalError(ordered_failures)
         return RetrievalResult(merge_sources(per_source), keys, ordered_failures, embedding)
 

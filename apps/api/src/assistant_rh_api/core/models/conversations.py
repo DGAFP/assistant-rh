@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Literal
 
 from assistant_rh_api.core.models.configuration import ConfigValues, JsonValue
 
@@ -12,6 +13,8 @@ class RunSource:
     title: str
     url: str
     document_id: str | None = None
+    publisher: str = ""
+    access: Literal["public", "authenticated"] = "authenticated"
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +45,7 @@ class ChatRun:
     sources: tuple[RunSource, ...] = ()
     events: tuple[TraceEvent, ...] = ()
     diagnostics: JsonValue = None
+    status: Literal["completed", "failed", "cancelled"] = "completed"
 
 
 @dataclass(frozen=True, slots=True)

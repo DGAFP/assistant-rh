@@ -46,6 +46,7 @@ notebooks/
 # Local files (backups, one-off scripts, generated artifacts)
 tmp/
 _local/
+tests/conformance/companions/**/m0b*.tar*
 *.dump
 GUIDES/
 
