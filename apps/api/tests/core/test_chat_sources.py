@@ -69,6 +69,24 @@ def test_source_metadata_cannot_inject_markdown_links_or_signed_public_urls():
     assert sources[0].url == "" and "<script>" not in markdown and "[evil](" not in markdown
 
 
+@pytest.mark.parametrize("field", ["document_title", "full_title", "title", "heading", "publisher"])
+def test_private_urls_in_source_labels_are_redacted_before_presentation(field):
+    public_url = "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI123"
+    label = f"Guide https://storage.invalid/file?X-Amz-Signature=PRIVATECAPABILITY et {public_url}"
+    changes = {"document_title": "", "metadata": {"doc_short_id": "guide"}}
+    if field in ("full_title", "title"):
+        changes["metadata"][field] = label
+    else:
+        changes[field] = label
+    sources = final_sources((item(**changes),))
+    source = sources[0]
+    assert source.doc_ref == "guide"
+    assert (source.publisher if field == "publisher" else source.title) == f"Guide [lien privé retiré] et {public_url}"
+    answer = with_sources("Réponse", sources)
+    assert "PRIVATECAPABILITY" not in answer
+    assert public_url.replace("_", r"\_") in answer  # Labels remain escaped Markdown text.
+
+
 def test_unknown_source_reference_is_stable_and_nonempty():
     unknown = item(metadata={})
     assert final_sources((unknown,))[0].doc_ref == final_sources((unknown,))[0].doc_ref
