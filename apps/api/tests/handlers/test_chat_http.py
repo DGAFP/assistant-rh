@@ -217,6 +217,31 @@ async def test_generated_private_url_is_redacted_in_http_response_and_persisted_
     assert "PRIVATE_CAPABILITY" not in json.dumps(json_data(run))
 
 
+async def test_private_url_in_retrieved_title_is_redacted_in_http_and_persisted_run(chat, monkeypatch):
+    client, runtime, *_ = chat
+    search = runtime.search.search
+
+    async def title_with_private_url(request):
+        chunks = await search(request)
+        return tuple(
+            replace(
+                chunk,
+                metadata={**chunk.metadata, "source_name": "Guide https://storage.invalid/file?X-Amz-Signature=PRIVATECAPABILITY"},
+            )
+            for chunk in chunks
+        )
+
+    monkeypatch.setattr(runtime.search, "search", title_with_private_url)
+    response = await client.post("/v1/chat/completions", json=BODY)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["x_assistant_rh"]["sources"][0]["title"] == "Guide [lien privé retiré]"
+    assert body["x_assistant_rh"]["sources"][0]["doc_ref"] == "guide-matte"
+    run = runtime.runs.rows[body["x_assistant_rh"]["turn_id"]]
+    assert run.answer == body["choices"][0]["message"]["content"]
+    assert "PRIVATECAPABILITY" not in response.text and "PRIVATECAPABILITY" not in json.dumps(json_data(run))
+
+
 async def test_announced_oversize_is_rejected_without_consuming_body(chat):
     client, runtime, *_ = chat
 
