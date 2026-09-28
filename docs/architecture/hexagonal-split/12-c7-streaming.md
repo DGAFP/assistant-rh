@@ -45,8 +45,14 @@ exception brute, DSN ou bearer ; aucune persistance n'est alors promise.
 
 Une déconnexion annule le travail encore annulable et ferme le stream provider.
 La finalisation du run `cancelled` est attendue, même sous annulations répétées.
-Si le commit de succès avait déjà commencé, il se termine : un run déjà commité
-n'est ni réécrit ni doublé par un run annulé. Cela ne promet pas que le client
+À expiration du délai DB, l'adaptateur ferme la connexion avant d'annuler puis
+de joindre l'I/O psycopg : une réponse SQL, `COMMIT` ou rollback perdue ne peut
+pas bloquer ce nettoyage. Le pool remplace la connexion abandonnée. Si ce délai
+expire après un `COMMIT` dont la réponse est perdue, le résultat reste incertain
+et aucune seconde écriture n'est tentée.
+Si le commit de succès avait déjà commencé, la déconnexion le laisse se terminer
+dans ce délai : un run déjà commité n'est ni réécrit ni doublé par un run annulé.
+Cela ne promet pas que le client
 absent reçoive la fin du flux. L'arrêt applicatif joint également le transport,
 même si l'envoi était bloqué, ainsi que les exécutions **non-stream**, avant la
 fermeture des ressources DB/provider. Le handler non-stream possède et attend
