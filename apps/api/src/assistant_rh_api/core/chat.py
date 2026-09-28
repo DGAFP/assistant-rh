@@ -64,8 +64,11 @@ class ChatService:
         # Once finalization starts, finish that transaction even on disconnect.
         # A committed completed run must never be replaced with a cancelled run.
         async def persist() -> None:
-            async with asyncio.timeout(self._finalization_timeout):
-                await self._runs.finalize(run)
+            try:
+                async with asyncio.timeout(self._finalization_timeout):
+                    await self._runs.finalize(run)
+            except TimeoutError:
+                raise FinalizationTimeout() from None
 
         saving = asyncio.create_task(persist(), name="chat-finalize-" + run.turn_id)
         while not saving.done():
@@ -73,8 +76,6 @@ class ChatService:
                 await asyncio.shield(saving)
             except asyncio.CancelledError:
                 continue
-            except TimeoutError:
-                raise FinalizationTimeout() from None
         saving.result()
 
     async def complete(

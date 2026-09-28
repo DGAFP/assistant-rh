@@ -107,12 +107,25 @@ async def test_storage_failure_never_returns_success():
     assert [r.status for r in runtime.runs.calls] == ["completed", "failed"]
 
 
-async def test_finalization_timeout_on_success_never_writes_a_second_record(caplog):
+@pytest.mark.parametrize("cancel_request", [False, True])
+async def test_finalization_timeout_on_success_never_writes_a_second_record(caplog, cancel_request):
     runtime = Runtime()
     runtime.runs.release = asyncio.Event()
     runtime.service._finalization_timeout = 0.02
+    finalize = runtime.runs.finalize
+
+    async def finalize_with_disconnect(run):
+        if cancel_request and run.status == "completed":
+            # Disconnect after the timeout, before shield delivers its exception.
+            saving = asyncio.current_task()
+            assert saving is not None
+            saving.add_done_callback(lambda _: working.cancel())
+        await finalize(run)
+
+    runtime.runs.finalize = finalize_with_disconnect
+    working = asyncio.create_task(runtime.service.complete(ChatInput("assistant-rh", "Question"), await auth()))
     with pytest.raises(ApplicationError):
-        await runtime.service.complete(ChatInput("assistant-rh", "Question"), await auth())
+        await working
     # The commit state is unknown: no "failed" record may race the possibly committed run.
     assert [r.status for r in runtime.runs.calls] == ["completed"] and not runtime.runs.rows
     assert "finalization timed out" in caplog.text
