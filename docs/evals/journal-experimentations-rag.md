@@ -1470,3 +1470,21 @@ avec les mêmes sources `e728708b…` que le préflight et les tests. Processus
 détaché, résultats privés dans `/tmp/assistant-rh-m1-20260928/paired/`.
 La première paire termine sans erreur d'item ni de juge. Décision en attente
 du panel complet ; CI Tests et CodeQL passent sur `4c7d293`.
+
+**Interruption technique** : #246/#247 finissent `failed` avec
+`ConnectionTimeout` lors de l'insertion d'un item, après une interruption
+prolongée de l'exécution locale. Respectivement 57 et 58 items sont enregistrés,
+sans erreur d'item ni de juge. Trois chats supplémentaires (deux historiques,
+un core) sont persistés sans item d'évaluation associé ; ils restent conservés
+et exclus de la comparaison qualité. Aucun de ces runs n'est déclaré complet.
+
+**Avant reprise** : les empreintes sources, panel et snapshot complet restent
+strictement identiques au préflight (`e728708b…`, `afd6cfc9…`, `092e0365…`).
+Compléter seulement les **41 questions historiques manquantes** sous le label
+`m1_local_resume_41_20260928` et les **40 questions core manquantes** sous
+`m1_local_resume_40_20260928`, avec `--runtime legacy` / `--runtime core`.
+Deux questions simultanées au maximum par moteur, mêmes modèles, trois votes,
+scope, configuration et corpus ; autorisation de la campagne complète inchangée.
+Les runs interrompus ne sont ni écrasés ni réétiquetés. La comparaison finale
+assemblera 98 IDs uniques par moteur, en conservant les run IDs d'origine et
+en distinguant les interruptions de l'évaluation qualité.

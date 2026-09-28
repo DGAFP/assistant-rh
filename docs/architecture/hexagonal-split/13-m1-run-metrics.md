@@ -64,13 +64,16 @@ Les tokens exacts, statuts et timings qui n'ont jamais été enregistrés dans l
 anciens runs ne peuvent pas être reconstitués fidèlement.
 Le logger historique peut aussi garder le provider/modèle configuré lors d'un
 court-circuit sans génération. Ces colonnes seules ne comptent donc pas les
-appels LLM ; l'API les laisse `null` dans ce cas.
+appels LLM ; l'API laisse le provider `null` et conserve le modèle demandé
+au catalogue dans ce cas.
 
 Les agrégats historiques d'évaluation `generator_albert_est` et
 `selector_albert_est` reposent sur des longueurs de texte, avec l'hypothèse d'un
-provider Albert gratuit. Le pont M1 core n'alimente pas tous ces champs : leurs
-zéros ne mesurent pas un usage nul. Ils sont exclus du rapport de comparaison
-M1 ; les compteurs réels des appels réussis se lisent dans les métriques des
+provider Albert gratuit. Le pont des panels du 21 septembre n'alimentait pas
+tous ces champs : leurs zéros ne mesuraient pas un usage nul. Le pont corrigé
+le 28 septembre fournit ces estimations, y compris les retries du sélecteur.
+Elles restent exclues du rapport de coût M1 ; les compteurs réels des appels
+réussis se lisent dans les métriques des
 traces, séparément de l'usage du juge. La consolidation du coût complet reste
 à faire avec D4/M2, notamment pour les appels interrompus et les fallbacks.
 
