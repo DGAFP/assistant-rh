@@ -222,8 +222,10 @@ fresh retained-runtime outputs and raw search/content/provider inputs together
 on one read-only staging snapshot. The current production bootstrap, ChatService
 and pipeline replay all seven scenarios offline: 27 executed stage outputs and
 seven business results match exactly. Five negative controls detect changes to
-inputs, expected outputs and port-call inventory. CI replays the published
-recording against the current checkout, including optimized Python validation.
+inputs, expected outputs and port-call inventory. The private CI job replays the
+unchanged recording against trusted dev/staging/main revisions, including
+optimized Python validation. The full-corpus archive is held in the private
+Hugging Face dataset; public PR jobs use only synthetic data.
 
 This fulfills the C6 assembly evidence through the explicitly versioned
 companion route. It does not recover the missing September 1 calls or refresh

@@ -15,6 +15,7 @@ from assistant_rh_api.core.chat import ChatService
 from assistant_rh_api.core.models.catalog import Model
 from assistant_rh_api.core.models.chat import Cancellation, ChatInput, PipelineEvent, PipelineResult
 from assistant_rh_api.core.models.conversations import ChatRun
+from assistant_rh_api.core.sources import with_sources
 from assistant_rh_api.handlers.errors import ChatUnavailable, error_response
 
 logger = logging.getLogger(__name__)
@@ -181,7 +182,7 @@ class ChatStreamResponse(Response):
 
     async def _send_success(self, send: Send, run: ChatRun, result: PipelineResult) -> None:
         # complete() returns only after the atomic run/source/trace commit.
-        suffix = run.answer[len(result.answer) :]
+        suffix = with_sources("", run.sources)
         for start in range(0, len(suffix), self.settings.delta_chars):
             await self._send(send, self.chunk({"content": suffix[start : start + self.settings.delta_chars]}))
         await self._send(send, self.chunk({}, finish="stop", x_assistant_rh=extension(run)))

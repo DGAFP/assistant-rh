@@ -92,6 +92,16 @@ un texte visible transmis à l'appelant interdit le fallback : un premier
 fragment entièrement blanc n'est pas du contenu et laisse le provider secondaire
 répondre.
 
+Avant publication SSE, le pipeline applique aussi la politique de réponse de
+`dev` : retrait des liens privés et du bloc sources inventé par le modèle,
+normalisation des retours à la ligne. Les fragments incomplets pouvant devenir
+une URL ou le marqueur sources restent en attente ; le reste est transmis
+progressivement. La limite de taille provider borne également cette attente.
+En cas d'échec, seul le texte déjà filtré entre dans la réponse partielle
+persistée. Les sources finales sont formatées séparément, sans découpage fondé
+sur la longueur du texte brut. Un contexte vide suit le refus déterministe
+dans les deux transports, même sans rejet explicite du sélecteur.
+
 La validation C6 qui refusait temporairement le booléen `stream=true` est
 remplacée par les tests positifs SDK/transport. Les refus de types invalides,
 les limites et les autres erreurs C1 restent vérifiés.

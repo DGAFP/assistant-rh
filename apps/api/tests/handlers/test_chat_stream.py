@@ -11,7 +11,8 @@ import pytest
 from assistant_rh_api.core.errors import InferenceFailure
 from assistant_rh_api.core.models.chat import ChatInput, PipelineEvent
 from assistant_rh_api.core.models.inference import Attempt, StreamCompleted, TextDelta, TokenUsage
-from assistant_rh_api.core.sources import SOURCES_MARKER
+from assistant_rh_api.core.sources import SOURCES_MARKER, with_sources
+from assistant_rh_api.db.run_store import json_data
 from assistant_rh_api.gateways.chat import ChatGateway
 from assistant_rh_api.handlers.app import create_app
 from assistant_rh_api.handlers.chat_stream import StreamSettings
@@ -286,7 +287,8 @@ async def test_disconnect_during_commit_finishes_one_successful_transaction(setu
 
 async def test_workers_and_backpressure_are_bounded(setup):
     app, runtime, issued = setup
-    runtime.llm.tokens = ["x" * 1000] * 30
+    # Complete the token so the answer policy can rule out a URL before sending.
+    runtime.llm.tokens = ["x" * 999 + " "] * 30
     blocked, release = asyncio.Event(), asyncio.Event()
 
     async def slow_send(message):
@@ -566,3 +568,37 @@ async def test_stage_notifications_do_not_consume_stream_queue_capacity(setup):
         # This test owns a response that was intentionally never served.
         app.state.stream_workers.active.discard(response)
         response.finished.set()
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+async def test_stream_redacts_private_links_and_uses_only_authoritative_sources(setup, newline):
+    app, runtime, issued = setup
+    public_url = "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI123"
+    raw = (
+        f"Réponse : [privé](https://storage.invalid/file?signature=PRIVATE_CAPABILITY)[public]({public_url})."
+        + SOURCES_MARKER.replace("\n", newline)
+        + "1. Invented source"
+    )
+    runtime.llm.tokens = list(raw)
+    exchange = Exchange(app, issued)
+    await exchange.finish()
+    run = next(iter(runtime.runs.rows.values()))
+    chunks = [json.loads(line[6:]) for line in exchange.body.splitlines() if line.startswith(b"data: {")]
+    answer = "".join(chunk["choices"][0]["delta"].get("content", "") for chunk in chunks)
+    assert answer == run.answer == with_sources(raw, run.sources)
+    assert public_url in answer and answer.count(SOURCES_MARKER) == 1
+    assert "Invented source" not in answer and "PRIVATE_CAPABILITY" not in exchange.body.decode()
+    assert "PRIVATE_CAPABILITY" not in json.dumps(json_data(run))
+    assert b"[DONE]" in exchange.body and not app.state.stream_workers.active
+
+
+async def test_failed_stream_never_delivers_or_persists_an_unfinished_private_link(setup):
+    app, runtime, issued = setup
+    runtime.llm.tokens = ["Réponse ", "https://storage.invalid/file?signature=PRIVATE_CAPABILITY"]
+    runtime.llm.stream_failure = InferenceFailure((), partial=True)
+    exchange = Exchange(app, issued)
+    await exchange.finish()
+    run = next(iter(runtime.runs.rows.values()))
+    assert run.status == "failed" and run.answer == "Réponse " and not run.sources
+    assert b"PRIVATE_CAPABILITY" not in exchange.body and "PRIVATE_CAPABILITY" not in json.dumps(json_data(run))
+    assert b'"code":"stream_error"' in exchange.body and b"[DONE]" not in exchange.body

@@ -52,6 +52,10 @@ class ScopedRetrievalError(ApplicationError):
         self.failures = failures
 
 
+class ScopedRetrievalUnavailable(ScopedRetrievalError, DatabaseUnavailable):
+    """Keep scoped diagnostics while preserving the database outage classification."""
+
+
 @dataclass(frozen=True, slots=True)
 class RetrievalResult:
     chunks: tuple[RetrievedChunk, ...] = ()
@@ -252,6 +256,7 @@ class Retriever:
 
         per_source: dict[str, tuple[RetrievedChunk, ...]] = {}
         failures: list[RetrievalFailure] = []
+        failure_codes: set[str] = set()
 
         async def run(source: RetrievalSource, *, heading: bool) -> None:
             lane = "heading" if heading else "chunks"
@@ -276,6 +281,7 @@ class Retriever:
                 # Legacy unscoped _exec_de_table swallowed a failed lane as [],
                 # which still counts in the calibration denominator. Preserve it.
                 failures.append(RetrievalFailure(source.key, lane))
+                failure_codes.add(code)
                 per_source[name] = ()
 
         async with asyncio.TaskGroup() as tasks:
@@ -285,6 +291,8 @@ class Retriever:
                     tasks.create_task(run(source, heading=True))
         ordered_failures = tuple(sorted(failures, key=lambda failure: (failure.source, failure.lane)))
         if strict_table_errors and ordered_failures:
+            if failure_codes == {DatabaseUnavailable.code}:
+                raise ScopedRetrievalUnavailable(ordered_failures)
             raise ScopedRetrievalError(ordered_failures)
         return RetrievalResult(merge_sources(per_source), keys, ordered_failures, embedding)
 

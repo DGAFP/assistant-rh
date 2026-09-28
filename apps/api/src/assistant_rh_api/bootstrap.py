@@ -4,6 +4,7 @@ from collections.abc import Mapping
 
 import httpx
 
+from assistant_rh_api.core.catalog import ModelService
 from assistant_rh_api.core.chat import ChatService
 from assistant_rh_api.core.models.rag_configuration import RAGConfig
 from assistant_rh_api.core.pipeline.pipeline import Pipeline
@@ -30,7 +31,12 @@ from assistant_rh_api.gateways.settings import Endpoint
 
 
 def create_chat_service(
-    database: Database, configurations: RAGConfigurationService, client: httpx.AsyncClient, environ: Mapping[str, str]
+    database: Database,
+    configurations: RAGConfigurationService,
+    client: httpx.AsyncClient,
+    environ: Mapping[str, str],
+    *,
+    models: ModelService | None = None,
 ) -> ChatService:
     environment = dict(environ)
     clock = SystemClock()
@@ -84,4 +90,6 @@ def create_chat_service(
             generator=Generator(config=config.generation, prompts=prompts, packaged_prompts=packaged, llm=generator_llm),
         )
 
-    return ChatService(configurations=configurations, pipeline_factory=pipeline, runs=ChatRunStore(database), clock=clock, ids=RunIds())
+    return ChatService(
+        configurations=configurations, pipeline_factory=pipeline, runs=ChatRunStore(database), clock=clock, ids=RunIds(), models=models
+    )

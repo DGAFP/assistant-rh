@@ -290,6 +290,7 @@ async def test_database_outage_is_reported_per_lane_or_raises_for_ministry(mode,
     else:
         with pytest.raises(ScopedRetrievalError) as caught:
             await retriever.retrieve("albert", config, selected_ministry=ministry)
+        assert isinstance(caught.value, DatabaseUnavailable)
         assert str(caught.value) == "scoped_retrieval_failed"
         assert [(failure.source, failure.lane) for failure in caught.value.failures] == [
             ("dgafp", "chunks"),
