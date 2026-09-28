@@ -11,7 +11,8 @@ import pytest
 from assistant_rh_api.core.errors import InferenceFailure
 from assistant_rh_api.core.models.chat import ChatInput, PipelineEvent
 from assistant_rh_api.core.models.inference import Attempt, StreamCompleted, TextDelta, TokenUsage
-from assistant_rh_api.core.sources import SOURCES_MARKER
+from assistant_rh_api.core.sources import SOURCES_MARKER, with_sources
+from assistant_rh_api.db.run_store import json_data
 from assistant_rh_api.gateways.chat import ChatGateway
 from assistant_rh_api.handlers.app import create_app
 from assistant_rh_api.handlers.chat_stream import StreamSettings
@@ -286,7 +287,8 @@ async def test_disconnect_during_commit_finishes_one_successful_transaction(setu
 
 async def test_workers_and_backpressure_are_bounded(setup):
     app, runtime, issued = setup
-    runtime.llm.tokens = ["x" * 1000] * 30
+    # Complete the token so the answer policy can rule out a URL before sending.
+    runtime.llm.tokens = ["x" * 999 + " "] * 30
     blocked, release = asyncio.Event(), asyncio.Event()
 
     async def slow_send(message):
@@ -373,6 +375,47 @@ async def test_short_circuits_stream_as_success_without_sources(setup, mode):
     assert run.status == "completed" and run.answer and not run.sources
     assert b"[DONE]" in exchange.body and b'"sources":[]' in exchange.body
     assert not any(c.messages[0].content.startswith("GENERATE") for c in runtime.llm.calls)
+
+
+async def test_server_cancellation_of_asgi_task_is_recorded_as_shutdown(setup):
+    app, runtime, issued = setup
+    runtime.llm.stream_release = asyncio.Event()
+    exchange = Exchange(app, issued)
+    await exchange.until(b'"content":"R')
+    exchange.task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await exchange.finish()
+    run = next(iter(runtime.runs.rows.values()))
+    assert run.status == "cancelled" and run.diagnostics["cancellation"] == "shutdown"
+    assert not app.state.stream_workers.active
+
+
+async def test_successful_stream_never_marks_its_run_cancelled(setup):
+    app, runtime, issued = setup
+    exchange = Exchange(app, issued)
+    await exchange.finish()
+    run = next(iter(runtime.runs.rows.values()))
+    assert run.status == "completed" and "cancellation" not in run.diagnostics
+    assert "cancellation" not in next(iter(runtime.runs.calls)).diagnostics
+
+
+async def test_shutdown_before_asgi_call_releases_admission_and_refuses_late_call(setup):
+    app, runtime, issued = setup
+    model = app.state.model_service.resolve("assistant-rh", issued.context.group)
+    response = app.state.stream_workers.response(runtime.service, ChatInput("assistant-rh", "Question"), issued.context, model, include_usage=False)
+    assert app.state.stream_workers.active == {response}
+    await asyncio.wait_for(app.state.stream_workers.aclose(), 0.5)
+    assert not app.state.stream_workers.active and not runtime.runs.calls
+    sent = []
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        sent.append(message)
+
+    await asyncio.wait_for(response({"type": "http"}, receive, send), 0.5)
+    assert sent[0]["status"] == 503 and not runtime.runs.calls and not runtime.llm.calls
 
 
 async def test_shutdown_cancels_active_stream_before_resources_close(setup):
@@ -525,3 +568,37 @@ async def test_stage_notifications_do_not_consume_stream_queue_capacity(setup):
         # This test owns a response that was intentionally never served.
         app.state.stream_workers.active.discard(response)
         response.finished.set()
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+async def test_stream_redacts_private_links_and_uses_only_authoritative_sources(setup, newline):
+    app, runtime, issued = setup
+    public_url = "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI123"
+    raw = (
+        f"Réponse : [privé](https://storage.invalid/file?signature=PRIVATE_CAPABILITY)[public]({public_url})."
+        + SOURCES_MARKER.replace("\n", newline)
+        + "1. Invented source"
+    )
+    runtime.llm.tokens = list(raw)
+    exchange = Exchange(app, issued)
+    await exchange.finish()
+    run = next(iter(runtime.runs.rows.values()))
+    chunks = [json.loads(line[6:]) for line in exchange.body.splitlines() if line.startswith(b"data: {")]
+    answer = "".join(chunk["choices"][0]["delta"].get("content", "") for chunk in chunks)
+    assert answer == run.answer == with_sources(raw, run.sources)
+    assert public_url in answer and answer.count(SOURCES_MARKER) == 1
+    assert "Invented source" not in answer and "PRIVATE_CAPABILITY" not in exchange.body.decode()
+    assert "PRIVATE_CAPABILITY" not in json.dumps(json_data(run))
+    assert b"[DONE]" in exchange.body and not app.state.stream_workers.active
+
+
+async def test_failed_stream_never_delivers_or_persists_an_unfinished_private_link(setup):
+    app, runtime, issued = setup
+    runtime.llm.tokens = ["Réponse ", "https://storage.invalid/file?signature=PRIVATE_CAPABILITY"]
+    runtime.llm.stream_failure = InferenceFailure((), partial=True)
+    exchange = Exchange(app, issued)
+    await exchange.finish()
+    run = next(iter(runtime.runs.rows.values()))
+    assert run.status == "failed" and run.answer == "Réponse " and not run.sources
+    assert b"PRIVATE_CAPABILITY" not in exchange.body and "PRIVATE_CAPABILITY" not in json.dumps(json_data(run))
+    assert b'"code":"stream_error"' in exchange.body and b"[DONE]" not in exchange.body

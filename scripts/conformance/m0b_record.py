@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 
 from scripts.conformance.m0b_legacy_inputs import attach_content, attach_search, recording_cursor
+from scripts.conformance.m0b_private import private_directory
 from scripts.conformance.m0b_replay import compare, run_candidate
 from scripts.conformance.m0b_values import (
     BASELINE,
@@ -234,8 +235,8 @@ async def record(output, env_file, limit=None):
     import psycopg
     from psycopg import sql
 
-    output.mkdir(parents=True, exist_ok=False)
-    os.chmod(output, 0o700)
+    require(not output.exists(), "Recording output must be a new private directory")
+    output = private_directory(output)
     logging.basicConfig(filename=output / "private-record.log", level=logging.WARNING)
     dsn, secrets = configure(env_file)
     from assistant_rh_api.db.search_catalog import search_catalog

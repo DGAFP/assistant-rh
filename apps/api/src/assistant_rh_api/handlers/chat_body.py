@@ -1,6 +1,7 @@
 """C1 bounded request validation, before model resolution or pipeline execution."""
 
 import json
+from dataclasses import dataclass
 
 from fastapi import Request
 
@@ -42,9 +43,30 @@ async def read_chat_body(request: Request) -> dict:
     return payload
 
 
+@dataclass(frozen=True, slots=True)
+class StreamRequest:
+    stream: bool = False
+    include_usage: bool = False
+
+
+def validate_stream(payload: dict) -> StreamRequest:
+    """Validated transport options; the handler never reads them from the raw payload."""
+    stream = payload.get("stream", False)
+    if type(stream) is not bool:
+        raise ChatRequestError("invalid_stream")
+    options = payload.get("stream_options")
+    if options is None:
+        return StreamRequest(stream)
+    if not stream or not isinstance(options, dict) or type(options.get("include_usage", False)) is not bool:
+        raise ChatRequestError("invalid_stream_options")
+    if set(options) - {"include_usage"}:
+        raise ChatRequestError("unsupported_stream_option")
+    return StreamRequest(stream, options.get("include_usage", False))
+
+
 def validate_chat(payload: dict) -> ChatInput:
     model = payload.get("model")
-    if not isinstance(model, str) or not model:
+    if not isinstance(model, str) or not model or "\x00" in model:
         raise ChatRequestError("invalid_request")
     stream = payload.get("stream", False)
     if type(stream) is not bool:
@@ -52,17 +74,12 @@ def validate_chat(payload: dict) -> ChatInput:
     n = payload.get("n", 1)
     if type(n) is not int or n != 1:
         raise ChatRequestError("unsupported_n")
-    options = payload.get("stream_options")
-    if options is not None:
-        if not stream or not isinstance(options, dict) or type(options.get("include_usage", False)) is not bool:
-            raise ChatRequestError("invalid_stream_options")
-        if set(options) - {"include_usage"}:
-            raise ChatRequestError("unsupported_stream_option")
+    validate_stream(payload)
     metadata = payload.get("metadata")
     if metadata is not None and not isinstance(metadata, dict):
         raise ChatRequestError("invalid_request")
     correlation = (metadata or {}).get("conversation_id")
-    if correlation is not None and not isinstance(correlation, str):
+    if correlation is not None and (not isinstance(correlation, str) or "\x00" in correlation):
         raise ChatRequestError("invalid_request")
     messages = _parse_messages(payload.get("messages"))
     question, history = _select_question_and_history(messages)
@@ -91,7 +108,7 @@ def _parse_messages(messages: object) -> list[tuple[str, str]]:
             if any(not isinstance(part, dict) or part.get("type") != "text" or not isinstance(part.get("text"), str) for part in content):
                 raise ChatRequestError("unsupported_content")
             content = "".join(part["text"] for part in content)
-        if not isinstance(content, str):
+        if not isinstance(content, str) or "\x00" in content:
             raise ChatRequestError("unsupported_content")
         try:
             size = len(content.encode("utf-8"))
@@ -107,6 +124,9 @@ def _select_question_and_history(parsed: list[tuple[str, str]]) -> tuple[str, tu
     last_user = next((index for index in range(len(parsed) - 1, -1, -1) if parsed[index][0] == "user"), None)
     if last_user is None:
         raise ChatRequestError("missing_user_message")
+    question = parsed[last_user][1]
+    if not question.strip():
+        raise ChatRequestError("empty_user_message")
     history: list[Message] = []
     pending = None
     for role, content in parsed[:last_user]:
@@ -115,4 +135,4 @@ def _select_question_and_history(parsed: list[tuple[str, str]]) -> tuple[str, tu
         elif role == "assistant" and pending is not None:
             history.extend((Message("user", pending), Message("assistant", content.split(SOURCES_MARKER, 1)[0])))
             pending = None
-    return parsed[last_user][1], tuple(history[-10:])
+    return question, tuple(history[-10:])

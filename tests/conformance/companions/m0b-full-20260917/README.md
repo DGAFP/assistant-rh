@@ -34,9 +34,17 @@ API du checkout exécuté. Les validations explicites du runner publié ont ét�
 durcies après capture pour rester actives sous `-O` et `-OO` ; les entrées et
 sorties enregistrées ne sont pas réécrites.
 
-L'archive contient seulement le manifeste, les sept cas et les sources de
-l'enregistreur/runtime. Les logs privés, `.env`, DSN et clés ne sont pas publiés.
-Les réponses incluent les extraits documentaires nécessaires à la conformance.
+L'archive contient le manifeste, les sept cas et les sources de
+l'enregistreur/runtime, ainsi que des textes du corpus à accès authentifié.
+Elle doit rester dans le dataset privé `DGAFP/assistant-rh-private-data`, sous
+`conformance/m0b-full-20260917/m0b-full-companion.tar.gz`, et hors du dépôt Git.
+Les octets de la preuve restent inchangés ; son empreinte publique dans
+`SHA256SUMS` permet de vérifier chaque téléchargement. Les rapports et cette
+documentation restent versionnés, sans les données du corpus.
+
+Le retrait de l'arbre courant n'efface pas les commits, PR et copies antérieurs.
+Leur purge doit faire l'objet d'une opération distincte et coordonnée ; cette
+modification ne prétend pas avoir supprimé les données de l'historique publié.
 
 ## Ce qui est comparé
 
@@ -116,15 +124,33 @@ Validation locale finale : **924 tests API réussis, aucun ignoré**, dont
 18 contrôles du compagnon et le test SQL indexé. Ruff, mypy (86 fichiers),
 les quatre contrats d'import et l'auto-check historique 7/56 passent.
 
-## Reproduire sans réseau
+## Accès privé et CI
+
+Le job `Private M0b conformance` de `CI Tests` exécute les 18 tests existants
+après les tests publics, sur les pushes vers `dev`, `staging`, `main` et les
+exécutions manuelles de ces branches. Il utilise `HF_CONFORMANCE_TOKEN` dans
+l'environnement `scaleway-staging`, dont les règles doivent rester limitées à
+ces trois branches. Limiter ce token au dataset privé ; un token en lecture
+seule est préférable puisque le job ne fait aucun upload.
+Le job échoue si l'accès ou la preuve manque ; il ne transforme pas une preuve
+absente en succès. Release Please attend le succès de `CI Tests` sur staging.
+
+Les workflows de PR exécutent les tests synthétiques et les contrôles de la
+frontière privée, sans télécharger le corpus ni recevoir son token. Un échec du
+replay privé affiche seulement un message générique dans les logs publics ;
+les détails se reproduisent localement sur la même révision. Aucun rapport
+contenant les entrées du corpus n'est publié comme artefact Actions.
+
+## Télécharger puis reproduire sans réseau
 
 Après installation des dépendances du dépôt :
 
 ```bash
 uv sync --all-packages --group dev --frozen
 M0B_REPLAY_DIR="$(mktemp -d)"
-tar -xzf tests/conformance/companions/m0b-full-20260917/m0b-full-companion.tar.gz \
-  -C "$M0B_REPLAY_DIR"
+# HF_TOKEN doit déjà être fourni par le gestionnaire de secrets local.
+export M0B_PRIVATE_ARCHIVE="$(uv run --no-sync python -m scripts.conformance.m0b_private "$M0B_REPLAY_DIR")"
+tar -xzf "$M0B_PRIVATE_ARCHIVE" -C "$M0B_REPLAY_DIR"
 PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.conformance.m0b_companion \
   replay "$M0B_REPLAY_DIR/m0b-full-companion/evidence"
 PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.conformance.m0b_companion \
@@ -135,5 +161,7 @@ uv run --no-sync python -m pytest apps/api/tests/core/test_m0b_companion.py -q
 Un nouvel enregistrement utilise `record /chemin/neuf --env-file /chemin/.env`
 avec `SCW_POSTGRES_DSN_STAGING`, `SCW_POSTGRES_DSN_PROD` distincts et les clés
 providers. Cette commande appelle réellement staging et les providers. Elle
-refuse de réutiliser un répertoire existant ; `--limit` est réservé aux essais
+refuse tout emplacement dans un checkout Git, y compris via un lien symbolique,
+et crée un répertoire privé (0700). Elle refuse de réutiliser un répertoire
+existant ; `--limit` est réservé aux essais
 partiels, qui ne peuvent pas passer le gate des sept scénarios.

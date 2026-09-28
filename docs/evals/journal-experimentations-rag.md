@@ -1417,3 +1417,31 @@ premier token depuis le début de génération `298 ms` ; les colonnes SQL
 modèle `deepseek-v4-flash`, usage déclaré : 2 545 tokens d'entrée et 330 de
 sortie, aucun fallback. Les valeurs JSON et SQL concordent.
 Artefact privé : `_local/m1-20260921/stream-metrics.json`.
+
+## M1 — `m1_local_paired_98_20260928` (28/09/2026, préparé)
+
+**Avant lancement** : nouvelle comparaison appariée des 98 questions M0a,
+après intégration de C7 et des corrections de `dev` (`7a1e5ac`) dans #580.
+Le runner joint désormais tous les bras avant finalisation et attend la
+persistance des annulations ; les estimations de volume core sont complétées.
+Les protections de contexte vide, sources privées et pannes DB de `dev`
+sont conservées. Les résultats du 21 septembre ne sont pas réattribués.
+
+Même clone PostgreSQL local `assistant_rh_rag_local` sur `127.0.0.1:55434`,
+pgvector 0.8.6, 4 882 documents et 10 397 sections. Les écritures d'évaluation,
+chats et traces sont locales ; la base synthétique des tests utilise le port
+55466. Les appels de génération, sélection et jugement utilisent les providers
+Albert/Scaleway déjà configurés. Aucun changement de configuration distante.
+
+Configuration attendue `51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce`,
+générateur Albert `deepseek-v4-flash`, selector Albert `openweight-large`, juge
+Scaleway `mistral-medium-3.5-128b`, majorité de trois votes, sans RAGAS,
+scope `per-question`, deux paires simultanées au maximum. Les deux bras
+s'exécutent sur le même code et snapshot, sans réglage qualité intermédiaire.
+Tolérances M0a conservées : baisse maximale de 0,05 sur `judge_pass_rate`
+et `doc_recall_avg`, contre le témoin apparié et #240 ; lecture par corpus,
+avec attention aux q4/q33 MATTE et aux questions déjà taguées instables.
+
+Les empreintes du code, du panel, de la configuration, des prompts et du corpus
+seront vérifiées avant et après. Artefacts privés hors Git dans
+`/tmp/assistant-rh-m1-20260928/`. Run IDs, résultats et décision à compléter.

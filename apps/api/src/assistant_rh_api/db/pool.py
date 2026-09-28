@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Self
 
 import psycopg
+from psycopg.abc import PQGen
 from psycopg_pool import AsyncConnectionPool
 
 from assistant_rh_api.db.dsn import DatabaseSettings, validate_libpq_environment
@@ -14,6 +15,19 @@ from assistant_rh_api.db.errors import translate_database_errors
 
 
 class _SafeConnection(psycopg.AsyncConnection):
+    async def wait[T](self, gen: PQGen[T], interval: float = 0.1) -> T:
+        # psycopg's cancellation handshake may wait forever for a lost reply.
+        # Close the socket before cancelling driver I/O, then join it so the
+        # original cancellation/timeout propagates and the pool drops the lease.
+        operation = asyncio.create_task(super().wait(gen, interval))
+        try:
+            return await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            await self.close()
+            operation.cancel()
+            await asyncio.gather(operation, return_exceptions=True)
+            raise
+
     @classmethod
     async def connect(cls, *args: Any, **kwargs: Any) -> Self:
         # Pool reconnect workers log connection errors before our public boundary.
@@ -100,4 +114,10 @@ class Database:
                         "SELECT set_config('statement_timeout', %s, true)",
                         (str(self._settings.statement_timeout_ms),),
                     )
-                    yield connection
+                    try:
+                        yield connection
+                    except asyncio.CancelledError:
+                        # Cancellation between SQL calls must not start an
+                        # unbounded network rollback after its deadline expired.
+                        await connection.close()
+                        raise

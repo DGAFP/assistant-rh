@@ -178,7 +178,7 @@ migration distante ou GO M1 n'est réalisé.
 
 ## Compagnon M0b intégral du 17 septembre 2026
 
-Le [bundle versionné](../../../tests/conformance/companions/m0b-full-20260917/README.md)
+Le [bundle privé à empreinte versionnée](../../../tests/conformance/companions/m0b-full-20260917/README.md)
 enregistre les sept scénarios avec staging en lecture seule et les providers
 réels autorisés. Le rejeu hors réseau passe par `bootstrap.create_chat_service`,
 `ChatService` et les six étapes, avec réponses des ports enregistrées :

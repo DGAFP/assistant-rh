@@ -20,11 +20,14 @@ from assistant_rh_rag_pipeline.models import (
     RetrievedChunk,
     _chunk_log_dict,
     context_item_document_id,
+    estimate_tokens,
     section_document_id,
 )
 
 from scripts.conformance.m0b_values import legacy_sources, plain
 from src.ui.chatbot_sources import context_items_to_v1_chunks
+
+CORE_TIMEOUT_SECONDS = 300
 
 
 @dataclass
@@ -57,7 +60,12 @@ def core_eval_result(query, result, run, context):
             current["chunks_before_rerank"] = plain(value.diagnostics.chunks_before_rerank)
             current["chunks_after_rerank"] = plain(value.diagnostics.chunks_after_rerank)
         elif stage == "context-selector":
-            current["selector"] = {"decisions": plain(value.diagnostics.decisions), "status": value.diagnostics.status}
+            current["selector"] = {
+                "decisions": plain(value.diagnostics.decisions),
+                "status": value.diagnostics.status,
+                "prompt_chars": value.diagnostics.prompt_chars,
+                "response_chars": len(value.diagnostics.raw_response),
+            }
         elif stage == "context-builder":
             current["context_items_ref"] = [
                 {"section_id": item.section_id, "doc_id": context_item_document_id(ContextItem(**plain(item)))} for item in value.items
@@ -74,9 +82,11 @@ def core_eval_result(query, result, run, context):
             "generator_provider_used": outcome.provider if outcome else None,
             "generator_model_used": outcome.model if outcome else None,
             "generator_used_fallback": bool(generation and generation.diagnostics.fallback_count),
+            "selector_prompt_chars": sum(attempt.get("selector", {}).get("prompt_chars", 0) for attempt in attempts.values()),
+            "selector_response_chars": sum(attempt.get("selector", {}).get("response_chars", 0) for attempt in attempts.values()),
         }
     )
-    timing = {}
+    timing = {"response_length_tokens": estimate_tokens(result.answer)} if generation else {}
     for event in run.events:
         timing[event.stage + "_ms"] = timing.get(event.stage + "_ms", 0) + event.duration_ms
     return PipelineResult(
@@ -95,12 +105,11 @@ class CoreEvaluator:
         self.last_full_prompt = self.last_system_prompt = ""
 
     def run_with_trace(self, query, *, retrieval_scope):
-        future = asyncio.run_coroutine_threadsafe(self.run(query, retrieval_scope.selected_ministry), self.loop)
-        try:
-            return future.result(timeout=300)
-        except TimeoutError:
-            future.cancel()
-            raise
+        async def timed_run():
+            # wait_for joins cancellation, including ChatService's finalization.
+            return await asyncio.wait_for(self.run(query, retrieval_scope.selected_ministry), timeout=CORE_TIMEOUT_SECONDS)
+
+        return asyncio.run_coroutine_threadsafe(timed_run(), self.loop).result()
 
     async def run(self, query, ministry):
         base = self.service.new_context()

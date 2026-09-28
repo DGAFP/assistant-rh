@@ -45,8 +45,14 @@ exception brute, DSN ou bearer ; aucune persistance n'est alors promise.
 
 Une déconnexion annule le travail encore annulable et ferme le stream provider.
 La finalisation du run `cancelled` est attendue, même sous annulations répétées.
-Si le commit de succès avait déjà commencé, il se termine : un run déjà commité
-n'est ni réécrit ni doublé par un run annulé. Cela ne promet pas que le client
+À expiration du délai DB, l'adaptateur ferme la connexion avant d'annuler puis
+de joindre l'I/O psycopg : une réponse SQL, `COMMIT` ou rollback perdue ne peut
+pas bloquer ce nettoyage. Le pool remplace la connexion abandonnée. Si ce délai
+expire après un `COMMIT` dont la réponse est perdue, le résultat reste incertain
+et aucune seconde écriture n'est tentée.
+Si le commit de succès avait déjà commencé, la déconnexion le laisse se terminer
+dans ce délai : un run déjà commité n'est ni réécrit ni doublé par un run annulé.
+Cela ne promet pas que le client
 absent reçoive la fin du flux. L'arrêt applicatif joint également le transport,
 même si l'envoi était bloqué, ainsi que les exécutions **non-stream**, avant la
 fermeture des ressources DB/provider. Le handler non-stream possède et attend
@@ -81,8 +87,20 @@ inchangé ; aucune égalité de réponses stochastiques live n'est inférée.
 Le gateway normalise les bords du texte streamé comme le `.strip()` du
 non-stream, avant d'émettre les deltas. Les blancs initiaux sont ignorés ; les
 blancs terminaux sont retenus jusqu'au fragment suivant, puis conservés s'ils
-s'avèrent internes au texte. Le texte utile reste émis progressivement. Cette
-normalisation ne change pas l'interdiction de fallback après du contenu provider.
+s'avèrent internes au texte. Le texte utile reste émis progressivement. Seul
+un texte visible transmis à l'appelant interdit le fallback : un premier
+fragment entièrement blanc n'est pas du contenu et laisse le provider secondaire
+répondre.
+
+Avant publication SSE, le pipeline applique aussi la politique de réponse de
+`dev` : retrait des liens privés et du bloc sources inventé par le modèle,
+normalisation des retours à la ligne. Les fragments incomplets pouvant devenir
+une URL ou le marqueur sources restent en attente ; le reste est transmis
+progressivement. La limite de taille provider borne également cette attente.
+En cas d'échec, seul le texte déjà filtré entre dans la réponse partielle
+persistée. Les sources finales sont formatées séparément, sans découpage fondé
+sur la longueur du texte brut. Un contexte vide suit le refus déterministe
+dans les deux transports, même sans rejet explicite du sélecteur.
 
 La validation C6 qui refusait temporairement le booléen `stream=true` est
 remplacée par les tests positifs SDK/transport. Les refus de types invalides,
@@ -216,3 +234,18 @@ contrats d'import passent. Aucun test existant n'est supprimé ou assoupli.
 Cette correction ne relance pas les providers externes et ne constitue pas une
 nouvelle mesure goldset. Le commit M1 mesuré et ses résultats restent identifiés
 séparément ; le proxy et le déploiement restent à vérifier en D4/M2.
+
+### Corrections après revue du 23 septembre 2026
+
+- Un dépassement du délai de finalisation d'un run réussi ne provoque plus une
+  seconde insertion « failed » : l'état du commit étant inconnu, le core
+  journalise et renvoie l'erreur applicative sans écrire de second enregistrement.
+- Une réponse admise mais jamais servie par ASGI libère son slot à l'arrêt et
+  refuse en 503 tout appel tardif ; `aclose()` ne peut plus attendre indéfiniment.
+- La raison d'annulation distingue `disconnect`, `send_failed` et `shutdown`
+  (annulation de la tâche ASGI par le serveur) ; un flux terminé avec succès
+  n'est plus marqué après coup.
+- Le fallback n'est interdit qu'après du texte visible ; un premier fragment
+  entièrement blanc ne compte pas comme contenu provider.
+- Le handler lit `stream`/`stream_options` depuis la validation, plus depuis le
+  JSON brut.

@@ -4,8 +4,12 @@ from dataclasses import replace
 import pytest
 from assistant_rh_api.core.errors import ApplicationError, DatabaseFailure, InferenceFailure
 from assistant_rh_api.core.models.chat import Cancellation, ChatInput
+from assistant_rh_api.core.models.context import ContextBuildDiagnostics, ContextBuildResult
 from assistant_rh_api.core.models.inference import Attempt
+from assistant_rh_api.core.pipeline.steps.context_builder import ContextBuilder
+from assistant_rh_api.core.prompt_policy import NO_ANSWER
 from assistant_rh_api.core.sources import SOURCES_MARKER
+from assistant_rh_api.db.run_store import json_data
 
 from apps.api.tests.auth_fakes import service
 from apps.api.tests.chat_fakes import Runtime
@@ -43,11 +47,12 @@ async def test_real_pipeline_all_stages_are_persisted_before_return():
 
 async def test_concurrent_ministries_do_not_share_prompt_source_result_or_traces():
     runtime = Runtime()
-    one = await auth()
+    one = replace(await auth(), audit_session_hash="first-audit-pseudonym")
     two = replace(
         one,
         group=replace(one.group, slug="second", allowed_ministries=("mi",), default_ministry="mi"),
         session=replace(one.session, group_slug="second", token_hash="second-hash"),
+        audit_session_hash="second-audit-pseudonym",
     )
     results = await asyncio.gather(
         runtime.service.complete(ChatInput("assistant-rh", "Question MATTE"), one),
@@ -63,6 +68,28 @@ async def test_concurrent_ministries_do_not_share_prompt_source_result_or_traces
         assert "GENERATE " + expected.upper() in prompt
         assert "GENERATE " + other.upper() not in prompt
     assert runs[0].group_slug != runs[1].group_slug and runs[0].session_hash != runs[1].session_hash
+
+
+@pytest.mark.parametrize("status", ["completed", "failed", "cancelled"])
+@pytest.mark.parametrize("audit_hash", ["", "separate-audit-pseudonym"])
+async def test_runs_never_persist_the_authentication_digest(status, audit_hash):
+    runtime = Runtime()
+    context = replace(await auth(), audit_session_hash=audit_hash)
+    cancellation = Cancellation()
+    if status == "failed":
+        runtime.llm.failure = RuntimeError("synthetic failure")
+    elif status == "cancelled":
+        cancellation.cancel()
+    request = ChatInput("assistant-rh", "Question RH")
+    if status == "completed":
+        await runtime.service.complete(request, context)
+    else:
+        with pytest.raises(ApplicationError if status == "failed" else asyncio.CancelledError):
+            await runtime.service.complete(request, context, cancellation=cancellation)
+    run = next(iter(runtime.runs.rows.values()))
+    assert run.status == status and run.session_hash == audit_hash
+    assert json_data(run)["session_hash"] == audit_hash
+    assert context.session.token_hash not in str(json_data(run))
 
 
 async def test_direct_response_skips_corpus_and_no_answer_preserves_retry_rules():
@@ -105,6 +132,30 @@ async def test_storage_failure_never_returns_success():
         await runtime.service.complete(ChatInput("assistant-rh", "Question"), await auth())
     assert not runtime.runs.rows
     assert [r.status for r in runtime.runs.calls] == ["completed", "failed"]
+
+
+@pytest.mark.parametrize("cancel_request", [False, True])
+async def test_finalization_timeout_on_success_never_writes_a_second_record(caplog, cancel_request):
+    runtime = Runtime()
+    runtime.runs.release = asyncio.Event()
+    runtime.service._finalization_timeout = 0.02
+    finalize = runtime.runs.finalize
+
+    async def finalize_with_disconnect(run):
+        if cancel_request and run.status == "completed":
+            # Disconnect after the timeout, before shield delivers its exception.
+            saving = asyncio.current_task()
+            assert saving is not None
+            saving.add_done_callback(lambda _: working.cancel())
+        await finalize(run)
+
+    runtime.runs.finalize = finalize_with_disconnect
+    working = asyncio.create_task(runtime.service.complete(ChatInput("assistant-rh", "Question"), await auth()))
+    with pytest.raises(ApplicationError):
+        await working
+    # The commit state is unknown: no "failed" record may race the possibly committed run.
+    assert [r.status for r in runtime.runs.calls] == ["completed"] and not runtime.runs.rows
+    assert "finalization timed out" in caplog.text
 
 
 async def test_cooperative_cancellation_and_stage_events_prepare_c7():
@@ -183,6 +234,29 @@ async def test_retry_empty_candidates_keeps_initial_no_answer():
 
     run, _ = await runtime.service.complete(ChatInput("assistant-rh", "Question"), await auth(), sink=Sink())
     assert "pas trouvé" in run.answer and not run.sources and run.diagnostics["selector_all_rejected"]
+
+
+@pytest.mark.parametrize("empty_at", ["retrieval", "context_builder"])
+@pytest.mark.parametrize("selector_enabled", [False, True])
+@pytest.mark.parametrize("stream", [False, True])
+async def test_empty_final_context_never_calls_generation_without_explicit_rejection(monkeypatch, empty_at, selector_enabled, stream):
+    runtime = Runtime(v3_enable_selector=selector_enabled)
+    if empty_at == "retrieval":
+        runtime.search.empty = True
+    else:
+
+        async def empty_build(self, sections):
+            assert sections
+            return ContextBuildResult(items=(), resolved_refs={}, diagnostics=ContextBuildDiagnostics())
+
+        monkeypatch.setattr(ContextBuilder, "build", empty_build)
+    run, result = await runtime.service.complete(ChatInput("assistant-rh", "Question"), await auth(), stream=stream)
+    assert run.status == "completed" and run.answer == NO_ANSWER and not run.sources
+    assert result.usage.total_tokens == 0
+    assert runtime.runs.rows[run.turn_id] is run
+    assert not run.diagnostics["selector_all_rejected"] and not run.diagnostics["selector_retry_triggered"]
+    assert run.events[-1].output_ref["diagnostics"]["status"] == "no_answer"
+    assert not any(request.messages[0].content.startswith("GENERATE") for request in runtime.llm.calls)
 
 
 async def test_failure_observer_is_not_allowed_to_mask_error():

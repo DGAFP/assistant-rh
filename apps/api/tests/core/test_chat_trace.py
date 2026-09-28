@@ -16,22 +16,24 @@ PUBLIC_URL = "https://www.service-public.gouv.fr/particuliers/vosdroits/F1"
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("fail_generation", [False, True])
-async def test_persisted_run_redacts_urls_without_changing_provider_input(fail_generation):
+@pytest.mark.parametrize("url", [SIGNED_URL, "s3://private/synthetic-secret", "//storage.invalid/synthetic-secret", SIGNED_URL.removeprefix("https://")])
+async def test_persisted_run_redacts_urls_without_changing_provider_input(fail_generation, url):
     runtime = Runtime()
     search = runtime.search.search
     complete = runtime.llm.complete
-    content = f"Texte du guide : [document]({SIGNED_URL})\n" + "x" * 10_000 + " FIN_DU_DOCUMENT"
+    content = f"Texte du guide : [document]({url})\n" + "x" * 10_000 + " FIN_DU_DOCUMENT"
 
     async def documents(request):
         chunks = await search(request)
         return tuple(
-            replace(chunk, text=content, metadata={**chunk.metadata, "doc_url": SIGNED_URL, "future_secret": "DO_NOT_CAPTURE"}) for chunk in chunks
+            replace(chunk, text=content, metadata={**chunk.metadata, "doc_url": url, "future_secret": "DO_NOT_CAPTURE"}) for chunk in chunks
         )
 
     async def generate(request):
         if fail_generation and request.messages[0].content.startswith("GENERATE"):
             raise RuntimeError("provider details must not be logged")
-        return await complete(request)
+        result = await complete(request)
+        return replace(result, text=f"Consulter {url}.") if request.messages[0].content.startswith("GENERATE") else result
 
     runtime.search.search = documents
     runtime.llm.complete = generate
@@ -42,7 +44,7 @@ async def test_persisted_run_redacts_urls_without_changing_provider_input(fail_g
     else:
         await runtime.service.complete(ChatInput("assistant-rh", "Question"), auth)
         generation_prompt = runtime.llm.calls[-1].messages[-1].content
-        assert SIGNED_URL in generation_prompt and "FIN_DU_DOCUMENT" in generation_prompt
+        assert url in generation_prompt and "FIN_DU_DOCUMENT" in generation_prompt
 
     run = next(iter(runtime.runs.rows.values()))
     persisted = json.dumps(json_data(run))

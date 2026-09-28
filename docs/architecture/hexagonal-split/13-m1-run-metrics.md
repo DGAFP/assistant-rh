@@ -170,3 +170,27 @@ Le panel live #243/#245 reste une mesure de `17c1955`, antérieure à cette
 correction de transport. Aucune nouvelle campagne provider n'est lancée et
 ses résultats ne sont pas réattribués au nouveau commit. La réserve MATTE et
 les validations du proxy en D4/M2 restent ouvertes.
+
+## Reprise sur dev après intégration C7 — 28 septembre 2026
+
+La PR #580 intègre `dev` à `7a1e5ac`, comprenant C7/#579 et les corrections
+des pannes DB, des sources privées, du no-answer sur contexte vide et de
+l'identité de session d'audit. La résolution conserve ces comportements et
+leurs tests ; le diff restant porte sur M1.
+
+Le runner joint les deux bras, y compris les threads historiques, avant de
+propager une erreur ou une annulation et de fermer ses ressources. Le délai
+du core s'applique dans la boucle asyncio et attend la persistance du run
+annulé. Les volumes sélecteur, retries compris, et l'estimation de longueur
+de réponse alimentent désormais les champs attendus par l'évaluateur.
+Ces estimations restent distinctes des compteurs d'usage réels des traces.
+
+Validation : **1 257 tests API réussis, aucun ignoré**, sur PostgreSQL/pgvector
+local jetable, y compris les 18 tests du compagnon privé M0b (7 scénarios
+exacts et cinq contrôles négatifs). **1 574 tests historiques réussis,
+46 ignorés**, dont les huit tests du pont M1 ; Ruff, mypy (89 fichiers) et
+les quatre contrats d'import passent.
+
+Le GO du 21 septembre reste attaché à son code mesuré. Une nouvelle paire
+live est préparée sur les 98 mêmes questions et le même clone ; sa décision
+sera consignée après comparaison aux tolérances M0a. Aucun déploiement.

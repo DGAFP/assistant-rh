@@ -20,9 +20,17 @@ goldsets/
   priority_contractuels_v1/
     priority_contractuels_v1.enriched.csv
     priority_contractuels_v1.source_links.csv
+conformance/
+  m0b-full-20260917/
+    m0b-full-companion.tar.gz
 ```
 
 The repo must be private. Give read access to humans and deploy tokens that need the admin evaluation pages.
+
+The conformance archive retains real authenticated-corpus inputs. Keep it out
+of Git and public CI artifacts. Its public SHA-256 checksum and the download,
+offline replay and trusted-branch CI procedure are documented in the
+[M0b companion](../../tests/conformance/companions/m0b-full-20260917/README.md).
 
 ## Environment variables
 

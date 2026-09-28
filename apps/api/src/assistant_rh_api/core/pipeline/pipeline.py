@@ -28,6 +28,7 @@ from assistant_rh_api.core.pipeline.trace_projection import (
     retrieval_trace,
     selection_trace,
 )
+from assistant_rh_api.core.sources import AnswerStream, with_sources
 
 
 class Pipeline:
@@ -60,7 +61,7 @@ class Pipeline:
         query = processing.result
         if not query.should_proceed:
             if stream:
-                await context.delta(query.direct_response or "")
+                await context.delta(with_sources(query.direct_response or "", ()))
             return PipelineResult(answer=query.direct_response or "")
 
         config = self._config.retrieval
@@ -90,9 +91,11 @@ class Pipeline:
 
         async def generate() -> GenerationResult:
             context.generation_started()
+            # No candidates or an empty build require no-answer in both transports.
+            all_rejected = rejected or not built.items
             if not stream:
                 generated = await self._generator.generate(
-                    query.query_for_retrieval, built.items, ministry, today=context.today, all_rejected=rejected
+                    query.query_for_retrieval, built.items, ministry, today=context.today, all_rejected=all_rejected
                 )
                 # Without deltas, the whole answer is the first token.
                 if generated.answer:
@@ -100,15 +103,17 @@ class Pipeline:
                 return generated
             # C1 keeps API generation inputs identical across transports.
             # C6 passes history only to the query processor.
+            answer = AnswerStream()
             async with self._generator.stream(
-                query.query_for_retrieval, built.items, ministry=ministry, today=context.today, all_rejected=rejected
+                query.query_for_retrieval, built.items, ministry=ministry, today=context.today, all_rejected=all_rejected
             ) as events:
                 async for event in events:
-                    context.cancellation.checkpoint()
                     if isinstance(event, TextDelta):
-                        await context.delta(event.text)
+                        await context.delta(answer.feed(event.text))
                     else:
+                        await context.delta(answer.feed("", final=True))
                         return event
+            # Generator.stream() raises before exhausting; this guards a port that ends silently.
             raise InferenceFailure((), partial=bool(context.partial_answer))
 
         generated = await context.stage("generator", generate, project=generation_trace, measure=generation_metrics)

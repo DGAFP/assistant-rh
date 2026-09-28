@@ -315,14 +315,19 @@ class TestUnifiedFeedbackExport:
 
 class TestDashboardSource:
     def test_grist_keeps_orphan_feedbacks_and_falls_back_to_run_content(self):
-        source = _dashboard_source()
+        from assistant_rh_rag_pipeline.feedback_source import FEEDBACK_SELECT
+
+        assert 'query = FEEDBACK_SELECT + " ORDER BY f.ts DESC, f.id DESC"' in _dashboard_source()
+        source = FEEDBACK_SELECT
         assert "LEFT JOIN chat_runs r ON f.turn_id = r.turn_id" in source
         assert "COALESCE(NULLIF(f.question, ''), r.question) AS question" in source
         assert "COALESCE(NULLIF(f.answer, ''), r.answer) AS answer" in source
-        assert "render_feedback_grist_sync(df_f, df_feedbacks_raw, applied_period_caption)" in source
+        assert "render_feedback_grist_sync(df_f, df_feedbacks_raw, applied_period_caption)" in _dashboard_source()
 
     def test_feedback_query_selects_ministry_via_run_join(self):
-        assert "r.selected_ministry" in _dashboard_source()
+        from assistant_rh_rag_pipeline.feedback_source import FEEDBACK_SELECT
+
+        assert "r.selected_ministry" in FEEDBACK_SELECT
 
     def test_questions_query_selects_ministry(self):
         source = _dashboard_source()

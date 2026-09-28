@@ -18,6 +18,22 @@ from psycopg.conninfo import conninfo_to_dict
 ROOT = Path(__file__).resolve().parents[2]
 
 
+async def join_evaluations(*operations):
+    """Threads cannot be cancelled: join every arm before releasing its resources."""
+    pending = asyncio.gather(*operations, return_exceptions=True)
+    cancelled = False
+    while not pending.done():
+        try:
+            await asyncio.shield(pending)
+        except asyncio.CancelledError:
+            cancelled = True
+    if cancelled:
+        raise asyncio.CancelledError()
+    for outcome in pending.result():
+        if isinstance(outcome, BaseException):
+            raise outcome
+
+
 def load_environment(local_env, providers_env):
     local = {key: value for key, value in dotenv_values(local_env).items() if value is not None}
     target = conninfo_to_dict(local["SCW_POSTGRES_DSN"])
@@ -149,7 +165,7 @@ async def evaluate(args, environment):
                     if "core" in run_ids:
                         evaluators["core"] = CoreEvaluator(service, loop, args.run_label)
 
-                    async def run_one(runtime):
+                    async def evaluate_one(runtime):
                         item = await asyncio.to_thread(
                             quality.run_question_with_retry,
                             pipe=evaluators[runtime],
@@ -183,17 +199,17 @@ async def evaluate(args, environment):
                             flush=True,
                         )
 
-                    try:
-                        await asyncio.gather(*(run_one(runtime) for runtime in run_ids))
-                    except BaseException:
-                        failed.set()
-                        raise
+                    async def run_one(runtime):
+                        try:
+                            await evaluate_one(runtime)
+                        except BaseException:
+                            failed.set()
+                            raise
 
-            outcomes = await asyncio.gather(*(run_pair(question) for question in questions), return_exceptions=True)
-            failures = [outcome for outcome in outcomes if isinstance(outcome, BaseException)]
-            if failures:
-                raise failures[0]
-    except Exception as exc:
+                    await join_evaluations(*(run_one(runtime) for runtime in run_ids))
+
+            await join_evaluations(*(run_pair(question) for question in questions))
+    except BaseException as exc:
         fatal = type(exc).__name__
         raise
     finally:

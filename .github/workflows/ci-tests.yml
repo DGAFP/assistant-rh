@@ -49,7 +49,8 @@ jobs:
         run: uv run --no-sync lint-imports --config apps/api/pyproject.toml --no-cache
 
       - name: Run API tests on synthetic Postgres
-        run: uv run --no-sync python -m pytest apps/api/tests -v
+        # Real-corpus replay runs separately on trusted branch revisions below.
+        run: uv run --no-sync python -m pytest apps/api/tests --ignore=apps/api/tests/core/test_m0b_companion.py -v
 
       - name: Run tests
         run: uv run --no-sync python -m pytest tests/ --ignore=tests/archive -v
@@ -77,3 +78,51 @@ jobs:
           docker compose --project-directory . -f docker/api/compose.yml up --build -d --wait
           smoke_endpoint=$(docker compose --project-directory . -f docker/api/compose.yml port api 8000)
           API_PORT="${smoke_endpoint##*:}" uv run --no-sync python docker/api/smoke-auth.py
+
+  private-conformance:
+    name: Private M0b conformance
+    needs: tests
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      contains(fromJSON('["dev", "staging", "main"]'), github.ref_name)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # This existing environment only permits dev, staging and main.
+    # PR code must never receive the private corpus or its download token.
+    environment: scaleway-staging
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted branch revision
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync --all-packages --group dev --frozen
+
+      - name: Download checksum-verified private evidence
+        env:
+          HF_TOKEN: ${{ secrets.HF_CONFORMANCE_TOKEN }}
+        run: |
+          if ! archive=$(uv run --no-sync python -m scripts.conformance.m0b_private "$RUNNER_TEMP/m0b-private" \
+            2> "$RUNNER_TEMP/m0b-download.log"); then
+            echo "::error::Private conformance download failed; check dataset access and checksum."
+            exit 1
+          fi
+          echo "M0B_PRIVATE_ARCHIVE=$archive" >> "$GITHUB_ENV"
+
+      - name: Replay all seven scenarios and negative controls
+        env:
+          PYTHON_DOTENV_DISABLED: "1"
+        run: |
+          if uv run --no-sync python -m pytest apps/api/tests/core/test_m0b_companion.py -q \
+            > "$RUNNER_TEMP/m0b-private.log" 2>&1; then
+            echo "Private conformance: all tests passed."
+          else
+            echo "::error::Private conformance failed; reproduce locally on this revision."
+            exit 1
+          fi

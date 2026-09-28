@@ -886,3 +886,27 @@ temps de commit/réseau, saturation et proxy réel restent des sujets D4/M2.
 `96809b97…`. Les artefacts détaillés restent privés et locaux. Le clone
 pgvector 0.8.6, les index reconstruits et la réutilisation du témoin #243
 bornent la portée de la preuve live ; aucun déploiement effectué.
+
+### C7 — corrections après revue (23 septembre 2026)
+
+[PR #579](https://github.com/DGAFP/assistant-rh/pull/579). Le délai de
+finalisation d'un run réussi ne déclenche plus de second enregistrement
+« failed » ; une réponse admise mais jamais servie libère son slot à l'arrêt ;
+la raison d'annulation distingue déconnexion, envoi échoué et arrêt serveur, et
+un flux réussi n'est plus marqué a posteriori ; seul du texte visible interdit
+le fallback provider ; le handler lit les options de stream validées.
+[Détails](12-c7-streaming.md#corrections-après-revue-du-23-septembre-2026).
+Aucun nouveau panel provider.
+
+### M1 — reprise après intégration C7 (28 septembre 2026)
+
+[#465](https://github.com/DGAFP/assistant-rh/issues/465),
+[PR #580](https://github.com/DGAFP/assistant-rh/pull/580) : intégration de
+`dev` à `7a1e5ac`, conflits résolus en conservant les corrections C7,
+confidentialité et pannes DB. Le runner attend les deux bras et la persistance
+des annulations ; les estimations de volumes core incluent les retries.
+**1 257 tests API / 1 574 historiques réussis**, 46 tests historiques ignorés,
+Ruff, mypy et quatre contrats d'import passent. M0b reste exact.
+Nouvelle paire live sur les 98 questions préparée au
+[journal](../../evals/journal-experimentations-rag.md#m1--m1_local_paired_98_20260928-28092026-préparé) ;
+la décision du 21 septembre n'est pas réattribuée au code courant.
