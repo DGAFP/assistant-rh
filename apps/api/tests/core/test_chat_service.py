@@ -134,6 +134,30 @@ async def test_storage_failure_never_returns_success():
     assert [r.status for r in runtime.runs.calls] == ["completed", "failed"]
 
 
+@pytest.mark.parametrize("cancel_request", [False, True])
+async def test_finalization_timeout_on_success_never_writes_a_second_record(caplog, cancel_request):
+    runtime = Runtime()
+    runtime.runs.release = asyncio.Event()
+    runtime.service._finalization_timeout = 0.02
+    finalize = runtime.runs.finalize
+
+    async def finalize_with_disconnect(run):
+        if cancel_request and run.status == "completed":
+            # Disconnect after the timeout, before shield delivers its exception.
+            saving = asyncio.current_task()
+            assert saving is not None
+            saving.add_done_callback(lambda _: working.cancel())
+        await finalize(run)
+
+    runtime.runs.finalize = finalize_with_disconnect
+    working = asyncio.create_task(runtime.service.complete(ChatInput("assistant-rh", "Question"), await auth()))
+    with pytest.raises(ApplicationError):
+        await working
+    # The commit state is unknown: no "failed" record may race the possibly committed run.
+    assert [r.status for r in runtime.runs.calls] == ["completed"] and not runtime.runs.rows
+    assert "finalization timed out" in caplog.text
+
+
 async def test_cooperative_cancellation_and_stage_events_prepare_c7():
     runtime = Runtime()
     cancellation = Cancellation()
@@ -214,7 +238,8 @@ async def test_retry_empty_candidates_keeps_initial_no_answer():
 
 @pytest.mark.parametrize("empty_at", ["retrieval", "context_builder"])
 @pytest.mark.parametrize("selector_enabled", [False, True])
-async def test_empty_final_context_never_calls_generation_without_explicit_rejection(monkeypatch, empty_at, selector_enabled):
+@pytest.mark.parametrize("stream", [False, True])
+async def test_empty_final_context_never_calls_generation_without_explicit_rejection(monkeypatch, empty_at, selector_enabled, stream):
     runtime = Runtime(v3_enable_selector=selector_enabled)
     if empty_at == "retrieval":
         runtime.search.empty = True
@@ -225,7 +250,7 @@ async def test_empty_final_context_never_calls_generation_without_explicit_rejec
             return ContextBuildResult(items=(), resolved_refs={}, diagnostics=ContextBuildDiagnostics())
 
         monkeypatch.setattr(ContextBuilder, "build", empty_build)
-    run, result = await runtime.service.complete(ChatInput("assistant-rh", "Question"), await auth())
+    run, result = await runtime.service.complete(ChatInput("assistant-rh", "Question"), await auth(), stream=stream)
     assert run.status == "completed" and run.answer == NO_ANSWER and not run.sources
     assert result.usage.total_tokens == 0
     assert runtime.runs.rows[run.turn_id] is run

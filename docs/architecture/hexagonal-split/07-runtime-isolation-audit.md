@@ -7,6 +7,21 @@ Cet inventaire est la baseline d'isolation du runtime Python servi. Il couvre le
 
 ## Règle bloquante avant une extraction de phase C
 
+### Carte d'entrée C7 — streaming (2026-09-17, `67fe730`)
+
+Relecture préalable de `pipeline.py:run_stream`, de ses consommateurs Streamlit,
+scripts et tests, puis de C6 (`Pipeline`, `ChatService`, `RunContext`) et des
+streams C5/B3. Le runtime historique reste servi sans changement.
+
+| Dépendance / état | Cible C7 | Invariant à éprouver |
+|---|---|---|
+| Générateur synchrone historique, `last_result`, callbacks | Pipeline C6 **déjà async**, worker asyncio borné par admission ; aucun thread ni boucle secondaire pour les pools HTTP/DB async | Retrieval en attente sans bloquer pings et autres requêtes ; saturation → 503 avant headers |
+| Tokens / événements de toutes les étapes | Sink C6, file async bornée, fragments de texte bornés | Backpressure jusqu'au provider, ordre conservé, pas de tâches de publication détachées |
+| Résultat final / sources | Résultat explicite ; commit C6 avant sources finales, terminal, usage optionnel et `[DONE]` | Aucun succès après panne ; sources partielles sans autorité documentaire |
+| Fermeture / annulation | Propriétaire ASGI du worker et des tâches de transport ; annulation coopérative et asyncio ; finalisation bornée protégée | Déconnexion, erreur d'envoi, annulations répétées et arrêt applicatif attendent le nettoyage |
+| Historique generator C5 | API stream alignée sur les entrées non-stream C6, conformément à C1 ; historique validé conservé au query processor | `Generator.stream` conserve sa capacité C5 pour les autres consommateurs ; adaptation API documentée au LEDGER et test des requêtes identiques |
+| Panne provider / stockage | Erreur SSE contrôlée, diagnostic run/étape ; log corrélé si double panne | Ni détail interne ni `[DONE]` ; aucun fallback après texte émis |
+
 ### Carte d'entrée C6 — orchestration (2026-09-15, `cb76fe3`)
 
 Lecture préalable de `pipeline.py:run`, `_retrieve_and_build`,

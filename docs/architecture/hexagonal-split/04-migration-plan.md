@@ -52,7 +52,7 @@ La DB et les providers existent déjà. C1 fixe le contrat à partir du spike A2
 | **C4** | Extraction du section aggregator et du context builder : accès sections/documents/références via `ContentStorePort` | Conformance agrégation/contexte |
 | **C5** | Extraction du context selector, de la composition du prompt ministère et du generator | Replays + anti-hallucination/no-answer/fallback |
 | **C6** ([#463](https://github.com/DGAFP/assistant-rh/issues/463)) | Handler HTTP non-stream `/v1/chat/completions` et tous ses tests de transport selon C1 ; `Pipeline`/`ChatService` réel, `RunContext` par requête, événements de toutes les étapes et persistance atomique du run, de ses sources finales ordonnées et de ses traces | Matrice HTTP C1 + conformance bout en bout + tests de concurrence et d'atomicité |
-| **C7** ([#464](https://github.com/DGAFP/assistant-rh/issues/464)) | Streaming SSE selon C1/A2 : worker borné, file async, pings, erreur post-headers, annulation et persistance avant `[DONE]` | Tests stream/déconnexion/erreur sur local et homelab |
+| **C7** ([#464](https://github.com/DGAFP/assistant-rh/issues/464)) | Streaming SSE selon C1/A2 : worker borné, file async, pings, erreur post-headers, annulation et persistance avant `[DONE]` | [Preuves C7](12-c7-streaming.md) : 958 tests API validés, SDK/TCP, instance `conversations` et test réel sur copie locale du corpus |
 
 **Jalon M1 — parité moteur** :
 

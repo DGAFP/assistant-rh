@@ -17,6 +17,57 @@ _ANSWER_URL = re.compile(
     r"(?:(?!\)[.,;:!?]*\[)[^\s<>\"'`])+",
     re.IGNORECASE,
 )
+_ANSWER_BOUNDARY = re.compile(r"""[\s<>"'`]""")
+
+
+class AnswerStream:
+    """Apply answer policy before delivery, retaining unfinished URLs/source markers.
+
+    The provider byte limit also bounds a token with no delimiter. Such a token
+    cannot be released early: a later fragment may turn it into a private URL.
+    """
+
+    def __init__(self) -> None:
+        self._pending = ""
+        self._carriage_return = ""
+        self._started = False
+        self._stopped = False
+
+    def feed(self, text: str, *, final: bool = False) -> str:
+        if self._stopped:
+            return ""
+        text = self._carriage_return + text
+        self._carriage_return = "\r" if not final and text.endswith("\r") else ""
+        if self._carriage_return:
+            text = text[:-1]
+        self._pending += text.replace("\r\n", "\n").replace("\r", "\n")
+        leading_marker = SOURCES_MARKER.lstrip("\n")
+        marker = self._pending.find(SOURCES_MARKER)
+        if not self._started and self._pending.startswith(leading_marker):
+            marker = 0
+        if marker >= 0:
+            self._pending = self._pending[:marker]
+            final = True
+        if final:
+            self._stopped = True
+            result = redact_private_urls(self._pending)
+            self._pending = ""
+            return result
+        if not self._started and leading_marker.startswith(self._pending):
+            return ""
+        limit = len(self._pending)
+        for size in range(min(limit, len(SOURCES_MARKER) - 1), 0, -1):
+            if self._pending.endswith(SOURCES_MARKER[:size]):
+                limit -= size
+                break
+        # URL matching cannot cross these delimiters. Keep the last unfinished
+        # token and any reserved marker prefix until their meaning is known.
+        boundary = 0
+        for match in _ANSWER_BOUNDARY.finditer(self._pending, 0, limit):
+            boundary = match.end()
+        ready, self._pending = self._pending[:boundary], self._pending[boundary:]
+        self._started = self._started or bool(ready)
+        return redact_private_urls(ready)
 
 
 def redact_private_urls(text: str, *, replacement: str = "[lien privé retiré]") -> str:
