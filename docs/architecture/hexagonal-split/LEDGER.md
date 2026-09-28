@@ -910,3 +910,6 @@ Ruff, mypy et quatre contrats d'import passent. M0b reste exact.
 Nouvelle paire live sur les 98 questions préparée au
 [journal](../../evals/journal-experimentations-rag.md#m1--m1_local_paired_98_20260928-28092026-préparé) ;
 la décision du 21 septembre n'est pas réattribuée au code courant.
+Préflight #240 exact, code `73e5376`, snapshot `092e0365…` ; lancement provider
+refusé par le contrôle automatique en attente d'autorisation. Aucun nouveau
+run live ni GO sur cette révision.

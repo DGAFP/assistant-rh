@@ -1445,3 +1445,17 @@ avec attention aux q4/q33 MATTE et aux questions déjà taguées instables.
 Les empreintes du code, du panel, de la configuration, des prompts et du corpus
 seront vérifiées avant et après. Artefacts privés hors Git dans
 `/tmp/assistant-rh-m1-20260928/`. Run IDs, résultats et décision à compléter.
+
+**Préflight terminé** sur `73e53767bb28f8ae1d98bea6b505b3ee7564f9ff` : les
+98 questions, réponses gold et références sont identiques aux items #240.
+Sources `e728708b4c0e64430ad526bcecdc9983ef2861a6c8770f4892d9efb74012081a`,
+panel `afd6cfc97a4232e9f8b9253d9d9b5b930c63ed83421f544f5c8178a42e163bdc`,
+snapshot config/prompts/acronymes/corpus
+`092e036595dcb78d144fa128f07f05a55b3c5fe7dc3a8f70274a7af78abae572`.
+Les comptages correspondent au clone du 21 septembre. Détail privé dans
+`/tmp/assistant-rh-m1-20260928/before.json`.
+
+**Non lancé** : le contrôle automatique d'approbation a refusé les appels
+Albert/Scaleway faute d'autorisation explicite de transmettre ce panel.
+Aucun nouveau run ID, appel provider ou résultat live. La nouvelle décision
+M1 reste en attente ; les résultats #243/#245 demeurent historiques.

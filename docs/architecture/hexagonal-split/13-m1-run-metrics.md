@@ -194,3 +194,8 @@ les quatre contrats d'import passent.
 Le GO du 21 septembre reste attaché à son code mesuré. Une nouvelle paire
 live est préparée sur les 98 mêmes questions et le même clone ; sa décision
 sera consignée après comparaison aux tolérances M0a. Aucun déploiement.
+
+Le préflight confirme l'identité exacte des questions/golds/références avec
+#240 et fige le snapshot `092e0365…` sur le code `73e5376`. Le contrôle
+automatique a refusé le lancement provider en attente d'autorisation explicite.
+**Pas de nouveau résultat live ni de GO attribué à cette révision.**
