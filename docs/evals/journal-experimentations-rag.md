@@ -1464,3 +1464,9 @@ M1 reste en attente ; les résultats #243/#245 demeurent historiques.
 l'évaluation complète et la transmission des questions, extraits de corpus et
 réponses à Albert/DINUM et Scaleway. Lancement de la paire prévu avec les
 paramètres et les écritures locales décrits ci-dessus.
+
+**Lancé** : runs locaux **#246 (historique) / #247 (core)** sur `ea1115e`,
+avec les mêmes sources `e728708b…` que le préflight et les tests. Processus
+détaché, résultats privés dans `/tmp/assistant-rh-m1-20260928/paired/`.
+La première paire termine sans erreur d'item ni de juge. Décision en attente
+du panel complet ; CI Tests et CodeQL passent sur `4c7d293`.

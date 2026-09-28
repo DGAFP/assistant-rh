@@ -199,3 +199,7 @@ Le préflight confirme l'identité exacte des questions/golds/références avec
 #240 et fige le snapshot `092e0365…` sur le code `73e5376`. Le contrôle
 automatique a refusé le lancement provider en attente d'autorisation explicite.
 **Pas de nouveau résultat live ni de GO attribué à cette révision.**
+
+Après autorisation explicite, nouvelle paire lancée : **#246 historique /
+#247 core**, code `ea1115e`, mêmes sources testées `e728708b…`. Validation
+live en cours ; la décision sera complétée dans le journal.
