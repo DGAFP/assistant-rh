@@ -1459,3 +1459,8 @@ Les comptages correspondent au clone du 21 septembre. Détail privé dans
 Albert/Scaleway faute d'autorisation explicite de transmettre ce panel.
 Aucun nouveau run ID, appel provider ou résultat live. La nouvelle décision
 M1 reste en attente ; les résultats #243/#245 demeurent historiques.
+
+**Autorisation obtenue le 28 septembre** : l'utilisateur autorise explicitement
+l'évaluation complète et la transmission des questions, extraits de corpus et
+réponses à Albert/DINUM et Scaleway. Lancement de la paire prévu avec les
+paramètres et les écritures locales décrits ci-dessus.
