@@ -1488,3 +1488,22 @@ scope, configuration et corpus ; autorisation de la campagne complète inchangé
 Les runs interrompus ne sont ni écrasés ni réétiquetés. La comparaison finale
 assemblera 98 IDs uniques par moteur, en conservant les run IDs d'origine et
 en distinguant les interruptions de l'évaluation qualité.
+
+**Second arrêt local, constaté le 29 septembre** : #248 (core) finit `failed`
+sur `OperationalError` avec 16 items ; le worker #249 (historique) a disparu
+après 16 items et son statut `running` est régularisé en échec. Le système
+signale des arrêts OOM ; l'audit intermédiaire chargé en mémoire a lui-même
+été tué (137). L'audit est réduit aux colonnes utiles, sans charger les corps
+de contextes/prompts/traces. Aucun code moteur ni paramètre provider ne change.
+Le total acquis est de 73 items historiques et 74 core, sans erreur d'item.
+Trois chats supplémentaires sans item associé s'ajoutent aux trois précédents.
+
+**Avant continuation finale — `m1_local_remaining_25_20260929`** : snapshot,
+panel et sources toujours identiques. Reprendre les 25 IDs absents de
+l'intersection des deux bras avec `--runtime both`, deux paires au maximum,
+mêmes modèles, trois votes et scope. Le résultat core q223 de #248 est
+recalculé avec son témoin historique pour apparier la date des prompts après
+le changement de jour ; il reste conservé mais n'entre pas dans l'agrégat
+final. Ce choix est fixé avant le nouveau jugement, indépendamment du score.
+Les 73 paires acquises et les 25 nouvelles formeront le panel de 98, avec
+provenance par run et date. Aucun run interrompu n'est réécrit en succès.
