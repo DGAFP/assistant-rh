@@ -1418,7 +1418,7 @@ modèle `deepseek-v4-flash`, usage déclaré : 2 545 tokens d'entrée et 330 de
 sortie, aucun fallback. Les valeurs JSON et SQL concordent.
 Artefact privé : `_local/m1-20260921/stream-metrics.json`.
 
-## M1 — `m1_local_paired_98_20260928` (28/09/2026, préparé)
+## M1 — `m1_local_paired_98_20260928` (28–29/09/2026, terminé — NO-GO)
 
 **Avant lancement** : nouvelle comparaison appariée des 98 questions M0a,
 après intégration de C7 et des corrections de `dev` (`7a1e5ac`) dans #580.
@@ -1442,9 +1442,9 @@ Tolérances M0a conservées : baisse maximale de 0,05 sur `judge_pass_rate`
 et `doc_recall_avg`, contre le témoin apparié et #240 ; lecture par corpus,
 avec attention aux q4/q33 MATTE et aux questions déjà taguées instables.
 
-Les empreintes du code, du panel, de la configuration, des prompts et du corpus
-seront vérifiées avant et après. Artefacts privés hors Git dans
-`/tmp/assistant-rh-m1-20260928/`. Run IDs, résultats et décision à compléter.
+Le protocole prévoit de vérifier les empreintes du code, du panel, de la
+configuration, des prompts et du corpus avant et après. Artefacts privés hors
+Git dans `/tmp/assistant-rh-m1-20260928/`. Résultats finaux ci-dessous.
 
 **Préflight terminé** sur `73e53767bb28f8ae1d98bea6b505b3ee7564f9ff` : les
 98 questions, réponses gold et références sont identiques aux items #240.
@@ -1455,10 +1455,10 @@ snapshot config/prompts/acronymes/corpus
 Les comptages correspondent au clone du 21 septembre. Détail privé dans
 `/tmp/assistant-rh-m1-20260928/before.json`.
 
-**Non lancé** : le contrôle automatique d'approbation a refusé les appels
+**Arrêt initial avant autorisation** : le contrôle automatique a refusé les appels
 Albert/Scaleway faute d'autorisation explicite de transmettre ce panel.
-Aucun nouveau run ID, appel provider ou résultat live. La nouvelle décision
-M1 reste en attente ; les résultats #243/#245 demeurent historiques.
+À ce stade, aucun nouveau run ID, appel provider ou résultat live ; les
+résultats #243/#245 demeurent historiques.
 
 **Autorisation obtenue le 28 septembre** : l'utilisateur autorise explicitement
 l'évaluation complète et la transmission des questions, extraits de corpus et
@@ -1507,3 +1507,79 @@ le changement de jour ; il reste conservé mais n'entre pas dans l'agrégat
 final. Ce choix est fixé avant le nouveau jugement, indépendamment du score.
 Les 73 paires acquises et les 25 nouvelles formeront le panel de 98, avec
 provenance par run et date. Aucun run interrompu n'est réécrit en succès.
+
+**Résultat final le 29 septembre** : **#250 historique / #251 core** terminent
+chacun 25/25 à 05:09 UTC, sur `c116d48`. Les reprises #248/#249 mesuraient
+`99ef0f0` et la paire initiale `ea1115e` ; seules les pièces de documentation
+ont changé entre ces commits. Les sources restent celles testées à `73e5376`.
+L'assemblage contient **98 IDs uniques par moteur**, identiques à #240 :
+historique **#246 + #249 + #250**, core **#247 + #248 + #251**, hors q223/#248
+remplacé selon le protocole ci-dessus. Ces assemblages ne sont pas de nouveaux
+run IDs en base. Les quatre runs interrompus restent en échec.
+
+| Mesure | M0a #240 | Historique apparié | Core apparié |
+|---|---:|---:|---:|
+| Réponses validées | 64/98 (65,31 %) | 68/98 (69,39 %) | **62/98 (63,27 %)** |
+| Rappel documentaire | 0,724278 | 0,729138 | **0,729138** |
+| Hit rate | 0,806122 | 0,826531 | **0,826531** |
+| Retrieval gap déterministe | 0,193878 | 0,173469 | **0,173469** |
+
+| Corpus | n | PASS historique | PASS core | Rappel documentaire identique entre bras |
+|---|---:|---:|---:|---:|
+| DGAFP | 2 | 2 | 2 | 0,034884 |
+| MATTE | 12 | 6 | 6 | 0,790675 |
+| MSO | 4 | 4 | 3 | 0,678571 |
+| Service-Public | 14 | 10 | 7 | 0,928571 |
+| manual | 55 | 36 | 35 | 0,657879 |
+| synthetic | 11 | 10 | 9 | 0,909091 |
+
+**Décision : NO-GO M1 vers D1–D4.** Le core respecte les tolérances contre
+M0a, mais son `judge_pass_rate` baisse de **0,061224 (6,12 points)** contre
+le témoin apparié, au-delà de la baisse maximale autorisée de **0,05**.
+Le seuil de rappel passe avec un delta nul. Le GO du 21 septembre reste
+attaché à son ancienne révision ; il ne valide pas le code courant. La PR
+#580 reste en brouillon. Aucun seuil, question ou paramètre n'est ajusté
+après lecture des scores pour changer cette décision.
+
+L'analyse appariée compte **60 PASS/PASS, 28 FAIL/FAIL, deux progrès et huit
+reculs**. Les progrès concernent q1 et q211 ; les reculs q6, q20, q28, q186,
+q188, q827, q926 et q4538. Tous les reculs conservent le rappel documentaire
+de leur témoin. Sept sont classés `incomplete` par le juge ; q4538 est classé
+`retrieval_gap` malgré un rappel égal à 1, ce qui ne prouve pas à lui seul
+une perte de retrieval. q186/q827/q926 ont les mêmes contextes textuels et
+longueurs de prompt ; les cinq autres diffèrent. Aucune cause déterministe
+n'est établie, et la variance ne suffit pas à écarter ce résultat. Hors des
+huit questions déjà taguées `juge_borderline`, historique **63/90**, core
+**59/90** : diagnostic secondaire, sans effet sur le seuil du panel complet.
+
+Les **98 jugements sont terminés dans chaque bras**, sans échec final d'item.
+Un jugement core a seulement deux votes concordants sur trois demandés
+(`2/2`) ; les autres ont trois votes. La couverture d'usage juge core est
+incomplète : le coût total reste inconnu, sans extrapolation du vote manquant.
+Les 290 appels LLM core réussis ont leurs compteurs d'usage ; une tentative
+de classification échouée avant reprise reste sans usage factice.
+
+**Audit final** : les 196 items retenus correspondent à 196 chats distincts.
+Historique : **98 chats et 578 événements** ; core : **98 chats, 676 événements
+et 203 sources persistées**. Aucune incohérence détectée de scope, trace,
+configuration, provider/modèle, compteurs ou latence. Les six chats interrompus
+sans item et le résultat q223/#248 remplacé restent conservés hors agrégat.
+Les empreintes initiales et finales du code, du panel et du snapshot sont
+identiques. Les dates effectivement rendues dans les prompts concordent entre
+moteurs sur les 98 paires : 73 acquises le 28, 25 le 29. Aucun chevauchement
+temporel inter-ministères n'a été observé dans ce panel ; l'isolation concurrente
+est couverte par les tests déterministes. Le clone pgvector 0.8.6 et ses index
+reconstruits ne prouvent pas l'identité des plans/rankings avec staging 0.8.2.
+
+Replays M0b **7/7 exacts**, 27 sorties d'étapes, sept résultats structurés et
+cinq contrôles négatifs détectés ; **1 257 tests API / 1 574 historiques**
+réussis (46 historiques ignorés), Ruff, mypy et quatre contrats d'import au
+vert sur les mêmes sources. La section des reports de parité du LEDGER est
+vide ; le blocage actuel porte sur le seuil live, pas sur une dette masquée.
+
+[Preuve agrégée publiée](evidence/m1_api_parity_local_20260928.json), empreinte
+`845fd6862b1441b9cac1afe2436a15184c9854ac00e1a943b4b675984dcd1ab3`.
+Artefacts détaillés privés : `/tmp/assistant-rh-m1-20260928/`, notamment
+`final-assessment-final.json`, `before.json`, `after.json`, `prompt-dates.json`
+et `loss-diagnostics.json`. La preuve publiée contient agrégats, IDs et
+empreintes ; les textes de questions, réponses et contextes restent privés.

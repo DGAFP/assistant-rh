@@ -60,12 +60,13 @@ La DB et les providers existent déjà. C1 fixe le contrat à partir du spike A2
 - goldset live apparié : aucune régression au-delà des tolérances M0a ;
 - deux requêtes simultanées de ministères différents ne partagent ni prompt, ni résultat, ni trace.
 
-**GO technique documenté le 21/09/2026** dans la [preuve M1](13-m1-run-metrics.md)
-et la [PR #580](https://github.com/DGAFP/assistant-rh/pull/580), après le prérequis
-[C7 #579](https://github.com/DGAFP/assistant-rh/pull/579). Replays exacts 7/7,
-panel local 98/98 sans erreur, 67/98 PASS core contre 64/98 historique et rappel
-documentaire identique ; seuils M0a respectés. L'intégration de ces PRs permet
-d'enchaîner D1–D4 ; le proxy réel et l'opérabilité restent M2.
+**NO-GO M1 au 29/09/2026** dans la [preuve M1](13-m1-run-metrics.md)
+et la [PR #580](https://github.com/DGAFP/assistant-rh/pull/580), après intégration
+de C7 et de `dev` à `7a1e5ac`. Replays exacts 7/7 et tests techniques au vert,
+mais le panel local complet donne **62/98 PASS core contre 68/98 historique** :
+baisse de **6,12 points**, supérieure aux 5 points autorisés, malgré un rappel
+documentaire identique. Le GO du 21 septembre reste historique ; cette nouvelle
+mesure ne permet pas d'ouvrir D1–D4. La PR reste en brouillon.
 
 ## Phase D — fonctions API restantes et déploiement dark
 

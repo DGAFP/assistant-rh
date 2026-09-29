@@ -3,6 +3,12 @@
 21 septembre 2026 · [#465](https://github.com/DGAFP/assistant-rh/issues/465)
 · prérequis C7 : [PR #579](https://github.com/DGAFP/assistant-rh/pull/579).
 
+**Décision courante au 29 septembre : NO-GO vers la phase D.** Après intégration
+de `dev`, le panel apparié complet donne 62/98 PASS core contre 68/98 historique
+(−6,12 points, tolérance −5 points). Les replays exacts et tests passent.
+Cette décision remplace le GO du 21 septembre pour la révision courante ;
+les mesures antérieures ci-dessous restent attachées à leur code.
+
 ## Audit des écritures
 
 L'audit initial lit les 200 derniers runs historiques et les 1 400 derniers
@@ -194,15 +200,54 @@ exacts et cinq contrôles négatifs). **1 574 tests historiques réussis,
 46 ignorés**, dont les huit tests du pont M1 ; Ruff, mypy (89 fichiers) et
 les quatre contrats d'import passent.
 
-Le GO du 21 septembre reste attaché à son code mesuré. Une nouvelle paire
-live est préparée sur les 98 mêmes questions et le même clone ; sa décision
-sera consignée après comparaison aux tolérances M0a. Aucun déploiement.
-
 Le préflight confirme l'identité exacte des questions/golds/références avec
-#240 et fige le snapshot `092e0365…` sur le code `73e5376`. Le contrôle
-automatique a refusé le lancement provider en attente d'autorisation explicite.
-**Pas de nouveau résultat live ni de GO attribué à cette révision.**
+#240 et fige le snapshot `092e0365…` sur le code `73e5376`. Après autorisation
+explicite de transmettre le panel aux providers, la campagne est exécutée
+les 28–29 septembre. Les sources testées `e728708b…`, le panel `afd6cfc9…`
+et le snapshot config/prompts/acronymes/corpus restent identiques jusqu'à la fin.
 
-Après autorisation explicite, nouvelle paire lancée : **#246 historique /
-#247 core**, code `ea1115e`, mêmes sources testées `e728708b…`. Validation
-live en cours ; la décision sera complétée dans le journal.
+## Résultat complet du 29 septembre — NO-GO
+
+Les runs initiaux #246/#247 échouent après une interruption locale et un
+timeout DB ; les reprises #249/#248 s'arrêtent pendant une pression mémoire.
+La dernière paire **#250 historique / #251 core termine 25/25** par bras.
+L'agrégat assemble **98 IDs uniques par moteur** depuis #246/#249/#250 et
+#247/#248/#251. Le core q223 de #248 est conservé mais remplacé par #251,
+selon une règle fixée avant jugement, afin d'apparier la date de prompt avec
+son témoin. Les 98 paires ont la même date de prompt entre moteurs. Les runs
+interrompus restent en échec ; six chats sans item d'évaluation sont conservés
+hors comparaison. Le journal détaille les reprises et leurs commits.
+
+| Mesure | M0a #240 | Historique apparié | Core apparié |
+|---|---:|---:|---:|
+| Réponses validées | 64/98 | 68/98 | **62/98** |
+| Rappel documentaire | 0,724278 | 0,729138 | **0,729138** |
+| Hit rate | 0,806122 | 0,826531 | **0,826531** |
+
+Le core respecte les tolérances contre M0a, mais échoue contre le témoin
+apparié : **−0,061224 sur `judge_pass_rate`**, au-delà de −0,05. Huit
+questions passent de PASS à FAIL et deux de FAIL à PASS. Les huit reculs
+conservent leur rappel documentaire ; sept sont jugés incomplets. Trois
+ont aussi des contextes textuellement identiques entre moteurs. Cette mesure
+ne suffit pas à attribuer l'écart à une cause déterministe ou à la variance.
+Hors des huit questions déjà taguées instables, historique 63/90 et core 59/90 ;
+ce diagnostic ne remplace pas le seuil fixé sur les 98 questions.
+
+Les 98 jugements de chaque bras sont terminés ; un jugement core repose sur
+deux votes concordants sur trois demandés. Son usage juge est incomplet et
+le coût total reste inconnu. Les 290 appels LLM core réussis ont leur usage ;
+une tentative de classification échouée reste sans compteur factice.
+
+Relecture des 196 chats évalués : **98 chats, 578 événements historiques** ;
+**98 chats, 676 événements et 203 sources core**, sans incohérence détectée
+de trace, scope, métriques ou persistance. Aucun chevauchement inter-ministères
+n'a été observé dans ce panel ; la preuve d'isolation concurrente reste celle
+des tests déterministes. Les limites du clone pgvector 0.8.6, des index
+reconstruits et du coût incomplet restent explicites.
+
+**NO-GO M1 : la phase D reste bloquée et #580 reste en brouillon.** La dette
+de parité reportée au LEDGER est vide et les tests techniques passent, mais
+le seuil de qualité live n'est pas satisfait. Les cas discordants sont
+documentés sans ajustement du seuil ni relance sélective selon les scores.
+[Preuve agrégée](../../evals/evidence/m1_api_parity_local_20260928.json) et
+[journal complet](../../evals/journal-experimentations-rag.md). Aucun déploiement.

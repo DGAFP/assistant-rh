@@ -908,8 +908,40 @@ des annulations ; les estimations de volumes core incluent les retries.
 **1 257 tests API / 1 574 historiques réussis**, 46 tests historiques ignorés,
 Ruff, mypy et quatre contrats d'import passent. M0b reste exact.
 Nouvelle paire live sur les 98 questions préparée au
-[journal](../../evals/journal-experimentations-rag.md#m1--m1_local_paired_98_20260928-28092026-préparé) ;
+[journal](../../evals/journal-experimentations-rag.md) ;
 la décision du 21 septembre n'est pas réattribuée au code courant.
 Préflight #240 exact, code `73e5376`, snapshot `092e0365…` ; lancement provider
 refusé par le contrôle automatique en attente d'autorisation. Aucun nouveau
 run live ni GO sur cette révision.
+
+### M1 — campagne complète et NO-GO (29 septembre 2026)
+
+Après autorisation explicite, la campagne des 98 questions est terminée.
+Les interruptions #246/#247 (timeout DB) puis #249/#248 (pression mémoire)
+restent des échecs ; #250 historique / #251 core terminent les 25 dernières
+paires. L'agrégat assemble 98 IDs uniques par moteur depuis #246/#249/#250
+et #247/#248/#251. Le core q223/#248 reste conservé mais est remplacé par
+#251 pour apparier la date de prompt, selon une règle fixée avant jugement.
+Les six chats sans item d'évaluation restent conservés hors agrégat.
+
+**NO-GO : 62/98 PASS core contre 68/98 historique**, soit −6,12 points au-delà
+des −5 points autorisés. Rappel documentaire identique **0,729138** ; les
+seuils contre M0a #240 passent. Huit reculs et deux progrès sont documentés,
+sans modification des seuils ni relance sélective selon les scores. Cette
+décision remplace le GO du 21 septembre pour la révision courante ; la phase
+D reste bloquée et [#580](https://github.com/DGAFP/assistant-rh/pull/580) en
+brouillon. L'attribution causale des cas discordants reste à établir.
+
+Sources `e728708b…`, panel `afd6cfc9…`, snapshot `092e0365…` inchangés ;
+98 dates de prompts appariées. Les replays exacts 7/7, **1 257 tests API et
+1 574 historiques**, Ruff, mypy et quatre contrats d'import passent. La section
+« Reports depuis le runtime existant » reste vide. Audit core : 98 chats,
+676 événements, 203 sources, aucune incohérence détectée. Aucun chevauchement
+inter-ministères observé dans ce panel ; preuve de concurrence dans les tests.
+Un jugement core a deux votes concordants sur trois demandés ; le coût juge
+core reste inconnu. Les limites du clone et les interruptions sont explicites.
+
+[Rapport](13-m1-run-metrics.md), [journal](../../evals/journal-experimentations-rag.md),
+[preuve agrégée](../../evals/evidence/m1_api_parity_local_20260928.json)
+`845fd6862b1441b9cac1afe2436a15184c9854ac00e1a943b4b675984dcd1ab3`.
+Artefacts détaillés privés et écritures DB locales ; aucun déploiement.
