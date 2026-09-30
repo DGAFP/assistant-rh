@@ -9,6 +9,11 @@ du sélecteur et des incohérences du juge. Ce GO signifie le respect des seuils
 préenregistrés ; il ne démontre ni une amélioration causale du code ni la
 fiabilité du score absolu de qualité.
 
+Le contrôle complémentaire `m1_frozen_outputs_20260930` donne **98/98 paires
+exactes après la frontière de retrieval**, avec les deux moteurs hors réseau.
+Il a révélé puis permis de corriger le départage des acronymes côté historique.
+[Preuve du rejeu](../../evals/evidence/m1_api_parity_frozen_replay_20260930.json).
+
 21 septembre 2026 · [#465](https://github.com/DGAFP/assistant-rh/issues/465)
 · prérequis C7 : [PR #579](https://github.com/DGAFP/assistant-rh/pull/579).
 
@@ -433,3 +438,59 @@ terminaison non établie ; l'export massif reste à fiabiliser.
 
 [Preuve agrégée](../../evals/evidence/m1_api_parity_corrected_diagnosis_20260930.json)
 `cfcb0925ec9d3d43f1aeb6133a955f542baed2e838155815835277717ed458aa`.
+
+## Rejeu déterministe après retrieval — 30 septembre 2026
+
+**98/98 paires exactes**, soit 96 parcours RAG et deux réponses directes.
+Le banc réexécute les deux moteurs avec les mêmes dépendances enregistrées :
+578 étapes et 386 appels d'inférence simulés par moteur. Les prompts complets,
+les projections d'étapes, les contextes, les références et les réponses sont
+comparés exactement, avec consommation obligatoire de toutes les réponses
+enregistrées. Aucun nouvel appel fournisseur ni écriture en base.
+
+Ce contrôle a d'abord échoué sur q1 : le chargeur historique ne départageait
+pas les acronymes de même priorité. Il présentait CDI avant CDD dans le prompt,
+alors que le core présentait CDD avant CDI. Le chargeur utilise désormais le
+même tri par priorité, acronyme en collation C, puis identifiant. Le test DB
+compare les deux chargeurs avec et sans colonne `priority`, avec des insertions
+dans l'ordre inverse et des priorités différentes. Ce défaut d'entrée est
+établi ; son effet sur l'ancien écart de qualité n'est pas isolé.
+
+Après correction, les 98 cas passent. Les 96 prompts sélecteur et les 96
+messages utilisateur du générateur correspondent également à ceux reconstruits
+du run #259 ; les 98 réponses finales correspondent aux réponses stockées.
+Le contrôle ne se limite donc pas à comparer deux exécutions sur des contenus
+arbitraires. Les cinq mutations volontaires sont toutes détectées : prompt
+fournisseur, texte récupéré, contexte, réponse attendue et appel supplémentaire.
+
+Périmètre précis : les traces M1 ne contiennent pas tous les rangs SQL bruts
+ni les vecteurs d'embedding. Les deux moteurs reçoivent donc le même pool de
+chunks réhydraté, avec ses scores journalisés arrondis. Leurs vrais traitements
+de requête, d'agrégation, de sélection, de contexte et de génération sont
+exécutés. Les recherches SQL, embeddings et transports fournisseurs ne sont
+pas rejoués sur ces 98 cas. Le texte du fallback q222 est figé sans simuler
+ses pannes réseau. La préparation lit uniquement le clone local ; le rejeu
+interdit TCP/DNS et les connexions PostgreSQL synchrones et asynchrones.
+
+Validation : **274 tests ciblés réussis**, incluant les sept scénarios M0b
+complets et leurs cinq contrôles négatifs, plus **quatre tests** d'intégrité
+du panel M1. Ruff et `git diff --check` passent. Les tests SQL utilisent une
+base synthétique distincte du clone d'évaluation.
+
+Commande de reproduction depuis l'archive privée :
+
+```bash
+PYTHON_DOTENV_DISABLED=1 uv run python -m scripts.conformance.m1_replay \
+  /chemin/prive/m1-frozen --check --report /chemin/prive/replay-report.json
+```
+
+L'archive privée contient les 98 fixtures, leur manifeste, le rapport et les
+sources exactes ; aucune question, réponse ou contexte brut n'est publié dans
+la preuve Git. Sources mesurées : `712ad138314fde0b93c091a7c9b2728caf287e59a238b7db2d775c3319e0f6d4`.
+[Preuve agrégée](../../evals/evidence/m1_api_parity_frozen_replay_20260930.json)
+`2d24b9bc92a484cd6f3fe03f514ade778db84679f927a5ae85fdad1505bf99c3`.
+
+Le contrôle de parité est satisfait sur ce périmètre ; la PR peut passer en
+revue. Les scores live 60/98 et 62/98 restent ceux de la campagne précédente,
+sans nouvelle mesure fournisseur après le tri des acronymes. La fiabilisation
+du juge reste un travail séparé ; aucun merge ni déploiement dans ce jalon.

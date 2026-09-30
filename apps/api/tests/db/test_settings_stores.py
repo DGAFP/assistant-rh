@@ -1,5 +1,7 @@
+import psycopg
 import pytest
 from assistant_rh_api.db.settings_stores import AcronymStore, ConfigStore, PromptStore
+from assistant_rh_rag_pipeline import db_helpers
 
 pytestmark = pytest.mark.anyio
 
@@ -42,19 +44,25 @@ async def test_prompts_inactive_absent_and_revision(repository_db):
     assert await store.get("system") is None
 
 
-async def test_acronyms_both_historical_schemas_and_ties(repository_db):
+async def test_acronyms_both_historical_schemas_and_ties(repository_db, repository_dsn, monkeypatch):
+    monkeypatch.setattr(db_helpers, "_db_conn", lambda: psycopg.connect(repository_dsn))
     store = AcronymStore(repository_db)
     assert (await store.load()).value == ()
     async with repository_db.transaction() as connection:
-        await connection.execute("INSERT INTO public.acronyms(acronym, expansion) VALUES ('ZZ', 'Last'), ('AA', 'First')")
+        await connection.execute("""
+            INSERT INTO public.acronyms(acronym, expansion)
+            VALUES ('ZZ', 'Last'), ('AA', 'First'), ('CDI', 'Indefinite'), ('CDD', 'Fixed term')
+        """)
     first = await store.load()
-    assert [a.short for a in first.value] == ["AA", "ZZ"]
+    assert [a.short for a in first.value] == ["AA", "CDD", "CDI", "ZZ"]
+    assert list(db_helpers.get_acronym_dict().items()) == [(a.short, a.expansion) for a in first.value]
     try:
         async with repository_db.transaction() as connection:
             await connection.execute("ALTER TABLE public.acronyms ADD COLUMN priority INTEGER DEFAULT 0")
             await connection.execute("UPDATE public.acronyms SET priority = 5 WHERE acronym = 'ZZ'")
         second = await store.load()
-        assert [a.short for a in second.value] == ["ZZ", "AA"]
+        assert [a.short for a in second.value] == ["ZZ", "AA", "CDD", "CDI"]
+        assert list(db_helpers.get_acronym_dict().items()) == [(a.short, a.expansion) for a in second.value]
         assert first.revision != second.revision
     finally:
         async with repository_db.transaction() as connection:

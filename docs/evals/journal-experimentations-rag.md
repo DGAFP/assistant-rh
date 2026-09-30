@@ -1783,3 +1783,54 @@ nouvelle campagne n'est lancée pour obtenir un meilleur score.
 empreinte `cfcb0925ec9d3d43f1aeb6133a955f542baed2e838155815835277717ed458aa`.
 Les limites de reconstruction des prompts et de finalisation sont documentées.
 PR #580 conservée en brouillon.
+
+## M1 — préenregistrement du rejeu déterministe `m1_frozen_outputs_20260930`
+
+Contrôle hors ligne sur les 98 questions du run #259, sources de code au
+commit `534ef86`. Aucun nouveau jugement ni appel d'inférence. Les réponses
+brutes du classificateur et du sélecteur, la réponse finale et les scores de
+sections sont figés depuis la campagne. Les données complètes nécessaires
+sont préparées en lecture seule depuis le clone local inchangé.
+
+Les traces M1 ne conservent pas tous les vecteurs et rangs bruts des recherches.
+Le contrôle injecte donc un même pool de chunks à la frontière de sortie du
+retriever : identifiants/ordre et scores journalisés, textes et métadonnées
+réhydratés. Les scores de chunks journalisés sont arrondis. Il exerce les
+vrais traitements de requête, agrégation, sélection, construction du contexte
+et génération, ainsi que leur orchestration. Il ne constitue pas un rejeu
+intégral des appels SQL, embeddings ou transports/fallbacks fournisseurs.
+Le texte enregistré du fallback q222 est injecté comme résultat figé, sans
+simuler à nouveau les pannes du fournisseur.
+
+Critère : égalité exacte des projections d'étapes, des requêtes d'inférence,
+des contextes, des références et des réponses finales ; consommation complète
+des appels enregistrés. Rejeu final avec réseau interdit. Tout écart sera
+rapporté, sans modifier les verdicts M1. Les sept scénarios M0b complets et
+leurs contrôles négatifs seront exécutés séparément. Les données détaillées
+restent privées hors Git ; seuls les agrégats et empreintes seront publiés.
+
+### Résultat du rejeu `m1_frozen_outputs_20260930`
+
+**98/98 paires exactes**, avec 578 étapes et 386 appels simulés par moteur.
+Les 96 prompts sélecteur et 96 prompts utilisateur du générateur correspondent
+aux messages reconstruits du run #259 ; ses 98 réponses finales sont conservées.
+Les deux moteurs ont été réexécutés hors réseau, après préparation locale en
+lecture seule. Les cinq mutations volontaires sont détectées (prompt, chunk,
+contexte, réponse, appel supplémentaire).
+
+Le premier cas a révélé un écart réel de prompt : départage non déterministe
+des acronymes historiques de même priorité (CDI/CDD contre CDD/CDI). Le chargeur
+historique a été aligné sur celui du core et testé sur les deux schémas de table.
+Après cette correction, le panel complet passe. Cela ne mesure pas la part de
+ce défaut dans l'ancien écart de qualité.
+
+Validation : 274 tests ciblés, dont les sept scénarios M0b et leurs contrôles
+négatifs, plus quatre tests d'intégrité du panel M1 ; Ruff et contrôle de diff.
+Les limites annoncées restent applicables : frontière de retrieval figée,
+scores de chunks arrondis, absence de rejeu des transports/fallbacks. Les
+scores live précédents sont conservés ; aucun nouvel appel provider n'a été
+lancé. La PR peut passer en revue ; la fiabilisation du juge reste distincte.
+
+[Preuve agrégée](evidence/m1_api_parity_frozen_replay_20260930.json), empreinte
+`2d24b9bc92a484cd6f3fe03f514ade778db84679f927a5ae85fdad1505bf99c3`.
+Archive complète privée, avec sources, conservée hors Git.

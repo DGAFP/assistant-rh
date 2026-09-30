@@ -1008,3 +1008,14 @@ incohérences du juge dans les deux directions. Le GO au seuil prévu demeure ;
 il n'établit pas une amélioration causale du code ni une qualité absolue fiable.
 Priorité à des critères de juge communs figés par question et au rejeu des
 mêmes sorties de modèles. [Analyse et limites](13-m1-run-metrics.md).
+
+### M1 — contrôle déterministe terminé
+
+98/98 paires exactes après la frontière de retrieval, les deux moteurs hors
+réseau. Le contrôle a révélé et corrigé l'ordre des acronymes de même priorité
+côté historique. Cinq mutations détectées ; 278 tests ciblés réussis, dont les
+sept scénarios M0b complets. Les prompts sélecteur/générateur et réponses figés
+correspondent au run #259. La PR peut passer en revue ; scores live conservés,
+limites du rejeu et travail restant sur le juge explicités dans le
+[rapport](13-m1-run-metrics.md) et la
+[preuve](../../evals/evidence/m1_api_parity_frozen_replay_20260930.json).
