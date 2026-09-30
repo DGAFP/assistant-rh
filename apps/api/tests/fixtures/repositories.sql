@@ -54,4 +54,29 @@ CREATE TABLE IF NOT EXISTS public.chat_feedbacks (
     error_category TEXT, ai_reason TEXT, ai_analyzed_at TIMESTAMPTZ, beta_scope TEXT, theme TEXT
 );
 ALTER TABLE public.chat_runs ALTER COLUMN ts DROP NOT NULL;
+-- Historical summary columns consumed by the chat logs and timeline UI.
+ALTER TABLE public.chat_runs
+    ADD COLUMN IF NOT EXISTS provider TEXT,
+    ADD COLUMN IF NOT EXISTS backend TEXT,
+    ADD COLUMN IF NOT EXISTS rag_version TEXT,
+    ADD COLUMN IF NOT EXISTS total_time_ms INTEGER,
+    ADD COLUMN IF NOT EXISTS pipeline_latency_ms INTEGER,
+    ADD COLUMN IF NOT EXISTS ttft_ms INTEGER,
+    ADD COLUMN IF NOT EXISTS v3_ttft_ms INTEGER,
+    ADD COLUMN IF NOT EXISTS v3_chars_per_second DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS sources_used_count INTEGER,
+    ADD COLUMN IF NOT EXISTS v3_intent_name TEXT,
+    ADD COLUMN IF NOT EXISTS intent_confidence DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS v3_should_proceed BOOLEAN,
+    ADD COLUMN IF NOT EXISTS v3_needs_legal_final BOOLEAN,
+    ADD COLUMN IF NOT EXISTS v3_chunks_retrieved_count INTEGER,
+    ADD COLUMN IF NOT EXISTS v3_embedding_model TEXT,
+    ADD COLUMN IF NOT EXISTS v3_reranker_status TEXT,
+    ADD COLUMN IF NOT EXISTS v3_doc_entire_count INTEGER,
+    ADD COLUMN IF NOT EXISTS v3_query_processing_ms INTEGER,
+    ADD COLUMN IF NOT EXISTS v3_retrieval_ms INTEGER,
+    ADD COLUMN IF NOT EXISTS v3_aggregation_ms INTEGER,
+    ADD COLUMN IF NOT EXISTS v3_selector_ms INTEGER,
+    ADD COLUMN IF NOT EXISTS v3_context_building_ms INTEGER,
+    ADD COLUMN IF NOT EXISTS v3_generation_ms INTEGER;
 ALTER TABLE public.chat_feedbacks ALTER COLUMN ts DROP NOT NULL;

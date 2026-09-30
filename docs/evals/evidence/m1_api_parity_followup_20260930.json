@@ -1,0 +1,4564 @@
+{
+  "schema_version": "m1-followup-gold-passages-v2",
+  "decision": "GO technique M1",
+  "assessment": {
+    "captured_at": "2026-09-30T11:26:32.492045+00:00",
+    "database": "local_clone",
+    "runs": {
+      "m0a_rejudged": {
+        "id": 255,
+        "run_label": "m1_rejudge_gold_passages_v2_20260930_m0a",
+        "status": "completed",
+        "git_sha": "cf937ee6913196a5c75fd5686abd34608f6e8680",
+        "created_at": "2026-09-30 10:11:43.924210+00:00",
+        "completed_at": "2026-09-30 11:05:52.834043+00:00",
+        "config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "aggregate": {
+          "total": 98,
+          "completed": 98,
+          "failed": 0,
+          "doc_recall_avg": 0.7242784821569823,
+          "doc_precision_avg": 0.021930235091662014,
+          "hit_rate_avg": 0.8061224489795918,
+          "mrr_avg": 0.4338885076610081,
+          "judge_score_avg": 0.6578231292517007,
+          "judge_raw_score_avg": 0.7062925170068027,
+          "judge_pass_rate": 0.6122448979591837,
+          "retrieval_gap_rate": 0.19387755102040816,
+          "judge_legal_correctness_avg": 0.7959183673469388,
+          "judge_completeness_avg": 0.6872448979591836,
+          "judge_gold_answer_alignment_avg": 0.7103741496598639,
+          "judge_source_support_avg": 0.8469387755102041,
+          "ragas_faithfulness_avg": null,
+          "ragas_context_precision_avg": null,
+          "ragas_context_recall_avg": null,
+          "stage_metrics": {
+            "initial": {
+              "pool": {
+                "n": 96,
+                "hit_rate_avg": 0.8229166666666666,
+                "doc_recall_avg": 0.7393676172019195
+              },
+              "selector_kept": {
+                "n": 94,
+                "hit_rate_avg": 0.5425531914893617,
+                "doc_recall_avg": 0.46453900709219853
+              },
+              "sections_top12": {
+                "n": 96,
+                "hit_rate_avg": 0.6458333333333334,
+                "doc_recall_avg": 0.5512276785714286
+              },
+              "sections_top20": {
+                "n": 96,
+                "hit_rate_avg": 0.6770833333333334,
+                "doc_recall_avg": 0.597358630952381
+              },
+              "context_builder_output": {
+                "n": 96,
+                "hit_rate_avg": 0.53125,
+                "doc_recall_avg": 0.4548611111111111
+              }
+            }
+          },
+          "token_usage": {
+            "judge": {
+              "prompt_tokens": 2071326,
+              "completion_tokens": 202092,
+              "calls": 305,
+              "items": 98,
+              "active_items": 98,
+              "coverage_complete": true,
+              "provider": "scaleway",
+              "model": "mistral-medium-3.5-128b",
+              "cost_eur": 4.622674,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "ragas": {
+              "prompt_tokens": 0,
+              "completion_tokens": 0,
+              "calls": 0,
+              "items": 0,
+              "active_items": 98,
+              "coverage_complete": false,
+              "provider": "",
+              "model": "",
+              "cost_eur": null,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "generator_albert_est": {
+              "prompt_tokens": 0,
+              "completion_tokens": 0,
+              "cost_eur": 0.0
+            },
+            "selector_albert_est": {
+              "prompt_tokens": 0,
+              "completion_tokens": 0,
+              "cost_eur": 0.0
+            },
+            "billable_cost_eur": null,
+            "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+          },
+          "per_corpus": {
+            "DGAFP": {
+              "total": 2,
+              "completed": 2,
+              "failed": 0,
+              "doc_recall_avg": 0.03488372093023256,
+              "doc_precision_avg": 0.011111111111111112,
+              "hit_rate_avg": 0.5,
+              "mrr_avg": 0.004807692307692308,
+              "judge_score_avg": 0.7,
+              "judge_raw_score_avg": 0.9,
+              "judge_pass_rate": 0.5,
+              "retrieval_gap_rate": 0.5,
+              "judge_legal_correctness_avg": 1.0,
+              "judge_completeness_avg": 0.8,
+              "judge_gold_answer_alignment_avg": 0.9,
+              "judge_source_support_avg": 1.0,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 2,
+                    "hit_rate_avg": 0.5,
+                    "doc_recall_avg": 0.03488372093023256
+                  },
+                  "selector_kept": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "sections_top12": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "sections_top20": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "context_builder_output": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 35571,
+                  "completion_tokens": 4029,
+                  "calls": 6,
+                  "items": 2,
+                  "active_items": 2,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.083573,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 2,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "MATTE": {
+              "total": 12,
+              "completed": 12,
+              "failed": 0,
+              "doc_recall_avg": 0.7906746031746031,
+              "doc_precision_avg": 0.02319665962281135,
+              "hit_rate_avg": 0.9166666666666666,
+              "mrr_avg": 0.5836640211640212,
+              "judge_score_avg": 0.5666666666666667,
+              "judge_raw_score_avg": 0.6333333333333333,
+              "judge_pass_rate": 0.5833333333333334,
+              "retrieval_gap_rate": 0.08333333333333333,
+              "judge_legal_correctness_avg": 0.75,
+              "judge_completeness_avg": 0.6083333333333333,
+              "judge_gold_answer_alignment_avg": 0.6375000000000001,
+              "judge_source_support_avg": 0.8333333333333334,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 12,
+                    "hit_rate_avg": 0.9166666666666666,
+                    "doc_recall_avg": 0.7906746031746031
+                  },
+                  "selector_kept": {
+                    "n": 12,
+                    "hit_rate_avg": 0.8333333333333334,
+                    "doc_recall_avg": 0.6253968253968254
+                  },
+                  "sections_top12": {
+                    "n": 12,
+                    "hit_rate_avg": 0.8333333333333334,
+                    "doc_recall_avg": 0.6557539682539683
+                  },
+                  "sections_top20": {
+                    "n": 12,
+                    "hit_rate_avg": 0.9166666666666666,
+                    "doc_recall_avg": 0.7628968253968255
+                  },
+                  "context_builder_output": {
+                    "n": 12,
+                    "hit_rate_avg": 0.8333333333333334,
+                    "doc_recall_avg": 0.6253968253968254
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 389648,
+                  "completion_tokens": 48339,
+                  "calls": 39,
+                  "items": 12,
+                  "active_items": 12,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.947018,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 12,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "MSO": {
+              "total": 4,
+              "completed": 4,
+              "failed": 0,
+              "doc_recall_avg": 0.34523809523809523,
+              "doc_precision_avg": 0.011695906432748537,
+              "hit_rate_avg": 0.5,
+              "mrr_avg": 0.5,
+              "judge_score_avg": 0.425,
+              "judge_raw_score_avg": 0.4625,
+              "judge_pass_rate": 0.5,
+              "retrieval_gap_rate": 0.5,
+              "judge_legal_correctness_avg": 0.5,
+              "judge_completeness_avg": 0.4375,
+              "judge_gold_answer_alignment_avg": 0.5,
+              "judge_source_support_avg": 0.5,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 4,
+                    "hit_rate_avg": 0.5,
+                    "doc_recall_avg": 0.34523809523809523
+                  },
+                  "selector_kept": {
+                    "n": 4,
+                    "hit_rate_avg": 0.5,
+                    "doc_recall_avg": 0.2738095238095238
+                  },
+                  "sections_top12": {
+                    "n": 4,
+                    "hit_rate_avg": 0.5,
+                    "doc_recall_avg": 0.34523809523809523
+                  },
+                  "sections_top20": {
+                    "n": 4,
+                    "hit_rate_avg": 0.5,
+                    "doc_recall_avg": 0.34523809523809523
+                  },
+                  "context_builder_output": {
+                    "n": 4,
+                    "hit_rate_avg": 0.5,
+                    "doc_recall_avg": 0.2738095238095238
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 72591,
+                  "completion_tokens": 10343,
+                  "calls": 12,
+                  "items": 4,
+                  "active_items": 4,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.186458,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 4,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "Service-Public": {
+              "total": 14,
+              "completed": 14,
+              "failed": 0,
+              "doc_recall_avg": 1.0,
+              "doc_precision_avg": 0.02192294253894746,
+              "hit_rate_avg": 1.0,
+              "mrr_avg": 0.8282851115129597,
+              "judge_score_avg": 0.8071428571428572,
+              "judge_raw_score_avg": 0.8071428571428572,
+              "judge_pass_rate": 0.5714285714285714,
+              "retrieval_gap_rate": 0.0,
+              "judge_legal_correctness_avg": 0.9285714285714286,
+              "judge_completeness_avg": 0.7404761904761905,
+              "judge_gold_answer_alignment_avg": 0.8428571428571429,
+              "judge_source_support_avg": 0.9285714285714286,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 14,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 1.0
+                  },
+                  "selector_kept": {
+                    "n": 14,
+                    "hit_rate_avg": 0.8571428571428571,
+                    "doc_recall_avg": 0.8571428571428571
+                  },
+                  "sections_top12": {
+                    "n": 14,
+                    "hit_rate_avg": 0.9285714285714286,
+                    "doc_recall_avg": 0.9285714285714286
+                  },
+                  "sections_top20": {
+                    "n": 14,
+                    "hit_rate_avg": 0.9285714285714286,
+                    "doc_recall_avg": 0.9285714285714286
+                  },
+                  "context_builder_output": {
+                    "n": 14,
+                    "hit_rate_avg": 0.8571428571428571,
+                    "doc_recall_avg": 0.8571428571428571
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 402805,
+                  "completion_tokens": 53829,
+                  "calls": 47,
+                  "items": 14,
+                  "active_items": 14,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 1.007924,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 14,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "manual": {
+              "total": 55,
+              "completed": 55,
+              "failed": 0,
+              "doc_recall_avg": 0.6552813852813852,
+              "doc_precision_avg": 0.024324504181147115,
+              "hit_rate_avg": 0.7454545454545455,
+              "mrr_avg": 0.27683244118726247,
+              "judge_score_avg": 0.6412121212121212,
+              "judge_raw_score_avg": 0.703030303030303,
+              "judge_pass_rate": 0.6181818181818182,
+              "retrieval_gap_rate": 0.2545454545454545,
+              "judge_legal_correctness_avg": 0.7818181818181819,
+              "judge_completeness_avg": 0.696969696969697,
+              "judge_gold_answer_alignment_avg": 0.6975757575757576,
+              "judge_source_support_avg": 0.8545454545454545,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 54,
+                    "hit_rate_avg": 0.7592592592592593,
+                    "doc_recall_avg": 0.6674162257495591
+                  },
+                  "selector_kept": {
+                    "n": 53,
+                    "hit_rate_avg": 0.3584905660377358,
+                    "doc_recall_avg": 0.2842767295597484
+                  },
+                  "sections_top12": {
+                    "n": 54,
+                    "hit_rate_avg": 0.5185185185185185,
+                    "doc_recall_avg": 0.4012566137566138
+                  },
+                  "sections_top20": {
+                    "n": 54,
+                    "hit_rate_avg": 0.5370370370370371,
+                    "doc_recall_avg": 0.44093915343915346
+                  },
+                  "context_builder_output": {
+                    "n": 54,
+                    "hit_rate_avg": 0.35185185185185186,
+                    "doc_recall_avg": 0.27901234567901234
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 966447,
+                  "completion_tokens": 67243,
+                  "calls": 165,
+                  "items": 55,
+                  "active_items": 55,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 1.953988,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 55,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "synthetic": {
+              "total": 11,
+              "completed": 11,
+              "failed": 0,
+              "doc_recall_avg": 0.9090909090909091,
+              "doc_precision_avg": 0.013749238404539187,
+              "hit_rate_avg": 0.9090909090909091,
+              "mrr_avg": 0.6077922077922078,
+              "judge_score_avg": 0.7272727272727273,
+              "judge_raw_score_avg": 0.7272727272727273,
+              "judge_pass_rate": 0.7272727272727273,
+              "retrieval_gap_rate": 0.09090909090909091,
+              "judge_legal_correctness_avg": 0.8181818181818182,
+              "judge_completeness_avg": 0.7272727272727273,
+              "judge_gold_answer_alignment_avg": 0.7272727272727273,
+              "judge_source_support_avg": 0.8181818181818182,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 10,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 1.0
+                  },
+                  "sections_top12": {
+                    "n": 10,
+                    "hit_rate_avg": 0.9,
+                    "doc_recall_avg": 0.9
+                  },
+                  "sections_top20": {
+                    "n": 10,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 1.0
+                  },
+                  "context_builder_output": {
+                    "n": 10,
+                    "hit_rate_avg": 0.8,
+                    "doc_recall_avg": 0.8
+                  },
+                  "selector_kept": {
+                    "n": 9,
+                    "hit_rate_avg": 0.8888888888888888,
+                    "doc_recall_avg": 0.8888888888888888
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 204264,
+                  "completion_tokens": 18309,
+                  "calls": 36,
+                  "items": 11,
+                  "active_items": 11,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.443713,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 11,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            }
+          }
+        },
+        "pass_count": 60,
+        "judged_count": 98,
+        "fingerprints": {
+          "kind": "stored_answer_rejudgment",
+          "runtime": "m0a",
+          "database": "local_clone",
+          "created_by": "__main__",
+          "eval_scope": {
+            "limit": null,
+            "judge_model": "mistral-medium-3.5-128b",
+            "judge_votes": 3,
+            "ragas_model": "",
+            "question_ids": [
+              1,
+              2,
+              3,
+              4,
+              6,
+              7,
+              9,
+              10,
+              11,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              23,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              173,
+              174,
+              175,
+              176,
+              177,
+              178,
+              179,
+              180,
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192,
+              193,
+              194,
+              196,
+              197,
+              198,
+              199,
+              200,
+              201,
+              203,
+              204,
+              205,
+              206,
+              207,
+              208,
+              209,
+              210,
+              211,
+              212,
+              213,
+              214,
+              215,
+              216,
+              217,
+              218,
+              219,
+              220,
+              221,
+              222,
+              223,
+              224,
+              225,
+              226,
+              227,
+              228,
+              229,
+              657,
+              660,
+              676,
+              706,
+              827,
+              926,
+              4528,
+              4529,
+              4530,
+              4531,
+              4532,
+              4533,
+              4534,
+              4535,
+              4536,
+              4537,
+              4538
+            ],
+            "judge_enabled": true,
+            "ragas_enabled": false,
+            "judge_base_url": "https://api.scaleway.ai/v1",
+            "judge_evidence": "gold-passages-v2",
+            "judge_provider": "scaleway",
+            "ministry_scope": "per-question",
+            "question_count": 98
+          },
+          "concurrency": 4,
+          "origin_runs": [
+            240
+          ],
+          "input_sha256": "6dd46790aef6fd88ad701da5aa00621e0f086050b82d9214e50a05947f2ef120",
+          "source_fingerprint": "440699d13d50ff5362e153eadfd73bb958ac7077e53f962772d479fee4abf5c0"
+        },
+        "repaired_votes": 11,
+        "failed_votes": 0
+      },
+      "legacy_rejudged": {
+        "id": 256,
+        "run_label": "m1_rejudge_gold_passages_v2_20260930_legacy",
+        "status": "completed",
+        "git_sha": "cf937ee6913196a5c75fd5686abd34608f6e8680",
+        "created_at": "2026-09-30 10:11:43.924210+00:00",
+        "completed_at": "2026-09-30 11:05:52.902927+00:00",
+        "config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "aggregate": {
+          "total": 98,
+          "completed": 98,
+          "failed": 0,
+          "doc_recall_avg": 0.7291375686487219,
+          "doc_precision_avg": 0.02268044571795004,
+          "hit_rate_avg": 0.826530612244898,
+          "mrr_avg": 0.4480704907077428,
+          "judge_score_avg": 0.6670068027210884,
+          "judge_raw_score_avg": 0.719047619047619,
+          "judge_pass_rate": 0.6530612244897959,
+          "retrieval_gap_rate": 0.17346938775510204,
+          "judge_legal_correctness_avg": 0.8163265306122449,
+          "judge_completeness_avg": 0.7028911564625852,
+          "judge_gold_answer_alignment_avg": 0.732312925170068,
+          "judge_source_support_avg": 0.8469387755102041,
+          "ragas_faithfulness_avg": null,
+          "ragas_context_precision_avg": null,
+          "ragas_context_recall_avg": null,
+          "stage_metrics": {
+            "initial": {
+              "pool": {
+                "n": 96,
+                "hit_rate_avg": 0.84375,
+                "doc_recall_avg": 0.744327934662237
+              },
+              "selector_kept": {
+                "n": 93,
+                "hit_rate_avg": 0.5376344086021505,
+                "doc_recall_avg": 0.45898617511520734
+              },
+              "sections_top12": {
+                "n": 96,
+                "hit_rate_avg": 0.6458333333333334,
+                "doc_recall_avg": 0.5442832341269841
+              },
+              "sections_top20": {
+                "n": 96,
+                "hit_rate_avg": 0.6770833333333334,
+                "doc_recall_avg": 0.5904141865079365
+              },
+              "context_builder_output": {
+                "n": 96,
+                "hit_rate_avg": 0.5416666666666666,
+                "doc_recall_avg": 0.4602678571428571
+              }
+            }
+          },
+          "token_usage": {
+            "judge": {
+              "prompt_tokens": 2069389,
+              "completion_tokens": 200962,
+              "calls": 306,
+              "items": 98,
+              "active_items": 98,
+              "coverage_complete": true,
+              "provider": "scaleway",
+              "model": "mistral-medium-3.5-128b",
+              "cost_eur": 4.611296,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "ragas": {
+              "prompt_tokens": 0,
+              "completion_tokens": 0,
+              "calls": 0,
+              "items": 0,
+              "active_items": 98,
+              "coverage_complete": false,
+              "provider": "",
+              "model": "",
+              "cost_eur": null,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "generator_albert_est": {
+              "prompt_tokens": 0,
+              "completion_tokens": 0,
+              "cost_eur": 0.0
+            },
+            "selector_albert_est": {
+              "prompt_tokens": 0,
+              "completion_tokens": 0,
+              "cost_eur": 0.0
+            },
+            "billable_cost_eur": null,
+            "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+          },
+          "per_corpus": {
+            "DGAFP": {
+              "total": 2,
+              "completed": 2,
+              "failed": 0,
+              "doc_recall_avg": 0.03488372093023256,
+              "doc_precision_avg": 0.011111111111111112,
+              "hit_rate_avg": 0.5,
+              "mrr_avg": 0.004807692307692308,
+              "judge_score_avg": 0.725,
+              "judge_raw_score_avg": 1.0,
+              "judge_pass_rate": 1.0,
+              "retrieval_gap_rate": 0.5,
+              "judge_legal_correctness_avg": 1.0,
+              "judge_completeness_avg": 1.0,
+              "judge_gold_answer_alignment_avg": 1.0,
+              "judge_source_support_avg": 1.0,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 2,
+                    "hit_rate_avg": 0.5,
+                    "doc_recall_avg": 0.03488372093023256
+                  },
+                  "selector_kept": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "sections_top12": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "sections_top20": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "context_builder_output": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 34584,
+                  "completion_tokens": 3403,
+                  "calls": 6,
+                  "items": 2,
+                  "active_items": 2,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.077398,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 2,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "MATTE": {
+              "total": 12,
+              "completed": 12,
+              "failed": 0,
+              "doc_recall_avg": 0.7906746031746031,
+              "doc_precision_avg": 0.023526191609662944,
+              "hit_rate_avg": 0.9166666666666666,
+              "mrr_avg": 0.5783730158730159,
+              "judge_score_avg": 0.5666666666666667,
+              "judge_raw_score_avg": 0.6333333333333333,
+              "judge_pass_rate": 0.5,
+              "retrieval_gap_rate": 0.08333333333333333,
+              "judge_legal_correctness_avg": 0.75,
+              "judge_completeness_avg": 0.6041666666666666,
+              "judge_gold_answer_alignment_avg": 0.65,
+              "judge_source_support_avg": 0.8333333333333334,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 12,
+                    "hit_rate_avg": 0.9166666666666666,
+                    "doc_recall_avg": 0.7906746031746031
+                  },
+                  "selector_kept": {
+                    "n": 12,
+                    "hit_rate_avg": 0.8333333333333334,
+                    "doc_recall_avg": 0.5753968253968255
+                  },
+                  "sections_top12": {
+                    "n": 12,
+                    "hit_rate_avg": 0.8333333333333334,
+                    "doc_recall_avg": 0.6557539682539683
+                  },
+                  "sections_top20": {
+                    "n": 12,
+                    "hit_rate_avg": 0.9166666666666666,
+                    "doc_recall_avg": 0.7628968253968255
+                  },
+                  "context_builder_output": {
+                    "n": 12,
+                    "hit_rate_avg": 0.8333333333333334,
+                    "doc_recall_avg": 0.5753968253968255
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 389723,
+                  "completion_tokens": 47499,
+                  "calls": 38,
+                  "items": 12,
+                  "active_items": 12,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.940826,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 12,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "MSO": {
+              "total": 4,
+              "completed": 4,
+              "failed": 0,
+              "doc_recall_avg": 0.6785714285714286,
+              "doc_precision_avg": 0.01933387183155178,
+              "hit_rate_avg": 1.0,
+              "mrr_avg": 0.7638888888888888,
+              "judge_score_avg": 0.85,
+              "judge_raw_score_avg": 0.9625,
+              "judge_pass_rate": 1.0,
+              "retrieval_gap_rate": 0.0,
+              "judge_legal_correctness_avg": 1.0,
+              "judge_completeness_avg": 0.9375,
+              "judge_gold_answer_alignment_avg": 1.0,
+              "judge_source_support_avg": 1.0,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 4,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 0.6785714285714286
+                  },
+                  "selector_kept": {
+                    "n": 4,
+                    "hit_rate_avg": 0.75,
+                    "doc_recall_avg": 0.5119047619047619
+                  },
+                  "sections_top12": {
+                    "n": 4,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 0.6785714285714286
+                  },
+                  "sections_top20": {
+                    "n": 4,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 0.6785714285714286
+                  },
+                  "context_builder_output": {
+                    "n": 4,
+                    "hit_rate_avg": 0.75,
+                    "doc_recall_avg": 0.5119047619047619
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 89082,
+                  "completion_tokens": 10560,
+                  "calls": 12,
+                  "items": 4,
+                  "active_items": 4,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.212824,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 4,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "Service-Public": {
+              "total": 14,
+              "completed": 14,
+              "failed": 0,
+              "doc_recall_avg": 0.9285714285714286,
+              "doc_precision_avg": 0.020964678617041498,
+              "hit_rate_avg": 0.9285714285714286,
+              "mrr_avg": 0.7431495069938088,
+              "judge_score_avg": 0.6392857142857142,
+              "judge_raw_score_avg": 0.6392857142857142,
+              "judge_pass_rate": 0.5,
+              "retrieval_gap_rate": 0.07142857142857142,
+              "judge_legal_correctness_avg": 0.7857142857142857,
+              "judge_completeness_avg": 0.6107142857142858,
+              "judge_gold_answer_alignment_avg": 0.6928571428571428,
+              "judge_source_support_avg": 0.7857142857142857,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 14,
+                    "hit_rate_avg": 0.9285714285714286,
+                    "doc_recall_avg": 0.9285714285714286
+                  },
+                  "selector_kept": {
+                    "n": 14,
+                    "hit_rate_avg": 0.8571428571428571,
+                    "doc_recall_avg": 0.8571428571428571
+                  },
+                  "sections_top12": {
+                    "n": 14,
+                    "hit_rate_avg": 0.8571428571428571,
+                    "doc_recall_avg": 0.8571428571428571
+                  },
+                  "sections_top20": {
+                    "n": 14,
+                    "hit_rate_avg": 0.8571428571428571,
+                    "doc_recall_avg": 0.8571428571428571
+                  },
+                  "context_builder_output": {
+                    "n": 14,
+                    "hit_rate_avg": 0.8571428571428571,
+                    "doc_recall_avg": 0.8571428571428571
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 376886,
+                  "completion_tokens": 54682,
+                  "calls": 49,
+                  "items": 14,
+                  "active_items": 14,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.975441,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 14,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "manual": {
+              "total": 55,
+              "completed": 55,
+              "failed": 0,
+              "doc_recall_avg": 0.6578787878787878,
+              "doc_precision_avg": 0.02516905997190451,
+              "hit_rate_avg": 0.7636363636363637,
+              "mrr_avg": 0.29447344828491145,
+              "judge_score_avg": 0.6321212121212121,
+              "judge_raw_score_avg": 0.6921212121212121,
+              "judge_pass_rate": 0.6363636363636364,
+              "retrieval_gap_rate": 0.23636363636363636,
+              "judge_legal_correctness_avg": 0.8,
+              "judge_completeness_avg": 0.6787878787878788,
+              "judge_gold_answer_alignment_avg": 0.6957575757575757,
+              "judge_source_support_avg": 0.8363636363636363,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 54,
+                    "hit_rate_avg": 0.7777777777777778,
+                    "doc_recall_avg": 0.6700617283950616
+                  },
+                  "selector_kept": {
+                    "n": 52,
+                    "hit_rate_avg": 0.34615384615384615,
+                    "doc_recall_avg": 0.2833333333333333
+                  },
+                  "sections_top12": {
+                    "n": 54,
+                    "hit_rate_avg": 0.5,
+                    "doc_recall_avg": 0.38273809523809527
+                  },
+                  "sections_top20": {
+                    "n": 54,
+                    "hit_rate_avg": 0.5185185185185185,
+                    "doc_recall_avg": 0.4224206349206349
+                  },
+                  "context_builder_output": {
+                    "n": 54,
+                    "hit_rate_avg": 0.35185185185185186,
+                    "doc_recall_avg": 0.2820987654320988
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 984552,
+                  "completion_tokens": 67754,
+                  "calls": 165,
+                  "items": 55,
+                  "active_items": 55,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 1.984984,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 55,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "synthetic": {
+              "total": 11,
+              "completed": 11,
+              "failed": 0,
+              "doc_recall_avg": 0.9090909090909091,
+              "doc_precision_avg": 0.014281604093739481,
+              "hit_rate_avg": 0.9090909090909091,
+              "mrr_avg": 0.6641025641025641,
+              "judge_score_avg": 0.9090909090909091,
+              "judge_raw_score_avg": 0.9090909090909091,
+              "judge_pass_rate": 0.9090909090909091,
+              "retrieval_gap_rate": 0.09090909090909091,
+              "judge_legal_correctness_avg": 0.9090909090909091,
+              "judge_completeness_avg": 0.9090909090909091,
+              "judge_gold_answer_alignment_avg": 0.9090909090909091,
+              "judge_source_support_avg": 0.9090909090909091,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 10,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 1.0
+                  },
+                  "selector_kept": {
+                    "n": 9,
+                    "hit_rate_avg": 0.7777777777777778,
+                    "doc_recall_avg": 0.7777777777777778
+                  },
+                  "sections_top12": {
+                    "n": 10,
+                    "hit_rate_avg": 0.9,
+                    "doc_recall_avg": 0.9
+                  },
+                  "sections_top20": {
+                    "n": 10,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 1.0
+                  },
+                  "context_builder_output": {
+                    "n": 10,
+                    "hit_rate_avg": 0.8,
+                    "doc_recall_avg": 0.8
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 194562,
+                  "completion_tokens": 17064,
+                  "calls": 36,
+                  "items": 11,
+                  "active_items": 11,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.419823,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 11,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            }
+          }
+        },
+        "pass_count": 64,
+        "judged_count": 98,
+        "fingerprints": {
+          "kind": "stored_answer_rejudgment",
+          "runtime": "legacy",
+          "database": "local_clone",
+          "created_by": "__main__",
+          "eval_scope": {
+            "limit": null,
+            "judge_model": "mistral-medium-3.5-128b",
+            "judge_votes": 3,
+            "ragas_model": "",
+            "question_ids": [
+              1,
+              2,
+              3,
+              4,
+              6,
+              7,
+              9,
+              10,
+              11,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              23,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              173,
+              174,
+              175,
+              176,
+              177,
+              178,
+              179,
+              180,
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192,
+              193,
+              194,
+              196,
+              197,
+              198,
+              199,
+              200,
+              201,
+              203,
+              204,
+              205,
+              206,
+              207,
+              208,
+              209,
+              210,
+              211,
+              212,
+              213,
+              214,
+              215,
+              216,
+              217,
+              218,
+              219,
+              220,
+              221,
+              222,
+              223,
+              224,
+              225,
+              226,
+              227,
+              228,
+              229,
+              657,
+              660,
+              676,
+              706,
+              827,
+              926,
+              4528,
+              4529,
+              4530,
+              4531,
+              4532,
+              4533,
+              4534,
+              4535,
+              4536,
+              4537,
+              4538
+            ],
+            "judge_enabled": true,
+            "ragas_enabled": false,
+            "judge_base_url": "https://api.scaleway.ai/v1",
+            "judge_evidence": "gold-passages-v2",
+            "judge_provider": "scaleway",
+            "ministry_scope": "per-question",
+            "question_count": 98
+          },
+          "concurrency": 4,
+          "origin_runs": [
+            246,
+            249,
+            250
+          ],
+          "input_sha256": "6dd46790aef6fd88ad701da5aa00621e0f086050b82d9214e50a05947f2ef120",
+          "source_fingerprint": "440699d13d50ff5362e153eadfd73bb958ac7077e53f962772d479fee4abf5c0"
+        },
+        "repaired_votes": 12,
+        "failed_votes": 0
+      },
+      "core_rejudged": {
+        "id": 257,
+        "run_label": "m1_rejudge_gold_passages_v2_20260930_core",
+        "status": "completed",
+        "git_sha": "cf937ee6913196a5c75fd5686abd34608f6e8680",
+        "created_at": "2026-09-30 10:11:43.924210+00:00",
+        "completed_at": "2026-09-30 11:05:52.972658+00:00",
+        "config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "aggregate": {
+          "total": 98,
+          "completed": 98,
+          "failed": 0,
+          "doc_recall_avg": 0.7291375686487219,
+          "doc_precision_avg": 0.022674194248288305,
+          "hit_rate_avg": 0.826530612244898,
+          "mrr_avg": 0.4409689334251453,
+          "judge_score_avg": 0.6379251700680272,
+          "judge_raw_score_avg": 0.6884353741496598,
+          "judge_pass_rate": 0.5918367346938775,
+          "retrieval_gap_rate": 0.17346938775510204,
+          "judge_legal_correctness_avg": 0.7755102040816326,
+          "judge_completeness_avg": 0.682482993197279,
+          "judge_gold_answer_alignment_avg": 0.7017006802721089,
+          "judge_source_support_avg": 0.826530612244898,
+          "ragas_faithfulness_avg": null,
+          "ragas_context_precision_avg": null,
+          "ragas_context_recall_avg": null,
+          "stage_metrics": {
+            "initial": {
+              "pool": {
+                "n": 96,
+                "hit_rate_avg": 0.84375,
+                "doc_recall_avg": 0.744327934662237
+              },
+              "selector_kept": {
+                "n": 95,
+                "hit_rate_avg": 0.5473684210526316,
+                "doc_recall_avg": 0.4446115288220552
+              },
+              "sections_top12": {
+                "n": 96,
+                "hit_rate_avg": 0.6458333333333334,
+                "doc_recall_avg": 0.5442832341269841
+              },
+              "sections_top20": {
+                "n": 96,
+                "hit_rate_avg": 0.6770833333333334,
+                "doc_recall_avg": 0.5904141865079365
+              },
+              "context_builder_output": {
+                "n": 96,
+                "hit_rate_avg": 0.5520833333333334,
+                "doc_recall_avg": 0.4503968253968254
+              }
+            }
+          },
+          "token_usage": {
+            "judge": {
+              "prompt_tokens": 2053438,
+              "completion_tokens": 195719,
+              "calls": 304,
+              "items": 98,
+              "active_items": 98,
+              "coverage_complete": true,
+              "provider": "scaleway",
+              "model": "mistral-medium-3.5-128b",
+              "cost_eur": 4.548037,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "ragas": {
+              "prompt_tokens": 0,
+              "completion_tokens": 0,
+              "calls": 0,
+              "items": 0,
+              "active_items": 98,
+              "coverage_complete": false,
+              "provider": "",
+              "model": "",
+              "cost_eur": null,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "generator_albert_est": {
+              "prompt_tokens": 0,
+              "completion_tokens": 0,
+              "cost_eur": 0.0
+            },
+            "selector_albert_est": {
+              "prompt_tokens": 0,
+              "completion_tokens": 0,
+              "cost_eur": 0.0
+            },
+            "billable_cost_eur": null,
+            "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+          },
+          "per_corpus": {
+            "DGAFP": {
+              "total": 2,
+              "completed": 2,
+              "failed": 0,
+              "doc_recall_avg": 0.03488372093023256,
+              "doc_precision_avg": 0.011111111111111112,
+              "hit_rate_avg": 0.5,
+              "mrr_avg": 0.004807692307692308,
+              "judge_score_avg": 0.725,
+              "judge_raw_score_avg": 1.0,
+              "judge_pass_rate": 1.0,
+              "retrieval_gap_rate": 0.5,
+              "judge_legal_correctness_avg": 1.0,
+              "judge_completeness_avg": 1.0,
+              "judge_gold_answer_alignment_avg": 1.0,
+              "judge_source_support_avg": 1.0,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 2,
+                    "hit_rate_avg": 0.5,
+                    "doc_recall_avg": 0.03488372093023256
+                  },
+                  "selector_kept": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "sections_top12": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "sections_top20": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "context_builder_output": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 34128,
+                  "completion_tokens": 3389,
+                  "calls": 6,
+                  "items": 2,
+                  "active_items": 2,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.076609,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 2,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "MATTE": {
+              "total": 12,
+              "completed": 12,
+              "failed": 0,
+              "doc_recall_avg": 0.7906746031746031,
+              "doc_precision_avg": 0.023446816450912622,
+              "hit_rate_avg": 0.9166666666666666,
+              "mrr_avg": 0.5694444444444444,
+              "judge_score_avg": 0.5166666666666667,
+              "judge_raw_score_avg": 0.5833333333333334,
+              "judge_pass_rate": 0.4166666666666667,
+              "retrieval_gap_rate": 0.08333333333333333,
+              "judge_legal_correctness_avg": 0.75,
+              "judge_completeness_avg": 0.5375,
+              "judge_gold_answer_alignment_avg": 0.5916666666666667,
+              "judge_source_support_avg": 0.75,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 12,
+                    "hit_rate_avg": 0.9166666666666666,
+                    "doc_recall_avg": 0.7906746031746031
+                  },
+                  "selector_kept": {
+                    "n": 12,
+                    "hit_rate_avg": 0.8333333333333334,
+                    "doc_recall_avg": 0.5182539682539683
+                  },
+                  "sections_top12": {
+                    "n": 12,
+                    "hit_rate_avg": 0.8333333333333334,
+                    "doc_recall_avg": 0.6557539682539683
+                  },
+                  "sections_top20": {
+                    "n": 12,
+                    "hit_rate_avg": 0.9166666666666666,
+                    "doc_recall_avg": 0.7628968253968255
+                  },
+                  "context_builder_output": {
+                    "n": 12,
+                    "hit_rate_avg": 0.8333333333333334,
+                    "doc_recall_avg": 0.5182539682539683
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 421827,
+                  "completion_tokens": 48293,
+                  "calls": 41,
+                  "items": 12,
+                  "active_items": 12,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.994937,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 12,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "MSO": {
+              "total": 4,
+              "completed": 4,
+              "failed": 0,
+              "doc_recall_avg": 0.6785714285714286,
+              "doc_precision_avg": 0.01933387183155178,
+              "hit_rate_avg": 1.0,
+              "mrr_avg": 0.8,
+              "judge_score_avg": 0.825,
+              "judge_raw_score_avg": 0.9375,
+              "judge_pass_rate": 0.75,
+              "retrieval_gap_rate": 0.0,
+              "judge_legal_correctness_avg": 1.0,
+              "judge_completeness_avg": 0.875,
+              "judge_gold_answer_alignment_avg": 1.0,
+              "judge_source_support_avg": 1.0,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 4,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 0.6785714285714286
+                  },
+                  "selector_kept": {
+                    "n": 4,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 0.5714285714285714
+                  },
+                  "sections_top12": {
+                    "n": 4,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 0.6785714285714286
+                  },
+                  "sections_top20": {
+                    "n": 4,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 0.6785714285714286
+                  },
+                  "context_builder_output": {
+                    "n": 4,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 0.5714285714285714
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 70434,
+                  "completion_tokens": 9602,
+                  "calls": 12,
+                  "items": 4,
+                  "active_items": 4,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.177666,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 4,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "Service-Public": {
+              "total": 14,
+              "completed": 14,
+              "failed": 0,
+              "doc_recall_avg": 0.9285714285714286,
+              "doc_precision_avg": 0.020964678617041498,
+              "hit_rate_avg": 0.9285714285714286,
+              "mrr_avg": 0.7508025682182985,
+              "judge_score_avg": 0.6892857142857143,
+              "judge_raw_score_avg": 0.6892857142857143,
+              "judge_pass_rate": 0.42857142857142855,
+              "retrieval_gap_rate": 0.07142857142857142,
+              "judge_legal_correctness_avg": 0.7857142857142857,
+              "judge_completeness_avg": 0.6142857142857142,
+              "judge_gold_answer_alignment_avg": 0.7428571428571429,
+              "judge_source_support_avg": 0.7857142857142857,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 14,
+                    "hit_rate_avg": 0.9285714285714286,
+                    "doc_recall_avg": 0.9285714285714286
+                  },
+                  "selector_kept": {
+                    "n": 14,
+                    "hit_rate_avg": 0.8571428571428571,
+                    "doc_recall_avg": 0.8571428571428571
+                  },
+                  "sections_top12": {
+                    "n": 14,
+                    "hit_rate_avg": 0.8571428571428571,
+                    "doc_recall_avg": 0.8571428571428571
+                  },
+                  "sections_top20": {
+                    "n": 14,
+                    "hit_rate_avg": 0.8571428571428571,
+                    "doc_recall_avg": 0.8571428571428571
+                  },
+                  "context_builder_output": {
+                    "n": 14,
+                    "hit_rate_avg": 0.8571428571428571,
+                    "doc_recall_avg": 0.8571428571428571
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 325411,
+                  "completion_tokens": 48774,
+                  "calls": 44,
+                  "items": 14,
+                  "active_items": 14,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.853922,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 14,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "manual": {
+              "total": 55,
+              "completed": 55,
+              "failed": 0,
+              "doc_recall_avg": 0.6578787878787878,
+              "doc_precision_avg": 0.02516905997190451,
+              "hit_rate_avg": 0.7636363636363637,
+              "mrr_avg": 0.2904056229854146,
+              "judge_score_avg": 0.5984848484848484,
+              "judge_raw_score_avg": 0.6557575757575759,
+              "judge_pass_rate": 0.6,
+              "retrieval_gap_rate": 0.23636363636363636,
+              "judge_legal_correctness_avg": 0.7454545454545455,
+              "judge_completeness_avg": 0.6787878787878788,
+              "judge_gold_answer_alignment_avg": 0.6593939393939394,
+              "judge_source_support_avg": 0.8181818181818182,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 54,
+                    "hit_rate_avg": 0.7777777777777778,
+                    "doc_recall_avg": 0.6700617283950616
+                  },
+                  "selector_kept": {
+                    "n": 54,
+                    "hit_rate_avg": 0.35185185185185186,
+                    "doc_recall_avg": 0.2728395061728395
+                  },
+                  "sections_top12": {
+                    "n": 54,
+                    "hit_rate_avg": 0.5,
+                    "doc_recall_avg": 0.38273809523809527
+                  },
+                  "sections_top20": {
+                    "n": 54,
+                    "hit_rate_avg": 0.5185185185185185,
+                    "doc_recall_avg": 0.4224206349206349
+                  },
+                  "context_builder_output": {
+                    "n": 54,
+                    "hit_rate_avg": 0.35185185185185186,
+                    "doc_recall_avg": 0.2728395061728395
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 982635,
+                  "completion_tokens": 67942,
+                  "calls": 165,
+                  "items": 55,
+                  "active_items": 55,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 1.983501,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 55,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "synthetic": {
+              "total": 11,
+              "completed": 11,
+              "failed": 0,
+              "doc_recall_avg": 0.9090909090909091,
+              "doc_precision_avg": 0.014316840175487192,
+              "hit_rate_avg": 0.9090909090909091,
+              "mrr_avg": 0.608041958041958,
+              "judge_score_avg": 0.8181818181818182,
+              "judge_raw_score_avg": 0.8181818181818182,
+              "judge_pass_rate": 0.8181818181818182,
+              "retrieval_gap_rate": 0.09090909090909091,
+              "judge_legal_correctness_avg": 0.8181818181818182,
+              "judge_completeness_avg": 0.8181818181818182,
+              "judge_gold_answer_alignment_avg": 0.8181818181818182,
+              "judge_source_support_avg": 0.9090909090909091,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 10,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 1.0
+                  },
+                  "selector_kept": {
+                    "n": 9,
+                    "hit_rate_avg": 0.7777777777777778,
+                    "doc_recall_avg": 0.7777777777777778
+                  },
+                  "sections_top12": {
+                    "n": 10,
+                    "hit_rate_avg": 0.9,
+                    "doc_recall_avg": 0.9
+                  },
+                  "sections_top20": {
+                    "n": 10,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 1.0
+                  },
+                  "context_builder_output": {
+                    "n": 10,
+                    "hit_rate_avg": 0.8,
+                    "doc_recall_avg": 0.8
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 219003,
+                  "completion_tokens": 17719,
+                  "calls": 36,
+                  "items": 11,
+                  "active_items": 11,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.461402,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 11,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            }
+          }
+        },
+        "pass_count": 58,
+        "judged_count": 98,
+        "fingerprints": {
+          "kind": "stored_answer_rejudgment",
+          "runtime": "core",
+          "database": "local_clone",
+          "created_by": "__main__",
+          "eval_scope": {
+            "limit": null,
+            "judge_model": "mistral-medium-3.5-128b",
+            "judge_votes": 3,
+            "ragas_model": "",
+            "question_ids": [
+              1,
+              2,
+              3,
+              4,
+              6,
+              7,
+              9,
+              10,
+              11,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              23,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              173,
+              174,
+              175,
+              176,
+              177,
+              178,
+              179,
+              180,
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192,
+              193,
+              194,
+              196,
+              197,
+              198,
+              199,
+              200,
+              201,
+              203,
+              204,
+              205,
+              206,
+              207,
+              208,
+              209,
+              210,
+              211,
+              212,
+              213,
+              214,
+              215,
+              216,
+              217,
+              218,
+              219,
+              220,
+              221,
+              222,
+              223,
+              224,
+              225,
+              226,
+              227,
+              228,
+              229,
+              657,
+              660,
+              676,
+              706,
+              827,
+              926,
+              4528,
+              4529,
+              4530,
+              4531,
+              4532,
+              4533,
+              4534,
+              4535,
+              4536,
+              4537,
+              4538
+            ],
+            "judge_enabled": true,
+            "ragas_enabled": false,
+            "judge_base_url": "https://api.scaleway.ai/v1",
+            "judge_evidence": "gold-passages-v2",
+            "judge_provider": "scaleway",
+            "ministry_scope": "per-question",
+            "question_count": 98
+          },
+          "concurrency": 4,
+          "origin_runs": [
+            247,
+            248,
+            251
+          ],
+          "input_sha256": "6dd46790aef6fd88ad701da5aa00621e0f086050b82d9214e50a05947f2ef120",
+          "source_fingerprint": "440699d13d50ff5362e153eadfd73bb958ac7077e53f962772d479fee4abf5c0"
+        },
+        "repaired_votes": 10,
+        "failed_votes": 0
+      },
+      "legacy_live": {
+        "id": 258,
+        "run_label": "m1_sql_ties_gold_passages_v2_20260930_legacy",
+        "status": "completed",
+        "git_sha": "0c0a6d0f82059508e76da1e682d50b17859e75e0",
+        "created_at": "2026-09-30 10:13:46.413632+00:00",
+        "completed_at": "2026-09-30 11:16:24.862453+00:00",
+        "config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "aggregate": {
+          "total": 98,
+          "completed": 98,
+          "failed": 0,
+          "doc_recall_avg": 0.7291375686487219,
+          "doc_precision_avg": 0.022674194248288305,
+          "hit_rate_avg": 0.826530612244898,
+          "mrr_avg": 0.4293106087566166,
+          "judge_score_avg": 0.6379251700680272,
+          "judge_raw_score_avg": 0.685374149659864,
+          "judge_pass_rate": 0.6326530612244898,
+          "retrieval_gap_rate": 0.17346938775510204,
+          "judge_legal_correctness_avg": 0.7755102040816326,
+          "judge_completeness_avg": 0.6906462585034014,
+          "judge_gold_answer_alignment_avg": 0.6920068027210884,
+          "judge_source_support_avg": 0.8244897959183674,
+          "ragas_faithfulness_avg": null,
+          "ragas_context_precision_avg": null,
+          "ragas_context_recall_avg": null,
+          "stage_metrics": {
+            "initial": {
+              "pool": {
+                "n": 96,
+                "hit_rate_avg": 0.84375,
+                "doc_recall_avg": 0.744327934662237
+              },
+              "sections_top12": {
+                "n": 96,
+                "hit_rate_avg": 0.6458333333333334,
+                "doc_recall_avg": 0.5442832341269841
+              },
+              "sections_top20": {
+                "n": 96,
+                "hit_rate_avg": 0.6770833333333334,
+                "doc_recall_avg": 0.5904141865079365
+              },
+              "context_builder_output": {
+                "n": 96,
+                "hit_rate_avg": 0.53125,
+                "doc_recall_avg": 0.4538194444444445
+              },
+              "selector_kept": {
+                "n": 91,
+                "hit_rate_avg": 0.5274725274725275,
+                "doc_recall_avg": 0.45787545787545786
+              }
+            }
+          },
+          "token_usage": {
+            "judge": {
+              "prompt_tokens": 2081514,
+              "completion_tokens": 206782,
+              "calls": 308,
+              "items": 98,
+              "active_items": 98,
+              "coverage_complete": true,
+              "provider": "scaleway",
+              "model": "mistral-medium-3.5-128b",
+              "cost_eur": 4.673141,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "ragas": {
+              "prompt_tokens": 0,
+              "completion_tokens": 0,
+              "calls": 0,
+              "items": 0,
+              "active_items": 98,
+              "coverage_complete": false,
+              "provider": "",
+              "model": "",
+              "cost_eur": null,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "generator_albert_est": {
+              "prompt_tokens": 596157,
+              "completion_tokens": 44452,
+              "cost_eur": 0.0
+            },
+            "selector_albert_est": {
+              "prompt_tokens": 1195451,
+              "completion_tokens": 6390,
+              "cost_eur": 0.0
+            },
+            "billable_cost_eur": null,
+            "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+          },
+          "per_corpus": {
+            "DGAFP": {
+              "total": 2,
+              "completed": 2,
+              "failed": 0,
+              "doc_recall_avg": 0.03488372093023256,
+              "doc_precision_avg": 0.011111111111111112,
+              "hit_rate_avg": 0.5,
+              "mrr_avg": 0.004807692307692308,
+              "judge_score_avg": 0.725,
+              "judge_raw_score_avg": 1.0,
+              "judge_pass_rate": 1.0,
+              "retrieval_gap_rate": 0.5,
+              "judge_legal_correctness_avg": 1.0,
+              "judge_completeness_avg": 1.0,
+              "judge_gold_answer_alignment_avg": 1.0,
+              "judge_source_support_avg": 1.0,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 2,
+                    "hit_rate_avg": 0.5,
+                    "doc_recall_avg": 0.03488372093023256
+                  },
+                  "selector_kept": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "sections_top12": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "sections_top20": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "context_builder_output": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 35187,
+                  "completion_tokens": 3342,
+                  "calls": 6,
+                  "items": 2,
+                  "active_items": 2,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.077846,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 2,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 9653,
+                  "completion_tokens": 1025,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 31475,
+                  "completion_tokens": 124,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "MATTE": {
+              "total": 12,
+              "completed": 12,
+              "failed": 0,
+              "doc_recall_avg": 0.7906746031746031,
+              "doc_precision_avg": 0.023446816450912622,
+              "hit_rate_avg": 0.9166666666666666,
+              "mrr_avg": 0.5069444444444444,
+              "judge_score_avg": 0.43333333333333335,
+              "judge_raw_score_avg": 0.4666666666666666,
+              "judge_pass_rate": 0.3333333333333333,
+              "retrieval_gap_rate": 0.08333333333333333,
+              "judge_legal_correctness_avg": 0.6666666666666666,
+              "judge_completeness_avg": 0.5041666666666667,
+              "judge_gold_answer_alignment_avg": 0.48333333333333334,
+              "judge_source_support_avg": 0.7333333333333334,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 12,
+                    "hit_rate_avg": 0.9166666666666666,
+                    "doc_recall_avg": 0.7906746031746031
+                  },
+                  "sections_top12": {
+                    "n": 12,
+                    "hit_rate_avg": 0.8333333333333334,
+                    "doc_recall_avg": 0.6557539682539683
+                  },
+                  "sections_top20": {
+                    "n": 12,
+                    "hit_rate_avg": 0.9166666666666666,
+                    "doc_recall_avg": 0.7628968253968255
+                  },
+                  "context_builder_output": {
+                    "n": 12,
+                    "hit_rate_avg": 0.75,
+                    "doc_recall_avg": 0.5238095238095238
+                  },
+                  "selector_kept": {
+                    "n": 10,
+                    "hit_rate_avg": 0.7,
+                    "doc_recall_avg": 0.4885714285714286
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 331783,
+                  "completion_tokens": 49254,
+                  "calls": 39,
+                  "items": 12,
+                  "active_items": 12,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.867083,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 12,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 88872,
+                  "completion_tokens": 6876,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 177622,
+                  "completion_tokens": 870,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "MSO": {
+              "total": 4,
+              "completed": 4,
+              "failed": 0,
+              "doc_recall_avg": 0.6785714285714286,
+              "doc_precision_avg": 0.01933387183155178,
+              "hit_rate_avg": 1.0,
+              "mrr_avg": 0.7638888888888888,
+              "judge_score_avg": 0.85,
+              "judge_raw_score_avg": 0.9875,
+              "judge_pass_rate": 1.0,
+              "retrieval_gap_rate": 0.0,
+              "judge_legal_correctness_avg": 1.0,
+              "judge_completeness_avg": 0.9875,
+              "judge_gold_answer_alignment_avg": 1.0,
+              "judge_source_support_avg": 1.0,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 4,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 0.6785714285714286
+                  },
+                  "selector_kept": {
+                    "n": 4,
+                    "hit_rate_avg": 0.75,
+                    "doc_recall_avg": 0.5119047619047619
+                  },
+                  "sections_top12": {
+                    "n": 4,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 0.6785714285714286
+                  },
+                  "sections_top20": {
+                    "n": 4,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 0.6785714285714286
+                  },
+                  "context_builder_output": {
+                    "n": 4,
+                    "hit_rate_avg": 0.75,
+                    "doc_recall_avg": 0.5119047619047619
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 99393,
+                  "completion_tokens": 10241,
+                  "calls": 12,
+                  "items": 4,
+                  "active_items": 4,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.225897,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 4,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 26486,
+                  "completion_tokens": 2162,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 40620,
+                  "completion_tokens": 284,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "Service-Public": {
+              "total": 14,
+              "completed": 14,
+              "failed": 0,
+              "doc_recall_avg": 0.9285714285714286,
+              "doc_precision_avg": 0.020964678617041498,
+              "hit_rate_avg": 0.9285714285714286,
+              "mrr_avg": 0.7277256451413755,
+              "judge_score_avg": 0.6678571428571428,
+              "judge_raw_score_avg": 0.6678571428571428,
+              "judge_pass_rate": 0.5714285714285714,
+              "retrieval_gap_rate": 0.07142857142857142,
+              "judge_legal_correctness_avg": 0.7142857142857143,
+              "judge_completeness_avg": 0.6321428571428571,
+              "judge_gold_answer_alignment_avg": 0.6821428571428572,
+              "judge_source_support_avg": 0.7142857142857143,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 14,
+                    "hit_rate_avg": 0.9285714285714286,
+                    "doc_recall_avg": 0.9285714285714286
+                  },
+                  "selector_kept": {
+                    "n": 14,
+                    "hit_rate_avg": 0.7857142857142857,
+                    "doc_recall_avg": 0.7857142857142857
+                  },
+                  "sections_top12": {
+                    "n": 14,
+                    "hit_rate_avg": 0.8571428571428571,
+                    "doc_recall_avg": 0.8571428571428571
+                  },
+                  "sections_top20": {
+                    "n": 14,
+                    "hit_rate_avg": 0.8571428571428571,
+                    "doc_recall_avg": 0.8571428571428571
+                  },
+                  "context_builder_output": {
+                    "n": 14,
+                    "hit_rate_avg": 0.7857142857142857,
+                    "doc_recall_avg": 0.7857142857142857
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 397993,
+                  "completion_tokens": 57488,
+                  "calls": 50,
+                  "items": 14,
+                  "active_items": 14,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 1.028147,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 14,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 83459,
+                  "completion_tokens": 9032,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 160007,
+                  "completion_tokens": 928,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "manual": {
+              "total": 55,
+              "completed": 55,
+              "failed": 0,
+              "doc_recall_avg": 0.6578787878787878,
+              "doc_precision_avg": 0.02516905997190451,
+              "hit_rate_avg": 0.7636363636363637,
+              "mrr_avg": 0.2903840788729614,
+              "judge_score_avg": 0.6021212121212122,
+              "judge_raw_score_avg": 0.6593939393939394,
+              "judge_pass_rate": 0.6181818181818182,
+              "retrieval_gap_rate": 0.23636363636363636,
+              "judge_legal_correctness_avg": 0.7636363636363637,
+              "judge_completeness_avg": 0.6696969696969698,
+              "judge_gold_answer_alignment_avg": 0.6630303030303031,
+              "judge_source_support_avg": 0.8363636363636363,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 54,
+                    "hit_rate_avg": 0.7777777777777778,
+                    "doc_recall_avg": 0.6700617283950616
+                  },
+                  "selector_kept": {
+                    "n": 51,
+                    "hit_rate_avg": 0.35294117647058826,
+                    "doc_recall_avg": 0.28888888888888886
+                  },
+                  "sections_top12": {
+                    "n": 54,
+                    "hit_rate_avg": 0.5,
+                    "doc_recall_avg": 0.38273809523809527
+                  },
+                  "sections_top20": {
+                    "n": 54,
+                    "hit_rate_avg": 0.5185185185185185,
+                    "doc_recall_avg": 0.4224206349206349
+                  },
+                  "context_builder_output": {
+                    "n": 54,
+                    "hit_rate_avg": 0.35185185185185186,
+                    "doc_recall_avg": 0.2820987654320988
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 996831,
+                  "completion_tokens": 69020,
+                  "calls": 165,
+                  "items": 55,
+                  "active_items": 55,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 2.012897,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 55,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 315784,
+                  "completion_tokens": 23340,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 628432,
+                  "completion_tokens": 3515,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "synthetic": {
+              "total": 11,
+              "completed": 11,
+              "failed": 0,
+              "doc_recall_avg": 0.9090909090909091,
+              "doc_precision_avg": 0.014316840175487192,
+              "hit_rate_avg": 0.9090909090909091,
+              "mrr_avg": 0.6149683649683649,
+              "judge_score_avg": 0.9090909090909091,
+              "judge_raw_score_avg": 0.9090909090909091,
+              "judge_pass_rate": 0.9090909090909091,
+              "retrieval_gap_rate": 0.09090909090909091,
+              "judge_legal_correctness_avg": 0.9090909090909091,
+              "judge_completeness_avg": 0.9090909090909091,
+              "judge_gold_answer_alignment_avg": 0.9090909090909091,
+              "judge_source_support_avg": 0.9090909090909091,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 10,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 1.0
+                  },
+                  "selector_kept": {
+                    "n": 10,
+                    "hit_rate_avg": 0.9,
+                    "doc_recall_avg": 0.9
+                  },
+                  "sections_top12": {
+                    "n": 10,
+                    "hit_rate_avg": 0.9,
+                    "doc_recall_avg": 0.9
+                  },
+                  "sections_top20": {
+                    "n": 10,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 1.0
+                  },
+                  "context_builder_output": {
+                    "n": 10,
+                    "hit_rate_avg": 0.9,
+                    "doc_recall_avg": 0.9
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 220327,
+                  "completion_tokens": 17437,
+                  "calls": 36,
+                  "items": 11,
+                  "active_items": 11,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.461271,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 11,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 71901,
+                  "completion_tokens": 2017,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 157294,
+                  "completion_tokens": 667,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            }
+          }
+        },
+        "pass_count": 62,
+        "judged_count": 98,
+        "fingerprints": {
+          "runtime": "legacy",
+          "database": "local_clone",
+          "created_by": "scripts/conformance/m1_live.py",
+          "eval_scope": {
+            "limit": null,
+            "judge_model": "mistral-medium-3.5-128b",
+            "judge_votes": 3,
+            "ragas_model": "",
+            "question_ids": [
+              1,
+              2,
+              3,
+              4,
+              6,
+              7,
+              9,
+              10,
+              11,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              23,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              173,
+              174,
+              175,
+              176,
+              177,
+              178,
+              179,
+              180,
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192,
+              193,
+              194,
+              196,
+              197,
+              198,
+              199,
+              200,
+              201,
+              203,
+              204,
+              205,
+              206,
+              207,
+              208,
+              209,
+              210,
+              211,
+              212,
+              213,
+              214,
+              215,
+              216,
+              217,
+              218,
+              219,
+              220,
+              221,
+              222,
+              223,
+              224,
+              225,
+              226,
+              227,
+              228,
+              229,
+              657,
+              660,
+              676,
+              706,
+              827,
+              926,
+              4528,
+              4529,
+              4530,
+              4531,
+              4532,
+              4533,
+              4534,
+              4535,
+              4536,
+              4537,
+              4538
+            ],
+            "judge_enabled": true,
+            "ragas_enabled": false,
+            "judge_base_url": "https://api.scaleway.ai/v1",
+            "judge_evidence": "gold-passages-v2",
+            "judge_provider": "scaleway",
+            "ministry_scope": "per-question",
+            "question_count": 98
+          },
+          "m0a_run_id": 240,
+          "concurrency": 2,
+          "paired_label": "m1_sql_ties_gold_passages_v2_20260930",
+          "source_fingerprint": "440699d13d50ff5362e153eadfd73bb958ac7077e53f962772d479fee4abf5c0",
+          "finalization_recovery": {
+            "reason": "process disappeared after all item commits, before final artifact export finished",
+            "provider_calls": 0,
+            "termination_cause": "not established",
+            "item_rows_modified": 0
+          },
+          "questions_fingerprint": "afd6cfc97a4232e9f8b9253d9d9b5b930c63ed83421f544f5c8178a42e163bdc",
+          "generator_system_prompt_sha": "108979e4207a6fb113094cc59d1003df0a92f6d164f7b30321ca7dec95188583"
+        },
+        "repaired_votes": 14,
+        "failed_votes": 0
+      },
+      "core_live": {
+        "id": 259,
+        "run_label": "m1_sql_ties_gold_passages_v2_20260930_core",
+        "status": "completed",
+        "git_sha": "0c0a6d0f82059508e76da1e682d50b17859e75e0",
+        "created_at": "2026-09-30 10:13:46.413632+00:00",
+        "completed_at": "2026-09-30 11:25:40.281163+00:00",
+        "config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "aggregate": {
+          "total": 98,
+          "completed": 98,
+          "failed": 0,
+          "doc_recall_avg": 0.7291375686487219,
+          "doc_precision_avg": 0.022674194248288305,
+          "hit_rate_avg": 0.826530612244898,
+          "mrr_avg": 0.4206623692410301,
+          "judge_score_avg": 0.6251700680272109,
+          "judge_raw_score_avg": 0.6751700680272109,
+          "judge_pass_rate": 0.6122448979591837,
+          "retrieval_gap_rate": 0.17346938775510204,
+          "judge_legal_correctness_avg": 0.7755102040816326,
+          "judge_completeness_avg": 0.6680272108843538,
+          "judge_gold_answer_alignment_avg": 0.6812925170068027,
+          "judge_source_support_avg": 0.7959183673469388,
+          "ragas_faithfulness_avg": null,
+          "ragas_context_precision_avg": null,
+          "ragas_context_recall_avg": null,
+          "stage_metrics": {
+            "initial": {
+              "pool": {
+                "n": 96,
+                "hit_rate_avg": 0.84375,
+                "doc_recall_avg": 0.744327934662237
+              },
+              "selector_kept": {
+                "n": 93,
+                "hit_rate_avg": 0.4838709677419355,
+                "doc_recall_avg": 0.4175627240143369
+              },
+              "sections_top12": {
+                "n": 96,
+                "hit_rate_avg": 0.6458333333333334,
+                "doc_recall_avg": 0.5442832341269841
+              },
+              "sections_top20": {
+                "n": 96,
+                "hit_rate_avg": 0.6770833333333334,
+                "doc_recall_avg": 0.5904141865079365
+              },
+              "context_builder_output": {
+                "n": 96,
+                "hit_rate_avg": 0.4895833333333333,
+                "doc_recall_avg": 0.4201388888888889
+              }
+            }
+          },
+          "token_usage": {
+            "judge": {
+              "prompt_tokens": 2088568,
+              "completion_tokens": 200192,
+              "calls": 306,
+              "items": 98,
+              "active_items": 98,
+              "coverage_complete": true,
+              "provider": "scaleway",
+              "model": "mistral-medium-3.5-128b",
+              "cost_eur": 4.634294,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "ragas": {
+              "prompt_tokens": 0,
+              "completion_tokens": 0,
+              "calls": 0,
+              "items": 0,
+              "active_items": 98,
+              "coverage_complete": false,
+              "provider": "",
+              "model": "",
+              "cost_eur": null,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "generator_albert_est": {
+              "prompt_tokens": 602768,
+              "completion_tokens": 40350,
+              "cost_eur": 0.0
+            },
+            "selector_albert_est": {
+              "prompt_tokens": 1196049,
+              "completion_tokens": 6481,
+              "cost_eur": 0.0
+            },
+            "billable_cost_eur": null,
+            "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+          },
+          "per_corpus": {
+            "DGAFP": {
+              "total": 2,
+              "completed": 2,
+              "failed": 0,
+              "doc_recall_avg": 0.03488372093023256,
+              "doc_precision_avg": 0.011111111111111112,
+              "hit_rate_avg": 0.5,
+              "mrr_avg": 0.004807692307692308,
+              "judge_score_avg": 0.725,
+              "judge_raw_score_avg": 1.0,
+              "judge_pass_rate": 1.0,
+              "retrieval_gap_rate": 0.5,
+              "judge_legal_correctness_avg": 1.0,
+              "judge_completeness_avg": 1.0,
+              "judge_gold_answer_alignment_avg": 1.0,
+              "judge_source_support_avg": 1.0,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 2,
+                    "hit_rate_avg": 0.5,
+                    "doc_recall_avg": 0.03488372093023256
+                  },
+                  "selector_kept": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "sections_top12": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "sections_top20": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  },
+                  "context_builder_output": {
+                    "n": 2,
+                    "hit_rate_avg": 0.0,
+                    "doc_recall_avg": 0.0
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 34764,
+                  "completion_tokens": 3309,
+                  "calls": 6,
+                  "items": 2,
+                  "active_items": 2,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.076964,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 2,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 9653,
+                  "completion_tokens": 948,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 31475,
+                  "completion_tokens": 124,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "MATTE": {
+              "total": 12,
+              "completed": 12,
+              "failed": 0,
+              "doc_recall_avg": 0.7906746031746031,
+              "doc_precision_avg": 0.023446816450912622,
+              "hit_rate_avg": 0.9166666666666666,
+              "mrr_avg": 0.513888888888889,
+              "judge_score_avg": 0.4791666666666667,
+              "judge_raw_score_avg": 0.5166666666666667,
+              "judge_pass_rate": 0.3333333333333333,
+              "retrieval_gap_rate": 0.08333333333333333,
+              "judge_legal_correctness_avg": 0.75,
+              "judge_completeness_avg": 0.4708333333333334,
+              "judge_gold_answer_alignment_avg": 0.5291666666666667,
+              "judge_source_support_avg": 0.75,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 12,
+                    "hit_rate_avg": 0.9166666666666666,
+                    "doc_recall_avg": 0.7906746031746031
+                  },
+                  "selector_kept": {
+                    "n": 12,
+                    "hit_rate_avg": 0.75,
+                    "doc_recall_avg": 0.4904761904761905
+                  },
+                  "sections_top12": {
+                    "n": 12,
+                    "hit_rate_avg": 0.8333333333333334,
+                    "doc_recall_avg": 0.6557539682539683
+                  },
+                  "sections_top20": {
+                    "n": 12,
+                    "hit_rate_avg": 0.9166666666666666,
+                    "doc_recall_avg": 0.7628968253968255
+                  },
+                  "context_builder_output": {
+                    "n": 12,
+                    "hit_rate_avg": 0.75,
+                    "doc_recall_avg": 0.4904761904761905
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 436525,
+                  "completion_tokens": 48506,
+                  "calls": 41,
+                  "items": 12,
+                  "active_items": 12,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 1.018581,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 12,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 106329,
+                  "completion_tokens": 6469,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 178220,
+                  "completion_tokens": 885,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "MSO": {
+              "total": 4,
+              "completed": 4,
+              "failed": 0,
+              "doc_recall_avg": 0.6785714285714286,
+              "doc_precision_avg": 0.01933387183155178,
+              "hit_rate_avg": 1.0,
+              "mrr_avg": 0.7638888888888888,
+              "judge_score_avg": 0.85,
+              "judge_raw_score_avg": 1.0,
+              "judge_pass_rate": 1.0,
+              "retrieval_gap_rate": 0.0,
+              "judge_legal_correctness_avg": 1.0,
+              "judge_completeness_avg": 1.0,
+              "judge_gold_answer_alignment_avg": 1.0,
+              "judge_source_support_avg": 1.0,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 4,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 0.6785714285714286
+                  },
+                  "selector_kept": {
+                    "n": 4,
+                    "hit_rate_avg": 0.75,
+                    "doc_recall_avg": 0.5119047619047619
+                  },
+                  "sections_top12": {
+                    "n": 4,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 0.6785714285714286
+                  },
+                  "sections_top20": {
+                    "n": 4,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 0.6785714285714286
+                  },
+                  "context_builder_output": {
+                    "n": 4,
+                    "hit_rate_avg": 0.75,
+                    "doc_recall_avg": 0.5119047619047619
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 86520,
+                  "completion_tokens": 10892,
+                  "calls": 12,
+                  "items": 4,
+                  "active_items": 4,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.21147,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 4,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 22738,
+                  "completion_tokens": 2131,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 40620,
+                  "completion_tokens": 283,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "Service-Public": {
+              "total": 14,
+              "completed": 14,
+              "failed": 0,
+              "doc_recall_avg": 0.9285714285714286,
+              "doc_precision_avg": 0.020964678617041498,
+              "hit_rate_avg": 0.9285714285714286,
+              "mrr_avg": 0.7324352212795231,
+              "judge_score_avg": 0.6714285714285715,
+              "judge_raw_score_avg": 0.6714285714285715,
+              "judge_pass_rate": 0.5714285714285714,
+              "retrieval_gap_rate": 0.07142857142857142,
+              "judge_legal_correctness_avg": 0.7857142857142857,
+              "judge_completeness_avg": 0.6321428571428571,
+              "judge_gold_answer_alignment_avg": 0.6892857142857143,
+              "judge_source_support_avg": 0.7857142857142857,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 14,
+                    "hit_rate_avg": 0.9285714285714286,
+                    "doc_recall_avg": 0.9285714285714286
+                  },
+                  "selector_kept": {
+                    "n": 13,
+                    "hit_rate_avg": 0.7692307692307693,
+                    "doc_recall_avg": 0.7692307692307693
+                  },
+                  "sections_top12": {
+                    "n": 14,
+                    "hit_rate_avg": 0.8571428571428571,
+                    "doc_recall_avg": 0.8571428571428571
+                  },
+                  "sections_top20": {
+                    "n": 14,
+                    "hit_rate_avg": 0.8571428571428571,
+                    "doc_recall_avg": 0.8571428571428571
+                  },
+                  "context_builder_output": {
+                    "n": 14,
+                    "hit_rate_avg": 0.7857142857142857,
+                    "doc_recall_avg": 0.7857142857142857
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 363715,
+                  "completion_tokens": 49940,
+                  "calls": 45,
+                  "items": 14,
+                  "active_items": 14,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.920126,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 14,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 90257,
+                  "completion_tokens": 8401,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 160007,
+                  "completion_tokens": 951,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "manual": {
+              "total": 55,
+              "completed": 55,
+              "failed": 0,
+              "doc_recall_avg": 0.6578787878787878,
+              "doc_precision_avg": 0.02516905997190451,
+              "hit_rate_avg": 0.7636363636363637,
+              "mrr_avg": 0.27364581713469965,
+              "judge_score_avg": 0.5866666666666667,
+              "judge_raw_score_avg": 0.6466666666666667,
+              "judge_pass_rate": 0.6,
+              "retrieval_gap_rate": 0.23636363636363636,
+              "judge_legal_correctness_avg": 0.7454545454545455,
+              "judge_completeness_avg": 0.6539393939393939,
+              "judge_gold_answer_alignment_avg": 0.6503030303030303,
+              "judge_source_support_avg": 0.7818181818181819,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 54,
+                    "hit_rate_avg": 0.7777777777777778,
+                    "doc_recall_avg": 0.6700617283950616
+                  },
+                  "selector_kept": {
+                    "n": 53,
+                    "hit_rate_avg": 0.2830188679245283,
+                    "doc_recall_avg": 0.24339622641509434
+                  },
+                  "sections_top12": {
+                    "n": 54,
+                    "hit_rate_avg": 0.5,
+                    "doc_recall_avg": 0.38273809523809527
+                  },
+                  "sections_top20": {
+                    "n": 54,
+                    "hit_rate_avg": 0.5185185185185185,
+                    "doc_recall_avg": 0.4224206349206349
+                  },
+                  "context_builder_output": {
+                    "n": 54,
+                    "hit_rate_avg": 0.2962962962962963,
+                    "doc_recall_avg": 0.24814814814814815
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 976208,
+                  "completion_tokens": 69557,
+                  "calls": 166,
+                  "items": 55,
+                  "active_items": 55,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 1.985989,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 55,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 312000,
+                  "completion_tokens": 20425,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 628432,
+                  "completion_tokens": 3611,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            },
+            "synthetic": {
+              "total": 11,
+              "completed": 11,
+              "failed": 0,
+              "doc_recall_avg": 0.9090909090909091,
+              "doc_precision_avg": 0.014316840175487192,
+              "hit_rate_avg": 0.9090909090909091,
+              "mrr_avg": 0.608041958041958,
+              "judge_score_avg": 0.8181818181818182,
+              "judge_raw_score_avg": 0.8181818181818182,
+              "judge_pass_rate": 0.8181818181818182,
+              "retrieval_gap_rate": 0.09090909090909091,
+              "judge_legal_correctness_avg": 0.8181818181818182,
+              "judge_completeness_avg": 0.8181818181818182,
+              "judge_gold_answer_alignment_avg": 0.8181818181818182,
+              "judge_source_support_avg": 0.8181818181818182,
+              "ragas_faithfulness_avg": null,
+              "ragas_context_precision_avg": null,
+              "ragas_context_recall_avg": null,
+              "stage_metrics": {
+                "initial": {
+                  "pool": {
+                    "n": 10,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 1.0
+                  },
+                  "sections_top12": {
+                    "n": 10,
+                    "hit_rate_avg": 0.9,
+                    "doc_recall_avg": 0.9
+                  },
+                  "sections_top20": {
+                    "n": 10,
+                    "hit_rate_avg": 1.0,
+                    "doc_recall_avg": 1.0
+                  },
+                  "context_builder_output": {
+                    "n": 10,
+                    "hit_rate_avg": 0.8,
+                    "doc_recall_avg": 0.8
+                  },
+                  "selector_kept": {
+                    "n": 9,
+                    "hit_rate_avg": 0.8888888888888888,
+                    "doc_recall_avg": 0.8888888888888888
+                  }
+                }
+              },
+              "token_usage": {
+                "judge": {
+                  "prompt_tokens": 190836,
+                  "completion_tokens": 17988,
+                  "calls": 36,
+                  "items": 11,
+                  "active_items": 11,
+                  "coverage_complete": true,
+                  "provider": "scaleway",
+                  "model": "mistral-medium-3.5-128b",
+                  "cost_eur": 0.421164,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "ragas": {
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "calls": 0,
+                  "items": 0,
+                  "active_items": 11,
+                  "coverage_complete": false,
+                  "provider": "",
+                  "model": "",
+                  "cost_eur": null,
+                  "reported_cost": null,
+                  "reported_cost_unit": null
+                },
+                "generator_albert_est": {
+                  "prompt_tokens": 61789,
+                  "completion_tokens": 1976,
+                  "cost_eur": 0.0
+                },
+                "selector_albert_est": {
+                  "prompt_tokens": 157294,
+                  "completion_tokens": 625,
+                  "cost_eur": 0.0
+                },
+                "billable_cost_eur": null,
+                "note": "Coût EUR nul uniquement si aucun appel payant n'est actif; sinon None dès qu'un tarif ou un relevé manque. Les crédits OpenRouter restent séparés. Albert est gratuit, tokens estimés (~4 chars/tok)."
+              }
+            }
+          }
+        },
+        "pass_count": 60,
+        "judged_count": 98,
+        "fingerprints": {
+          "runtime": "core",
+          "database": "local_clone",
+          "created_by": "scripts/conformance/m1_live.py",
+          "eval_scope": {
+            "limit": null,
+            "judge_model": "mistral-medium-3.5-128b",
+            "judge_votes": 3,
+            "ragas_model": "",
+            "question_ids": [
+              1,
+              2,
+              3,
+              4,
+              6,
+              7,
+              9,
+              10,
+              11,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              23,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              173,
+              174,
+              175,
+              176,
+              177,
+              178,
+              179,
+              180,
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192,
+              193,
+              194,
+              196,
+              197,
+              198,
+              199,
+              200,
+              201,
+              203,
+              204,
+              205,
+              206,
+              207,
+              208,
+              209,
+              210,
+              211,
+              212,
+              213,
+              214,
+              215,
+              216,
+              217,
+              218,
+              219,
+              220,
+              221,
+              222,
+              223,
+              224,
+              225,
+              226,
+              227,
+              228,
+              229,
+              657,
+              660,
+              676,
+              706,
+              827,
+              926,
+              4528,
+              4529,
+              4530,
+              4531,
+              4532,
+              4533,
+              4534,
+              4535,
+              4536,
+              4537,
+              4538
+            ],
+            "judge_enabled": true,
+            "ragas_enabled": false,
+            "judge_base_url": "https://api.scaleway.ai/v1",
+            "judge_evidence": "gold-passages-v2",
+            "judge_provider": "scaleway",
+            "ministry_scope": "per-question",
+            "question_count": 98
+          },
+          "m0a_run_id": 240,
+          "concurrency": 2,
+          "paired_label": "m1_sql_ties_gold_passages_v2_20260930",
+          "source_fingerprint": "440699d13d50ff5362e153eadfd73bb958ac7077e53f962772d479fee4abf5c0",
+          "finalization_recovery": {
+            "reason": "process disappeared after all item commits, before final artifact export finished",
+            "provider_calls": 0,
+            "termination_cause": "not established",
+            "item_rows_modified": 0
+          },
+          "questions_fingerprint": "afd6cfc97a4232e9f8b9253d9d9b5b930c63ed83421f544f5c8178a42e163bdc",
+          "generator_system_prompt_sha": "108979e4207a6fb113094cc59d1003df0a92f6d164f7b30321ca7dec95188583"
+        },
+        "repaired_votes": 12,
+        "failed_votes": 1
+      }
+    },
+    "comparisons": {
+      "core_rejudged_vs_legacy_rejudged": {
+        "status": "failed",
+        "passed": false,
+        "baseline_run_id": 256,
+        "baseline_run_label": "m1_rejudge_gold_passages_v2_20260930_legacy",
+        "baseline_git_sha": "cf937ee6913196a5c75fd5686abd34608f6e8680",
+        "baseline_config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "comparable": true,
+        "comparability_failures": [],
+        "metrics": {
+          "judge_pass_rate": {
+            "baseline": 0.6530612244897959,
+            "candidate": 0.5918367346938775,
+            "delta": -0.061224489795918324,
+            "max_drop": 0.05,
+            "passed": false
+          },
+          "doc_recall_avg": {
+            "baseline": 0.7291375686487219,
+            "candidate": 0.7291375686487219,
+            "delta": 0.0,
+            "max_drop": 0.05,
+            "passed": true
+          }
+        },
+        "failures": [
+          "judge_pass_rate dropped by 0.0612; max allowed is 0.0500"
+        ],
+        "complete": true,
+        "paired_counts": {
+          "False->True": 2,
+          "True->True": 56,
+          "False->False": 32,
+          "True->False": 8
+        }
+      },
+      "core_live_vs_legacy_live": {
+        "status": "passed",
+        "passed": true,
+        "baseline_run_id": 258,
+        "baseline_run_label": "m1_sql_ties_gold_passages_v2_20260930_legacy",
+        "baseline_git_sha": "0c0a6d0f82059508e76da1e682d50b17859e75e0",
+        "baseline_config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "comparable": true,
+        "comparability_failures": [],
+        "metrics": {
+          "judge_pass_rate": {
+            "baseline": 0.6326530612244898,
+            "candidate": 0.6122448979591837,
+            "delta": -0.020408163265306145,
+            "max_drop": 0.05,
+            "passed": true
+          },
+          "doc_recall_avg": {
+            "baseline": 0.7291375686487219,
+            "candidate": 0.7291375686487219,
+            "delta": 0.0,
+            "max_drop": 0.05,
+            "passed": true
+          }
+        },
+        "failures": [],
+        "complete": true,
+        "paired_counts": {
+          "False->True": 4,
+          "False->False": 32,
+          "True->False": 6,
+          "True->True": 56
+        }
+      },
+      "core_live_vs_m0a_rejudged": {
+        "status": "passed",
+        "passed": true,
+        "baseline_run_id": 255,
+        "baseline_run_label": "m1_rejudge_gold_passages_v2_20260930_m0a",
+        "baseline_git_sha": "cf937ee6913196a5c75fd5686abd34608f6e8680",
+        "baseline_config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "comparable": true,
+        "comparability_failures": [],
+        "metrics": {
+          "judge_pass_rate": {
+            "baseline": 0.6122448979591837,
+            "candidate": 0.6122448979591837,
+            "delta": 0.0,
+            "max_drop": 0.05,
+            "passed": true
+          },
+          "doc_recall_avg": {
+            "baseline": 0.7242784821569823,
+            "candidate": 0.7291375686487219,
+            "delta": 0.004859086491739606,
+            "max_drop": 0.05,
+            "passed": true
+          }
+        },
+        "failures": [],
+        "complete": true,
+        "paired_counts": {
+          "True->True": 51,
+          "True->False": 9,
+          "False->False": 29,
+          "False->True": 9
+        }
+      }
+    },
+    "persistence": {
+      "legacy": {
+        "chats": 98,
+        "distinct_turns": 98,
+        "events": 578,
+        "sources": 0,
+        "issues": [],
+        "event_stage_status": {
+          "query-processor:ok": 96,
+          "retriever:ok": 96,
+          "section-aggregator:ok": 96,
+          "context-selector:ok": 96,
+          "context-builder:ok": 96,
+          "generator:ok": 96,
+          "query-processor:short_circuit": 2
+        },
+        "business_events_without_metrics": 0,
+        "provider_models": {
+          "albert/deepseek-v4-flash": 98
+        }
+      },
+      "core": {
+        "chats": 98,
+        "distinct_turns": 98,
+        "events": 676,
+        "sources": 206,
+        "issues": [],
+        "event_stage_status": {
+          "configuration:ok": 98,
+          "query-processor:ok": 98,
+          "retriever:ok": 96,
+          "section-aggregator:ok": 96,
+          "context-selector:ok": 96,
+          "context-builder:ok": 96,
+          "generator:ok": 96
+        },
+        "business_events_without_metrics": 0,
+        "provider_models": {
+          "albert/deepseek-v4-flash": 95,
+          "None/assistant-rh-matte": 2,
+          "scaleway/llama-3.1-70b-instruct": 1
+        },
+        "llm_usage": {
+          "query-processor/albert/openweight-medium": {
+            "successful_calls": 98,
+            "calls_with_usage": 98,
+            "failed_attempts": 4,
+            "prompt_tokens": 262542,
+            "completion_tokens": 12160
+          },
+          "context-selector/albert/openweight-large": {
+            "successful_calls": 96,
+            "calls_with_usage": 96,
+            "failed_attempts": 0,
+            "prompt_tokens": 1115792,
+            "completion_tokens": 6770
+          },
+          "generator/albert/deepseek-v4-flash": {
+            "successful_calls": 95,
+            "calls_with_usage": 95,
+            "failed_attempts": 0,
+            "prompt_tokens": 570508,
+            "completion_tokens": 37152
+          },
+          "generator/scaleway/llama-3.1-70b-instruct": {
+            "successful_calls": 1,
+            "calls_with_usage": 1,
+            "failed_attempts": 2,
+            "prompt_tokens": 14860,
+            "completion_tokens": 786
+          }
+        }
+      }
+    },
+    "complete": true,
+    "live_gate_passed": true,
+    "prompt_dates": {
+      "paired": 98,
+      "mismatches": {},
+      "by_question": {
+        "1": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "2": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "3": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "4": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "6": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "7": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "9": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "10": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "11": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "13": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "14": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "15": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "16": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "17": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "18": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "19": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "20": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "21": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "23": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "27": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "28": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "29": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "30": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "31": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "32": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "33": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "173": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "174": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "175": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "176": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "177": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "178": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "179": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "180": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "181": {
+          "legacy": null,
+          "core": null
+        },
+        "182": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "183": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "184": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "185": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "186": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "187": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "188": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "189": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "190": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "191": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "192": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "193": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "194": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "196": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "197": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "198": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "199": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "200": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "201": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "203": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "204": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "205": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "206": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "207": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "208": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "209": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "210": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "211": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "212": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "213": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "214": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "215": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "216": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "217": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "218": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "219": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "220": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "221": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "222": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "223": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "224": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "225": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "226": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "227": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "228": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "229": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "657": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "660": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "676": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "706": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "827": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "926": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "4528": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "4529": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "4530": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "4531": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "4532": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "4533": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "4534": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "4535": {
+          "legacy": null,
+          "core": null
+        },
+        "4536": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "4537": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        },
+        "4538": {
+          "legacy": "2026-09-30",
+          "core": "2026-09-30"
+        }
+      }
+    },
+    "concurrent_ministries": {
+      "overlapping_pairs": [],
+      "observed": false
+    }
+  },
+  "integrity": {
+    "before": {
+      "git_sha": "cf937ee6913196a5c75fd5686abd34608f6e8680",
+      "source_fingerprint": "440699d13d50ff5362e153eadfd73bb958ac7077e53f962772d479fee4abf5c0",
+      "questions_fingerprint": "afd6cfc97a4232e9f8b9253d9d9b5b930c63ed83421f544f5c8178a42e163bdc",
+      "m0a_questions_exact": true,
+      "question_count": 98,
+      "pgvector": "0.8.6",
+      "tables": {
+        "acronyms": {
+          "count": 248,
+          "content_md5": "d13674a2b69834c355b1a7ad22f84701"
+        },
+        "rag_chunks_dgafp": {
+          "count": 8555,
+          "content_md5": "38473e75ce43e04c097ac82b5c25ea61"
+        },
+        "rag_chunks_masa": {
+          "count": 1216,
+          "content_md5": "44e726e5265ae009c6595223bb7467a8"
+        },
+        "rag_chunks_matte": {
+          "count": 2455,
+          "content_md5": "31fb2524cfd35bad3ce9de1b18de557a"
+        },
+        "rag_chunks_mi": {
+          "count": 707,
+          "content_md5": "beb529aa4ff4da908c62f8939ade0e62"
+        },
+        "rag_chunks_mso": {
+          "count": 7582,
+          "content_md5": "5d3ab93dca8c00c122c538c3f0a1ce44"
+        },
+        "rag_chunks_rgrh": {
+          "count": 324,
+          "content_md5": "d5069377406e67e92961af8e90e5cd00"
+        },
+        "rag_chunks_service_public": {
+          "count": 5051,
+          "content_md5": "02db2ece52a37943b4f8d7d39f901eb1"
+        },
+        "rag_config": {
+          "count": 1,
+          "content_md5": "2ee59663c94aae12392122e875707e19"
+        },
+        "rag_documents": {
+          "count": 4882,
+          "content_md5": "a6f12a3d19485e0ddb521e98f5ad3da0"
+        },
+        "rag_sections": {
+          "count": 10397,
+          "content_md5": "636a6a1ea062b4a2641f93dd4cf34c1e"
+        },
+        "system_prompts": {
+          "count": 37,
+          "content_md5": "2b913f8d9d0663d576d59dfaa9726610"
+        }
+      },
+      "snapshot_fingerprint": "092e036595dcb78d144fa128f07f05a55b3c5fe7dc3a8f70274a7af78abae572"
+    },
+    "after": {
+      "git_sha": "fee579e34ef4ab4f922203d9fa13128dcec037cb",
+      "source_fingerprint": "440699d13d50ff5362e153eadfd73bb958ac7077e53f962772d479fee4abf5c0",
+      "questions_fingerprint": "afd6cfc97a4232e9f8b9253d9d9b5b930c63ed83421f544f5c8178a42e163bdc",
+      "m0a_questions_exact": true,
+      "question_count": 98,
+      "pgvector": "0.8.6",
+      "tables": {
+        "acronyms": {
+          "count": 248,
+          "content_md5": "d13674a2b69834c355b1a7ad22f84701"
+        },
+        "rag_chunks_dgafp": {
+          "count": 8555,
+          "content_md5": "38473e75ce43e04c097ac82b5c25ea61"
+        },
+        "rag_chunks_masa": {
+          "count": 1216,
+          "content_md5": "44e726e5265ae009c6595223bb7467a8"
+        },
+        "rag_chunks_matte": {
+          "count": 2455,
+          "content_md5": "31fb2524cfd35bad3ce9de1b18de557a"
+        },
+        "rag_chunks_mi": {
+          "count": 707,
+          "content_md5": "beb529aa4ff4da908c62f8939ade0e62"
+        },
+        "rag_chunks_mso": {
+          "count": 7582,
+          "content_md5": "5d3ab93dca8c00c122c538c3f0a1ce44"
+        },
+        "rag_chunks_rgrh": {
+          "count": 324,
+          "content_md5": "d5069377406e67e92961af8e90e5cd00"
+        },
+        "rag_chunks_service_public": {
+          "count": 5051,
+          "content_md5": "02db2ece52a37943b4f8d7d39f901eb1"
+        },
+        "rag_config": {
+          "count": 1,
+          "content_md5": "2ee59663c94aae12392122e875707e19"
+        },
+        "rag_documents": {
+          "count": 4882,
+          "content_md5": "a6f12a3d19485e0ddb521e98f5ad3da0"
+        },
+        "rag_sections": {
+          "count": 10397,
+          "content_md5": "636a6a1ea062b4a2641f93dd4cf34c1e"
+        },
+        "system_prompts": {
+          "count": 37,
+          "content_md5": "2b913f8d9d0663d576d59dfaa9726610"
+        }
+      },
+      "snapshot_fingerprint": "092e036595dcb78d144fa128f07f05a55b3c5fe7dc3a8f70274a7af78abae572"
+    },
+    "unchanged": {
+      "source_fingerprint": true,
+      "questions_fingerprint": true,
+      "snapshot_fingerprint": true
+    }
+  },
+  "validation": {
+    "api_passed": 1257,
+    "api_skipped": 0,
+    "historical_passed": 1583,
+    "historical_skipped": 46,
+    "m0b_exact_scenarios": 7,
+    "ci_and_codeql_passed_commit": "cf937ee6913196a5c75fd5686abd34608f6e8680"
+  },
+  "limits": [
+    "Local pgvector 0.8.6 clone; rebuilt indexes differ from staging 0.8.2.",
+    "Passage IDs verify quotation provenance, not semantic entailment or completeness.",
+    "Scores use a new versioned judge protocol, including rejudged M0a; old scores are preserved.",
+    "The failed literal-copy protocol #252-254 is not a quality result.",
+    "Reported judge token usage and core event usage are distinct from volume estimates."
+  ],
+  "evidence_fingerprint": "b8acbd1c3325a593d5d1122399ca14a084a65d7d85bd21527cafb9d5afa7140a"
+}

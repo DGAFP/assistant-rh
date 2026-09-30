@@ -60,6 +60,10 @@ La DB et les providers existent déjà. C1 fixe le contrat à partir du spike A2
 - goldset live apparié : aucune régression au-delà des tolérances M0a ;
 - deux requêtes simultanées de ministères différents ne partagent ni prompt, ni résultat, ni trace.
 
+**GO technique M1 — campagne corrigée du 30/09/2026.** Core 60/98, témoin apparié 62/98, M0a réévaluée 60/98. Seuils inchangés : baisse maximale de 5 points de pass rate et de rappel contre chaque référence.
+
+[Preuve M1](13-m1-run-metrics.md) et [PR #580](https://github.com/DGAFP/assistant-rh/pull/580). Le jalon permet la poursuite de D après intégration ; aucun déploiement n’est effectué. Le rejeu complémentaire valide 98 paires exactes après la frontière de retrieval et corrige le départage des acronymes ; la PR peut passer en revue. La fiabilité du juge reste à traiter séparément.
+
 ## Phase D — fonctions API restantes et déploiement dark
 
 | PR / étape | Contenu |
