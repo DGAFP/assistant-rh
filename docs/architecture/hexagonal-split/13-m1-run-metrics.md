@@ -9,6 +9,13 @@ de `dev`, le panel apparié complet donne 62/98 PASS core contre 68/98 historiqu
 Cette décision remplace le GO du 21 septembre pour la révision courante ;
 les mesures antérieures ci-dessous restent attachées à leur code.
 
+**Suivi du 30 septembre :** départage SQL aligné et testé ; nouvelle
+réévaluation complète des réponses stockées (#255–257), puis nouvelle paire
+live (#258–259) avec le protocole `gold-passages-v2`, en cours. Le panel et
+le snapshot sont inchangés. Aucun nouveau GO avant les résultats complets.
+Le [journal](../../evals/journal-experimentations-rag.md) conserve aussi
+l'essai de citation littérale #252–254 interrompu pour erreurs du juge.
+
 ## Audit des écritures
 
 L'audit initial lit les 200 derniers runs historiques et les 1 400 derniers

@@ -970,3 +970,24 @@ du runtime ni de la configuration dans cette analyse.
 [Rapport](13-m1-run-metrics.md#diagnostic-du-30-septembre-2026) et
 [preuve](../../evals/evidence/m1_api_parity_diagnosis_20260930.json)
 `0bdc551f3459157dae63b95db68863d73b177b0e8a580fc696be5f4bcb90eba7`.
+
+### M1 — corrections et nouvelle mesure (30 septembre 2026, en cours)
+
+Le runtime historique utilise maintenant le même départage `section_id`
+que le core pour les sections ambiguës. Le test DB différentiel conserve
+ces égalités au lieu de les éliminer ; le schéma partiellement migré est
+comparé par les deux helpers réels. Les deux divergences du clone observées
+dans le diagnostic sont résolues. Cela fixe l'ordre, pas la sémantique des
+titres ambigus du corpus. Tests : **1 257 API / 1 583 historiques** réussis,
+46 historiques ignorés ; CI Tests et CodeQL au vert sur `cf937ee`.
+
+Les nouveaux jugements demandent des références à des passages numérotés,
+puis en extraient les citations exactes côté code (`gold-passages-v2`).
+Modèle, majorité et seuils inchangés ; scope versionné, tous les votes
+conservés. L'essai #252–254 de citations recopiées échoue techniquement sur
+les trois premiers items et reste conservé comme tel. La réévaluation v2
+#255–257 porte sur les 294 réponses stockées (M0a comprise) ; la nouvelle
+paire #258–259 régénère les 98 questions dans chaque bras, sur les sources
+`440699d1…`. **NO-GO maintenu pendant la mesure**, sans déploiement ni merge.
+Paramètres et limites préenregistrés dans le
+[journal](../../evals/journal-experimentations-rag.md).
