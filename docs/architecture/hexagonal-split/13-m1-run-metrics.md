@@ -251,3 +251,75 @@ le seuil de qualité live n'est pas satisfait. Les cas discordants sont
 documentés sans ajustement du seuil ni relance sélective selon les scores.
 [Preuve agrégée](../../evals/evidence/m1_api_parity_local_20260928.json) et
 [journal complet](../../evals/journal-experimentations-rag.md). Aucun déploiement.
+
+## Diagnostic du 30 septembre 2026
+
+L'examen des 196 items et la reconstruction des prompts distinguent plusieurs
+mécanismes. **Le NO-GO et les scores 62/98 contre 68/98 restent inchangés.**
+L'enquête est en lecture seule sur le clone, sans nouvel appel provider.
+
+Sur les 96 paires passant par le générateur, les prompts système reconstruits
+sont identiques. Les messages utilisateur le sont dans **56 paires**, dont
+**54 produisent pourtant des réponses différentes**. Les prompts du sélecteur
+sont identiques dans **64 paires**, dont **26 produisent des sélections
+différentes**. Les 192 réponses enregistrées du sélecteur donnent le même
+résultat avec les deux parseurs. Les deux autres paires sont des réponses
+directes, sans génération. Ces constats localisent une variation des sorties
+LLM ; ils ne mesurent pas une probabilité de régression propre à un moteur.
+
+| Cas en recul | Ce que les traces établissent |
+|---|---|
+| q6 — rémunération | Même prompt sélecteur ; le core écarte la fiche MATTE n°3, conservée par l'historique. La réponse perd les règles ministérielles de fixation de la rémunération. |
+| q20 — temps partiel | Même prompt sélecteur ; le core retire le texte complémentaire sur le temps partiel de droit. La réponse traite le temps partiel sur autorisation. |
+| q28 — démission MSO | Même prompt sélecteur ; le core ne conserve que la section ministérielle et retire la fiche Service-Public sur les conséquences de la démission. Les conséquences sur les congés ne sont plus expliquées. |
+| q4538 — déontologie | Même prompt sélecteur ; le core ajoute un article sur le recrutement devant la même fiche MATTE. La réponse traite les activités antérieures au recrutement, au lieu du projet d'activité privée au départ. Le label juge `retrieval_gap` ne localise pas correctement cette erreur. |
+| q188 — contrat de projet | Le prompt sélecteur diffère déjà : des sections Service-Public ambiguës sont résolues différemment. La fiche MATTE pertinente reste toutefois présente à l'indice 14 dans les deux bras. L'historique la choisit ; le core choisit l'article à l'indice 0 et omet la restriction relative au CDI. Le lien causal entre l'ambiguïté SQL et ce choix LLM n'est pas isolé. |
+| q186 — renouvellement | Mêmes messages de génération. Les deux réponses omettent la réserve sur les motifs illégaux. Le juge historique lui attribue pourtant cette précision, puis le juge core reproche son absence. |
+| q827 — arrêt maladie | Mêmes messages de génération. Les deux réponses omettent la sanction d'envoi tardif, que le juge historique affirme présente. Le juge core déclare aussi absentes la transmission des volets à la CPAM et l'information de reprise anticipée, alors qu'elles figurent dans la réponse. |
+| q926 — temps partiel thérapeutique | Mêmes messages de génération. L'accord d'indemnisation CPAM n'est explicité dans aucune des deux réponses. Le juge historique l'affirme couvert ; le juge core pénalise son absence. |
+
+Les trois derniers cas montrent une application incohérente de la grille du
+juge, y compris avec trois votes concordants côté historique. Cela ne certifie
+pas les réponses core : certaines omissions sont communes aux deux bras.
+Il faut confronter les motifs du juge aux phrases effectivement présentes,
+et non interpréter un PASS comme une annotation humaine fiable. Cet audit
+ciblé ne remplace pas une réévaluation du panel selon un protocole fixé avant
+exécution. Aucun vote ni statut enregistré n'est modifié.
+
+**Pourquoi le rappel global n'a-t-il pas baissé ?** `retrieved_doc_ids()`
+regroupe les références du contexte final **et** celles des chunks récupérés
+et rerankés. Une source retrouvée puis supprimée par le sélecteur reste donc
+comptée. Pour q6, le rappel global vaut 1 dans les deux bras, mais celui du
+contexte effectivement servi passe de **1 à 0,6**. Sur les 96 paires RAG,
+le rappel moyen à la sortie du context builder passe de **0,460268 à 0,450397**.
+L'égalité de la métrique globale ne prouve pas l'égalité des contextes.
+
+L'écart de résolution SQL est reproduit avec les deux helpers réels : le
+runtime historique trie les sections par correspondance exacte de chemin,
+puis applique `LIMIT 1` sans départager les autres égalités ; le core ajoute
+`section_id`. Un même titre peut désigner plusieurs sections de la même fiche,
+avec des textes différents. Des associations chunk/section différentes sont
+observées dans 74 des 96 paires RAG, sans nécessairement changer le contexte
+final. Il s'agit de la limite B2 déjà documentée : les replays M0b injectent
+les mêmes entrées aux ports et ne prouvent pas l'équivalence de ces SQL
+ambigus. Le test différentiel DB retire d'ailleurs le doublon de sa fixture.
+Cette limite ne justifie pas de supprimer le tri déterministe du core.
+
+Méthode : reconstruction avec les fonctions de formatage versionnées et le
+snapshot inchangé `092e0365…`. Les prompts utilisateur historiques complets,
+les préfixes système historiques, les traces core après masquage/troncature
+et les longueurs intégrales enregistrées concordent. Les messages core
+complets n'étaient pas conservés : leur égalité est **reconstruite et
+recoupée**, pas issue d'une capture HTTP intégrale. Aucune preuve n'attribue
+les huit reculs à un unique défaut du moteur.
+
+Suite recommandée : isoler sélecteur et génération sur des entrées communes
+figées ; contrôler le juge par des citations vérifiables dans les deux bras ;
+traiter séparément la résolution des sections ambiguës avec une politique
+commune ou un mapping de données explicite. Toute nouvelle mesure conserve
+le panel et les seuils fixés avant lancement.
+
+[Preuve du diagnostic](../../evals/evidence/m1_api_parity_diagnosis_20260930.json)
+`0bdc551f3459157dae63b95db68863d73b177b0e8a580fc696be5f4bcb90eba7`.
+Les prompts, réponses et contextes détaillés restent privés dans
+`/tmp/assistant-rh-m1-investigate-20260930/`.

@@ -945,3 +945,28 @@ core reste inconnu. Les limites du clone et les interruptions sont explicites.
 [preuve agrégée](../../evals/evidence/m1_api_parity_local_20260928.json)
 `845fd6862b1441b9cac1afe2436a15184c9854ac00e1a943b4b675984dcd1ab3`.
 Artefacts détaillés privés et écritures DB locales ; aucun déploiement.
+
+### M1 — enquête sur le NO-GO (30 septembre 2026)
+
+Analyse en lecture seule des 196 items, sans appel provider ni nouvelle mesure
+live. Les empreintes du code, du panel et du snapshot restent identiques.
+Quatre reculs sont localisés à des réponses sélecteur différentes à prompt
+identique ; q188 reçoit déjà des candidats différents ; trois autres reculs
+ont les mêmes entrées générateur et des motifs juge incohérents entre bras.
+192 réponses sélecteur reparsées à l'identique par les deux implémentations.
+
+La limite B2 des sections Service-Public ambiguës est reproduite avec les
+helpers SQL : le core départage les égalités par `section_id`, le runtime
+historique ne le fait pas. Les replays exacts aux ports ne couvrent pas cette
+équivalence SQL ; le test DB différentiel utilise une relation non ambiguë.
+Le rappel documentaire global inclut les candidats amont : il masque donc
+des pertes au sélecteur (q6 : rappel du contexte servi 1 → 0,6).
+
+**NO-GO et scores officiels inchangés.** Les motifs du juge sont des éléments
+à auditer, pas une nouvelle annotation du panel. Prochaines investigations :
+sélecteur/génération avec entrées figées, motifs juge confrontés aux réponses,
+politique explicite de résolution des sections ambiguës. Aucun changement
+du runtime ni de la configuration dans cette analyse.
+[Rapport](13-m1-run-metrics.md#diagnostic-du-30-septembre-2026) et
+[preuve](../../evals/evidence/m1_api_parity_diagnosis_20260930.json)
+`0bdc551f3459157dae63b95db68863d73b177b0e8a580fc696be5f4bcb90eba7`.

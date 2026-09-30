@@ -1583,3 +1583,41 @@ Artefacts détaillés privés : `/tmp/assistant-rh-m1-20260928/`, notamment
 `final-assessment-final.json`, `before.json`, `after.json`, `prompt-dates.json`
 et `loss-diagnostics.json`. La preuve publiée contient agrégats, IDs et
 empreintes ; les textes de questions, réponses et contextes restent privés.
+
+## M1 — diagnostic des écarts (30/09/2026, analyse terminée)
+
+Lecture des 196 items de la campagne des 28–29 septembre, sans nouveau run,
+appel provider ou écriture DB. Sources `e728708b…`, panel `afd6cfc9…` et
+snapshot `092e0365…` vérifiés inchangés. CI Tests et CodeQL passent sur
+`b57c498`. Les scores officiels et le **NO-GO** restent inchangés.
+
+Prompts reconstruits et recoupés avec les traces/longueurs conservées : sur
+96 paires RAG, **64 prompts sélecteur identiques**, dont **26 sélections
+différentes** ; **56 entrées de génération identiques**, dont **54 réponses
+différentes**. Les 192 réponses sélecteur enregistrées sont interprétées de
+la même façon par les deux parseurs. Les deux autres paires sont des réponses
+directes, sans génération.
+
+Quatre reculs (q6/q20/q28/q4538) suivent une sélection différente malgré le
+même prompt ; q188 reçoit déjà des candidats différents, notamment à cause
+de la résolution SQL ambiguë de sections Service-Public. La section MATTE
+pertinente demeure disponible dans les deux bras. Les trois autres reculs
+(q186/q827/q926) partagent leurs entrées de génération et révèlent des motifs
+juge incohérents : le témoin historique est crédité d'éléments absents de sa
+réponse, dont l'absence est ensuite pénalisée côté core. Ces constats ne
+certifient pas les réponses core et ne modifient aucun vote.
+
+Le rappel global inclut les documents récupérés en amont, même éliminés par
+le sélecteur. À la sortie du context builder, le rappel moyen est **0,460268
+historique / 0,450397 core** ; pour q6, il passe de **1 à 0,6**, malgré un
+rappel global égal à 1. La limite B2 des associations de sections ambiguës
+est reproduite en lecture seule avec les helpers SQL réels ; elle reste
+distincte des replays M0b exacts aux ports.
+
+[Diagnostic détaillé](../architecture/hexagonal-split/13-m1-run-metrics.md#diagnostic-du-30-septembre-2026)
+et [preuve agrégée](evidence/m1_api_parity_diagnosis_20260930.json), empreinte
+`0bdc551f3459157dae63b95db68863d73b177b0e8a580fc696be5f4bcb90eba7`.
+Artefacts privés dans `/tmp/assistant-rh-m1-investigate-20260930/`. Les requêtes
+HTTP complètes d'origine n'étant pas enregistrées côté core, l'égalité des
+prompts est reconstruite et recoupée ; aucun nouveau résultat live n'est
+revendiqué et aucune correction du score officiel n'est appliquée.
