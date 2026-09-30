@@ -1725,3 +1725,14 @@ Avant cette campagne : **1 257 tests API / 1 583 tests historiques réussis**,
 46 historiques ignorés ; lint ciblé et diff vérifiés. Les scores partiels ne
 permettent pas de conclure. La PR reste draft et la phase D reste bloquée
 jusqu'à comparaison complète, audit de persistance et contrôle des empreintes.
+
+Consignation de fin détachée préparée dans
+`/tmp/assistant-rh-m1-v2-20260930/finish.py` : attend la fin des deux processus,
+relit les résultats, audite chats/traces/scopes/sources/modèles, compare les
+dates des prompts et les empreintes avant/après, puis publie uniquement les
+agrégats. Les scénarios GO et NO-GO du rendu documentaire sont vérifiés dans
+des copies temporaires ; un garde rejette les champs de texte brut. Si le
+worktree ou les empreintes changent, la vigie conserve le bilan privé et
+n'écrase aucun travail. Elle ne fait aucun appel provider et ne relance aucun
+vote. Après un bilan valide, elle met à jour preuve, journal, rapport, LEDGER,
+plan et description de #580 ; la PR reste draft, sans merge ni déploiement.
