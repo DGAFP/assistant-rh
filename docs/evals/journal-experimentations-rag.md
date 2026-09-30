@@ -1700,3 +1700,28 @@ Les deux divergences réelles du diagnostic se résolvent maintenant de façon
 identique en lecture seule. Ce correctif ne prétend pas deviner le sens d'un
 titre ambigu ni remplacer une réingestion avec liens explicites.
 **1 257 tests API réussis**, aucun ignoré, dont les replays M0b privés.
+
+## M1 — paire complète après départage SQL (30/09/2026, protocole avant lancement)
+
+Label `m1_sql_ties_gold_passages_v2_20260930`, suffixes `legacy` et `core`.
+Les deux moteurs régénèrent chacun les **98 réponses**, avec la correction
+de départage SQL historique et le juge `gold-passages-v2` : aucun résultat
+de la paire précédente n'est substitué. Sources mesurées
+`440699d13d50ff5362e153eadfd73bb958ac7077e53f962772d479fee4abf5c0`
+(code `cf937ee`), panel `afd6cfc9…`, configuration `51d6256b…`, snapshot
+corpus/config/prompts/acronymes `092e0365…`, tous vérifiés avant lancement.
+
+Paramètres identiques à la campagne du 28 septembre : Albert
+`deepseek-v4-flash` pour la génération, `openweight-large` pour le sélecteur,
+`openweight-medium` pour l'intention, scope `per-question`, juge Scaleway
+`mistral-medium-3.5-128b`, majorité de trois, sans RAGAS, concurrence maximale
+de deux paires. Seules les écritures du clone local sont autorisées.
+Artefacts privés dans `/tmp/assistant-rh-m1-v2-20260930/`. Les résultats
+seront comparés au témoin régénéré et à M0a réévaluée #255, avec baisse
+maximale de **0,05** sur le pass rate et le rappel. Les anciens jugements
+#252–254 sont invalides ; les réévaluations #255–257 utilisent v2.
+
+Avant cette campagne : **1 257 tests API / 1 583 tests historiques réussis**,
+46 historiques ignorés ; lint ciblé et diff vérifiés. Les scores partiels ne
+permettent pas de conclure. La PR reste draft et la phase D reste bloquée
+jusqu'à comparaison complète, audit de persistance et contrôle des empreintes.
