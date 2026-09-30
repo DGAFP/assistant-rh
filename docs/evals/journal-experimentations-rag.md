@@ -1658,3 +1658,45 @@ ce même protocole de juge et les seuils existants (baisse maximale de
 5 points de pass rate et de rappel contre le témoin et M0a réévaluée).
 La campagne initiale reste **NO-GO** ; aucun recalcul rétroactif ni sélection
 des seules questions perdantes n'est utilisé pour faire passer M1.
+
+### Résultat technique v1 : #252 / #253 / #254, campagne interrompue
+
+Trois items seulement (q1 dans chaque bras), neuf votes, aucun jugement
+valide : les citations produites restent non littérales après réparation.
+Arrêt demandé dès le premier échec de quorum ; les deux autres jugements
+déjà engagés ont été attendus et sauvegardés. Les trois runs sont `failed`,
+avec checkpoints et compteurs conservés. Aucun score de qualité ni résultat
+de gate n'est déduit de cet échec du protocole de citation. Pas de reprise
+de ces runs ni de remplacement de leurs items.
+
+### Relance v2 préenregistrée : passages numérotés
+
+Label `m1_rejudge_gold_passages_v2_20260930`, mêmes 294 entrées et même
+empreinte, scope `judge_evidence=gold-passages-v2`. Chaque texte est découpé
+en phrases/lignes sans réécriture. Le juge sélectionne des identifiants de
+passages ; le code vérifie leurs bornes et extrait les citations exactes.
+Cela évite de demander au modèle de recopier sans altération les textes
+français et leur Markdown. Le modèle doit toujours justifier chaque point
+requis ; la validation ne certifie toujours pas l'implication sémantique.
+
+Même rubrique, modèle, température, majorité et seuils. Les réparations
+restent bornées à une par vote mal formé. Un échec final de quorum arrête
+désormais automatiquement les tâches en attente ; les appels engagés sont
+attendus et conservés. Aucun verdict négatif valide ne déclenche de reprise.
+Concurrence fixée à **quatre** jugements, uniquement sur réponses stockées.
+Artefacts privés : `/tmp/assistant-rh-m1-rejudge-v2-20260930/`.
+Les tests de validation des passages, quorum, conservation des votes et
+sélection du panel passent. Aucune donnée textuelle brute n'est publiée.
+
+### Correction indépendante de la résolution SQL
+
+Le résolveur historique départage désormais les chemins/titres identiques
+par `section_id`, comme le core, dans les deux schémas Service-Public
+(sans colonne `section_id`, ou colonne partiellement renseignée). Une
+relation explicite reste prioritaire. Le test différentiel garde les deux
+sections ambiguës, insérées dans l'ordre inverse, pour les 15 combinaisons
+mode/ministère ; le test de migration partielle exécute les deux helpers SQL.
+Les deux divergences réelles du diagnostic se résolvent maintenant de façon
+identique en lecture seule. Ce correctif ne prétend pas deviner le sens d'un
+titre ambigu ni remplacer une réingestion avec liens explicites.
+**1 257 tests API réussis**, aucun ignoré, dont les replays M0b privés.

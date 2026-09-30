@@ -1719,17 +1719,18 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
     return parsed
 
 
-JUDGE_EVIDENCE_VERSION = "gold-quotes-v1"
+JUDGE_EVIDENCE_VERSION = "gold-passages-v2"
 JUDGE_EVIDENCE_INSTRUCTIONS = """
 Before assigning scores, audit every required point of the gold answer against the candidate answer.
 Return an additional required_points array of objects with these keys:
-- gold_quote: a nonempty verbatim excerpt from gold_answer identifying the point;
+- gold_passage_id: an integer key from evidence_passages.gold identifying the required point;
 - status: covered, missing, or contradicted;
-- candidate_quote: a verbatim excerpt from candidate_answer supporting your assessment;
-- explanation: explain the relation between these two excerpts.
-For covered or contradicted, candidate_quote MUST be nonempty and copied exactly from candidate_answer.
-For missing, cite the closest partial passage if any, otherwise use an empty string: absence cannot be quoted.
-Do not copy gold or context text into candidate_quote unless it actually occurs in candidate_answer.
+- candidate_passage_ids: an array of integer keys from evidence_passages.candidate supporting your assessment;
+- explanation: explain the relation between these passages.
+For covered or contradicted, candidate_passage_ids MUST contain at least one relevant candidate passage ID.
+For missing, cite the closest partial passage if any, otherwise use an empty array: absence cannot be quoted.
+Use only the supplied passage IDs, which are zero-based. The evaluator will extract their exact text automatically.
+Gold passage IDs and context text are NOT candidate evidence. Do not invent passage IDs or rewrite quotations.
 Do not credit an absent condition based on a vague phrase, a source citation, or your own legal knowledge.
 Check the entire candidate before declaring a point absent. Distinguish omitted required points from optional extras.
 Assess all required gold points, not only those the candidate covers. Do not change the scoring rubric.
@@ -1737,26 +1738,34 @@ Your rationale and missing_required_points must agree with this audit.
 """
 
 
+def judge_evidence_passages(text: str) -> dict[int, str]:
+    """Number verbatim sentences/lines without rewriting their content."""
+    return dict(enumerate(part.strip() for part in re.split(r"(?<=[.!?;])\s+|\n+", text) if part.strip()))
+
+
 def validate_judge_evidence(parsed: dict[str, Any], gold_answer: str, answer: str) -> None:
-    """Validate quoted text, not semantic entailment; missing evidence invalidates a vote, not the answer."""
+    """Resolve cited passages, not semantic entailment; invalid IDs fail a vote, not the answer."""
     points = parsed.get("required_points")
     if not isinstance(points, list) or not points:
         raise ValueError("required_points must be a nonempty array")
-    normalized_gold, normalized_answer = " ".join(gold_answer.split()), " ".join(answer.split())
+    gold_passages, candidate_passages = judge_evidence_passages(gold_answer), judge_evidence_passages(answer)
     for index, point in enumerate(points):
         if not isinstance(point, dict):
             raise ValueError(f"required_points[{index}] must be an object")
-        gold, candidate, status = point.get("gold_quote"), point.get("candidate_quote"), point.get("status")
-        if not isinstance(gold, str) or not gold.strip() or " ".join(gold.split()) not in normalized_gold:
-            raise ValueError(f"required_points[{index}].gold_quote is not in gold_answer")
+        gold, candidates, status = point.get("gold_passage_id"), point.get("candidate_passage_ids"), point.get("status")
+        if type(gold) is not int or gold not in gold_passages:
+            raise ValueError(f"required_points[{index}].gold_passage_id is not in evidence_passages.gold")
         if status not in ("covered", "missing", "contradicted"):
             raise ValueError(f"required_points[{index}].status is invalid")
-        if not isinstance(candidate, str) or (status != "missing" and not candidate.strip()):
-            raise ValueError(f"required_points[{index}].candidate_quote is required")
-        if candidate.strip() and " ".join(candidate.split()) not in normalized_answer:
-            raise ValueError(f"required_points[{index}].candidate_quote is not in candidate_answer")
+        if not isinstance(candidates, list) or (status != "missing" and not candidates):
+            raise ValueError(f"required_points[{index}].candidate_passage_ids is required")
+        if any(type(candidate) is not int or candidate not in candidate_passages for candidate in candidates):
+            raise ValueError(f"required_points[{index}].candidate_passage_ids is not in evidence_passages.candidate")
         if not isinstance(point.get("explanation"), str) or not point["explanation"].strip():
             raise ValueError(f"required_points[{index}].explanation is required")
+        point["gold_quote"] = gold_passages[gold]
+        point.pop("candidate_quote", None)
+        point["candidate_quotes"] = [candidate_passages[candidate] for candidate in candidates]
 
 
 def judge_answer(
@@ -1861,6 +1870,7 @@ def judge_answer(
         system = f"{system}\n{rubric_addendum}"
     if require_evidence:
         system = f"{system}\n{JUDGE_EVIDENCE_INSTRUCTIONS}"
+        prompt["evidence_passages"] = {"gold": judge_evidence_passages(gold_answer), "candidate": judge_evidence_passages(answer)}
     usage = _TokenUsage()
     usage_captured = False
     evidence_errors: list[str] = []
@@ -1908,7 +1918,10 @@ def judge_answer(
                 create_kwargs["messages"].extend(
                     [
                         {"role": "assistant", "content": content},
-                        {"role": "user", "content": f"Evidence validation failed: {exc}. Return a corrected full JSON judgment with exact quotes."},
+                        {
+                            "role": "user",
+                            "content": f"Evidence validation failed: {exc}. Return a corrected full JSON judgment using supplied passage IDs.",
+                        },
                     ]
                 )
                 response = client.chat.completions.create(**create_kwargs)

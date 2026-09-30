@@ -90,7 +90,7 @@ def evaluate(args, environment):
         "kind": "stored_answer_rejudgment",
         "input_sha256": digest(manifest),
         "source_fingerprint": source_fingerprint()["sha256"],
-        "concurrency": 2,
+        "concurrency": 4,
     }
     run_ids = {}
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
@@ -144,12 +144,14 @@ def evaluate(args, environment):
 
     fatal = ""
     try:
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
             pending = [pool.submit(judge, name, panels[name][qid]) for qid in sorted(panels["m0a"]) for name in COMPONENTS]
             try:
                 for future in as_completed(pending):
                     name, item = future.result()
                     items[name].append(item)
+                    if item.judge_result.get("status") != "completed":
+                        raise RuntimeError("Judge protocol failed: stopping pending calls; preserve all paid checkpoints")
                     print(
                         json.dumps(
                             {

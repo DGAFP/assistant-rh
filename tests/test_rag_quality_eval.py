@@ -1378,12 +1378,12 @@ def test_evidence_judge_rejects_invented_quotes_and_bounds_repairs(monkeypatch, 
         "score": 0.4,
         "pass": False,
         "required_points": [
-            {"gold_quote": "48 heures", "candidate_quote": "48\nheures", "status": "covered", "explanation": "Même délai."},
-            {"gold_quote": "50 %", "candidate_quote": "", "status": "missing", "explanation": "Pénalité absente."},
+            {"gold_passage_id": 0, "candidate_passage_ids": [0], "status": "covered", "explanation": "Même délai."},
+            {"gold_passage_id": 1, "candidate_passage_ids": [], "status": "missing", "explanation": "Pénalité absente."},
         ],
     }
     invented = copy.deepcopy(valid)
-    invented["required_points"][1].update(status="covered", candidate_quote="50 %")
+    invented["required_points"][1].update(status="covered", candidate_passage_ids=[99])
     outputs = iter([valid] if repair is None else [invented, valid if repair == "valid" else invented])
     calls = []
 
@@ -1399,7 +1399,7 @@ def test_evidence_judge_rejects_invented_quotes_and_bounds_repairs(monkeypatch, 
     monkeypatch.setattr("openai.OpenAI", lambda **kwargs: SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
     result = quality.judge_answer(
         question="Délai ?",
-        gold_answer="48 heures, sinon 50 %",
+        gold_answer="48 heures. Sinon 50 %.",
         answer="Envoyer sous 48 heures.",
         contexts=[],
         deterministic_metrics={},
@@ -1416,7 +1416,10 @@ def test_evidence_judge_rejects_invented_quotes_and_bounds_repairs(monkeypatch, 
         assert result["status"] == "failed" and "pass" not in result
     else:
         assert result["status"] == "completed" and result["pass"] is False
-        assert result["required_points"] == valid["required_points"]
+        assert result["required_points"][0]["candidate_quotes"] == ["Envoyer sous 48 heures."]
+        assert result["required_points"][1]["gold_quote"] == "Sinon 50 %."
+        assert result["required_points"][1]["candidate_quotes"] == []
+        assert json.loads(calls[0]["messages"][1]["content"])["evidence_passages"]["gold"]["1"] == "Sinon 50 %."
 
 
 def test_evidence_protocol_scope_and_every_vote_are_preserved(monkeypatch) -> None:
@@ -1427,9 +1430,10 @@ def test_evidence_protocol_scope_and_every_vote_are_preserved(monkeypatch) -> No
     args.judge_evidence = True
     assert quality.build_eval_scope(args, []) == {**old_scope, "judge_evidence": quality.JUDGE_EVIDENCE_VERSION}
     for bad_point in (
-        {"gold_quote": "invented", "candidate_quote": "answer", "status": "covered", "explanation": "x"},
-        {"gold_quote": "gold", "candidate_quote": "", "status": "covered", "explanation": "x"},
-        {"gold_quote": "gold", "candidate_quote": "answer", "status": [], "explanation": "x"},
+        {"gold_passage_id": 9, "candidate_passage_ids": [0], "status": "covered", "explanation": "x"},
+        {"gold_passage_id": 0, "candidate_passage_ids": [], "status": "covered", "explanation": "x"},
+        {"gold_passage_id": 0, "candidate_passage_ids": [0], "status": [], "explanation": "x"},
+        {"gold_passage_id": True, "candidate_passage_ids": [0], "status": "covered", "explanation": "x"},
     ):
         with pytest.raises(ValueError):
             quality.validate_judge_evidence({"required_points": [bad_point]}, "gold", "answer")
