@@ -205,7 +205,9 @@ Cycle de vie et erreurs :
 
 ### `POST /v1/feedback`
 
-Hors spec OpenAI. Rattache une note utilisateur au run identifié par l'id de completion.
+Hors spec OpenAI. Cible individuelle de [#528](https://github.com/DGAFP/assistant-rh/issues/528), recadrée le 28/09/2026 : une évaluation courante appartient à l'auteur individuel du run. Le groupe porte les habilitations aux corpus, jamais la propriété collective du feedback.
+
+**État D1 : préparation runtime, validation Conversations suspendue à [#596](https://github.com/DGAFP/assistant-rh/issues/596).** Les routes POST et GET exigent un principal individuel fourni par une authentification vérifiée côté API. Aucun `user_id`, groupe ou header libre ne peut le créer. L'auth B4 actuelle ne fournit aucun utilisateur : ses bearers reçoivent **403 `individual_identity_required`**, sans lecture du run. Le parcours historique Streamlit direct conserve ses écritures sur les runs collectifs.
 
 **Requête**
 
@@ -222,17 +224,25 @@ Hors spec OpenAI. Rattache une note utilisateur au run identifié par l'id de co
 - `completion_id` : accepté avec ou sans préfixe `chatcmpl-`.
 - `stars` : entier **1–5 obligatoire**. Pendant la coexistence avec le runtime historique, l'adaptateur persiste `stars - 1` sur l'échelle 0–4.
 - `reasons_positive` / `reasons_negative` : listes de libellés issus du catalogue produit actif : positif `Clair`, `Utile`, `Pertinent`, `Complet`, `Précis` ; négatif `Confus`, `Éléments faux`, `Non pertinent`, `Incomplet`, `Sources manquantes`.
-- `comment` : chaîne optionnelle ; au moins une raison ou un commentaire non vide est requis.
+- `comment` : chaîne optionnelle de 4 000 caractères maximum ; au moins une raison ou un commentaire non vide est requis. Corps POST borné à 16 Kio avant parsing, listes bornées à 32 éléments chacune ; champs inconnus refusés.
 - `helpful` est dérivé par le serveur : 1–2 → `false`, 3–5 → `true`. Le champ historique `rating` n'appartient pas au contrat canonique.
 - Les combinaisons suivent le widget : 1–2 affiche seulement les raisons négatives, 3–4 autorise les deux listes, 5 affiche seulement les raisons positives. Un libellé inconnu ou une raison dans une liste non applicable produit une 422.
 
-**Réponse 204.** 404 si le `turn_id` est inconnu **ou n'appartient pas au groupe identifié par le bearer**. Le store normalise la charge utile — `stars`, raisons dédupliquées dans l'ordre du catalogue, commentaire nettoyé aux extrémités — puis calcule une empreinte canonique.
+**Réponse 204, `Cache-Control: no-store`.** Pour un principal individuel, 404 uniforme si le run est inconnu, historique collectif, appartient à une autre personne (même groupe compris), ou n'est plus accessible. Le contrôle de lecture et d'écriture exige actuellement le même groupe de création et un ministère encore autorisé dans le contexte authentifié. Cette politique conservatrice ferme l'accès après mobilité ; #596 doit arrêter et valider la politique définitive de multi-groupes/historique et résoudre les droits à chaque requête. La propriété seule n'accorde jamais un droit perpétuel au corpus.
+
+Le service métier normalise la charge utile — `stars`, raisons dédupliquées dans l'ordre du catalogue, commentaire nettoyé aux extrémités — puis le store compare cette valeur canonique à la valeur courante.
 
 La transaction verrouille d'abord la ligne parent `chat_runs` : elle sérialise ainsi deux premières soumissions concurrentes, même quand aucun feedback n'existe encore. Une empreinte identique à la valeur courante est un no-op sans nouvel audit. Une charge différente copie l'ancienne valeur dans `chat_feedback_audit`, puis remplace la valeur courante ; la contrainte unique sur `chat_feedbacks(turn_id)` constitue le dernier garde-fou. Une modification réinitialise `error_category`, `ai_reason` et `ai_analyzed_at` afin de replanifier l'analyse IA, mais conserve les annotations humaines `beta_scope` et `theme`.
 
-L'audit append-only conserve les identifiants et horodatages originaux, la valeur remplacée, le groupe acteur et `audit_session_hash`. Ce dernier est un HMAC-SHA-256, avec une clé d'audit dédiée, d'un identifiant interne aléatoire de session ; il est stable au plus pendant les huit heures de cette session et n'est ni le bearer, ni un cookie, ni une identité utilisateur. Le rôle runtime peut insérer dans l'audit mais pas modifier ni supprimer ses lignes.
+L'audit append-only conserve les identifiants et horodatages originaux, la valeur remplacée, l'identifiant interne UUID de l'acteur (`actor_user_id`), le groupe acteur et `audit_session_hash`. Le propriétaire/acteur courant vient de `chat_runs.author_user_id`, jamais du payload ; il est aussi enregistré dans `chat_feedbacks.api_actor_user_id`. Aucun bearer, hash d'authentification, preuve OIDC, email ou SIRET n'est ajouté à l'audit ou aux logs par D1. Le pseudonyme de session devra être un HMAC-SHA-256, avec une clé d'audit dédiée, d'un identifiant interne aléatoire de session ; il est stable au plus pendant la durée de cette session et n'est ni le bearer, ni un cookie, ni une identité utilisateur. L'émission du pseudonyme individuel, le registre utilisateur et les grants du rôle runtime restent des prérequis #596/déploiement : D1 refuse une écriture sans pseudonyme hexadécimal de 64 caractères ; cette validation de format ne constitue pas une preuve HMAC. Le rôle runtime devra pouvoir insérer dans l'audit sans modifier ni supprimer ses lignes.
 
 Avant d'ajouter l'unicité, une migration versionnée classe les lignes existantes par `(ts DESC NULLS LAST, id DESC)` pour chaque `turn_id`, conserve la première comme valeur courante et copie toutes les autres dans l'audit avant de les retirer de `chat_feedbacks`. Copie, suppression et contrainte sont dans une transaction ; le test de migration vérifie que `nombre courant + nombre archivé = nombre initial`, y compris avec égalités de date. L'enrichissement goldset historique reste conservé ; l'analyse admin reste dans Streamlit.
+
+### `GET /v1/feedback/{completion_id}`
+
+Restitue uniquement `completion_id` (ID interne sans préfixe), `stars` (échelle API 1–5), `reasons_positive`, `reasons_negative`, `comment` et `helpful`. **200, `Cache-Control: no-store`** ; mêmes contrôles individuels et même 404 uniforme que POST, y compris sans feedback courant. Aucune annotation humaine, analyse IA, identité, session ou archive n'est restituée.
+
+La migration additive D1 laisse `author_user_id` NULL pour tous les runs existants. Un trigger interdit tout changement d'auteur, y compris NULL → UUID : une connexion ne peut jamais réclamer un run collectif. Un garde avant le trigger INSERT historique refuse ses écritures sur les runs individuels, même sans feedback courant ; les écritures B4 du store sont bornées aux runs sans auteur. #596 devra relier les UUID internes au registre vérifié, sans backfill de l'historique collectif. Aucun déploiement ni bascule implicite de B4.
 
 ### `GET /healthz`
 

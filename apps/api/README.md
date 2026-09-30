@@ -712,3 +712,16 @@ Both API transports use C6's generation inputs; validated history remains with
 the query processor. Standalone C5 streaming still accepts history. Provider
 stream requests now opt in to usage; missing usage retains C1's zero counters.
 See [C7 design, validation and Conversations reproduction](../../docs/architecture/hexagonal-split/12-c7-streaming.md).
+
+## Individual feedback groundwork (D1 / #528)
+
+`POST /v1/feedback` validates and normalizes stars, reason lists and comments;
+`GET /v1/feedback/{completion_id}` returns the current input only. Both require
+a verified individual principal and enforce the run author and current corpus
+rights. B4 group tokens receive 403 on these routes. Individual login and
+Conversations validation remain blocked on #596; this is not an active login path.
+
+Apply the additive D1 migration before running this version. Existing collective
+runs keep a NULL author and cannot be claimed. The local bootstrap includes the
+migration; no staging or production migration is performed by this change.
+See the [feedback contract](../../docs/architecture/hexagonal-split/02-api-contract.md#post-v1feedback).

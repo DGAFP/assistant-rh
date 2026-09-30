@@ -109,6 +109,7 @@ class ChatService:
                 diagnostics=trace_payload(context.diagnostics),
                 status=status,
                 metrics=context.metrics(stream=stream),
+                author_user_id=auth.user_id,
             )
 
         try:
