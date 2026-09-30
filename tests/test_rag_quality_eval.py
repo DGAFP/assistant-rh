@@ -1422,6 +1422,60 @@ def test_evidence_judge_rejects_invented_quotes_and_bounds_repairs(monkeypatch, 
         assert json.loads(calls[0]["messages"][1]["content"])["evidence_passages"]["gold"]["1"] == "Sinon 50 %."
 
 
+@pytest.mark.parametrize("retry", ["format", "evidence"])
+@pytest.mark.parametrize("outcome", ["timeout", "missing_usage", "complete"])
+def test_judge_retry_usage_stays_incomplete_until_every_call_is_accounted_for(monkeypatch, retry, outcome) -> None:
+    from types import SimpleNamespace
+
+    from src.goldset import eval as quality
+
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 2 and outcome == "timeout":
+            raise TimeoutError("repair response lost")
+        payload = {
+            "score": 0.9,
+            "required_points": [{"gold_passage_id": 0, "candidate_passage_ids": [0], "status": "covered", "explanation": "Même délai."}],
+        }
+        if len(calls) == 1:
+            payload = {} if retry == "format" else {"score": 0.9, "required_points": []}
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload)))],
+            usage=None if len(calls) == 2 and outcome == "missing_usage" else SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+        )
+
+    monkeypatch.setattr("openai.OpenAI", lambda **kwargs: SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
+    result = quality.judge_answer(
+        question="Délai ?",
+        gold_answer="48 heures.",
+        answer="48 heures.",
+        contexts=[],
+        deterministic_metrics={},
+        model="mistral-medium-3.5-128b",
+        provider="scaleway",
+        base_url="https://example.invalid",
+        api_key="synthetic",
+        require_evidence=retry == "evidence",
+    )
+    complete = outcome == "complete"
+    recorded = 2 if complete else 1
+    assert len(calls) == 2
+    assert result["status"] == ("failed" if outcome == "timeout" else "completed")
+    assert result["usage"]["capture_complete"] is complete
+    assert result["usage"]["calls"] == recorded
+    assert result["usage"]["prompt_tokens"] == 10 * recorded
+    assert result["usage"]["completion_tokens"] == 5 * recorded
+    item = EvalItem(
+        question_id=1, question="Délai ?", gold_answer="48 heures.", gold_sources=[], judge_result=result, ragas_metrics={"status": "skipped"}
+    )
+    aggregate = quality._aggregate_token_usage([item])
+    assert aggregate["judge"]["coverage_complete"] is complete
+    assert (aggregate["judge"]["cost_eur"] is not None) is complete
+    assert (aggregate["billable_cost_eur"] is not None) is complete
+
+
 def test_evidence_protocol_scope_and_every_vote_are_preserved(monkeypatch) -> None:
     from src.goldset import eval as quality
 

@@ -1872,7 +1872,6 @@ def judge_answer(
         system = f"{system}\n{JUDGE_EVIDENCE_INSTRUCTIONS}"
         prompt["evidence_passages"] = {"gold": judge_evidence_passages(gold_answer), "candidate": judge_evidence_passages(answer)}
     usage = _TokenUsage()
-    usage_captured = False
     evidence_errors: list[str] = []
     try:
         # base_url vide (ex. provider openai sans OPENAI_BASE_URL) -> ne pas la
@@ -1894,8 +1893,9 @@ def judge_answer(
         # #329). Un modèle sans endpoint ZDR échoue -> inutilisable, voulu.
         if provider == "openrouter":
             create_kwargs["extra_body"] = {"provider": {"data_collection": "deny", "zdr": True}}
+        usage.attempted_calls += 1
         response = client.chat.completions.create(**create_kwargs)
-        usage_captured = usage.record(getattr(response, "usage", None))
+        usage.record(getattr(response, "usage", None))
         content = response.choices[0].message.content or "{}"
         parsed = _extract_json_object(content)
         if not ({"score", "dimensions"} & set(parsed)):
@@ -1904,8 +1904,9 @@ def judge_answer(
             # (décodage contraint vs raisonnement). Un retry SANS contrainte
             # récupère le verdict complet ; le parse tolérant fait le reste.
             create_kwargs.pop("response_format", None)
+            usage.attempted_calls += 1
             response = client.chat.completions.create(**create_kwargs)
-            usage_captured = usage.record(getattr(response, "usage", None)) and usage_captured
+            usage.record(getattr(response, "usage", None))
             content = response.choices[0].message.content or "{}"
             parsed = _extract_json_object(content)
         if require_evidence:
@@ -1924,21 +1925,22 @@ def judge_answer(
                         },
                     ]
                 )
+                usage.attempted_calls += 1
                 response = client.chat.completions.create(**create_kwargs)
-                usage_captured = usage.record(getattr(response, "usage", None)) and usage_captured
+                usage.record(getattr(response, "usage", None))
                 parsed = _extract_json_object(response.choices[0].message.content or "{}")
                 validate_judge_evidence(parsed, gold_answer, answer)
             parsed["evidence_version"] = JUDGE_EVIDENCE_VERSION
             parsed["evidence_errors"] = evidence_errors
         parsed["status"] = "completed"
         calibrated = calibrate_judge_result(parsed, deterministic_metrics)
-        calibrated["usage"] = usage.as_dict(model, provider, capture_complete=usage_captured)
+        calibrated["usage"] = usage.as_dict(model, provider, capture_complete=usage.attempted_calls > 0 and usage.calls == usage.attempted_calls)
         return calibrated
     except Exception as exc:
         return {
             "status": "failed",
             "reason": str(exc),
-            "usage": usage.as_dict(model, provider, capture_complete=usage_captured),
+            "usage": usage.as_dict(model, provider, capture_complete=usage.attempted_calls > 0 and usage.calls == usage.attempted_calls),
             **({"evidence_errors": evidence_errors, "evidence_version": JUDGE_EVIDENCE_VERSION} if require_evidence else {}),
         }
 
