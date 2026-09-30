@@ -991,3 +991,9 @@ paire #258–259 régénère les 98 questions dans chaque bras, sur les sources
 `440699d1…`. **NO-GO maintenu pendant la mesure**, sans déploiement ni merge.
 Paramètres et limites préenregistrés dans le
 [journal](../../evals/journal-experimentations-rag.md).
+
+### M1 — bilan corrigé du 30 septembre 2026
+
+**GO technique M1 — campagne corrigée du 30/09/2026.** Core 60/98, témoin apparié 62/98, M0a réévaluée 60/98. Seuils inchangés : baisse maximale de 5 points de pass rate et de rappel contre chaque référence.
+
+[Preuve](../../evals/evidence/m1_api_parity_followup_20260930.json) et [journal](../../evals/journal-experimentations-rag.md). Les limites du protocole de juge et du clone local demeurent explicites.

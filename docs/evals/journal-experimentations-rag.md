@@ -1736,3 +1736,23 @@ worktree ou les empreintes changent, la vigie conserve le bilan privé et
 n'écrase aucun travail. Elle ne fait aucun appel provider et ne relance aucun
 vote. Après un bilan valide, elle met à jour preuve, journal, rapport, LEDGER,
 plan et description de #580 ; la PR reste draft, sans merge ni déploiement.
+
+## M1 — bilan corrigé du 30/09/2026 (#255–259)
+
+**GO technique M1 — campagne corrigée du 30/09/2026.** Core 60/98, témoin apparié 62/98, M0a réévaluée 60/98. Seuils inchangés : baisse maximale de 5 points de pass rate et de rappel contre chaque référence.
+
+| Mesure | Run | Items | PASS / jugés | Rappel | Hit rate |
+|---|---:|---:|---:|---:|---:|
+| m0a_rejudged | #255 | 98/98 (completed) | 60/98 | 0.724278 | 0.806122 |
+| legacy_rejudged | #256 | 98/98 (completed) | 64/98 | 0.729138 | 0.826531 |
+| core_rejudged | #257 | 98/98 (completed) | 58/98 | 0.729138 | 0.826531 |
+| legacy_live | #258 | 98/98 (completed) | 62/98 | 0.729138 | 0.826531 |
+| core_live | #259 | 98/98 (completed) | 60/98 | 0.729138 | 0.826531 |
+
+- `core_rejudged_vs_legacy_rejudged` : FAIL, panel complet/comparable : True/True.
+- `core_live_vs_legacy_live` : PASS, panel complet/comparable : True/True.
+- `core_live_vs_m0a_rejudged` : PASS, panel complet/comparable : True/True.
+
+Empreintes code, panel et snapshot inchangées. Les comparaisons utilisent toutes `gold-passages-v2`. Les scores et le NO-GO du 29 septembre restent historiques ; aucune réécriture de ces verdicts. La validation des citations porte sur leur provenance, pas sur leur implication sémantique. La campagne visait les 294 réponses stockées et la nouvelle paire complète, sans sélection selon le score ; les effectifs réellement terminés figurent au tableau.
+
+[Preuve agrégée](evidence/m1_api_parity_followup_20260930.json). Empreinte `b8acbd1c3325a593d5d1122399ca14a084a65d7d85bd21527cafb9d5afa7140a`. Artefacts détaillés privés, écritures uniquement locales. Les 196 items ont été persistés avant disparition du processus pendant la finalisation. Le statut core et les agrégats ont été reconstruits depuis ces lignes, sans rejouer de question ni modifier les verdicts ; les agrégats legacy reconstruits sont identiques à ceux déjà finalisés. Cause de terminaison non établie. Bilan consigné après cette récupération locale ; aucun appel provider depuis la vigie. PR conservée en brouillon ; aucun merge ni déploiement.

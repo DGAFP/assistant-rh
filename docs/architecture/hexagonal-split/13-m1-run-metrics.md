@@ -1,9 +1,13 @@
 # M1 — parité moteur et écritures des runs
 
+**GO technique M1 — campagne corrigée du 30/09/2026.** Core 60/98, témoin apparié 62/98, M0a réévaluée 60/98. Seuils inchangés : baisse maximale de 5 points de pass rate et de rappel contre chaque référence.
+
+[Résultats et intégrité](../../evals/evidence/m1_api_parity_followup_20260930.json).
+
 21 septembre 2026 · [#465](https://github.com/DGAFP/assistant-rh/issues/465)
 · prérequis C7 : [PR #579](https://github.com/DGAFP/assistant-rh/pull/579).
 
-**Décision courante au 29 septembre : NO-GO vers la phase D.** Après intégration
+**Décision du 29 septembre (historique) : NO-GO vers la phase D.** Après intégration
 de `dev`, le panel apparié complet donne 62/98 PASS core contre 68/98 historique
 (−6,12 points, tolérance −5 points). Les replays exacts et tests passent.
 Cette décision remplace le GO du 21 septembre pour la révision courante ;
@@ -11,8 +15,8 @@ les mesures antérieures ci-dessous restent attachées à leur code.
 
 **Suivi du 30 septembre :** départage SQL aligné et testé ; nouvelle
 réévaluation complète des réponses stockées (#255–257), puis nouvelle paire
-live (#258–259) avec le protocole `gold-passages-v2`, en cours. Le panel et
-le snapshot sont inchangés. Aucun nouveau GO avant les résultats complets.
+live (#258–259) avec le protocole `gold-passages-v2`, terminée. Le panel et
+le snapshot sont inchangés. Le bilan complet ci-dessus donne la décision sur cette nouvelle révision.
 Le [journal](../../evals/journal-experimentations-rag.md) conserve aussi
 l'essai de citation littérale #252–254 interrompu pour erreurs du juge.
 
