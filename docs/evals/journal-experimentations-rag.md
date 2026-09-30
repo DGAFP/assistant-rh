@@ -1621,3 +1621,40 @@ Artefacts privés dans `/tmp/assistant-rh-m1-investigate-20260930/`. Les requêt
 HTTP complètes d'origine n'étant pas enregistrées côté core, l'égalité des
 prompts est reconstruite et recoupée ; aucun nouveau résultat live n'est
 revendiqué et aucune correction du score officiel n'est appliquée.
+
+## M1 — réévaluation `gold-quotes-v1` (30/09/2026, protocole avant lancement)
+
+Autorisation utilisateur de poursuivre le diagnostic et les corrections,
+puis de relancer une comparaison complète. Label
+`m1_rejudge_gold_quotes_v1_20260930`, suffixes `m0a`, `legacy`, `core`.
+Réévaluation de **294 réponses enregistrées**, sans nouvelle génération :
+M0a #240, historique #246/#249/#250, core #247/#248/#251, avec la seule
+exclusion déjà déclarée de q223/#248. Les anciens items et verdicts restent
+intacts. Les 98 textes question/gold concordent dans les trois bras.
+Empreinte du manifeste d'entrées :
+`6dd46790aef6fd88ad701da5aa00621e0f086050b82d9214e50a05947f2ef120`.
+
+Le juge reste Scaleway `mistral-medium-3.5-128b`, température 0,
+majorité de trois votes avec quorum de deux, même rubrique, mêmes seuils,
+sans RAGAS ni addendum implicite. Chaque vote énumère les points requis du
+gold, leur couverture et des citations exactes. La validation mécanique
+vérifie leur présence dans les textes (espaces normalisés), **pas leur
+implication sémantique ni l'exhaustivité de l'audit**. Une seule réparation
+d'une preuve mal formée est autorisée, indépendamment du verdict ; une
+preuve encore invalide devient une erreur du juge. Aucun vote négatif
+valide n'est relancé. Les trois audits et usages sont conservés.
+
+Le scope porte `judge_evidence=gold-quotes-v1` : ces scores ne seront pas
+comparés directement aux anciens scores. Concurrence de deux jugements,
+écritures uniquement sur le clone local, checkpoint privé après chaque
+réponse dans `/tmp/assistant-rh-m1-rejudge-20260930/`. Aucun provider de
+génération n'est sollicité. Le script reproductible est
+`scripts/conformance/m1_rejudge.py` ; `--prepare-only` a confirmé 98 items
+uniques par bras. L'ordre question/bras est fixé avant les appels ; aucun
+nom de moteur n'est transmis au juge.
+
+La correction SQL sera évaluée dans une **nouvelle paire complète**, avec
+ce même protocole de juge et les seuils existants (baisse maximale de
+5 points de pass rate et de rappel contre le témoin et M0a réévaluée).
+La campagne initiale reste **NO-GO** ; aucun recalcul rétroactif ni sélection
+des seules questions perdantes n'est utilisé pour faire passer M1.

@@ -687,6 +687,7 @@ def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion])
         # d'adoption, juge souverain) n'est PAS comparable à un run single-shot
         # (screening intermédiaire grok) — la clé de scope les sépare.
         "judge_votes": judge_votes,
+        **({"judge_evidence": JUDGE_EVIDENCE_VERSION} if judge_enabled and getattr(args, "judge_evidence", False) else {}),
         # Partie de la clé de comparabilité: un run scopé « all ministries »
         # n'est pas comparable à un run historique sans scope.
         "ministry_scope": getattr(args, "ministry_scope", "none"),
@@ -1718,6 +1719,46 @@ def calibrate_judge_result(parsed: dict[str, Any], deterministic: dict[str, Any]
     return parsed
 
 
+JUDGE_EVIDENCE_VERSION = "gold-quotes-v1"
+JUDGE_EVIDENCE_INSTRUCTIONS = """
+Before assigning scores, audit every required point of the gold answer against the candidate answer.
+Return an additional required_points array of objects with these keys:
+- gold_quote: a nonempty verbatim excerpt from gold_answer identifying the point;
+- status: covered, missing, or contradicted;
+- candidate_quote: a verbatim excerpt from candidate_answer supporting your assessment;
+- explanation: explain the relation between these two excerpts.
+For covered or contradicted, candidate_quote MUST be nonempty and copied exactly from candidate_answer.
+For missing, cite the closest partial passage if any, otherwise use an empty string: absence cannot be quoted.
+Do not copy gold or context text into candidate_quote unless it actually occurs in candidate_answer.
+Do not credit an absent condition based on a vague phrase, a source citation, or your own legal knowledge.
+Check the entire candidate before declaring a point absent. Distinguish omitted required points from optional extras.
+Assess all required gold points, not only those the candidate covers. Do not change the scoring rubric.
+Your rationale and missing_required_points must agree with this audit.
+"""
+
+
+def validate_judge_evidence(parsed: dict[str, Any], gold_answer: str, answer: str) -> None:
+    """Validate quoted text, not semantic entailment; missing evidence invalidates a vote, not the answer."""
+    points = parsed.get("required_points")
+    if not isinstance(points, list) or not points:
+        raise ValueError("required_points must be a nonempty array")
+    normalized_gold, normalized_answer = " ".join(gold_answer.split()), " ".join(answer.split())
+    for index, point in enumerate(points):
+        if not isinstance(point, dict):
+            raise ValueError(f"required_points[{index}] must be an object")
+        gold, candidate, status = point.get("gold_quote"), point.get("candidate_quote"), point.get("status")
+        if not isinstance(gold, str) or not gold.strip() or " ".join(gold.split()) not in normalized_gold:
+            raise ValueError(f"required_points[{index}].gold_quote is not in gold_answer")
+        if status not in ("covered", "missing", "contradicted"):
+            raise ValueError(f"required_points[{index}].status is invalid")
+        if not isinstance(candidate, str) or (status != "missing" and not candidate.strip()):
+            raise ValueError(f"required_points[{index}].candidate_quote is required")
+        if candidate.strip() and " ".join(candidate.split()) not in normalized_answer:
+            raise ValueError(f"required_points[{index}].candidate_quote is not in candidate_answer")
+        if not isinstance(point.get("explanation"), str) or not point["explanation"].strip():
+            raise ValueError(f"required_points[{index}].explanation is required")
+
+
 def judge_answer(
     *,
     question: str,
@@ -1729,6 +1770,7 @@ def judge_answer(
     base_url: str,
     api_key: str,
     provider: str = DEFAULT_JUDGE_PROVIDER,
+    require_evidence: bool = False,
 ) -> dict[str, Any]:
     if not api_key:
         key_env = JUDGE_PROVIDERS.get(provider, {}).get("key_env", "OPENROUTER_API_KEY")
@@ -1817,8 +1859,11 @@ def judge_answer(
     rubric_addendum = os.getenv("JUDGE_RUBRIC_ADDENDUM", "").strip()
     if rubric_addendum:
         system = f"{system}\n{rubric_addendum}"
+    if require_evidence:
+        system = f"{system}\n{JUDGE_EVIDENCE_INSTRUCTIONS}"
     usage = _TokenUsage()
     usage_captured = False
+    evidence_errors: list[str] = []
     try:
         # base_url vide (ex. provider openai sans OPENAI_BASE_URL) -> ne pas la
         # passer, sinon OpenAI(base_url="") lève UnsupportedProtocol (revue #318).
@@ -1850,9 +1895,28 @@ def judge_answer(
             # récupère le verdict complet ; le parse tolérant fait le reste.
             create_kwargs.pop("response_format", None)
             response = client.chat.completions.create(**create_kwargs)
-            usage_captured = usage.record(getattr(response, "usage", None)) or usage_captured
+            usage_captured = usage.record(getattr(response, "usage", None)) and usage_captured
             content = response.choices[0].message.content or "{}"
             parsed = _extract_json_object(content)
+        if require_evidence:
+            try:
+                validate_judge_evidence(parsed, gold_answer, answer)
+            except ValueError as exc:
+                evidence_errors.append(str(exc))
+                # One repair of malformed evidence, regardless of the verdict.
+                # Preserve both calls' usage; never retry a valid negative vote.
+                create_kwargs["messages"].extend(
+                    [
+                        {"role": "assistant", "content": content},
+                        {"role": "user", "content": f"Evidence validation failed: {exc}. Return a corrected full JSON judgment with exact quotes."},
+                    ]
+                )
+                response = client.chat.completions.create(**create_kwargs)
+                usage_captured = usage.record(getattr(response, "usage", None)) and usage_captured
+                parsed = _extract_json_object(response.choices[0].message.content or "{}")
+                validate_judge_evidence(parsed, gold_answer, answer)
+            parsed["evidence_version"] = JUDGE_EVIDENCE_VERSION
+            parsed["evidence_errors"] = evidence_errors
         parsed["status"] = "completed"
         calibrated = calibrate_judge_result(parsed, deterministic_metrics)
         calibrated["usage"] = usage.as_dict(model, provider, capture_complete=usage_captured)
@@ -1862,6 +1926,7 @@ def judge_answer(
             "status": "failed",
             "reason": str(exc),
             "usage": usage.as_dict(model, provider, capture_complete=usage_captured),
+            **({"evidence_errors": evidence_errors, "evidence_version": JUDGE_EVIDENCE_VERSION} if require_evidence else {}),
         }
 
 
@@ -1926,6 +1991,14 @@ def judge_answer_with_votes(*, votes: int = 1, **kwargs: Any) -> dict[str, Any]:
             "status": r.get("status"),
             "reason": r.get("reason"),
             "usage": r.get("usage"),
+            **(
+                {
+                    key: r.get(key)
+                    for key in ("required_points", "rationale", "dimensions", "missing_required_points", "evidence_version", "evidence_errors")
+                }
+                if kwargs.get("require_evidence")
+                else {}
+            ),
         }
         for r in results
     ]
@@ -2006,6 +2079,7 @@ def run_question(
     judge_api_key: str,
     judge_provider: str = DEFAULT_JUDGE_PROVIDER,
     judge_votes: int = 1,
+    judge_evidence: bool = False,
     ragas_model: str,
     scaleway_base_url: str,
     scaleway_api_key: str,
@@ -2079,6 +2153,7 @@ def run_question(
                 base_url=judge_base_url,
                 api_key=judge_api_key,
                 provider=judge_provider,
+                require_evidence=judge_evidence,
             )
         else:
             item.judge_result = {"status": "skipped", "reason": "disabled"}
@@ -2218,6 +2293,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--skip-ragas", action="store_true", help="Skip RAGAS metrics.")
     parser.add_argument("--skip-judge", action="store_true", help="Skip Scaleway LLM-as-judge.")
+    parser.add_argument(
+        "--judge-evidence", action="store_true", help="Require verified answer/gold quotations for every judged point (versioned scope)."
+    )
     parser.add_argument(
         "--selector-model",
         default="",
@@ -2556,6 +2634,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 judge_api_key=judge_api_key,
                 judge_provider=judge_provider,
                 judge_votes=args.judge_votes,
+                judge_evidence=getattr(args, "judge_evidence", False),
                 ragas_model=args.ragas_model,
                 scaleway_base_url=args.scaleway_base_url,
                 scaleway_api_key=api_key,

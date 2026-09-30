@@ -112,6 +112,7 @@ async def evaluate(args, environment):
         ]
     )
     scope_args.judge_model = baseline["judge_model"]
+    scope_args.judge_evidence = args.judge_evidence
     eval_scope = quality.build_eval_scope(scope_args, questions)
     metadata = {
         "created_by": "scripts/conformance/m1_live.py",
@@ -178,6 +179,7 @@ async def evaluate(args, environment):
                             judge_api_key=environment["SCALEWAY_API_KEY"],
                             judge_provider="scaleway",
                             judge_votes=3,
+                            judge_evidence=args.judge_evidence,
                             ragas_model="",
                             scaleway_base_url="",
                             scaleway_api_key="",
@@ -250,6 +252,7 @@ def main():
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--question-ids", type=int, nargs="+")
     parser.add_argument("--concurrency", type=int, choices=(1, 2), default=2)
+    parser.add_argument("--judge-evidence", action="store_true", help="Use the versioned judge protocol with verified quotations")
     parser.add_argument(
         "--runtime",
         choices=("both", "legacy", "core"),

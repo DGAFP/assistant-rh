@@ -14,6 +14,33 @@ from scripts.conformance.m1_runtime import CoreEvaluator
 from src.goldset.eval import _aggregate_token_usage, context_payload, retrieved_doc_ids, stage_retrieval_metrics
 
 
+@pytest.mark.parametrize("invalid", [None, "duplicate", "missing", "gold_drift", "error"])
+def test_rejudge_panel_preserves_complete_matched_answers_and_excludes_superseded_item(invalid):
+    from scripts.conformance.m1_rejudge import select_panel
+
+    rows = [
+        {"run_id": run, "question_id": qid, "question": f"Synthetic {qid}", "gold_answer": "gold", "error": ""}
+        for run in (240, 246, 247)
+        for qid in [*range(1, 98), 223]
+    ]
+    rows.append({**rows[-1], "run_id": 248, "gold_answer": "superseded"})
+    if invalid == "duplicate":
+        rows.append(dict(rows[0]))
+    elif invalid == "missing":
+        rows.pop(0)
+    elif invalid == "gold_drift":
+        rows[0]["gold_answer"] = "changed"
+    elif invalid == "error":
+        rows[0]["error"] = "failed"
+    if invalid:
+        with pytest.raises(ValueError):
+            select_panel(rows)
+    else:
+        panels = select_panel(rows)
+        assert all(len(panel) == 98 for panel in panels.values())
+        assert panels["core"][223]["run_id"] == 247
+
+
 @pytest.mark.anyio
 async def test_core_eval_bridge_preserves_document_ids_and_request_isolation():
     runtime = Runtime()
