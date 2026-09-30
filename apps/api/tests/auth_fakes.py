@@ -1,9 +1,10 @@
 """In-memory ports for deterministic auth service and HTTP contract tests."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
-from assistant_rh_api.core.auth import AuthService
-from assistant_rh_api.core.models.auth import Group
+from assistant_rh_api.core.auth import AuthContext, AuthService
+from assistant_rh_api.core.models.auth import Group, Session
 from assistant_rh_api.gateways.auth import SessionTokens
 
 
@@ -65,3 +66,11 @@ class Limiter:
 
 def service():
     return AuthService(Groups(), Sessions(), Passwords(), SessionTokens(), Limiter(), Clock())
+
+
+def individual_context(user_id=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")):
+    """Test-only verified principal, never a replacement for the #596 adapter."""
+    group = Group("synthetic", "Synthetic", 1, True, False, "fixture-hash", ("matte", "mi"), "matte")
+    now = Clock().now()
+    session = Session("c" * 64, group.slug, now, now + timedelta(hours=1), group.password_hash)
+    return AuthContext(group, session, "d" * 64, user_id)

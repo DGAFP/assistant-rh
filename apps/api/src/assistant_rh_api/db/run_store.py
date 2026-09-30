@@ -5,6 +5,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 from datetime import datetime, timezone
+from uuid import UUID
 
 from psycopg import sql
 from psycopg.rows import dict_row
@@ -25,6 +26,8 @@ def json_data(value: object) -> object:
         return {key: json_data(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):
         return [json_data(item) for item in value]
+    if isinstance(value, UUID):
+        return str(value)
     if isinstance(value, datetime):
         return value.isoformat()
     return value
@@ -86,6 +89,7 @@ class ChatRunStore(ChatRunStorePort):
                 "trace_id": run.trace_id,
                 "ts": run.timestamp.astimezone(timezone.utc).replace(tzinfo=None),
                 "user_group": run.group_slug,
+                "author_user_id": run.author_user_id,
                 "api_session_hash": run.session_hash,
                 "conversation_id": run.conversation_id,
                 "question": run.question,
@@ -182,6 +186,7 @@ class ChatRunStore(ChatRunStorePort):
             freeze_json(record.get("diagnostics")),
             record.get("status", "completed"),
             run_metrics(record.get("metrics")),
+            row.get("author_user_id"),
         )
 
     async def sources(self, turn_id: str, group_slug: str) -> tuple[RunSource, ...]:
@@ -191,7 +196,7 @@ class ChatRunStore(ChatRunStorePort):
                     """
                 SELECT s.doc_ref, s.title, s.url, s.document_id, r.api_record FROM public.chat_run_sources s
                 JOIN public.chat_runs r ON r.turn_id = s.turn_id
-                WHERE r.turn_id = %s AND r.user_group = %s ORDER BY s.ordinal
+                WHERE r.turn_id = %s AND r.user_group = %s AND r.author_user_id IS NULL ORDER BY s.ordinal
             """,
                     (turn_id, group_slug),
                 )

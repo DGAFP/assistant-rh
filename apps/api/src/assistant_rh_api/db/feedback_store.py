@@ -1,6 +1,7 @@
 """Current feedback, lossless audit, and optimistic analysis writes."""
 
 from datetime import datetime, timezone
+from uuid import UUID
 
 from psycopg.rows import dict_row
 
@@ -55,7 +56,30 @@ class FeedbackStore(FeedbackStorePort):
                 row = await cursor.fetchone()
         return feedback(row) if row else None
 
-    async def save(self, value: FeedbackInput, group_slug: str, session_hash: str, now: datetime) -> Feedback | None:
+    async def get_owned(self, turn_id: str, user_id: UUID, group_slug: str, ministries: tuple[str, ...]) -> Feedback | None:
+        async with self._database.transaction(read_only=True) as connection:
+            async with connection.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute(
+                    """
+                    SELECT f.* FROM public.chat_feedbacks f JOIN public.chat_runs r USING (turn_id)
+                    WHERE r.turn_id = %s AND r.author_user_id = %s AND r.user_group = %s
+                        AND r.selected_ministry = ANY(%s)
+                    """,
+                    (turn_id, user_id, group_slug, list(ministries)),
+                )
+                row = await cursor.fetchone()
+        return feedback(row) if row else None
+
+    async def save(
+        self,
+        value: FeedbackInput,
+        group_slug: str,
+        session_hash: str,
+        now: datetime,
+        *,
+        user_id: UUID | None = None,
+        ministries: tuple[str, ...] = (),
+    ) -> Feedback | None:
         if not session_hash or now.tzinfo is None:
             raise ValueError("session hash and aware timestamp required")
         reasons_positive = _encode_reasons(value.reasons_positive)
@@ -68,10 +92,13 @@ class FeedbackStore(FeedbackStorePort):
                 # INSERT holding the advisory lock finish its FK KEY SHARE check.
                 await cursor.execute(
                     """
-                    SELECT question, answer FROM public.chat_runs
-                    WHERE turn_id = %s AND user_group = %s FOR NO KEY UPDATE
+                    SELECT question, answer, author_user_id FROM public.chat_runs
+                    WHERE turn_id = %s AND user_group = %s
+                        AND author_user_id IS NOT DISTINCT FROM %s::uuid
+                        AND (%s::uuid IS NULL OR selected_ministry = ANY(%s::text[]))
+                    FOR NO KEY UPDATE
                 """,
-                    (value.turn_id, group_slug),
+                    (value.turn_id, group_slug, user_id, user_id, list(ministries)),
                 )
                 run = await cursor.fetchone()
                 if run is None:
@@ -85,10 +112,10 @@ class FeedbackStore(FeedbackStorePort):
                 if old:
                     await cursor.execute(
                         """
-                        INSERT INTO public.chat_feedback_audit(turn_id, feedback_id, reason, record, group_slug, audit_session_hash)
-                        VALUES (%s, %s, 'API replacement', %s, %s, %s)
+                        INSERT INTO public.chat_feedback_audit(turn_id, feedback_id, reason, record, group_slug, audit_session_hash, actor_user_id)
+                        VALUES (%s, %s, 'API replacement', %s, %s, %s, %s)
                     """,
-                        (value.turn_id, old["id"], as_jsonb(old), group_slug, session_hash),
+                        (value.turn_id, old["id"], as_jsonb(old), group_slug, session_hash, run["author_user_id"]),
                     )
                 timestamp = now.astimezone(timezone.utc).replace(tzinfo=None)
                 common = (
@@ -100,12 +127,14 @@ class FeedbackStore(FeedbackStorePort):
                     value.helpful,
                     group_slug,
                     session_hash,
+                    run["author_user_id"],
                 )
                 if old:
                     await cursor.execute(
                         """
                         UPDATE public.chat_feedbacks SET ts = %s, stars = %s, comment = %s,
                             reasons_positive = %s, reasons_negative = %s, helpful = %s, api_group_slug = %s, api_session_hash = %s,
+                            api_actor_user_id = %s,
                             error_category = NULL, ai_reason = NULL, ai_analyzed_at = NULL, api_revision = api_revision + 1
                         WHERE id = %s RETURNING *
                     """,
@@ -115,9 +144,9 @@ class FeedbackStore(FeedbackStorePort):
                     await cursor.execute(
                         """
                         INSERT INTO public.chat_feedbacks
-                            (ts, stars, comment, reasons_positive, reasons_negative, helpful, api_group_slug, api_session_hash,
+                            (ts, stars, comment, reasons_positive, reasons_negative, helpful, api_group_slug, api_session_hash, api_actor_user_id,
                              turn_id, question, answer)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
                     """,
                         (*common, value.turn_id, run["question"], run["answer"]),
                     )

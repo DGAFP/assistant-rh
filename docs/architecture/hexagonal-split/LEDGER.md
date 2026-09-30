@@ -1019,3 +1019,37 @@ correspondent au run #259. La PR peut passer en revue ; scores live conservés,
 limites du rejeu et travail restant sur le juge explicités dans le
 [rapport](13-m1-run-metrics.md) et la
 [preuve](../../evals/evidence/m1_api_parity_frozen_replay_20260930.json).
+
+
+### D1 — préparation individuelle du feedback, 30 septembre 2026
+
+[#528](https://github.com/DGAFP/assistant-rh/issues/528) — PR_D1_PENDING.
+POST/GET canoniques derrière `FeedbackService`, auteur UUID persisté et immuable,
+contrôles d'auteur/groupe/ministère dans le store (écriture sous verrou du run),
+retry strict sans UPDATE, remplacement/audit atomiques et invalidation IA par
+génération. L'acteur d'audit vient du run ; seuls ses champs de feedback sont
+restitués. La migration additive n'attribue aucun run collectif à une personne
+et protège les premières insertions/remplacements individuels contre le trigger
+Streamlit historique. Le bootstrap local inclut cette migration.
+
+**Préparation testée, #528 reste ouverte.** L'auth B4 ne produit pas de principal
+individuel ; ces routes lui répondent 403 sans consulter le run. #596 doit encore
+livrer preuve utilisateur vérifiée, registre/relations des UUID, droits courants,
+politique multi-groupes/historique, pseudonyme HMAC et validation Conversations
+de bout en bout ; grants runtime append-only à vérifier avant déploiement.
+Les principaux individuels des tests sont synthétiques, pas une preuve de login.
+La politique préparée exige le groupe de création et le ministère encore autorisé.
+Aucun changement de base staging/production, aucun déploiement ni bascule B4.
+
+Preuves locales : `apps/api/tests/db/test_individual_feedback.py` (concurrence,
+xmin/ctid inchangés sur retry canonique, auteur, refus inter-utilisateurs/inter-groupes,
+retrait de corpus, reconnexion, lecture minimale, audit, rollback et coexistence),
+`apps/api/tests/handlers/test_feedback_http.py` (validation stricte et limites),
+`test_chat_service.py` (auteur issu du principal), et tests historiques B2/B4.
+Suite `pytest apps/api/tests -q` : **1 291 réussis**, dont M0b privé local vérifié,
+PostgreSQL/pgvector 17 jetable sur loopback (port 55428, base exclusivement synthétique).
+Le runner utilise les dépendances API du worktree et les dépendances historiques
+déjà installées dans le venv racine via PYTHONPATH, après saturation disque de
+l'installation complète ; `M0B_PRIVATE_ARCHIVE` pointe hors Git vers l'archive locale.
+Ruff sur toute l'API, format des 16 fichiers Python modifiés, smoke import et
+**4 contrats d'import** réussis ; `git diff --check` propre.
