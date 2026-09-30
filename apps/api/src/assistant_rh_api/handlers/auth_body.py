@@ -1,4 +1,4 @@
-"""Bound login bodies before JSON parsing, including requests without a length."""
+"""Bound login and feedback bodies before JSON parsing, including chunked requests."""
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -11,7 +11,7 @@ class AuthBodyLimit:
         self.maximum = maximum
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope["method"] != "POST" or scope["path"].rstrip("/") != "/v1/auth/session":
+        if scope["type"] != "http" or scope["method"] != "POST" or scope["path"].rstrip("/") not in ("/v1/auth/session", "/v1/feedback"):
             await self.app(scope, receive, send)
             return
         headers = dict(scope["headers"])
