@@ -997,3 +997,14 @@ Paramètres et limites préenregistrés dans le
 **GO technique M1 — campagne corrigée du 30/09/2026.** Core 60/98, témoin apparié 62/98, M0a réévaluée 60/98. Seuils inchangés : baisse maximale de 5 points de pass rate et de rappel contre chaque référence.
 
 [Preuve](../../evals/evidence/m1_api_parity_followup_20260930.json) et [journal](../../evals/journal-experimentations-rag.md). Les limites du protocole de juge et du clone local demeurent explicites.
+
+### M1 — analyse de la paire corrigée
+
+Les 98 paires ont été analysées sans nouvel appel fournisseur : aucune
+association chunk/section divergente ; 49 sélections différentes sur 95 prompts
+identiques, et 192/192 sorties brutes interprétées pareil par les deux parseurs.
+Les dix verdicts discordants comprennent des pertes de sources utiles et des
+incohérences du juge dans les deux directions. Le GO au seuil prévu demeure ;
+il n'établit pas une amélioration causale du code ni une qualité absolue fiable.
+Priorité à des critères de juge communs figés par question et au rejeu des
+mêmes sorties de modèles. [Analyse et limites](13-m1-run-metrics.md).

@@ -4,6 +4,11 @@
 
 [Résultats et intégrité](../../evals/evidence/m1_api_parity_followup_20260930.json).
 
+Le diagnostic de la paire corrigée, en fin de document, établit des variations
+du sélecteur et des incohérences du juge. Ce GO signifie le respect des seuils
+préenregistrés ; il ne démontre ni une amélioration causale du code ni la
+fiabilité du score absolu de qualité.
+
 21 septembre 2026 · [#465](https://github.com/DGAFP/assistant-rh/issues/465)
 · prérequis C7 : [PR #579](https://github.com/DGAFP/assistant-rh/pull/579).
 
@@ -334,3 +339,97 @@ le panel et les seuils fixés avant lancement.
 `0bdc551f3459157dae63b95db68863d73b177b0e8a580fc696be5f4bcb90eba7`.
 Les prompts, réponses et contextes détaillés restent privés dans
 `/tmp/assistant-rh-m1-investigate-20260930/`.
+
+## Diagnostic de la paire corrigée #258–259 — 30 septembre 2026
+
+**60/98 core, 62/98 historique : six pertes et quatre gains**, soit −2,04 points.
+Le rappel global est identique (0,729138). Les seuils contre le témoin apparié
+et M0a réévaluée (60/98) sont respectés. Le rejeu du juge sur les anciennes
+réponses donne toujours 58/98 contre 64/98 : les résultats historiques restent
+conservés. Aucun vote n'a été modifié par cette analyse.
+
+| Vérification sur la paire corrigée | Résultat |
+|---|---:|
+| Questions / parcours RAG / réponses directes | 98 / 96 / 2 |
+| Associations chunk→section divergentes parmi les chunks communs | 0 sur 12 506 observations |
+| Ordre des chunks récupérés identique | 94/96 parcours RAG |
+| Prompts du sélecteur identiques | 95/96 |
+| Sélections effectivement servies différentes avec un même prompt | 49/95 |
+| Paires de messages système + utilisateur identiques au générateur | 51/96 |
+| Réponses différentes parmi ces paires de messages identiques | 50/51 |
+| Sorties brutes du sélecteur interprétées pareil par les deux parseurs | 192/192 |
+
+Le départage SQL est commun sur tout le panel observé. Les deux moteurs
+configurent le sélecteur Albert `openweight-large` et le générateur
+`deepseek-v4-flash` à température 0. Leurs sorties varient néanmoins ;
+ces observations n'identifient pas le mécanisme interne chez le fournisseur.
+
+Huit réponses du sélecteur échouent au parsing : cinq côté historique
+(q1, q6, q182, q199, q210), trois côté core (q210, q827, q4528). Les deux
+parseurs réagissent pareil à chacune ; le repli conserve les cinq premiers
+candidats. Sur q827, la clôture du bloc JSON manque. C'est une fragilité
+commune, susceptible de changer le contexte, pas une divergence de parsing.
+
+q1 est la seule requête de recherche différente : le classificateur formule
+différemment les acronymes. q203 échange deux chunks aux positions 95 et 98,
+sans changer leur ensemble ni le prompt sélecteur ; la cause de ce classement
+n'est pas isolée. Le seul fallback de génération core est q222 vers Scaleway ;
+les deux réponses échouent, donc il ne contribue pas aux verdicts discordants.
+
+Les dix cas suivants sont des observations diagnostiques, parfois mixtes ;
+ils ne remplacent pas les verdicts officiels par de nouvelles annotations.
+
+| Cas | Core vs historique | Constat |
+|---|---|---|
+| q1 | Gain | Requête et contexte différents ; repli de parsing historique. L'interprétation du juge sur la poursuite du contrat mérite aussi une revue. Ce cas n'isole pas un effet du moteur. |
+| q6 | Perte | Même prompt sélecteur. Le repli historique conserve la fiche ministérielle ; le core l'écarte. Rappel du contexte servi : 1 → 0,6 ; détails ministériels absents de la réponse core. |
+| q15 | Gain | Le core ajoute une section de procédure et répond plus directement. Le juge lui attribue toutefois une prestation absente de la réponse et tolère une condition qu'il critique côté historique. |
+| q177 | Gain | Mêmes messages de génération. Les deux réponses omettent le même délai de renouvellement. Complétude historique : 0,667 aux trois votes ; core : 0,8 / 1 / 0,6. Un vote core déduit le délai d'une citation qui ne le contient pas. |
+| q186 | Perte | La même réserve sur les motifs illégaux manque dans les deux réponses. Le juge la crédite implicitement côté historique et pénalise son absence côté core, à chaque vote. |
+| q189 | Gain | Mêmes messages de génération. Les deux réponses signalent une absence d'information dans la source ; le juge échoue l'historique pour abstention mais transforme celle du core en affirmation d'absence de droit. |
+| q224 | Perte | Même prompt sélecteur ; historique : indices 0 et 2, core : 9. Le rappel du contexte servi tombe de 1 à 0 et le core s'abstient. L'information utile était disponible avant filtrage. |
+| q225 | Perte | Même prompt sélecteur ; le core remplace la fiche ministérielle à l'indice 2 par Service-Public à l'indice 3. La règle relative aux grilles internes disparaît de la réponse. |
+| q827 | Perte | Repli de parsing core et contextes différents. Les deux réponses omettent deux exigences du gold, avec des pénalités très différentes. Un vote core déclare absente une précision temporelle présente dans sa propre citation. |
+| q4530 | Perte | Le core retire une section complémentaire. La table principale reste disponible dans les deux bras, mais la formulation core insiste sur un document en amont et reçoit un verdict de contradiction. Revue du critère nécessaire. |
+
+q177, q186, q189 et q827 établissent des incohérences de notation dans les deux
+directions. Trois votes concordants ne garantissent pas une lecture juste.
+`gold-passages-v2` assure la provenance des citations, pas qu'elles démontrent
+le point crédité. Chaque vote choisit encore les points requis, leur découpage
+et sa note de complétude. Le même passage gold peut ainsi être compté
+différemment selon le candidat.
+
+Le rappel global inclut les références récupérées avant filtrage : il reste
+à 1 dans les deux bras de q224 alors que le rappel du contexte servi core est
+nul. Il ne permet donc pas de disculper le sélecteur.
+
+Suite prioritaire :
+
+1. Fixer les critères atomiques et leur poids **une fois par question**, pour
+   les deux candidats. Calculer la complétude sur cette liste et revoir les
+   citations sur les quatre cas les plus nets.
+2. Injecter les **mêmes sorties de modèles enregistrées** dans les deux moteurs
+   pour isoler les différences de code. Les sept scénarios M0b existants ne
+   constituent pas un rejeu des 98 questions de cette campagne.
+3. Traiter les enveloppes mal formées du sélecteur de façon commune, puis
+   rejouer hors ligne les huit échecs. Suivre séparément la couverture du
+   contexte servi et les sources complémentaires supprimées.
+
+Une nouvelle campagne en direct ne résoudrait pas seule ces problèmes de
+mesure. Le passage de −6 à −2 réponses ne peut pas être attribué au seul
+correctif SQL : les deux bras ont produit de nouvelles réponses.
+
+Méthode : prompts reconstruits sur le snapshot inchangé, recoupés avec les
+messages utilisateur historiques complets, les préfixes système, les traces
+core masquées/tronquées et les longueurs intégrales. Ce n'est ni une capture
+HTTP intégrale ni une validation juridique du goldset. Aucun nouvel appel
+fournisseur pour ce diagnostic ; textes détaillés privés.
+
+Les 196 items ont été persistés avant disparition du processus pendant la
+finalisation. Les agrégats reconstruits par projection bornée sont identiques
+à ceux déjà finalisés côté historique ; le statut et les agrégats core ont
+été finalisés depuis les lignes existantes, sans rejouer d'item. Cause de
+terminaison non établie ; l'export massif reste à fiabiliser.
+
+[Preuve agrégée](../../evals/evidence/m1_api_parity_corrected_diagnosis_20260930.json)
+`cfcb0925ec9d3d43f1aeb6133a955f542baed2e838155815835277717ed458aa`.

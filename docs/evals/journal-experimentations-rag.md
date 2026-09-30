@@ -1756,3 +1756,30 @@ plan et description de #580 ; la PR reste draft, sans merge ni déploiement.
 Empreintes code, panel et snapshot inchangées. Les comparaisons utilisent toutes `gold-passages-v2`. Les scores et le NO-GO du 29 septembre restent historiques ; aucune réécriture de ces verdicts. La validation des citations porte sur leur provenance, pas sur leur implication sémantique. La campagne visait les 294 réponses stockées et la nouvelle paire complète, sans sélection selon le score ; les effectifs réellement terminés figurent au tableau.
 
 [Preuve agrégée](evidence/m1_api_parity_followup_20260930.json). Empreinte `b8acbd1c3325a593d5d1122399ca14a084a65d7d85bd21527cafb9d5afa7140a`. Artefacts détaillés privés, écritures uniquement locales. Les 196 items ont été persistés avant disparition du processus pendant la finalisation. Le statut core et les agrégats ont été reconstruits depuis ces lignes, sans rejouer de question ni modifier les verdicts ; les agrégats legacy reconstruits sont identiques à ceux déjà finalisés. Cause de terminaison non établie. Bilan consigné après cette récupération locale ; aucun appel provider depuis la vigie. PR conservée en brouillon ; aucun merge ni déploiement.
+
+## M1 — diagnostic hors ligne de la paire corrigée (30/09/2026)
+
+Analyse des 98 paires #258–259 et de leurs dix verdicts discordants, sans
+nouvel appel aux fournisseurs ni modification des items ou des votes.
+Le résultat officiel reste 60/98 core contre 62/98 historique (GO au seuil
+préenregistré, six pertes et quatre gains).
+
+Le départage SQL est aligné sur les 12 506 observations de chunks communs.
+Sur 95 prompts sélecteur identiques, 49 sélections servies diffèrent ; sur
+51 paires de messages de génération identiques, 50 réponses diffèrent.
+Les 192 sorties brutes du sélecteur sont interprétées pareil par les deux
+parseurs, dont huit échecs déclenchant le repli commun. Les pertes de sources
+utiles sont observables sur q6, q224 et q225 ; des incohérences du juge
+favorisent les deux bras, notamment q177, q186, q189 et q827.
+
+La provenance des citations ne garantit pas leur implication sémantique ni
+une grille de complétude commune. Prochain travail prioritaire : critères
+atomiques figés par question, puis rejeu des mêmes sorties de modèles dans
+les deux moteurs et traitement commun des enveloppes mal formées. Aucune
+nouvelle campagne n'est lancée pour obtenir un meilleur score.
+
+[Analyse détaillée](../architecture/hexagonal-split/13-m1-run-metrics.md) et
+[preuve agrégée](evidence/m1_api_parity_corrected_diagnosis_20260930.json),
+empreinte `cfcb0925ec9d3d43f1aeb6133a955f542baed2e838155815835277717ed458aa`.
+Les limites de reconstruction des prompts et de finalisation sont documentées.
+PR #580 conservée en brouillon.
