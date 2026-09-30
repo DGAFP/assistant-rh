@@ -1023,7 +1023,7 @@ limites du rejeu et travail restant sur le juge explicités dans le
 
 ### D1 — préparation individuelle du feedback, 30 septembre 2026
 
-[#528](https://github.com/DGAFP/assistant-rh/issues/528) — PR_D1_PENDING.
+[#528](https://github.com/DGAFP/assistant-rh/issues/528) — [PR #597](https://github.com/DGAFP/assistant-rh/pull/597) (brouillon).
 POST/GET canoniques derrière `FeedbackService`, auteur UUID persisté et immuable,
 contrôles d'auteur/groupe/ministère dans le store (écriture sous verrou du run),
 retry strict sans UPDATE, remplacement/audit atomiques et invalidation IA par
@@ -1051,5 +1051,7 @@ PostgreSQL/pgvector 17 jetable sur loopback (port 55428, base exclusivement synt
 Le runner utilise les dépendances API du worktree et les dépendances historiques
 déjà installées dans le venv racine via PYTHONPATH, après saturation disque de
 l'installation complète ; `M0B_PRIVATE_ARCHIVE` pointe hors Git vers l'archive locale.
-Ruff sur toute l'API, format des 16 fichiers Python modifiés, smoke import et
+Les 29 tests feedback ont été relancés après les dernières assertions de
+non-divulgation et d’absence de feedback. Ruff sur toute l’API, format des
+16 fichiers Python modifiés, smoke import et
 **4 contrats d'import** réussis ; `git diff --check` propre.
