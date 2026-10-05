@@ -6,13 +6,13 @@ from uuid import UUID
 from psycopg import sql
 from psycopg.rows import dict_row
 
-from assistant_rh_api.core.errors import DatabaseFailure
+from assistant_rh_api.core.errors import DatabaseFailure, DatabaseUnavailable
 from assistant_rh_api.core.models.conversations import Feedback, FeedbackAnalysisData, FeedbackInput
 from assistant_rh_api.core.ports.conversations import FeedbackStorePort
 from assistant_rh_api.db.content_store import immutable_object
 from assistant_rh_api.db.pool import Database
 from assistant_rh_api.db.revisions import content_revision, freeze_json
-from assistant_rh_api.db.run_store import RUN_ACCESS, as_jsonb, aware, json_data
+from assistant_rh_api.db.run_store import as_jsonb, aware, json_data, run_access
 
 
 def _decode_reasons(value: str | None) -> tuple[str, ...]:
@@ -58,14 +58,17 @@ class FeedbackStore(FeedbackStorePort):
         return feedback(row) if row else None
 
     async def get_owned(self, turn_id: str, user_id: UUID, group_slug: str, ministries: tuple[str, ...]) -> Feedback | None:
+        individual_schema = await self._database.individual_feedback_schema()
+        if not individual_schema:
+            raise DatabaseUnavailable()
         async with self._database.transaction(read_only=True) as connection:
             async with connection.cursor(row_factory=dict_row) as cursor:
                 await cursor.execute(
                     sql.SQL("""
                     SELECT f.* FROM public.chat_feedbacks f JOIN public.chat_runs r USING (turn_id)
                     WHERE {}
-                    """).format(sql.SQL(RUN_ACCESS)),
-                    (turn_id, group_slug, user_id, list(ministries)),
+                    """).format(run_access(individual_schema)),
+                    {"turn_id": turn_id, "group_slug": group_slug, "user_id": user_id, "ministries": list(ministries)},
                 )
                 row = await cursor.fetchone()
         return feedback(row) if row else None
@@ -84,6 +87,11 @@ class FeedbackStore(FeedbackStorePort):
             raise ValueError("session hash and aware timestamp required")
         reasons_positive = _encode_reasons(value.reasons_positive)
         reasons_negative = _encode_reasons(value.reasons_negative)
+        individual_schema = await self._database.individual_feedback_schema()
+        if user_id is not None and not individual_schema:
+            raise DatabaseUnavailable()
+        # B2 collective writes must not reference D1-only columns.
+        actor_parameter = sql.SQL(", %s" if individual_schema else "")
         async with self._database.transaction() as connection:
             async with connection.cursor(row_factory=dict_row) as cursor:
                 # The parent exists before any feedback: this also serializes
@@ -92,10 +100,10 @@ class FeedbackStore(FeedbackStorePort):
                 # INSERT holding the advisory lock finish its FK KEY SHARE check.
                 await cursor.execute(
                     sql.SQL("""
-                    SELECT r.question, r.answer, r.author_user_id FROM public.chat_runs r
-                    WHERE {} FOR NO KEY UPDATE
-                """).format(sql.SQL(RUN_ACCESS)),
-                    (value.turn_id, group_slug, user_id, list(ministries)),
+                    SELECT r.question, r.answer, {author} AS author_user_id FROM public.chat_runs r
+                    WHERE {access} FOR NO KEY UPDATE
+                """).format(author=sql.SQL("r.author_user_id" if individual_schema else "NULL::uuid"), access=run_access(individual_schema)),
+                    {"turn_id": value.turn_id, "group_slug": group_slug, "user_id": user_id, "ministries": list(ministries)},
                 )
                 run = await cursor.fetchone()
                 if run is None:
@@ -108,11 +116,11 @@ class FeedbackStore(FeedbackStorePort):
                     return feedback(old)
                 if old:
                     await cursor.execute(
-                        """
-                        INSERT INTO public.chat_feedback_audit(turn_id, feedback_id, reason, record, group_slug, audit_session_hash, actor_user_id)
-                        VALUES (%s, %s, 'API replacement', %s, %s, %s, %s)
-                    """,
-                        (value.turn_id, old["id"], as_jsonb(old), group_slug, session_hash, run["author_user_id"]),
+                        sql.SQL("""
+                        INSERT INTO public.chat_feedback_audit(turn_id, feedback_id, reason, record, group_slug, audit_session_hash{actor_column})
+                        VALUES (%s, %s, 'API replacement', %s, %s, %s{actor_parameter})
+                    """).format(actor_column=sql.SQL(", actor_user_id" if individual_schema else ""), actor_parameter=actor_parameter),
+                        (value.turn_id, old["id"], as_jsonb(old), group_slug, session_hash) + ((run["author_user_id"],) if individual_schema else ()),
                     )
                 timestamp = now.astimezone(timezone.utc).replace(tzinfo=None)
                 common = (
@@ -124,27 +132,25 @@ class FeedbackStore(FeedbackStorePort):
                     value.helpful,
                     group_slug,
                     session_hash,
-                    run["author_user_id"],
-                )
+                ) + ((run["author_user_id"],) if individual_schema else ())
                 if old:
                     await cursor.execute(
-                        """
+                        sql.SQL("""
                         UPDATE public.chat_feedbacks SET ts = %s, stars = %s, comment = %s,
                             reasons_positive = %s, reasons_negative = %s, helpful = %s, api_group_slug = %s, api_session_hash = %s,
-                            api_actor_user_id = %s,
-                            error_category = NULL, ai_reason = NULL, ai_analyzed_at = NULL, api_revision = api_revision + 1
+                            {actor_assignment}error_category = NULL, ai_reason = NULL, ai_analyzed_at = NULL, api_revision = api_revision + 1
                         WHERE id = %s RETURNING *
-                    """,
+                    """).format(actor_assignment=sql.SQL("api_actor_user_id = %s, " if individual_schema else "")),
                         (*common, old["id"]),
                     )
                 else:
                     await cursor.execute(
-                        """
+                        sql.SQL("""
                         INSERT INTO public.chat_feedbacks
-                            (ts, stars, comment, reasons_positive, reasons_negative, helpful, api_group_slug, api_session_hash, api_actor_user_id,
+                            (ts, stars, comment, reasons_positive, reasons_negative, helpful, api_group_slug, api_session_hash{actor_column},
                              turn_id, question, answer)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
-                    """,
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s{actor_parameter}, %s, %s, %s) RETURNING *
+                    """).format(actor_column=sql.SQL(", api_actor_user_id" if individual_schema else ""), actor_parameter=actor_parameter),
                         (*common, value.turn_id, run["question"], run["answer"]),
                     )
                 result = await cursor.fetchone()

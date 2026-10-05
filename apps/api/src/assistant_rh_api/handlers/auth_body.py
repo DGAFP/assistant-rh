@@ -6,16 +6,17 @@ from assistant_rh_api.handlers.errors import error_response
 
 
 class AuthBodyLimit:
-    def __init__(self, app: ASGIApp, maximum: int = 16 * 1024) -> None:
+    def __init__(self, app: ASGIApp, maximum: int | None = None) -> None:
         self.app = app
-        self.maximum = maximum
+        self.maximum = 16 * 1024 if maximum is None else maximum
+        self.feedback_maximum = 64 * 1024 if maximum is None else maximum
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http" or scope["method"] != "POST" or scope["path"].rstrip("/") not in ("/v1/auth/session", "/v1/feedback"):
             await self.app(scope, receive, send)
             return
         # 4,000 escaped supplementary Unicode characters occupy 48 KB alone.
-        maximum = 64 * 1024 if scope["path"].rstrip("/") == "/v1/feedback" else self.maximum
+        maximum = self.feedback_maximum if scope["path"].rstrip("/") == "/v1/feedback" else self.maximum
         headers = dict(scope["headers"])
         try:
             length = int(headers.get(b"content-length", b"0"))

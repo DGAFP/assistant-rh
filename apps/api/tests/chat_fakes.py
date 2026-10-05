@@ -147,6 +147,9 @@ class Runs:
         self.entered = None
         self.release = None
 
+    async def require_individual_schema(self):
+        pass
+
     async def finalize(self, run):
         self.calls.append(run)
         if self.entered:

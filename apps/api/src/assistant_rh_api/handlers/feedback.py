@@ -17,7 +17,7 @@ class FeedbackRequest(BaseModel):
     stars: int = Field(ge=1, le=5)
     reasons_positive: list[str] = Field(default_factory=list, max_length=32)
     reasons_negative: list[str] = Field(default_factory=list, max_length=32)
-    comment: str = Field(default="", max_length=4000)
+    comment: str = ""  # The core bounds the trimmed value; middleware bounds the raw body.
 
 
 def get_feedback_service(request: Request) -> FeedbackService:

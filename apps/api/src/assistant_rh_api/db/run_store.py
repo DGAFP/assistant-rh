@@ -11,19 +11,21 @@ from psycopg import sql
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from assistant_rh_api.core.errors import DatabaseUnavailable
 from assistant_rh_api.core.models.conversations import ChatRun, RunMetrics, RunSource, TraceEvent
 from assistant_rh_api.core.ports.conversations import ChatRunStorePort
 from assistant_rh_api.db.pool import Database
 from assistant_rh_api.db.revisions import freeze_json
 from assistant_rh_api.db.run_summary import legacy_summary
 
-# One access rule for feedback and sources, including collective runs.
-# to_jsonb treats the absent D1 column as NULL on pre-D1 databases.
-RUN_ACCESS = """
-    r.turn_id = %s AND r.user_group = %s
-    AND (to_jsonb(r)->>'author_user_id') IS NOT DISTINCT FROM (%s::uuid)::text
-    AND r.selected_ministry = ANY(%s::text[])
-"""
+
+def run_access(individual_schema: bool) -> sql.Composed:
+    """Named parameters and one fail-closed policy for feedback and source reads."""
+    return sql.SQL("""
+        r.turn_id = %(turn_id)s AND r.user_group = %(group_slug)s
+        AND {author} IS NOT DISTINCT FROM %(user_id)s::uuid
+        AND r.selected_ministry = ANY(%(ministries)s::text[])
+    """).format(author=sql.SQL("r.author_user_id" if individual_schema else "NULL::uuid"))
 
 
 def json_data(value: object) -> object:
@@ -82,6 +84,10 @@ class ChatRunStore(ChatRunStorePort):
         label = environment.strip().lower()
         self._environment = "prod" if label == "production" else label
 
+    async def require_individual_schema(self) -> None:
+        if not await self._database.individual_feedback_schema():
+            raise DatabaseUnavailable()
+
     async def finalize(self, run: ChatRun) -> None:
         if not re.fullmatch(r"(?:chatcmpl-)?[0-9a-f]{32}", run.turn_id):
             raise ValueError("new completion IDs must contain a full UUID")
@@ -89,6 +95,8 @@ class ChatRunStore(ChatRunStorePort):
             raise ValueError("only completed runs may grant source authority")
         if run.timestamp is None or run.timestamp.tzinfo is None:
             raise ValueError("run timestamp must be timezone aware")
+        if run.author_user_id is not None:
+            await self.require_individual_schema()
         async with self._database.transaction() as connection:
             # INSERT deliberately refuses collisions; it never overwrites a run
             # or changes the ownership/source authority of an existing answer.
@@ -199,6 +207,7 @@ class ChatRunStore(ChatRunStorePort):
         )
 
     async def sources(self, turn_id: str, group_slug: str, *, ministries: tuple[str, ...], user_id: UUID | None = None) -> tuple[RunSource, ...]:
+        individual_schema = await self._database.individual_feedback_schema()
         async with self._database.transaction(read_only=True) as connection:
             rows = await (
                 await connection.execute(
@@ -206,8 +215,8 @@ class ChatRunStore(ChatRunStorePort):
                 SELECT s.doc_ref, s.title, s.url, s.document_id, r.api_record FROM public.chat_run_sources s
                 JOIN public.chat_runs r ON r.turn_id = s.turn_id
                 WHERE {} ORDER BY s.ordinal
-            """).format(sql.SQL(RUN_ACCESS)),
-                    (turn_id, group_slug, user_id, list(ministries)),
+            """).format(run_access(individual_schema)),
+                    {"turn_id": turn_id, "group_slug": group_slug, "user_id": user_id, "ministries": list(ministries)},
                 )
             ).fetchall()
         sources = []
