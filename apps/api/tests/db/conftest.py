@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[4]
 BASELINE = ROOT / "apps/api/tests/fixtures/repositories.sql"
 TRACE_MIGRATION = ROOT / "supabase/migrations/20260625110000_rag_trace_events.sql"
 MIGRATION = ROOT / "supabase/migrations/20260908094542_api_runtime_repositories.sql"
-FEEDBACK_MIGRATION = ROOT / "supabase/migrations/20260930134213_api_individual_feedback.sql"
+FEEDBACK_MIGRATION = ROOT / "apps/api/sql/local/individual_feedback.sql"
 AUTH_MIGRATION = ROOT / "supabase/migrations/20260908180029_api_public_auth.sql"
 
 

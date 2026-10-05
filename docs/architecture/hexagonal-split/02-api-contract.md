@@ -224,7 +224,7 @@ Hors spec OpenAI. Cible individuelle de [#528](https://github.com/DGAFP/assistan
 - `completion_id` : accepté avec ou sans préfixe `chatcmpl-`.
 - `stars` : entier **1–5 obligatoire**. Pendant la coexistence avec le runtime historique, l'adaptateur persiste `stars - 1` sur l'échelle 0–4.
 - `reasons_positive` / `reasons_negative` : listes de libellés issus du catalogue produit actif : positif `Clair`, `Utile`, `Pertinent`, `Complet`, `Précis` ; négatif `Confus`, `Éléments faux`, `Non pertinent`, `Incomplet`, `Sources manquantes`.
-- `comment` : chaîne optionnelle de 4 000 caractères maximum ; au moins une raison ou un commentaire non vide est requis. Corps POST borné à 16 Kio avant parsing, listes bornées à 32 éléments chacune ; champs inconnus refusés.
+- `comment` : chaîne optionnelle de 4 000 caractères maximum ; au moins une raison ou un commentaire non vide est requis. Corps POST borné à 64 Kio (y compris les échappements JSON de 4 000 caractères Unicode) avant parsing, listes bornées à 32 éléments chacune ; champs inconnus refusés.
 - `helpful` est dérivé par le serveur : 1–2 → `false`, 3–5 → `true`. Le champ historique `rating` n'appartient pas au contrat canonique.
 - Les combinaisons suivent le widget : 1–2 affiche seulement les raisons négatives, 3–4 autorise les deux listes, 5 affiche seulement les raisons positives. Un libellé inconnu ou une raison dans une liste non applicable produit une 422.
 
@@ -240,9 +240,9 @@ Avant d'ajouter l'unicité, une migration versionnée classe les lignes existant
 
 ### `GET /v1/feedback/{completion_id}`
 
-Restitue uniquement `completion_id` (ID interne sans préfixe), `stars` (échelle API 1–5), `reasons_positive`, `reasons_negative`, `comment` et `helpful`. **200, `Cache-Control: no-store`** ; mêmes contrôles individuels et même 404 uniforme que POST, y compris sans feedback courant. Aucune annotation humaine, analyse IA, identité, session ou archive n'est restituée.
+Restitue uniquement `completion_id` (forme canonique `chatcmpl-<id>`, identique à celle du chat), `stars` (échelle API 1–5), `reasons_positive`, `reasons_negative`, `comment` et `helpful`. **200, `Cache-Control: no-store`** ; mêmes contrôles individuels et même 404 uniforme que POST, y compris sans feedback courant. Aucune annotation humaine, analyse IA, identité, session ou archive n'est restituée.
 
-La migration additive D1 laisse `author_user_id` NULL pour tous les runs existants. Un trigger interdit tout changement d'auteur, y compris NULL → UUID : une connexion ne peut jamais réclamer un run collectif. Un garde avant le trigger INSERT historique refuse ses écritures sur les runs individuels, même sans feedback courant ; les écritures B4 du store sont bornées aux runs sans auteur. #596 devra relier les UUID internes au registre vérifié, sans backfill de l'historique collectif. Aucun déploiement ni bascule implicite de B4.
+Le SQL D1 local/test (`apps/api/sql/local/individual_feedback.sql`), exclu de `supabase/migrations`, laisse `author_user_id` NULL pour tous les runs existants. Un trigger interdit tout changement d'auteur, y compris NULL → UUID : une connexion ne peut jamais réclamer un run collectif. Un garde avant le trigger INSERT historique refuse ses écritures sur les runs individuels, même sans feedback courant ; les écritures B4 du store sont bornées aux runs sans auteur et aux ministères encore autorisés. Le même prédicat auteur/groupe/ministère protège les lectures, les écritures et les sources ; les appels du store doivent fournir les ministères autorisés. #596 devra relier les UUID internes au registre vérifié, sans backfill de l'historique collectif. Les complétions B4, streaming compris, et leurs sources fonctionnent sans le schéma D1. Après validation de #596 (registre et grants compris), une migration versionnée devra être livrée et appliquée avant activation des principaux individuels ; les promotions de cette PR n’installent pas D1. `sources()` accepte l’UUID vérifié de l’auteur et ses droits courants ; il conserve le résultat vide uniforme pour un run absent, interdit ou sans sources.
 
 ### `GET /healthz`
 

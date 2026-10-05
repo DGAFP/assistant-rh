@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
+from psycopg import sql
 from psycopg.rows import dict_row
 
 from assistant_rh_api.core.errors import DatabaseFailure
@@ -11,7 +12,7 @@ from assistant_rh_api.core.ports.conversations import FeedbackStorePort
 from assistant_rh_api.db.content_store import immutable_object
 from assistant_rh_api.db.pool import Database
 from assistant_rh_api.db.revisions import content_revision, freeze_json
-from assistant_rh_api.db.run_store import as_jsonb, aware, json_data
+from assistant_rh_api.db.run_store import RUN_ACCESS, as_jsonb, aware, json_data
 
 
 def _decode_reasons(value: str | None) -> tuple[str, ...]:
@@ -60,12 +61,11 @@ class FeedbackStore(FeedbackStorePort):
         async with self._database.transaction(read_only=True) as connection:
             async with connection.cursor(row_factory=dict_row) as cursor:
                 await cursor.execute(
-                    """
+                    sql.SQL("""
                     SELECT f.* FROM public.chat_feedbacks f JOIN public.chat_runs r USING (turn_id)
-                    WHERE r.turn_id = %s AND r.author_user_id = %s AND r.user_group = %s
-                        AND r.selected_ministry = ANY(%s)
-                    """,
-                    (turn_id, user_id, group_slug, list(ministries)),
+                    WHERE {}
+                    """).format(sql.SQL(RUN_ACCESS)),
+                    (turn_id, group_slug, user_id, list(ministries)),
                 )
                 row = await cursor.fetchone()
         return feedback(row) if row else None
@@ -78,7 +78,7 @@ class FeedbackStore(FeedbackStorePort):
         now: datetime,
         *,
         user_id: UUID | None = None,
-        ministries: tuple[str, ...] = (),
+        ministries: tuple[str, ...],
     ) -> Feedback | None:
         if not session_hash or now.tzinfo is None:
             raise ValueError("session hash and aware timestamp required")
@@ -91,14 +91,11 @@ class FeedbackStore(FeedbackStorePort):
                 # NO KEY UPDATE still serializes API writers, but lets a legacy
                 # INSERT holding the advisory lock finish its FK KEY SHARE check.
                 await cursor.execute(
-                    """
-                    SELECT question, answer, author_user_id FROM public.chat_runs
-                    WHERE turn_id = %s AND user_group = %s
-                        AND author_user_id IS NOT DISTINCT FROM %s::uuid
-                        AND (%s::uuid IS NULL OR selected_ministry = ANY(%s::text[]))
-                    FOR NO KEY UPDATE
-                """,
-                    (value.turn_id, group_slug, user_id, user_id, list(ministries)),
+                    sql.SQL("""
+                    SELECT r.question, r.answer, r.author_user_id FROM public.chat_runs r
+                    WHERE {} FOR NO KEY UPDATE
+                """).format(sql.SQL(RUN_ACCESS)),
+                    (value.turn_id, group_slug, user_id, list(ministries)),
                 )
                 run = await cursor.fetchone()
                 if run is None:

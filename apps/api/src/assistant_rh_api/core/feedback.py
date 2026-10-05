@@ -1,27 +1,16 @@
 """Individual feedback use cases; B4 is deliberately not an individual identity."""
 
 import re
+from uuid import UUID
 
 from assistant_rh_api.core.auth import AuthContext
-from assistant_rh_api.core.errors import ApplicationError
+from assistant_rh_api.core.errors import FeedbackInvalid, FeedbackNotFound, IndividualIdentityRequired
 from assistant_rh_api.core.models.conversations import FeedbackInput
 from assistant_rh_api.core.ports.conversations import FeedbackStorePort
 from assistant_rh_api.core.ports.system import ClockPort
 
 POSITIVE_REASONS = ("Clair", "Utile", "Pertinent", "Complet", "Précis")
 NEGATIVE_REASONS = ("Confus", "Éléments faux", "Non pertinent", "Incomplet", "Sources manquantes")
-
-
-class FeedbackInvalid(ApplicationError):
-    code = "invalid_feedback"
-
-
-class IndividualIdentityRequired(ApplicationError):
-    code = "individual_identity_required"
-
-
-class FeedbackNotFound(ApplicationError):
-    code = "feedback_not_found"
 
 
 def turn_id(completion_id: str) -> str:
@@ -66,12 +55,13 @@ class FeedbackService:
         self._clock = clock
 
     @staticmethod
-    def require_individual(auth: AuthContext) -> None:
+    def require_individual(auth: AuthContext) -> UUID:
         if auth.user_id is None:
             raise IndividualIdentityRequired()
+        return auth.user_id
 
     async def save(self, value: FeedbackInput, auth: AuthContext) -> None:
-        self.require_individual(auth)
+        user_id = self.require_individual(auth)
         # An audit pseudonym must be furnished by the verified auth boundary.
         if not re.fullmatch(r"[0-9a-f]{64}", auth.audit_session_hash):
             raise IndividualIdentityRequired()
@@ -80,16 +70,15 @@ class FeedbackService:
             auth.group.slug,
             auth.audit_session_hash,
             self._clock.now(),
-            user_id=auth.user_id,
+            user_id=user_id,
             ministries=auth.group.allowed_ministries,
         )
         if saved is None:
             raise FeedbackNotFound()
 
     async def get(self, completion_id: str, auth: AuthContext) -> FeedbackInput:
-        self.require_individual(auth)
-        assert auth.user_id is not None
-        saved = await self._store.get_owned(turn_id(completion_id), auth.user_id, auth.group.slug, auth.group.allowed_ministries)
+        user_id = self.require_individual(auth)
+        saved = await self._store.get_owned(turn_id(completion_id), user_id, auth.group.slug, auth.group.allowed_ministries)
         if saved is None:
             raise FeedbackNotFound()
         return saved.value

@@ -14,6 +14,8 @@ class AuthBodyLimit:
         if scope["type"] != "http" or scope["method"] != "POST" or scope["path"].rstrip("/") not in ("/v1/auth/session", "/v1/feedback"):
             await self.app(scope, receive, send)
             return
+        # 4,000 escaped supplementary Unicode characters occupy 48 KB alone.
+        maximum = 64 * 1024 if scope["path"].rstrip("/") == "/v1/feedback" else self.maximum
         headers = dict(scope["headers"])
         try:
             length = int(headers.get(b"content-length", b"0"))
@@ -21,7 +23,7 @@ class AuthBodyLimit:
             await error_response(400, "invalid_request", "Invalid request")(scope, receive, send)
             return
         body = bytearray()
-        if length > self.maximum:
+        if length > maximum:
             await error_response(413, "request_too_large", "Request too large")(scope, receive, send)
             return
         while True:
@@ -29,7 +31,7 @@ class AuthBodyLimit:
             if message["type"] == "http.disconnect":
                 return
             body.extend(message.get("body", b""))
-            if len(body) > self.maximum:
+            if len(body) > maximum:
                 await error_response(413, "request_too_large", "Request too large")(scope, receive, send)
                 return
             if not message.get("more_body", False):

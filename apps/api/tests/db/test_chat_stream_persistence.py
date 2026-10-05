@@ -60,8 +60,8 @@ async def test_stream_persistence_is_atomic_and_precedes_terminal(repository_db,
     assert run.status == {"success": "completed", "disconnect": "cancelled", "rollback": "failed"}[mode]
     assert run.answer
     assert (b"[DONE]" in exchange.body) is (mode == "success")
-    assert await store.sources(run.turn_id, "other") == ()
-    assert bool(await store.sources(run.turn_id, "beta")) is (mode == "success")
+    assert await store.sources(run.turn_id, "other", ministries=("matte",)) == ()
+    assert bool(await store.sources(run.turn_id, "beta", ministries=("matte",))) is (mode == "success")
     assert not app.state.stream_workers.active
 
 

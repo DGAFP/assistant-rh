@@ -721,7 +721,11 @@ a verified individual principal and enforce the run author and current corpus
 rights. B4 group tokens receive 403 on these routes. Individual login and
 Conversations validation remain blocked on #596; this is not an active login path.
 
-Apply the additive D1 migration before running this version. Existing collective
-runs keep a NULL author and cannot be claimed. The local bootstrap includes the
-migration; no staging or production migration is performed by this change.
+The D1 schema is local/test-only in `apps/api/sql/local/individual_feedback.sql`,
+outside `supabase/migrations`; the local Compose bootstrap mounts and applies it.
+B4 chat completions (including streaming) and source reads work without D1.
+Existing collective runs keep a NULL author and cannot be claimed. Before enabling
+individual authentication, #596 must validate the user registry, current rights and
+runtime grants, then ship a versioned production migration and apply it before
+activating individual principals. Promoting this PR does not install the D1 schema.
 See the [feedback contract](../../docs/architecture/hexagonal-split/02-api-contract.md#post-v1feedback).

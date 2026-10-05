@@ -8,13 +8,15 @@ from starlette.exceptions import HTTPException
 from assistant_rh_api.core.errors import (
     ApplicationError,
     DatabaseUnavailable,
+    FeedbackInvalid,
+    FeedbackNotFound,
+    IndividualIdentityRequired,
     InvalidCredentials,
     LoginRateLimited,
     MinistryConfigurationError,
     MinistryForbidden,
     ModelNotFound,
 )
-from assistant_rh_api.core.feedback import FeedbackInvalid, FeedbackNotFound, IndividualIdentityRequired
 
 
 class ChatUnavailable(Exception):

@@ -1,3 +1,4 @@
+-- LOCAL/TEST ONLY: keep outside supabase/migrations until #596 is validated.
 -- D1 groundwork. NULL marks collective B4 history; never infer a person from it.
 -- #596 must provide the verified internal UUID and the user registry before rollout.
 DO $migration$
@@ -26,6 +27,14 @@ BEGIN
     LANGUAGE plpgsql SET search_path = pg_catalog AS $function$
     DECLARE author UUID;
     BEGIN
+        -- Skip annotation/analysis updates without a parent lookup. Keep the trigger
+        -- free of column dependencies so the local B2 bootstrap remains repeatable.
+        IF TG_OP = 'UPDATE' THEN
+            IF NEW.turn_id IS NOT DISTINCT FROM OLD.turn_id
+               AND NEW.api_actor_user_id IS NOT DISTINCT FROM OLD.api_actor_user_id THEN
+                RETURN NEW;
+            END IF;
+        END IF;
         SELECT author_user_id INTO author FROM public.chat_runs WHERE turn_id = NEW.turn_id;
         IF author IS NOT NULL AND NEW.api_actor_user_id IS DISTINCT FROM author THEN
             RAISE EXCEPTION 'Individual feedback requires its run author' USING ERRCODE = '23514';
