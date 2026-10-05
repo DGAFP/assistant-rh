@@ -40,6 +40,7 @@ class Store:
         {"comment": "   "},
         {"comment": "x" * 4001},
         {"comment": "\ud800"},
+        {"comment": "Texte\u0000copié"},
         {"completion_id": ""},
         {"completion_id": "bad/id"},
         {"completion_id": "chatcmpl-"},

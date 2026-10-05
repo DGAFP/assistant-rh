@@ -43,6 +43,7 @@ def normalized(value: FeedbackInput) -> FeedbackInput:
         or (stars == 5 and negative)
         or not (positive or negative or comment)
         or len(comment) > 4000
+        or "\x00" in comment
     ):
         raise FeedbackInvalid()
     try:
