@@ -1090,3 +1090,35 @@ il passe. PostgreSQL/pgvector 17 jetable, loopback 55497, données exclusivement
 synthétiques. Ruff, format des 17 fichiers Python modifiés, les 4 contrats d'import,
 YAML Compose, chemins du bootstrap et `git diff --check` passent. Aucun appel à une
 base distante ni activation individuelle.
+
+### D1 — compatibilité des stores et vérification avant inférence, 5 octobre 2026
+
+La capacité D1 (trois colonnes et deux guards actifs) est vérifiée dans le catalogue
+et mise en cache pour la durée du pool. Les prédicats partagés utilisent des paramètres
+nommés et la colonne auteur directement ; ils ne convertissent plus le run entier en
+JSONB. Sans D1, le store collectif conserve création, retry, remplacement et audit
+sur le schéma B2. Un principal individuel reçoit 503 avant configuration/retrieval/LLM
+et avant ouverture SSE ; le service métier applique aussi cette garde aux appels
+directs. Un D1 partiel ou un guard désactivé est refusé. Redémarrer l'API après toute
+évolution du schéma : cette capacité n'est pas un mécanisme de migration à chaud.
+
+Politique explicite : les runs dont le ministère est NULL/inconnu ou retiré des droits
+ne confèrent pas d'accès, même collectifs. Les fixtures de run utilisent maintenant
+`RunIds` comme la production ; une régression séparée préserve la lecture des IDs B2
+préfixés. La longueur du commentaire est contrôlée après `strip()` dans le service ;
+la validation du transport reste stricte pour les types et étoiles. Une limite de
+corps explicitement passée à `AuthBodyLimit` couvre login et feedback.
+
+La nouvelle remarque sur le trigger confond cohérence d'auteur stocké et identité
+SQL : le lookup précédent autoriserait lui aussi un UPDATE direct du contenu conservant
+les mêmes UUID. Le store assure autorisation et audit ; les restrictions de rôle sur
+les écritures SQL directes restent un préalable #596 avant activation individuelle.
+Le blocage `UPDATE OF` a été reproduit transactionnellement sur PostgreSQL 17 : le
+bootstrap B2 échoue sur `ALTER COLUMN turn_id TYPE TEXT`, indépendamment du test
+pré-D1 qui retire explicitement ses triggers. Le retour anticipé reste donc conservé.
+
+Validation : **1 319 tests API passent au total**, dont 104 tests ciblés et
+1 301 dans la suite générale ; les 18 tests privés M0b ont ensuite été exécutés en
+lots de 6, 9 et 3 avec réutilisation des fixtures temporaires pour limiter le disque.
+PostgreSQL/pgvector 17 synthétique jetable sur loopback. Ruff, format des fichiers
+modifiés, quatre contrats d'import et diff-check passent. Aucun accès DB distant.

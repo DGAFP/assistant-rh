@@ -10,6 +10,7 @@ import psycopg
 from psycopg.abc import PQGen
 from psycopg_pool import AsyncConnectionPool
 
+from assistant_rh_api.core.errors import DatabaseUnavailable
 from assistant_rh_api.db.dsn import DatabaseSettings, validate_libpq_environment
 from assistant_rh_api.db.errors import translate_database_errors
 
@@ -42,6 +43,7 @@ class _SafeConnection(psycopg.AsyncConnection):
 class Database:
     def __init__(self, settings: DatabaseSettings) -> None:
         self._settings = settings
+        self._individual_feedback_schema: bool | None = None
         self._pool = AsyncConnectionPool(
             conninfo=settings.dsn,
             connection_class=_SafeConnection,
@@ -71,7 +73,30 @@ class Database:
             await self.close()
             raise
 
+    async def individual_feedback_schema(self) -> bool:
+        """Cache D1 capability for this pool lifetime; partial installs fail closed."""
+        if self._individual_feedback_schema is None:
+            async with self.transaction(read_only=True) as connection:
+                row = await (
+                    await connection.execute("""
+                    SELECT
+                        (SELECT count(*) FROM information_schema.columns
+                         WHERE table_schema = 'public' AND (table_name, column_name) IN (
+                             ('chat_runs', 'author_user_id'), ('chat_feedbacks', 'api_actor_user_id'),
+                             ('chat_feedback_audit', 'actor_user_id'))),
+                        (SELECT count(*) FROM pg_catalog.pg_trigger
+                         WHERE tgenabled IN ('O', 'A') AND NOT tgisinternal AND (
+                             (tgrelid = to_regclass('public.chat_runs') AND tgname = 'api_run_author_immutable') OR
+                             (tgrelid = to_regclass('public.chat_feedbacks') AND tgname = 'api_feedback_individual_guard')))
+                """)
+                ).fetchone()
+            if row not in ((0, 0), (3, 2)):
+                raise DatabaseUnavailable()
+            self._individual_feedback_schema = row == (3, 2)
+        return self._individual_feedback_schema
+
     async def close(self) -> None:
+        self._individual_feedback_schema = None
         await self._pool.close()
 
     async def _check_connection(self, connection: psycopg.AsyncConnection) -> None:

@@ -723,9 +723,26 @@ Conversations validation remain blocked on #596; this is not an active login pat
 
 The D1 schema is local/test-only in `apps/api/sql/local/individual_feedback.sql`,
 outside `supabase/migrations`; the local Compose bootstrap mounts and applies it.
-B4 chat completions (including streaming) and source reads work without D1.
+B4 chat completions (including streaming), source reads and collective feedback
+store writes (including replacement/audit) work without D1. The public feedback
+routes still refuse B4 principals. Before an individual request starts the pipeline
+or opens an SSE stream, the API checks the three D1 columns and two enabled guards;
+missing or partial D1 returns 503 without configuration, retrieval or LLM work.
+The schema capability is cached per database pool; restart the API after applying
+or rolling back schema changes. Access predicates use named parameters and direct
+columns, without serializing run payloads. Runs with a NULL/unknown ministry or a
+revoked corpus grant deliberately confer no source or feedback authority.
 Existing collective runs keep a NULL author and cannot be claimed. Before enabling
 individual authentication, #596 must validate the user registry, current rights and
 runtime grants, then ship a versioned production migration and apply it before
 activating individual principals. Promoting this PR does not install the D1 schema.
 See the [feedback contract](../../docs/architecture/hexagonal-split/02-api-contract.md#post-v1feedback).
+
+The local D1 trigger checks stored author consistency and blocks legacy INSERTs;
+it does not authenticate arbitrary direct SQL UPDATEs or create their audit history.
+The API store owns authorization and transactional auditing. #596 deployment must
+restrict direct feedback-content writes through runtime roles/grants; administrative
+SQL access is not an individual principal. Annotation/analysis updates retain the
+fast path. `UPDATE OF` is intentionally avoided because it prevents B2's repeated
+`ALTER COLUMN turn_id TYPE TEXT` during local bootstrap, independently of the
+pre-D1 compatibility test's explicit trigger removal.

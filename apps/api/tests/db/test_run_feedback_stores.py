@@ -7,7 +7,7 @@ from assistant_rh_api.core.errors import DatabaseConflict
 from assistant_rh_api.core.models.conversations import ChatRun, FeedbackInput, RunSource, TraceEvent
 from assistant_rh_api.db.feedback_store import FeedbackStore
 from assistant_rh_api.db.run_store import ChatRunStore
-from assistant_rh_api.gateways.ids import CompletionIds
+from assistant_rh_api.gateways.ids import CompletionIds, RunIds
 
 pytestmark = pytest.mark.anyio
 NOW = datetime(2026, 9, 8, tzinfo=timezone.utc)
@@ -15,7 +15,7 @@ NOW = datetime(2026, 9, 8, tzinfo=timezone.utc)
 
 def make_run(**changes):
     run = ChatRun(
-        CompletionIds().new_id(),
+        RunIds().new_id(),
         "f" * 32,
         NOW,
         "synthetic",
@@ -204,3 +204,24 @@ async def test_feedback_rejects_reasons_that_cannot_roundtrip(repository_db, rea
     value = FeedbackInput("missing", 4, reasons_positive=reasons)
     with pytest.raises(ValueError, match="reasons must be a tuple"):
         await FeedbackStore(repository_db).save(value, "synthetic", "a" * 64, NOW, ministries=("matte",))
+
+
+async def test_historical_prefixed_run_remains_readable(repository_db):
+    run = make_run(turn_id=CompletionIds().new_id())
+    store = ChatRunStore(repository_db)
+    await store.finalize(run)
+    assert await store.get(run.turn_id) == run
+    assert await store.sources(run.turn_id, run.group_slug, ministries=("matte",)) == run.sources
+
+
+async def test_unknown_historical_ministry_does_not_grant_access(repository_db):
+    run = make_run()
+    runs = ChatRunStore(repository_db)
+    await runs.finalize(run)
+    async with repository_db.transaction() as connection:
+        await connection.execute("UPDATE public.chat_runs SET selected_ministry = NULL WHERE turn_id = %s", (run.turn_id,))
+    assert await runs.sources(run.turn_id, run.group_slug, ministries=("matte", "mi")) == ()
+    store = FeedbackStore(repository_db)
+    assert (
+        await store.save(FeedbackInput(run.turn_id, 3, "Unknown corpus"), run.group_slug, run.session_hash, NOW, ministries=("matte", "mi")) is None
+    )
