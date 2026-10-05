@@ -1055,3 +1055,38 @@ Les 29 tests feedback ont été relancés après les dernières assertions de
 non-divulgation et d’absence de feedback. Ruff sur toute l’API, format des
 16 fichiers Python modifiés, smoke import et
 **4 contrats d'import** réussis ; `git diff --check` propre.
+
+### D1 — corrections de revue, 5 octobre 2026
+
+Le SQL D1 est désormais dans `apps/api/sql/local/individual_feedback.sql`, monté
+uniquement par le bootstrap Compose local et appliqué par les fixtures synthétiques.
+Il ne figure plus dans `supabase/migrations` : les promotions staging/production
+ne l'installeront pas. #596 devra livrer la migration versionnée, le registre et les
+grants avant activation individuelle. Les complétions B4 et leurs sources restent
+compatibles avec le schéma pré-D1, vérifié en streaming et hors streaming.
+
+Les tests d'historique utilisent maintenant des IDs canoniques existants, avec et
+sans feedback, dans le même groupe et corpus. Deux mutations indépendantes du
+filtre auteur ont été détectées : lecture non autorisée en 200 (2 échecs) et écriture
+non autorisée en 204 (4 échecs). Le prédicat auteur/groupe/ministère est partagé par
+les stores feedback et sources ; les droits de corpus sont obligatoires même en B4.
+L'auteur individuel peut lire ses sources, avec résultat vide uniforme en cas de refus.
+
+GET restitue `chatcmpl-<id>`. Le plafond feedback passe à 64 Kio pour accepter
+4 000 caractères Unicode échappés en JSON (accents et caractères supplémentaires
+testés, avec et sans Content-Length) ; le plafond login reste à 16 Kio. Les erreurs
+feedback rejoignent `core/errors`, et la garde individuelle retourne directement
+l'UUID. Les validations métier restent applicables aux appels hors HTTP.
+
+Le trigger évite la lecture du run quand ni `turn_id` ni `api_actor_user_id` ne change.
+Une déclaration `UPDATE OF` a été écartée car ses dépendances de colonnes bloquent
+le `ALTER COLUMN` de B2 lors d'un second bootstrap local ; le retour anticipé préserve
+les protections et la réexécution du bootstrap sans lookup sur annotations/analyses.
+
+Validation : **1 304 tests API validés au total** sur le même code (1 286 dans
+la suite complète, puis les 18 M0b avec l'archive privée locale). Le dernier cas
+M0b a été relancé seul après saturation disque et nettoyage de ses fixtures ;
+il passe. PostgreSQL/pgvector 17 jetable, loopback 55497, données exclusivement
+synthétiques. Ruff, format des 17 fichiers Python modifiés, les 4 contrats d'import,
+YAML Compose, chemins du bootstrap et `git diff --check` passent. Aucun appel à une
+base distante ni activation individuelle.

@@ -17,6 +17,14 @@ from assistant_rh_api.db.pool import Database
 from assistant_rh_api.db.revisions import freeze_json
 from assistant_rh_api.db.run_summary import legacy_summary
 
+# One access rule for feedback and sources, including collective runs.
+# to_jsonb treats the absent D1 column as NULL on pre-D1 databases.
+RUN_ACCESS = """
+    r.turn_id = %s AND r.user_group = %s
+    AND (to_jsonb(r)->>'author_user_id') IS NOT DISTINCT FROM (%s::uuid)::text
+    AND r.selected_ministry = ANY(%s::text[])
+"""
+
 
 def json_data(value: object) -> object:
     """Detach domain values for JSONB without accepting arbitrary SQL columns."""
@@ -89,7 +97,6 @@ class ChatRunStore(ChatRunStorePort):
                 "trace_id": run.trace_id,
                 "ts": run.timestamp.astimezone(timezone.utc).replace(tzinfo=None),
                 "user_group": run.group_slug,
-                "author_user_id": run.author_user_id,
                 "api_session_hash": run.session_hash,
                 "conversation_id": run.conversation_id,
                 "question": run.question,
@@ -99,6 +106,8 @@ class ChatRunStore(ChatRunStorePort):
                 "api_record": as_jsonb(run),
                 **legacy_summary(run),
             }
+            if run.author_user_id is not None:
+                row["author_user_id"] = run.author_user_id
             await connection.execute(
                 sql.SQL("INSERT INTO public.chat_runs ({}) VALUES ({})").format(
                     sql.SQL(", ").join(map(sql.Identifier, row)), sql.SQL(", ").join(sql.Placeholder() for _ in row)
@@ -189,16 +198,16 @@ class ChatRunStore(ChatRunStorePort):
             row.get("author_user_id"),
         )
 
-    async def sources(self, turn_id: str, group_slug: str) -> tuple[RunSource, ...]:
+    async def sources(self, turn_id: str, group_slug: str, *, ministries: tuple[str, ...], user_id: UUID | None = None) -> tuple[RunSource, ...]:
         async with self._database.transaction(read_only=True) as connection:
             rows = await (
                 await connection.execute(
-                    """
+                    sql.SQL("""
                 SELECT s.doc_ref, s.title, s.url, s.document_id, r.api_record FROM public.chat_run_sources s
                 JOIN public.chat_runs r ON r.turn_id = s.turn_id
-                WHERE r.turn_id = %s AND r.user_group = %s AND r.author_user_id IS NULL ORDER BY s.ordinal
-            """,
-                    (turn_id, group_slug),
+                WHERE {} ORDER BY s.ordinal
+            """).format(sql.SQL(RUN_ACCESS)),
+                    (turn_id, group_slug, user_id, list(ministries)),
                 )
             ).fetchall()
         sources = []

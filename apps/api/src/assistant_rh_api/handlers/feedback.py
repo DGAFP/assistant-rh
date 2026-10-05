@@ -46,7 +46,7 @@ def create_feedback_router() -> APIRouter:
         value = await service.get(completion_id, context)
         response.headers["Cache-Control"] = "no-store"
         return {
-            "completion_id": value.turn_id,
+            "completion_id": "chatcmpl-" + value.turn_id,
             "stars": value.stars,
             "comment": value.comment,
             "reasons_positive": list(value.reasons_positive),

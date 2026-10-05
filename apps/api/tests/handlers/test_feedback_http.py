@@ -63,7 +63,7 @@ async def test_invalid_feedback_is_safe_422(changes):
 async def test_feedback_body_bounded_before_json(chunked):
     app = create_app(feedback_service=FeedbackService(Store(), Clock()))
     app.dependency_overrides[resolve_bearer] = individual
-    payload = b"x" * 17000
+    payload = b"x" * (64 * 1024 + 1)
 
     async def chunks():
         yield payload[:100]
@@ -78,3 +78,25 @@ async def test_missing_audit_pseudonym_fails_closed():
     app.dependency_overrides[resolve_bearer] = lambda: replace(individual_context(), audit_session_hash="")
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         assert (await client.post("/v1/feedback", json={"completion_id": "run", "stars": 3, "comment": "Test"})).status_code == 403
+
+
+@pytest.mark.parametrize("character", ["é", "😀"])
+@pytest.mark.parametrize("chunked", [False, True])
+async def test_maximum_unicode_comment_accepts_json_escapes(character, chunked):
+    class AcceptingStore:
+        async def save(self, value, *args, **kwargs):
+            assert value.comment == character * 4000
+            return value
+
+    app = create_app(feedback_service=FeedbackService(AcceptingStore(), Clock()))
+    app.dependency_overrides[resolve_bearer] = individual
+    payload = json.dumps({"completion_id": "run", "stars": 3, "comment": character * 4000}).encode()
+    assert len(payload) > 16 * 1024
+
+    async def chunks():
+        yield payload[:100]
+        yield payload[100:]
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/feedback", content=chunks() if chunked else payload, headers={"Content-Type": "application/json"})
+        assert response.status_code == 204

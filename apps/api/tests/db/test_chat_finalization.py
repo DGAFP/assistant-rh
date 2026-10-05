@@ -35,8 +35,8 @@ async def test_real_service_persists_entire_run_and_sources_before_http_success(
     assert run.status == "completed" and run.answer == body["choices"][0]["message"]["content"]
     assert len(run.events) == 7 and len(run.sources) == 1
     assert run.sources[0].publisher == "MATTE" and run.sources[0].access == "authenticated"
-    assert await store.sources(run.turn_id, "beta") == run.sources
-    assert await store.sources(run.turn_id, "other") == ()
+    assert await store.sources(run.turn_id, "beta", ministries=("matte",)) == run.sources
+    assert await store.sources(run.turn_id, "other", ministries=("matte",)) == ()
     async with repository_db.transaction(read_only=True) as connection:
         count = await (await connection.execute("SELECT count(*) FROM public.rag_trace_events WHERE turn_id = %s", (run.turn_id,))).fetchone()
         assert count[0] == 7

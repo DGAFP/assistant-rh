@@ -29,6 +29,7 @@ async def individual_http(repository_db):
     run = make_run(author_user_id=AUTHOR)
     run = replace(run, turn_id=run.turn_id.removeprefix("chatcmpl-"))
     historical = make_run()
+    historical = replace(historical, turn_id=historical.turn_id.removeprefix("chatcmpl-"))
     await runs.finalize(run)
     await runs.finalize(historical)
     auth = individual_context()
@@ -84,7 +85,7 @@ async def test_api_roundtrip_normalization_retry_and_audit(individual_http, repo
         assert await (await connection.execute("SELECT ai_analyzed_at FROM public.chat_feedbacks")).fetchone() == (None,)
     read = await client.get("/v1/feedback/chatcmpl-" + run.turn_id)
     assert read.status_code == 200 and read.headers["cache-control"] == "no-store"
-    assert read.json() == {**body, "completion_id": run.turn_id, "helpful": False}
+    assert read.json() == {**body, "completion_id": "chatcmpl-" + run.turn_id, "helpful": False}
     assert "human" not in read.text and "Obsolete" not in read.text
 
 
@@ -123,7 +124,7 @@ async def test_author_roundtrip_immutable_and_legacy_cannot_write_individual(ind
     _, run, historical, _, store, runs = individual_http
     assert await runs.get(run.turn_id) == run
     assert (await runs.get(historical.turn_id)).author_user_id is None
-    assert await runs.sources(run.turn_id, run.group_slug) == ()
+    assert await runs.sources(run.turn_id, run.group_slug, ministries=("matte",)) == ()
     for target in (run.turn_id, historical.turn_id):
         with pytest.raises(DatabaseConflict):
             async with repository_db.transaction() as connection:
@@ -131,14 +132,14 @@ async def test_author_roundtrip_immutable_and_legacy_cannot_write_individual(ind
     for existing in (False, True):
         if existing:
             await store.save(FeedbackInput(run.turn_id, 1, "Owned"), run.group_slug, run.session_hash, NOW, user_id=AUTHOR, ministries=("matte",))
-        assert await store.save(FeedbackInput(run.turn_id, 1, "Group"), run.group_slug, run.session_hash, NOW) is None
+        assert await store.save(FeedbackInput(run.turn_id, 1, "Group"), run.group_slug, run.session_hash, NOW, ministries=("matte",)) is None
         with pytest.raises(DatabaseConflict):
             async with repository_db.transaction() as connection:
                 await connection.execute("INSERT INTO public.chat_feedbacks(turn_id, stars, comment) VALUES (%s, 0, %s)", (run.turn_id, "Legacy"))
         current = await store.get(run.turn_id)
         assert current.value.comment == "Owned" if existing else current is None
     # Coexistence still allows historical group writes and has no backfill.
-    await store.save(FeedbackInput(historical.turn_id, 1, "Historical"), historical.group_slug, historical.session_hash, NOW)
+    await store.save(FeedbackInput(historical.turn_id, 1, "Historical"), historical.group_slug, historical.session_hash, NOW, ministries=("matte",))
     async with repository_db.transaction() as connection:
         await connection.execute(FEEDBACK_MIGRATION.read_text())
     assert (await runs.get(historical.turn_id)).author_user_id is None
@@ -181,3 +182,42 @@ async def test_real_b4_auth_never_supplies_individual_identity(repository_db, ca
 
     assert issued.access_token not in caplog.text
     assert "fixture-hash" not in caplog.text
+
+
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("prefix", ["", "chatcmpl-"])
+async def test_collective_history_cannot_be_read_or_claimed(individual_http, repository_db, existing, prefix):
+    client, _, historical, _, store, runs = individual_http
+    # Same group and permitted corpus, real canonical ID: only ownership denies access.
+    assert await runs.get(historical.turn_id) == historical
+    before = None
+    if existing:
+        before = await store.save(
+            FeedbackInput(historical.turn_id, 4, "Collective"), historical.group_slug, historical.session_hash, NOW, ministries=("matte",)
+        )
+        assert before is not None
+    target = prefix + historical.turn_id
+    read = await client.get("/v1/feedback/" + target)
+    write = await client.post("/v1/feedback", json={"completion_id": target, "stars": 3, "comment": "Claim"})
+    assert read.status_code == write.status_code == 404
+    assert await store.get(historical.turn_id) == before
+    async with repository_db.transaction(read_only=True) as connection:
+        assert await (await connection.execute("SELECT count(*) FROM public.chat_feedback_audit")).fetchone() == (0,)
+
+
+async def test_collective_store_requires_current_corpus_rights(individual_http):
+    _, _, historical, _, store, runs = individual_http
+    value = FeedbackInput(historical.turn_id, 4, "Collective")
+    saved = await store.save(value, historical.group_slug, historical.session_hash, NOW, ministries=("matte",))
+    assert saved is not None
+    assert await store.save(replace(value, comment="Revoked"), historical.group_slug, historical.session_hash, NOW, ministries=("mi",)) is None
+    assert await store.get(historical.turn_id) == saved
+    assert await runs.sources(historical.turn_id, historical.group_slug, ministries=("mi",)) == ()
+
+
+async def test_individual_sources_require_author_group_and_current_corpus(individual_http):
+    _, run, historical, _, _, runs = individual_http
+    assert await runs.sources(run.turn_id, run.group_slug, user_id=AUTHOR, ministries=("matte",)) == run.sources
+    for user_id, group, ministries in ((OTHER, run.group_slug, ("matte",)), (AUTHOR, "other", ("matte",)), (AUTHOR, run.group_slug, ("mi",))):
+        assert await runs.sources(run.turn_id, group, user_id=user_id, ministries=ministries) == ()
+    assert await runs.sources(historical.turn_id, historical.group_slug, user_id=AUTHOR, ministries=("matte",)) == ()
