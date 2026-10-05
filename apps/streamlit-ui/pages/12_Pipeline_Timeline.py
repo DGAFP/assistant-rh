@@ -16,6 +16,7 @@ import streamlit as st
 from sqlalchemy import text
 
 from src.ui.admin_auth import require_admin, show_admin_badge
+from src.ui.answer_markdown import format_answer_markdown
 from src.ui.db_utils import get_engine
 from src.ui.page_config import configure_page
 
@@ -453,8 +454,13 @@ def _body_generator(out, mtr, inp):
             ("TTFT", _fmt_time(ttft)),
         ]
     )
-    if out.get("answer_preview"):
-        st.info(f"**Réponse (aperçu) :** {out['answer_preview']}")
+    # The stored answer preserves paragraphs and complete formulas; trace previews
+    # collapse whitespace and may cut a formula in half.
+    answer = detail.get("answer")
+    if isinstance(answer, str) and answer.strip():
+        st.info(f"**Réponse :**\n\n{format_answer_markdown(answer)}")
+    elif out.get("answer_preview"):
+        st.info(f"**Réponse (aperçu) :**\n\n{format_answer_markdown(out['answer_preview'])}")
 
 
 _STAGE_BODY = {

@@ -29,6 +29,7 @@ dependencies = [
     "huggingface-hub>=1.0.0",
 
     # UI
+    "markdown-it-py>=4.0.0",
     "plotly>=6.6.0",
     "streamlit-cookies-manager>=0.2.0",
     "beautifulsoup4>=4.14.3",
