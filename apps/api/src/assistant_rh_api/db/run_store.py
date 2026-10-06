@@ -20,10 +20,15 @@ from assistant_rh_api.db.run_summary import legacy_summary
 
 
 def run_access(individual_schema: bool) -> sql.Composed:
-    """Named parameters and one fail-closed policy for feedback and source reads."""
+    """Named parameters and one fail-closed policy for feedback and source reads.
+
+    Individual runs: author + current ministry right, whatever the current group (DAT v0.4).
+    Collective runs: no author, same group + current ministry right.
+    """
     return sql.SQL("""
-        r.turn_id = %(turn_id)s AND r.user_group = %(group_slug)s
+        r.turn_id = %(turn_id)s
         AND {author} IS NOT DISTINCT FROM %(user_id)s::uuid
+        AND ({author} IS NOT NULL OR r.user_group = %(group_slug)s)
         AND r.selected_ministry = ANY(%(ministries)s::text[])
     """).format(author=sql.SQL("r.author_user_id" if individual_schema else "NULL::uuid"))
 
