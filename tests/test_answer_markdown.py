@@ -2,13 +2,12 @@
 
 import ast
 from pathlib import Path
-from textwrap import dedent
 
 import pytest
 from markdown_it import MarkdownIt
 from streamlit.testing.v1 import AppTest
 
-from src.ui.answer_markdown import format_answer_markdown
+from src.ui.answer_markdown import finalize_streamed_answer, format_answer_markdown
 
 ROOT = Path(__file__).resolve().parents[1]
 FORMULA = r"2,5\ \text{jours} \times 4\ \text{semaines}=10\ \text{jours}"
@@ -58,37 +57,80 @@ def test_timeline_uses_complete_answer_and_falls_back_to_trace_preview(answer):
     preview = rf"Calcul : \[{FORMULA}\] Suite..."
     script = (
         "import streamlit as st\n"
-        "from src.ui.answer_markdown import format_answer_markdown\n"
+        "from src.ui.answer_markdown import finalize_streamed_answer, format_answer_markdown\n"
         "_metrics_row = lambda values: None\n_fmt_time = str\n"
         f"detail = {{'answer': {answer!r}}}\n" + ast.unparse(function) + f"\n_body_generator({{'answer_preview': {preview!r}}}, {{}}, {{}})"
     )
     app = AppTest.from_string(script).run(timeout=15)
     assert not app.exception
-    assert "\\[" not in app.info[0].value
-    assert "$$\n" in app.info[0].value
     if answer:
-        assert "**Suite.**" in app.info[0].value
-        assert "aperçu" not in app.info[0].value
+        assert not app.info
+        rendered = app.markdown[-1]
+        assert rendered.value == format_answer_markdown(answer).strip()
+        assert rendered.allow_html
     else:
         assert "aperçu" in app.info[0].value
+        assert "\\[" not in app.info[0].value
+        assert "$$\n" in app.info[0].value
+
+
+class _Placeholder:
+    def __init__(self):
+        self.calls = []
+
+    def markdown(self, body, unsafe_allow_html=False):
+        self.calls.append((body, unsafe_allow_html))
 
 
 def test_stream_completion_formats_display_without_rewriting_response():
-    source = (ROOT / "apps/streamlit-ui/pages/01_Chatbot.py").read_text()
-    start = source.index("                response_placeholder = st.empty()")
-    end = source.index("                t_v3_end = time.time()", start)
     answer = rf"Calcul : \[{FORMULA}\]"
-    script = (
-        "import streamlit as st\n"
-        "from src.ui.answer_markdown import format_answer_markdown\n"
-        f"stream_generator = iter({[answer[:12], answer[12:]]!r})\n"
-        "status_placeholder = st.empty()\n"
-        "_stream_clear_on_first = lambda stream, loader: stream\n" + dedent(source[start:end]) + "\nst.session_state['answer'] = v3_response\n"
-    )
-    app = AppTest.from_string(script).run(timeout=15)
-    assert not app.exception
-    assert app.session_state["answer"] == answer
-    assert app.markdown[0].value == format_answer_markdown(answer).strip()
+    placeholder = _Placeholder()
+    assert finalize_streamed_answer(placeholder, answer) == answer
+    assert placeholder.calls == [(format_answer_markdown(answer), False)]
+
+
+def test_stream_completion_keeps_html_only_for_br_tables():
+    placeholder = _Placeholder()
+    assert finalize_streamed_answer(placeholder, "| a<br>b |") == "| a<br/>b |"
+    assert placeholder.calls == [("| a<br/>b |", True)]
+    placeholder = _Placeholder()
+    assert finalize_streamed_answer(placeholder, "Texte **simple**.") == "Texte **simple**."
+    assert placeholder.calls == []
+
+
+@pytest.mark.parametrize(
+    "answer, expected",
+    [
+        (
+            "| Calcul | Résultat |\n|---|---|\n| \\[2+2\\] | \\(|x|\\) |",
+            "| Calcul | Résultat |\n|---|---|\n| $2+2$ | $\\vert{}x\\vert{}$ |",
+        ),
+        ("> Note : \\[x\\]\n> suite", "> Note : \n>\n> $$\n> x\n> $$\n>\n> \n> suite"),
+        ("> \\[\n> a \\\\\n> b\n> \\]", "> \n>\n> $$\n> a \\\\\n> b\n> $$\n>\n> "),
+        ("Soit \\(a +\n  b\\).", "Soit $a + b$."),
+        ("Prime de 100$ et \\(a+b\\) puis 20 $.", "Prime de 100\\$ et $a+b$ puis 20 \\$."),
+        ("Coût 100$, soit \\(a+b\\).", "Coût 100\\$, soit $a+b$."),
+        ("Déjà $x$, puis \\(y\\).", "Déjà $x$, puis $y$."),
+    ],
+)
+def test_tables_quotes_wrapped_and_currency_contexts(answer, expected):
+    assert format_answer_markdown(answer) == expected
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "Un ` isolé.\n\nPuis \\(x\\) et `code`.",
+        "~~~sh\necho `date\n~~~\nPuis \\(x\\) et `code`.",
+    ],
+)
+def test_stray_backtick_does_not_hide_later_math(answer):
+    assert "$x$" in format_answer_markdown(answer)
+
+
+def test_blockquote_display_math_stays_in_one_quote():
+    tokens = MarkdownIt().parse(format_answer_markdown("> Note : \\[x\\]\n> suite"))
+    assert sum(token.type == "blockquote_open" for token in tokens) == 1
 
 
 def test_same_line_display_math_preserves_one_numbered_list():

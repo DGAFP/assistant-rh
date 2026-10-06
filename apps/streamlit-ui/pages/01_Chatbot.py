@@ -60,7 +60,7 @@ from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG
 from assistant_rh_rag_pipeline.models import Chunk
 
 from src.ui.admin_auth import is_admin
-from src.ui.answer_markdown import format_answer_markdown
+from src.ui.answer_markdown import finalize_streamed_answer, format_answer_markdown
 from src.ui.chatbot_feedback import (
     is_feedback_pending,
     render_feedback_block,
@@ -1441,15 +1441,8 @@ if query:
                 with response_placeholder:
                     v3_response_raw = st.write_stream(_stream_clear_on_first(stream_generator, status_placeholder))
 
-                # 🧹 Handle HTML in response (GPT-OSS uses <br> for line breaks in tables)
-                v3_response = v3_response_raw
-                if "<br" in v3_response_raw:
-                    # Normalize <br> variants to <br/>
-                    v3_response = v3_response_raw.replace("<br>", "<br/>").replace("<br />", "<br/>")
-                # Adapt only the display; history and logs keep the generated math.
-                display_response = format_answer_markdown(v3_response)
-                if "<br" in v3_response_raw or display_response != v3_response_raw:
-                    response_placeholder.markdown(display_response, unsafe_allow_html=True)
+                # 🧹 Normalize <br> and render math; history and logs keep the generated math.
+                v3_response = finalize_streamed_answer(response_placeholder, v3_response_raw)
 
                 t_v3_end = time.time()
 

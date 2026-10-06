@@ -458,7 +458,10 @@ def _body_generator(out, mtr, inp):
     # collapse whitespace and may cut a formula in half.
     answer = detail.get("answer")
     if isinstance(answer, str) and answer.strip():
-        st.info(f"**Réponse :**\n\n{format_answer_markdown(answer)}")
+        with st.container(border=True):
+            st.markdown("**Réponse :**")
+            # Same rendering as the chat history: GPT-OSS tables use <br/>.
+            st.markdown(format_answer_markdown(answer), unsafe_allow_html=True)
     elif out.get("answer_preview"):
         st.info(f"**Réponse (aperçu) :**\n\n{format_answer_markdown(out['answer_preview'])}")
 
