@@ -1137,3 +1137,13 @@ refus si le nouveau groupe n'a plus le ministère, refus d'un collectif d'un aut
 Validation : table de vérité du prédicat (10 cas) sur PostgreSQL 16 jetable, Ruff et
 format. **La suite pytest n'a pas été exécutée** dans l'environnement de préparation
 (dépendances PyPI et pgvector indisponibles) : à relancer avant fusion.
+
+Validation après application du patch, le 6 octobre 2026 : **11 tests ciblés et
+1 319 tests API réussis**, dont les 18 tests privés M0b, sur PostgreSQL/pgvector 17
+jetable sur loopback (port 55599), avec données synthétiques. Dépendances API
+synchronisées hors ligne ; dépendances historiques réutilisées depuis le venv
+racine via `PYTHONPATH`, archive privée M0b locale. Une première exécution a saturé
+le disque pendant l'extraction des fixtures ; la suite complète relancée avec
+`tmp_path_retention_policy=failed` réussit (deux avertissements de dépréciation
+websockets). Ruff API, format des deux fichiers Python modifiés, quatre contrats
+d'import et `git diff --check` passent. Aucun accès à une base distante.
