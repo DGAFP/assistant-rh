@@ -92,7 +92,7 @@ async def test_api_isolation_current_rights_historical_and_reconnection(individu
     assert (await client.post("/v1/feedback", json={"completion_id": run.turn_id, "stars": 3, "comment": "Initial"})).status_code == 204
     for denied in (
         replace(auth, user_id=OTHER),
-        replace(auth, group=replace(auth.group, slug="other")),
+        replace(auth, group=replace(auth.group, slug="other", allowed_ministries=("mi",), default_ministry="mi")),
         replace(auth, group=replace(auth.group, allowed_ministries=("mi",), default_ministry="mi")),
     ):
         client._transport.app.dependency_overrides[resolve_bearer] = lambda: denied
@@ -111,6 +111,14 @@ async def test_api_isolation_current_rights_historical_and_reconnection(individu
     assert (await client.get("/v1/feedback/" + run.turn_id)).status_code == 200
     assert (await client.post("/v1/feedback", json={"completion_id": run.turn_id, "stars": 3, "comment": "Edited"})).status_code == 204
     assert (await store.get(run.turn_id)).value.comment == "Edited"
+    assert (await client.get("/v1/feedback/" + historical.turn_id)).status_code == 404
+    # Group mobility keeping the run's ministry keeps access to one's own runs (DAT v0.4),
+    # never to the collective history of the new or the old group.
+    moved = replace(reconnect, group=replace(auth.group, slug="other"))
+    client._transport.app.dependency_overrides[resolve_bearer] = lambda: moved
+    assert (await client.get("/v1/feedback/" + run.turn_id)).json()["comment"] == "Edited"
+    assert (await client.post("/v1/feedback", json={"completion_id": run.turn_id, "stars": 2, "comment": "Moved"})).status_code == 204
+    assert (await store.get(run.turn_id)).value.comment == "Moved"
     assert (await client.get("/v1/feedback/" + historical.turn_id)).status_code == 404
     client._transport.app.dependency_overrides[resolve_bearer] = lambda: replace(auth, user_id=None)
     for target in (run.turn_id, historical.turn_id, "unknown"):
@@ -209,13 +217,16 @@ async def test_collective_store_requires_current_corpus_rights(individual_http):
     saved = await store.save(value, historical.group_slug, historical.session_hash, NOW, ministries=("matte",))
     assert saved is not None
     assert await store.save(replace(value, comment="Revoked"), historical.group_slug, historical.session_hash, NOW, ministries=("mi",)) is None
+    assert await store.save(replace(value, comment="Other group"), "other", historical.session_hash, NOW, ministries=("matte",)) is None
     assert await store.get(historical.turn_id) == saved
     assert await runs.sources(historical.turn_id, historical.group_slug, ministries=("mi",)) == ()
+    assert await runs.sources(historical.turn_id, "other", ministries=("matte",)) == ()
 
 
-async def test_individual_sources_require_author_group_and_current_corpus(individual_http):
+async def test_individual_sources_require_author_and_current_corpus(individual_http):
     _, run, historical, _, _, runs = individual_http
-    assert await runs.sources(run.turn_id, run.group_slug, user_id=AUTHOR, ministries=("matte",)) == run.sources
-    for user_id, group, ministries in ((OTHER, run.group_slug, ("matte",)), (AUTHOR, "other", ("matte",)), (AUTHOR, run.group_slug, ("mi",))):
+    for group in (run.group_slug, "other"):  # group mobility keeps the author's own runs
+        assert await runs.sources(run.turn_id, group, user_id=AUTHOR, ministries=("matte",)) == run.sources
+    for user_id, group, ministries in ((OTHER, run.group_slug, ("matte",)), (AUTHOR, "other", ("mi",)), (AUTHOR, run.group_slug, ("mi",))):
         assert await runs.sources(run.turn_id, group, user_id=user_id, ministries=ministries) == ()
     assert await runs.sources(historical.turn_id, historical.group_slug, user_id=AUTHOR, ministries=("matte",)) == ()

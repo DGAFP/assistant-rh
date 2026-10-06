@@ -1122,3 +1122,18 @@ Validation : **1 319 tests API passent au total**, dont 104 tests ciblés et
 lots de 6, 9 et 3 avec réutilisation des fixtures temporaires pour limiter le disque.
 PostgreSQL/pgvector 17 synthétique jetable sur loopback. Ruff, format des fichiers
 modifiés, quatre contrats d'import et diff-check passent. Aucun accès DB distant.
+
+### D1 — accès aux runs individuels par auteur et ministère, 6 octobre 2026
+
+Alignement sur le DAT v0.4 et sur les choix de #596 du 6 octobre (restrictions SQL
+suivies dans #599). Un run individuel est accessible à son auteur tant qu'un ministère
+du run reste autorisé, quel que soit le groupe courant : un changement de groupe qui
+conserve ce ministère ne ferme plus l'accès à ses propres runs, feedbacks et sources.
+Les runs collectifs exigent toujours leur groupe de création. Le prédicat partagé
+`run_access()` reste unique pour lectures, écritures et sources.
+
+Tests ajustés : mobilité de groupe avec ministère conservé (lecture, écriture, sources),
+refus si le nouveau groupe n'a plus le ministère, refus d'un collectif d'un autre groupe.
+Validation : table de vérité du prédicat (10 cas) sur PostgreSQL 16 jetable, Ruff et
+format. **La suite pytest n'a pas été exécutée** dans l'environnement de préparation
+(dépendances PyPI et pgvector indisponibles) : à relancer avant fusion.
