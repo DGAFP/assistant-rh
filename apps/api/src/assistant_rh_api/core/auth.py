@@ -7,11 +7,20 @@ from uuid import UUID
 from assistant_rh_api.core.errors import DatabaseConflict, InvalidCredentials, MinistryForbidden
 from assistant_rh_api.core.errors import LoginRateLimited as LoginRateLimited
 from assistant_rh_api.core.ministry_policy import MINISTRIES, valid_ministry_policy, validate_ministry_policy
-from assistant_rh_api.core.models.auth import Group, Session
-from assistant_rh_api.core.ports.auth import GroupStorePort, LoginLimiterPort, PasswordVerifierPort, SessionStorePort, SessionTokenPort
+from assistant_rh_api.core.models.auth import Delegation, Group, Session
+from assistant_rh_api.core.ports.auth import (
+    DelegationVerifierPort,
+    GroupStorePort,
+    LoginLimiterPort,
+    PasswordVerifierPort,
+    SessionStorePort,
+    SessionTokenPort,
+)
 from assistant_rh_api.core.ports.system import ClockPort
 
 SESSION_LIFETIME = timedelta(hours=8)
+# Audit label of delegated runs. "@" is outside the B4 slug alphabet, so it never names a group.
+DELEGATED_PRINCIPAL = "@conversations"
 
 
 def eligible_group(group: Group | None) -> bool:
@@ -24,18 +33,62 @@ def public_group(group: Group | None) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class AuthContext:
-    group: Group
-    session: Session
+    """Exactly one principal: a B4 group session, or a delegated Conversations user (#596).
+
+    The two kinds never convert into each other; only a delegation carries a user ID.
+    """
+
+    group: Group | None
+    session: Session | None
     # Only a separately derived audit pseudonym may leave the auth boundary.
     audit_session_hash: str = field(default="", repr=False)
+    delegation: Delegation | None = None
 
-    # Only an individual authentication adapter may supply this internal ID (#596).
-    # B4 group sessions always leave it unset; it is never read from an HTTP field.
-    user_id: UUID | None = None
+    def __post_init__(self) -> None:
+        group_session = self.group is not None and self.session is not None
+        if (self.delegation is None) != group_session:
+            raise ValueError("an auth context is either a group session or a delegation")
+
+    @classmethod
+    def delegated(cls, delegation: Delegation) -> "AuthContext":
+        return cls(None, None, delegation.audit_session_hash, delegation)
+
+    @property
+    def principal(self) -> Group | Delegation:
+        principal = self.delegation or self.group
+        assert principal is not None
+        return principal
+
+    @property
+    def user_id(self) -> UUID | None:
+        # Never read from an HTTP field: only a verified delegation names a user.
+        return None if self.delegation is None else self.delegation.user_id
+
+    @property
+    def group_slug(self) -> str:
+        return self.group.slug if self.group is not None else DELEGATED_PRINCIPAL
+
+    @property
+    def allowed_ministries(self) -> tuple[str, ...]:
+        """Ministries whose runs, feedbacks and sources this request may reach."""
+        if self.delegation is None:
+            assert self.group is not None
+            return self.group.allowed_ministries
+        ministry = self.delegation.ministry
+        allowed = self.delegation.allowed_ministries
+        return allowed if ministry is None else tuple(m for m in allowed if m == ministry)
+
+    def group_session(self) -> tuple[Group, Session]:
+        """B4 session routes only; a delegation is not an API session."""
+        if self.group is None or self.session is None:
+            raise InvalidCredentials()
+        return self.group, self.session
 
     def authorize_ministry(self, ministry: str | None = None) -> str:
-        selected = self.group.default_ministry if ministry is None else ministry
-        if selected not in MINISTRIES or selected not in self.group.allowed_ministries:
+        principal = self.principal
+        default = principal.ministry if isinstance(principal, Delegation) else principal.default_ministry
+        selected = default if ministry is None else ministry
+        if selected not in MINISTRIES or selected not in self.allowed_ministries:
             raise MinistryForbidden()
         return selected
 
@@ -44,6 +97,10 @@ class AuthContext:
 class IssuedSession:
     access_token: str = field(repr=False)
     context: AuthContext
+
+    @property
+    def session(self) -> Session:
+        return self.context.group_session()[1]
 
 
 class AuthService:
@@ -55,6 +112,8 @@ class AuthService:
         tokens: SessionTokenPort,
         limiter: LoginLimiterPort,
         clock: ClockPort,
+        *,
+        delegations: DelegationVerifierPort | None = None,
     ) -> None:
         self.groups = groups
         self.sessions = sessions
@@ -62,6 +121,8 @@ class AuthService:
         self.tokens = tokens
         self.limiter = limiter
         self.clock = clock
+        # None keeps delegation disabled: only B4 group sessions authenticate.
+        self.delegations = delegations
 
     async def list_groups(self) -> tuple[Group, ...]:
         return tuple(sorted((g for g in await self.groups.list_groups() if public_group(g)), key=lambda g: (-g.priority, g.slug)))
@@ -89,9 +150,9 @@ class AuthService:
 
     async def resolve(self, token: str) -> AuthContext:
         digest = self.tokens.digest(token)
-        if digest is None:
-            raise InvalidCredentials()
         now = self.clock.now()
+        if digest is None:
+            return self.resolve_delegation(token, now)
         session = await self.sessions.get_active(digest, now)
         if session is None or not session.created_at <= now < session.expires_at:
             raise InvalidCredentials()
@@ -107,8 +168,16 @@ class AuthService:
         validate_ministry_policy(group)
         return AuthContext(group, session)
 
+    def resolve_delegation(self, token: str, now: datetime) -> AuthContext:
+        # No storage lookup: rights are those delegated now, so a withdrawal applies to the next request.
+        delegation = None if self.delegations is None else self.delegations.verify(token, now)
+        if delegation is None or not now < delegation.expires_at:
+            raise InvalidCredentials()
+        return AuthContext.delegated(delegation)
+
     async def logout(self, context: AuthContext) -> None:
-        await self.sessions.revoke(context.session.token_hash, self.clock.now())
+        _, session = context.group_session()
+        await self.sessions.revoke(session.token_hash, self.clock.now())
 
     def remaining(self, expires_at: datetime) -> int:
         return max(0, int((expires_at - self.clock.now()).total_seconds()))

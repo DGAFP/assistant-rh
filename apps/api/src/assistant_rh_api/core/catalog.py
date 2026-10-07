@@ -2,25 +2,43 @@
 
 from assistant_rh_api.core.errors import MinistryForbidden, ModelNotFound
 from assistant_rh_api.core.ministry_policy import MINISTRIES, validate_ministry_policy
-from assistant_rh_api.core.models.auth import Group
+from assistant_rh_api.core.models.auth import Delegation, Group
 from assistant_rh_api.core.models.catalog import Model
+
+MODEL_PREFIX = "assistant-rh-"
+
+
+def model_ministry(model: str) -> str | None:
+    """Ministry routed by an explicit public model ID; the alias is not a model."""
+    if not model.startswith(MODEL_PREFIX) or model[len(MODEL_PREFIX) :] not in MINISTRIES:
+        return None
+    return model[len(MODEL_PREFIX) :]
+
+
+def scope(principal: Group | Delegation) -> tuple[frozenset[str], str | None]:
+    """Ministries granted to the principal and the one the alias routes to."""
+    if isinstance(principal, Delegation):
+        # Conversations fixes the ministry at conversation creation; an empty grant is legitimate.
+        allowed = frozenset(principal.allowed_ministries)
+        if principal.ministry is not None:
+            allowed &= {principal.ministry}
+        return allowed, principal.ministry
+    validate_ministry_policy(principal)
+    return frozenset(principal.allowed_ministries), principal.default_ministry
 
 
 class ModelService:
-    def list_models(self, group: Group) -> tuple[Model, ...]:
-        validate_ministry_policy(group)
-        return tuple(Model(f"assistant-rh-{ministry}", ministry) for ministry in sorted(set(group.allowed_ministries)))
+    def list_models(self, principal: Group | Delegation) -> tuple[Model, ...]:
+        allowed, _ = scope(principal)
+        return tuple(Model(f"{MODEL_PREFIX}{ministry}", ministry) for ministry in sorted(allowed))
 
-    def resolve(self, model: str, group: Group) -> Model:
+    def resolve(self, model: str, principal: Group | Delegation) -> Model:
         """Resolve the input alias or explicit model for future Chat Completions."""
-        validate_ministry_policy(group)
-        if model == "assistant-rh":
-            ministry = group.default_ministry
-        else:
-            prefix = "assistant-rh-"
-            if not model.startswith(prefix) or model[len(prefix) :] not in MINISTRIES:
-                raise ModelNotFound()
-            ministry = model[len(prefix) :]
-        if ministry not in group.allowed_ministries:
+        allowed, default = scope(principal)
+        ministry = default if model == "assistant-rh" else model_ministry(model)
+        if model != "assistant-rh" and ministry is None:
+            raise ModelNotFound()
+        # A model name is never an authorization: it must fall within the granted scope.
+        if ministry is None or ministry not in allowed:
             raise MinistryForbidden()
-        return Model(f"assistant-rh-{ministry}", ministry)
+        return Model(f"{MODEL_PREFIX}{ministry}", ministry)
