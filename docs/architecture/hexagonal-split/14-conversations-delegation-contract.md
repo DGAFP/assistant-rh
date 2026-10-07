@@ -70,7 +70,7 @@ Champs client (`user`, `metadata.*`) : jamais lus comme identité.
 ## Rotation, révocation et retrait d'habilitation
 
 - **Rotation** : Conversations publie une nouvelle clé (`kid` daté) ; l'API accepte simultanément l'ancienne et la nouvelle pendant la bascule, puis l'ancienne est retirée de `CONVERSATIONS_DELEGATION_JWKS`.
-- **Révocation** : le retrait d'un `kid` prend effet au redémarrage de l'API ; les assertions déjà émises avec cette clé expirent au plus tard 120 s après leur émission.
+- **Révocation** (décidé le 2026-10-07) : le retrait d'un `kid` prend effet au redéploiement de l'API, sans rechargement à chaud de la JWKS ; les assertions déjà émises avec cette clé expirent au plus tard 120 s après leur émission.
 - **Retrait d'une habilitation** : Conversations n'inclut plus le modèle dans l'assertion suivante ; l'API refuse dès la **requête suivante** et masque les runs du ministère sans les supprimer. Ils redeviennent accessibles si l'habilitation est rétablie.
 - **Streams en cours** : l'autorisation est évaluée au démarrage de la requête ; une réponse déjà commencée se termine. Aucune nouvelle question ni lecture n'est acceptée sans nouvelle assertion.
 - **Téléchargements** : délivrés par le backend après contrôle à chaque accès ([#594](https://github.com/DGAFP/assistant-rh/issues/594)) ; les octets déjà transmis ne sont pas révocables.
@@ -86,12 +86,12 @@ Ni assertion, ni clé, ni jeton ProConnect, ni contenu de délégation ne sont j
 ## Risques acceptés
 
 - **Backend compromis** : un backend Conversations compromis peut agir au nom de n'importe quel utilisateur. Le risque est réduit par le réseau privé, la clé de signature dédiée et sa rotation. Une preuve utilisateur de bout en bout pourra s'ajouter sans changer le modèle d'auteur.
-- **Rejeu dans la fenêtre** : le `jti` n'est pas encore mémorisé par l'API ; une assertion interceptée sur le réseau privé reste rejouable jusqu'à son expiration (≤ 120 s), pour la même requête et le même périmètre.
+- **Rejeu dans la fenêtre** : risque **non accepté** (décision du 2026-10-07). L'API mémorisera chaque `jti` dans une table PostgreSQL partagée par les réplicas (insertion unique, purge après `exp`) ; une assertion déjà vue sera refusée. Tant que cette table n'est pas livrée, une assertion interceptée sur le réseau privé reste rejouable jusqu'à son expiration (≤ 120 s).
 
 ## Reste à faire pour clore #596
 
-1. Validation DGAFP du choix « confiance de service », ou consignation de l'écart au DAT.
+1. Validation DGAFP du choix « confiance de service », ou consignation de l'écart au DAT : voir la [note de revue](15-revue-dgafp-confiance-service.md).
 2. Côté Conversations ([#595](https://github.com/DGAFP/assistant-rh/issues/595)) : admission sur invitation, habilitations ministérielles, catalogue filtré, signature des assertions, pseudonyme d'audit, conservation de la clé privée côté serveur.
 3. Vérifier la stabilité de l'identifiant utilisateur Conversations (jamais réattribué ; compte supprimé puis recréé).
-4. Migration versionnée du schéma individuel (aujourd'hui local, `apps/api/sql/local/individual_feedback.sql`) et restrictions SQL ([#599](https://github.com/DGAFP/assistant-rh/issues/599)).
+4. Migration versionnée du schéma individuel (aujourd'hui local, `apps/api/sql/local/individual_feedback.sql`), table anti-rejeu des `jti` et restrictions SQL ([#599](https://github.com/DGAFP/assistant-rh/issues/599)) : prochaine tranche.
 5. Corrélation par identifiant de requête et test de bout en bout connexion → catalogue → chat → run attribué depuis Conversations, avec reconnexion, expiration et révocation.
