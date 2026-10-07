@@ -7,6 +7,16 @@ DECLARE
     role_name TEXT;
     member_name TEXT;
 BEGIN
+    CREATE OR REPLACE FUNCTION public.api_run_author_immutable() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog AS $function$
+    BEGIN
+        IF NEW.author_user_id IS DISTINCT FROM OLD.author_user_id THEN
+            RAISE EXCEPTION 'Run author is immutable' USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    END;
+    $function$;
+
     CREATE OR REPLACE FUNCTION public.api_feedback_individual_guard() RETURNS trigger
     LANGUAGE plpgsql SET search_path = pg_catalog AS $function$
     DECLARE author UUID;
