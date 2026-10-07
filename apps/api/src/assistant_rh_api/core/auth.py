@@ -9,6 +9,7 @@ from assistant_rh_api.core.errors import LoginRateLimited as LoginRateLimited
 from assistant_rh_api.core.ministry_policy import MINISTRIES, valid_ministry_policy, validate_ministry_policy
 from assistant_rh_api.core.models.auth import Delegation, Group, Session
 from assistant_rh_api.core.ports.auth import (
+    DelegationReplayPort,
     DelegationVerifierPort,
     GroupStorePort,
     LoginLimiterPort,
@@ -114,6 +115,7 @@ class AuthService:
         clock: ClockPort,
         *,
         delegations: DelegationVerifierPort | None = None,
+        replays: DelegationReplayPort | None = None,
     ) -> None:
         self.groups = groups
         self.sessions = sessions
@@ -123,6 +125,9 @@ class AuthService:
         self.clock = clock
         # None keeps delegation disabled: only B4 group sessions authenticate.
         self.delegations = delegations
+        if delegations is not None and replays is None:
+            raise ValueError("delegations require replay protection")
+        self.replays = replays
 
     async def list_groups(self) -> tuple[Group, ...]:
         return tuple(sorted((g for g in await self.groups.list_groups() if public_group(g)), key=lambda g: (-g.priority, g.slug)))
@@ -152,7 +157,7 @@ class AuthService:
         digest = self.tokens.digest(token)
         now = self.clock.now()
         if digest is None:
-            return self.resolve_delegation(token, now)
+            return await self.resolve_delegation(token, now)
         session = await self.sessions.get_active(digest, now)
         if session is None or not session.created_at <= now < session.expires_at:
             raise InvalidCredentials()
@@ -168,10 +173,14 @@ class AuthService:
         validate_ministry_policy(group)
         return AuthContext(group, session)
 
-    def resolve_delegation(self, token: str, now: datetime) -> AuthContext:
-        # No storage lookup: rights are those delegated now, so a withdrawal applies to the next request.
+    async def resolve_delegation(self, token: str, now: datetime) -> AuthContext:
+        # Rights are those delegated now, never stored, so a withdrawal applies to the next request.
         delegation = None if self.delegations is None else self.delegations.verify(token, now)
-        if delegation is None or not now < delegation.expires_at:
+        if delegation is None or not now < delegation.expires_at or not delegation.token_id:
+            raise InvalidCredentials()
+        # Claim only after verification: unsigned callers cannot fill the replay table.
+        assert self.replays is not None
+        if not await self.replays.claim(delegation.token_id, delegation.key_id, delegation.expires_at, now):
             raise InvalidCredentials()
         return AuthContext.delegated(delegation)
 

@@ -49,3 +49,5 @@ class Delegation:
     expires_at: datetime
     key_id: str
     audit_session_hash: str = field(default="", repr=False)
+    # Signed `jti`; each one authenticates a single request.
+    token_id: str = ""

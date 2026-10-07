@@ -33,6 +33,12 @@ class LoginLimiterPort(Protocol):
         ...
 
 
+class DelegationReplayPort(Protocol):
+    async def claim(self, token_id: str, key_id: str, expires_at: datetime, now: datetime) -> bool:
+        """Record a verified assertion ID; False if it was already used."""
+        ...
+
+
 class DelegationVerifierPort(Protocol):
     def verify(self, token: str, now: datetime) -> Delegation | None:
         """Return the delegation only if a pinned Conversations key signed it for this API."""

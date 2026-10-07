@@ -7,7 +7,7 @@ from psycopg import AsyncConnection
 
 from assistant_rh_api.core.errors import DatabaseConflict
 from assistant_rh_api.core.models.auth import Group, Session
-from assistant_rh_api.core.ports.auth import GroupStorePort, SessionStorePort
+from assistant_rh_api.core.ports.auth import DelegationReplayPort, GroupStorePort, SessionStorePort
 from assistant_rh_api.db.pool import Database
 
 GROUP_COLUMNS = "slug, label, priority, visible, is_admin, password_hash, allowed_ministries, default_ministry, icon, color, credential_revision"
@@ -116,3 +116,29 @@ class SessionStore(SessionStorePort):
             (now, limit),
         )
         return cursor.rowcount
+
+
+class DelegationReplayStore(DelegationReplayPort):
+    """Assertion IDs shared by all API replicas; a primary-key conflict means a replay."""
+
+    def __init__(self, database: Database) -> None:
+        self._database = database
+
+    async def claim(self, token_id: str, key_id: str, expires_at: datetime, now: datetime) -> bool:
+        if now.tzinfo is None or expires_at.tzinfo is None:
+            raise ValueError("replay claims require aware timestamps")
+        async with self._database.transaction() as connection:
+            # A bounded batch per claim keeps the table at about one assertion lifetime of traffic.
+            await connection.execute(
+                """WITH expired AS (
+                    SELECT jti FROM public.api_delegation_replays WHERE expires_at <= %s
+                    ORDER BY expires_at LIMIT 100 FOR UPDATE SKIP LOCKED
+                )
+                DELETE FROM public.api_delegation_replays r USING expired e WHERE r.jti = e.jti""",
+                (now,),
+            )
+            cursor = await connection.execute(
+                "INSERT INTO public.api_delegation_replays (jti, key_id, expires_at) VALUES (%s, %s, %s) ON CONFLICT (jti) DO NOTHING",
+                (token_id, key_id, expires_at),
+            )
+            return cursor.rowcount == 1

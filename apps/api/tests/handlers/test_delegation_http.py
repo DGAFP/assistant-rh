@@ -45,11 +45,10 @@ async def test_openai_sdk_lists_only_delegated_models(delegated):
 
 async def test_user_without_grant_sees_no_model_and_reaches_no_corpus(delegated):
     client, signer, runtime, _ = delegated
-    token = signer.sign(signer.claims(models=[]))
-    listed = await client.get("/v1/models", headers=bearer(token))
+    listed = await client.get("/v1/models", headers=bearer(signer.sign(signer.claims(models=[]))))
     assert listed.status_code == 200 and listed.json()["data"] == []
     for model in ("assistant-rh", "assistant-rh-matte"):
-        response = await client.post("/v1/chat/completions", json=chat(model), headers=bearer(token))
+        response = await client.post("/v1/chat/completions", json=chat(model), headers=bearer(signer.sign(signer.claims(models=[]))))
         assert response.status_code == 403 and response.json()["error"]["code"] == "ministry_forbidden"
     assert runtime.runs.calls == [] and runtime.llm.calls == []
 
@@ -125,3 +124,16 @@ async def test_group_sessions_keep_working_next_to_delegations(delegated):
     response = await client.post("/v1/chat/completions", json=chat("assistant-rh"), headers=bearer(group_token))
     assert response.status_code == 200 and response.json()["model"] == "assistant-rh-matte"
     assert signer.verifier().verify(group_token, auth.clock.now()) is None
+
+
+async def test_each_signed_assertion_authenticates_a_single_request(delegated):
+    client, signer, runtime, auth = delegated
+    token = signer.sign()
+    assert (await client.get("/v1/models", headers=bearer(token))).status_code == 200
+    # Replayed, even for another route: refused before any corpus or LLM work.
+    assert (await client.post("/v1/chat/completions", json=chat(), headers=bearer(token))).status_code == 401
+    assert (await client.get("/v1/models", headers=bearer(token))).status_code == 401
+    assert runtime.runs.calls == [] and len(auth.replays.claims) == 1
+    # Unverified assertions are never recorded.
+    assert (await client.get("/v1/models", headers=bearer(Signer(signer.kid).sign()))).status_code == 401
+    assert len(auth.replays.claims) == 1

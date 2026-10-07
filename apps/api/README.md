@@ -719,11 +719,12 @@ See [C7 design, validation and Conversations reproduction](../../docs/architectu
 `POST /v1/feedback` validates and normalizes stars, reason lists and comments;
 `GET /v1/feedback/{completion_id}` returns the current input only. Both require
 a verified individual principal and enforce the run author and current corpus
-rights. B4 group tokens receive 403 on these routes. Individual login and
-Conversations validation remain blocked on #596; this is not an active login path.
+rights. B4 group tokens receive 403 on these routes. Individual principals come only
+from a verified Conversations delegation (see below), disabled unless configured.
 
-The D1 schema is local/test-only in `apps/api/sql/local/individual_feedback.sql`,
-outside `supabase/migrations`; the local Compose bootstrap mounts and applies it.
+The D1 schema ships as the additive migration
+`supabase/migrations/20261007120000_api_individual_identity.sql`, which the local
+Compose bootstrap also applies. Installing it activates no individual principal.
 B4 chat completions (including streaming), source reads and collective feedback
 store writes (including replacement/audit) work without D1. The public feedback
 routes still refuse B4 principals. Before an individual request starts the pipeline
@@ -733,10 +734,8 @@ The schema capability is cached per database pool; restart the API after applyin
 or rolling back schema changes. Access predicates use named parameters and direct
 columns, without serializing run payloads. Runs with a NULL/unknown ministry or a
 revoked corpus grant deliberately confer no source or feedback authority.
-Existing collective runs keep a NULL author and cannot be claimed. Before enabling
-individual authentication, #596 must validate the user registry, current rights and
-runtime grants, then ship a versioned production migration and apply it before
-activating individual principals. Promoting this PR does not install the D1 schema.
+Existing collective runs keep a NULL author and cannot be claimed. Enable delegation
+only after the #599 runtime roles/grants are applied.
 See the [feedback contract](../../docs/architecture/hexagonal-split/02-api-contract.md#post-v1feedback).
 
 The local D1 trigger checks stored author consistency and blocks legacy INSERTs;
@@ -782,6 +781,10 @@ ministry; history access is author + current grant on the run ministry.
 | `ASSISTANT_RH_API_AUDIENCE` | Expected `aud`, default `assistant-rh-api` |
 
 Without both variables, delegation is disabled and every non-B4 bearer is 401.
+Each verified `jti` is recorded in `api_delegation_replays`, shared by all replicas:
+a second use of the same assertion is 401, so Conversations signs a fresh assertion
+for every call, retries included. Only verified assertions are recorded; expired rows
+are purged in bounded batches by later claims.
 Rotation publishes a new `kid` next to the old one; removing a `kid` revokes it
 once the API restarts with the new key set (issued assertions expire within 120 s). The full contract, network restriction and accepted risks
 are in [the delegation contract](../../docs/architecture/hexagonal-split/14-conversations-delegation-contract.md).
