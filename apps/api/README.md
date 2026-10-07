@@ -190,7 +190,7 @@ ports. They are additive: only `/healthz` is wired to HTTP at this stage.
 | `SearchStore` | Separate raw vector, lexical and heading lanes over logical sources; candidate scores/ranks and deterministic ties. No RRF, weighting, gate, deduplication or final selection. |
 | `ContentStore` | Batch documents, sections, legal references and chunks, ordered by stable keys. Legacy Service-Public relations and document metadata remain readable. |
 | `ChatRunStore` | INSERT-only finalization of run, ordered served sources and all trace events in one transaction. A duplicate completion ID fails instead of overwriting the original. |
-| `FeedbackStore` | Group ownership, current feedback, exact retries without writes, atomic audit/replacement, human annotations preserved and AI analysis reset. Analysis writes reject stale generations. |
+| `FeedbackStore` | Ownership by creation group (collective runs) or by author and current ministry rights (individual runs), current feedback, exact retries without writes, atomic audit/replacement, human annotations preserved and AI analysis reset. Analysis writes reject stale generations. |
 
 `core/models/` groups input/output values by domain: `configuration`, `auth`,
 `retrieval` and `conversations`. The matching `core/ports/` modules define their
@@ -203,7 +203,8 @@ composition root**, never the bearer or its authentication digest. Session
 authentication uses the separate `Session.token_hash`. `AuthContext.audit_session_hash`
 is the dedicated input for a HMAC audit pseudonym. Until authentication wiring
 supplies one, it stays empty on run writes: the token digest is never a fallback.
-Ownership follows the group, including after session renewal.
+Collective ownership follows the group, including after session renewal. Individual
+ownership follows the run author and current ministry rights, whatever the current group.
 Feedback reasons are immutable tuples in the core (JSON arrays at the HTTP
 boundary). Only the PostgreSQL adapter joins/splits the legacy `; `-separated
 TEXT columns; empty or NULL stored reasons become empty tuples.
