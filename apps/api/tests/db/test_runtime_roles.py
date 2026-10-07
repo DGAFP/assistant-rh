@@ -76,6 +76,28 @@ async def test_collective_history_stays_writable_by_streamlit(repository_db, log
     assert comment == ("second",) and audited == (1,)
 
 
+async def test_streamlit_cannot_detach_an_individual_run_to_rewrite_feedback(repository_db, logins):
+    # No sources or feedback FK: neither may stand in for an immutable run ID.
+    run = make_run(author_user_id=AUTHOR, sources=())
+    await ChatRunStore(repository_db).finalize(run)
+    store = FeedbackStore(repository_db)
+    value = FeedbackInput(run.turn_id, 4, "Original", ("Clair",), (), True)
+    await store.save(value, "@conversations", "e" * 64, run.timestamp, user_id=AUTHOR, ministries=("matte",))
+    with pytest.raises(errors.CheckViolation):
+        as_login(logins, "test_rt_streamlit", "UPDATE public.chat_runs SET turn_id = 'detached' WHERE turn_id = %s", (run.turn_id,))
+    assert (await store.get_owned(run.turn_id, AUTHOR, "@conversations", ("matte",))).value == value
+
+
+async def test_orphan_individual_feedback_cannot_be_rewritten(repository_db, logins):
+    run = await individual_run(repository_db)
+    # Simulate an orphan left by an administrative purge on a schema without a feedback FK.
+    async with repository_db.transaction() as connection:
+        await connection.execute("DELETE FROM public.chat_runs WHERE turn_id = %s", (run.turn_id,))
+    with pytest.raises(errors.CheckViolation):
+        as_login(logins, "test_rt_streamlit", "UPDATE public.chat_feedbacks SET comment = 'forged' WHERE turn_id = %s", (run.turn_id,))
+    assert (await FeedbackStore(repository_db).get(run.turn_id)).value.comment == "Merci"
+
+
 def test_attach_refuses_owners_and_unknown_roles(logins):
     with psycopg.connect(logins, autocommit=True) as connection:
         with pytest.raises(errors.RaiseException):

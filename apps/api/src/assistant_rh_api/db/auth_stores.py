@@ -124,21 +124,24 @@ class DelegationReplayStore(DelegationReplayPort):
     def __init__(self, database: Database) -> None:
         self._database = database
 
-    async def claim(self, token_id: str, key_id: str, expires_at: datetime, now: datetime) -> bool:
-        if now.tzinfo is None or expires_at.tzinfo is None:
+    async def claim(self, token_id: str, key_id: str, expires_at: datetime) -> bool:
+        if expires_at.tzinfo is None:
             raise ValueError("replay claims require aware timestamps")
         async with self._database.transaction() as connection:
-            # A bounded batch per claim keeps the table at about one assertion lifetime of traffic.
+            # Only the shared database clock can expire a tombstone: a faster API replica
+            # must not purge an assertion that another replica would still accept.
             await connection.execute(
                 """WITH expired AS (
-                    SELECT jti FROM public.api_delegation_replays WHERE expires_at <= %s
+                    SELECT jti FROM public.api_delegation_replays WHERE expires_at <= statement_timestamp()
                     ORDER BY expires_at LIMIT 100 FOR UPDATE SKIP LOCKED
                 )
                 DELETE FROM public.api_delegation_replays r USING expired e WHERE r.jti = e.jti""",
-                (now,),
             )
             cursor = await connection.execute(
-                "INSERT INTO public.api_delegation_replays (jti, key_id, expires_at) VALUES (%s, %s, %s) ON CONFLICT (jti) DO NOTHING",
-                (token_id, key_id, expires_at),
+                """INSERT INTO public.api_delegation_replays (jti, key_id, expires_at)
+                SELECT %s, %s, %s WHERE %s > clock_timestamp()
+                ON CONFLICT (jti) DO NOTHING RETURNING expires_at > clock_timestamp()""",
+                (token_id, key_id, expires_at, expires_at),
             )
-            return cursor.rowcount == 1
+            # RETURNING rechecks expiry after any wait on a conflicting row being purged.
+            return await cursor.fetchone() == (True,)

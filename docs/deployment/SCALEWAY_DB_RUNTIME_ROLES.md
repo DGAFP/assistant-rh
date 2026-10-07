@@ -15,6 +15,8 @@ Les rôles `arh_*` sont `NOLOGIN` et ne possèdent rien. La permission Scaleway 
 
 Le trigger `api_feedback_individual_guard` refuse, sur un run individuel (`author_user_id` non nul), toute insertion, modification de contenu ou suppression qui ne vient pas de `arh_api`. Les colonnes `beta_scope`, `theme` et d'analyse IA restent modifiables ; le propriétaire peut supprimer (purge). Un runtime n'étant propriétaire d'aucune table, il ne peut ni désactiver ni supprimer ce trigger.
 
+L'identifiant `turn_id` d'un run individuel est également immuable : renommer temporairement le parent ne permet pas de contourner le garde, même sans clé étrangère sur les feedbacks. Un feedback individuel orphelin reste protégé contre les modifications de contenu hors API.
+
 **Limite** : `assistant_rh` (et `_rdb_admin`) peuvent désactiver le trigger ou se donner un rôle. C'est un accès administratif, réservé aux migrations et à l'exploitation.
 
 ## Vérifié avant livraison

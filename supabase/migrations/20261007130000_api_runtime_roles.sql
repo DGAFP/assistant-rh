@@ -70,6 +70,19 @@ BEGIN
         GRANT arh_analysis TO assistant_rh_ingest;
     END IF;
 
+    -- The guard resolves feedback ownership by turn_id, even without a feedback FK.
+    -- A runtime must not detach the parent temporarily to hide its individual author.
+    CREATE OR REPLACE FUNCTION public.api_run_author_immutable() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog AS $function$
+    BEGIN
+        IF NEW.author_user_id IS DISTINCT FROM OLD.author_user_id
+           OR (OLD.author_user_id IS NOT NULL AND NEW.turn_id IS DISTINCT FROM OLD.turn_id) THEN
+            RAISE EXCEPTION 'Run author and individual run ID are immutable' USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    END;
+    $function$;
+
     -- Individual feedback content is written by the API role only. Others keep annotation
     -- and analysis columns; deletion is reserved to the API and the table owner.
     CREATE OR REPLACE FUNCTION public.api_feedback_individual_guard() RETURNS trigger
@@ -88,6 +101,9 @@ BEGIN
         END IF;
         IF TG_OP IN ('UPDATE', 'DELETE') THEN
             SELECT r.author_user_id INTO author FROM public.chat_runs r WHERE r.turn_id = OLD.turn_id;
+            IF TG_OP = 'UPDATE' AND NOT FOUND AND OLD.api_actor_user_id IS NOT NULL THEN
+                RAISE EXCEPTION 'Individual feedback requires its parent run' USING ERRCODE = '23514';
+            END IF;
             IF author IS NOT NULL AND NOT api AND (
                 TG_OP = 'UPDATE' OR NOT pg_has_role(current_user, (SELECT c.relowner FROM pg_class c WHERE c.oid = TG_RELID), 'USAGE')
             ) THEN
@@ -101,7 +117,7 @@ BEGIN
         IF author IS NOT NULL AND NOT api THEN
             RAISE EXCEPTION 'Individual feedback is written only by the API' USING ERRCODE = '42501';
         END IF;
-        IF author IS NOT NULL AND NEW.api_actor_user_id IS DISTINCT FROM author THEN
+        IF NEW.api_actor_user_id IS DISTINCT FROM author THEN
             RAISE EXCEPTION 'Individual feedback requires its run author' USING ERRCODE = '23514';
         END IF;
         RETURN NEW;
