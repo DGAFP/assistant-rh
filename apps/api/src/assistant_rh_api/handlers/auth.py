@@ -48,7 +48,7 @@ Authenticated = Annotated[AuthContext, Depends(resolve_bearer)]
 
 
 def group_policy(context: AuthContext) -> dict:
-    group = context.group
+    group, _ = context.group_session()
     return {
         "slug": group.slug,
         "allowed_ministries": list(group.allowed_ministries),
@@ -76,18 +76,19 @@ def create_auth_router() -> APIRouter:
         return {
             "access_token": issued.access_token,
             "token_type": "bearer",
-            "expires_in": service.remaining(issued.context.session.expires_at),
-            "expires_at": issued.context.session.expires_at,
+            "expires_in": service.remaining(issued.session.expires_at),
+            "expires_at": issued.session.expires_at,
             "group": group_policy(issued.context),
         }
 
     @router.get("/me")
     async def me(context: Authenticated, service: AuthServiceDependency, response: Response) -> dict:
         response.headers["Cache-Control"] = "no-store"
+        _, session = context.group_session()
         return {
             "group": group_policy(context),
-            "expires_at": context.session.expires_at,
-            "expires_in": service.remaining(context.session.expires_at),
+            "expires_at": session.expires_at,
+            "expires_in": service.remaining(session.expires_at),
         }
 
     @router.delete("/session", status_code=204)

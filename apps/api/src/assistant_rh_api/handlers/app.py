@@ -28,6 +28,7 @@ from assistant_rh_api.db.pool import Database
 from assistant_rh_api.db.session_retention import maintain_sessions
 from assistant_rh_api.db.settings_stores import ConfigStore
 from assistant_rh_api.gateways.auth import LegacyPasswords, SessionTokens, SystemClock
+from assistant_rh_api.gateways.delegation import SignedDelegations
 from assistant_rh_api.handlers.auth import create_auth_router
 from assistant_rh_api.handlers.auth_body import AuthBodyLimit
 from assistant_rh_api.handlers.chat import NonStreamRequests, create_chat_router
@@ -81,6 +82,7 @@ def create_app(
                     SessionTokens(),
                     PostgresLoginLimiter(runtime_database, LoginLimits.from_environment(environment)),
                     SystemClock(),
+                    delegations=SignedDelegations.from_environment(environment),
                 )
             if feedback_service is None:
                 application.state.feedback_service = FeedbackService(FeedbackStore(runtime_database), SystemClock())

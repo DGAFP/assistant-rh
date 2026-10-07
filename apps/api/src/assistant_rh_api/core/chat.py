@@ -92,7 +92,7 @@ class ChatService:
         context: RunContext | None = None,
         stream: bool = False,
     ) -> tuple[ChatRun, PipelineResult]:
-        model = self._models.resolve(request.model, auth.group)
+        model = self._models.resolve(request.model, auth.principal)
         await self.require_individual_storage(auth)
         context = context or self.new_context(sink=sink, cancellation=cancellation)
         created = context.created
@@ -102,7 +102,7 @@ class ChatService:
                 turn_id=context.turn_id,
                 trace_id=context.trace_id,
                 timestamp=created,
-                group_slug=auth.group.slug,
+                group_slug=auth.group_slug,
                 session_hash=auth.audit_session_hash,
                 conversation_id=request.conversation_id,
                 question=request.question,

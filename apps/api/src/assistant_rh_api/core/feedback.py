@@ -67,18 +67,18 @@ class FeedbackService:
             raise IndividualIdentityRequired()
         saved = await self._store.save(
             normalized(value),
-            auth.group.slug,
+            auth.group_slug,
             auth.audit_session_hash,
             self._clock.now(),
             user_id=user_id,
-            ministries=auth.group.allowed_ministries,
+            ministries=auth.allowed_ministries,
         )
         if saved is None:
             raise FeedbackNotFound()
 
     async def get(self, completion_id: str, auth: AuthContext) -> FeedbackInput:
         user_id = self.require_individual(auth)
-        saved = await self._store.get_owned(turn_id(completion_id), user_id, auth.group.slug, auth.group.allowed_ministries)
+        saved = await self._store.get_owned(turn_id(completion_id), user_id, auth.group_slug, auth.allowed_ministries)
         if saved is None:
             raise FeedbackNotFound()
         return saved.value

@@ -747,3 +747,41 @@ SQL access is not an individual principal. Annotation/analysis updates retain th
 fast path. `UPDATE OF` is intentionally avoided because it prevents B2's repeated
 `ALTER COLUMN turn_id TYPE TEXT` during local bootstrap, independently of the
 pre-D1 compatibility test's explicit trigger removal.
+
+## Conversations delegation (#596)
+
+The Conversations backend calls the API on behalf of an individual user with a
+per-request signed assertion in `Authorization: Bearer`. It is not a session:
+the API keeps no user registry, group membership or delegation state, and
+`/v1/auth/me` / `DELETE /v1/auth/session` answer 401 to a delegation. B4 group
+sessions (`arhs_…`) keep working unchanged and never carry a user ID.
+
+`gateways/delegation.py` accepts only a compact JWS with `alg: EdDSA` (Ed25519),
+a pinned `kid` and no other header than `typ: JWT`. Claims:
+
+| Claim | Rule |
+| --- | --- |
+| `iss` / `aud` | Configured issuer; audience string or list containing the API audience |
+| `iat`, `exp`, `nbf` | Integers; `exp` strictly in the future, `exp - iat` ≤ 120 s, `iat`/`nbf` ≤ now + 30 s |
+| `jti` | 16–128 URL-safe characters |
+| `sub` | Stable Conversations user ID, canonical lowercase UUID; becomes the immutable run author |
+| `models` | Models currently granted (`assistant-rh-<ministry>`, unique, may be empty); an unknown model refuses the assertion |
+| `ministry` | Optional; the conversation's fixed ministry, one of `models` |
+| `audit_session` | Optional 64-hex HMAC-SHA-256 session pseudonym, required by feedback writes |
+
+`/v1/models` lists the granted models (narrowed to `ministry` when present). Chat
+resolves the alias to `ministry` only; any model outside the delegated scope is
+403 even if its name is valid. Runs are stored with the signed author,
+`user_group = '@conversations'` (outside the B4 slug alphabet) and the run
+ministry; history access is author + current grant on the run ministry.
+
+| Environment variable | Meaning |
+| --- | --- |
+| `CONVERSATIONS_DELEGATION_JWKS` | JWKS of Ed25519 **public** keys; private members fail startup |
+| `CONVERSATIONS_DELEGATION_ISSUER` | Expected `iss`; set together with the JWKS |
+| `ASSISTANT_RH_API_AUDIENCE` | Expected `aud`, default `assistant-rh-api` |
+
+Without both variables, delegation is disabled and every non-B4 bearer is 401.
+Rotation publishes a new `kid` next to the old one; removing a `kid` revokes it
+once the API restarts with the new key set (issued assertions expire within 120 s). The full contract, network restriction and accepted risks
+are in [the delegation contract](../../docs/architecture/hexagonal-split/14-conversations-delegation-contract.md).
