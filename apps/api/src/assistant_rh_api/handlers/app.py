@@ -19,7 +19,7 @@ from assistant_rh_api.core.chat import ChatService
 from assistant_rh_api.core.feedback import FeedbackService
 from assistant_rh_api.core.health import HealthProbe
 from assistant_rh_api.core.rag_configuration import RAGConfigurationService
-from assistant_rh_api.db.auth_stores import GroupStore, SessionStore
+from assistant_rh_api.db.auth_stores import DelegationReplayStore, GroupStore, SessionStore
 from assistant_rh_api.db.dsn import DatabaseSettings, resolve_dsn
 from assistant_rh_api.db.feedback_store import FeedbackStore
 from assistant_rh_api.db.health import PostgresHealthProbe
@@ -83,6 +83,7 @@ def create_app(
                     PostgresLoginLimiter(runtime_database, LoginLimits.from_environment(environment)),
                     SystemClock(),
                     delegations=SignedDelegations.from_environment(environment),
+                    replays=DelegationReplayStore(runtime_database),
                 )
             if feedback_service is None:
                 application.state.feedback_service = FeedbackService(FeedbackStore(runtime_database), SystemClock())

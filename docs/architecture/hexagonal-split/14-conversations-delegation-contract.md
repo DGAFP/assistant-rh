@@ -45,7 +45,7 @@ En-tête : `alg` = `EdDSA` obligatoire, `kid` connu obligatoire, `typ` facultati
 | `iss` | Égal à `CONVERSATIONS_DELEGATION_ISSUER` |
 | `aud` | Chaîne ou liste contenant `ASSISTANT_RH_API_AUDIENCE` (défaut `assistant-rh-api`) ; une audience distincte par environnement empêche le rejeu d'une assertion de staging en production |
 | `iat`, `exp`, `nbf` | Entiers. `exp` strictement futur, `exp − iat` ≤ 120 s, `iat` et `nbf` au plus 30 s dans le futur (dérive d'horloge) |
-| `jti` | 16 à 128 caractères URL-safe |
+| `jti` | 16 à 128 caractères URL-safe, à usage unique (une nouvelle assertion par appel) |
 | `sub` | Identifiant utilisateur Conversations, UUID canonique en minuscules ; devient l'auteur immuable du run |
 | `models` | Modèles accordés (`assistant-rh-<ministère>`), uniques, liste vide admise ; un modèle inconnu fait refuser l'assertion (pas de déduction en cas de dérive du catalogue) |
 | `ministry` | Facultatif : ministère fixé à la création de la conversation, compris dans `models` |
@@ -86,12 +86,12 @@ Ni assertion, ni clé, ni jeton ProConnect, ni contenu de délégation ne sont j
 ## Risques acceptés
 
 - **Backend compromis** : un backend Conversations compromis peut agir au nom de n'importe quel utilisateur. Le risque est réduit par le réseau privé, la clé de signature dédiée et sa rotation. Une preuve utilisateur de bout en bout pourra s'ajouter sans changer le modèle d'auteur.
-- **Rejeu dans la fenêtre** : risque **non accepté** (décision du 2026-10-07). L'API mémorisera chaque `jti` dans une table PostgreSQL partagée par les réplicas (insertion unique, purge après `exp`) ; une assertion déjà vue sera refusée. Tant que cette table n'est pas livrée, une assertion interceptée sur le réseau privé reste rejouable jusqu'à son expiration (≤ 120 s).
+- **Rejeu dans la fenêtre** : risque **non accepté** (décision du 2026-10-07). L'API mémorise chaque `jti` vérifié dans `api_delegation_replays`, partagée par les réplicas (clé primaire, purge par lots après `exp`) ; une assertion déjà vue est refusée (401). Conversations signe donc une nouvelle assertion pour chaque appel, relances comprises.
 
 ## Reste à faire pour clore #596
 
 1. Validation DGAFP du choix « confiance de service », ou consignation de l'écart au DAT : voir la [note de revue](15-revue-dgafp-confiance-service.md).
 2. Côté Conversations ([#595](https://github.com/DGAFP/assistant-rh/issues/595)) : admission sur invitation, habilitations ministérielles, catalogue filtré, signature des assertions, pseudonyme d'audit, conservation de la clé privée côté serveur.
 3. Vérifier la stabilité de l'identifiant utilisateur Conversations (jamais réattribué ; compte supprimé puis recréé).
-4. Migration versionnée du schéma individuel (aujourd'hui local, `apps/api/sql/local/individual_feedback.sql`), table anti-rejeu des `jti` et restrictions SQL ([#599](https://github.com/DGAFP/assistant-rh/issues/599)) : prochaine tranche.
+4. Restrictions SQL ([#599](https://github.com/DGAFP/assistant-rh/issues/599)) : rôles runtime dédiés, propriétaire NOLOGIN ; la migration versionnée D1 et la table anti-rejeu sont livrées (`20261007120000_api_individual_identity.sql`).
 5. Corrélation par identifiant de requête et test de bout en bout connexion → catalogue → chat → run attribué depuis Conversations, avec reconnexion, expiration et révocation.

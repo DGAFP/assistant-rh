@@ -168,4 +168,5 @@ class SignedDelegations:
             expires_at=datetime.fromtimestamp(expires, UTC),
             key_id=kid,
             audit_session_hash=audit,
+            token_id=jti,
         )
