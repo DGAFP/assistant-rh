@@ -93,5 +93,5 @@ Ni assertion, ni clé, ni jeton ProConnect, ni contenu de délégation ne sont j
 1. Validation DGAFP du choix « confiance de service », ou consignation de l'écart au DAT : voir la [note de revue](15-revue-dgafp-confiance-service.md).
 2. Côté Conversations ([#595](https://github.com/DGAFP/assistant-rh/issues/595)) : admission sur invitation, habilitations ministérielles, catalogue filtré, signature des assertions, pseudonyme d'audit, conservation de la clé privée côté serveur.
 3. Vérifier la stabilité de l'identifiant utilisateur Conversations (jamais réattribué ; compte supprimé puis recréé).
-4. Restrictions SQL ([#599](https://github.com/DGAFP/assistant-rh/issues/599)) : rôles runtime dédiés, propriétaire NOLOGIN ; la migration versionnée D1 et la table anti-rejeu sont livrées (`20261007120000_api_individual_identity.sql`).
+4. Restrictions SQL ([#599](https://github.com/DGAFP/assistant-rh/issues/599)) : rôles d'exécution non propriétaires et garde réservé à `arh_api` (`20261007130000_api_runtime_roles.sql`), à provisionner sur Scaleway selon le [runbook](../../deployment/SCALEWAY_DB_RUNTIME_ROLES.md) avant de configurer la délégation.
 5. Corrélation par identifiant de requête et test de bout en bout connexion → catalogue → chat → run attribué depuis Conversations, avec reconnexion, expiration et révocation.
