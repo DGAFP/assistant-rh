@@ -5,6 +5,7 @@ description = "OpenAI-compatible HTTP API for Assistant RH"
 requires-python = ">=3.12"
 dependencies = [
     "anyio>=4.12,<5",
+    "cryptography>=46,<47",
     "fastapi>=0.136.3,<1",
     "httpx>=0.28.1,<1",
     "psycopg-pool>=3.3,<4",

@@ -326,6 +326,7 @@ version = "0.14.0"
 source = { editable = "apps/api" }
 dependencies = [
     { name = "anyio" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "psycopg", extra = ["binary"] },
@@ -346,6 +347,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anyio", specifier = ">=4.12,<5" },
+    { name = "cryptography", specifier = ">=46,<47" },
     { name = "fastapi", specifier = ">=0.136.3,<1" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.3,<4" },
