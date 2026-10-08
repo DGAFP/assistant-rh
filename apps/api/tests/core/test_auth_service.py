@@ -180,6 +180,19 @@ async def test_delegation_without_conversation_ministry_scopes_history_to_curren
         context.authorize_ministry()
 
 
+@pytest.mark.parametrize("include_group", [True, False])
+async def test_delegation_cannot_include_a_partial_group_session(include_group):
+    from assistant_rh_api.core.auth import AuthContext
+
+    from apps.api.tests.auth_fakes import individual_context
+
+    issued = await service().login("beta", "password", "client")
+    group = issued.context.group if include_group else None
+    session = None if include_group else issued.context.session
+    with pytest.raises(ValueError):
+        AuthContext(group, session, delegation=individual_context().delegation)
+
+
 async def test_unverified_or_disabled_delegations_are_invalid_credentials():
     from apps.api.tests.auth_fakes import Signer, delegated_service
 

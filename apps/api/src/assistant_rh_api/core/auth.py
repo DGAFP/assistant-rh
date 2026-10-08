@@ -46,8 +46,11 @@ class AuthContext:
     delegation: Delegation | None = None
 
     def __post_init__(self) -> None:
-        group_session = self.group is not None and self.session is not None
-        if (self.delegation is None) != group_session:
+        if self.delegation is None:
+            valid = self.group is not None and self.session is not None
+        else:
+            valid = self.group is None and self.session is None
+        if not valid:
             raise ValueError("an auth context is either a group session or a delegation")
 
     @classmethod
