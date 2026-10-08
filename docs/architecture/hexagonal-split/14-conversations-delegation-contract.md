@@ -3,6 +3,28 @@
 > Contrat du 2026-10-07 pour [#596](https://github.com/DGAFP/assistant-rh/issues/596), côté API. Il précise la [note d'identité individuelle](09-conversations-individual-access.md) et applique le choix « confiance de service » du 6 octobre, **proposé à la revue DGAFP** (le DAT v0.4 le classe parmi les arbitrages à clôturer).
 > Aucun déploiement ni changement de base staging/production n'est associé à ce document. L'intégration côté Conversations relève de [#595](https://github.com/DGAFP/assistant-rh/issues/595).
 
+## Comprendre le parcours
+
+Conversations identifie la personne et vérifie ses droits. À chaque appel, son serveur
+envoie à l'API un message signé indiquant la personne et les ministères autorisés.
+Ce message, appelé **assertion**, a une durée de vie maximale de deux minutes et ne peut
+servir qu'une fois. L'API vérifie la signature et les droits avant de répondre.
+
+Une réponse enregistrée en base est appelée un **run**. Elle conserve son auteur et
+son ministère. Par exemple, Alice peut modifier son propre feedback tant qu'elle garde
+accès au ministère concerné ; Bob ne le peut pas, même s'il travaille dans ce ministère.
+Les anciennes conversations collectives restent collectives.
+
+| PR | Ce qu'elle apporte |
+|---|---|
+| #597 | Enregistrer et remplacer un feedback sans perdre sa version précédente |
+| #601 | Vérifier l'identité et les droits transmis par Conversations |
+| #602 | Installer le schéma individuel et mémoriser les assertions déjà utilisées |
+| #603 | Limiter les écritures SQL et sécuriser la purge contre les décalages d'horloge |
+
+Le **rôle SQL** désigne les permissions d'une application sur la base ; il ne représente
+pas l'utilisateur connecté. Les sections suivantes détaillent le contrat technique.
+
 ## Acteurs et identités
 
 | Identité | Porteur | Vérifiée par |
@@ -88,10 +110,12 @@ Ni assertion, ni clé, ni jeton ProConnect, ni contenu de délégation ne sont j
 - **Backend compromis** : un backend Conversations compromis peut agir au nom de n'importe quel utilisateur. Le risque est réduit par le réseau privé, la clé de signature dédiée et sa rotation. Une preuve utilisateur de bout en bout pourra s'ajouter sans changer le modèle d'auteur.
 - **Rejeu dans la fenêtre** : risque **non accepté** (décision du 2026-10-07). L'API mémorise chaque `jti` vérifié dans `api_delegation_replays`, partagée par les réplicas (clé primaire, purge par lots après `exp`) ; une assertion déjà vue est refusée (401). Conversations signe donc une nouvelle assertion pour chaque appel, relances comprises.
 
+La purge et le contrôle final d'expiration utilisent l'horloge PostgreSQL commune, indépendamment des horloges des réplicas API. Une assertion expirée en base reste refusée après purge de son `jti`, y compris si une attente sur un verrou SQL fait franchir l'expiration.
+
 ## Reste à faire pour clore #596
 
 1. Validation DGAFP du choix « confiance de service », ou consignation de l'écart au DAT : voir la [note de revue](15-revue-dgafp-confiance-service.md).
 2. Côté Conversations ([#595](https://github.com/DGAFP/assistant-rh/issues/595)) : admission sur invitation, habilitations ministérielles, catalogue filtré, signature des assertions, pseudonyme d'audit, conservation de la clé privée côté serveur.
 3. Vérifier la stabilité de l'identifiant utilisateur Conversations (jamais réattribué ; compte supprimé puis recréé).
-4. Restrictions SQL ([#599](https://github.com/DGAFP/assistant-rh/issues/599)) : rôles runtime dédiés, propriétaire NOLOGIN ; la migration versionnée D1 et la table anti-rejeu sont livrées (`20261007120000_api_individual_identity.sql`).
+4. Restrictions SQL ([#599](https://github.com/DGAFP/assistant-rh/issues/599)) : rôles d'exécution non propriétaires et garde réservé à `arh_api` (`20261007130000_api_runtime_roles.sql`), à provisionner sur Scaleway selon le [runbook](../../deployment/SCALEWAY_DB_RUNTIME_ROLES.md) avant de configurer la délégation.
 5. Corrélation par identifiant de requête et test de bout en bout connexion → catalogue → chat → run attribué depuis Conversations, avec reconnexion, expiration et révocation.

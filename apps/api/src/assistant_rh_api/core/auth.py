@@ -46,8 +46,11 @@ class AuthContext:
     delegation: Delegation | None = None
 
     def __post_init__(self) -> None:
-        group_session = self.group is not None and self.session is not None
-        if (self.delegation is None) != group_session:
+        if self.delegation is None:
+            valid = self.group is not None and self.session is not None
+        else:
+            valid = self.group is None and self.session is None
+        if not valid:
             raise ValueError("an auth context is either a group session or a delegation")
 
     @classmethod
@@ -180,7 +183,7 @@ class AuthService:
             raise InvalidCredentials()
         # Claim only after verification: unsigned callers cannot fill the replay table.
         assert self.replays is not None
-        if not await self.replays.claim(delegation.token_id, delegation.key_id, delegation.expires_at, now):
+        if not await self.replays.claim(delegation.token_id, delegation.key_id, delegation.expires_at):
             raise InvalidCredentials()
         return AuthContext.delegated(delegation)
 

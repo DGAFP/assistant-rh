@@ -1,12 +1,13 @@
 # Assistant RH API
 
-## Chat Completions non-stream (C6)
+## Chat Completions
 
 `POST /v1/chat/completions` now composes the real C2–C5 pipeline behind bearer
 authentication and the ministry model catalogue. Run, ordered final sources,
 stage evidence and status commit atomically before a successful JSON response.
 Client system/tool instructions and generation parameters are ignored according
-to C1. `stream=true` is rejected until C7 supplies the SSE transport.
+to C1. Set `stream=true` to receive the answer progressively over SSE;
+see [streaming](#c7--resilient-chat-completions-streaming) for its error and cancellation behavior.
 
 See [the C6 implementation and validation report](../../docs/architecture/hexagonal-split/11-c6-chat-completions.md)
 for provider configuration, failure/cancellation semantics, ID compatibility,
@@ -738,12 +739,12 @@ Existing collective runs keep a NULL author and cannot be claimed. Enable delega
 only after the #599 runtime roles/grants are applied.
 See the [feedback contract](../../docs/architecture/hexagonal-split/02-api-contract.md#post-v1feedback).
 
-The local D1 trigger checks stored author consistency and blocks legacy INSERTs;
-it does not authenticate arbitrary direct SQL UPDATEs or create their audit history.
-The API store owns authorization and transactional auditing. #596 deployment must
-restrict direct feedback-content writes through runtime roles/grants; administrative
-SQL access is not an individual principal. Annotation/analysis updates retain the
-fast path. `UPDATE OF` is intentionally avoided because it prevents B2's repeated
+The identity migration makes the author immutable and checks feedback authorship.
+The runtime-role migration additionally protects individual run IDs and restricts
+individual feedback content writes to the API role. The API store checks ownership
+and archives replacements in the same transaction. Annotation/analysis updates retain
+the fast path. See the [runtime roles runbook](../../docs/deployment/SCALEWAY_DB_RUNTIME_ROLES.md)
+for provisioning and rollback. `UPDATE OF` is intentionally avoided because it prevents B2's repeated
 `ALTER COLUMN turn_id TYPE TEXT` during local bootstrap, independently of the
 pre-D1 compatibility test's explicit trigger removal.
 
@@ -751,7 +752,8 @@ pre-D1 compatibility test's explicit trigger removal.
 
 The Conversations backend calls the API on behalf of an individual user with a
 per-request signed assertion in `Authorization: Bearer`. It is not a session:
-the API keeps no user registry, group membership or delegation state, and
+the API keeps no user registry or group membership; it records used assertion IDs
+to prevent replay and removes expired entries in batches. Routes
 `/v1/auth/me` / `DELETE /v1/auth/session` answer 401 to a delegation. B4 group
 sessions (`arhs_…`) keep working unchanged and never carry a user ID.
 

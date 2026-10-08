@@ -126,7 +126,7 @@ class Replays:
     def __init__(self):
         self.claims = {}
 
-    async def claim(self, token_id, key_id, expires_at, now):
+    async def claim(self, token_id, key_id, expires_at):
         if token_id in self.claims:
             return False
         self.claims[token_id] = (key_id, expires_at)
