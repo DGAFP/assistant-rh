@@ -11,6 +11,8 @@ from assistant_rh_api.core.sources import SOURCES_MARKER
 
 MAX_BODY = 1_048_576
 MAX_CONTENT = 65_536
+# Client correlation ID (Conversations sends a UUID); bounded before any pipeline work (#604).
+MAX_CONVERSATION_ID = 128
 
 
 class ChatRequestError(Exception):
@@ -79,7 +81,7 @@ def validate_chat(payload: dict) -> ChatInput:
     if metadata is not None and not isinstance(metadata, dict):
         raise ChatRequestError("invalid_request")
     correlation = (metadata or {}).get("conversation_id")
-    if correlation is not None and (not isinstance(correlation, str) or "\x00" in correlation):
+    if correlation is not None and (not isinstance(correlation, str) or "\x00" in correlation or len(correlation) > MAX_CONVERSATION_ID):
         raise ChatRequestError("invalid_request")
     messages = _parse_messages(payload.get("messages"))
     question, history = _select_question_and_history(messages)
