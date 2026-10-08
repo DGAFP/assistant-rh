@@ -192,3 +192,13 @@ async def test_unverified_or_disabled_delegations_are_invalid_credentials():
     auth.clock.value += timedelta(seconds=60)
     with pytest.raises(InvalidCredentials):
         await auth.resolve(signer.sign())
+
+
+def test_delegation_cannot_be_enabled_without_replay_protection():
+    from assistant_rh_api.core.auth import AuthService
+    from assistant_rh_api.gateways.auth import SessionTokens
+
+    from apps.api.tests.auth_fakes import Clock, Groups, Limiter, Passwords, Sessions, Signer
+
+    with pytest.raises(ValueError, match="replay"):
+        AuthService(Groups(), Sessions(), Passwords(), SessionTokens(), Limiter(), Clock(), delegations=Signer().verifier())

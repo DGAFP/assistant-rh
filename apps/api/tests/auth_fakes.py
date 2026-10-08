@@ -3,7 +3,7 @@
 import base64
 import json
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from assistant_rh_api.core.auth import AuthContext, AuthService
 from assistant_rh_api.core.models.auth import Delegation, Group
@@ -104,7 +104,7 @@ class Signer:
             "sub": user_id,
             "iat": now,
             "exp": now + 60,
-            "jti": "jti-" + "0" * 28,
+            "jti": uuid4().hex,  # fresh per assertion, as Conversations must do
             "models": ["assistant-rh-matte", "assistant-rh-mi"],
             "audit_session": "e" * 64,
         }
@@ -122,7 +122,16 @@ class Signer:
         return SignedDelegations(load_keys(json.dumps({"keys": [s.jwk() for s in (self, *others)]})), issuer=self.issuer)
 
 
+class Replays:
+    def __init__(self):
+        self.claims = {}
+
+    async def claim(self, token_id, key_id, expires_at, now):
+        if token_id in self.claims:
+            return False
+        self.claims[token_id] = (key_id, expires_at)
+        return True
+
+
 def delegated_service(signer):
-    auth = service()
-    auth.delegations = signer.verifier()
-    return auth
+    return AuthService(Groups(), Sessions(), Passwords(), SessionTokens(), Limiter(), Clock(), delegations=signer.verifier(), replays=Replays())
