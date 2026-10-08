@@ -70,6 +70,7 @@ def app_script():
     return (
         """
 import streamlit as st
+from src.ui.answer_markdown import format_answer_markdown
 from src.ui.chatbot_feedback import render_feedback_block
 from src.ui.chatbot_transitions import PENDING_EXIT, apply_ready_exit, cancel_exit, request_exit
 """
