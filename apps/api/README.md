@@ -190,7 +190,7 @@ ports. They are additive: only `/healthz` is wired to HTTP at this stage.
 | `SearchStore` | Separate raw vector, lexical and heading lanes over logical sources; candidate scores/ranks and deterministic ties. No RRF, weighting, gate, deduplication or final selection. |
 | `ContentStore` | Batch documents, sections, legal references and chunks, ordered by stable keys. Legacy Service-Public relations and document metadata remain readable. |
 | `ChatRunStore` | INSERT-only finalization of run, ordered served sources and all trace events in one transaction. A duplicate completion ID fails instead of overwriting the original. |
-| `FeedbackStore` | Group ownership, current feedback, exact retries without writes, atomic audit/replacement, human annotations preserved and AI analysis reset. Analysis writes reject stale generations. |
+| `FeedbackStore` | Ownership by creation group (collective runs) or by author and current ministry rights (individual runs), current feedback, exact retries without writes, atomic audit/replacement, human annotations preserved and AI analysis reset. Analysis writes reject stale generations. |
 
 `core/models/` groups input/output values by domain: `configuration`, `auth`,
 `retrieval` and `conversations`. The matching `core/ports/` modules define their
@@ -203,7 +203,8 @@ composition root**, never the bearer or its authentication digest. Session
 authentication uses the separate `Session.token_hash`. `AuthContext.audit_session_hash`
 is the dedicated input for a HMAC audit pseudonym. Until authentication wiring
 supplies one, it stays empty on run writes: the token digest is never a fallback.
-Ownership follows the group, including after session renewal.
+Collective ownership follows the group, including after session renewal. Individual
+ownership follows the run author and current ministry rights, whatever the current group.
 Feedback reasons are immutable tuples in the core (JSON arrays at the HTTP
 boundary). Only the PostgreSQL adapter joins/splits the legacy `; `-separated
 TEXT columns; empty or NULL stored reasons become empty tuples.
@@ -712,3 +713,37 @@ Both API transports use C6's generation inputs; validated history remains with
 the query processor. Standalone C5 streaming still accepts history. Provider
 stream requests now opt in to usage; missing usage retains C1's zero counters.
 See [C7 design, validation and Conversations reproduction](../../docs/architecture/hexagonal-split/12-c7-streaming.md).
+
+## Individual feedback groundwork (D1 / #528)
+
+`POST /v1/feedback` validates and normalizes stars, reason lists and comments;
+`GET /v1/feedback/{completion_id}` returns the current input only. Both require
+a verified individual principal and enforce the run author and current corpus
+rights. B4 group tokens receive 403 on these routes. Individual login and
+Conversations validation remain blocked on #596; this is not an active login path.
+
+The D1 schema is local/test-only in `apps/api/sql/local/individual_feedback.sql`,
+outside `supabase/migrations`; the local Compose bootstrap mounts and applies it.
+B4 chat completions (including streaming), source reads and collective feedback
+store writes (including replacement/audit) work without D1. The public feedback
+routes still refuse B4 principals. Before an individual request starts the pipeline
+or opens an SSE stream, the API checks the three D1 columns and two enabled guards;
+missing or partial D1 returns 503 without configuration, retrieval or LLM work.
+The schema capability is cached per database pool; restart the API after applying
+or rolling back schema changes. Access predicates use named parameters and direct
+columns, without serializing run payloads. Runs with a NULL/unknown ministry or a
+revoked corpus grant deliberately confer no source or feedback authority.
+Existing collective runs keep a NULL author and cannot be claimed. Before enabling
+individual authentication, #596 must validate the user registry, current rights and
+runtime grants, then ship a versioned production migration and apply it before
+activating individual principals. Promoting this PR does not install the D1 schema.
+See the [feedback contract](../../docs/architecture/hexagonal-split/02-api-contract.md#post-v1feedback).
+
+The local D1 trigger checks stored author consistency and blocks legacy INSERTs;
+it does not authenticate arbitrary direct SQL UPDATEs or create their audit history.
+The API store owns authorization and transactional auditing. #596 deployment must
+restrict direct feedback-content writes through runtime roles/grants; administrative
+SQL access is not an individual principal. Annotation/analysis updates retain the
+fast path. `UPDATE OF` is intentionally avoided because it prevents B2's repeated
+`ALTER COLUMN turn_id TYPE TEXT` during local bootstrap, independently of the
+pre-D1 compatibility test's explicit trigger removal.

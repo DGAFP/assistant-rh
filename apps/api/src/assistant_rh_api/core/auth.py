@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from uuid import UUID
 
 from assistant_rh_api.core.errors import DatabaseConflict, InvalidCredentials, MinistryForbidden
 from assistant_rh_api.core.errors import LoginRateLimited as LoginRateLimited
@@ -27,6 +28,10 @@ class AuthContext:
     session: Session
     # Only a separately derived audit pseudonym may leave the auth boundary.
     audit_session_hash: str = field(default="", repr=False)
+
+    # Only an individual authentication adapter may supply this internal ID (#596).
+    # B4 group sessions always leave it unset; it is never read from an HTTP field.
+    user_id: UUID | None = None
 
     def authorize_ministry(self, ministry: str | None = None) -> str:
         selected = self.group.default_ministry if ministry is None else ministry

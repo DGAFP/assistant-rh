@@ -1019,3 +1019,131 @@ correspondent au run #259. La PR peut passer en revue ; scores live conservés,
 limites du rejeu et travail restant sur le juge explicités dans le
 [rapport](13-m1-run-metrics.md) et la
 [preuve](../../evals/evidence/m1_api_parity_frozen_replay_20260930.json).
+
+
+### D1 — préparation individuelle du feedback, 30 septembre 2026
+
+[#528](https://github.com/DGAFP/assistant-rh/issues/528) — [PR #597](https://github.com/DGAFP/assistant-rh/pull/597) (brouillon).
+POST/GET canoniques derrière `FeedbackService`, auteur UUID persisté et immuable,
+contrôles d'auteur/groupe/ministère dans le store (écriture sous verrou du run),
+retry strict sans UPDATE, remplacement/audit atomiques et invalidation IA par
+génération. L'acteur d'audit vient du run ; seuls ses champs de feedback sont
+restitués. La migration additive n'attribue aucun run collectif à une personne
+et protège les premières insertions/remplacements individuels contre le trigger
+Streamlit historique. Le bootstrap local inclut cette migration.
+
+**Préparation testée, #528 reste ouverte.** L'auth B4 ne produit pas de principal
+individuel ; ces routes lui répondent 403 sans consulter le run. #596 doit encore
+livrer preuve utilisateur vérifiée, registre/relations des UUID, droits courants,
+politique multi-groupes/historique, pseudonyme HMAC et validation Conversations
+de bout en bout ; grants runtime append-only à vérifier avant déploiement.
+Les principaux individuels des tests sont synthétiques, pas une preuve de login.
+La politique préparée exige le groupe de création et le ministère encore autorisé.
+Aucun changement de base staging/production, aucun déploiement ni bascule B4.
+
+Preuves locales : `apps/api/tests/db/test_individual_feedback.py` (concurrence,
+xmin/ctid inchangés sur retry canonique, auteur, refus inter-utilisateurs/inter-groupes,
+retrait de corpus, reconnexion, lecture minimale, audit, rollback et coexistence),
+`apps/api/tests/handlers/test_feedback_http.py` (validation stricte et limites),
+`test_chat_service.py` (auteur issu du principal), et tests historiques B2/B4.
+Suite `pytest apps/api/tests -q` : **1 291 réussis**, dont M0b privé local vérifié,
+PostgreSQL/pgvector 17 jetable sur loopback (port 55428, base exclusivement synthétique).
+Le runner utilise les dépendances API du worktree et les dépendances historiques
+déjà installées dans le venv racine via PYTHONPATH, après saturation disque de
+l'installation complète ; `M0B_PRIVATE_ARCHIVE` pointe hors Git vers l'archive locale.
+Les 29 tests feedback ont été relancés après les dernières assertions de
+non-divulgation et d’absence de feedback. Ruff sur toute l’API, format des
+16 fichiers Python modifiés, smoke import et
+**4 contrats d'import** réussis ; `git diff --check` propre.
+
+### D1 — corrections de revue, 5 octobre 2026
+
+Le SQL D1 est désormais dans `apps/api/sql/local/individual_feedback.sql`, monté
+uniquement par le bootstrap Compose local et appliqué par les fixtures synthétiques.
+Il ne figure plus dans `supabase/migrations` : les promotions staging/production
+ne l'installeront pas. #596 devra livrer la migration versionnée, le registre et les
+grants avant activation individuelle. Les complétions B4 et leurs sources restent
+compatibles avec le schéma pré-D1, vérifié en streaming et hors streaming.
+
+Les tests d'historique utilisent maintenant des IDs canoniques existants, avec et
+sans feedback, dans le même groupe et corpus. Deux mutations indépendantes du
+filtre auteur ont été détectées : lecture non autorisée en 200 (2 échecs) et écriture
+non autorisée en 204 (4 échecs). Le prédicat auteur/groupe/ministère est partagé par
+les stores feedback et sources ; les droits de corpus sont obligatoires même en B4.
+L'auteur individuel peut lire ses sources, avec résultat vide uniforme en cas de refus.
+
+GET restitue `chatcmpl-<id>`. Le plafond feedback passe à 64 Kio pour accepter
+4 000 caractères Unicode échappés en JSON (accents et caractères supplémentaires
+testés, avec et sans Content-Length) ; le plafond login reste à 16 Kio. Les erreurs
+feedback rejoignent `core/errors`, et la garde individuelle retourne directement
+l'UUID. Les validations métier restent applicables aux appels hors HTTP.
+
+Le trigger évite la lecture du run quand ni `turn_id` ni `api_actor_user_id` ne change.
+Une déclaration `UPDATE OF` a été écartée car ses dépendances de colonnes bloquent
+le `ALTER COLUMN` de B2 lors d'un second bootstrap local ; le retour anticipé préserve
+les protections et la réexécution du bootstrap sans lookup sur annotations/analyses.
+
+Validation : **1 304 tests API validés au total** sur le même code (1 286 dans
+la suite complète, puis les 18 M0b avec l'archive privée locale). Le dernier cas
+M0b a été relancé seul après saturation disque et nettoyage de ses fixtures ;
+il passe. PostgreSQL/pgvector 17 jetable, loopback 55497, données exclusivement
+synthétiques. Ruff, format des 17 fichiers Python modifiés, les 4 contrats d'import,
+YAML Compose, chemins du bootstrap et `git diff --check` passent. Aucun appel à une
+base distante ni activation individuelle.
+
+### D1 — compatibilité des stores et vérification avant inférence, 5 octobre 2026
+
+La capacité D1 (trois colonnes et deux guards actifs) est vérifiée dans le catalogue
+et mise en cache pour la durée du pool. Les prédicats partagés utilisent des paramètres
+nommés et la colonne auteur directement ; ils ne convertissent plus le run entier en
+JSONB. Sans D1, le store collectif conserve création, retry, remplacement et audit
+sur le schéma B2. Un principal individuel reçoit 503 avant configuration/retrieval/LLM
+et avant ouverture SSE ; le service métier applique aussi cette garde aux appels
+directs. Un D1 partiel ou un guard désactivé est refusé. Redémarrer l'API après toute
+évolution du schéma : cette capacité n'est pas un mécanisme de migration à chaud.
+
+Politique explicite : les runs dont le ministère est NULL/inconnu ou retiré des droits
+ne confèrent pas d'accès, même collectifs. Les fixtures de run utilisent maintenant
+`RunIds` comme la production ; une régression séparée préserve la lecture des IDs B2
+préfixés. La longueur du commentaire est contrôlée après `strip()` dans le service ;
+la validation du transport reste stricte pour les types et étoiles. Une limite de
+corps explicitement passée à `AuthBodyLimit` couvre login et feedback.
+
+La nouvelle remarque sur le trigger confond cohérence d'auteur stocké et identité
+SQL : le lookup précédent autoriserait lui aussi un UPDATE direct du contenu conservant
+les mêmes UUID. Le store assure autorisation et audit ; les restrictions de rôle sur
+les écritures SQL directes restent un préalable #596 avant activation individuelle.
+Le blocage `UPDATE OF` a été reproduit transactionnellement sur PostgreSQL 17 : le
+bootstrap B2 échoue sur `ALTER COLUMN turn_id TYPE TEXT`, indépendamment du test
+pré-D1 qui retire explicitement ses triggers. Le retour anticipé reste donc conservé.
+
+Validation : **1 319 tests API passent au total**, dont 104 tests ciblés et
+1 301 dans la suite générale ; les 18 tests privés M0b ont ensuite été exécutés en
+lots de 6, 9 et 3 avec réutilisation des fixtures temporaires pour limiter le disque.
+PostgreSQL/pgvector 17 synthétique jetable sur loopback. Ruff, format des fichiers
+modifiés, quatre contrats d'import et diff-check passent. Aucun accès DB distant.
+
+### D1 — accès aux runs individuels par auteur et ministère, 6 octobre 2026
+
+Alignement sur le DAT v0.4 et sur les choix de #596 du 6 octobre (restrictions SQL
+suivies dans #599). Un run individuel est accessible à son auteur tant qu'un ministère
+du run reste autorisé, quel que soit le groupe courant : un changement de groupe qui
+conserve ce ministère ne ferme plus l'accès à ses propres runs, feedbacks et sources.
+Les runs collectifs exigent toujours leur groupe de création. Le prédicat partagé
+`run_access()` reste unique pour lectures, écritures et sources.
+
+Tests ajustés : mobilité de groupe avec ministère conservé (lecture, écriture, sources),
+refus si le nouveau groupe n'a plus le ministère, refus d'un collectif d'un autre groupe.
+Validation : table de vérité du prédicat (10 cas) sur PostgreSQL 16 jetable, Ruff et
+format. **La suite pytest n'a pas été exécutée** dans l'environnement de préparation
+(dépendances PyPI et pgvector indisponibles) : à relancer avant fusion.
+
+Validation après application du patch, le 6 octobre 2026 : **11 tests ciblés et
+1 319 tests API réussis**, dont les 18 tests privés M0b, sur PostgreSQL/pgvector 17
+jetable sur loopback (port 55599), avec données synthétiques. Dépendances API
+synchronisées hors ligne ; dépendances historiques réutilisées depuis le venv
+racine via `PYTHONPATH`, archive privée M0b locale. Une première exécution a saturé
+le disque pendant l'extraction des fixtures ; la suite complète relancée avec
+`tmp_path_retention_policy=failed` réussit (deux avertissements de dépréciation
+websockets). Ruff API, format des deux fichiers Python modifiés, quatre contrats
+d'import et `git diff --check` passent. Aucun accès à une base distante.

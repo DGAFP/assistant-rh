@@ -11,7 +11,7 @@ from assistant_rh_api.core.prompt_policy import NO_ANSWER
 from assistant_rh_api.core.sources import SOURCES_MARKER
 from assistant_rh_api.db.run_store import json_data
 
-from apps.api.tests.auth_fakes import service
+from apps.api.tests.auth_fakes import individual_context, service
 from apps.api.tests.chat_fakes import Runtime
 
 pytestmark = pytest.mark.anyio
@@ -285,3 +285,13 @@ async def test_request_date_is_captured_once_in_paris_even_when_utc_date_differs
     assert run.timestamp.day == 15
     assert "2026-09-16" in runtime.llm.calls[0].messages[0].content
     assert "2026-09-16" in runtime.llm.calls[-1].messages[0].content
+
+
+async def test_run_author_comes_from_the_verified_principal():
+    runtime = Runtime()
+    context = individual_context()
+    run, _ = await runtime.service.complete(ChatInput("assistant-rh", "Question RH", conversation_id="client-correlation"), context)
+    assert run.author_user_id == context.user_id
+    assert runtime.runs.rows[run.turn_id].author_user_id == context.user_id
+    group_run, _ = await runtime.service.complete(ChatInput("assistant-rh", "Question RH"), await auth())
+    assert group_run.author_user_id is None
