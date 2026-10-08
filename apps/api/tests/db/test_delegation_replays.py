@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 
+import psycopg
 import pytest
 from assistant_rh_api.core.errors import DatabaseConflict, InvalidCredentials
 from assistant_rh_api.db.auth_stores import DelegationReplayStore
@@ -54,7 +55,7 @@ async def count(database):
         return (await (await connection.execute("SELECT count(*) FROM public.api_delegation_replays")).fetchone())[0]
 
 
-async def test_claim_expiring_while_waiting_for_a_deleted_tombstone_is_refused(repository_db):
+async def test_claim_expiring_while_waiting_for_a_deleted_tombstone_is_refused(repository_db, repository_dsn):
     store = DelegationReplayStore(repository_db)
     async with repository_db.transaction() as connection:
         expires = (await (await connection.execute("SELECT clock_timestamp() + interval '2 seconds'")).fetchone())[0]
@@ -65,12 +66,14 @@ async def test_claim_expiring_while_waiting_for_a_deleted_tombstone_is_refused(r
             await deleting.execute("DELETE FROM public.api_delegation_replays WHERE jti = %s", ("a" * 32,))
             claimed = tasks.create_task(store.claim("a" * 32, "kid", expires))
             # Ensure INSERT is waiting for the concurrent purge before crossing expiry.
-            async with asyncio.timeout(1), repository_db.transaction(read_only=True) as observing:
-                while not (
-                    await (
-                        await observing.execute("SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE %s = ANY(pg_blocking_pids(pid)))", (pid,))
-                    ).fetchone()
-                )[0]:
+            # Autocommit refreshes pg_stat_activity on every poll; one long transaction
+            # can cache the session list before the pool opens the blocked connection.
+            async with asyncio.timeout(1), await psycopg.AsyncConnection.connect(repository_dsn, autocommit=True) as observing:
+                while True:
+                    cursor = await observing.execute("SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE %s = ANY(pg_blocking_pids(pid)))", (pid,))
+                    blocked = await cursor.fetchone()
+                    if blocked[0]:
+                        break
                     await asyncio.sleep(0.01)
             await deleting.execute("SELECT pg_sleep_until(%s)", (expires + timedelta(milliseconds=10),))
     assert not claimed.result()

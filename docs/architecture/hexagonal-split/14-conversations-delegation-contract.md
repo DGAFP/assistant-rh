@@ -3,6 +3,28 @@
 > Contrat du 2026-10-07 pour [#596](https://github.com/DGAFP/assistant-rh/issues/596), côté API. Il précise la [note d'identité individuelle](09-conversations-individual-access.md) et applique le choix « confiance de service » du 6 octobre, **proposé à la revue DGAFP** (le DAT v0.4 le classe parmi les arbitrages à clôturer).
 > Aucun déploiement ni changement de base staging/production n'est associé à ce document. L'intégration côté Conversations relève de [#595](https://github.com/DGAFP/assistant-rh/issues/595).
 
+## Comprendre le parcours
+
+Conversations identifie la personne et vérifie ses droits. À chaque appel, son serveur
+envoie à l'API un message signé indiquant la personne et les ministères autorisés.
+Ce message, appelé **assertion**, a une durée de vie maximale de deux minutes et ne peut
+servir qu'une fois. L'API vérifie la signature et les droits avant de répondre.
+
+Une réponse enregistrée en base est appelée un **run**. Elle conserve son auteur et
+son ministère. Par exemple, Alice peut modifier son propre feedback tant qu'elle garde
+accès au ministère concerné ; Bob ne le peut pas, même s'il travaille dans ce ministère.
+Les anciennes conversations collectives restent collectives.
+
+| PR | Ce qu'elle apporte |
+|---|---|
+| #597 | Enregistrer et remplacer un feedback sans perdre sa version précédente |
+| #601 | Vérifier l'identité et les droits transmis par Conversations |
+| #602 | Installer le schéma individuel et mémoriser les assertions déjà utilisées |
+| #603 | Limiter les écritures SQL et sécuriser la purge contre les décalages d'horloge |
+
+Le **rôle SQL** désigne les permissions d'une application sur la base ; il ne représente
+pas l'utilisateur connecté. Les sections suivantes détaillent le contrat technique.
+
 ## Acteurs et identités
 
 | Identité | Porteur | Vérifiée par |
