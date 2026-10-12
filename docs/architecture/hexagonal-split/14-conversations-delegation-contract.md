@@ -1,7 +1,7 @@
 # Contrat de délégation Conversations → API
 
-> Contrat du 2026-10-07 pour [#596](https://github.com/DGAFP/assistant-rh/issues/596), côté API. Il précise la [note d'identité individuelle](09-conversations-individual-access.md) et applique le choix « confiance de service » du 6 octobre, **proposé à la revue DGAFP** (le DAT v0.4 le classe parmi les arbitrages à clôturer).
-> Aucun déploiement ni changement de base staging/production n'est associé à ce document. L'intégration côté Conversations relève de [#595](https://github.com/DGAFP/assistant-rh/issues/595).
+> Contrat du 2026-10-07, réaligné le 2026-10-12 pour [#596](https://github.com/DGAFP/assistant-rh/issues/596). L’extrait validé du DAT communiqué le 12 octobre confirme la répartition Conversations/API, l’admission et le contrôle auteur + habilitations courantes. Il ne prescrit ni Ed25519 ni les durées exactes : ce document décrit le profil technique livré, dont les paramètres et la recette restent à consigner selon la [note de revue](15-revue-dgafp-confiance-service.md).
+> Socle API fusionné dans `dev` (#597, #601, #602, #603), promotion staging suivie dans #611 ; aucun déploiement ou changement de base par ce document. Les adaptations d’identité dans `DGAFP/conversations` relèvent de #596, leur intégration produit et le feedback de [#595](https://github.com/DGAFP/assistant-rh/issues/595).
 
 ## Comprendre le parcours
 
@@ -37,12 +37,12 @@ L'API ne tient ni registre d'utilisateurs ni appartenance aux groupes. Un change
 
 ## Mécanisme retenu : assertion signée par requête
 
-Plutôt que mTLS ou un serveur d'autorisation OAuth, le backend signe **une assertion courte par appel** (JWS compact, [RFC 7515](https://www.rfc-editor.org/rfc/rfc7515)), transmise dans `Authorization: Bearer`. C'est le principe des *client credentials* par assertion ([RFC 7523](https://www.rfc-editor.org/rfc/rfc7523)), sans serveur d'autorisation à exploiter :
+Le profil livré ne nécessite pas de choisir entre mTLS et OAuth : le backend signe **une assertion courte par tentative HTTP** (JWS compact, [RFC 7515](https://www.rfc-editor.org/rfc/rfc7515)), transmise dans `Authorization: Bearer`. Il s’agit d’un contrat de délégation direct, sans échange de jeton OAuth ni serveur d’autorisation :
 
 - l'authentification du service et le contenu de la délégation sont liés par la même signature : un intermédiaire ne peut pas modifier l'utilisateur ou le périmètre ;
 - le mécanisme fonctionne derrière un proxy qui termine TLS, ce que mTLS n'autorise pas sans propagation de certificat ;
 - l'API ne détient que des clés publiques : la compromission de sa configuration ne permet pas de forger d'assertion ;
-- le client OpenAI de Conversations transmet l'assertion comme `api_key`, sans en-tête propriétaire.
+- l’authentification HTTP du client Conversations remplace `Authorization` juste avant chaque envoi ; les retries automatiques du SDK sont désactivés. Aucun bearer n’est figé dans `api_key`, ni partagé entre utilisateurs. Toute nouvelle tentative relit session et droits puis signe un nouveau `jti`. L’usage unique n’assure pas l’idempotence d’une question ; le feedback a son propre contrat transactionnel.
 
 ```mermaid
 sequenceDiagram
@@ -103,7 +103,7 @@ L'API n'est joignable que depuis le backend Conversations, par réseau privé, s
 
 ## Journaux
 
-Ni assertion, ni clé, ni jeton ProConnect, ni contenu de délégation ne sont journalisés. Seul le pseudonyme `audit_session` est persisté pour l'audit des feedbacks. La corrélation par identifiant de requête entre Conversations et l'API reste à livrer.
+Ni assertion, ni clé, ni jeton ProConnect, ni contenu de délégation ne sont journalisés. Seul le pseudonyme `audit_session` est persisté pour l’audit des feedbacks. Conversations génère un identifiant aléatoire par tentative (`X-Client-Request-Id`, 32 caractères hexadécimaux minuscules). L’API accepte une valeur unique de ce format, sinon en génère une ; elle renvoie `X-Request-Id` et journalise cet identifiant avec le statut HTTP, sans contenu ni identité. La corrélation ne vaut jamais authentification. La recette cible doit vérifier la visibilité des deux journaux.
 
 ## Risques acceptés
 
@@ -114,8 +114,8 @@ La purge et le contrôle final d'expiration utilisent l'horloge PostgreSQL commu
 
 ## Reste à faire pour clore #596
 
-1. Validation DGAFP du choix « confiance de service », ou consignation de l'écart au DAT : voir la [note de revue](15-revue-dgafp-confiance-service.md).
-2. Côté Conversations ([#595](https://github.com/DGAFP/assistant-rh/issues/595)) : admission sur invitation, habilitations ministérielles, catalogue filtré, signature des assertions, pseudonyme d'audit, conservation de la clé privée côté serveur.
+1. Consigner la déclinaison technique du DAT (profil Ed25519, durées, rotation et opérations en cours) et toute validation complémentaire requise, sans rouvrir les principes déjà confirmés : [note de revue](15-revue-dgafp-confiance-service.md).
+2. Intégrer les adaptations #596 dans `DGAFP/conversations` : admission sur invitation ou validation centrale DGAFP, groupes multi-appartenance, modèles par groupe, catalogue filtré, ministère fixe et historique masqué/rétabli, signature et audit de session côté serveur. #595 raccorde le feedback et les messages aux complétions ; #594 raccorde les documents protégés.
 3. Vérifier la stabilité de l'identifiant utilisateur Conversations (jamais réattribué ; compte supprimé puis recréé).
 4. Restrictions SQL ([#599](https://github.com/DGAFP/assistant-rh/issues/599)) : rôles d'exécution non propriétaires et garde réservé à `arh_api` (`20261007130000_api_runtime_roles.sql`), à provisionner sur Scaleway selon le [runbook](../../deployment/SCALEWAY_DB_RUNTIME_ROLES.md) avant de configurer la délégation.
 5. Corrélation par identifiant de requête et test de bout en bout connexion → catalogue → chat → run attribué depuis Conversations, avec reconnexion, expiration et révocation.

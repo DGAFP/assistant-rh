@@ -33,6 +33,7 @@ from assistant_rh_api.handlers.auth import create_auth_router
 from assistant_rh_api.handlers.auth_body import AuthBodyLimit
 from assistant_rh_api.handlers.chat import NonStreamRequests, create_chat_router
 from assistant_rh_api.handlers.chat_stream import StreamSettings, StreamWorkers
+from assistant_rh_api.handlers.correlation import RequestCorrelation
 from assistant_rh_api.handlers.errors import register_error_handlers
 from assistant_rh_api.handlers.feedback import create_feedback_router
 from assistant_rh_api.handlers.health import create_health_router
@@ -130,6 +131,7 @@ def create_app(
     application.state.non_stream_requests = NonStreamRequests()
     application.state.stream_workers = StreamWorkers(stream_settings or StreamSettings.from_environment(os.environ if environ is None else environ))
     application.add_middleware(AuthBodyLimit)
+    application.add_middleware(RequestCorrelation)
     register_error_handlers(application)
     application.include_router(create_health_router())
     application.include_router(create_auth_router())
