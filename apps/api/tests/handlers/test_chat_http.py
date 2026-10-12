@@ -10,7 +10,7 @@ from assistant_rh_api.core.errors import DatabaseFailure, DatabaseUnavailable
 from assistant_rh_api.core.sources import SOURCES_MARKER
 from assistant_rh_api.db.run_store import json_data
 from assistant_rh_api.handlers.app import create_app
-from assistant_rh_api.handlers.chat_body import MAX_BODY, MAX_CONTENT
+from assistant_rh_api.handlers.chat_body import MAX_BODY, MAX_CONTENT, MAX_CONVERSATION_ID
 
 from apps.api.tests.auth_fakes import service
 from apps.api.tests.chat_fakes import Runtime
@@ -118,6 +118,7 @@ async def test_history_validation_pairing_and_text_parts(chat):
         ({"metadata": []}, "invalid_request"),
         ({"metadata": {"conversation_id": 3}}, "invalid_request"),
         ({"metadata": {"conversation_id": "correlation\x00"}}, "invalid_request"),
+        ({"metadata": {"conversation_id": "x" * (MAX_CONVERSATION_ID + 1)}}, "invalid_request"),
         *[
             ({"messages": [{"role": "user", "content": content}]}, "empty_user_message")
             for content in ["", " \t\n\u00a0", [], [{"type": "text", "text": " "}, {"type": "text", "text": "\n"}]]
@@ -179,9 +180,7 @@ async def test_content_and_body_limits_are_inclusive_with_or_without_length(chat
 
 async def test_blank_last_question_does_not_fall_back_to_a_previous_question(chat):
     client, runtime, *_ = chat
-    response = await client.post(
-        "/v1/chat/completions", json={**BODY, "messages": [*BODY["messages"], {"role": "user", "content": " "}]}
-    )
+    response = await client.post("/v1/chat/completions", json={**BODY, "messages": [*BODY["messages"], {"role": "user", "content": " "}]})
     assert response.status_code == 422 and response.json()["error"]["code"] == "empty_user_message"
     assert not runtime.llm.calls and not runtime.runs.calls and runtime.config.calls == 0
 
@@ -480,3 +479,11 @@ async def test_non_stream_rejects_new_work_after_shutdown():
         response = await client.post("/v1/chat/completions", json=BODY, headers={"Authorization": "Bearer " + issued.access_token})
     assert response.status_code == 503 and response.json()["error"]["code"] == "service_unavailable"
     assert runtime.config.calls == 0 and not runtime.runs.rows
+
+
+async def test_client_correlation_ids_up_to_the_bound_are_persisted(chat):
+    client, runtime, _, _ = chat
+    for correlation in ("6f1c2a9e-4b7d-4e8a-9c3f-2d5b8a7e1f04", "c" * MAX_CONVERSATION_ID):
+        response = await client.post("/v1/chat/completions", json={**BODY, "metadata": {"conversation_id": correlation}})
+        assert response.status_code == 200
+        assert runtime.runs.rows[response.json()["id"].removeprefix("chatcmpl-")].conversation_id == correlation
