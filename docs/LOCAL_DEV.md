@@ -4,6 +4,114 @@ Environnement d'expérimentation entièrement local : un Postgres/pgvector en
 Docker, seedé depuis un dump de staging (corpus + goldset + config runtime),
 sur lequel on peut lancer des evals RAG sans toucher aux bases partagées.
 
+## Conversations et API — `make dev`
+
+Cette stack de développement est distincte des bases d’eval et des tests API
+synthétiques décrites plus bas. Prérequis : Linux/macOS, Docker local avec
+Compose **2.30+**, Python **3.10+**, Git et OpenSSL avec Ed25519. Les dépendances
+Python et Node des applications sont installées dans leurs images Docker.
+
+Renseigner dans le `.env` du worktree, sans écraser un fichier existant :
+
+```dotenv
+ALBERT_API_KEY=...
+SCALEWAY_API_KEY=...
+SCW_POSTGRES_DSN_STAGING=postgresql://lecteur:mot-de-passe@hote-staging:port/base?sslmode=require
+# Optionnel : utiliser une copie de Conversations déjà présente.
+CONVERSATIONS_DIR=/chemin/vers/conversations
+```
+
+`make dev` clone sinon `DGAFP/conversations` dans `.dev/conversations`, à la
+révision `b3d3018a93759515b0c828f58fb8d9c1d9182e78` de la
+[PR Conversations #1](https://github.com/DGAFP/conversations/pull/1). Cette révision
+contient la connexion locale et la délégation individuelle. Une copie fournie
+doit contenir ce commit ; la commande ne change pas sa branche et n’écrase pas
+ses modifications. La mise à jour de cette épingle est volontaire et revue.
+
+```bash
+make dump     # importer les corpus/config ; possible avant le premier make dev
+make dev      # construire si nécessaire, migrer et démarrer les quatre services
+make dev-logs # suivre les logs ; Ctrl-C quitte seulement le suivi
+make dev-down # arrêter les services, sans supprimer le volume
+make dev-rebuild # reconstruire les images après un changement de dépendances
+```
+
+| Service | Adresse par défaut | Variable du port |
+|---|---|---|
+| Interface Conversations | http://localhost:3000 | `DEV_FRONTEND_PORT` |
+| Backend et administration | http://localhost:8071/admin/ | `DEV_BACKEND_PORT` |
+| API RH | http://localhost:8000/healthz | `DEV_API_PORT` |
+| PostgreSQL | 127.0.0.1:55435 | `DEV_DB_PORT` |
+
+Les quatre ports sont liés uniquement à la boucle locale. Chaque worktree a son
+projet Compose et son volume dédiés ; choisir des ports distincts pour lancer
+plusieurs worktrees simultanément. La connexion navigateur utilise **localhost**
+pour partager les cookies entre l’interface et le backend. Le rechargement des
+sources API, Django et Vite est actif ; les changements de dépendances nécessitent
+`make dev-rebuild`, qui renouvelle aussi les volumes anonymes de dépendances.
+Les démarrages ordinaires réutilisent les images et les dépendances présentes.
+
+Deux comptes sont créés au premier démarrage :
+
+- `dev@example.invalid`, utilisateur admis avec accès MATTE/MSO/MI/MASA ;
+- `admin@example.invalid`, administrateur local pour gérer les comptes et droits.
+
+Leur mot de passe initial est généré dans `.dev/password` (`cat .dev/password`).
+Les démarrages suivants préservent les mots de passe et droits modifiés. Le mode
+OIDC est désactivé, la session Django est persistée en base. Les clés de signature,
+d’audit et Django sont générées une seule fois dans `.dev/`, hors Git et hors
+contexte de build ; aucune clé IA ne va au navigateur. Seules les variables IA
+explicitement autorisées sont transmises à l’API. Sa base est toujours le service
+Docker local, même si `.env` contient un `SCW_POSTGRES_DSN` distant.
+
+Sans dump, `make dev` démarre avec un schéma vide et une configuration par défaut.
+Pour obtenir des réponses RAG, importer les corpus et renseigner les clés IA :
+**les appels Albert/Scaleway restent réels**. Les pièces jointes et le feedback
+de l’interface restent soumis aux limitations du fork (#594/#595).
+
+### Rafraîchir les corpus avec `make dump`
+
+La commande accepte uniquement `SCW_POSTGRES_DSN_STAGING`, jamais un fallback
+vers le DSN runtime. Le client PostgreSQL 17 tourne dans Docker, en lecture seule.
+L’archive contient uniquement douze tables : `rag_documents`, `rag_sections`,
+`rag_config`, `system_prompts`, `acronyms`, et les sept `rag_chunks_*` connus
+(matte, mso, mi, masa, service_public, dgafp, rgrh). Elle ne contient ni historiques,
+feedbacks, traces, groupes, sessions, goldset ni comptes de staging.
+
+La restauration se fait d’abord dans `assistant_rh_import` dans **le conteneur
+de ce worktree**, par socket local : aucun DSN de destination n’est accepté.
+Les extensions et le schéma runtime API sont installés, avec un compte runtime
+non propriétaire rattaché à `arh_api`. La seule contrainte omise est
+`rag_documents_legacy_doc_id_fkey`, lien historique vers `documents`, une table
+hors périmètre qui n’est pas utilisée par l’API. Les contraintes entre documents
+et sections ainsi que la hiérarchie des sections restent présentes.
+Après validation, l’API est brièvement
+arrêtée si elle tournait, la nouvelle base prend le nom `assistant_rh` et l’API
+redémarre. L’ancienne base reste disponible sous `assistant_rh_previous` jusqu’au
+prochain import réussi. Si l’export ou la restauration échoue, la base courante
+et les services existants sont conservés.
+
+Les **comptes et conversations Django sont conservés** dans la base séparée
+`conversations`. Le runtime API est neuf après import : ses anciens runs et
+feedbacks locaux restent seulement dans `assistant_rh_previous`. L’archive
+`.dev/dumps/staging.dump` et le rapport de comptages `.dev/dump-counts.txt` restent
+locaux et ignorés par Git. Aucun rôle, mot de passe ou propriétaire de staging
+n’est restauré. Ne pas effectuer l’export au milieu d’un backfill d’embeddings.
+
+Les commandes refusent `DOCKER_HOST`/`DOCKER_CONTEXT` et utilisent explicitement
+le contexte Docker `default`. Le port staging doit être joignable depuis Docker ;
+en cas de tunnel, fournir une URI staging explicitement accessible au conteneur.
+Une erreur de réseau ou un schéma staging incompatible fait échouer l’import,
+sans basculer vers une autre source ou un autre serveur.
+
+Validation locale du 12 octobre 2026 : import réel des douze tables staging
+(4 882 documents, 10 412 sections et 25 940 chunks), démarrage des quatre services,
+connexion navigateur avec le compte ordinaire, question MATTE traitée par Albert
+et run `completed` enregistré en local, réponse retrouvée après reconnexion sans
+erreur JavaScript. Un second `make dev` réutilise les images et données. Les douze
+tests de garde de `tests/test_dev_stack.py`, Ruff et la validation Compose/YAML
+passent. Ce contrôle valide le lancement local, pas un déploiement partagé.
+
 ## 1. Démarrer la base locale
 
 ```bash

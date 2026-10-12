@@ -40,6 +40,21 @@ Query
 Le module principal est **`packages/rag-pipeline/`**, entièrement autonome. Voir `docs/PIPELINE.md`
 pour la documentation détaillée.
 
+### Développer avec Conversations et l’API
+
+Avec Docker Compose, Python 3, Git et OpenSSL, renseigner les clés IA et
+`SCW_POSTGRES_DSN_STAGING` dans `.env`, puis :
+
+```bash
+make dump      # copie les corpus/config staging dans un Postgres local dédié
+make dev       # lance Conversations (http://localhost:3000) et l’API
+make dev-down  # arrête les services en conservant les données
+```
+
+La connexion utilise des comptes locaux. Le fork est épinglé et cloné
+automatiquement, ou choisi via `CONVERSATIONS_DIR`. Voir
+[la configuration et le périmètre du dump](docs/LOCAL_DEV.md#conversations-et-api--make-dev).
+
 ### Structure du projet
 
 ```
