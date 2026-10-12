@@ -1,4 +1,4 @@
-"""Request-owned execution state and values shared by C6 and future C7."""
+"""Request-owned execution state and values shared by non-stream and streaming execution."""
 
 import asyncio
 from collections.abc import Awaitable, Callable
@@ -9,7 +9,7 @@ from typing import Literal, Protocol
 from assistant_rh_api.core.errors import InferenceFailure
 from assistant_rh_api.core.models.configuration import JsonValue
 from assistant_rh_api.core.models.context import ContextItem
-from assistant_rh_api.core.models.conversations import TraceEvent
+from assistant_rh_api.core.models.conversations import RunMetrics, TraceEvent
 from assistant_rh_api.core.models.inference import Message, TokenUsage
 from assistant_rh_api.core.ports.system import ClockPort
 from assistant_rh_api.core.trace_values import attempt_trace, trace_payload
@@ -34,7 +34,7 @@ class PipelineEvent:
 
 class EventSinkPort(Protocol):
     async def publish(self, event: PipelineEvent) -> None:
-        """Observe progress with backpressure; a future C7 sink owns its queue."""
+        """Observe progress with backpressure; the transport sink owns its bounded queue."""
         ...
 
 
@@ -68,12 +68,51 @@ class RunContext:
     events: list[TraceEvent] = field(default_factory=list)
     diagnostics: dict[str, JsonValue] = field(default_factory=dict)
     partial_answer: str = ""
+    started_at: float = field(init=False)
+    first_token_at: float | None = None
+    generation_started_at: float | None = None
+
+    def __post_init__(self) -> None:
+        self.started_at = self.clock.monotonic()
+
+    def metrics(self, *, stream: bool) -> RunMetrics:
+        first = self.first_token_at
+        generation = self.generation_started_at
+        return RunMetrics(
+            elapsed_ms=max(0, int((self.clock.monotonic() - self.started_at) * 1000)),
+            stream=stream,
+            first_token_ms=max(0, int((first - self.started_at) * 1000)) if first is not None else None,
+            generation_first_token_ms=max(0, int((first - generation) * 1000)) if first is not None and generation is not None else None,
+        )
 
     async def publish(self, stage: str, phase: Literal["started", "completed", "failed", "cancelled", "delta"], attempt: str = "") -> None:
         if self.sink is not None:
             await self.sink.publish(PipelineEvent(self.turn_id, stage, phase, attempt))
 
-    async def stage[T](self, name: str, operation: Callable[[], Awaitable[T]], *, project: Callable[[T], JsonValue], attempt: str = "") -> T:
+    def generation_started(self) -> None:
+        self.generation_started_at = self.clock.monotonic()
+
+    def first_token(self) -> None:
+        if self.first_token_at is None:
+            self.first_token_at = self.clock.monotonic()
+
+    async def delta(self, text: str) -> None:
+        self.cancellation.checkpoint()
+        if text:
+            self.first_token()
+        self.partial_answer += text
+        if self.sink is not None and text:
+            await self.sink.publish(PipelineEvent(self.turn_id, "generator", "delta", text=text))
+
+    async def stage[T](
+        self,
+        name: str,
+        operation: Callable[[], Awaitable[T]],
+        *,
+        project: Callable[[T], JsonValue],
+        measure: Callable[[T], JsonValue] | None = None,
+        attempt: str = "",
+    ) -> T:
         self.cancellation.checkpoint()
         start = self.clock.monotonic()
         try:
@@ -106,6 +145,7 @@ class RunContext:
                 status="ok",
                 attempt_name=attempt,
                 output_ref=output,
+                metrics=trace_payload(measure(result)) if measure is not None else None,
             )
         )
         await self.publish(name, "completed", attempt)

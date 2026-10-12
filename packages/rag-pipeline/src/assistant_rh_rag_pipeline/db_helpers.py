@@ -262,7 +262,10 @@ def get_acronym_dict() -> Dict[str, str]:
         return {}
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT acronym, expansion FROM acronyms ORDER BY priority DESC")
+            cur.execute("""
+                SELECT acronym, expansion FROM public.acronyms a
+                ORDER BY COALESCE((to_jsonb(a)->>'priority')::integer, 0) DESC, acronym COLLATE "C", id
+            """)
             return {row[0]: row[1] for row in cur.fetchall()}
     except psycopg.Error as exc:
         logger.warning("get_acronym_dict failed: %s", exc)

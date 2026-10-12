@@ -14,6 +14,9 @@ def main() -> None:
         host=os.getenv("API_HOST", "0.0.0.0"),
         port=int(os.getenv("API_PORT", "8000")),
         proxy_headers=False,
+        # Uvicorn waits for requests before lifespan shutdown. Bound that
+        # wait so open SSE streams are cancelled and their cleanup is joined.
+        timeout_graceful_shutdown=5,
     )
 
 

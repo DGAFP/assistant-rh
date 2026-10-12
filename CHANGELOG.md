@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.14.0](https://github.com/DGAFP/assistant-rh/compare/v0.13.0...v0.14.0) (2026-09-25)
+
+
+### Features
+
+* assemble real non-stream Chat Completions API ([#560](https://github.com/DGAFP/assistant-rh/issues/560)) ([67fe730](https://github.com/DGAFP/assistant-rh/commit/67fe7301fb9260dd4551612baa9577348a539b34))
+* **feedback:** automatiser la synchronisation Grist sur Scaleway ([#581](https://github.com/DGAFP/assistant-rh/issues/581)) ([df80290](https://github.com/DGAFP/assistant-rh/commit/df802909bedaa64ed3b79f9a99aebe8ba967b2a5))
+
+
+### Bug Fixes
+
+* address API and Grist release review findings ([39f231c](https://github.com/DGAFP/assistant-rh/commit/39f231c783396c33cdef2d64c7b8873c935f81b8))
+* **api:** isolate private conformance evidence and session metadata ([#588](https://github.com/DGAFP/assistant-rh/issues/588)) ([dee539b](https://github.com/DGAFP/assistant-rh/commit/dee539ba52ffa331dd8da60989b66c5520b817ad))
+* **api:** preserve retrieval outages and authoritative sources ([#586](https://github.com/DGAFP/assistant-rh/issues/586)) ([69952ee](https://github.com/DGAFP/assistant-rh/commit/69952ee5ac132561c9db091bb0e7062906dc7a01))
+* **api:** redact private links consistently in answers and traces ([005322b](https://github.com/DGAFP/assistant-rh/commit/005322b39af326c5aa83c5e7ad0800b80140768b))
+* **api:** redact private URLs from source labels ([0cd31e1](https://github.com/DGAFP/assistant-rh/commit/0cd31e187b5be165b3fd1a8f93619abbdda12ad1))
+* **api:** redact private URLs from source labels ([0cd31e1](https://github.com/DGAFP/assistant-rh/commit/0cd31e187b5be165b3fd1a8f93619abbdda12ad1))
+* sécuriser les réponses API et la borne de synchronisation Grist ([a2e609f](https://github.com/DGAFP/assistant-rh/commit/a2e609f3a8cccecfe559dda186b07131cf18f2f3))
+* sécuriser les réponses API et la borne de synchronisation Grist ([a2e609f](https://github.com/DGAFP/assistant-rh/commit/a2e609f3a8cccecfe559dda186b07131cf18f2f3))
+
 ## [0.13.0](https://github.com/DGAFP/assistant-rh/compare/v0.12.2...v0.13.0) (2026-09-17)
 
 

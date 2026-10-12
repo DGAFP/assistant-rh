@@ -495,13 +495,15 @@ def build_log_row(
         or ""
     )
     generation_provider = str(
-        v3_metadata.get("generator_provider")
+        v3_metadata.get("generator_provider_used")
+        or v3_metadata.get("generator_provider")
         or getattr(runtime_config, "llm_provider", "")
         or _enum_value(getattr(generation_config, "provider", ""))
         or ""
     )
     generation_model = str(
-        v3_metadata.get("generator_model")
+        v3_metadata.get("generator_model_used")
+        or v3_metadata.get("generator_model")
         or getattr(runtime_config, "v3_generator_model", "")
         or getattr(generation_config, "model", "")
         or getattr(runtime_config, "llm_model", "")

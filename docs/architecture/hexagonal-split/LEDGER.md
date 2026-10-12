@@ -754,3 +754,268 @@ le moteur sur les mêmes entrées héritées, pas l'équivalence de ces SQL ambi
 Validation finale : **924 tests API réussis, aucun ignoré**, dont le test SQL
 indexé et les 18 contrôles du compagnon ; Ruff, mypy (86 fichiers), quatre
 contrats d'import et auto-check du bundle historique 7/56 passent.
+
+### C7 — streaming SSE résilient (17 septembre 2026)
+
+[#464](https://github.com/DGAFP/assistant-rh/issues/464), base C6 `67fe730` :
+[rapport et reproduction](12-c7-streaming.md), avec carte d'entrée A5 mise à
+jour avant implémentation. La route accepte `stream=true`, réutilise les
+événements/annulations C6 et le générateur C5, puis persiste avant sources,
+terminal, usage optionnel et `[DONE]`. Erreurs post-headers → `stream_error`,
+sans marqueur de succès. Runs failed/cancelled avec texte partiel, traces et
+diagnostics ; aucune source autorisante partielle. Double panne journalisée
+avec `turn_id`, sans erreur interne exposée.
+
+**Adaptations explicites, propriétaire C7** :
+
+- Le moteur C6 étant désormais async, admission de **8 workers asyncio** par
+  processus au lieu d'exécuter le runtime synchrone historique dans un thread.
+  File de 32 événements, fragments de 4 096 caractères, pings 10 s ; saturation
+  avant headers et backpressure jusqu'au provider. Bornes configurables et
+  testées ; pas de nouvelle boucle pour les clients HTTP/DB partagés.
+- Le transport API stream reprend les mêmes entrées générateur que C6 pour
+  respecter C1 : historique au query processor, sans ajout exclusivement en
+  génération stream. La capacité historique de `Generator.stream` C5 et le
+  runtime Streamlit restent inchangés. Égalité des requêtes, texte et sources
+  vérifiée avec ports déterministes ; pas de promesse d'égalité LLM live.
+- Finalisation protégée et bornée à 10 s par tentative. Une déconnexion pendant
+  un commit déjà commencé attend son résultat ; elle ne réécrit pas un succès
+  commité. L'arrêt attend aussi le transport en cas d'envoi bloqué. La limite
+  d'envoi est 30 s, les délais I/O B3/B2 restent applicables.
+- Le gateway demande désormais `stream_options.include_usage=true`. L'usage
+  inconnu conserve les zéros C1. La garde C6 temporaire refusant `stream=true`
+  est remplacée par les preuves positives ; les types invalides restent rejetés.
+
+**Validation finale** : **956 tests API passent, aucun ignoré**, avec PostgreSQL
+17/pgvector jetable ; **1 548 tests historiques passent, 46 ignorés** ; Ruff,
+mypy (87 fichiers) et **4 contrats d'import** passent. Les tests TCP Uvicorn
+vérifient SDK complet/erreur, ping pendant retrieval, disponibilité concurrente
+et annulation réelle après fermeture socket. Les tests DB lisent le run commité
+au moment de l'envoi terminal et couvrent rollback/annulation/droits sources.
+
+**Instance `conversations` : 2 tests passent**, image A2 épinglée (0.0.22,
+Pydantic-AI 2.22.0, SDK 2.52.0), contre la vraie route/pipeline et des ports
+synthétiques, via bearer B4 éphémère. SDK du dépôt 2.38.0. Succès avec sources
+et `chatcmpl-*`, et propagation `APIError(stream_error)` sans exposition du
+bearer. Exécution locale et TCP/Docker sur la VM homelab
+`assistant-rh.discus-iguana.ts.net` ; aucune seconde machine revendiquée.
+Les warnings de teardown/cache Django sont documentés ; conteneurs jetables
+supprimés après preuve. Aucun accès distant, provider live ou déploiement.
+M1/#465, proxy D4 et présentation d'erreur UI du fork restent distincts.
+
+**Correction de revue PR #579 — arrêt du serveur** : Uvicorn attend les requêtes
+avant le shutdown du lifespan. Le point d'entrée borne maintenant cette attente
+à cinq secondes ; les annulations rejoignent ensuite le nettoyage existant.
+Compose réserve 150 secondes avant SIGKILL pour la fermeture provider et la
+finalisation DB. Aucun changement du core ni gestionnaire de signal ajouté.
+Deux tests TCP utilisent les options du vrai point d'entrée avec un client
+toujours connecté : génération annulée et commit déjà commencé préservé, avec
+attente de la persistance dans les deux cas. **184 tests ciblés passent**, Ruff,
+mypy (87 fichiers), quatre contrats d'import et validation Compose réussissent.
+Les ports de ces tests sont synthétiques ; aucune DB distante ni provider live.
+
+### C7 — lisibilité et validation locale complète (21 septembre 2026)
+
+PR [#579](https://github.com/DGAFP/assistant-rh/pull/579), code `21a4245` :
+lecture des événements, succès et erreur séparés dans le transport ; attente
+protégée du nettoyage mutualisée, propriété des tâches documentée. Une erreur
+de transport `StreamUnavailable` représente la saturation et l'arrêt, sans
+les assimiler à une panne de base. Les quatre contrats d'import passent.
+
+**958 tests API distincts validés** sur PostgreSQL synthétique local : 953 au
+premier passage, puis six tests de coexistence SQLAlchemy réussis après
+correction du DSN local en URI, dont un déjà réussi. **1 548 tests historiques
+réussis, 46 ignorés ; 2 tests Conversations réussis**. Les 178 tests ciblés du
+refactoring, Ruff, mypy (87 fichiers) et les CI Tests/CodeQL passent également.
+
+Snapshot cohérent du corpus staging lu sans écriture distante et restauré
+dans une base locale dédiée : 4 882 documents, 10 397 sections, 25 890 chunks.
+Aucun compte, conversation, feedback ou log distant copié. Les fixtures pytest
+utilisent une autre base synthétique ; les comptages du corpus sont préservés.
+
+Test réel Albert/Scaleway autorisé : sept étapes RAG, deux pings SSE, une source,
+run `completed` lisible avant `[DONE]`, 27,7 secondes. Archive et configuration
+privées restent hors Git ; base locale persistante conservée. pgvector local
+0.8.6 contre 0.8.2 en staging et index ANN reconstruits : preuve d'intégration,
+sans revendication de parité exacte de retrieval ou de qualité goldset.
+[Détails et limites](12-c7-streaming.md#revue-et-validation-complémentaire-du-21-septembre-2026).
+Aucun déploiement ; M0/#439 est clos, M1/#465 et la validation proxy D4 restent
+les étapes suivantes.
+
+### M1 — parité et métriques des runs — 2026-09-21
+
+[#465](https://github.com/DGAFP/assistant-rh/issues/465),
+[PR #580](https://github.com/DGAFP/assistant-rh/pull/580), prérequis C7 #579.
+**Décision : GO technique vers D1–D4 après intégration de ces PRs.**
+
+L'audit des écritures corrige les métriques SQL manquantes du nouveau runtime,
+le provider/modèle après fallback, l'environnement des traces et la mesure
+séparée des TTFT run/génération. Le gel JSON conserve désormais l'ordre des
+références fourni par PostgreSQL pour préserver leur rendu dans le prompt ;
+un test différentiel SQL reproduit le défaut avant correction et passe après.
+La mesure reste dans le core, sa projection SQL dans l'adaptateur.
+
+Code final mesuré `17c1955`, configuration `51d6256b…`, sources `5ddfa118…`.
+Replays M0b exacts **7/7**, 27 sorties d'étapes et cinq contrôles négatifs ;
+**964 tests API** réussis, **1 551 historiques / 45 ignorés**, Ruff, mypy
+(89 fichiers) et quatre contrats d'import passent. La section « Reports
+depuis le runtime existant » est vide ; fallbacks, no-answer, isolation
+concurrente, annulation et finalisation atomique sont couverts.
+
+Panel final local **#243 historique / #245 core corrigé**, 98/98 chacun,
+zéro erreur d'item/juge : **64/98 vs 67/98 PASS**, rappel **0,729138** identique.
+Les seuils de baisse maximale de 0,05 passent aussi contre M0a #240. Hors
+questions déjà taguées instables, les deux sont à 62/90 ; MATTE passe de 7 à
+5 PASS sur 12 et reste un point à suivre en canary. Aucun réglage qualité.
+
+Revue du 23/09/2026 (`fbd3428`) : la colonne `model` n'est plus vide sans
+étape générateur, le TTFT non-stream prend la fin de génération, le label
+`env` suit la normalisation du logger historique, les repères de génération
+sont posés par le pipeline et non par le nom d'étape, la relecture des
+métriques tolère les clés inconnues et le runner M1 cesse d'ouvrir de
+nouvelles paires après une première panne. Aucun nouveau panel provider.
+
+Relecture finale : 98 chats core, 676 événements locaux, 206 sources, aucune
+incohérence. Le smoke streamé vérifie 87 deltas et les deux TTFT en DB.
+Le corpus et les empreintes sont préservés. Coût complet, usage non retourné,
+temps de commit/réseau, saturation et proxy réel restent des sujets D4/M2.
+
+[Rapport et limites](13-m1-run-metrics.md),
+[journal](../../evals/journal-experimentations-rag.md),
+[preuve agrégée](../../evals/evidence/m1_api_parity_local_20260921.json)
+`96809b97…`. Les artefacts détaillés restent privés et locaux. Le clone
+pgvector 0.8.6, les index reconstruits et la réutilisation du témoin #243
+bornent la portée de la preuve live ; aucun déploiement effectué.
+
+### C7 — corrections après revue (23 septembre 2026)
+
+[PR #579](https://github.com/DGAFP/assistant-rh/pull/579). Le délai de
+finalisation d'un run réussi ne déclenche plus de second enregistrement
+« failed » ; une réponse admise mais jamais servie libère son slot à l'arrêt ;
+la raison d'annulation distingue déconnexion, envoi échoué et arrêt serveur, et
+un flux réussi n'est plus marqué a posteriori ; seul du texte visible interdit
+le fallback provider ; le handler lit les options de stream validées.
+[Détails](12-c7-streaming.md#corrections-après-revue-du-23-septembre-2026).
+Aucun nouveau panel provider.
+
+### M1 — reprise après intégration C7 (28 septembre 2026)
+
+[#465](https://github.com/DGAFP/assistant-rh/issues/465),
+[PR #580](https://github.com/DGAFP/assistant-rh/pull/580) : intégration de
+`dev` à `7a1e5ac`, conflits résolus en conservant les corrections C7,
+confidentialité et pannes DB. Le runner attend les deux bras et la persistance
+des annulations ; les estimations de volumes core incluent les retries.
+**1 257 tests API / 1 574 historiques réussis**, 46 tests historiques ignorés,
+Ruff, mypy et quatre contrats d'import passent. M0b reste exact.
+Nouvelle paire live sur les 98 questions préparée au
+[journal](../../evals/journal-experimentations-rag.md) ;
+la décision du 21 septembre n'est pas réattribuée au code courant.
+Préflight #240 exact, code `73e5376`, snapshot `092e0365…` ; lancement provider
+refusé par le contrôle automatique en attente d'autorisation. Aucun nouveau
+run live ni GO sur cette révision.
+
+### M1 — campagne complète et NO-GO (29 septembre 2026)
+
+Après autorisation explicite, la campagne des 98 questions est terminée.
+Les interruptions #246/#247 (timeout DB) puis #249/#248 (pression mémoire)
+restent des échecs ; #250 historique / #251 core terminent les 25 dernières
+paires. L'agrégat assemble 98 IDs uniques par moteur depuis #246/#249/#250
+et #247/#248/#251. Le core q223/#248 reste conservé mais est remplacé par
+#251 pour apparier la date de prompt, selon une règle fixée avant jugement.
+Les six chats sans item d'évaluation restent conservés hors agrégat.
+
+**NO-GO : 62/98 PASS core contre 68/98 historique**, soit −6,12 points au-delà
+des −5 points autorisés. Rappel documentaire identique **0,729138** ; les
+seuils contre M0a #240 passent. Huit reculs et deux progrès sont documentés,
+sans modification des seuils ni relance sélective selon les scores. Cette
+décision remplace le GO du 21 septembre pour la révision courante ; la phase
+D reste bloquée et [#580](https://github.com/DGAFP/assistant-rh/pull/580) en
+brouillon. L'attribution causale des cas discordants reste à établir.
+
+Sources `e728708b…`, panel `afd6cfc9…`, snapshot `092e0365…` inchangés ;
+98 dates de prompts appariées. Les replays exacts 7/7, **1 257 tests API et
+1 574 historiques**, Ruff, mypy et quatre contrats d'import passent. La section
+« Reports depuis le runtime existant » reste vide. Audit core : 98 chats,
+676 événements, 203 sources, aucune incohérence détectée. Aucun chevauchement
+inter-ministères observé dans ce panel ; preuve de concurrence dans les tests.
+Un jugement core a deux votes concordants sur trois demandés ; le coût juge
+core reste inconnu. Les limites du clone et les interruptions sont explicites.
+
+[Rapport](13-m1-run-metrics.md), [journal](../../evals/journal-experimentations-rag.md),
+[preuve agrégée](../../evals/evidence/m1_api_parity_local_20260928.json)
+`845fd6862b1441b9cac1afe2436a15184c9854ac00e1a943b4b675984dcd1ab3`.
+Artefacts détaillés privés et écritures DB locales ; aucun déploiement.
+
+### M1 — enquête sur le NO-GO (30 septembre 2026)
+
+Analyse en lecture seule des 196 items, sans appel provider ni nouvelle mesure
+live. Les empreintes du code, du panel et du snapshot restent identiques.
+Quatre reculs sont localisés à des réponses sélecteur différentes à prompt
+identique ; q188 reçoit déjà des candidats différents ; trois autres reculs
+ont les mêmes entrées générateur et des motifs juge incohérents entre bras.
+192 réponses sélecteur reparsées à l'identique par les deux implémentations.
+
+La limite B2 des sections Service-Public ambiguës est reproduite avec les
+helpers SQL : le core départage les égalités par `section_id`, le runtime
+historique ne le fait pas. Les replays exacts aux ports ne couvrent pas cette
+équivalence SQL ; le test DB différentiel utilise une relation non ambiguë.
+Le rappel documentaire global inclut les candidats amont : il masque donc
+des pertes au sélecteur (q6 : rappel du contexte servi 1 → 0,6).
+
+**NO-GO et scores officiels inchangés.** Les motifs du juge sont des éléments
+à auditer, pas une nouvelle annotation du panel. Prochaines investigations :
+sélecteur/génération avec entrées figées, motifs juge confrontés aux réponses,
+politique explicite de résolution des sections ambiguës. Aucun changement
+du runtime ni de la configuration dans cette analyse.
+[Rapport](13-m1-run-metrics.md#diagnostic-du-30-septembre-2026) et
+[preuve](../../evals/evidence/m1_api_parity_diagnosis_20260930.json)
+`0bdc551f3459157dae63b95db68863d73b177b0e8a580fc696be5f4bcb90eba7`.
+
+### M1 — corrections et nouvelle mesure (30 septembre 2026, en cours)
+
+Le runtime historique utilise maintenant le même départage `section_id`
+que le core pour les sections ambiguës. Le test DB différentiel conserve
+ces égalités au lieu de les éliminer ; le schéma partiellement migré est
+comparé par les deux helpers réels. Les deux divergences du clone observées
+dans le diagnostic sont résolues. Cela fixe l'ordre, pas la sémantique des
+titres ambigus du corpus. Tests : **1 257 API / 1 583 historiques** réussis,
+46 historiques ignorés ; CI Tests et CodeQL au vert sur `cf937ee`.
+
+Les nouveaux jugements demandent des références à des passages numérotés,
+puis en extraient les citations exactes côté code (`gold-passages-v2`).
+Modèle, majorité et seuils inchangés ; scope versionné, tous les votes
+conservés. L'essai #252–254 de citations recopiées échoue techniquement sur
+les trois premiers items et reste conservé comme tel. La réévaluation v2
+#255–257 porte sur les 294 réponses stockées (M0a comprise) ; la nouvelle
+paire #258–259 régénère les 98 questions dans chaque bras, sur les sources
+`440699d1…`. **NO-GO maintenu pendant la mesure**, sans déploiement ni merge.
+Paramètres et limites préenregistrés dans le
+[journal](../../evals/journal-experimentations-rag.md).
+
+### M1 — bilan corrigé du 30 septembre 2026
+
+**GO technique M1 — campagne corrigée du 30/09/2026.** Core 60/98, témoin apparié 62/98, M0a réévaluée 60/98. Seuils inchangés : baisse maximale de 5 points de pass rate et de rappel contre chaque référence.
+
+[Preuve](../../evals/evidence/m1_api_parity_followup_20260930.json) et [journal](../../evals/journal-experimentations-rag.md). Les limites du protocole de juge et du clone local demeurent explicites.
+
+### M1 — analyse de la paire corrigée
+
+Les 98 paires ont été analysées sans nouvel appel fournisseur : aucune
+association chunk/section divergente ; 49 sélections différentes sur 95 prompts
+identiques, et 192/192 sorties brutes interprétées pareil par les deux parseurs.
+Les dix verdicts discordants comprennent des pertes de sources utiles et des
+incohérences du juge dans les deux directions. Le GO au seuil prévu demeure ;
+il n'établit pas une amélioration causale du code ni une qualité absolue fiable.
+Priorité à des critères de juge communs figés par question et au rejeu des
+mêmes sorties de modèles. [Analyse et limites](13-m1-run-metrics.md).
+
+### M1 — contrôle déterministe terminé
+
+98/98 paires exactes après la frontière de retrieval, les deux moteurs hors
+réseau. Le contrôle a révélé et corrigé l'ordre des acronymes de même priorité
+côté historique. Cinq mutations détectées ; 278 tests ciblés réussis, dont les
+sept scénarios M0b complets. Les prompts sélecteur/générateur et réponses figés
+correspondent au run #259. La PR peut passer en revue ; scores live conservés,
+limites du rejeu et travail restant sur le juge explicités dans le
+[rapport](13-m1-run-metrics.md) et la
+[preuve](../../evals/evidence/m1_api_parity_frozen_replay_20260930.json).

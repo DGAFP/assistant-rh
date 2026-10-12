@@ -31,6 +31,16 @@ class TraceEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class RunMetrics:
+    """Execution timings end before finalization; missing measurements stay null."""
+
+    elapsed_ms: int
+    stream: bool
+    first_token_ms: int | None = None
+    generation_first_token_ms: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ChatRun:
     turn_id: str
     trace_id: str
@@ -46,6 +56,7 @@ class ChatRun:
     events: tuple[TraceEvent, ...] = ()
     diagnostics: JsonValue = None
     status: Literal["completed", "failed", "cancelled"] = "completed"
+    metrics: RunMetrics | None = None
 
 
 @dataclass(frozen=True, slots=True)
