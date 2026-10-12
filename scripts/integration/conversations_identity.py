@@ -48,7 +48,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--conversations", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--auth", choices=("oidc", "password"), default="oidc")
     args = parser.parse_args()
+    password_login = args.auth == "password"
     validate_libpq_environment(os.environ)
     fork = args.conversations.resolve()
     out = args.output.resolve()
@@ -350,6 +352,7 @@ class Recipe(Test):
             DJANGO_CONFIGURATION="Recipe",
             PYTHONPATH=str(out) + ":" + str(fork / "src/backend"),
             ASSISTANT_RH_ENABLED="true",
+            ASSISTANT_RH_LOCAL_LOGIN_ENABLED=str(password_login).lower(),
             ASSISTANT_RH_API_URL=api + "/v1",
             ASSISTANT_RH_DELEGATION_ISSUER="local-conversations",
             ASSISTANT_RH_API_AUDIENCE="local-rh-api",
@@ -366,6 +369,11 @@ class Recipe(Test):
             OIDC_OP_USER_ENDPOINT=external + "/userinfo",
             OIDC_OP_LOGOUT_ENDPOINT=external + "/logout",
         )
+        if password_login:
+            # Prove the local mode needs neither configured endpoints nor OIDC secrets.
+            for name in list(conv_env):
+                if name.startswith("OIDC_OP_") or name == "OIDC_RP_CLIENT_SECRET":
+                    del conv_env[name]
         manage = [fork_python, fork / "src/backend/manage.py"]
         command([*manage, "migrate", "--noinput", "--skip-checks"], environment=conv_env, cwd=fork)
 
@@ -380,9 +388,27 @@ class Recipe(Test):
         ready(conv + "/api/v1.0/config/", proc)
         base = conv + "/api/v1.0/"
 
+        if password_login:
+            django(
+                "from core.models import User; "
+                "users=[User(admin_email=name+'@example.invalid') for name in ('alice','bob')]; "
+                "[(u.set_password('Synthetic-passphrase-596!'),u.save()) for u in users]"
+            )
+
+        def lookup(subject):
+            return f"admin_email='{subject}@example.invalid'" if password_login else f"sub='{subject}'"
+
         def login(subject):
             client = httpx.Client(timeout=120, verify=trusted_tls)
             response = client.get(base + "authenticate/")
+            if password_login:
+                assert response.status_code == 200, response.text
+                response = client.post(
+                    base + "authenticate/",
+                    data={"username": subject + "@example.invalid", "password": "Synthetic-passphrase-596!"},
+                    headers={"X-CSRFToken": client.cookies["csrftoken"]},
+                )
+                return client, response
             assert response.status_code == 302, response.text
             authorized = client.get(response.headers["location"] + "&" + urlencode({"subject": subject}))
             response = client.get(authorized.headers["location"])
@@ -390,12 +416,16 @@ class Recipe(Test):
             return client, response
 
         alice, pending = login("alice")
-        assert "/unauthorized/" in pending.headers["location"]
+        if password_login:
+            assert pending.status_code == 200 and "validation DGAFP" in pending.text
+            assert alice.get(base + "users/me/").status_code == 403
+        else:
+            assert "/unauthorized/" in pending.headers["location"]
         alice.close()
         django(
             "from core.models import User, MinistryGrant; from django.contrib.auth.models import Group; g=Group.objects.create(name='RH'); "
             "MinistryGrant.objects.create(group=g,ministry='matte'); MinistryGrant.objects.create(group=g,ministry='mso'); "
-            "u=User.objects.get(sub='alice'); u.assistant_rh_admitted=True; u.save(); u.groups.add(g)"
+            f"u=User.objects.get({lookup('alice')}); u.assistant_rh_admitted=True; u.save(); u.groups.add(g)"
         )
         alice, response = login("alice")
         assert "/users/me/" in response.headers["location"], response.headers["location"]
@@ -403,13 +433,32 @@ class Recipe(Test):
         bob, pending = login("bob")
         bob.close()
         django(
-            "from core.models import User; from django.contrib.auth.models import Group; u=User.objects.get(sub='bob'); "
+            f"from core.models import User; from django.contrib.auth.models import Group; u=User.objects.get({lookup('bob')}); "
             "u.assistant_rh_admitted=True; u.save(); u.groups.add(Group.objects.get(name='RH'))"
         )
         bob, _ = login("bob")
         bob_id = str(bob.get(base + "users/me/").json()["id"])
         assert alice_id != bob_id
-        record("OIDC authorization-code HTTP flow, pending admission then stable distinct UUIDs")
+        if password_login:
+            assert alice.get(conv + "/admin/").status_code == 302
+            config = alice.get(base + "config/").json()
+            assert config["ASSISTANT_RH_LOCAL_LOGIN_ENABLED"] is True
+            assert config["FRONTEND_SILENT_LOGIN_ENABLED"] is False
+            with httpx.Client() as anonymous:
+                assert anonymous.post(base + "authenticate/", data={"username": "alice@example.invalid", "password": "wrong"}).status_code == 403
+                anonymous.get(base + "authenticate/")
+                assert (
+                    anonymous.post(
+                        base + "authenticate/",
+                        data={"username": "alice@example.invalid", "password": "wrong"},
+                        headers={"X-CSRFToken": anonymous.cookies["csrftoken"]},
+                    ).status_code
+                    == 200
+                )
+                assert anonymous.get(base + "users/me/").status_code == 403
+            record("real password/CSRF HTTP login without OIDC configuration; non-staff accounts, pending admission, wrong password refused")
+        else:
+            record("OIDC authorization-code HTTP flow, pending admission then stable distinct UUIDs")
 
         def post(client, path, body):
             return client.post(base + path, json=body, headers={"X-CSRFToken": client.cookies["csrftoken"]})
@@ -497,8 +546,13 @@ class Recipe(Test):
         record("real API feedback persistence and same-group cross-user isolation")
         old_session = alice.cookies["sessionid"]
         logout = alice.get(base + "logout/")
-        oidc_logout = alice.get(logout.headers["location"])
-        assert alice.get(oidc_logout.headers["location"]).status_code == 302
+        if password_login:
+            assert logout.status_code == 200
+            assert alice.post(base + "logout/").status_code == 403
+            assert alice.post(base + "logout/", headers={"X-CSRFToken": alice.cookies["csrftoken"]}).status_code == 302
+        else:
+            oidc_logout = alice.get(logout.headers["location"])
+            assert alice.get(oidc_logout.headers["location"]).status_code == 302
         assert alice.get(base + "llm-configuration/").status_code in (401, 403)
         alice.close()
         alice, _ = login("alice")
@@ -511,7 +565,7 @@ class Recipe(Test):
             return json.loads(base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4)))["audit_session"]
 
         assert audit(renewed) != audit(token)
-        django("from core.models import User; u=User.objects.get(sub='alice'); u.is_active=False; u.save(); u.is_active=True; u.save()")
+        django(f"from core.models import User; u=User.objects.get({lookup('alice')}); u.is_active=False; u.save(); u.is_active=True; u.save()")
         assert alice.get(base + "llm-configuration/").status_code in (401, 403)
         alice.close()
         alice, _ = login("alice")
@@ -553,8 +607,9 @@ class Recipe(Test):
             "finished_at": datetime.now(timezone.utc).isoformat(),
             "api_commit": command(["git", "rev-parse", "HEAD"], cwd=ROOT),
             "fork_commit": command(["git", "rev-parse", "HEAD"], cwd=fork),
+            "auth_mode": args.auth,
             "passed": results,
-            "simulated": ["OIDC provider (not ProConnect)", "Albert and Scaleway inference endpoints"],
+            "simulated": ([] if password_login else ["OIDC provider (not ProConnect)"]) + ["Albert and Scaleway inference endpoints"],
             "provider_calls": provider_calls,
         }
         (out / "results.json").write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")

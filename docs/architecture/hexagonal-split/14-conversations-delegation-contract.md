@@ -30,10 +30,17 @@ pas l'utilisateur connecté. Les sections suivantes détaillent le contrat techn
 | Identité | Porteur | Vérifiée par |
 |---|---|---|
 | Service appelant | Backend Conversations, détenteur d'une clé privée Ed25519 | L'API, par signature sur une clé publique épinglée (`kid`) |
-| Utilisateur | Identifiant stable de l'utilisateur Conversations (`sub`) | Conversations (ProConnect) ; l'API fait confiance au service authentifié |
+| Utilisateur | Identifiant stable de l'utilisateur Conversations (`sub`) | Conversations (ProConnect ou connexion locale temporaire) ; l'API fait confiance au service authentifié |
 | Habilitations | Modèles accordés à l'utilisateur et ministère de la conversation | Conversations, à chaque requête ; l'API borne la requête à ce périmètre |
 
 L'API ne tient ni registre d'utilisateurs ni appartenance aux groupes. Un changement de droits dans Conversations s'applique sans synchronisation côté API.
+
+Avant le raccordement OIDC, le fork propose un mode explicite
+`ASSISTANT_RH_LOCAL_LOGIN_ENABLED=true` : compte local avec mot de passe, admission
+DGAFP et habilitations identiques. L'UUID interne reste le `sub` délégué ; le mot
+de passe reste dans Conversations. Le rattachement ultérieur à OIDC doit conserver
+ce compte, sans fusion automatique par e-mail. Voir la
+[recette des deux modes](16-conversations-local-recipe.md).
 
 ## Mécanisme retenu : assertion signée par requête
 
