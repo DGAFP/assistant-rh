@@ -189,15 +189,14 @@ class Stack:
                 "ASSISTANT_RH_API_AUDIENCE": "assistant-rh-local",
             },
         )
-        frontend = f"http://localhost:{self.ports['FRONTEND']}"
         write_env(
             STATE / "conversations.env",
             {
                 "DJANGO_SECRET_KEY": (STATE / "django-secret").read_text(),
                 "LOCAL_DEV_PASSWORD": (STATE / "password").read_text(),
-                "LOGIN_REDIRECT_URL": frontend,
-                "LOGIN_REDIRECT_URL_FAILURE": frontend,
-                "LOGOUT_REDIRECT_URL": frontend,
+                "LOGIN_REDIRECT_URL": "/",
+                "LOGIN_REDIRECT_URL_FAILURE": "/",
+                "LOGOUT_REDIRECT_URL": "/",
             },
         )
         # --env-file is interpolated by Compose; quote paths literally (not provider secrets).

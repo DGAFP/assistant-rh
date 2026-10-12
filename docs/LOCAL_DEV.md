@@ -39,15 +39,18 @@ make dev-rebuild # reconstruire les images après un changement de dépendances
 | Service | Adresse par défaut | Variable du port |
 |---|---|---|
 | Interface Conversations | http://localhost:3000 | `DEV_FRONTEND_PORT` |
-| Backend et administration | http://localhost:8071/admin/ | `DEV_BACKEND_PORT` |
+| Administration Conversations | http://localhost:3000/admin/ | `DEV_FRONTEND_PORT` |
+| Backend direct (diagnostic) | http://localhost:8071/api/v1.0/config/ | `DEV_BACKEND_PORT` |
 | API RH | http://localhost:8000/healthz | `DEV_API_PORT` |
 | PostgreSQL | 127.0.0.1:55435 | `DEV_DB_PORT` |
 
 Les quatre ports sont liés uniquement à la boucle locale. Chaque worktree a son
 projet Compose et son volume dédiés ; choisir des ports distincts pour lancer
-plusieurs worktrees simultanément. La connexion navigateur utilise **localhost**
-pour partager les cookies entre l’interface et le backend. Le rechargement des
-sources API, Django et Vite est actif ; les changements de dépendances nécessitent
+plusieurs worktrees simultanément. Vite relaie `/api/`, `/admin/` et `/static/`
+vers Django : la connexion, les cookies et les messages utilisent la même adresse
+que l’interface. Il suffit de transférer le port de l’interface pour l’ouvrir dans
+un navigateur distant ; les redirections conservent son adresse et son port.
+Le rechargement des sources API, Django et Vite est actif ; les changements de dépendances nécessitent
 `make dev-rebuild`, qui renouvelle aussi les volumes anonymes de dépendances.
 Les démarrages ordinaires réutilisent les images et les dépendances présentes.
 
@@ -111,6 +114,13 @@ et run `completed` enregistré en local, réponse retrouvée après reconnexion 
 erreur JavaScript. Un second `make dev` réutilise les images et données. Les douze
 tests de garde de `tests/test_dev_stack.py`, Ruff et la validation Compose/YAML
 passent. Ce contrôle valide le lancement local, pas un déploiement partagé.
+
+Le parcours navigateur a aussi été vérifié avec un unique port transféré
+(`53578` vers `3000`), en bloquant les accès directs du navigateur aux ports
+`3000`, `8071` et `8000` : connexion, historique, nouvelle réponse MATTE,
+rechargement de la réponse et déconnexion réussis, sans erreur JavaScript.
+Une requête de connexion d’une origine étrangère reste refusée par CSRF (403),
+même munie d’un jeton valide.
 
 ## 1. Démarrer la base locale
 

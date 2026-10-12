@@ -1,7 +1,5 @@
 """Single-process, loopback-only developer configuration for the pinned fork."""
 
-import os
-
 from conversations.settings import Development
 
 
@@ -10,8 +8,8 @@ class LocalDev(Development):
     CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
     SESSION_ENGINE = "django.contrib.sessions.backends.db"
     CORS_ALLOW_ALL_ORIGINS = False
-    CORS_ALLOWED_ORIGINS = [os.environ["LOGIN_REDIRECT_URL"]]
-    CSRF_TRUSTED_ORIGINS = [os.environ["LOGIN_REDIRECT_URL"]]
+    CORS_ALLOWED_ORIGINS = []
+    CSRF_TRUSTED_ORIGINS = []
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
     # File uploads are disabled in RH mode; no object store is needed locally.

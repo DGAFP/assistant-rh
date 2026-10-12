@@ -106,12 +106,15 @@ services:
     ports:
       - "127.0.0.1:${DEV_FRONTEND_PORT}:3000"
     environment:
-      VITE_API_ORIGIN: http://localhost:${DEV_BACKEND_PORT}
+      # Use the browser's origin, including when only port 3000 is forwarded.
+      VITE_API_ORIGIN: ""
       VITE_PRODUCT_NAME: Assistant RH
     volumes:
       - ${CONVERSATIONS_DIR}/src/frontend:/home/frontend
       - /home/frontend/node_modules
       - /home/frontend/apps/conversations/node_modules
+      - ./docker/dev:/dev-tools:ro
+    command: [yarn, dev, --config, /dev-tools/vite.config.mts, --configLoader, runner]
     depends_on:
       conversations:
         condition: service_healthy
