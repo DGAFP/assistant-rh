@@ -1,4 +1,4 @@
-"""D1 proofs use synthetic principals; verified individual login remains #596."""
+"""D1 proofs with delegated principals as the #596 adapter returns them."""
 
 import asyncio
 from dataclasses import replace
@@ -6,6 +6,7 @@ from uuid import UUID
 
 import httpx
 import pytest
+from assistant_rh_api.core.auth import AuthContext
 from assistant_rh_api.core.errors import DatabaseConflict
 from assistant_rh_api.core.feedback import FeedbackService
 from assistant_rh_api.core.models.conversations import FeedbackInput
@@ -77,7 +78,7 @@ async def test_api_roundtrip_normalization_retry_and_audit(individual_http, repo
         row = await (
             await connection.execute("SELECT actor_user_id, group_slug, audit_session_hash, record FROM public.chat_feedback_audit")
         ).fetchone()
-        assert row[:3] == (AUTHOR, auth.group.slug, auth.audit_session_hash)
+        assert row[:3] == (AUTHOR, auth.group_slug, auth.audit_session_hash)
         assert row[3]["api_actor_user_id"] == str(AUTHOR) and row[3]["ai_reason"] == "Obsolete"
         assert "c" * 64 not in str(row)  # authentication lookup hash is not an audit pseudonym
         assert await (await connection.execute("SELECT ai_analyzed_at FROM public.chat_feedbacks")).fetchone() == (None,)
@@ -91,9 +92,9 @@ async def test_api_isolation_current_rights_historical_and_reconnection(individu
     client, run, historical, auth, store, _ = individual_http
     assert (await client.post("/v1/feedback", json={"completion_id": run.turn_id, "stars": 3, "comment": "Initial"})).status_code == 204
     for denied in (
-        replace(auth, user_id=OTHER),
-        replace(auth, group=replace(auth.group, slug="other", allowed_ministries=("mi",), default_ministry="mi")),
-        replace(auth, group=replace(auth.group, allowed_ministries=("mi",), default_ministry="mi")),
+        individual_context(OTHER),
+        individual_context(ministries=("mi",), ministry="mi"),  # matte grant withdrawn
+        individual_context(ministry="mi"),  # matte still granted, but outside this conversation
     ):
         client._transport.app.dependency_overrides[resolve_bearer] = lambda: denied
         for target in (run.turn_id, "unknown", historical.turn_id):
@@ -106,7 +107,7 @@ async def test_api_isolation_current_rights_historical_and_reconnection(individu
                 == {"error": {"message": "Feedback not found", "type": "invalid_request_error", "code": "feedback_not_found"}}
             )
     # Same internal author after reconnecting, with a new session pseudonym.
-    reconnect = replace(auth, session=replace(auth.session, token_hash="e" * 64), audit_session_hash="f" * 64)
+    reconnect = AuthContext.delegated(replace(auth.delegation, audit_session_hash="f" * 64))
     client._transport.app.dependency_overrides[resolve_bearer] = lambda: reconnect
     assert (await client.get("/v1/feedback/" + run.turn_id)).status_code == 200
     assert (await client.post("/v1/feedback", json={"completion_id": run.turn_id, "stars": 3, "comment": "Edited"})).status_code == 204
@@ -114,13 +115,14 @@ async def test_api_isolation_current_rights_historical_and_reconnection(individu
     assert (await client.get("/v1/feedback/" + historical.turn_id)).status_code == 404
     # Group mobility keeping the run's ministry keeps access to one's own runs (DAT v0.4),
     # never to the collective history of the new or the old group.
-    moved = replace(reconnect, group=replace(auth.group, slug="other"))
+    moved = AuthContext.delegated(replace(reconnect.delegation, allowed_ministries=("masa", "matte")))
     client._transport.app.dependency_overrides[resolve_bearer] = lambda: moved
     assert (await client.get("/v1/feedback/" + run.turn_id)).json()["comment"] == "Edited"
     assert (await client.post("/v1/feedback", json={"completion_id": run.turn_id, "stars": 2, "comment": "Moved"})).status_code == 204
     assert (await store.get(run.turn_id)).value.comment == "Moved"
     assert (await client.get("/v1/feedback/" + historical.turn_id)).status_code == 404
-    client._transport.app.dependency_overrides[resolve_bearer] = lambda: replace(auth, user_id=None)
+    group_session = (await service().login("beta", "password", "local")).context
+    client._transport.app.dependency_overrides[resolve_bearer] = lambda: group_session
     for target in (run.turn_id, historical.turn_id, "unknown"):
         assert (await client.get("/v1/feedback/" + target)).status_code == 403
         assert (await client.post("/v1/feedback", json={"completion_id": target, "stars": 3, "comment": "Group"})).status_code == 403

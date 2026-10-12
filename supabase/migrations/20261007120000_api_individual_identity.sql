@@ -1,6 +1,8 @@
--- LOCAL/TEST ONLY: keep outside supabase/migrations until #596 is validated.
--- D1 groundwork. NULL marks collective B4 history; never infer a person from it.
--- #596 must provide the verified internal UUID and the user registry before rollout.
+-- Individual identity (#596) and transactional feedback (D1, #528). Additive only.
+-- NULL author marks collective B4 history; never infer a person from it.
+-- The author is the stable Conversations user ID from a verified delegation; no user registry.
+-- Applying this migration activates nothing: delegation stays disabled until the API is
+-- configured with CONVERSATIONS_DELEGATION_JWKS/ISSUER, after the #599 SQL restrictions.
 DO $migration$
 BEGIN
     ALTER TABLE public.chat_runs ADD COLUMN IF NOT EXISTS author_user_id UUID;
@@ -46,3 +48,12 @@ BEGIN
         FOR EACH ROW EXECUTE FUNCTION public.api_feedback_individual_guard();
 END;
 $migration$;
+
+-- Signed delegation IDs already used (#596). Only verified assertions are recorded, so
+-- unauthenticated callers cannot fill it; rows are purged once their assertion has expired.
+CREATE TABLE IF NOT EXISTS public.api_delegation_replays (
+    jti TEXT PRIMARY KEY CHECK (jti ~ '^[A-Za-z0-9_-]{16,128}$'),
+    key_id TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS api_delegation_replays_expires_idx ON public.api_delegation_replays(expires_at);
