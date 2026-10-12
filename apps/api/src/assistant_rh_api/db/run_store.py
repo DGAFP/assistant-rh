@@ -5,16 +5,32 @@ import re
 from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 from datetime import datetime, timezone
+from uuid import UUID
 
 from psycopg import sql
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from assistant_rh_api.core.errors import DatabaseUnavailable
 from assistant_rh_api.core.models.conversations import ChatRun, RunMetrics, RunSource, TraceEvent
 from assistant_rh_api.core.ports.conversations import ChatRunStorePort
 from assistant_rh_api.db.pool import Database
 from assistant_rh_api.db.revisions import freeze_json
 from assistant_rh_api.db.run_summary import legacy_summary
+
+
+def run_access(individual_schema: bool) -> sql.Composed:
+    """Named parameters and one fail-closed policy for feedback and source reads.
+
+    Individual runs: author + current ministry right, whatever the current group (DAT v0.4).
+    Collective runs: no author, same group + current ministry right.
+    """
+    return sql.SQL("""
+        r.turn_id = %(turn_id)s
+        AND {author} IS NOT DISTINCT FROM %(user_id)s::uuid
+        AND ({author} IS NOT NULL OR r.user_group = %(group_slug)s)
+        AND r.selected_ministry = ANY(%(ministries)s::text[])
+    """).format(author=sql.SQL("r.author_user_id" if individual_schema else "NULL::uuid"))
 
 
 def json_data(value: object) -> object:
@@ -25,6 +41,8 @@ def json_data(value: object) -> object:
         return {key: json_data(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):
         return [json_data(item) for item in value]
+    if isinstance(value, UUID):
+        return str(value)
     if isinstance(value, datetime):
         return value.isoformat()
     return value
@@ -71,6 +89,10 @@ class ChatRunStore(ChatRunStorePort):
         label = environment.strip().lower()
         self._environment = "prod" if label == "production" else label
 
+    async def require_individual_schema(self) -> None:
+        if not await self._database.individual_feedback_schema():
+            raise DatabaseUnavailable()
+
     async def finalize(self, run: ChatRun) -> None:
         if not re.fullmatch(r"(?:chatcmpl-)?[0-9a-f]{32}", run.turn_id):
             raise ValueError("new completion IDs must contain a full UUID")
@@ -78,6 +100,8 @@ class ChatRunStore(ChatRunStorePort):
             raise ValueError("only completed runs may grant source authority")
         if run.timestamp is None or run.timestamp.tzinfo is None:
             raise ValueError("run timestamp must be timezone aware")
+        if run.author_user_id is not None:
+            await self.require_individual_schema()
         async with self._database.transaction() as connection:
             # INSERT deliberately refuses collisions; it never overwrites a run
             # or changes the ownership/source authority of an existing answer.
@@ -95,6 +119,8 @@ class ChatRunStore(ChatRunStorePort):
                 "api_record": as_jsonb(run),
                 **legacy_summary(run),
             }
+            if run.author_user_id is not None:
+                row["author_user_id"] = run.author_user_id
             await connection.execute(
                 sql.SQL("INSERT INTO public.chat_runs ({}) VALUES ({})").format(
                     sql.SQL(", ").join(map(sql.Identifier, row)), sql.SQL(", ").join(sql.Placeholder() for _ in row)
@@ -182,18 +208,20 @@ class ChatRunStore(ChatRunStorePort):
             freeze_json(record.get("diagnostics")),
             record.get("status", "completed"),
             run_metrics(record.get("metrics")),
+            row.get("author_user_id"),
         )
 
-    async def sources(self, turn_id: str, group_slug: str) -> tuple[RunSource, ...]:
+    async def sources(self, turn_id: str, group_slug: str, *, ministries: tuple[str, ...], user_id: UUID | None = None) -> tuple[RunSource, ...]:
+        individual_schema = await self._database.individual_feedback_schema()
         async with self._database.transaction(read_only=True) as connection:
             rows = await (
                 await connection.execute(
-                    """
+                    sql.SQL("""
                 SELECT s.doc_ref, s.title, s.url, s.document_id, r.api_record FROM public.chat_run_sources s
                 JOIN public.chat_runs r ON r.turn_id = s.turn_id
-                WHERE r.turn_id = %s AND r.user_group = %s ORDER BY s.ordinal
-            """,
-                    (turn_id, group_slug),
+                WHERE {} ORDER BY s.ordinal
+            """).format(run_access(individual_schema)),
+                    {"turn_id": turn_id, "group_slug": group_slug, "user_id": user_id, "ministries": list(ministries)},
                 )
             ).fetchall()
         sources = []

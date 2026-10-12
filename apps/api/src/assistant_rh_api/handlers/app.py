@@ -16,10 +16,12 @@ from assistant_rh_api.bootstrap import create_chat_service
 from assistant_rh_api.core.auth import AuthService
 from assistant_rh_api.core.catalog import ModelService
 from assistant_rh_api.core.chat import ChatService
+from assistant_rh_api.core.feedback import FeedbackService
 from assistant_rh_api.core.health import HealthProbe
 from assistant_rh_api.core.rag_configuration import RAGConfigurationService
 from assistant_rh_api.db.auth_stores import GroupStore, SessionStore
 from assistant_rh_api.db.dsn import DatabaseSettings, resolve_dsn
+from assistant_rh_api.db.feedback_store import FeedbackStore
 from assistant_rh_api.db.health import PostgresHealthProbe
 from assistant_rh_api.db.login_limits import LoginLimits, PostgresLoginLimiter
 from assistant_rh_api.db.pool import Database
@@ -31,6 +33,7 @@ from assistant_rh_api.handlers.auth_body import AuthBodyLimit
 from assistant_rh_api.handlers.chat import NonStreamRequests, create_chat_router
 from assistant_rh_api.handlers.chat_stream import StreamSettings, StreamWorkers
 from assistant_rh_api.handlers.errors import register_error_handlers
+from assistant_rh_api.handlers.feedback import create_feedback_router
 from assistant_rh_api.handlers.health import create_health_router
 from assistant_rh_api.handlers.models import create_models_router
 
@@ -44,6 +47,7 @@ def create_app(
     model_service: ModelService | None = None,
     rag_configuration_service: RAGConfigurationService | None = None,
     chat_service: ChatService | None = None,
+    feedback_service: FeedbackService | None = None,
     stream_settings: StreamSettings | None = None,
 ) -> FastAPI:
     """Create the HTTP application without opening connections or loading RAG."""
@@ -78,6 +82,8 @@ def create_app(
                     PostgresLoginLimiter(runtime_database, LoginLimits.from_environment(environment)),
                     SystemClock(),
                 )
+            if feedback_service is None:
+                application.state.feedback_service = FeedbackService(FeedbackStore(runtime_database), SystemClock())
             if health_probe is None:
                 application.state.health_probe = PostgresHealthProbe(runtime_database)
             async with AsyncExitStack() as resources, anyio.create_task_group() as tasks:
@@ -101,6 +107,7 @@ def create_app(
             application.state.health_probe = health_probe or PostgresHealthProbe()
             application.state.rag_configuration_service = rag_configuration_service
             application.state.chat_service = chat_service
+            application.state.feedback_service = feedback_service
 
     @asynccontextmanager
     async def managed_lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -116,6 +123,7 @@ def create_app(
     application.state.model_service = model_service or ModelService()
     application.state.rag_configuration_service = rag_configuration_service
     application.state.chat_service = chat_service
+    application.state.feedback_service = feedback_service
     application.state.non_stream_requests = NonStreamRequests()
     application.state.stream_workers = StreamWorkers(stream_settings or StreamSettings.from_environment(os.environ if environ is None else environ))
     application.add_middleware(AuthBodyLimit)
@@ -124,6 +132,7 @@ def create_app(
     application.include_router(create_auth_router())
     application.include_router(create_models_router())
     application.include_router(create_chat_router())
+    application.include_router(create_feedback_router())
     return application
 
 
