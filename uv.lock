@@ -240,6 +240,7 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "jinja2" },
     { name = "mako" },
+    { name = "markdown-it-py" },
     { name = "numpy" },
     { name = "openai" },
     { name = "openpyxl" },
@@ -286,6 +287,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=1.0.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "mako", specifier = ">=1.3.12" },
+    { name = "markdown-it-py", specifier = ">=4.0.0" },
     { name = "numpy", specifier = ">=2.4.3,<3" },
     { name = "openai", specifier = ">=2.28.0" },
     { name = "openpyxl", specifier = ">=3.1.5" },
@@ -324,6 +326,7 @@ version = "0.14.0"
 source = { editable = "apps/api" }
 dependencies = [
     { name = "anyio" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "psycopg", extra = ["binary"] },
@@ -344,6 +347,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anyio", specifier = ">=4.12,<5" },
+    { name = "cryptography", specifier = ">=46,<47" },
     { name = "fastapi", specifier = ">=0.136.3,<1" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.3,<4" },

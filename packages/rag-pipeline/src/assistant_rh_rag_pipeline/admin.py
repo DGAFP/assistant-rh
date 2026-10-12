@@ -187,14 +187,17 @@ def init_config_table() -> bool:
         return False
     try:
         with conn.cursor() as cur:
+            # Runtime roles do not own tables (#599): DDL only runs when the table is missing.
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS rag_config (
+                DO $ddl$ BEGIN IF to_regclass('public.rag_config') IS NULL THEN
+                CREATE TABLE rag_config (
                     id INTEGER PRIMARY KEY DEFAULT 1,
                     config JSONB NOT NULL DEFAULT '{}',
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_by VARCHAR(100) DEFAULT 'system',
                     CONSTRAINT single_row CHECK (id = 1)
-                )
+                );
+                END IF; END $ddl$
             """)
             cur.execute("SELECT COUNT(*) FROM rag_config")
             if cur.fetchone()[0] == 0:
@@ -339,8 +342,10 @@ def init_prompts_table() -> bool:
         return False
     try:
         with conn.cursor() as cur:
+            # Runtime roles do not own tables (#599): DDL only runs when the table is missing.
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS system_prompts (
+                DO $ddl$ BEGIN IF to_regclass('public.system_prompts') IS NULL THEN
+                CREATE TABLE system_prompts (
                     name VARCHAR(100) PRIMARY KEY,
                     content TEXT NOT NULL,
                     description VARCHAR(500) DEFAULT '',
@@ -349,7 +354,8 @@ def init_prompts_table() -> bool:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_by VARCHAR(100) DEFAULT 'system'
-                )
+                );
+                END IF; END $ddl$
             """)
             cur.execute("""
                 DO $$
@@ -490,8 +496,10 @@ def init_acronyms_table() -> bool:
         engine = create_engine(url)
         with engine.connect() as conn:
             conn.execute(
+                # Runtime roles do not own tables (#599): DDL only runs when the table is missing.
                 text("""
-                CREATE TABLE IF NOT EXISTS acronyms (
+                DO $ddl$ BEGIN IF to_regclass('public.acronyms') IS NULL THEN
+                CREATE TABLE acronyms (
                     id SERIAL PRIMARY KEY,
                     acronym TEXT UNIQUE NOT NULL,
                     expansion TEXT NOT NULL,
@@ -499,7 +507,8 @@ def init_acronyms_table() -> bool:
                     description TEXT DEFAULT '',
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                )
+                );
+                END IF; END $ddl$
             """)
             )
             conn.commit()

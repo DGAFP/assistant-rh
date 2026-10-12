@@ -94,15 +94,31 @@ async def test_vector_provider_columns_and_transaction_local_probes(corpus):
         assert (await cursor.fetchone())[0] == "1"
 
 
-async def test_legacy_and_partial_service_public_relations(corpus):
+async def test_legacy_and_partial_service_public_relations(corpus, repository_dsn):
+    import psycopg
+    from assistant_rh_rag_pipeline.config import CHUNK_TABLES, RetrievalConfig
+    from assistant_rh_rag_pipeline.retriever import Retriever
+
+    def legacy_sections():
+        # Fresh resolver in each schema state: exercise both legacy SQL branches.
+        legacy = Retriever(RetrievalConfig(), dsn=repository_dsn)
+        section = legacy._section_select_sql(CHUNK_TABLES["service_public"])
+        with psycopg.connect(repository_dsn) as connection:
+            return [
+                (row[0], str(row[1]))
+                for row in connection.execute(f"SELECT t.hash_id {section} FROM public.rag_chunks_service_public t ORDER BY t.hash_id")
+            ]
+
     store = SearchStore(corpus)
     request = SearchRequest("service_public", "heading", query="congés")
     assert all(c.section_id == SEC1 for c in await store.search(request))
+    assert legacy_sections() == [("a", SEC1), ("b", SEC1)]
     try:
         async with corpus.transaction() as connection:
             await connection.execute("ALTER TABLE public.rag_chunks_service_public ADD COLUMN section_id UUID")
             await connection.execute("UPDATE public.rag_chunks_service_public SET section_id = %s WHERE hash_id = 'b'", (SEC2,))
         assert [c.section_id for c in await store.search(request)] == [SEC1, SEC2]
+        assert legacy_sections() == [("a", SEC1), ("b", SEC2)]
     finally:
         async with corpus.transaction() as connection:
             await connection.execute("ALTER TABLE public.rag_chunks_service_public DROP COLUMN section_id")
@@ -188,10 +204,8 @@ async def test_core_stage_exact_legacy_parity_on_synthetic_postgres(corpus, repo
     # Different vector/lexical order, ties, absent lanes, R2 duplicates and
     # section-backed metadata. Only synthetic content in the guarded test DB.
     async with corpus.transaction() as connection:
-        # Exact parity requires an unambiguous legacy section relation. The
-        # separate B2 tie tests above retain both sections and assert SEC1;
-        # legacy's LIMIT 1 has no id tie-break and can pick SEC2 instead.
-        await connection.execute("DELETE FROM public.rag_sections WHERE section_id = %s", (SEC2,))
+        # Keep both ambiguous sections: both SQL paths must select SEC1 even
+        # though SEC2 was inserted first, including all ministry/search modes.
         await connection.execute("""
             INSERT INTO public.rag_chunks_dgafp(chunk_id, chunk_text, cid, embedding_m3, embedding_bge_scw)
             VALUES ('CID_0', 'congés annuels', 'CID', '[1,0,0]', '[0,1,0]'),

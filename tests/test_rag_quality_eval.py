@@ -1366,6 +1366,139 @@ def test_run_question_rejects_generator_fallback_before_judge_and_ragas(monkeypa
     assert aggregate["judge_score_avg"] is None
 
 
+@pytest.mark.parametrize("repair", [None, "valid", "invalid"])
+def test_evidence_judge_rejects_invented_quotes_and_bounds_repairs(monkeypatch, repair) -> None:
+    import copy
+    import json
+    from types import SimpleNamespace
+
+    from src.goldset import eval as quality
+
+    valid = {
+        "score": 0.4,
+        "pass": False,
+        "required_points": [
+            {"gold_passage_id": 0, "candidate_passage_ids": [0], "status": "covered", "explanation": "Même délai."},
+            {"gold_passage_id": 1, "candidate_passage_ids": [], "status": "missing", "explanation": "Pénalité absente."},
+        ],
+    }
+    invented = copy.deepcopy(valid)
+    invented["required_points"][1].update(status="covered", candidate_passage_ids=[99])
+    outputs = iter([valid] if repair is None else [invented, valid if repair == "valid" else invented])
+    calls = []
+
+    def create(**kwargs):
+        calls.append(copy.deepcopy(kwargs))
+        usage = SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15)
+        # The first paid call's missing usage must not be hidden by the repair.
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(next(outputs))))],
+            usage=None if repair is not None and len(calls) == 1 else usage,
+        )
+
+    monkeypatch.setattr("openai.OpenAI", lambda **kwargs: SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
+    result = quality.judge_answer(
+        question="Délai ?",
+        gold_answer="48 heures. Sinon 50 %.",
+        answer="Envoyer sous 48 heures.",
+        contexts=[],
+        deterministic_metrics={},
+        model="synthetic",
+        base_url="https://example.invalid",
+        api_key="synthetic",
+        require_evidence=True,
+    )
+    assert len(calls) == (1 if repair is None else 2)
+    assert result["evidence_version"] == quality.JUDGE_EVIDENCE_VERSION
+    assert result["usage"]["capture_complete"] is (repair is None)
+    assert len(result["evidence_errors"]) == (0 if repair is None else 1)
+    if repair == "invalid":
+        assert result["status"] == "failed" and "pass" not in result
+    else:
+        assert result["status"] == "completed" and result["pass"] is False
+        assert result["required_points"][0]["candidate_quotes"] == ["Envoyer sous 48 heures."]
+        assert result["required_points"][1]["gold_quote"] == "Sinon 50 %."
+        assert result["required_points"][1]["candidate_quotes"] == []
+        assert json.loads(calls[0]["messages"][1]["content"])["evidence_passages"]["gold"]["1"] == "Sinon 50 %."
+
+
+@pytest.mark.parametrize("retry", ["format", "evidence"])
+@pytest.mark.parametrize("outcome", ["timeout", "missing_usage", "complete"])
+def test_judge_retry_usage_stays_incomplete_until_every_call_is_accounted_for(monkeypatch, retry, outcome) -> None:
+    from types import SimpleNamespace
+
+    from src.goldset import eval as quality
+
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 2 and outcome == "timeout":
+            raise TimeoutError("repair response lost")
+        payload = {
+            "score": 0.9,
+            "required_points": [{"gold_passage_id": 0, "candidate_passage_ids": [0], "status": "covered", "explanation": "Même délai."}],
+        }
+        if len(calls) == 1:
+            payload = {} if retry == "format" else {"score": 0.9, "required_points": []}
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload)))],
+            usage=None if len(calls) == 2 and outcome == "missing_usage" else SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+        )
+
+    monkeypatch.setattr("openai.OpenAI", lambda **kwargs: SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
+    result = quality.judge_answer(
+        question="Délai ?",
+        gold_answer="48 heures.",
+        answer="48 heures.",
+        contexts=[],
+        deterministic_metrics={},
+        model="mistral-medium-3.5-128b",
+        provider="scaleway",
+        base_url="https://example.invalid",
+        api_key="synthetic",
+        require_evidence=retry == "evidence",
+    )
+    complete = outcome == "complete"
+    recorded = 2 if complete else 1
+    assert len(calls) == 2
+    assert result["status"] == ("failed" if outcome == "timeout" else "completed")
+    assert result["usage"]["capture_complete"] is complete
+    assert result["usage"]["calls"] == recorded
+    assert result["usage"]["prompt_tokens"] == 10 * recorded
+    assert result["usage"]["completion_tokens"] == 5 * recorded
+    item = EvalItem(
+        question_id=1, question="Délai ?", gold_answer="48 heures.", gold_sources=[], judge_result=result, ragas_metrics={"status": "skipped"}
+    )
+    aggregate = quality._aggregate_token_usage([item])
+    assert aggregate["judge"]["coverage_complete"] is complete
+    assert (aggregate["judge"]["cost_eur"] is not None) is complete
+    assert (aggregate["billable_cost_eur"] is not None) is complete
+
+
+def test_evidence_protocol_scope_and_every_vote_are_preserved(monkeypatch) -> None:
+    from src.goldset import eval as quality
+
+    args = quality.build_parser().parse_args(["--goldset-name", "synthetic"])
+    old_scope = quality.build_eval_scope(args, [])
+    args.judge_evidence = True
+    assert quality.build_eval_scope(args, []) == {**old_scope, "judge_evidence": quality.JUDGE_EVIDENCE_VERSION}
+    for bad_point in (
+        {"gold_passage_id": 9, "candidate_passage_ids": [0], "status": "covered", "explanation": "x"},
+        {"gold_passage_id": 0, "candidate_passage_ids": [], "status": "covered", "explanation": "x"},
+        {"gold_passage_id": 0, "candidate_passage_ids": [0], "status": [], "explanation": "x"},
+        {"gold_passage_id": True, "candidate_passage_ids": [0], "status": "covered", "explanation": "x"},
+    ):
+        with pytest.raises(ValueError):
+            quality.validate_judge_evidence({"required_points": [bad_point]}, "gold", "answer")
+    judgments = [{"status": "completed", "pass": i != 0, "score": i / 2, "required_points": [{"vote": i}]} for i in range(3)]
+    sequence = iter(judgments)
+    monkeypatch.setattr(quality, "judge_answer", lambda **kwargs: next(sequence))
+    result = quality.judge_answer_with_votes(votes=3, require_evidence=True)
+    assert result["pass"] is True
+    assert [vote["required_points"] for vote in result["votes"]] == [j["required_points"] for j in judgments]
+
+
 def test_judge_answer_openrouter_enforces_zdr(monkeypatch) -> None:
     """Revue #329 : data_collection=deny n'exclut que les providers qui
     collectent/entraînent — la ZDR est un attribut distinct chez OpenRouter,

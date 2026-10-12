@@ -577,7 +577,7 @@ class Retriever:
                             s.heading_path = t.section_path
                             OR s.heading = btrim(regexp_replace(t.section_path, '^.*>\s*', ''))
                           )
-                        ORDER BY CASE WHEN s.heading_path = t.section_path THEN 0 ELSE 1 END
+                        ORDER BY CASE WHEN s.heading_path = t.section_path THEN 0 ELSE 1 END, s.section_id
                         LIMIT 1
                     )
                 ) AS section_id
@@ -595,7 +595,7 @@ class Retriever:
                         s.heading_path = t.section_path
                         OR s.heading = btrim(regexp_replace(t.section_path, '^.*>\s*', ''))
                       )
-                    ORDER BY CASE WHEN s.heading_path = t.section_path THEN 0 ELSE 1 END
+                    ORDER BY CASE WHEN s.heading_path = t.section_path THEN 0 ELSE 1 END, s.section_id
                     LIMIT 1
                 ) AS section_id
             """

@@ -1,0 +1,470 @@
+{
+  "schema_version": "m1-corrected-pair-diagnosis-v1",
+  "captured_at": "2026-09-30T11:32:47.638766+00:00",
+  "run_ids": {
+    "legacy": 258,
+    "core": 259
+  },
+  "source_fingerprint": "440699d13d50ff5362e153eadfd73bb958ac7077e53f962772d479fee4abf5c0",
+  "official_result": {
+    "legacy_pass": 62,
+    "core_pass": 60,
+    "m0a_rejudged_pass": 60,
+    "questions": 98,
+    "core_minus_legacy_percentage_points": -2.0408163265306123,
+    "paired_gains": 4,
+    "paired_losses": 6,
+    "gate": "GO technique M1",
+    "meaning": "Passes the predeclared tolerance; does not establish causal improvement or reliable absolute quality."
+  },
+  "method": {
+    "new_provider_calls_for_diagnosis": 0,
+    "verdicts_changed": 0,
+    "pairs": 98,
+    "rag_pairs": 96,
+    "direct_response_pairs": 2,
+    "prompt_validation": "Reconstructed from frozen content, templates and dates; compared with complete legacy user prompts, stored legacy system prefixes, core redacted/truncated traces and full character counts. Full core HTTP bodies were not captured.",
+    "scope": "Observed local paired run, not a statistical equivalence proof or legal validation of the goldset.",
+    "finalization": "All 196 items committed before process loss. Bounded reconstruction exactly matches the already finalized legacy aggregates; only the unfinished core run status/aggregates were finalized. Item rows and judgments unchanged; termination cause unknown."
+  },
+  "observations": {
+    "shared_chunk_observations": 12506,
+    "different_chunk_section_associations": 0,
+    "identical_retrieved_chunk_order_rag_pairs": 94,
+    "identical_selector_prompts": 95,
+    "different_served_selection_sets_given_same_selector_prompt": 49,
+    "different_raw_selector_outputs_given_same_prompt": 90,
+    "identical_generation_system_messages": 96,
+    "identical_generation_message_pairs": 51,
+    "different_answers_given_same_generation_messages": 50,
+    "selector_responses_reparsed_by_both_implementations": 192,
+    "parser_mismatches": 0,
+    "selector_parse_failures": [
+      {
+        "question_id": 1,
+        "runtime": "legacy"
+      },
+      {
+        "question_id": 6,
+        "runtime": "legacy"
+      },
+      {
+        "question_id": 182,
+        "runtime": "legacy"
+      },
+      {
+        "question_id": 199,
+        "runtime": "legacy"
+      },
+      {
+        "question_id": 210,
+        "runtime": "legacy"
+      },
+      {
+        "question_id": 210,
+        "runtime": "core"
+      },
+      {
+        "question_id": 827,
+        "runtime": "core"
+      },
+      {
+        "question_id": 4528,
+        "runtime": "core"
+      }
+    ],
+    "selector_provider_model_temperature": {
+      "provider": "albert",
+      "model": "openweight-large",
+      "temperature": 0.0
+    },
+    "generation_provider_model_temperature": {
+      "model": "deepseek-v4-flash",
+      "provider": "albert",
+      "temperature": 0.0,
+      "fallback_model": "llama-3.1-70b-instruct",
+      "fallback_provider": "scaleway",
+      "system_prompt_name": "system_prompt_persona_gestionnaire_rh.md"
+    },
+    "query_difference_ids": [
+      1
+    ],
+    "retrieval_order_difference_ids": [
+      1,
+      203
+    ],
+    "q203_limit": "Same retrieved chunk set, two positions exchanged (95 and 98, one-based); same selector prompt and both answers fail. Ranking difference cause not isolated.",
+    "generation_fallback": {
+      "question_id": 222,
+      "provider": "scaleway",
+      "model": "llama-3.1-70b-instruct",
+      "both_fail": true
+    },
+    "global_doc_recall": {
+      "legacy": 0.7291375686487219,
+      "core": 0.7291375686487219
+    },
+    "global_recall_limit": "Includes upstream references even when the selector later removes the useful material."
+  },
+  "discordant_cases": [
+    {
+      "question_id": 1,
+      "direction": "gain",
+      "classification": "mixed_query_selection_and_judgment",
+      "finding": "The only changed operative query; legacy selector parsing fails and keeps the first five candidates. Inputs already differ. The core answer and its PASS also warrant review for the distinction between continuation and mandatory renewal.",
+      "prompt_equality": {
+        "system": true,
+        "user": false,
+        "selector": false
+      },
+      "served_selection_indices": {
+        "legacy": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "core": [
+          0,
+          1,
+          5
+        ]
+      },
+      "vote_agreement": {
+        "legacy": "3/3",
+        "core": "3/3"
+      },
+      "global_doc_recall": {
+        "legacy": 1.0,
+        "core": 1.0
+      },
+      "served_context_doc_recall": {
+        "legacy": 0.4,
+        "core": 0.4
+      }
+    },
+    {
+      "question_id": 6,
+      "direction": "loss",
+      "classification": "source_selection",
+      "finding": "Same selector input. Legacy parsing failure keeps five candidates including the ministry guide; core chooses three and drops the guide. Served-context recall falls from 1.0 to 0.6; the core answer omits ministry-specific remuneration details.",
+      "prompt_equality": {
+        "system": true,
+        "user": false,
+        "selector": true
+      },
+      "served_selection_indices": {
+        "legacy": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "core": [
+          0,
+          1,
+          3
+        ]
+      },
+      "vote_agreement": {
+        "legacy": "3/3",
+        "core": "2/2"
+      },
+      "global_doc_recall": {
+        "legacy": 1.0,
+        "core": 1.0
+      },
+      "served_context_doc_recall": {
+        "legacy": 1.0,
+        "core": 0.6
+      }
+    },
+    {
+      "question_id": 15,
+      "direction": "gain",
+      "classification": "mixed_selection_generation_and_judgment",
+      "finding": "Core adds a procedural section and answers the main point more directly. Its judge nevertheless credits a named allowance absent from the candidate, and tolerates a condition criticized in the legacy judgment. The gain is not a clean engine effect.",
+      "prompt_equality": {
+        "system": true,
+        "user": false,
+        "selector": true
+      },
+      "served_selection_indices": {
+        "legacy": [
+          0,
+          2
+        ],
+        "core": [
+          0,
+          2,
+          6
+        ]
+      },
+      "vote_agreement": {
+        "legacy": "3/3",
+        "core": "3/3"
+      },
+      "global_doc_recall": {
+        "legacy": 1.0,
+        "core": 1.0
+      },
+      "served_context_doc_recall": {
+        "legacy": 1.0,
+        "core": 1.0
+      }
+    },
+    {
+      "question_id": 177,
+      "direction": "gain",
+      "classification": "judge_inconsistency",
+      "finding": "Identical generation messages. Both answers omit the same renewal notice period. Legacy completeness is 2/3 in all votes; core receives 0.8, 1.0 and 0.6, and wins by 2/3. One core vote infers the missing period from an unrelated renewal-duration passage.",
+      "prompt_equality": {
+        "system": true,
+        "user": true,
+        "selector": true
+      },
+      "served_selection_indices": {
+        "legacy": [
+          0
+        ],
+        "core": [
+          0,
+          3
+        ]
+      },
+      "vote_agreement": {
+        "legacy": "3/3",
+        "core": "2/3"
+      },
+      "global_doc_recall": {
+        "legacy": 0.25,
+        "core": 0.25
+      },
+      "served_context_doc_recall": {
+        "legacy": 0.0,
+        "core": 0.0
+      }
+    },
+    {
+      "question_id": 186,
+      "direction": "loss",
+      "classification": "judge_inconsistency",
+      "finding": "Both candidates omit the same illegal-motive qualification. All legacy votes credit the whole gold passage from citations covering only discretionary renewal; all core votes penalize the absent qualification. Different contexts do not explain crediting an absent candidate statement.",
+      "prompt_equality": {
+        "system": true,
+        "user": false,
+        "selector": true
+      },
+      "served_selection_indices": {
+        "legacy": [
+          0,
+          7,
+          15
+        ],
+        "core": [
+          0,
+          7
+        ]
+      },
+      "vote_agreement": {
+        "legacy": "3/3",
+        "core": "3/3"
+      },
+      "global_doc_recall": {
+        "legacy": 1.0,
+        "core": 1.0
+      },
+      "served_context_doc_recall": {
+        "legacy": 0.0,
+        "core": 0.0
+      }
+    },
+    {
+      "question_id": 189,
+      "direction": "gain",
+      "classification": "judge_inconsistency",
+      "finding": "Identical generation messages. Both candidates say the source does not address one requested entitlement. Legacy is failed for abstention; core is credited as explicitly denying that entitlement. Absence of source coverage is conflated with absence of a right.",
+      "prompt_equality": {
+        "system": true,
+        "user": true,
+        "selector": true
+      },
+      "served_selection_indices": {
+        "legacy": [
+          5
+        ],
+        "core": [
+          5
+        ]
+      },
+      "vote_agreement": {
+        "legacy": "3/3",
+        "core": "3/3"
+      },
+      "global_doc_recall": {
+        "legacy": 0.5,
+        "core": 0.5
+      },
+      "served_context_doc_recall": {
+        "legacy": 0.0,
+        "core": 0.0
+      }
+    },
+    {
+      "question_id": 224,
+      "direction": "loss",
+      "classification": "source_selection",
+      "finding": "Identical selector input. Legacy keeps candidates 0 and 2; core keeps 9. Served-context recall falls from 1.0 to 0.0 and core abstains. The useful material was retrieved before being filtered out.",
+      "prompt_equality": {
+        "system": true,
+        "user": false,
+        "selector": true
+      },
+      "served_selection_indices": {
+        "legacy": [
+          0,
+          2
+        ],
+        "core": [
+          9
+        ]
+      },
+      "vote_agreement": {
+        "legacy": "3/3",
+        "core": "3/3"
+      },
+      "global_doc_recall": {
+        "legacy": 1.0,
+        "core": 1.0
+      },
+      "served_context_doc_recall": {
+        "legacy": 1.0,
+        "core": 0.0
+      }
+    },
+    {
+      "question_id": 225,
+      "direction": "loss",
+      "classification": "source_selection",
+      "finding": "Identical selector input. Core replaces the ministry guide at index 2 with Service-Public at index 3. The candidate omits the internal-grid requirement found in the legacy answer.",
+      "prompt_equality": {
+        "system": true,
+        "user": false,
+        "selector": true
+      },
+      "served_selection_indices": {
+        "legacy": [
+          0,
+          1,
+          2
+        ],
+        "core": [
+          0,
+          1,
+          3
+        ]
+      },
+      "vote_agreement": {
+        "legacy": "3/3",
+        "core": "3/3"
+      },
+      "global_doc_recall": {
+        "legacy": 1.0,
+        "core": 1.0
+      },
+      "served_context_doc_recall": {
+        "legacy": 1.0,
+        "core": 1.0
+      }
+    },
+    {
+      "question_id": 827,
+      "direction": "loss",
+      "classification": "mixed_parse_fallback_and_judgment",
+      "finding": "The core selector response has an unclosed JSON fence; both parsers fail on it and apply the same first-five fallback. Both answers omit two gold requirements, yet completeness penalties differ sharply. A core vote also labels a timing qualification missing despite its presence in its own cited passage.",
+      "prompt_equality": {
+        "system": true,
+        "user": false,
+        "selector": true
+      },
+      "served_selection_indices": {
+        "legacy": [
+          0
+        ],
+        "core": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "vote_agreement": {
+        "legacy": "3/3",
+        "core": "2/3"
+      },
+      "global_doc_recall": {
+        "legacy": 1.0,
+        "core": 1.0
+      },
+      "served_context_doc_recall": {
+        "legacy": 1.0,
+        "core": 1.0
+      }
+    },
+    {
+      "question_id": 4530,
+      "direction": "loss",
+      "classification": "mixed_selection_generation_and_judgment",
+      "finding": "Core drops a complementary section at index 3. Both answers retain the main correspondence table, but core emphasizes an upstream document and receives a contradiction verdict. This case needs criterion-level review rather than attributing the whole loss to retrieval.",
+      "prompt_equality": {
+        "system": true,
+        "user": false,
+        "selector": true
+      },
+      "served_selection_indices": {
+        "legacy": [
+          0,
+          3
+        ],
+        "core": [
+          0
+        ]
+      },
+      "vote_agreement": {
+        "legacy": "3/3",
+        "core": "3/3"
+      },
+      "global_doc_recall": {
+        "legacy": 1.0,
+        "core": 1.0
+      },
+      "served_context_doc_recall": {
+        "legacy": 0.0,
+        "core": 0.0
+      }
+    }
+  ],
+  "limits": [
+    "Shared prompts and configured parameters locate output variability, but do not identify provider-internal sampling or prove all transport options identical.",
+    "The same stored response is parsed identically by both implementations; the complete engines were not replayed on all 98 frozen provider responses.",
+    "Passage-ID validation guarantees quotation provenance only. Required point selection, entailment and completeness scoring remain model judgments.",
+    "Classification is a manual diagnostic of the ten discordant cases, with mixed causes allowed; official scores remain unchanged.",
+    "One follow-up pair changes both SQL behavior and generated responses; score improvement cannot be attributed solely to the SQL fix.",
+    "The final artifact exporter remains a robustness follow-up; no process-exit cause is asserted."
+  ],
+  "prioritized_follow_up": [
+    "Freeze question-specific atomic criteria and weights once for both candidates, then compute completeness from that common checklist; review the four clearest judge inconsistencies (177,186,189,827).",
+    "Replay the same recorded selector/generator outcomes through both engines to isolate implementation differences; seven existing M0b scenarios are not a replay of this full goldset.",
+    "Handle malformed selector envelopes consistently in both adapters and replay the eight observed failures offline before a new live measurement.",
+    "Track served-context coverage as a separate diagnostic and retain the ministry-specific source where it contributes a required point; do not retroactively change the gate."
+  ],
+  "private_artifact_sha256": {
+    "comparison.json": "70ee81eb95e1340bc57ad95e93d381030cb7b6dab1445e05d2628256501c14a0",
+    "reconstructed-prompts.json": "9c9668ec740e73afa7385394859d1e6dc21e3df12302c145d90382fad0e0182b",
+    "additional-checks.json": "e20e6503380d153c0ef4070a599be12fb27a6f02d58cb77b70827ff30798c4f4"
+  },
+  "evidence_fingerprint": "cfcb0925ec9d3d43f1aeb6133a955f542baed2e838155815835277717ed458aa"
+}

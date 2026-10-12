@@ -15,6 +15,7 @@ from assistant_rh_rag_pipeline import config as legacy_config
 from assistant_rh_rag_pipeline import models as legacy_models
 from assistant_rh_rag_pipeline.context_builder import ContextBuilder as LegacyBuilder
 from assistant_rh_rag_pipeline.section_aggregator import SectionAggregator as LegacyAggregator
+from psycopg.types.json import Jsonb
 
 pytestmark = pytest.mark.anyio
 DOC = "00000000-0000-0000-0000-000000000001"
@@ -31,7 +32,9 @@ def plain(value):
     return value
 
 
-@pytest.mark.parametrize("case", ["complete", "nullable-source", "nullable-title", "nullable-token-count", "no-document"])
+@pytest.mark.parametrize(
+    "case", ["complete", "nullable-source", "nullable-title", "nullable-token-count", "no-document", "service-public-references"]
+)
 async def test_content_sql_matches_legacy_context(repository_db, repository_dsn, case):
     async with repository_db.transaction() as connection:
         await connection.execute("ALTER TABLE public.rag_documents ADD COLUMN last_updated_date DATE")
@@ -48,10 +51,15 @@ async def test_content_sql_matches_legacy_context(repository_db, repository_dsn,
                 await connection.execute("UPDATE public.rag_documents SET title = NULL, token_count = NULL")
             if case == "nullable-token-count":
                 await connection.execute("UPDATE public.rag_documents SET token_count = NULL")
+            references = [{"number": "1"}]
+            if case == "service-public-references":
+                # JSONB returns these keys in a different order from alphabetical sorting.
+                # Their legacy string rendering is part of the generation prompt.
+                references = [{"url": "https://example.invalid/law", "type": "Texte de référence", "titre": "Loi synthétique", "complement": ""}]
             await connection.execute(
                 """INSERT INTO public.rag_sections (section_id, doc_id, heading, heading_path, section_markdown, references_juridiques)
-                   VALUES (%s, %s, 'Section', NULL, 'Contenu de la section', '[{"number":"1"}]')""",
-                (SEC, None if case == "no-document" else DOC),
+                   VALUES (%s, %s, 'Section', NULL, 'Contenu de la section', %s)""",
+                (SEC, None if case == "no-document" else DOC, Jsonb(references)),
             )
             await connection.execute(
                 """INSERT INTO public.rag_chunks_dgafp (chunk_id, chunk_text, number, cid, url, full_title)

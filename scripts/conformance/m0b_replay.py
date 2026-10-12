@@ -124,9 +124,9 @@ async def run_candidate(case, stores):
     ids = iter(("1" * 32, "2" * 32))
 
     class ObservedContext(RunContext):
-        async def stage(self, name, operation, *, project, attempt=""):
+        async def stage(self, name, operation, *, project, measure=None, attempt=""):
             try:
-                result = await super().stage(name, operation, project=project, attempt=attempt)
+                result = await super().stage(name, operation, project=project, measure=measure, attempt=attempt)
             except Exception as exc:
                 failures.append(exc)
                 raise
@@ -155,7 +155,7 @@ async def run_candidate(case, stores):
         "EmbeddingGateway": lambda *args, **kwargs: Inference(inference),
         "ChatGateway": lambda client, primary, fallback=None: Inference(inference, primary.provider, primary.model),
         "RerankerGateway": lambda *args: Inference(inference),
-        "ChatRunStore": lambda *args: Runs(),
+        "ChatRunStore": lambda *args, **kwargs: Runs(),
         "SystemClock": lambda: clock,
         "RunIds": lambda: SimpleNamespace(new_id=lambda: next(ids)),
     }

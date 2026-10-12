@@ -1,74 +1,72 @@
 # Conversations : identité individuelle et habilitations aux corpus
 
-> Note de conception du 2026-09-09 — direction retenue pour le temps 2, non implémentée.
-> Aucun changement du contrat B4, aucune migration ni livraison runtime dans cette note.
+> Note de conception du 2026-09-09, réalignée le 2026-10-07 sur le DAT Assistant RH v0.4 (1er octobre 2026) et sur les choix de [#596](https://github.com/DGAFP/assistant-rh/issues/596) du 6 octobre 2026. Direction retenue pour le temps 2, non implémentée.
+> Aucun changement du contrat B4, aucune migration ni livraison runtime dans cette note. En cas d'écart, le DAT prévaut ou l'écart est soumis à revue.
 
 ## Périmètre et responsabilités
 
-La cible est Conversations de La Suite numérique auto-hébergé. ProConnect peut être utilisé dès le départ ; un fournisseur OIDC auto-hébergé proposant identifiant/mot de passe est également possible. ProConnect n'est pas obligatoire. L'API Assistant RH reste indépendante du fournisseur d'identité. Cette note traite des **habilitations d'accès des agents aux corpus ministériels**, pas d'homologation de sécurité.
+La cible est une instance dédiée de Conversations de La Suite numérique. ProConnect assure l'authentification des agents dans Conversations via OpenID Connect. Cette note traite des **habilitations d'accès des agents aux corpus ministériels**, pas d'homologation de sécurité.
 
-Conversations gère la connexion et l'identité individuelle. Assistant RH est l'autorité des droits métier : utilisateurs, affectations aux groupes et politiques ministérielles existantes. L'administration Streamlit permet à un administrateur autorisé d'affecter manuellement les nouveaux utilisateurs aux groupes. L'identité OIDC ne confère aucun droit métier : ni le mail, ni le SIRET, ni un groupe choisi librement par le client ne peuvent accorder un corpus.
+Conversations est la référence des utilisateurs, des groupes et des habilitations ministérielles. L'accès est soumis à une invitation ou à une validation par un administrateur central DGAFP ; une authentification réussie ne confère aucun droit sur les corpus. Le service d'administration modifie les habilitations par une interface applicative du backend Conversations, jamais directement dans ses tables.
 
-Les frontières hexagonales existantes restent applicables : validation de la preuve au niveau des adaptateurs d'authentification, cas d'usage et politiques dans le core, persistance derrière les ports. Aucun microservice « bridge » distinct n'est requis par principe. Le protocole de confiance reste à préciser avant implémentation.
+L'API Assistant RH ne duplique pas les appartenances aux groupes et ne tient pas de registre d'utilisateurs. Elle authentifie le service appelant, vérifie le périmètre délégué par le backend Conversations et applique le filtrage documentaire correspondant. Ni le mail, ni le SIRET, ni un groupe ou un modèle choisi par le client ne peuvent accorder un corpus.
 
-## Modèle conceptuel
+Les frontières hexagonales existantes restent applicables : validation de la délégation au niveau des adaptateurs d'authentification, cas d'usage et politiques dans le core, persistance derrière les ports.
 
-Les noms suivants décrivent des concepts, pas un schéma SQL adopté.
+## Choix retenus (#596, 6 octobre 2026)
 
-| Concept | Rôle et invariants |
+| Sujet | Choix |
 |---|---|
-| Utilisateur Assistant RH | Identifiant interne durable, identité externe unique `(issuer, sub)`, statut en attente/actif/désactivé. L'issuer provient d'une preuve vérifiée ; aucune fusion automatique par mail. Un changement de fournisseur demande une procédure explicite de rattachement. |
-| Appartenance utilisateur–groupe | Relation administrée, permettant plusieurs groupes sans décider ici de leur composition. Affectations et retraits traçables. |
-| Groupe et politique ministère | Réutilisation des politiques existantes : ministères autorisés et défaut valide. Aucun droit implicite pour un utilisateur sans affectation. |
-| Session individuelle Assistant RH | Référence à l'utilisateur, échéance courte, état révocable ; secret conservé uniquement côté serveur Conversations. Aucun token permanent sur le compte ni clé partagée de groupe. |
-| Historique d'administration | Acteur administrateur, utilisateur ciblé, changement et date ; pas de bearer ni de preuve d'identité dans les journaux. |
+| Délégation | **Confiance de service.** L'API n'accepte que les appels du backend Conversations, joignable uniquement par le réseau privé et authentifié comme service (mTLS ou client credentials OAuth, à choisir). Le backend transmet l'identifiant de l'utilisateur et le périmètre autorisé. Pas de preuve utilisateur de bout en bout dans cette première version. Le DAT classe ce mécanisme parmi les arbitrages à clôturer : ce choix est proposé à la revue DGAFP. |
+| Identifiant auteur | Identifiant stable de l'utilisateur Conversations, persisté comme auteur des runs. Pas de registre d'utilisateurs côté API. |
+| Accès à un run individuel | Auteur + habilitation courante sur le ministère du run, quel que soit le groupe courant. |
+| Restrictions SQL | Écritures directes sur les feedbacks individuels : [#599](https://github.com/DGAFP/assistant-rh/issues/599). |
 
-À la première preuve valide, Assistant RH retrouve ou crée l'utilisateur de façon idempotente, y compris lors de connexions concurrentes. Un nouvel utilisateur est **en attente, sans accès par défaut**. L'écran Conversations indique cette attente ; l'administrateur affecte les groupes côté Streamlit. Le passage à actif et les conditions exactes d'émission pour un compte en attente restent à spécifier ; aucune session éventuellement créée pour ce parcours ne doit donner accès aux corpus.
+## Contrat de délégation
 
-## Flux cible et preuve d'identité
+Le contrat entre le backend Conversations et l'API précise :
 
-1. L'agent s'authentifie auprès du fournisseur OIDC via Conversations.
-2. Le backend Conversations obtient une preuve vérifiable pour Assistant RH dans le cadre d'un échange ou d'une délégation serveur de confiance.
-3. Assistant RH vérifie cette preuve, retrouve/crée l'utilisateur et évalue son statut et ses habilitations.
-4. Pour un utilisateur habilité, Assistant RH émet une session individuelle courte. Conversations conserve son secret côté serveur, isolé par utilisateur/session de connexion, et l'utilise pour les appels API.
-5. Le backend charge `GET /v1/models` avec cette session, puis transmet la même identité de session lors des chats et accès documentaires.
+- les restrictions réseau : seul le backend Conversations peut joindre l'API ;
+- l'authentification du service appelant, en plus du réseau, avec rotation et révocation de ses secrets ;
+- le contenu transmis à chaque requête : identifiant utilisateur stable, ministère de la conversation et modèles autorisés ;
+- le délai de prise en compte d'un retrait d'habilitation ;
+- le comportement des streams et des téléchargements déjà en cours lors d'un retrait.
 
-Un couple `issuer/sub` déclaratif, même envoyé depuis le backend, ne suffit pas. Un ID token ou access token ProConnect destiné à Conversations n'est pas automatiquement utilisable pour notre API. Le futur mécanisme devra fournir une preuve signée courte destinée à Assistant RH, vérifier signature, émetteur approuvé, audience, expiration et protection contre le rejeu, et lier sans ambiguïté la preuve à l'identité OIDC authentifiée. Si le signataire est un serveur délégant, distinguer son identité d'émetteur de l'issuer OIDC de l'utilisateur.
+Un appel qui ne provient pas du backend authentifié est refusé, même s'il fournit un identifiant utilisateur. La stabilité de l'identifiant Conversations doit être vérifiée (jamais réattribué, inchangé à la reconnexion), ainsi que le cas d'un compte supprimé puis recréé.
 
-**À finaliser** : protocole d'échange/délégation, serveur autorisé à signer, clés et rotation, liaison au login, mécanisme anti-rejeu et fenêtres temporelles. Le flux général est retenu ; aucun protocole cryptographique particulier, endpoint nouveau ou TTL individuel exact n'est décidé ici.
+**Risque accepté** : un backend Conversations compromis peut agir au nom de n'importe quel utilisateur. Il est réduit par les restrictions réseau, l'authentification de service et la rotation des secrets. Une preuve utilisateur de bout en bout pourra être ajoutée plus tard sans changer le modèle d'auteur.
 
-## Sessions, expiration et révocation
+## Flux cible
 
-À chaque reconnexion, une preuve valide permet une nouvelle émission ; un identifiant de compte mémorisé ne permet jamais de récupérer un ancien secret ou de créer une session. Le bearer ne passe pas dans le navigateur, les URL ou les logs.
+1. L'agent s'authentifie auprès de ProConnect via Conversations.
+2. Le backend Conversations vérifie que l'utilisateur est admis et lit ses habilitations courantes.
+3. À la création d'une conversation, l'utilisateur choisit un ministère parmi ses habilitations ; ce périmètre reste fixe pour toute la conversation.
+4. Le backend filtre le catalogue des modèles selon les habilitations courantes, puis appelle l'API en transmettant l'identifiant utilisateur et le périmètre autorisé.
+5. L'API authentifie le service appelant, vérifie que le modèle demandé correspond au périmètre délégué et applique le filtrage documentaire. Le nom d'un modèle ne vaut pas autorisation.
 
-La session Assistant RH peut expirer alors que Conversations est encore ouvert. Une nouvelle émission ou un renouvellement exige une preuve d'identité encore valide **et une réévaluation des habilitations**. Si Conversations ne peut plus apporter cette preuve, il impose une reconnexion. La seule présence du cookie Conversations ou d'un bearer RH expiré ne suffit pas. Le mécanisme retenu devra éviter les renouvellements concurrents incohérents et définir logout, révocation et propagation de fin de session.
+## Habilitations, retrait et historique
 
-Un retrait de groupe ou une désactivation s'applique **dès la prochaine requête**, sans attendre l'échéance du bearer : résolution des droits actuels ou contrôle de révision avec invalidation cohérente à chaque requête. Une photographie des droits dans un token valable jusqu'à expiration ne satisfait pas cette exigence. Le sort d'un stream déjà commencé doit être précisé séparément ; il ne doit pas permettre de nouvelles requêtes après retrait.
+Le backend Conversations vérifie les habilitations courantes à chaque nouvelle question, consultation de l'historique et accès documentaire. L'API vérifie à chaque requête le périmètre délégué. Un retrait d'habilitation ou une désactivation s'applique **dès la requête suivante**.
 
-L'exigence couvre aussi l'émission **et la rédemption** des accès documentaires. Les capabilities et redirections S3 actuelles du [contrat B4/A3](02-api-contract.md) ne suffisent pas à promettre une révocation immédiate : une URL S3 déjà délivrée peut rester utilisable jusqu'à son expiration. Avant le temps 2, choisir un chemin contrôlé à chaque accès (par exemple lecture via backend/API avec vérification des droits), ou un mécanisme équivalent sans accès résiduel par lien préémis. Il s'agit d'une évolution à concevoir, pas d'une propriété livrée ; des bytes déjà téléchargés ne sont pas révocables.
+Le retrait d'une habilitation bloque les nouvelles questions, les nouveaux accès documentaires et la consultation des anciennes conversations du ministère concerné. Ces conversations et leurs runs sont masqués sans être supprimés, et redeviennent accessibles si l'habilitation est rétablie. Les modifications de droits sont journalisées avec leur auteur, leur date et leur objet.
 
-## Catalogue, chat et documents
+Un utilisateur peut appartenir à plusieurs groupes. L'accès à ses runs, feedbacks et sources repose sur son identité d'auteur et sur l'habilitation courante au ministère du run, et non sur le groupe : un changement de groupe qui conserve ce ministère conserve l'accès. L'appartenance à un même groupe ne donne aucun accès aux runs ou feedbacks d'un autre utilisateur. La propriété d'un run ne confère pas un droit perpétuel au corpus.
 
-Le backend Conversations doit récupérer `GET /v1/models` avec la session individuelle et n'afficher que les modèles autorisés. Son catalogue global actuel doit être adapté ; une clé provider configurée au niveau du serveur ne porte pas automatiquement l'identité de l'agent. Aucun cache partagé ne doit mélanger les catalogues utilisateurs ; conserver le `no-store` du contrat et actualiser après changement de droits.
+## Documents
 
-L'API contrôle les mêmes habilitations à chaque chat et accès document : choisir ou forger un identifiant de modèle n'accorde aucun droit. Le routage ministère reste celui de D2 ; un ministère inconnu ou interdit est refusé. Les documents doivent toujours appartenir aux sources finales persistées du run, avec en plus la politique d'accès historique à trancher ci-dessous. L'interface ne constitue jamais la barrière d'autorisation.
+Les documents sont délivrés via le backend, après vérification des habilitations et du périmètre du document à chaque accès. Le bucket reste privé et aucun lien S3 direct n'est transmis au navigateur. Les capabilities et redirections S3 du [contrat B4/A3](02-api-contract.md) ne s'appliquent pas à cette cible. Le comportement d'un téléchargement en cours lors d'un retrait est défini par le contrat de délégation ; des octets déjà téléchargés ne sont pas révocables.
 
-## Multi-groupes et historique : arbitrages nécessaires
+## Journaux
 
-| Question ouverte | Impact à analyser avant implémentation |
-|---|---|
-| Composition des groupes | Union, intersection ou contexte de groupe explicite validé par le serveur ne donnent pas les mêmes droits. Aucune option n'est adoptée ici ; définir conflits, groupes invalides et refus sans affectation. |
-| Ministère par défaut | Plusieurs groupes peuvent avoir des défauts différents. Ne pas prendre silencieusement le premier ou un défaut global. Définir la résolution de l'alias `assistant-rh` et du modèle omis ; tout défaut doit rester autorisé. |
-| Ownership des runs, feedbacks et documents | Le contrat actuel rattache les accès au groupe. Décider si le futur historique est individuel, partagé par groupe ou hybride, et comment vérifier auteur, groupe de création et droits courants. Aucun changement implicite d'ownership. |
-| Historique B4 et mobilité | Définir l'accès aux anciens runs après rattachement individuel, retrait/changement de groupe ou désactivation. Ne pas réattribuer automatiquement les runs collectifs à une personne. Préserver les références de sources et l'audit existants. |
+Un identifiant de requête corrèle Conversations et l'API. Les jetons ProConnect, les secrets de service et le contenu de la délégation ne sont jamais journalisés. Le pseudonyme d'audit des feedbacks reste à fournir par #596.
 
 ## Coexistence avec B4 et séquencement
 
-B4 conserve son contrat actuel : **mot de passe de groupe → session opaque de huit heures, non renouvelable**, bornée à ce groupe. D6, les routes d'auth actuelles et les contrôles d'ownership du [contrat API](02-api-contract.md) restent inchangés. La session individuelle courte constitue un futur mécanisme distinct ; aucune durée ou capacité de renouvellement ne se déduit de B4.
+B4 conserve son contrat actuel : **mot de passe de groupe → session opaque de huit heures, non renouvelable**, bornée à ce groupe. D6, les routes d'auth actuelles et les contrôles d'ownership collectifs du [contrat API](02-api-contract.md) restent inchangés. Principaux groupe et utilisateur restent distincts : aucune réattribution automatique des anciens runs collectifs, aucune session de groupe permettant d'accéder aux runs individuels.
 
-1. Finaliser les arbitrages de confiance, multi-groupes, défaut, historique et documents ; compléter le contrat et les scénarios de validation dans une évolution dédiée.
-2. Développer côté Assistant RH le modèle utilisateur, l'administration Streamlit, l'émission individuelle et les contrôles de droits ; côté Conversations, la délégation, la conservation serveur, la gestion d'expiration et le catalogue individuel.
-3. Valider la coexistence de principaux groupe B4 et utilisateur individuel sans confusion de type ni conversion automatique ; conserver le parcours B4 pendant la transition explicitement planifiée.
+1. Valider en revue DGAFP le choix de délégation par confiance de service, ou consigner l'écart au DAT.
+2. Développer côté Conversations l'admission, les habilitations ministérielles, le filtrage du catalogue et la délégation ; côté Assistant RH l'authentification du service, la vérification du périmètre délégué et l'auteur des runs.
+3. Valider la coexistence des principaux groupe B4 et utilisateur individuel sans confusion de type ni conversion automatique.
 4. Autoriser séparément la bascule et le retrait éventuel de B4 après validation. Cette note ne change ni les jalons du temps 1 ni leur statut au [LEDGER](LEDGER.md).
 
 ## Évidence Conversations vérifiée
@@ -83,10 +81,12 @@ Lecture du dépôt public à la révision stable [`4f73043f731875fdc3f12bca9f158
 
 ## Critères d'acceptation du futur chantier
 
-- Deux connexions concurrentes de la même identité vérifiée retrouvent un seul utilisateur ; deux issuers avec le même `sub` restent distincts. Mail/SIRET identiques n'accordent ni fusion ni habilitation.
-- Un nouveau compte reste en attente sans corpus ; seule une affectation administrative autorisée ouvre des droits, avec audit. Un groupe fourni par le client ne peut pas accorder un droit.
-- Une preuve expirée, de mauvaise audience, d'émetteur non approuvé, rejouée ou déclarative est refusée ; les deux fournisseurs envisagés passent par la même frontière d'auth API.
-- Le secret RH reste côté serveur et isolé entre utilisateurs. Reconnexion et expiration en cours de session Conversations exigent une preuve valide et de nouveaux contrôles ; sinon reconnexion visible.
-- Retrait/désactivation bloque dès la requête suivante le catalogue concerné, le chat et tout nouvel accès documentaire, y compris via un lien déjà émis selon le mécanisme à retenir.
-- Un modèle forgé ou un catalogue obsolète ne contourne pas l'API. Les cas multi-groupes, défaut ambigu et historique après mobilité ont des résultats spécifiés avant codage.
+Les critères de référence sont ceux de [#596](https://github.com/DGAFP/assistant-rh/issues/596). En résumé :
+
+- Un appel qui ne provient pas du backend Conversations authentifié est refusé, depuis un autre réseau, sans authentification de service ou avec un secret révoqué.
+- Deux utilisateurs d'un même groupe ont des identifiants auteur distincts ; aucun cache, session ou catalogue ne fuit entre utilisateurs.
+- Un utilisateur sans habilitation n'accède à aucun corpus ; un modèle hors du périmètre délégué est refusé ; un retrait prend effet dès la requête suivante.
+- L'API ne stocke ni appartenance aux groupes ni registre d'utilisateurs.
+- Après retrait, les anciens runs du ministère sont masqués puis restaurés si le droit revient ; un changement de groupe qui conserve le ministère conserve l'accès à ses runs.
+- Documents délivrés via le backend, sans lien S3 direct.
 - Les régressions B4 couvrent ses huit heures non renouvelables, son login groupe et son ownership actuel pendant toute la coexistence. Aucun test runtime n'est ajouté par cette note documentaire.

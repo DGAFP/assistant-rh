@@ -215,7 +215,9 @@ def streamlit_secret_environment() -> dict[str, str]:
     # deliberately omitting it preserves the existing value instead of
     # requiring a duplicate GitHub environment secret.
     container_secret_env = {
-        "SCW_POSTGRES_DSN": env_required("SCW_POSTGRES_DSN"),
+        # The runtime connects as its own non-owner login once provisioned (#599);
+        # SCW_POSTGRES_DSN stays the migration admin. Unset falls back to it.
+        "SCW_POSTGRES_DSN": env_optional("STREAMLIT_POSTGRES_DSN") or env_required("SCW_POSTGRES_DSN"),
         "ALBERT_API_KEY": env_required("ALBERT_API_KEY"),
         "SCALEWAY_API_KEY": env_required("SCALEWAY_API_KEY"),
         "COOKIES_PASSWORD": env_required("COOKIES_PASSWORD"),
