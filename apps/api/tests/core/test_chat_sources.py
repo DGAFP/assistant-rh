@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 from assistant_rh_api.core.models.context import ContextItem
-from assistant_rh_api.core.sources import SOURCES_MARKER, final_sources, with_sources
+from assistant_rh_api.core.sources import SOURCES_MARKER, AnswerStream, final_sources, with_sources
 
 
 def item(**changes):
@@ -153,3 +153,40 @@ def test_adjacent_links_are_redacted_individually(separator, private_index):
 def test_filenames_versions_and_normal_prose_are_not_links():
     answer = "Lire config.json et guide.pdf avec Python 3.12. Le délai est de 2.5 jours."
     assert with_sources(answer, ()) == answer
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Réponse sans lien.\r\n\r\nSuite.\rFin.",
+        "Voir [guide](https://storage.invalid/file?signature=PRIVATE) et la suite.",
+        "Lire storage.invalid/file?signature=PRIVATE et `guide.pdf`.",
+        "[public](https://www.service-public.fr/F1),[interne](s3://private/PRIVATE)",
+        "[public](https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI123).",
+        "Réponse" + SOURCES_MARKER + "1. Invented source",
+        SOURCES_MARKER.strip("\n") + "\n1. Invented source",
+        "Réponse" + SOURCES_MARKER.replace("\n", "\r\n") + "1. Invented source",
+        "Réponse" + SOURCES_MARKER.replace("\n", "\r") + "1. Invented source",
+        "Réponse\n---\n**Sources :**\nThis is not the reserved marker.",
+        "Réponse" + SOURCES_MARKER[:-1],
+    ],
+)
+def test_stream_answer_policy_matches_whole_answer_at_every_split(text):
+    expected = with_sources(text, ())
+    for split in range(len(text) + 1):
+        answer = AnswerStream()
+        actual = answer.feed(text[:split]) + answer.feed(text[split:]) + answer.feed("", final=True)
+        assert actual == expected, split
+    answer = AnswerStream()
+    assert "".join(answer.feed(character) for character in text) + answer.feed("", final=True) == expected
+
+
+def test_stream_emits_completed_text_but_holds_unfinished_url_and_sources_marker():
+    answer = AnswerStream()
+    assert answer.feed("Réponse ") == "Réponse "
+    assert answer.feed("https://www.service-public.fr/F1") == ""
+    assert answer.feed("?signature=PRIVATE") == ""
+    assert answer.feed(" ensuite ") == "[lien privé retiré] ensuite "
+    assert answer.feed("\n\n---\n**Sources :**") == ""
+    assert answer.feed("\n1. Invented source") == ""
+    assert answer.feed("", final=True) == ""

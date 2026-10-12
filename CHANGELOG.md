@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.15.0](https://github.com/DGAFP/assistant-rh/compare/v0.14.0...v0.15.0) (2026-10-12)
+
+
+### Features
+
+* **api:** add resilient Chat Completions SSE ([7a1e5ac](https://github.com/DGAFP/assistant-rh/commit/7a1e5ace88ad7da62c4996f814e65d109e81b5f9))
+* **api:** add resilient Chat Completions SSE ([7a1e5ac](https://github.com/DGAFP/assistant-rh/commit/7a1e5ace88ad7da62c4996f814e65d109e81b5f9))
+* **api:** authenticate Conversations delegations for individual users ([a2b6c50](https://github.com/DGAFP/assistant-rh/commit/a2b6c50c6ab309aeda23b9d73d7e3984ee44b65d)), closes [#596](https://github.com/DGAFP/assistant-rh/issues/596)
+* **api:** prepare transactional individual feedback ([93fa5f0](https://github.com/DGAFP/assistant-rh/commit/93fa5f007683abba0ddec209b4346dfdf9789c92))
+* **api:** prepare transactional individual feedback ([93fa5f0](https://github.com/DGAFP/assistant-rh/commit/93fa5f007683abba0ddec209b4346dfdf9789c92))
+* **api:** prepare transactional individual feedback ([807fe52](https://github.com/DGAFP/assistant-rh/commit/807fe5245c0152b72ef6aa6609c3328d74d0ead5))
+* **db:** restrict individual feedback writes to a dedicated API runtime role ([3046bfe](https://github.com/DGAFP/assistant-rh/commit/3046bfe73e15892ec7c3b692ab96c716d3c5a487))
+* **db:** restrict individual feedback writes to a dedicated API runtime role ([3046bfe](https://github.com/DGAFP/assistant-rh/commit/3046bfe73e15892ec7c3b692ab96c716d3c5a487))
+* **db:** restrict individual feedback writes to a dedicated API runtime role ([b79d774](https://github.com/DGAFP/assistant-rh/commit/b79d774c1620141c90907999fb66dd58a0d116e0))
+* **db:** version the individual identity schema and refuse replayed delegations ([8942a7c](https://github.com/DGAFP/assistant-rh/commit/8942a7ca306241f1834a72ea3101d5e9488908bb))
+
+
+### Bug Fixes
+
+* **api:** clarify identity rules and stabilize replay concurrency check ([da1e8ca](https://github.com/DGAFP/assistant-rh/commit/da1e8cab67faa1d30954f4fca62d5078e806846d))
+* **api:** close individual feedback and delegation replay bypasses ([85b223a](https://github.com/DGAFP/assistant-rh/commit/85b223a1a459feed9092f3180742e3bd6aaf2721))
+* **api:** grant individual run access by author and ministry, not group ([40714e6](https://github.com/DGAFP/assistant-rh/commit/40714e6bda660237e8350b521f154e2db9a8db71))
+* **api:** harden feedback ownership and isolate D1 rollout ([1802bae](https://github.com/DGAFP/assistant-rh/commit/1802baee20e6f641f108cff2930fcabd7b36fdca))
+* **api:** reject NUL characters in feedback comments ([efb65ac](https://github.com/DGAFP/assistant-rh/commit/efb65ac76cb23dbb65815bc1d15fc4c726c98de1))
+* **api:** verify D1 readiness before individual requests ([56e9162](https://github.com/DGAFP/assistant-rh/commit/56e9162f8bc1b664a1f0f39f4d918a591f274c5b))
+* **db:** widen chat_runs.conversation_id and bound client correlation IDs ([#608](https://github.com/DGAFP/assistant-rh/issues/608)) ([9737657](https://github.com/DGAFP/assistant-rh/commit/9737657c487b0bc1bcd92b458ddd61562e90bb3f)), closes [#604](https://github.com/DGAFP/assistant-rh/issues/604)
+* **rag:** align runtime inputs, metrics and M1 evaluation ([#580](https://github.com/DGAFP/assistant-rh/issues/580)) ([a065bef](https://github.com/DGAFP/assistant-rh/commit/a065bef9a92b0a136957f82cfe5df44f779e9cc6))
+* **ui:** render generated LaTeX formulas in Streamlit ([#598](https://github.com/DGAFP/assistant-rh/issues/598)) ([c0ff525](https://github.com/DGAFP/assistant-rh/commit/c0ff5252c11a860d57465086d66de6d241c2d5ca))
+
+
+### Documentation
+
+* align Conversations identity note with DAT v0.4 and [#596](https://github.com/DGAFP/assistant-rh/issues/596) ([#600](https://github.com/DGAFP/assistant-rh/issues/600)) ([f87202d](https://github.com/DGAFP/assistant-rh/commit/f87202d486cd86f0fb0e30e337cbd494db349c41))
+* align feedback ownership docs with [#596](https://github.com/DGAFP/assistant-rh/issues/596) decisions ([15fe5e4](https://github.com/DGAFP/assistant-rh/commit/15fe5e48af1b069600cee60ca3c3fa2df0917895))
+* **d1:** link feedback PR and validation evidence ([2da09ee](https://github.com/DGAFP/assistant-rh/commit/2da09eea3afe116fd1e7269921e0747402e9c991))
+* record individual run access validation ([403c755](https://github.com/DGAFP/assistant-rh/commit/403c755dd88ed24c475eea02231b1e481c165e59))
+* record replay and revocation decisions, add DGAFP review note ([4049214](https://github.com/DGAFP/assistant-rh/commit/40492148ebb34980603975b40a566c40319d39e7)), closes [#596](https://github.com/DGAFP/assistant-rh/issues/596)
+
 ## [0.14.0](https://github.com/DGAFP/assistant-rh/compare/v0.13.0...v0.14.0) (2026-09-25)
 
 

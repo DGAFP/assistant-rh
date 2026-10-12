@@ -1,0 +1,3094 @@
+{
+  "schema_version": "m1-api-parity-evidence-v1",
+  "captured_at": "2026-09-29T05:18:37.786099+00:00",
+  "environment": "local_rag_clone",
+  "issue": "https://github.com/DGAFP/assistant-rh/issues/465",
+  "pull_request": "https://github.com/DGAFP/assistant-rh/pull/580",
+  "decision": "NO-GO",
+  "decision_scope": "NO-GO for phase D: the paired judge pass-rate drop exceeds 0.05; no deployment.",
+  "assessment": {
+    "schema_version": "m1-paired-assessment-v1",
+    "captured_at": "2026-09-29T05:18:37.786099+00:00",
+    "database": "local_clone",
+    "runs": {
+      "m0a": {
+        "id": 240,
+        "run_label": "m0a_api_parity_dev_20260901_rerun1",
+        "git_sha": "9bf1cf0cb92420e9e551f811edadb1d7129244b1",
+        "status": "completed",
+        "config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "created_at": "2026-09-01 09:30:34.788523+00:00",
+        "completed_at": "2026-09-01 10:33:50.122915+00:00",
+        "fingerprints": {
+          "generator_system_prompt_sha": "108979e4207a6fb113094cc59d1003df0a92f6d164f7b30321ca7dec95188583"
+        },
+        "question_ids": [
+          1,
+          2,
+          3,
+          4,
+          6,
+          7,
+          9,
+          10,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          23,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          173,
+          174,
+          175,
+          176,
+          177,
+          178,
+          179,
+          180,
+          181,
+          182,
+          183,
+          184,
+          185,
+          186,
+          187,
+          188,
+          189,
+          190,
+          191,
+          192,
+          193,
+          194,
+          196,
+          197,
+          198,
+          199,
+          200,
+          201,
+          203,
+          204,
+          205,
+          206,
+          207,
+          208,
+          209,
+          210,
+          211,
+          212,
+          213,
+          214,
+          215,
+          216,
+          217,
+          218,
+          219,
+          220,
+          221,
+          222,
+          223,
+          224,
+          225,
+          226,
+          227,
+          228,
+          229,
+          657,
+          660,
+          676,
+          706,
+          827,
+          926,
+          4528,
+          4529,
+          4530,
+          4531,
+          4532,
+          4533,
+          4534,
+          4535,
+          4536,
+          4537,
+          4538
+        ],
+        "aggregate": {
+          "total": 98,
+          "completed": 98,
+          "failed": 0,
+          "doc_recall_avg": 0.7242784821569823,
+          "doc_precision_avg": 0.021930235091662014,
+          "hit_rate_avg": 0.8061224489795918,
+          "mrr_avg": 0.4338885076610081,
+          "judge_score_avg": 0.6632653061224489,
+          "judge_raw_score_avg": 0.7173469387755101,
+          "judge_pass_rate": 0.6530612244897959,
+          "retrieval_gap_rate": 0.19387755102040816,
+          "judge_legal_correctness_avg": 0.7857142857142857,
+          "judge_completeness_avg": 0.7081632653061225,
+          "judge_gold_answer_alignment_avg": 0.7198979591836734,
+          "judge_source_support_avg": 0.8775510204081632,
+          "stage_metrics": {
+            "initial": {
+              "pool": {
+                "n": 96,
+                "hit_rate_avg": 0.8229166666666666,
+                "doc_recall_avg": 0.7393676172019195
+              },
+              "selector_kept": {
+                "n": 94,
+                "hit_rate_avg": 0.5425531914893617,
+                "doc_recall_avg": 0.46453900709219853
+              },
+              "sections_top12": {
+                "n": 96,
+                "hit_rate_avg": 0.6458333333333334,
+                "doc_recall_avg": 0.5512276785714286
+              },
+              "sections_top20": {
+                "n": 96,
+                "hit_rate_avg": 0.6770833333333334,
+                "doc_recall_avg": 0.597358630952381
+              },
+              "context_builder_output": {
+                "n": 96,
+                "hit_rate_avg": 0.53125,
+                "doc_recall_avg": 0.4548611111111111
+              }
+            }
+          },
+          "token_usage": {
+            "judge": {
+              "prompt_tokens": 1680522,
+              "completion_tokens": 93808,
+              "calls": 294,
+              "items": 98,
+              "active_items": 98,
+              "coverage_complete": true,
+              "provider": "scaleway",
+              "model": "mistral-medium-3.5-128b",
+              "cost_eur": 3.224349,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "ragas": {
+              "prompt_tokens": 0,
+              "completion_tokens": 0,
+              "calls": 0,
+              "items": 0,
+              "active_items": 0,
+              "coverage_complete": true,
+              "provider": "",
+              "model": "",
+              "cost_eur": 0.0,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "billable_cost_eur": 3.2243,
+            "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+          }
+        },
+        "per_corpus": {
+          "DGAFP": {
+            "total": 2,
+            "completed": 2,
+            "failed": 0,
+            "doc_recall_avg": 0.03488372093023256,
+            "doc_precision_avg": 0.011111111111111112,
+            "hit_rate_avg": 0.5,
+            "mrr_avg": 0.004807692307692308,
+            "judge_score_avg": 0.725,
+            "judge_raw_score_avg": 1.0,
+            "judge_pass_rate": 1.0,
+            "retrieval_gap_rate": 0.5,
+            "judge_legal_correctness_avg": 1.0,
+            "judge_completeness_avg": 1.0,
+            "judge_gold_answer_alignment_avg": 1.0,
+            "judge_source_support_avg": 1.0,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 2,
+                  "hit_rate_avg": 0.5,
+                  "doc_recall_avg": 0.03488372093023256
+                },
+                "selector_kept": {
+                  "n": 2,
+                  "hit_rate_avg": 0.0,
+                  "doc_recall_avg": 0.0
+                },
+                "sections_top12": {
+                  "n": 2,
+                  "hit_rate_avg": 0.0,
+                  "doc_recall_avg": 0.0
+                },
+                "sections_top20": {
+                  "n": 2,
+                  "hit_rate_avg": 0.0,
+                  "doc_recall_avg": 0.0
+                },
+                "context_builder_output": {
+                  "n": 2,
+                  "hit_rate_avg": 0.0,
+                  "doc_recall_avg": 0.0
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 29634,
+                "completion_tokens": 1730,
+                "calls": 6,
+                "items": 2,
+                "active_items": 2,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.057428,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.0574,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "MATTE": {
+            "total": 12,
+            "completed": 12,
+            "failed": 0,
+            "doc_recall_avg": 0.7906746031746031,
+            "doc_precision_avg": 0.02319665962281135,
+            "hit_rate_avg": 0.9166666666666666,
+            "mrr_avg": 0.5836640211640212,
+            "judge_score_avg": 0.5791666666666667,
+            "judge_raw_score_avg": 0.65,
+            "judge_pass_rate": 0.5833333333333334,
+            "retrieval_gap_rate": 0.08333333333333333,
+            "judge_legal_correctness_avg": 0.6666666666666666,
+            "judge_completeness_avg": 0.6333333333333333,
+            "judge_gold_answer_alignment_avg": 0.6666666666666666,
+            "judge_source_support_avg": 0.8333333333333334,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 12,
+                  "hit_rate_avg": 0.9166666666666666,
+                  "doc_recall_avg": 0.7906746031746031
+                },
+                "selector_kept": {
+                  "n": 12,
+                  "hit_rate_avg": 0.8333333333333334,
+                  "doc_recall_avg": 0.6253968253968254
+                },
+                "sections_top12": {
+                  "n": 12,
+                  "hit_rate_avg": 0.8333333333333334,
+                  "doc_recall_avg": 0.6557539682539683
+                },
+                "sections_top20": {
+                  "n": 12,
+                  "hit_rate_avg": 0.9166666666666666,
+                  "doc_recall_avg": 0.7628968253968255
+                },
+                "context_builder_output": {
+                  "n": 12,
+                  "hit_rate_avg": 0.8333333333333334,
+                  "doc_recall_avg": 0.6253968253968254
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 293172,
+                "completion_tokens": 15166,
+                "calls": 36,
+                "items": 12,
+                "active_items": 12,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.553502,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.5535,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "MSO": {
+            "total": 4,
+            "completed": 4,
+            "failed": 0,
+            "doc_recall_avg": 0.34523809523809523,
+            "doc_precision_avg": 0.011695906432748537,
+            "hit_rate_avg": 0.5,
+            "mrr_avg": 0.5,
+            "judge_score_avg": 0.425,
+            "judge_raw_score_avg": 0.5,
+            "judge_pass_rate": 0.5,
+            "retrieval_gap_rate": 0.5,
+            "judge_legal_correctness_avg": 0.5,
+            "judge_completeness_avg": 0.5,
+            "judge_gold_answer_alignment_avg": 0.5,
+            "judge_source_support_avg": 0.5,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 4,
+                  "hit_rate_avg": 0.5,
+                  "doc_recall_avg": 0.34523809523809523
+                },
+                "selector_kept": {
+                  "n": 4,
+                  "hit_rate_avg": 0.5,
+                  "doc_recall_avg": 0.2738095238095238
+                },
+                "sections_top12": {
+                  "n": 4,
+                  "hit_rate_avg": 0.5,
+                  "doc_recall_avg": 0.34523809523809523
+                },
+                "sections_top20": {
+                  "n": 4,
+                  "hit_rate_avg": 0.5,
+                  "doc_recall_avg": 0.34523809523809523
+                },
+                "context_builder_output": {
+                  "n": 4,
+                  "hit_rate_avg": 0.5,
+                  "doc_recall_avg": 0.2738095238095238
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 58218,
+                "completion_tokens": 4044,
+                "calls": 12,
+                "items": 4,
+                "active_items": 4,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.117656,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.1177,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "Service-Public": {
+            "total": 14,
+            "completed": 14,
+            "failed": 0,
+            "doc_recall_avg": 1.0,
+            "doc_precision_avg": 0.02192294253894746,
+            "hit_rate_avg": 1.0,
+            "mrr_avg": 0.8282851115129597,
+            "judge_score_avg": 0.8678571428571429,
+            "judge_raw_score_avg": 0.8678571428571429,
+            "judge_pass_rate": 0.6428571428571429,
+            "retrieval_gap_rate": 0.0,
+            "judge_legal_correctness_avg": 0.9285714285714286,
+            "judge_completeness_avg": 0.8071428571428572,
+            "judge_gold_answer_alignment_avg": 0.8928571428571429,
+            "judge_source_support_avg": 0.9285714285714286,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 14,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 1.0
+                },
+                "selector_kept": {
+                  "n": 14,
+                  "hit_rate_avg": 0.8571428571428571,
+                  "doc_recall_avg": 0.8571428571428571
+                },
+                "sections_top12": {
+                  "n": 14,
+                  "hit_rate_avg": 0.9285714285714286,
+                  "doc_recall_avg": 0.9285714285714286
+                },
+                "sections_top20": {
+                  "n": 14,
+                  "hit_rate_avg": 0.9285714285714286,
+                  "doc_recall_avg": 0.9285714285714286
+                },
+                "context_builder_output": {
+                  "n": 14,
+                  "hit_rate_avg": 0.8571428571428571,
+                  "doc_recall_avg": 0.8571428571428571
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 281670,
+                "completion_tokens": 15164,
+                "calls": 42,
+                "items": 14,
+                "active_items": 14,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.536237,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.5362,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "manual": {
+            "total": 55,
+            "completed": 55,
+            "failed": 0,
+            "doc_recall_avg": 0.6552813852813852,
+            "doc_precision_avg": 0.024324504181147115,
+            "hit_rate_avg": 0.7454545454545455,
+            "mrr_avg": 0.27683244118726247,
+            "judge_score_avg": 0.6318181818181818,
+            "judge_raw_score_avg": 0.6972727272727273,
+            "judge_pass_rate": 0.6545454545454545,
+            "retrieval_gap_rate": 0.2545454545454545,
+            "judge_legal_correctness_avg": 0.8,
+            "judge_completeness_avg": 0.7,
+            "judge_gold_answer_alignment_avg": 0.6918181818181818,
+            "judge_source_support_avg": 0.9090909090909091,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 54,
+                  "hit_rate_avg": 0.7592592592592593,
+                  "doc_recall_avg": 0.6674162257495591
+                },
+                "selector_kept": {
+                  "n": 53,
+                  "hit_rate_avg": 0.3584905660377358,
+                  "doc_recall_avg": 0.2842767295597484
+                },
+                "sections_top12": {
+                  "n": 54,
+                  "hit_rate_avg": 0.5185185185185185,
+                  "doc_recall_avg": 0.4012566137566138
+                },
+                "sections_top20": {
+                  "n": 54,
+                  "hit_rate_avg": 0.5370370370370371,
+                  "doc_recall_avg": 0.44093915343915346
+                },
+                "context_builder_output": {
+                  "n": 54,
+                  "hit_rate_avg": 0.35185185185185186,
+                  "doc_recall_avg": 0.27901234567901234
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 843759,
+                "completion_tokens": 46762,
+                "calls": 165,
+                "items": 55,
+                "active_items": 55,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 1.616357,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 1.6164,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "synthetic": {
+            "total": 11,
+            "completed": 11,
+            "failed": 0,
+            "doc_recall_avg": 0.9090909090909091,
+            "doc_precision_avg": 0.013749238404539187,
+            "hit_rate_avg": 0.9090909090909091,
+            "mrr_avg": 0.6077922077922078,
+            "judge_score_avg": 0.7272727272727273,
+            "judge_raw_score_avg": 0.7272727272727273,
+            "judge_pass_rate": 0.7272727272727273,
+            "retrieval_gap_rate": 0.09090909090909091,
+            "judge_legal_correctness_avg": 0.7272727272727273,
+            "judge_completeness_avg": 0.7272727272727273,
+            "judge_gold_answer_alignment_avg": 0.7272727272727273,
+            "judge_source_support_avg": 0.8181818181818182,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 10,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 1.0
+                },
+                "sections_top12": {
+                  "n": 10,
+                  "hit_rate_avg": 0.9,
+                  "doc_recall_avg": 0.9
+                },
+                "sections_top20": {
+                  "n": 10,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 1.0
+                },
+                "context_builder_output": {
+                  "n": 10,
+                  "hit_rate_avg": 0.8,
+                  "doc_recall_avg": 0.8
+                },
+                "selector_kept": {
+                  "n": 9,
+                  "hit_rate_avg": 0.8888888888888888,
+                  "doc_recall_avg": 0.8888888888888888
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 174069,
+                "completion_tokens": 10942,
+                "calls": 33,
+                "items": 11,
+                "active_items": 11,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.343169,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.3432,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          }
+        },
+        "judge_pass_count": 64,
+        "judge_statuses": {
+          "completed": 98
+        },
+        "judge_vote_agreement": {
+          "3/3": 97,
+          "2/3": 1
+        },
+        "judge_excluding_borderline": {
+          "n": 90,
+          "pass_rate": 0.6777777777777778
+        }
+      },
+      "legacy": {
+        "id": null,
+        "run_label": "assembled_246_249_250",
+        "git_sha": null,
+        "status": "assembled_complete",
+        "config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "created_at": "2026-09-28 14:47:23.901683+00:00",
+        "completed_at": "2026-09-29 05:09:16.961939+00:00",
+        "fingerprints": {
+          "source_fingerprint": "e728708b4c0e64430ad526bcecdc9983ef2861a6c8770f4892d9efb74012081a",
+          "questions_fingerprint": "afd6cfc97a4232e9f8b9253d9d9b5b930c63ed83421f544f5c8178a42e163bdc",
+          "generator_system_prompt_sha": "108979e4207a6fb113094cc59d1003df0a92f6d164f7b30321ca7dec95188583"
+        },
+        "question_ids": [
+          1,
+          2,
+          3,
+          4,
+          6,
+          7,
+          9,
+          10,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          23,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          173,
+          174,
+          175,
+          176,
+          177,
+          178,
+          179,
+          180,
+          181,
+          182,
+          183,
+          184,
+          185,
+          186,
+          187,
+          188,
+          189,
+          190,
+          191,
+          192,
+          193,
+          194,
+          196,
+          197,
+          198,
+          199,
+          200,
+          201,
+          203,
+          204,
+          205,
+          206,
+          207,
+          208,
+          209,
+          210,
+          211,
+          212,
+          213,
+          214,
+          215,
+          216,
+          217,
+          218,
+          219,
+          220,
+          221,
+          222,
+          223,
+          224,
+          225,
+          226,
+          227,
+          228,
+          229,
+          657,
+          660,
+          676,
+          706,
+          827,
+          926,
+          4528,
+          4529,
+          4530,
+          4531,
+          4532,
+          4533,
+          4534,
+          4535,
+          4536,
+          4537,
+          4538
+        ],
+        "aggregate": {
+          "total": 98,
+          "completed": 98,
+          "failed": 0,
+          "doc_recall_avg": 0.7291375686487219,
+          "doc_precision_avg": 0.02268044571795004,
+          "hit_rate_avg": 0.826530612244898,
+          "mrr_avg": 0.4480704907077428,
+          "judge_score_avg": 0.6994897959183674,
+          "judge_raw_score_avg": 0.7551020408163265,
+          "judge_pass_rate": 0.6938775510204082,
+          "retrieval_gap_rate": 0.17346938775510204,
+          "judge_legal_correctness_avg": 0.8153061224489796,
+          "judge_completeness_avg": 0.7438775510204082,
+          "judge_gold_answer_alignment_avg": 0.7622448979591837,
+          "judge_source_support_avg": 0.866326530612245,
+          "stage_metrics": {
+            "initial": {
+              "pool": {
+                "n": 96,
+                "hit_rate_avg": 0.84375,
+                "doc_recall_avg": 0.744327934662237
+              },
+              "selector_kept": {
+                "n": 93,
+                "hit_rate_avg": 0.5376344086021505,
+                "doc_recall_avg": 0.45898617511520734
+              },
+              "sections_top12": {
+                "n": 96,
+                "hit_rate_avg": 0.6458333333333334,
+                "doc_recall_avg": 0.5442832341269841
+              },
+              "sections_top20": {
+                "n": 96,
+                "hit_rate_avg": 0.6770833333333334,
+                "doc_recall_avg": 0.5904141865079365
+              },
+              "context_builder_output": {
+                "n": 96,
+                "hit_rate_avg": 0.5416666666666666,
+                "doc_recall_avg": 0.4602678571428571
+              }
+            }
+          },
+          "token_usage": {
+            "judge": {
+              "prompt_tokens": 1682010,
+              "completion_tokens": 91796,
+              "calls": 294,
+              "items": 98,
+              "active_items": 98,
+              "coverage_complete": true,
+              "provider": "scaleway",
+              "model": "mistral-medium-3.5-128b",
+              "cost_eur": 3.211486,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "ragas": {
+              "prompt_tokens": 0,
+              "completion_tokens": 0,
+              "calls": 0,
+              "items": 0,
+              "active_items": 0,
+              "coverage_complete": true,
+              "provider": "",
+              "model": "",
+              "cost_eur": 0.0,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "billable_cost_eur": 3.2115,
+            "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+          }
+        },
+        "per_corpus": {
+          "DGAFP": {
+            "total": 2,
+            "completed": 2,
+            "failed": 0,
+            "doc_recall_avg": 0.03488372093023256,
+            "doc_precision_avg": 0.011111111111111112,
+            "hit_rate_avg": 0.5,
+            "mrr_avg": 0.004807692307692308,
+            "judge_score_avg": 0.725,
+            "judge_raw_score_avg": 1.0,
+            "judge_pass_rate": 1.0,
+            "retrieval_gap_rate": 0.5,
+            "judge_legal_correctness_avg": 1.0,
+            "judge_completeness_avg": 1.0,
+            "judge_gold_answer_alignment_avg": 1.0,
+            "judge_source_support_avg": 1.0,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 2,
+                  "hit_rate_avg": 0.5,
+                  "doc_recall_avg": 0.03488372093023256
+                },
+                "selector_kept": {
+                  "n": 2,
+                  "hit_rate_avg": 0.0,
+                  "doc_recall_avg": 0.0
+                },
+                "sections_top12": {
+                  "n": 2,
+                  "hit_rate_avg": 0.0,
+                  "doc_recall_avg": 0.0
+                },
+                "sections_top20": {
+                  "n": 2,
+                  "hit_rate_avg": 0.0,
+                  "doc_recall_avg": 0.0
+                },
+                "context_builder_output": {
+                  "n": 2,
+                  "hit_rate_avg": 0.0,
+                  "doc_recall_avg": 0.0
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 29193,
+                "completion_tokens": 1549,
+                "calls": 6,
+                "items": 2,
+                "active_items": 2,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.055409,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.0554,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "MATTE": {
+            "total": 12,
+            "completed": 12,
+            "failed": 0,
+            "doc_recall_avg": 0.7906746031746031,
+            "doc_precision_avg": 0.023526191609662944,
+            "hit_rate_avg": 0.9166666666666666,
+            "mrr_avg": 0.5783730158730159,
+            "judge_score_avg": 0.6166666666666667,
+            "judge_raw_score_avg": 0.6875,
+            "judge_pass_rate": 0.5,
+            "retrieval_gap_rate": 0.08333333333333333,
+            "judge_legal_correctness_avg": 0.8250000000000001,
+            "judge_completeness_avg": 0.6333333333333333,
+            "judge_gold_answer_alignment_avg": 0.7166666666666667,
+            "judge_source_support_avg": 0.9916666666666667,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 12,
+                  "hit_rate_avg": 0.9166666666666666,
+                  "doc_recall_avg": 0.7906746031746031
+                },
+                "selector_kept": {
+                  "n": 12,
+                  "hit_rate_avg": 0.8333333333333334,
+                  "doc_recall_avg": 0.5753968253968255
+                },
+                "sections_top12": {
+                  "n": 12,
+                  "hit_rate_avg": 0.8333333333333334,
+                  "doc_recall_avg": 0.6557539682539683
+                },
+                "sections_top20": {
+                  "n": 12,
+                  "hit_rate_avg": 0.9166666666666666,
+                  "doc_recall_avg": 0.7628968253968255
+                },
+                "context_builder_output": {
+                  "n": 12,
+                  "hit_rate_avg": 0.8333333333333334,
+                  "doc_recall_avg": 0.5753968253968255
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 302394,
+                "completion_tokens": 16533,
+                "calls": 36,
+                "items": 12,
+                "active_items": 12,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.57759,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.5776,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "MSO": {
+            "total": 4,
+            "completed": 4,
+            "failed": 0,
+            "doc_recall_avg": 0.6785714285714286,
+            "doc_precision_avg": 0.01933387183155178,
+            "hit_rate_avg": 1.0,
+            "mrr_avg": 0.7638888888888888,
+            "judge_score_avg": 0.85,
+            "judge_raw_score_avg": 1.0,
+            "judge_pass_rate": 1.0,
+            "retrieval_gap_rate": 0.0,
+            "judge_legal_correctness_avg": 1.0,
+            "judge_completeness_avg": 1.0,
+            "judge_gold_answer_alignment_avg": 1.0,
+            "judge_source_support_avg": 1.0,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 4,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 0.6785714285714286
+                },
+                "selector_kept": {
+                  "n": 4,
+                  "hit_rate_avg": 0.75,
+                  "doc_recall_avg": 0.5119047619047619
+                },
+                "sections_top12": {
+                  "n": 4,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 0.6785714285714286
+                },
+                "sections_top20": {
+                  "n": 4,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 0.6785714285714286
+                },
+                "context_builder_output": {
+                  "n": 4,
+                  "hit_rate_avg": 0.75,
+                  "doc_recall_avg": 0.5119047619047619
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 74415,
+                "completion_tokens": 3622,
+                "calls": 12,
+                "items": 4,
+                "active_items": 4,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.138789,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.1388,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "Service-Public": {
+            "total": 14,
+            "completed": 14,
+            "failed": 0,
+            "doc_recall_avg": 0.9285714285714286,
+            "doc_precision_avg": 0.020964678617041498,
+            "hit_rate_avg": 0.9285714285714286,
+            "mrr_avg": 0.7431495069938088,
+            "judge_score_avg": 0.775,
+            "judge_raw_score_avg": 0.775,
+            "judge_pass_rate": 0.7142857142857143,
+            "retrieval_gap_rate": 0.07142857142857142,
+            "judge_legal_correctness_avg": 0.7857142857142857,
+            "judge_completeness_avg": 0.7642857142857142,
+            "judge_gold_answer_alignment_avg": 0.7857142857142857,
+            "judge_source_support_avg": 0.7857142857142857,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 14,
+                  "hit_rate_avg": 0.9285714285714286,
+                  "doc_recall_avg": 0.9285714285714286
+                },
+                "selector_kept": {
+                  "n": 14,
+                  "hit_rate_avg": 0.8571428571428571,
+                  "doc_recall_avg": 0.8571428571428571
+                },
+                "sections_top12": {
+                  "n": 14,
+                  "hit_rate_avg": 0.8571428571428571,
+                  "doc_recall_avg": 0.8571428571428571
+                },
+                "sections_top20": {
+                  "n": 14,
+                  "hit_rate_avg": 0.8571428571428571,
+                  "doc_recall_avg": 0.8571428571428571
+                },
+                "context_builder_output": {
+                  "n": 14,
+                  "hit_rate_avg": 0.8571428571428571,
+                  "doc_recall_avg": 0.8571428571428571
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 249834,
+                "completion_tokens": 14366,
+                "calls": 42,
+                "items": 14,
+                "active_items": 14,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.482499,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.4825,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "manual": {
+            "total": 55,
+            "completed": 55,
+            "failed": 0,
+            "doc_recall_avg": 0.6578787878787878,
+            "doc_precision_avg": 0.02516905997190451,
+            "hit_rate_avg": 0.7636363636363637,
+            "mrr_avg": 0.29447344828491145,
+            "judge_score_avg": 0.6445454545454546,
+            "judge_raw_score_avg": 0.7072727272727273,
+            "judge_pass_rate": 0.6545454545454545,
+            "retrieval_gap_rate": 0.23636363636363636,
+            "judge_legal_correctness_avg": 0.7818181818181819,
+            "judge_completeness_avg": 0.7018181818181819,
+            "judge_gold_answer_alignment_avg": 0.7109090909090909,
+            "judge_source_support_avg": 0.8363636363636363,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 54,
+                  "hit_rate_avg": 0.7777777777777778,
+                  "doc_recall_avg": 0.6700617283950616
+                },
+                "selector_kept": {
+                  "n": 52,
+                  "hit_rate_avg": 0.34615384615384615,
+                  "doc_recall_avg": 0.2833333333333333
+                },
+                "sections_top12": {
+                  "n": 54,
+                  "hit_rate_avg": 0.5,
+                  "doc_recall_avg": 0.38273809523809527
+                },
+                "sections_top20": {
+                  "n": 54,
+                  "hit_rate_avg": 0.5185185185185185,
+                  "doc_recall_avg": 0.4224206349206349
+                },
+                "context_builder_output": {
+                  "n": 54,
+                  "hit_rate_avg": 0.35185185185185186,
+                  "doc_recall_avg": 0.2820987654320988
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 860709,
+                "completion_tokens": 46545,
+                "calls": 165,
+                "items": 55,
+                "active_items": 55,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 1.640144,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 1.6401,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "synthetic": {
+            "total": 11,
+            "completed": 11,
+            "failed": 0,
+            "doc_recall_avg": 0.9090909090909091,
+            "doc_precision_avg": 0.014281604093739481,
+            "hit_rate_avg": 0.9090909090909091,
+            "mrr_avg": 0.6641025641025641,
+            "judge_score_avg": 0.9090909090909091,
+            "judge_raw_score_avg": 0.9090909090909091,
+            "judge_pass_rate": 0.9090909090909091,
+            "retrieval_gap_rate": 0.09090909090909091,
+            "judge_legal_correctness_avg": 0.9090909090909091,
+            "judge_completeness_avg": 0.9090909090909091,
+            "judge_gold_answer_alignment_avg": 0.9090909090909091,
+            "judge_source_support_avg": 0.9090909090909091,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 10,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 1.0
+                },
+                "selector_kept": {
+                  "n": 9,
+                  "hit_rate_avg": 0.7777777777777778,
+                  "doc_recall_avg": 0.7777777777777778
+                },
+                "sections_top12": {
+                  "n": 10,
+                  "hit_rate_avg": 0.9,
+                  "doc_recall_avg": 0.9
+                },
+                "sections_top20": {
+                  "n": 10,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 1.0
+                },
+                "context_builder_output": {
+                  "n": 10,
+                  "hit_rate_avg": 0.8,
+                  "doc_recall_avg": 0.8
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 165465,
+                "completion_tokens": 9181,
+                "calls": 33,
+                "items": 11,
+                "active_items": 11,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.317055,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.3171,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          }
+        },
+        "judge_pass_count": 68,
+        "judge_statuses": {
+          "completed": 98
+        },
+        "judge_vote_agreement": {
+          "3/3": 97,
+          "2/3": 1
+        },
+        "judge_excluding_borderline": {
+          "n": 90,
+          "pass_rate": 0.7
+        },
+        "component_run_ids": [
+          246,
+          249,
+          250
+        ]
+      },
+      "core": {
+        "id": null,
+        "run_label": "assembled_247_248_251",
+        "git_sha": null,
+        "status": "assembled_complete",
+        "config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "created_at": "2026-09-28 14:47:23.901683+00:00",
+        "completed_at": "2026-09-29 05:09:19.439368+00:00",
+        "fingerprints": {
+          "source_fingerprint": "e728708b4c0e64430ad526bcecdc9983ef2861a6c8770f4892d9efb74012081a",
+          "questions_fingerprint": "afd6cfc97a4232e9f8b9253d9d9b5b930c63ed83421f544f5c8178a42e163bdc",
+          "generator_system_prompt_sha": "108979e4207a6fb113094cc59d1003df0a92f6d164f7b30321ca7dec95188583"
+        },
+        "question_ids": [
+          1,
+          2,
+          3,
+          4,
+          6,
+          7,
+          9,
+          10,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          23,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          173,
+          174,
+          175,
+          176,
+          177,
+          178,
+          179,
+          180,
+          181,
+          182,
+          183,
+          184,
+          185,
+          186,
+          187,
+          188,
+          189,
+          190,
+          191,
+          192,
+          193,
+          194,
+          196,
+          197,
+          198,
+          199,
+          200,
+          201,
+          203,
+          204,
+          205,
+          206,
+          207,
+          208,
+          209,
+          210,
+          211,
+          212,
+          213,
+          214,
+          215,
+          216,
+          217,
+          218,
+          219,
+          220,
+          221,
+          222,
+          223,
+          224,
+          225,
+          226,
+          227,
+          228,
+          229,
+          657,
+          660,
+          676,
+          706,
+          827,
+          926,
+          4528,
+          4529,
+          4530,
+          4531,
+          4532,
+          4533,
+          4534,
+          4535,
+          4536,
+          4537,
+          4538
+        ],
+        "aggregate": {
+          "total": 98,
+          "completed": 98,
+          "failed": 0,
+          "doc_recall_avg": 0.7291375686487219,
+          "doc_precision_avg": 0.022674194248288305,
+          "hit_rate_avg": 0.826530612244898,
+          "mrr_avg": 0.4409689334251453,
+          "judge_score_avg": 0.6629251700680272,
+          "judge_raw_score_avg": 0.717517006802721,
+          "judge_pass_rate": 0.6326530612244898,
+          "retrieval_gap_rate": 0.17346938775510204,
+          "judge_legal_correctness_avg": 0.7959183673469388,
+          "judge_completeness_avg": 0.6955782312925171,
+          "judge_gold_answer_alignment_avg": 0.7312925170068028,
+          "judge_source_support_avg": 0.8775510204081632,
+          "stage_metrics": {
+            "initial": {
+              "pool": {
+                "n": 96,
+                "hit_rate_avg": 0.84375,
+                "doc_recall_avg": 0.744327934662237
+              },
+              "selector_kept": {
+                "n": 95,
+                "hit_rate_avg": 0.5473684210526316,
+                "doc_recall_avg": 0.4446115288220552
+              },
+              "sections_top12": {
+                "n": 96,
+                "hit_rate_avg": 0.6458333333333334,
+                "doc_recall_avg": 0.5442832341269841
+              },
+              "sections_top20": {
+                "n": 96,
+                "hit_rate_avg": 0.6770833333333334,
+                "doc_recall_avg": 0.5904141865079365
+              },
+              "context_builder_output": {
+                "n": 96,
+                "hit_rate_avg": 0.5520833333333334,
+                "doc_recall_avg": 0.4503968253968254
+              }
+            }
+          },
+          "token_usage": {
+            "judge": {
+              "prompt_tokens": 1689966,
+              "completion_tokens": 93708,
+              "calls": 293,
+              "items": 97,
+              "active_items": 98,
+              "coverage_complete": false,
+              "provider": "scaleway",
+              "model": "mistral-medium-3.5-128b",
+              "cost_eur": null,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "ragas": {
+              "prompt_tokens": 0,
+              "completion_tokens": 0,
+              "calls": 0,
+              "items": 0,
+              "active_items": 0,
+              "coverage_complete": true,
+              "provider": "",
+              "model": "",
+              "cost_eur": 0.0,
+              "reported_cost": null,
+              "reported_cost_unit": null
+            },
+            "billable_cost_eur": null,
+            "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+          }
+        },
+        "per_corpus": {
+          "DGAFP": {
+            "total": 2,
+            "completed": 2,
+            "failed": 0,
+            "doc_recall_avg": 0.03488372093023256,
+            "doc_precision_avg": 0.011111111111111112,
+            "hit_rate_avg": 0.5,
+            "mrr_avg": 0.004807692307692308,
+            "judge_score_avg": 0.725,
+            "judge_raw_score_avg": 1.0,
+            "judge_pass_rate": 1.0,
+            "retrieval_gap_rate": 0.5,
+            "judge_legal_correctness_avg": 1.0,
+            "judge_completeness_avg": 1.0,
+            "judge_gold_answer_alignment_avg": 1.0,
+            "judge_source_support_avg": 1.0,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 2,
+                  "hit_rate_avg": 0.5,
+                  "doc_recall_avg": 0.03488372093023256
+                },
+                "selector_kept": {
+                  "n": 2,
+                  "hit_rate_avg": 0.0,
+                  "doc_recall_avg": 0.0
+                },
+                "sections_top12": {
+                  "n": 2,
+                  "hit_rate_avg": 0.0,
+                  "doc_recall_avg": 0.0
+                },
+                "sections_top20": {
+                  "n": 2,
+                  "hit_rate_avg": 0.0,
+                  "doc_recall_avg": 0.0
+                },
+                "context_builder_output": {
+                  "n": 2,
+                  "hit_rate_avg": 0.0,
+                  "doc_recall_avg": 0.0
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 28923,
+                "completion_tokens": 1551,
+                "calls": 6,
+                "items": 2,
+                "active_items": 2,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.055017,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.055,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "MATTE": {
+            "total": 12,
+            "completed": 12,
+            "failed": 0,
+            "doc_recall_avg": 0.7906746031746031,
+            "doc_precision_avg": 0.023446816450912622,
+            "hit_rate_avg": 0.9166666666666666,
+            "mrr_avg": 0.5694444444444444,
+            "judge_score_avg": 0.5541666666666667,
+            "judge_raw_score_avg": 0.625,
+            "judge_pass_rate": 0.5,
+            "retrieval_gap_rate": 0.08333333333333333,
+            "judge_legal_correctness_avg": 0.75,
+            "judge_completeness_avg": 0.5833333333333334,
+            "judge_gold_answer_alignment_avg": 0.6666666666666666,
+            "judge_source_support_avg": 0.9166666666666666,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 12,
+                  "hit_rate_avg": 0.9166666666666666,
+                  "doc_recall_avg": 0.7906746031746031
+                },
+                "selector_kept": {
+                  "n": 12,
+                  "hit_rate_avg": 0.8333333333333334,
+                  "doc_recall_avg": 0.5182539682539683
+                },
+                "sections_top12": {
+                  "n": 12,
+                  "hit_rate_avg": 0.8333333333333334,
+                  "doc_recall_avg": 0.6557539682539683
+                },
+                "sections_top20": {
+                  "n": 12,
+                  "hit_rate_avg": 0.9166666666666666,
+                  "doc_recall_avg": 0.7628968253968255
+                },
+                "context_builder_output": {
+                  "n": 12,
+                  "hit_rate_avg": 0.8333333333333334,
+                  "doc_recall_avg": 0.5182539682539683
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 311580,
+                "completion_tokens": 16584,
+                "calls": 36,
+                "items": 12,
+                "active_items": 12,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.591745,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.5917,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "MSO": {
+            "total": 4,
+            "completed": 4,
+            "failed": 0,
+            "doc_recall_avg": 0.6785714285714286,
+            "doc_precision_avg": 0.01933387183155178,
+            "hit_rate_avg": 1.0,
+            "mrr_avg": 0.8,
+            "judge_score_avg": 0.8375,
+            "judge_raw_score_avg": 0.95,
+            "judge_pass_rate": 0.75,
+            "retrieval_gap_rate": 0.0,
+            "judge_legal_correctness_avg": 1.0,
+            "judge_completeness_avg": 0.9,
+            "judge_gold_answer_alignment_avg": 1.0,
+            "judge_source_support_avg": 1.0,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 4,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 0.6785714285714286
+                },
+                "selector_kept": {
+                  "n": 4,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 0.5714285714285714
+                },
+                "sections_top12": {
+                  "n": 4,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 0.6785714285714286
+                },
+                "sections_top20": {
+                  "n": 4,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 0.6785714285714286
+                },
+                "context_builder_output": {
+                  "n": 4,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 0.5714285714285714
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 57774,
+                "completion_tokens": 3934,
+                "calls": 12,
+                "items": 4,
+                "active_items": 4,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.116166,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.1162,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "Service-Public": {
+            "total": 14,
+            "completed": 14,
+            "failed": 0,
+            "doc_recall_avg": 0.9285714285714286,
+            "doc_precision_avg": 0.020964678617041498,
+            "hit_rate_avg": 0.9285714285714286,
+            "mrr_avg": 0.7508025682182985,
+            "judge_score_avg": 0.6749999999999999,
+            "judge_raw_score_avg": 0.6749999999999999,
+            "judge_pass_rate": 0.5,
+            "retrieval_gap_rate": 0.07142857142857142,
+            "judge_legal_correctness_avg": 0.7857142857142857,
+            "judge_completeness_avg": 0.6357142857142858,
+            "judge_gold_answer_alignment_avg": 0.7142857142857143,
+            "judge_source_support_avg": 0.8571428571428571,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 14,
+                  "hit_rate_avg": 0.9285714285714286,
+                  "doc_recall_avg": 0.9285714285714286
+                },
+                "selector_kept": {
+                  "n": 14,
+                  "hit_rate_avg": 0.8571428571428571,
+                  "doc_recall_avg": 0.8571428571428571
+                },
+                "sections_top12": {
+                  "n": 14,
+                  "hit_rate_avg": 0.8571428571428571,
+                  "doc_recall_avg": 0.8571428571428571
+                },
+                "sections_top20": {
+                  "n": 14,
+                  "hit_rate_avg": 0.8571428571428571,
+                  "doc_recall_avg": 0.8571428571428571
+                },
+                "context_builder_output": {
+                  "n": 14,
+                  "hit_rate_avg": 0.8571428571428571,
+                  "doc_recall_avg": 0.8571428571428571
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 247242,
+                "completion_tokens": 14872,
+                "calls": 42,
+                "items": 14,
+                "active_items": 14,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.482403,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.4824,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "manual": {
+            "total": 55,
+            "completed": 55,
+            "failed": 0,
+            "doc_recall_avg": 0.6578787878787878,
+            "doc_precision_avg": 0.02516905997190451,
+            "hit_rate_avg": 0.7636363636363637,
+            "mrr_avg": 0.2904056229854146,
+            "judge_score_avg": 0.6375757575757575,
+            "judge_raw_score_avg": 0.7012121212121213,
+            "judge_pass_rate": 0.6363636363636364,
+            "retrieval_gap_rate": 0.23636363636363636,
+            "judge_legal_correctness_avg": 0.7818181818181819,
+            "judge_completeness_avg": 0.6848484848484848,
+            "judge_gold_answer_alignment_avg": 0.703030303030303,
+            "judge_source_support_avg": 0.8727272727272727,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 54,
+                  "hit_rate_avg": 0.7777777777777778,
+                  "doc_recall_avg": 0.6700617283950616
+                },
+                "selector_kept": {
+                  "n": 54,
+                  "hit_rate_avg": 0.35185185185185186,
+                  "doc_recall_avg": 0.2728395061728395
+                },
+                "sections_top12": {
+                  "n": 54,
+                  "hit_rate_avg": 0.5,
+                  "doc_recall_avg": 0.38273809523809527
+                },
+                "sections_top20": {
+                  "n": 54,
+                  "hit_rate_avg": 0.5185185185185185,
+                  "doc_recall_avg": 0.4224206349206349
+                },
+                "context_builder_output": {
+                  "n": 54,
+                  "hit_rate_avg": 0.35185185185185186,
+                  "doc_recall_avg": 0.2728395061728395
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 855642,
+                "completion_tokens": 47179,
+                "calls": 164,
+                "items": 54,
+                "active_items": 55,
+                "coverage_complete": false,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": null,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": null,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          },
+          "synthetic": {
+            "total": 11,
+            "completed": 11,
+            "failed": 0,
+            "doc_recall_avg": 0.9090909090909091,
+            "doc_precision_avg": 0.014316840175487192,
+            "hit_rate_avg": 0.9090909090909091,
+            "mrr_avg": 0.608041958041958,
+            "judge_score_avg": 0.8181818181818182,
+            "judge_raw_score_avg": 0.8181818181818182,
+            "judge_pass_rate": 0.8181818181818182,
+            "retrieval_gap_rate": 0.09090909090909091,
+            "judge_legal_correctness_avg": 0.8181818181818182,
+            "judge_completeness_avg": 0.8181818181818182,
+            "judge_gold_answer_alignment_avg": 0.8181818181818182,
+            "judge_source_support_avg": 0.8181818181818182,
+            "stage_metrics": {
+              "initial": {
+                "pool": {
+                  "n": 10,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 1.0
+                },
+                "selector_kept": {
+                  "n": 9,
+                  "hit_rate_avg": 0.7777777777777778,
+                  "doc_recall_avg": 0.7777777777777778
+                },
+                "sections_top12": {
+                  "n": 10,
+                  "hit_rate_avg": 0.9,
+                  "doc_recall_avg": 0.9
+                },
+                "sections_top20": {
+                  "n": 10,
+                  "hit_rate_avg": 1.0,
+                  "doc_recall_avg": 1.0
+                },
+                "context_builder_output": {
+                  "n": 10,
+                  "hit_rate_avg": 0.8,
+                  "doc_recall_avg": 0.8
+                }
+              }
+            },
+            "token_usage": {
+              "judge": {
+                "prompt_tokens": 188805,
+                "completion_tokens": 9588,
+                "calls": 33,
+                "items": 11,
+                "active_items": 11,
+                "coverage_complete": true,
+                "provider": "scaleway",
+                "model": "mistral-medium-3.5-128b",
+                "cost_eur": 0.355117,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "ragas": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "calls": 0,
+                "items": 0,
+                "active_items": 0,
+                "coverage_complete": true,
+                "provider": "",
+                "model": "",
+                "cost_eur": 0.0,
+                "reported_cost": null,
+                "reported_cost_unit": null
+              },
+              "billable_cost_eur": 0.3551,
+              "note": "Evaluation judge/RAGAS only; successful pipeline call usage is audited from chat trace metrics."
+            }
+          }
+        },
+        "judge_pass_count": 62,
+        "judge_statuses": {
+          "completed": 98
+        },
+        "judge_vote_agreement": {
+          "3/3": 93,
+          "2/3": 4,
+          "2/2": 1
+        },
+        "judge_excluding_borderline": {
+          "n": 90,
+          "pass_rate": 0.6555555555555556
+        },
+        "component_run_ids": [
+          247,
+          248,
+          251
+        ]
+      }
+    },
+    "comparisons": {
+      "core_vs_legacy": {
+        "status": "failed",
+        "passed": false,
+        "baseline_run_id": null,
+        "baseline_run_label": "assembled_246_249_250",
+        "baseline_git_sha": null,
+        "baseline_config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "comparable": true,
+        "comparability_failures": [],
+        "metrics": {
+          "judge_pass_rate": {
+            "baseline": 0.6938775510204082,
+            "candidate": 0.6326530612244898,
+            "delta": -0.061224489795918324,
+            "max_drop": 0.05,
+            "passed": false
+          },
+          "doc_recall_avg": {
+            "baseline": 0.7291375686487219,
+            "candidate": 0.7291375686487219,
+            "delta": 0.0,
+            "max_drop": 0.05,
+            "passed": true
+          }
+        },
+        "failures": [
+          "judge_pass_rate dropped by 0.0612; max allowed is 0.0500"
+        ]
+      },
+      "core_vs_m0a": {
+        "status": "passed",
+        "passed": true,
+        "baseline_run_id": 240,
+        "baseline_run_label": "m0a_api_parity_dev_20260901_rerun1",
+        "baseline_git_sha": "9bf1cf0cb92420e9e551f811edadb1d7129244b1",
+        "baseline_config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "comparable": true,
+        "comparability_failures": [],
+        "metrics": {
+          "judge_pass_rate": {
+            "baseline": 0.6530612244897959,
+            "candidate": 0.6326530612244898,
+            "delta": -0.020408163265306034,
+            "max_drop": 0.05,
+            "passed": true
+          },
+          "doc_recall_avg": {
+            "baseline": 0.7242784821569823,
+            "candidate": 0.7291375686487219,
+            "delta": 0.004859086491739606,
+            "max_drop": 0.05,
+            "passed": true
+          }
+        },
+        "failures": []
+      },
+      "legacy_vs_m0a": {
+        "status": "passed",
+        "passed": true,
+        "baseline_run_id": 240,
+        "baseline_run_label": "m0a_api_parity_dev_20260901_rerun1",
+        "baseline_git_sha": "9bf1cf0cb92420e9e551f811edadb1d7129244b1",
+        "baseline_config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "comparable": true,
+        "comparability_failures": [],
+        "metrics": {
+          "judge_pass_rate": {
+            "baseline": 0.6530612244897959,
+            "candidate": 0.6938775510204082,
+            "delta": 0.04081632653061229,
+            "max_drop": 0.05,
+            "passed": true
+          },
+          "doc_recall_avg": {
+            "baseline": 0.7242784821569823,
+            "candidate": 0.7291375686487219,
+            "delta": 0.004859086491739606,
+            "max_drop": 0.05,
+            "passed": true
+          }
+        },
+        "failures": []
+      }
+    },
+    "persistence": {
+      "legacy": {
+        "eval_items": 98,
+        "chat_runs": 98,
+        "trace_events": 578,
+        "unique_turn_ids": 98,
+        "unique_trace_ids": 98,
+        "stored_source_rows": 0,
+        "stage_counts": {
+          "query-processor": 98,
+          "retriever": 96,
+          "section-aggregator": 96,
+          "context-selector": 96,
+          "context-builder": 96,
+          "generator": 96
+        },
+        "trace_statuses": {
+          "ok": 576,
+          "short_circuit": 2
+        },
+        "environments": {
+          "local": 578
+        },
+        "business_events_without_metrics": 0,
+        "provider_models": {
+          "albert/deepseek-v4-flash": 98
+        },
+        "issues": []
+      },
+      "core": {
+        "eval_items": 98,
+        "chat_runs": 98,
+        "trace_events": 676,
+        "unique_turn_ids": 98,
+        "unique_trace_ids": 98,
+        "stored_source_rows": 203,
+        "stage_counts": {
+          "configuration": 98,
+          "query-processor": 98,
+          "retriever": 96,
+          "section-aggregator": 96,
+          "context-selector": 96,
+          "context-builder": 96,
+          "generator": 96
+        },
+        "trace_statuses": {
+          "ok": 676
+        },
+        "environments": {
+          "local": 676
+        },
+        "business_events_without_metrics": 0,
+        "provider_models": {
+          "albert/deepseek-v4-flash": 96,
+          "None/assistant-rh-matte": 2
+        },
+        "issues": [],
+        "reported_llm_usage": {
+          "query-processor/albert/openweight-medium": {
+            "successful_calls": 98,
+            "calls_with_usage": 98,
+            "failed_attempts": 1,
+            "observed_prompt_tokens": 262542,
+            "observed_completion_tokens": 12187
+          },
+          "context-selector/albert/openweight-large": {
+            "successful_calls": 96,
+            "calls_with_usage": 96,
+            "failed_attempts": 0,
+            "observed_prompt_tokens": 1115792,
+            "observed_completion_tokens": 6800
+          },
+          "generator/albert/deepseek-v4-flash": {
+            "successful_calls": 96,
+            "calls_with_usage": 96,
+            "failed_attempts": 0,
+            "observed_prompt_tokens": 578685,
+            "observed_completion_tokens": 40715
+          }
+        }
+      }
+    },
+    "complete": true,
+    "campaigns": {
+      "246": {
+        "id": 246,
+        "run_label": "m1_local_paired_98_20260928_legacy",
+        "git_sha": "ea1115ea4851d83878b102fa90d31d991e582bcc",
+        "status": "failed",
+        "error": "ConnectionTimeout",
+        "created_at": "2026-09-28 14:47:23.901683+00:00",
+        "completed_at": "2026-09-28 19:11:48.742504+00:00",
+        "config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "fingerprints": {
+          "source_fingerprint": "e728708b4c0e64430ad526bcecdc9983ef2861a6c8770f4892d9efb74012081a",
+          "questions_fingerprint": "afd6cfc97a4232e9f8b9253d9d9b5b930c63ed83421f544f5c8178a42e163bdc",
+          "generator_system_prompt_sha": "108979e4207a6fb113094cc59d1003df0a92f6d164f7b30321ca7dec95188583"
+        }
+      },
+      "247": {
+        "id": 247,
+        "run_label": "m1_local_paired_98_20260928_core",
+        "git_sha": "ea1115ea4851d83878b102fa90d31d991e582bcc",
+        "status": "failed",
+        "error": "ConnectionTimeout",
+        "created_at": "2026-09-28 14:47:23.901683+00:00",
+        "completed_at": "2026-09-28 19:11:54.362530+00:00",
+        "config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "fingerprints": {
+          "source_fingerprint": "e728708b4c0e64430ad526bcecdc9983ef2861a6c8770f4892d9efb74012081a",
+          "questions_fingerprint": "afd6cfc97a4232e9f8b9253d9d9b5b930c63ed83421f544f5c8178a42e163bdc",
+          "generator_system_prompt_sha": "108979e4207a6fb113094cc59d1003df0a92f6d164f7b30321ca7dec95188583"
+        }
+      },
+      "248": {
+        "id": 248,
+        "run_label": "m1_local_resume_40_20260928_core",
+        "git_sha": "99ef0f0a97ac310cb27258703e1c4b91992c22eb",
+        "status": "failed",
+        "error": "OperationalError",
+        "created_at": "2026-09-28 19:15:24.298871+00:00",
+        "completed_at": "2026-09-29 04:49:27.503008+00:00",
+        "config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "fingerprints": {
+          "source_fingerprint": "e728708b4c0e64430ad526bcecdc9983ef2861a6c8770f4892d9efb74012081a",
+          "questions_fingerprint": "9f1dcc98591cfa449dd04a0fcb9cae6f38921a83891dbd7f1bc9ffdeb00cbd90",
+          "generator_system_prompt_sha": "108979e4207a6fb113094cc59d1003df0a92f6d164f7b30321ca7dec95188583"
+        }
+      },
+      "249": {
+        "id": 249,
+        "run_label": "m1_local_resume_41_20260928_legacy",
+        "git_sha": "99ef0f0a97ac310cb27258703e1c4b91992c22eb",
+        "status": "failed",
+        "error": "worker_process_terminated",
+        "created_at": "2026-09-28 19:15:24.303241+00:00",
+        "completed_at": "2026-09-29 04:54:27.198516+00:00",
+        "config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "fingerprints": {
+          "source_fingerprint": "e728708b4c0e64430ad526bcecdc9983ef2861a6c8770f4892d9efb74012081a",
+          "questions_fingerprint": "957eee50dc2d030bc5a0cc60d9945de0dde2231bb61665812c43aca49891a430",
+          "generator_system_prompt_sha": "108979e4207a6fb113094cc59d1003df0a92f6d164f7b30321ca7dec95188583"
+        }
+      },
+      "250": {
+        "id": 250,
+        "run_label": "m1_local_remaining_25_20260929_legacy",
+        "git_sha": "c116d482b9e0a2361ad982073f3169456f36bf9a",
+        "status": "completed",
+        "error": null,
+        "created_at": "2026-09-29 04:53:49.994727+00:00",
+        "completed_at": "2026-09-29 05:09:16.961939+00:00",
+        "config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "fingerprints": {
+          "source_fingerprint": "e728708b4c0e64430ad526bcecdc9983ef2861a6c8770f4892d9efb74012081a",
+          "questions_fingerprint": "cbb83f8eb257b414072bc59253062709e26ba55070b00d7ef280cb73250bb5eb",
+          "generator_system_prompt_sha": "108979e4207a6fb113094cc59d1003df0a92f6d164f7b30321ca7dec95188583"
+        }
+      },
+      "251": {
+        "id": 251,
+        "run_label": "m1_local_remaining_25_20260929_core",
+        "git_sha": "c116d482b9e0a2361ad982073f3169456f36bf9a",
+        "status": "completed",
+        "error": null,
+        "created_at": "2026-09-29 04:53:49.994727+00:00",
+        "completed_at": "2026-09-29 05:09:19.439368+00:00",
+        "config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+        "fingerprints": {
+          "source_fingerprint": "e728708b4c0e64430ad526bcecdc9983ef2861a6c8770f4892d9efb74012081a",
+          "questions_fingerprint": "cbb83f8eb257b414072bc59253062709e26ba55070b00d7ef280cb73250bb5eb",
+          "generator_system_prompt_sha": "108979e4207a6fb113094cc59d1003df0a92f6d164f7b30321ca7dec95188583"
+        }
+      }
+    },
+    "superseded_core_item": {
+      "run_id": 248,
+      "question_id": 223,
+      "reason": "Remeasured with missing legacy witness on the same prompt date; selected before judgment."
+    },
+    "continuation_note": "Interrupted runs remain failed. Aggregates assemble disjoint question IDs from the initial runs and their continuations; no database run is rewritten.",
+    "all_recorded_runs": [
+      {
+        "conversation_id": "m1_local_paired_98_20260928",
+        "user_group": "m1-core-matte",
+        "status": "completed",
+        "count": 55,
+        "without_eval_item": 1
+      },
+      {
+        "conversation_id": "m1_local_paired_98_20260928",
+        "user_group": "m1-core-mso",
+        "status": "completed",
+        "count": 4,
+        "without_eval_item": 0
+      },
+      {
+        "conversation_id": "m1_local_paired_98_20260928",
+        "user_group": "m1-legacy-matte",
+        "status": null,
+        "count": 55,
+        "without_eval_item": 2
+      },
+      {
+        "conversation_id": "m1_local_paired_98_20260928",
+        "user_group": "m1-legacy-mso",
+        "status": null,
+        "count": 4,
+        "without_eval_item": 0
+      },
+      {
+        "conversation_id": "m1_local_remaining_25_20260929",
+        "user_group": "m1-core-matte",
+        "status": "completed",
+        "count": 25,
+        "without_eval_item": 0
+      },
+      {
+        "conversation_id": "m1_local_remaining_25_20260929",
+        "user_group": "m1-legacy-matte",
+        "status": null,
+        "count": 25,
+        "without_eval_item": 0
+      },
+      {
+        "conversation_id": "m1_local_resume_40_20260928",
+        "user_group": "m1-core-matte",
+        "status": "completed",
+        "count": 17,
+        "without_eval_item": 1
+      },
+      {
+        "conversation_id": "m1_local_resume_41_20260928",
+        "user_group": "m1-legacy-matte",
+        "status": null,
+        "count": 18,
+        "without_eval_item": 2
+      }
+    ],
+    "paired_judge": {
+      "questions": 98,
+      "counts": {
+        "legacy_False_core_True": 2,
+        "legacy_True_core_True": 60,
+        "legacy_False_core_False": 28,
+        "legacy_True_core_False": 8
+      },
+      "discordant": [
+        {
+          "question_id": 1,
+          "corpus": "MATTE",
+          "legacy_pass": false,
+          "core_pass": true,
+          "legacy_failure": "incomplete",
+          "core_failure": "none",
+          "legacy_doc_recall": 1.0,
+          "core_doc_recall": 1.0
+        },
+        {
+          "question_id": 6,
+          "corpus": "MATTE",
+          "legacy_pass": true,
+          "core_pass": false,
+          "legacy_failure": "none",
+          "core_failure": "incomplete",
+          "legacy_doc_recall": 1.0,
+          "core_doc_recall": 1.0
+        },
+        {
+          "question_id": 20,
+          "corpus": "Service-Public",
+          "legacy_pass": true,
+          "core_pass": false,
+          "legacy_failure": "none",
+          "core_failure": "incomplete",
+          "legacy_doc_recall": 1.0,
+          "core_doc_recall": 1.0
+        },
+        {
+          "question_id": 28,
+          "corpus": "MSO",
+          "legacy_pass": true,
+          "core_pass": false,
+          "legacy_failure": "none",
+          "core_failure": "incomplete",
+          "legacy_doc_recall": 0.7142857142857143,
+          "core_doc_recall": 0.7142857142857143
+        },
+        {
+          "question_id": 186,
+          "corpus": "manual",
+          "legacy_pass": true,
+          "core_pass": false,
+          "legacy_failure": "none",
+          "core_failure": "incomplete",
+          "legacy_doc_recall": 1.0,
+          "core_doc_recall": 1.0
+        },
+        {
+          "question_id": 188,
+          "corpus": "manual",
+          "legacy_pass": true,
+          "core_pass": false,
+          "legacy_failure": "none",
+          "core_failure": "incomplete",
+          "legacy_doc_recall": 1.0,
+          "core_doc_recall": 1.0
+        },
+        {
+          "question_id": 211,
+          "corpus": "manual",
+          "legacy_pass": false,
+          "core_pass": true,
+          "legacy_failure": "incomplete",
+          "core_failure": "none",
+          "legacy_doc_recall": 1.0,
+          "core_doc_recall": 1.0
+        },
+        {
+          "question_id": 827,
+          "corpus": "Service-Public",
+          "legacy_pass": true,
+          "core_pass": false,
+          "legacy_failure": "none",
+          "core_failure": "incomplete",
+          "legacy_doc_recall": 1.0,
+          "core_doc_recall": 1.0
+        },
+        {
+          "question_id": 926,
+          "corpus": "Service-Public",
+          "legacy_pass": true,
+          "core_pass": false,
+          "legacy_failure": "none",
+          "core_failure": "incomplete",
+          "legacy_doc_recall": 1.0,
+          "core_doc_recall": 1.0
+        },
+        {
+          "question_id": 4538,
+          "corpus": "synthetic",
+          "legacy_pass": true,
+          "core_pass": false,
+          "legacy_failure": "none",
+          "core_failure": "retrieval_gap",
+          "legacy_doc_recall": 1.0,
+          "core_doc_recall": 1.0
+        }
+      ]
+    },
+    "concurrent_ministries": {
+      "overlapping_pairs": 0,
+      "examples": []
+    },
+    "live_gate_passed": false,
+    "interrupted_chats_without_eval_item": [
+      {
+        "conversation_id": "m1_local_paired_98_20260928",
+        "user_group": "m1-core-matte",
+        "status": "completed",
+        "count": 55,
+        "without_eval_item": 1
+      },
+      {
+        "conversation_id": "m1_local_paired_98_20260928",
+        "user_group": "m1-legacy-matte",
+        "status": null,
+        "count": 55,
+        "without_eval_item": 2
+      },
+      {
+        "conversation_id": "m1_local_resume_40_20260928",
+        "user_group": "m1-core-matte",
+        "status": "completed",
+        "count": 17,
+        "without_eval_item": 1
+      },
+      {
+        "conversation_id": "m1_local_resume_41_20260928",
+        "user_group": "m1-legacy-matte",
+        "status": null,
+        "count": 18,
+        "without_eval_item": 2
+      }
+    ],
+    "evidence_sha256": "ee607f23204c3e8b1fefdc47ba0f4cd7e2e69335f6042832db619492ebecb84d"
+  },
+  "prompt_date_pairing": {
+    "paired": 98,
+    "mismatches": {},
+    "by_question": {
+      "1": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "2": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "3": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "4": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "6": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "7": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "9": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "10": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "11": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "13": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "14": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "15": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "16": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "17": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "18": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "19": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "20": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "21": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "23": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "27": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "28": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "29": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "30": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "31": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "32": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "33": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "173": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "174": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "175": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "176": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "177": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "178": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "179": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "180": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "181": {
+        "legacy": null,
+        "core": null
+      },
+      "182": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "183": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "184": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "185": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "186": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "187": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "188": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "189": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "190": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "191": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "192": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "193": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "194": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "196": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "197": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "198": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "199": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "200": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "201": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "203": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "204": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "205": {
+        "legacy": "2026-09-28",
+        "core": "2026-09-28"
+      },
+      "206": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "207": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "208": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "209": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "210": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "211": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "212": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "213": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "214": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "215": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "216": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "217": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "218": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "219": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "220": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "221": {
+        "core": "2026-09-28",
+        "legacy": "2026-09-28"
+      },
+      "222": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "223": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "224": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "225": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "226": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "227": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "228": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "229": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "657": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "660": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "676": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "706": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "827": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "926": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "4528": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "4529": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "4530": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "4531": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "4532": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "4533": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "4534": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "4535": {
+        "legacy": null,
+        "core": null
+      },
+      "4536": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "4537": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      },
+      "4538": {
+        "legacy": "2026-09-29",
+        "core": "2026-09-29"
+      }
+    }
+  },
+  "loss_diagnostics": {
+    "6": {
+      "context_payload_equal": false,
+      "prompt_chars_equal": false,
+      "legacy_answer_chars": 2821,
+      "core_answer_chars": 1517
+    },
+    "20": {
+      "context_payload_equal": false,
+      "prompt_chars_equal": false,
+      "legacy_answer_chars": 2637,
+      "core_answer_chars": 4739
+    },
+    "28": {
+      "context_payload_equal": false,
+      "prompt_chars_equal": false,
+      "legacy_answer_chars": 4095,
+      "core_answer_chars": 1214
+    },
+    "186": {
+      "context_payload_equal": true,
+      "prompt_chars_equal": true,
+      "legacy_answer_chars": 2569,
+      "core_answer_chars": 1489
+    },
+    "188": {
+      "context_payload_equal": false,
+      "prompt_chars_equal": false,
+      "legacy_answer_chars": 517,
+      "core_answer_chars": 316
+    },
+    "827": {
+      "context_payload_equal": true,
+      "prompt_chars_equal": true,
+      "legacy_answer_chars": 5630,
+      "core_answer_chars": 4171
+    },
+    "926": {
+      "context_payload_equal": true,
+      "prompt_chars_equal": true,
+      "legacy_answer_chars": 5724,
+      "core_answer_chars": 5565
+    },
+    "4538": {
+      "context_payload_equal": false,
+      "prompt_chars_equal": false,
+      "legacy_answer_chars": 1182,
+      "core_answer_chars": 1237
+    }
+  },
+  "local_integrity": {
+    "before": {
+      "git_sha": "73e53767bb28f8ae1d98bea6b505b3ee7564f9ff",
+      "source_fingerprint": "e728708b4c0e64430ad526bcecdc9983ef2861a6c8770f4892d9efb74012081a",
+      "questions_fingerprint": "afd6cfc97a4232e9f8b9253d9d9b5b930c63ed83421f544f5c8178a42e163bdc",
+      "m0a_questions_exact": true,
+      "question_count": 98,
+      "pgvector": "0.8.6",
+      "tables": {
+        "acronyms": {
+          "count": 248,
+          "content_md5": "d13674a2b69834c355b1a7ad22f84701"
+        },
+        "rag_chunks_dgafp": {
+          "count": 8555,
+          "content_md5": "38473e75ce43e04c097ac82b5c25ea61"
+        },
+        "rag_chunks_masa": {
+          "count": 1216,
+          "content_md5": "44e726e5265ae009c6595223bb7467a8"
+        },
+        "rag_chunks_matte": {
+          "count": 2455,
+          "content_md5": "31fb2524cfd35bad3ce9de1b18de557a"
+        },
+        "rag_chunks_mi": {
+          "count": 707,
+          "content_md5": "beb529aa4ff4da908c62f8939ade0e62"
+        },
+        "rag_chunks_mso": {
+          "count": 7582,
+          "content_md5": "5d3ab93dca8c00c122c538c3f0a1ce44"
+        },
+        "rag_chunks_rgrh": {
+          "count": 324,
+          "content_md5": "d5069377406e67e92961af8e90e5cd00"
+        },
+        "rag_chunks_service_public": {
+          "count": 5051,
+          "content_md5": "02db2ece52a37943b4f8d7d39f901eb1"
+        },
+        "rag_config": {
+          "count": 1,
+          "content_md5": "2ee59663c94aae12392122e875707e19"
+        },
+        "rag_documents": {
+          "count": 4882,
+          "content_md5": "a6f12a3d19485e0ddb521e98f5ad3da0"
+        },
+        "rag_sections": {
+          "count": 10397,
+          "content_md5": "636a6a1ea062b4a2641f93dd4cf34c1e"
+        },
+        "system_prompts": {
+          "count": 37,
+          "content_md5": "2b913f8d9d0663d576d59dfaa9726610"
+        }
+      },
+      "snapshot_fingerprint": "092e036595dcb78d144fa128f07f05a55b3c5fe7dc3a8f70274a7af78abae572"
+    },
+    "after": {
+      "git_sha": "c116d482b9e0a2361ad982073f3169456f36bf9a",
+      "source_fingerprint": "e728708b4c0e64430ad526bcecdc9983ef2861a6c8770f4892d9efb74012081a",
+      "questions_fingerprint": "afd6cfc97a4232e9f8b9253d9d9b5b930c63ed83421f544f5c8178a42e163bdc",
+      "m0a_questions_exact": true,
+      "question_count": 98,
+      "pgvector": "0.8.6",
+      "tables": {
+        "acronyms": {
+          "count": 248,
+          "content_md5": "d13674a2b69834c355b1a7ad22f84701"
+        },
+        "rag_chunks_dgafp": {
+          "count": 8555,
+          "content_md5": "38473e75ce43e04c097ac82b5c25ea61"
+        },
+        "rag_chunks_masa": {
+          "count": 1216,
+          "content_md5": "44e726e5265ae009c6595223bb7467a8"
+        },
+        "rag_chunks_matte": {
+          "count": 2455,
+          "content_md5": "31fb2524cfd35bad3ce9de1b18de557a"
+        },
+        "rag_chunks_mi": {
+          "count": 707,
+          "content_md5": "beb529aa4ff4da908c62f8939ade0e62"
+        },
+        "rag_chunks_mso": {
+          "count": 7582,
+          "content_md5": "5d3ab93dca8c00c122c538c3f0a1ce44"
+        },
+        "rag_chunks_rgrh": {
+          "count": 324,
+          "content_md5": "d5069377406e67e92961af8e90e5cd00"
+        },
+        "rag_chunks_service_public": {
+          "count": 5051,
+          "content_md5": "02db2ece52a37943b4f8d7d39f901eb1"
+        },
+        "rag_config": {
+          "count": 1,
+          "content_md5": "2ee59663c94aae12392122e875707e19"
+        },
+        "rag_documents": {
+          "count": 4882,
+          "content_md5": "a6f12a3d19485e0ddb521e98f5ad3da0"
+        },
+        "rag_sections": {
+          "count": 10397,
+          "content_md5": "636a6a1ea062b4a2641f93dd4cf34c1e"
+        },
+        "system_prompts": {
+          "count": 37,
+          "content_md5": "2b913f8d9d0663d576d59dfaa9726610"
+        }
+      },
+      "snapshot_fingerprint": "092e036595dcb78d144fa128f07f05a55b3c5fe7dc3a8f70274a7af78abae572"
+    },
+    "source_unchanged": true,
+    "panel_unchanged": true,
+    "config_prompts_corpus_unchanged": true,
+    "m0a_question_gold_references_exact": true
+  },
+  "verification": {
+    "code_commit": "73e53767bb28f8ae1d98bea6b505b3ee7564f9ff",
+    "live_commits": [
+      "99ef0f0a97ac310cb27258703e1c4b91992c22eb",
+      "c116d482b9e0a2361ad982073f3169456f36bf9a",
+      "ea1115ea4851d83878b102fa90d31d991e582bcc"
+    ],
+    "api_tests": {
+      "passed": 1257,
+      "skipped": 0
+    },
+    "historical_tests": {
+      "passed": 1574,
+      "skipped": 46
+    },
+    "private_m0b_companion": {
+      "tests_in_api_suite": 18,
+      "exact_scenarios": 7,
+      "stage_outputs": 27,
+      "structured_results": 7,
+      "negative_controls_detected": 5
+    },
+    "original_m0b_bundle": {
+      "scenarios": 7,
+      "artifacts": 56,
+      "exact_comparison": null,
+      "integrity_check": "passed"
+    },
+    "mypy_source_files": 89,
+    "import_contracts_kept": 4,
+    "ruff": "passed",
+    "ci_tests": "https://github.com/DGAFP/assistant-rh/actions/runs/36438270276",
+    "codeql": "https://github.com/DGAFP/assistant-rh/actions/runs/36438270242",
+    "ledger_pending_parity_debt": 0
+  },
+  "limits": [
+    "Initial runs #246/#247 failed after a local connection timeout. Continuations #249/#248 also stopped during memory pressure; final #250 legacy/#251 core complete the remaining paired IDs. Interrupted runs remain failed; the disappeared #249 worker was explicitly finalized as failed. Core q223 from #248 is superseded by #251 to pair the prompt date. Six interrupted-campaign chats without eval items are retained and excluded from quality, separately from the 196 evaluated chats.",
+    "Local pgvector 0.8.6; the staging snapshot used 0.8.2. Rebuilt ANN indexes do not prove identical database plans or rankings to staging.",
+    "Exact engine conformance uses the accepted full-engine companion; the original September 1 provider calls are not reconstructed.",
+    "The two engines share the same local snapshot, configuration, panel and judge, with at most two concurrent pairs. Latency is observational, not a performance benchmark.",
+    "Frozen global judge pass and document recall drops are limited to 0.05. Small per-corpus denominators require separate interpretation.",
+    "Provider-reported pipeline counters and judge usage are separate. Full cost and unknown interrupted-call, embedding or reranking usage remain outside M1.",
+    "All 98 core judgments completed, but one used two agreeing votes out of three requested. Core judge usage coverage is incomplete and its cost is unknown.",
+    "Detailed questions, answers, contexts and traces remain in private local artifacts. Published evidence contains only aggregates, IDs and fingerprints."
+  ],
+  "evidence_fingerprint": "845fd6862b1441b9cac1afe2436a15184c9854ac00e1a943b4b675984dcd1ab3"
+}

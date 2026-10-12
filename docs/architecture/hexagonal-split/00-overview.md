@@ -12,7 +12,7 @@ Le runtime actuel est couplé à Streamlit : `packages/rag-pipeline` mêle méti
 
 **Temps 1 (ce chantier)** — construire `apps/api` à côté du runtime existant : DB/adaptateurs d'abord, puis extraction progressive de la logique vers `assistant_rh_api/core`. Déployer l'API, adapter le chemin public Streamlit sous feature flag, puis retirer son ancien chemin direct après stabilité. Les pages admin/ops restent dans Streamlit avec accès DB direct et peuvent conserver temporairement leurs dépendances au package historique sous une exception gardée.
 
-**Temps 2 (chantier ultérieur)** — un fork de [suitenumerique/conversations](https://github.com/suitenumerique/conversations) (adapté à nos besoins, dont le feedback) remplace le chat Streamlit ; Streamlit devient une pure interface d'admin ; la connexion OIDC vit dans le front (ProConnect optionnel), l'API reste indépendante du fournisseur. Voir la [note identité et habilitations](09-conversations-individual-access.md) pour la direction retenue et les arbitrages restants.
+**Temps 2 (chantier ultérieur)** — un fork de [suitenumerique/conversations](https://github.com/suitenumerique/conversations) (adapté à nos besoins, dont le feedback) remplace le chat Streamlit ; Streamlit devient une pure interface d'admin ; la connexion ProConnect vit dans Conversations, référence des utilisateurs et habilitations ; l'API reste indépendante du fournisseur et vérifie le périmètre délégué par le backend Conversations. Voir la [note identité et habilitations](09-conversations-individual-access.md) pour la direction retenue et les arbitrages restants.
 
 ```mermaid
 flowchart LR

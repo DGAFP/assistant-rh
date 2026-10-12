@@ -8,12 +8,19 @@ from starlette.exceptions import HTTPException
 from assistant_rh_api.core.errors import (
     ApplicationError,
     DatabaseUnavailable,
+    FeedbackInvalid,
+    FeedbackNotFound,
+    IndividualIdentityRequired,
     InvalidCredentials,
     LoginRateLimited,
     MinistryConfigurationError,
     MinistryForbidden,
     ModelNotFound,
 )
+
+
+class ChatUnavailable(Exception):
+    """Stream admission is saturated or chat execution has closed for shutdown."""
 
 
 def error_response(status: int, code: str, message: str, *, headers: dict[str, str] | None = None) -> JSONResponse:
@@ -25,6 +32,10 @@ def error_response(status: int, code: str, message: str, *, headers: dict[str, s
 
 
 def register_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(ChatUnavailable)
+    async def chat_unavailable(request: Request, exc: ChatUnavailable) -> JSONResponse:
+        return error_response(503, "service_unavailable", "Service unavailable")
+
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
         return error_response(500, "internal_error", "Internal server error")
@@ -36,6 +47,12 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ApplicationError)
     async def application_error(request: Request, exc: ApplicationError) -> JSONResponse:
+        if isinstance(exc, FeedbackInvalid):
+            return error_response(422, exc.code, "Invalid feedback")
+        if isinstance(exc, IndividualIdentityRequired):
+            return error_response(403, exc.code, "Individual identity required")
+        if isinstance(exc, FeedbackNotFound):
+            return error_response(404, exc.code, "Feedback not found")
         if isinstance(exc, InvalidCredentials):
             return error_response(401, exc.code, "Invalid API key", headers={"WWW-Authenticate": "Bearer"})
         if isinstance(exc, MinistryForbidden):

@@ -140,3 +140,78 @@ async def test_malformed_bearer_never_queries_storage(token):
     with pytest.raises(InvalidCredentials):
         await auth.resolve(token)
     assert not auth.sessions.lookups and not auth.passwords.calls
+
+
+async def test_delegated_context_is_a_distinct_principal_with_fixed_conversation_scope():
+    from assistant_rh_api.core.auth import DELEGATED_PRINCIPAL, AuthContext
+
+    from apps.api.tests.auth_fakes import Signer, delegated_service
+
+    signer = Signer()
+    auth = delegated_service(signer)
+    context = await auth.resolve(signer.sign(signer.claims(ministry="mi")))
+    assert context.group is None and context.session is None
+    assert str(context.user_id) == "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    assert context.group_slug == DELEGATED_PRINCIPAL
+    assert context.allowed_ministries == ("mi",)
+    assert context.authorize_ministry() == "mi"
+    with pytest.raises(MinistryForbidden):
+        context.authorize_ministry("matte")
+    with pytest.raises(InvalidCredentials):
+        context.group_session()
+    with pytest.raises(InvalidCredentials):
+        await auth.logout(context)
+    # A group session never carries a user, and the two kinds never mix.
+    issued = await auth.login("beta", "password", "client")
+    assert issued.context.user_id is None and issued.context.delegation is None
+    with pytest.raises(ValueError):
+        AuthContext(issued.context.group, issued.context.session, "", context.delegation)
+    with pytest.raises(ValueError):
+        AuthContext(None, issued.context.session)
+
+
+async def test_delegation_without_conversation_ministry_scopes_history_to_current_grants():
+    from apps.api.tests.auth_fakes import Signer, delegated_service
+
+    signer = Signer()
+    context = await delegated_service(signer).resolve(signer.sign())
+    assert context.allowed_ministries == ("matte", "mi")
+    with pytest.raises(MinistryForbidden):
+        context.authorize_ministry()
+
+
+@pytest.mark.parametrize("include_group", [True, False])
+async def test_delegation_cannot_include_a_partial_group_session(include_group):
+    from assistant_rh_api.core.auth import AuthContext
+
+    from apps.api.tests.auth_fakes import individual_context
+
+    issued = await service().login("beta", "password", "client")
+    group = issued.context.group if include_group else None
+    session = None if include_group else issued.context.session
+    with pytest.raises(ValueError):
+        AuthContext(group, session, delegation=individual_context().delegation)
+
+
+async def test_unverified_or_disabled_delegations_are_invalid_credentials():
+    from apps.api.tests.auth_fakes import Signer, delegated_service
+
+    signer = Signer()
+    with pytest.raises(InvalidCredentials):
+        await service().resolve(signer.sign())
+    auth = delegated_service(signer)
+    with pytest.raises(InvalidCredentials):
+        await auth.resolve(Signer(signer.kid).sign())
+    auth.clock.value += timedelta(seconds=60)
+    with pytest.raises(InvalidCredentials):
+        await auth.resolve(signer.sign())
+
+
+def test_delegation_cannot_be_enabled_without_replay_protection():
+    from assistant_rh_api.core.auth import AuthService
+    from assistant_rh_api.gateways.auth import SessionTokens
+
+    from apps.api.tests.auth_fakes import Clock, Groups, Limiter, Passwords, Sessions, Signer
+
+    with pytest.raises(ValueError, match="replay"):
+        AuthService(Groups(), Sessions(), Passwords(), SessionTokens(), Limiter(), Clock(), delegations=Signer().verifier())

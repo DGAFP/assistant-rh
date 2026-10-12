@@ -52,7 +52,7 @@ La DB et les providers existent déjà. C1 fixe le contrat à partir du spike A2
 | **C4** | Extraction du section aggregator et du context builder : accès sections/documents/références via `ContentStorePort` | Conformance agrégation/contexte |
 | **C5** | Extraction du context selector, de la composition du prompt ministère et du generator | Replays + anti-hallucination/no-answer/fallback |
 | **C6** ([#463](https://github.com/DGAFP/assistant-rh/issues/463)) | Handler HTTP non-stream `/v1/chat/completions` et tous ses tests de transport selon C1 ; `Pipeline`/`ChatService` réel, `RunContext` par requête, événements de toutes les étapes et persistance atomique du run, de ses sources finales ordonnées et de ses traces | Matrice HTTP C1 + conformance bout en bout + tests de concurrence et d'atomicité |
-| **C7** ([#464](https://github.com/DGAFP/assistant-rh/issues/464)) | Streaming SSE selon C1/A2 : worker borné, file async, pings, erreur post-headers, annulation et persistance avant `[DONE]` | Tests stream/déconnexion/erreur sur local et homelab |
+| **C7** ([#464](https://github.com/DGAFP/assistant-rh/issues/464)) | Streaming SSE selon C1/A2 : worker borné, file async, pings, erreur post-headers, annulation et persistance avant `[DONE]` | [Preuves C7](12-c7-streaming.md) : 958 tests API validés, SDK/TCP, instance `conversations` et test réel sur copie locale du corpus |
 
 **Jalon M1 — parité moteur** :
 
@@ -60,11 +60,15 @@ La DB et les providers existent déjà. C1 fixe le contrat à partir du spike A2
 - goldset live apparié : aucune régression au-delà des tolérances M0a ;
 - deux requêtes simultanées de ministères différents ne partagent ni prompt, ni résultat, ni trace.
 
+**GO technique M1 — campagne corrigée du 30/09/2026.** Core 60/98, témoin apparié 62/98, M0a réévaluée 60/98. Seuils inchangés : baisse maximale de 5 points de pass rate et de rappel contre chaque référence.
+
+[Preuve M1](13-m1-run-metrics.md) et [PR #580](https://github.com/DGAFP/assistant-rh/pull/580). Le jalon permet la poursuite de D après intégration ; aucun déploiement n’est effectué. Le rejeu complémentaire valide 98 paires exactes après la frontière de retrieval et corrige le départage des acronymes ; la PR peut passer en revue. La fiabilité du juge reste à traiter séparément.
+
 ## Phase D — fonctions API restantes et déploiement dark
 
 | PR / étape | Contenu |
 |---|---|
-| **D1** | Sur le schéma nettoyé par B2, `POST /v1/feedback` verrouille le `chat_run` parent, vérifie l'ownership, rend le retry identique sans écriture et archive/remplace atomiquement. Une modification conserve les annotations humaines, efface/replanifie l'analyse IA et journalise groupe + hash de session. |
+| **D1 — #528** | Préparation transactionnelle disponible : POST/GET individuels, contrôle d'auteur et droits courants sous verrou du parent, retry sans écriture, archivage atomique, conservation des annotations et invalidation IA avec génération. Auteur UUID nullable/immuable, aucun backfill collectif ; audit acteur/groupe/session pseudonymisée. SQL D1 limité au bootstrap local/test, hors migrations automatiques ; B4 reste compatible sans D1. **Validation Conversations dépend de #596** : délégation par confiance de service (réseau privé et authentification du backend Conversations), identifiant stable de l'utilisateur Conversations sans registre côté API, périmètre délégué vérifié à chaque requête et pseudonyme d'audit ; restrictions SQL des écritures directes dans #599. Accès à un run individuel : auteur et ministère encore autorisé, quel que soit le groupe courant. L'auth B4 ne crée pas de principal individuel et reçoit 403 sur ces routes ; Streamlit direct reste historique. Tests synthétiques ne prouvent pas le login Conversations. |
 | **D2** | `POST /v1/documents/{doc_ref}/access-url` puis `GET /v1/documents/access/{capability}` : autorisation par `chat_run_sources`, capability 15 min créée au clic, réponse 200 PDF legacy ou 302 S3 avec headers sûrs et présignature bornée à la durée restante ; rédemption serveur et retry unique de `_PDF_Viewer` par nouvelle demande authentifiée ; aucun endpoint admin. |
 | **D3** | Runner via-API : conformance exacte en replay et goldset live séparé ; tests de transport conservés avec le SDK OpenAI et le provider `conversations` épinglé, au moyen d'une session de test créée à la volée. La reconstruction RAG-ops est hors chantier. |
 | **D4** | Déployer le container complet sur Scaleway staging en mode dark. Valider pour la première fois le proxy réel : cold start, pings/buffering SSE, timeout, mémoire, déconnexion et observabilité |
