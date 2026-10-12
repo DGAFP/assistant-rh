@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -225,8 +225,9 @@ wheels = [
 
 [[package]]
 name = "assistant-rh"
-version = "0.14.0"
+version = "0.15.0"
 source = { virtual = "." }
+default-groups = []
 dependencies = [
     { name = "assistant-rh-data-engineering" },
     { name = "assistant-rh-data-ingestion-cli" },
@@ -322,7 +323,7 @@ dev = [
 
 [[package]]
 name = "assistant-rh-api"
-version = "0.14.0"
+version = "0.15.0"
 source = { editable = "apps/api" }
 dependencies = [
     { name = "anyio" },
@@ -367,7 +368,7 @@ dev = [
 
 [[package]]
 name = "assistant-rh-data-engineering"
-version = "0.14.0"
+version = "0.15.0"
 source = { editable = "packages/data-engineering" }
 dependencies = [
     { name = "assistant-rh-shared-config" },
@@ -394,7 +395,7 @@ requires-dist = [
 
 [[package]]
 name = "assistant-rh-data-ingestion-cli"
-version = "0.14.0"
+version = "0.15.0"
 source = { editable = "apps/data-ingestion-cli" }
 dependencies = [
     { name = "assistant-rh-data-engineering" },
@@ -405,7 +406,7 @@ requires-dist = [{ name = "assistant-rh-data-engineering", editable = "packages/
 
 [[package]]
 name = "assistant-rh-rag-pipeline"
-version = "0.14.0"
+version = "0.15.0"
 source = { editable = "packages/rag-pipeline" }
 dependencies = [
     { name = "filelock" },
@@ -432,7 +433,7 @@ requires-dist = [
 
 [[package]]
 name = "assistant-rh-shared-config"
-version = "0.14.0"
+version = "0.15.0"
 source = { editable = "packages/shared-config" }
 dependencies = [
     { name = "psycopg", extra = ["binary"] },
