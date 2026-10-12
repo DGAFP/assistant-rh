@@ -7,7 +7,7 @@ from assistant_rh_api.core.errors import DatabaseConflict
 from assistant_rh_api.core.models.conversations import ChatRun, FeedbackInput, RunSource, TraceEvent
 from assistant_rh_api.db.feedback_store import FeedbackStore
 from assistant_rh_api.db.run_store import ChatRunStore
-from assistant_rh_api.gateways.ids import CompletionIds
+from assistant_rh_api.gateways.ids import CompletionIds, RunIds
 
 pytestmark = pytest.mark.anyio
 NOW = datetime(2026, 9, 8, tzinfo=timezone.utc)
@@ -15,7 +15,7 @@ NOW = datetime(2026, 9, 8, tzinfo=timezone.utc)
 
 def make_run(**changes):
     run = ChatRun(
-        CompletionIds().new_id(),
+        RunIds().new_id(),
         "f" * 32,
         NOW,
         "synthetic",
@@ -38,8 +38,8 @@ async def test_run_atomic_roundtrip_collision_and_source_ownership(repository_db
     assert await store.get(run.turn_id) is None
     await store.finalize(run)
     assert await store.get(run.turn_id) == run
-    assert await store.sources(run.turn_id, run.group_slug) == run.sources
-    assert await store.sources(run.turn_id, "other") == ()
+    assert await store.sources(run.turn_id, run.group_slug, ministries=("matte",)) == run.sources
+    assert await store.sources(run.turn_id, "other", ministries=("matte",)) == ()
     with pytest.raises(DatabaseConflict):
         await store.finalize(replace(run, answer="overwrite", sources=()))
     assert await store.get(run.turn_id) == run
@@ -81,10 +81,10 @@ async def test_feedback_storage_encoding_and_idempotence(repository_db, stars):
     store = FeedbackStore(repository_db)
     assert await store.get(run.turn_id) is None
     value = FeedbackInput(run.turn_id, stars, "Comment", helpful=True)
-    saved = await store.save(value, run.group_slug, run.session_hash, NOW)
+    saved = await store.save(value, run.group_slug, run.session_hash, NOW, ministries=("matte",))
     assert saved.value == value
     assert await store.get(run.turn_id) == saved
-    assert await store.save(value, run.group_slug, run.session_hash, NOW) == saved
+    assert await store.save(value, run.group_slug, run.session_hash, NOW, ministries=("matte",)) == saved
     async with repository_db.transaction() as connection:
         assert await (await connection.execute("SELECT stars FROM public.chat_feedbacks")).fetchone() == (stars - 1 if stars else None,)
         assert await (await connection.execute("SELECT count(*) FROM public.chat_feedback_audit")).fetchone() == (0,)
@@ -95,18 +95,18 @@ async def test_feedback_concurrent_first_submission_and_replacement_preserves_hu
     await ChatRunStore(repository_db).finalize(run)
     store = FeedbackStore(repository_db)
     value = FeedbackInput(run.turn_id, 1, "Initial")
-    results = await asyncio.gather(*(store.save(value, run.group_slug, run.session_hash, NOW) for _ in range(4)))
+    results = await asyncio.gather(*(store.save(value, run.group_slug, run.session_hash, NOW, ministries=("matte",)) for _ in range(4)))
     assert len({r.id for r in results}) == 1
     old = results[0]
     assert await store.save_analysis(old.id, old.revision, "retrieval", "Reason", NOW)
     async with repository_db.transaction() as connection:
         await connection.execute("UPDATE public.chat_feedbacks SET beta_scope = 'human', theme = 'congé'")
-    revised = await store.save(replace(value, stars=2), run.group_slug, run.session_hash, NOW)
+    revised = await store.save(replace(value, stars=2), run.group_slug, run.session_hash, NOW, ministries=("matte",))
     assert revised.annotations == {"beta_scope": "human", "theme": "congé"}
     assert revised.analysis_category is None and revised.analysis_reason is None
     assert not await store.save_analysis(old.id, old.revision, "stale", "Old result", NOW)
     # Even with the same timestamp and original input, old analysis is stale.
-    final = await store.save(value, run.group_slug, run.session_hash, NOW)
+    final = await store.save(value, run.group_slug, run.session_hash, NOW, ministries=("matte",))
     assert final.revision != old.revision
     assert not await store.save_analysis(old.id, old.revision, "stale", "Old result", NOW)
     pending = await store.for_analysis(3, 10)
@@ -118,7 +118,7 @@ async def test_feedback_concurrent_first_submission_and_replacement_preserves_hu
         assert len(rows) == 2 and rows[0][0]["ai_reason"] == "Reason"
     # A different session in the same group may edit; audit records that actor,
     # while the archived JSON retains the author of the previous version.
-    await store.save(replace(value, stars=5), run.group_slug, "b" * 64, NOW)
+    await store.save(replace(value, stars=5), run.group_slug, "b" * 64, NOW, ministries=("matte",))
     async with repository_db.transaction() as connection:
         actor = await (
             await connection.execute("""
@@ -134,14 +134,14 @@ async def test_feedback_denied_missing_and_rollback(repository_db):
     await ChatRunStore(repository_db).finalize(run)
     store = FeedbackStore(repository_db)
     value = FeedbackInput(run.turn_id, 1)
-    assert await store.save(value, "other", run.session_hash, NOW) is None
-    assert await store.save(replace(value, turn_id="missing"), run.group_slug, run.session_hash, NOW) is None
-    original = await store.save(value, run.group_slug, run.session_hash, NOW)
+    assert await store.save(value, "other", run.session_hash, NOW, ministries=("matte",)) is None
+    assert await store.save(replace(value, turn_id="missing"), run.group_slug, run.session_hash, NOW, ministries=("matte",)) is None
+    original = await store.save(value, run.group_slug, run.session_hash, NOW, ministries=("matte",))
     try:
         async with repository_db.transaction() as connection:
             await connection.execute("ALTER TABLE public.chat_feedbacks ADD CONSTRAINT synthetic_no_three CHECK(stars <> 2)")
         with pytest.raises(DatabaseConflict):
-            await store.save(replace(value, stars=3), run.group_slug, run.session_hash, NOW)
+            await store.save(replace(value, stars=3), run.group_slug, run.session_hash, NOW, ministries=("matte",))
         assert await store.get(run.turn_id) == original
         async with repository_db.transaction() as connection:
             assert await (await connection.execute("SELECT count(*) FROM public.chat_feedback_audit")).fetchone() == (0,)
@@ -179,10 +179,10 @@ async def test_feedback_reason_collections_roundtrip_and_legacy_read(repository_
     await ChatRunStore(repository_db).finalize(run)
     store = FeedbackStore(repository_db)
     value = FeedbackInput(run.turn_id, 4, reasons_positive=("Clair", "Utile"), reasons_negative=("Incomplet",))
-    saved = await store.save(value, run.group_slug, run.session_hash, NOW)
+    saved = await store.save(value, run.group_slug, run.session_hash, NOW, ministries=("matte",))
     assert saved.value == value
     assert await store.get(run.turn_id) == saved
-    assert await store.save(value, run.group_slug, run.session_hash, NOW) == saved
+    assert await store.save(value, run.group_slug, run.session_hash, NOW, ministries=("matte",)) == saved
     async with repository_db.transaction() as connection:
         row = await (await connection.execute("SELECT reasons_positive, reasons_negative FROM public.chat_feedbacks")).fetchone()
         assert row == ("Clair; Utile", "Incomplet")
@@ -194,7 +194,7 @@ async def test_feedback_reason_collections_roundtrip_and_legacy_read(repository_
     legacy = await store.get("legacy-reasons")
     assert legacy.value.reasons_positive == ()
     assert legacy.value.reasons_negative == ("Confus", "Incomplet")
-    cleared = await store.save(replace(value, reasons_positive=(), reasons_negative=()), run.group_slug, run.session_hash, NOW)
+    cleared = await store.save(replace(value, reasons_positive=(), reasons_negative=()), run.group_slug, run.session_hash, NOW, ministries=("matte",))
     assert cleared.value.reasons_positive == cleared.value.reasons_negative == ()
     assert cleared.revision != saved.revision
 
@@ -203,4 +203,25 @@ async def test_feedback_reason_collections_roundtrip_and_legacy_read(repository_
 async def test_feedback_rejects_reasons_that_cannot_roundtrip(repository_db, reasons):
     value = FeedbackInput("missing", 4, reasons_positive=reasons)
     with pytest.raises(ValueError, match="reasons must be a tuple"):
-        await FeedbackStore(repository_db).save(value, "synthetic", "a" * 64, NOW)
+        await FeedbackStore(repository_db).save(value, "synthetic", "a" * 64, NOW, ministries=("matte",))
+
+
+async def test_historical_prefixed_run_remains_readable(repository_db):
+    run = make_run(turn_id=CompletionIds().new_id())
+    store = ChatRunStore(repository_db)
+    await store.finalize(run)
+    assert await store.get(run.turn_id) == run
+    assert await store.sources(run.turn_id, run.group_slug, ministries=("matte",)) == run.sources
+
+
+async def test_unknown_historical_ministry_does_not_grant_access(repository_db):
+    run = make_run()
+    runs = ChatRunStore(repository_db)
+    await runs.finalize(run)
+    async with repository_db.transaction() as connection:
+        await connection.execute("UPDATE public.chat_runs SET selected_ministry = NULL WHERE turn_id = %s", (run.turn_id,))
+    assert await runs.sources(run.turn_id, run.group_slug, ministries=("matte", "mi")) == ()
+    store = FeedbackStore(repository_db)
+    assert (
+        await store.save(FeedbackInput(run.turn_id, 3, "Unknown corpus"), run.group_slug, run.session_hash, NOW, ministries=("matte", "mi")) is None
+    )

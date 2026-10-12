@@ -45,6 +45,8 @@ jobs:
       SCW_BUCKET_SOURCES_PDF: ${{ vars.SCW_BUCKET_SOURCES_PDF || 'assistant-rh-sources-pdf' }}
 
       SCW_POSTGRES_DSN: ${{ secrets.SCW_POSTGRES_DSN }}
+      # Optional non-owner runtime login (#599); the container falls back to SCW_POSTGRES_DSN.
+      STREAMLIT_POSTGRES_DSN: ${{ secrets.STREAMLIT_POSTGRES_DSN }}
       ALBERT_API_KEY: ${{ secrets.ALBERT_API_KEY }}
       SCALEWAY_API_KEY: ${{ secrets.SCALEWAY_API_KEY }}
       COOKIES_PASSWORD: ${{ secrets.COOKIES_PASSWORD }}

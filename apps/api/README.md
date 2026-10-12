@@ -1,12 +1,13 @@
 # Assistant RH API
 
-## Chat Completions non-stream (C6)
+## Chat Completions
 
 `POST /v1/chat/completions` now composes the real C2–C5 pipeline behind bearer
 authentication and the ministry model catalogue. Run, ordered final sources,
 stage evidence and status commit atomically before a successful JSON response.
 Client system/tool instructions and generation parameters are ignored according
-to C1. `stream=true` is rejected until C7 supplies the SSE transport.
+to C1. Set `stream=true` to receive the answer progressively over SSE;
+see [streaming](#c7--resilient-chat-completions-streaming) for its error and cancellation behavior.
 
 See [the C6 implementation and validation report](../../docs/architecture/hexagonal-split/11-c6-chat-completions.md)
 for provider configuration, failure/cancellation semantics, ID compatibility,
@@ -190,7 +191,7 @@ ports. They are additive: only `/healthz` is wired to HTTP at this stage.
 | `SearchStore` | Separate raw vector, lexical and heading lanes over logical sources; candidate scores/ranks and deterministic ties. No RRF, weighting, gate, deduplication or final selection. |
 | `ContentStore` | Batch documents, sections, legal references and chunks, ordered by stable keys. Legacy Service-Public relations and document metadata remain readable. |
 | `ChatRunStore` | INSERT-only finalization of run, ordered served sources and all trace events in one transaction. A duplicate completion ID fails instead of overwriting the original. |
-| `FeedbackStore` | Group ownership, current feedback, exact retries without writes, atomic audit/replacement, human annotations preserved and AI analysis reset. Analysis writes reject stale generations. |
+| `FeedbackStore` | Ownership by creation group (collective runs) or by author and current ministry rights (individual runs), current feedback, exact retries without writes, atomic audit/replacement, human annotations preserved and AI analysis reset. Analysis writes reject stale generations. |
 
 `core/models/` groups input/output values by domain: `configuration`, `auth`,
 `retrieval` and `conversations`. The matching `core/ports/` modules define their
@@ -203,7 +204,8 @@ composition root**, never the bearer or its authentication digest. Session
 authentication uses the separate `Session.token_hash`. `AuthContext.audit_session_hash`
 is the dedicated input for a HMAC audit pseudonym. Until authentication wiring
 supplies one, it stays empty on run writes: the token digest is never a fallback.
-Ownership follows the group, including after session renewal.
+Collective ownership follows the group, including after session renewal. Individual
+ownership follows the run author and current ministry rights, whatever the current group.
 Feedback reasons are immutable tuples in the core (JSON arrays at the HTTP
 boundary). Only the PostgreSQL adapter joins/splits the legacy `; `-separated
 TEXT columns; empty or NULL stored reasons become empty tuples.
@@ -712,3 +714,79 @@ Both API transports use C6's generation inputs; validated history remains with
 the query processor. Standalone C5 streaming still accepts history. Provider
 stream requests now opt in to usage; missing usage retains C1's zero counters.
 See [C7 design, validation and Conversations reproduction](../../docs/architecture/hexagonal-split/12-c7-streaming.md).
+
+## Individual feedback groundwork (D1 / #528)
+
+`POST /v1/feedback` validates and normalizes stars, reason lists and comments;
+`GET /v1/feedback/{completion_id}` returns the current input only. Both require
+a verified individual principal and enforce the run author and current corpus
+rights. B4 group tokens receive 403 on these routes. Individual principals come only
+from a verified Conversations delegation (see below), disabled unless configured.
+
+The D1 schema ships as the additive migration
+`supabase/migrations/20261007120000_api_individual_identity.sql`, which the local
+Compose bootstrap also applies. Installing it activates no individual principal.
+B4 chat completions (including streaming), source reads and collective feedback
+store writes (including replacement/audit) work without D1. The public feedback
+routes still refuse B4 principals. Before an individual request starts the pipeline
+or opens an SSE stream, the API checks the three D1 columns and two enabled guards;
+missing or partial D1 returns 503 without configuration, retrieval or LLM work.
+The schema capability is cached per database pool; restart the API after applying
+or rolling back schema changes. Access predicates use named parameters and direct
+columns, without serializing run payloads. Runs with a NULL/unknown ministry or a
+revoked corpus grant deliberately confer no source or feedback authority.
+Existing collective runs keep a NULL author and cannot be claimed. Enable delegation
+only after the #599 runtime roles/grants are applied.
+See the [feedback contract](../../docs/architecture/hexagonal-split/02-api-contract.md#post-v1feedback).
+
+The identity migration makes the author immutable and checks feedback authorship.
+The runtime-role migration additionally protects individual run IDs and restricts
+individual feedback content writes to the API role. The API store checks ownership
+and archives replacements in the same transaction. Annotation/analysis updates retain
+the fast path. See the [runtime roles runbook](../../docs/deployment/SCALEWAY_DB_RUNTIME_ROLES.md)
+for provisioning and rollback. `UPDATE OF` is intentionally avoided because it prevents B2's repeated
+`ALTER COLUMN turn_id TYPE TEXT` during local bootstrap, independently of the
+pre-D1 compatibility test's explicit trigger removal.
+
+## Conversations delegation (#596)
+
+The Conversations backend calls the API on behalf of an individual user with a
+per-request signed assertion in `Authorization: Bearer`. It is not a session:
+the API keeps no user registry or group membership; it records used assertion IDs
+to prevent replay and removes expired entries in batches. Routes
+`/v1/auth/me` / `DELETE /v1/auth/session` answer 401 to a delegation. B4 group
+sessions (`arhs_…`) keep working unchanged and never carry a user ID.
+
+`gateways/delegation.py` accepts only a compact JWS with `alg: EdDSA` (Ed25519),
+a pinned `kid` and no other header than `typ: JWT`. Claims:
+
+| Claim | Rule |
+| --- | --- |
+| `iss` / `aud` | Configured issuer; audience string or list containing the API audience |
+| `iat`, `exp`, `nbf` | Integers; `exp` strictly in the future, `exp - iat` ≤ 120 s, `iat`/`nbf` ≤ now + 30 s |
+| `jti` | 16–128 URL-safe characters |
+| `sub` | Stable Conversations user ID, canonical lowercase UUID; becomes the immutable run author |
+| `models` | Models currently granted (`assistant-rh-<ministry>`, unique, may be empty); an unknown model refuses the assertion |
+| `ministry` | Optional; the conversation's fixed ministry, one of `models` |
+| `audit_session` | Optional 64-hex HMAC-SHA-256 session pseudonym, required by feedback writes |
+
+`/v1/models` lists the granted models (narrowed to `ministry` when present). Chat
+resolves the alias to `ministry` only; any model outside the delegated scope is
+403 even if its name is valid. Runs are stored with the signed author,
+`user_group = '@conversations'` (outside the B4 slug alphabet) and the run
+ministry; history access is author + current grant on the run ministry.
+
+| Environment variable | Meaning |
+| --- | --- |
+| `CONVERSATIONS_DELEGATION_JWKS` | JWKS of Ed25519 **public** keys; private members fail startup |
+| `CONVERSATIONS_DELEGATION_ISSUER` | Expected `iss`; set together with the JWKS |
+| `ASSISTANT_RH_API_AUDIENCE` | Expected `aud`, default `assistant-rh-api` |
+
+Without both variables, delegation is disabled and every non-B4 bearer is 401.
+Each verified `jti` is recorded in `api_delegation_replays`, shared by all replicas:
+a second use of the same assertion is 401, so Conversations signs a fresh assertion
+for every call, retries included. Only verified assertions are recorded; expired rows
+are purged in bounded batches by later claims.
+Rotation publishes a new `kid` next to the old one; removing a `kid` revokes it
+once the API restarts with the new key set (issued assertions expire within 120 s). The full contract, network restriction and accepted risks
+are in [the delegation contract](../../docs/architecture/hexagonal-split/14-conversations-delegation-contract.md).

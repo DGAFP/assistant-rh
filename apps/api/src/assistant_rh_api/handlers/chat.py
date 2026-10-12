@@ -56,10 +56,12 @@ def create_chat_router() -> APIRouter:
         except ChatRequestError as exc:
             return error_response(exc.status, exc.code, "Request body is too large" if exc.status == 413 else "Invalid request")
         # Authorization precedes service availability and all configuration/corpus I/O.
-        model = request.app.state.model_service.resolve(body.model, auth.group)
+        model = request.app.state.model_service.resolve(body.model, auth.principal)
         service = request.app.state.chat_service
         if service is None:
             raise DatabaseUnavailable()
+        if auth.user_id is not None:
+            await service.require_individual_storage(auth)
         if transport.stream:
             return request.app.state.stream_workers.response(service, body, auth, model, include_usage=transport.include_usage)
         run, result = await request.app.state.non_stream_requests.complete(service, body, auth)

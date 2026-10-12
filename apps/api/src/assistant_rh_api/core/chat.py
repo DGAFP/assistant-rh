@@ -78,6 +78,10 @@ class ChatService:
                 continue
         saving.result()
 
+    async def require_individual_storage(self, auth: AuthContext) -> None:
+        if auth.user_id is not None:
+            await self._runs.require_individual_schema()
+
     async def complete(
         self,
         request: ChatInput,
@@ -88,7 +92,8 @@ class ChatService:
         context: RunContext | None = None,
         stream: bool = False,
     ) -> tuple[ChatRun, PipelineResult]:
-        model = self._models.resolve(request.model, auth.group)
+        model = self._models.resolve(request.model, auth.principal)
+        await self.require_individual_storage(auth)
         context = context or self.new_context(sink=sink, cancellation=cancellation)
         created = context.created
 
@@ -97,7 +102,7 @@ class ChatService:
                 turn_id=context.turn_id,
                 trace_id=context.trace_id,
                 timestamp=created,
-                group_slug=auth.group.slug,
+                group_slug=auth.group_slug,
                 session_hash=auth.audit_session_hash,
                 conversation_id=request.conversation_id,
                 question=request.question,
@@ -109,6 +114,7 @@ class ChatService:
                 diagnostics=trace_payload(context.diagnostics),
                 status=status,
                 metrics=context.metrics(stream=stream),
+                author_user_id=auth.user_id,
             )
 
         try:

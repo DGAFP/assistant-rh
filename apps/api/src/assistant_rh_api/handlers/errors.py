@@ -8,6 +8,9 @@ from starlette.exceptions import HTTPException
 from assistant_rh_api.core.errors import (
     ApplicationError,
     DatabaseUnavailable,
+    FeedbackInvalid,
+    FeedbackNotFound,
+    IndividualIdentityRequired,
     InvalidCredentials,
     LoginRateLimited,
     MinistryConfigurationError,
@@ -44,6 +47,12 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ApplicationError)
     async def application_error(request: Request, exc: ApplicationError) -> JSONResponse:
+        if isinstance(exc, FeedbackInvalid):
+            return error_response(422, exc.code, "Invalid feedback")
+        if isinstance(exc, IndividualIdentityRequired):
+            return error_response(403, exc.code, "Individual identity required")
+        if isinstance(exc, FeedbackNotFound):
+            return error_response(404, exc.code, "Feedback not found")
         if isinstance(exc, InvalidCredentials):
             return error_response(401, exc.code, "Invalid API key", headers={"WWW-Authenticate": "Bearer"})
         if isinstance(exc, MinistryForbidden):
