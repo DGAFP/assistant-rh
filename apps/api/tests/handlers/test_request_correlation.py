@@ -29,6 +29,29 @@ async def test_correlation_survives_json_and_stream_without_logging_secrets(capl
         assert response.content.endswith(b"data: [DONE]\n\n")
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("client_request_id", ["a" * 32, "unsafe value"])
+async def test_unexpected_error_keeps_correlation_without_logging_secrets(caplog, client_request_id):
+    app = create_app(environ={})
+
+    @app.get("/correlation-error")
+    async def fail():
+        raise RuntimeError("SECRET exception details")
+
+    caplog.set_level(logging.INFO)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app, raise_app_exceptions=False), base_url="http://test") as client:
+        response = await client.get("/correlation-error", headers={"X-Client-Request-Id": client_request_id, "Authorization": "Bearer SECRET"})
+    assert response.status_code == 500
+    assert response.json() == {"error": {"message": "Internal server error", "type": "server_error", "code": "internal_error"}}
+    assert response.headers["Cache-Control"] == "no-store"
+    request_id = response.headers["X-Request-Id"]
+    assert re.fullmatch("[0-9a-f]{32}", request_id)
+    if client_request_id == "a" * 32:
+        assert request_id == client_request_id
+    assert caplog.text.count(f"api_request request_id={request_id} status=500") == 1
+    assert "SECRET" not in caplog.text
+
+
 @pytest.mark.parametrize(
     "headers", [{}, {"X-Client-Request-Id": "unsafe value"}, [("X-Client-Request-Id", "a" * 32), ("X-Client-Request-Id", "b" * 32)]]
 )

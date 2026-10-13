@@ -11,6 +11,7 @@ from importlib.metadata import version as distribution_version
 import anyio
 import httpx
 from fastapi import FastAPI
+from starlette.types import ASGIApp
 
 from assistant_rh_api.bootstrap import create_chat_service
 from assistant_rh_api.core.auth import AuthService
@@ -38,6 +39,12 @@ from assistant_rh_api.handlers.errors import register_error_handlers
 from assistant_rh_api.handlers.feedback import create_feedback_router
 from assistant_rh_api.handlers.health import create_health_router
 from assistant_rh_api.handlers.models import create_models_router
+
+
+class CorrelatedFastAPI(FastAPI):
+    def build_middleware_stack(self) -> ASGIApp:
+        # Include ServerErrorMiddleware so unexpected 500 responses are correlated too.
+        return RequestCorrelation(super().build_middleware_stack())
 
 
 def create_app(
@@ -121,7 +128,7 @@ def create_app(
             finally:
                 await asyncio.gather(application.state.stream_workers.aclose(), application.state.non_stream_requests.aclose())
 
-    application = FastAPI(title="Assistant RH API", version=distribution_version("assistant-rh-api"), lifespan=managed_lifespan)
+    application = CorrelatedFastAPI(title="Assistant RH API", version=distribution_version("assistant-rh-api"), lifespan=managed_lifespan)
     application.state.health_probe = health_probe or PostgresHealthProbe()
     application.state.auth_service = auth_service
     application.state.model_service = model_service or ModelService()
@@ -131,7 +138,6 @@ def create_app(
     application.state.non_stream_requests = NonStreamRequests()
     application.state.stream_workers = StreamWorkers(stream_settings or StreamSettings.from_environment(os.environ if environ is None else environ))
     application.add_middleware(AuthBodyLimit)
-    application.add_middleware(RequestCorrelation)
     register_error_handlers(application)
     application.include_router(create_health_router())
     application.include_router(create_auth_router())
