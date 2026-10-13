@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: assistant-rh-api
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels: {app: assistant-rh-api}
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  template:
+    metadata:
+      labels: {app: assistant-rh-api}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 330
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}@{{ required "image.digest requis" .Values.image.digest }}"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          ports: [{name: http, containerPort: 8000}]
+          env:
+            - {name: APP_ENV, value: staging}
+            - {name: PGSSLMODE, value: verify-ca}
+            - {name: PGSSLROOTCERT, value: /etc/scaleway-ca/postgres.pem}
+          envFrom:
+            - secretRef: {name: {{ .Values.runtimeSecret }}}
+          volumeMounts:
+            - {name: database-ca, mountPath: /etc/scaleway-ca, readOnly: true}
+          startupProbe:
+            tcpSocket: {port: http}
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: {port: http}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: database-ca
+          secret:
+            secretName: scaleway-database-ca
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app: assistant-rh-api}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: assistant-rh-api
+spec:
+  type: ClusterIP
+  selector: {app: assistant-rh-api}
+  ports: [{name: http, port: 8000, targetPort: http}]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: assistant-rh-api
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {app: assistant-rh-api}

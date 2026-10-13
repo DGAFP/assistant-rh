@@ -1,0 +1,87 @@
+name: Kapsule staging
+on:
+  pull_request:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Publier les images et déployer le nouveau staging Kapsule
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: kapsule-staging-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.19.0
+      - name: Validate Helm and shell
+        run: |
+          set -euo pipefail
+          bash -n deploy/api/deploy.sh
+          helm lint deploy/api --set-string image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          helm template assistant-rh-api deploy/api --set-string image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa > /dev/null
+      - uses: docker/setup-buildx-action@v3
+      - name: Build images without credentials
+        run: |
+          docker buildx build --platform linux/amd64 -f docker/api/Dockerfile .
+  publish:
+    needs: validate
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/dev') &&
+      (inputs.deploy == true || vars.KAPSULE_STAGING_CD_ENABLED == 'true')
+    environment: kapsule-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      digest: ${{ steps.images.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - name: Authenticate to the dedicated staging registry
+        env:
+          REGISTRY_KEY: ${{ secrets.SCW_REGISTRY_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$REGISTRY_KEY" || { echo 'SCW_REGISTRY_SECRET_KEY missing' >&2; exit 1; }
+          printf '%s' "$REGISTRY_KEY" | docker login rg.fr-par.scw.cloud/assistant-rh-staging -u nologin --password-stdin
+      - name: Publish immutable images
+        id: images
+        run: |
+          set -euo pipefail
+          docker buildx build --platform linux/amd64 -f docker/api/Dockerfile \
+            -t "rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api:sha-${GITHUB_SHA}" \
+            --push --metadata-file "$RUNNER_TEMP/api-image.json" .
+          echo "digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/api-image.json")" >> "$GITHUB_OUTPUT"
+      - name: Logout
+        if: always()
+        run: docker logout rg.fr-par.scw.cloud/assistant-rh-staging
+  deploy:
+    needs: publish
+    environment: kapsule-staging
+    runs-on: [self-hosted, linux, x64, api-staging-deploy]
+    timeout-minutes: 20
+    concurrency:
+      group: api-kapsule-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Deploy and verify
+        env:
+          IMAGE_DIGEST: ${{ needs.publish.outputs.digest }}
+        run: bash deploy/api/deploy.sh

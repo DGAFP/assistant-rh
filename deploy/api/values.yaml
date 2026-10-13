@@ -1,0 +1,9 @@
+replicas: 2
+image:
+  repository: rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api
+  digest: ""
+imagePullSecret: scw-registry
+runtimeSecret: assistant-rh-api-runtime
+resources:
+  requests: {cpu: 250m, memory: 256Mi}
+  limits: {cpu: "2", memory: 1Gi}
