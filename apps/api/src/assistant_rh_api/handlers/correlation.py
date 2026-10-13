@@ -31,4 +31,10 @@ class RequestCorrelation:
                 logger.info("api_request request_id=%s status=%s", request_id, message["status"])
             await send(message)
 
-        await self.app(scope, receive, correlated_send)
+        try:
+            await self.app(scope, receive, correlated_send)
+        except Exception:
+            # Starlette re-raises after sending a safe 500. Keep Uvicorn's error
+            # handling (including closing incomplete streams), without the original
+            # exception message, traceback or chained exceptions in its logs.
+            raise RuntimeError(f"API request failed (request_id={request_id})") from None

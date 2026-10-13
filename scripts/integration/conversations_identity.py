@@ -11,6 +11,7 @@ import base64
 import ipaddress
 import json
 import os
+import re
 import secrets
 import socket
 import ssl
@@ -32,6 +33,12 @@ from cryptography.x509.oid import NameOID
 from psycopg.types.json import Jsonb
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def assert_no_signed_tokens(*logs: str) -> None:
+    # Compact JWS: base64url header, payload and signature (including Ed25519).
+    pattern = r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{43,}(?![A-Za-z0-9_-])"
+    assert not any(re.search(pattern, log) for log in logs), "Signed token found in service logs"
 
 
 def b64(value):
@@ -624,11 +631,10 @@ class Recipe(Test):
             record("password throttle is per account: one locked account does not block others on the same address")
         conv_log = (out / "conversations.log").read_text()
         api_log = (out / "api.log").read_text()
-        import re
 
         ids = re.findall(r"assistant_rh_request request_id=([0-9a-f]{32})", conv_log)
         assert len(ids) >= 3 and all(f"request_id={value} status=200" in api_log for value in ids)
-        assert token not in conv_log + api_log
+        assert_no_signed_tokens(conv_log, api_log, (out / "api-replica.log").read_text())
         record("matching request correlation without signed assertion in service logs")
         succeeded = True
     finally:
