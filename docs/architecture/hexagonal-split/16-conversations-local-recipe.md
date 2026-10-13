@@ -1,4 +1,4 @@
-# Recette locale Conversations → Assistant RH — 12 octobre 2026
+# Recette locale Conversations → Assistant RH — 13 octobre 2026
 
 Issue [#596](https://github.com/DGAFP/assistant-rh/issues/596),
 [PR fork #1](https://github.com/DGAFP/conversations/pull/1) et
@@ -12,8 +12,8 @@ les adaptateurs SQL et la persistance des runs. Deux processus API distincts
 partagent la table anti-rejeu PostgreSQL. Aucun transport simulé ne remplace la
 liaison Conversations/API, ni les stores d’autorisation ou de runs.
 
-- Fork : `b3d3018a93759515b0c828f58fb8d9c1d9182e78`.
-- Code API et scénario : `bff6356`.
+- Fork : `5769d8d5b5ae9bc20188ef480899294f34430c57` (correctifs de revue).
+- Code API et scénario : `f63c9c9`.
 - Conversations : Django/WSGI, sessions en base et cache local ; Python 3.14.
 - API : point d’entrée standard Uvicorn, deux processus ; Python 3.12.
 - PostgreSQL jetable `pgvector/pgvector:pg17`, deux bases distinctes ; schéma RAG
@@ -42,8 +42,9 @@ ce certificat, puis appelle son point d’entrée normal.
 
 Les preuves [mot de passe](evidence/596-password-recipe.json) et
 [OIDC](evidence/596-oidc-recipe.json) consignent les révisions, les heures,
-les dix contrôles réussis pour chacun des modes et les appels aux fournisseurs
-synthétiques. La [première recette](evidence/596-local-recipe.json) reste archivée.
+les contrôles réussis (13 en mot de passe, 12 en OIDC) et les appels aux
+fournisseurs synthétiques. Les trois contrôles ajoutés après la revue du fork
+échouent sur l'ancienne révision `b3d3018` (session sans nonce d'audit acceptée). La [première recette](evidence/596-local-recipe.json) reste archivée.
 
 | Contrôle | Résultat |
 |---|---|
@@ -57,6 +58,9 @@ synthétiques. La [première recette](evidence/596-local-recipe.json) reste arch
 | Retrait/rétablissement | Catalogue actualisé, nouvelle question refusée, historique masqué puis restauré |
 | Anti-rejeu partagé | Assertion du vrai signataire acceptée par une API, refusée par l’autre |
 | Sessions | Logout local avec confirmation/CSRF ou logout OIDC complet, UUID stable à la reconnexion, nouvel audit HMAC, anciennes sessions révoquées après désactivation/réactivation, expiration refusée |
+| Suppression de projet | Conversation masquée par un retrait de droit détachée, non supprimée, et restaurée avec le droit |
+| Session sans nonce d'audit | Session ouverte avant le mode RH déconnectée au lieu d'échouer à chaque message |
+| Limitation des tentatives | Mot de passe : 429 sur le compte visé uniquement ; les autres comptes derrière la même adresse se connectent |
 | Corrélation | Même identifiant visible dans les journaux des deux services, sans assertion signée |
 
 Les appels de feedback utilisent les délégations émises par le signataire du
