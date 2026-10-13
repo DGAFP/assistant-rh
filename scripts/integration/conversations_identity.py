@@ -520,6 +520,25 @@ class Recipe(Test):
         )
         assert alice.get(base + f"chats/{alice_chat}/").status_code == 200
         record("live grant withdrawal blocks chat and hides history; restoration recovers it")
+        project = post(alice, "projects/", {"title": "Projet RH", "icon": "folder", "color": "color_1"})
+        assert project.status_code == 201, project.text
+        project_id = project.json()["id"]
+        in_project = {}
+        for ministry in ("matte", "mso"):
+            created = post(alice, "chats/", {"title": "Projet", "model_hrid": "assistant-rh-" + ministry, "project": project_id})
+            assert created.status_code == 201, created.text
+            in_project[ministry] = created.json()["id"]
+        django("from core.models import MinistryGrant; MinistryGrant.objects.filter(ministry='mso').delete()")
+        deleted = alice.delete(base + f"projects/{project_id}/", headers={"X-CSRFToken": alice.cookies["csrftoken"]})
+        assert deleted.status_code == 204, deleted.text
+        assert alice.get(base + f"chats/{in_project['matte']}/").status_code == 404
+        django(
+            "from core.models import MinistryGrant; from django.contrib.auth.models import Group; "
+            "MinistryGrant.objects.create(group=Group.objects.get(name='RH'),ministry='mso')"
+        )
+        restored = alice.get(base + f"chats/{in_project['mso']}/")
+        assert restored.status_code == 200 and restored.json()["project"] is None, restored.text
+        record("project deletion keeps history hidden by a withdrawn grant, detached and restorable")
 
         def signed(client, user_id, ministry=None):
             session = client.cookies["sessionid"]
@@ -579,6 +598,30 @@ class Recipe(Test):
         alice.close()
         bob.close()
         record("logout, stable identity on reconnection, disable/reactivate revocation and expiry")
+        alice, _ = login("alice")
+        assert catalogue(alice)
+        stale = alice.cookies["sessionid"]
+        django(
+            "from django.contrib.sessions.backends.db import SessionStore; "
+            f"s=SessionStore(session_key={stale!r}); s.pop('assistant_rh_audit_id'); s.save()"
+        )
+        assert alice.get(base + "llm-configuration/").status_code in (401, 403)
+        assert alice.get(base + "users/me/").status_code in (401, 403)
+        alice.close()
+        record("session without audit nonce (opened before RH mode) is signed out")
+        if password_login:
+            with httpx.Client() as attacker:
+                attacker.get(base + "authenticate/")
+                # An account with no earlier attempt in this minute: the bucket is per account.
+                wrong = {"username": "carol@example.invalid", "password": "wrong"}
+                csrf = {"X-CSRFToken": attacker.cookies["csrftoken"]}
+                for _ in range(10):
+                    assert attacker.post(base + "authenticate/", data=wrong, headers=csrf).status_code == 200
+                assert attacker.post(base + "authenticate/", data=wrong, headers=csrf).status_code == 429
+            alice, response = login("alice")
+            assert "/users/me/" in response.headers["location"], response.status_code
+            alice.close()
+            record("password throttle is per account: one locked account does not block others on the same address")
         conv_log = (out / "conversations.log").read_text()
         api_log = (out / "api.log").read_text()
         import re
