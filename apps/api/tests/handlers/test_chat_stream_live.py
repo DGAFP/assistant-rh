@@ -55,6 +55,8 @@ async def live(monkeypatch):
     with monkeypatch.context() as patch:
         patch.setattr(uvicorn, "run", lambda app_path, **options: server_options.update(options))
         main()
+    # Keep pytest's logging capture intact; Uvicorn configures process-global loggers.
+    server_options["log_config"] = None
     server = uvicorn.Server(uvicorn.Config(app, log_level="error", **server_options))
     task = asyncio.create_task(server.serve(sockets=[sock]))
     try:
