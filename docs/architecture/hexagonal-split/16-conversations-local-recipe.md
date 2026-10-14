@@ -1,4 +1,4 @@
-# Recette locale Conversations → Assistant RH — 13 octobre 2026
+# Recette locale Conversations → Assistant RH — 14 octobre 2026
 
 Issue [#596](https://github.com/DGAFP/assistant-rh/issues/596),
 [PR fork #1](https://github.com/DGAFP/conversations/pull/1) et
@@ -13,7 +13,7 @@ partagent la table anti-rejeu PostgreSQL. Aucun transport simulé ne remplace la
 liaison Conversations/API, ni les stores d’autorisation ou de runs.
 
 - Fork : `5769d8d5b5ae9bc20188ef480899294f34430c57` (correctifs de revue).
-- Code API et scénario : `f63c9c9`.
+- Code API et scénario : `ab29540`.
 - Conversations : Django/WSGI, sessions en base et cache local ; Python 3.14.
 - API : point d’entrée standard Uvicorn, deux processus ; Python 3.12.
 - PostgreSQL jetable `pgvector/pgvector:pg17`, deux bases distinctes ; schéma RAG
@@ -97,6 +97,11 @@ Depuis le worktree Assistant RH :
   --auth oidc \
   --output /tmp/recette-identite-596-oidc
 ```
+
+Le nom d’hôte de la machine doit se résoudre : les settings `Production` de
+Conversations appellent `gethostbyname(gethostname())` dès l’import, ce qui échoue
+avec un nom DHCP non résolu (le 14 octobre, la recette a été exécutée avec un
+`sitecustomize` local remplaçant ce nom par `localhost`, sans autre effet).
 
 Le dossier de sortie doit être nouveau. Le script refuse les variables libpq
 ambiantes pouvant rediriger la base, crée son propre conteneur à nom unique et
