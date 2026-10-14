@@ -14,7 +14,7 @@ Le script refuse tout autre cluster, vérifie les objets prérequis, attend le r
 
 ## Configuration applicative
 
-La livraison automatique suit `staging` ; le déclenchement manuel accepte `dev` ou `staging`. Cela respecte le flux de promotion du dépôt ; la branche `staging` n'existait pas lors de la préparation.
+La livraison automatique et le déclenchement manuel acceptent uniquement `staging`. La promotion suit `dev` → `staging`.
 
 Namespace `assistant-rh-api`, release/service `assistant-rh-api`, URL interne `http://assistant-rh-api.assistant-rh-api.svc.cluster.local:8000`. Aucun Ingress. L'isolation réseau est gérée par Terraform et autorise Conversations.
 
@@ -27,4 +27,6 @@ La base nouvelle est vide. Reprendre le schéma/corpus et appliquer les migratio
 
 ## Vérification
 
-Sur chaque PR : rendu et lint Helm, construction Docker sans publication. Avant activation : PostgreSQL privé joignable avec certificat validé, schéma initialisé, comptes/grants appropriés, secrets présents, runner connecté et une livraison manuelle réussie. Un `/healthz` ou heartbeat ne prouve pas une vraie conversation : tester ensuite authentification, `/v1/models`, échange SSE et droits individuels depuis Conversations.
+Sur chaque PR : rendu et lint Helm, construction Docker sans publication. Avant publication, Trivy bloque toute vulnérabilité HIGH/CRITICAL de l’image ; le digest publié correspond à cette image scannée. Avant activation : PostgreSQL privé joignable avec certificat validé, schéma initialisé, comptes/grants appropriés, secrets présents, runner connecté et une livraison manuelle réussie. Un `/healthz` ou heartbeat ne prouve pas une vraie conversation : tester ensuite authentification, `/v1/models`, échange SSE et droits individuels depuis Conversations.
+
+Les runners JIT sont préparés par `assistant-rh-infra/scripts/start-staging-runner.py`. Le mode `--probe` a validé les outils, la connectivité GitHub et l’isolation RBAC des deux namespaces. Un runner n’est enregistré que pour un job de déploiement staging en attente, puis expire après son travail. Le renouvellement entièrement automatique requiert encore une GitHub App dédiée et ARC ; ne pas activer la variable CD avant cela.

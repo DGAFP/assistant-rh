@@ -39,7 +39,7 @@ jobs:
     needs: validate
     if: >-
       github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/dev') &&
+      github.ref == 'refs/heads/staging' &&
       (inputs.deploy == true || vars.KAPSULE_STAGING_CD_ENABLED == 'true')
     environment: kapsule-staging
     runs-on: ubuntu-latest
@@ -58,14 +58,27 @@ jobs:
           set -euo pipefail
           test -n "$REGISTRY_KEY" || { echo 'SCW_REGISTRY_SECRET_KEY missing' >&2; exit 1; }
           printf '%s' "$REGISTRY_KEY" | docker login rg.fr-par.scw.cloud/assistant-rh-staging -u nologin --password-stdin
-      - name: Publish immutable images
+      - name: Build release images
+        run: |
+          set -euo pipefail
+          docker buildx build --platform linux/amd64 -f docker/api/Dockerfile --load -t "rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api:sha-${GITHUB_SHA}" .
+      - name: Scan api release image
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
+        with:
+          version: v0.75.0
+          image-ref: rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api:sha-${{ github.sha }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false
+      - name: Publish scanned images
         id: images
         run: |
           set -euo pipefail
-          docker buildx build --platform linux/amd64 -f docker/api/Dockerfile \
-            -t "rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api:sha-${GITHUB_SHA}" \
-            --push --metadata-file "$RUNNER_TEMP/api-image.json" .
-          echo "digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/api-image.json")" >> "$GITHUB_OUTPUT"
+          image="rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api:sha-${GITHUB_SHA}"
+          docker push "$image"
+          digest=$(docker image inspect "$image" --format '{{index .RepoDigests 0}}')
+          echo "digest=${digest##*@}" >> "$GITHUB_OUTPUT"
       - name: Logout
         if: always()
         run: docker logout rg.fr-par.scw.cloud/assistant-rh-staging
