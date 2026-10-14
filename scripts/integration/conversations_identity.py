@@ -206,7 +206,8 @@ def main():
     (out / "tls-key.pem").write_bytes(
         oidc_key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
     )
-    tls = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)  # Server side, TLS 1.2 minimum.
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls.minimum_version = ssl.TLSVersion.TLSv1_2
     tls.load_cert_chain(out / "local-ca.pem", out / "tls-key.pem")
     server.socket = tls.wrap_socket(server.socket, server_side=True)
     trusted_tls = ssl.create_default_context(cafile=str(out / "local-ca.pem"))
