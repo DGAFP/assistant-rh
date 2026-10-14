@@ -72,6 +72,7 @@ def main():
     succeeded = False
     started = datetime.now(timezone.utc).isoformat()
     codes, tokens, provider_calls = {}, {}, []
+    callbacks = {path: conv + path for path in ("/api/v1.0/callback/", "/api/v1.0/logout-callback/")}
     oidc_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     numbers = oidc_key.public_key().public_numbers()
     fail_primary = False
@@ -88,15 +89,25 @@ def main():
             self.end_headers()
             self.wfile.write(body)
 
+        def redirect(self, target, params):
+            # Only this recipe's own Conversations callbacks, rebuilt from constants:
+            # never echo a raw request value into a response header.
+            parsed_target = urlsplit(target)
+            base = callbacks.get(parsed_target.path) if f"{parsed_target.scheme}://{parsed_target.netloc}" == conv else None
+            if base is None or not all(re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value) for value in params.values()):
+                self.reply({"error": "invalid_redirect"}, 400)
+                return
+            self.send_response(302)
+            self.send_header("Location", base + "?" + urlencode(params))
+            self.end_headers()
+
         def do_GET(self):
             parsed = urlsplit(self.path)
             query = parse_qs(parsed.query)
             if parsed.path == "/authorize":
                 code = secrets.token_urlsafe(24)
                 codes[code] = {"subject": query["subject"][0], "nonce": query["nonce"][0]}
-                self.send_response(302)
-                self.send_header("Location", query["redirect_uri"][0] + "?" + urlencode({"code": code, "state": query["state"][0]}))
-                self.end_headers()
+                self.redirect(query["redirect_uri"][0], {"code": code, "state": query["state"][0]})
             elif parsed.path == "/jwks":
                 self.reply(
                     {
@@ -118,9 +129,7 @@ def main():
                     {"sub": subject, "email": subject + "@example.invalid", "email_verified": True, "first_name": subject, "last_name": "Local"}
                 )
             elif parsed.path == "/logout":
-                self.send_response(302)
-                self.send_header("Location", query["post_logout_redirect_uri"][0] + "?" + urlencode({"state": query["state"][0]}))
-                self.end_headers()
+                self.redirect(query["post_logout_redirect_uri"][0], {"state": query["state"][0]})
             else:
                 self.reply({"error": "not_found"}, 404)
 
@@ -197,7 +206,7 @@ def main():
     (out / "tls-key.pem").write_bytes(
         oidc_key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
     )
-    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)  # Server side, TLS 1.2 minimum.
     tls.load_cert_chain(out / "local-ca.pem", out / "tls-key.pem")
     server.socket = tls.wrap_socket(server.socket, server_side=True)
     trusted_tls = ssl.create_default_context(cafile=str(out / "local-ca.pem"))
