@@ -42,7 +42,7 @@ pour la documentation détaillée.
 
 ### Développer avec Conversations et l’API
 
-Avec Docker Compose, Python 3, Git et OpenSSL, renseigner les clés IA et
+Avec Docker Compose, Python 3 et Git, renseigner les clés IA et
 `SCW_POSTGRES_DSN_STAGING` dans `.env`, puis :
 
 ```bash

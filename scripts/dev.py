@@ -19,6 +19,34 @@ ROOT = Path(__file__).resolve().parents[1]
 STATE = ROOT / ".dev"
 FORK_URL = "https://github.com/DGAFP/conversations.git"
 FORK_COMMIT = "b3d3018a93759515b0c828f58fb8d9c1d9182e78"
+# Same image as the db service: it also provides an OpenSSL with Ed25519 (macOS ships LibreSSL).
+PG_IMAGE = "pgvector/pgvector:pg17"
+# Daemon selection is resolved once and passed explicitly; these must not reach Docker or Compose.
+DOCKER_TARGET = ("DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH")
+# The previous copy moves aside in the same transaction and is dropped only after the promotion.
+SWAP_SQL = """
+BEGIN;
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_database WHERE datname = 'assistant_rh_previous') THEN
+        ALTER DATABASE assistant_rh_previous RENAME TO assistant_rh_retired;
+    END IF;
+END
+$$;
+ALTER DATABASE assistant_rh RENAME TO assistant_rh_previous;
+ALTER DATABASE assistant_rh_import RENAME TO assistant_rh;
+COMMIT;
+"""
+REOPEN_SQL = """
+DO $$
+DECLARE name TEXT;
+BEGIN
+    FOR name IN SELECT datname FROM pg_database WHERE datname IN ('assistant_rh', 'assistant_rh_previous') AND NOT datallowconn LOOP
+        EXECUTE format('ALTER DATABASE %I WITH ALLOW_CONNECTIONS true', name);
+    END LOOP;
+END
+$$;
+"""
 TABLES = (
     "rag_documents",
     "rag_sections",
@@ -79,10 +107,24 @@ def source_dsn(values):
     query = parse_qs(source.query)
     if set(query) - {"sslmode", "connect_timeout", "application_name"}:
         raise ValueError("Paramètres de DSN staging non supportés ; utiliser host/port/base dans l'URI.")
-    production = urlsplit(values.get("SCW_POSTGRES_DSN_PROD", ""))
-    if (source.hostname, source.port or 5432, source.path) == (production.hostname, production.port or 5432, production.path):
-        raise ValueError("La source staging désigne aussi la production : import refusé.")
+    production = values.get("SCW_POSTGRES_DSN_PROD", "").strip()
+    if production:
+        try:
+            target = endpoint(production)
+        except ValueError:
+            raise ValueError("SCW_POSTGRES_DSN_PROD est illisible : import refusé par prudence.") from None
+        if endpoint(value) == target:
+            raise ValueError("La source staging désigne aussi la production : import refusé.")
     return value
+
+
+def endpoint(dsn):
+    """(host, port, database) of a libpq URI or key=value DSN, to compare servers."""
+    if "://" in dsn:
+        parts = urlsplit(dsn)
+        return parts.hostname, parts.port or 5432, unquote(parts.path.lstrip("/"))
+    fields = dict(item.split("=", 1) for item in shlex.split(dsn) if "=" in item)
+    return (fields.get("host") or "").lower() or None, int(fields.get("port") or 5432), fields.get("dbname")
 
 
 def run(args, **kwargs):
@@ -100,7 +142,8 @@ def dump_environment(dsn):
         "PGPASSWORD": unquote(source.password or ""),
         "PGDATABASE": unquote(source.path.lstrip("/")),
         "PGSSLMODE": query.get("sslmode", ["require"])[0],
-        "PGCONNECT_TIMEOUT": "10",
+        "PGCONNECT_TIMEOUT": query.get("connect_timeout", ["10"])[0],
+        "PGAPPNAME": query.get("application_name", ["assistant-rh-make-dump"])[0],
         "PGOPTIONS": "-c default_transaction_read_only=on",
     }
 
@@ -116,11 +159,9 @@ class Stack:
         self.values = values
         self.fork = Path(values.get("CONVERSATIONS_DIR") or STATE / "conversations").expanduser().resolve()
         self.project = "rh-dev-" + hashlib.sha256(str(ROOT).encode()).hexdigest()[:10]
-        # Compose must not discover a caller's project, files, or remote Docker context.
-        self.env = {key: value for key, value in os.environ.items() if not key.startswith(("COMPOSE_", "PG", "DOCKER_"))}
-        for name in ("DOCKER_HOST", "DOCKER_CONTEXT"):
-            if os.environ.get(name):
-                raise ValueError(f"Retirer {name} : cette stack cible le Docker local.")
+        # Compose must not discover a caller's project or files; the daemon is pinned by daemon().
+        self.env = {key: value for key, value in os.environ.items() if not key.startswith(("COMPOSE_", "PG")) and key not in DOCKER_TARGET}
+        self._daemon = None
         self.ports = {
             name: int(values.get("DEV_" + name + "_PORT", default))
             for name, default in (
@@ -133,41 +174,57 @@ class Stack:
         if len(set(self.ports.values())) != 4 or any(not 1024 <= port <= 65535 for port in self.ports.values()):
             raise ValueError("Choisir quatre ports DEV_*_PORT distincts entre 1024 et 65535.")
 
-    def compose(self, *args, **kwargs):
+    def daemon(self):
+        """Resolve the caller's Docker endpoint once; staging data may only reach a local socket."""
+        if self._daemon is None:
+            host = os.environ.get("DOCKER_HOST", "")
+            if not host:
+                # Honors DOCKER_CONTEXT or the current context (desktop-linux, colima, orbstack…).
+                inspect = run(["docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], capture_output=True, text=True)
+                host = inspect.stdout.strip()
+            if not host.startswith(("unix://", "npipe://")):
+                raise ValueError(f"Le démon Docker doit être local (socket unix) ; endpoint actuel : {host or 'inconnu'}.")
+            self._daemon = host
+        return self._daemon
+
+    def docker(self, *args, **kwargs):
         env = {**self.env, **kwargs.pop("extra_env", {})}
-        return run(
-            [
-                "docker",
-                "--context",
-                "default",
-                "compose",
-                "--project-name",
-                self.project,
-                "--project-directory",
-                ROOT,
-                "--env-file",
-                STATE / "compose.env",
-                "-f",
-                ROOT / "docker/dev/compose.yml",
-                *args,
-            ],
-            env=env,
+        return run(["docker", "--host", self.daemon(), *args], env=env, **kwargs)
+
+    def openssl(self, *args, data):
+        return self.docker("run", "--rm", "-i", "--network", "none", "--entrypoint", "openssl", PG_IMAGE, *args, input=data, capture_output=True)
+
+    def compose(self, *args, **kwargs):
+        return self.docker(
+            "compose",
+            "--project-name",
+            self.project,
+            "--project-directory",
+            ROOT,
+            "--env-file",
+            STATE / "compose.env",
+            "-f",
+            ROOT / "docker/dev/compose.yml",
+            *args,
             **kwargs,
         )
 
     def prepare(self):
         """Generate persistent local identity material; pass only provider keys to the API."""
         (STATE / "dumps").mkdir(mode=0o700, exist_ok=True)
-        key = STATE / "signing.pem"
+        key, public_key = STATE / "signing.pem", STATE / "signing.pub"
         if not key.exists():
-            run(["openssl", "genpkey", "-algorithm", "ED25519", "-out", key])
-            key.chmod(0o600)
+            # Written 0600 from the start; the host OpenSSL is not required.
+            write_private(key, self.openssl("genpkey", "-algorithm", "ED25519", data=b"").stdout.decode())
+            public_key.unlink(missing_ok=True)
+        if not public_key.exists():
+            der = self.openssl("pkey", "-pubout", "-outform", "DER", data=key.read_bytes()).stdout
+            write_private(public_key, base64.urlsafe_b64encode(der[-32:]).decode().rstrip("="))
         if not (STATE / "audit.key").exists():
             write_private(STATE / "audit.key", secrets.token_hex(32))
         for name in ("password", "django-secret"):
             if not (STATE / name).exists():
                 write_private(STATE / name, secrets.token_urlsafe(32))
-        public = run(["openssl", "pkey", "-in", key, "-pubout", "-outform", "DER"], capture_output=True).stdout[-32:]
         jwks = {
             "keys": [
                 {
@@ -176,7 +233,7 @@ class Stack:
                     "kid": "local-dev",
                     "alg": "EdDSA",
                     "use": "sig",
-                    "x": base64.urlsafe_b64encode(public).decode().rstrip("="),
+                    "x": public_key.read_text().strip(),
                 }
             ]
         }
@@ -232,14 +289,27 @@ class Stack:
 
     def checkout(self):
         """Clone the pinned fork when no working copy was supplied; never reset user work."""
+        supplied = bool(self.values.get("CONVERSATIONS_DIR"))
         if not self.fork.exists():
-            if self.values.get("CONVERSATIONS_DIR"):
+            if supplied:
                 raise ValueError("CONVERSATIONS_DIR n'existe pas.")
             run(["git", "clone", "--no-checkout", FORK_URL, self.fork])
-            run(["git", "-C", self.fork, "checkout", "--detach", FORK_COMMIT])
-        result = subprocess.run(["git", "-C", str(self.fork), "merge-base", "--is-ancestor", FORK_COMMIT, "HEAD"], check=False)
-        if result.returncode:
-            raise ValueError(f"Le fork doit contenir {FORK_COMMIT} (connexion locale / Conversations #1).")
+        if not supplied and not self.contains_pin():
+            # The pin may be reachable only from refs/pull/*, which a clone does not fetch.
+            # Also completes a managed clone interrupted before its checkout; local edits still block it.
+            known = subprocess.run(["git", "-C", str(self.fork), "cat-file", "-e", FORK_COMMIT + "^{commit}"], check=False, capture_output=True)
+            if known.returncode:
+                run(["git", "-C", self.fork, "fetch", "--quiet", FORK_URL, FORK_COMMIT])
+            run(["git", "-C", self.fork, "checkout", "--quiet", "--detach", FORK_COMMIT])
+        if not self.contains_pin():
+            raise ValueError(
+                f"Le fork doit contenir {FORK_COMMIT} (connexion locale / Conversations #1) : "
+                f"git -C {shlex.quote(str(self.fork))} fetch {FORK_URL} {FORK_COMMIT}, puis l'intégrer."
+            )
+
+    def contains_pin(self):
+        result = subprocess.run(["git", "-C", str(self.fork), "merge-base", "--is-ancestor", FORK_COMMIT, "HEAD"], check=False, capture_output=True)
+        return result.returncode == 0
 
     def sql(self, database, sql):
         return self.compose(
@@ -330,12 +400,10 @@ class Stack:
             "--use-list=/state/staging.list",
             "/state/staging.dump",
         )
-        # Reuse the versioned API bootstrap, without its synthetic config or demo credentials.
-        for file in (ROOT / "docker/api/bootstrap-local.txt").read_text().splitlines():
-            if file.endswith(("runtime.sql", "local_auth.sql")):
-                continue
-            self.sql("assistant_rh_import", (ROOT / file).read_text())
-        self.sql("assistant_rh_import", "GRANT USAGE ON SCHEMA public TO dev_api; SELECT public.api_attach_runtime_user('dev_api', 'arh_api');")
+        # Same bootstrap as a new volume, keeping the imported rag_config.
+        self.compose(
+            "exec", "-T", "db", "sh", "/workspace/docker/dev/bootstrap-api.sh", "assistant_rh_import", "imported", text=True, capture_output=True
+        )
         counts = self.sql("assistant_rh_import", " UNION ALL ".join(f"SELECT '{table}', count(*) FROM public.{table}" for table in TABLES))
         if self.sql("assistant_rh_import", "SELECT count(*) FROM public.rag_config WHERE id=1").strip() != "1":
             raise ValueError("La copie ne contient pas de configuration RAG active ; base courante conservée.")
@@ -343,19 +411,28 @@ class Stack:
         if "api" in running:
             self.compose("stop", "api")
         try:
-            self.sql("postgres", "DROP DATABASE IF EXISTS assistant_rh_previous WITH (FORCE);")
-            self.sql("postgres", "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN ('assistant_rh', 'assistant_rh_import');")
-            self.sql(
-                "postgres",
-                "BEGIN; ALTER DATABASE assistant_rh RENAME TO assistant_rh_previous; "
-                "ALTER DATABASE assistant_rh_import RENAME TO assistant_rh; COMMIT;",
-            )
+            self.swap()
         finally:
             if "api" in running:
                 self.compose("up", "--detach", "--wait", "api")
         write_private(STATE / "dump-counts.txt", counts)
         print(counts, end="")
         print("Import terminé. Comptes Conversations conservés ; ancien runtime API dans assistant_rh_previous.")
+
+    def swap(self):
+        """Promote the import; the last good copy is dropped only once the new one is in place."""
+        self.sql("postgres", "DROP DATABASE IF EXISTS assistant_rh_retired WITH (FORCE);")
+        # Committed before the terminate, so clients (IDE, psql) cannot reconnect before the rename.
+        self.sql(
+            "postgres",
+            "ALTER DATABASE assistant_rh WITH ALLOW_CONNECTIONS false; SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE datname IN ('assistant_rh', 'assistant_rh_previous', 'assistant_rh_import');",
+        )
+        try:
+            self.sql("postgres", SWAP_SQL)
+        finally:
+            self.sql("postgres", REOPEN_SQL)
+        self.sql("postgres", "DROP DATABASE IF EXISTS assistant_rh_retired WITH (FORCE);")
 
 
 def main():
@@ -374,6 +451,8 @@ def main():
                     stack.dump()
                 else:
                     stack.dev(rebuild=args.command == "dev-rebuild")
+            elif not (STATE / "compose.env").exists():
+                print("Aucune stack préparée dans ce worktree : lancer make dev.")
             else:
                 stack.compose(*(["down"] if args.command == "dev-down" else ["logs", "--follow", "--tail", "100"]))
         except BlockingIOError:
@@ -383,7 +462,8 @@ def main():
         except subprocess.CalledProcessError as error:
             if error.stderr:
                 # SQL errors contain object names, never the source URI (sent only to pg_dump's environment).
-                print(error.stderr, file=sys.stderr)
+                stderr = error.stderr
+                print(stderr if isinstance(stderr, str) else stderr.decode(errors="replace"), file=sys.stderr)
             parser.exit(1, f"Échec de {error.cmd[0]} (code {error.returncode}).\n")
 
 

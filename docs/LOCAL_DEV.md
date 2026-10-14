@@ -8,8 +8,9 @@ sur lequel on peut lancer des evals RAG sans toucher aux bases partagées.
 
 Cette stack de développement est distincte des bases d’eval et des tests API
 synthétiques décrites plus bas. Prérequis : Linux/macOS, Docker local avec
-Compose **2.30+**, Python **3.10+**, Git et OpenSSL avec Ed25519. Les dépendances
-Python et Node des applications sont installées dans leurs images Docker.
+Compose **2.30+**, Python **3.10+** et Git. Les dépendances Python et Node des
+applications sont installées dans leurs images Docker ; la clé Ed25519 est générée
+avec l’OpenSSL de l’image PostgreSQL (le LibreSSL de macOS ne la gère pas).
 
 Renseigner dans le `.env` du worktree, sans écraser un fichier existant :
 
@@ -26,7 +27,11 @@ révision `b3d3018a93759515b0c828f58fb8d9c1d9182e78` de la
 [PR Conversations #1](https://github.com/DGAFP/conversations/pull/1). Cette révision
 contient la connexion locale et la délégation individuelle. Une copie fournie
 doit contenir ce commit ; la commande ne change pas sa branche et n’écrase pas
-ses modifications. La mise à jour de cette épingle est volontaire et revue.
+ses modifications. Le commit n’étant porté que par la branche de la PR, la copie
+gérée dans `.dev/conversations` le récupère explicitement par son SHA (GitHub le
+conserve via `refs/pull/1/head`), même après suppression de la branche. La mise à
+jour de cette épingle est volontaire et revue ; après fusion de la PR #1, épingler
+le commit de fusion pour que les copies fournies à jour de `main` soient acceptées.
 
 ```bash
 make dump     # importer les corpus/config ; possible avant le premier make dev
@@ -60,14 +65,18 @@ Deux comptes sont créés au premier démarrage :
 - `admin@example.invalid`, administrateur local pour gérer les comptes et droits.
 
 Leur mot de passe initial est généré dans `.dev/password` (`cat .dev/password`).
-Les démarrages suivants préservent les mots de passe et droits modifiés. Le mode
+Les démarrages suivants préservent les mots de passe et droits modifiés ; la
+création d’un compte et de ses droits est atomique. Le mode
 OIDC est désactivé, la session Django est persistée en base. Les clés de signature,
 d’audit et Django sont générées une seule fois dans `.dev/`, hors Git et hors
 contexte de build ; aucune clé IA ne va au navigateur. Seules les variables IA
 explicitement autorisées sont transmises à l’API. Sa base est toujours le service
 Docker local, même si `.env` contient un `SCW_POSTGRES_DSN` distant.
 
-Sans dump, `make dev` démarre avec un schéma vide et une configuration par défaut.
+Sans dump, `make dev` démarre avec un schéma vide et une configuration par défaut,
+sans les identifiants de démonstration de l’API synthétique (`local_auth.sql`).
+Le volume neuf et `make dump` appliquent le même bootstrap
+(`docker/dev/bootstrap-api.sh`), en une seule transaction.
 Pour obtenir des réponses RAG, importer les corpus et renseigner les clés IA :
 **les appels Albert/Scaleway restent réels**. Les pièces jointes et le feedback
 de l’interface restent soumis aux limitations du fork (#594/#595).
@@ -89,9 +98,12 @@ non propriétaire rattaché à `arh_api`. La seule contrainte omise est
 hors périmètre qui n’est pas utilisée par l’API. Les contraintes entre documents
 et sections ainsi que la hiérarchie des sections restent présentes.
 Après validation, l’API est brièvement
-arrêtée si elle tournait, la nouvelle base prend le nom `assistant_rh` et l’API
-redémarre. L’ancienne base reste disponible sous `assistant_rh_previous` jusqu’au
-prochain import réussi. Si l’export ou la restauration échoue, la base courante
+arrêtée si elle tournait, les nouvelles connexions à `assistant_rh` sont refusées
+(un client psql/IDE ouvert ne peut pas bloquer la bascule), la nouvelle base prend
+le nom `assistant_rh` et l’API redémarre. L’ancienne base reste disponible sous
+`assistant_rh_previous` jusqu’au prochain import réussi : la copie antérieure n’est
+supprimée qu’une fois la bascule validée (trois copies coexistent brièvement sur
+le disque). Si l’export, la restauration ou la bascule échoue, la base courante
 et les services existants sont conservés.
 
 Les **comptes et conversations Django sont conservés** dans la base séparée
@@ -101,8 +113,14 @@ feedbacks locaux restent seulement dans `assistant_rh_previous`. L’archive
 locaux et ignorés par Git. Aucun rôle, mot de passe ou propriétaire de staging
 n’est restauré. Ne pas effectuer l’export au milieu d’un backfill d’embeddings.
 
-Les commandes refusent `DOCKER_HOST`/`DOCKER_CONTEXT` et utilisent explicitement
-le contexte Docker `default`. Le port staging doit être joignable depuis Docker ;
+Les commandes utilisent le démon Docker courant (`DOCKER_HOST`, `DOCKER_CONTEXT` ou
+contexte actif : Docker Desktop, Colima, OrbStack…) à condition qu’il soit local
+(socket `unix://`) ; un démon distant (`tcp://`, `ssh://`) est refusé. Le point
+d’accès est résolu une fois puis passé explicitement à chaque appel. Le DSN de
+production (`SCW_POSTGRES_DSN_PROD`, URI ou `host=… dbname=…`) est comparé à la
+source : même serveur et même base, ou valeur illisible, et l’import est refusé.
+`connect_timeout` et `application_name` de l’URI staging sont respectés.
+Le port staging doit être joignable depuis Docker ;
 en cas de tunnel, fournir une URI staging explicitement accessible au conteneur.
 Une erreur de réseau ou un schéma staging incompatible fait échouer l’import,
 sans basculer vers une autre source ou un autre serveur.

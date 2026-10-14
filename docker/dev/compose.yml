@@ -11,6 +11,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/dev/init-db.sh:/docker-entrypoint-initdb.d/10-dev.sh:ro
+      - ./docker/dev/bootstrap-api.sh:/workspace/docker/dev/bootstrap-api.sh:ro
       - ./docker/api/bootstrap-local.txt:/workspace/docker/api/bootstrap-local.txt:ro
       - ./apps/api/tests/fixtures:/workspace/apps/api/tests/fixtures:ro
       - ./supabase/migrations:/workspace/supabase/migrations:ro
