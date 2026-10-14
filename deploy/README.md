@@ -2,15 +2,64 @@
 
 Le workflow `kapsule-staging.yml` valide le chart et construit les images sur runner GitHub sans secret pour les PR. Il publie ensuite dans `rg.fr-par.scw.cloud/assistant-rh-staging` et déploie des digests précis quand la livraison est activée. Aucun accès à la production ou aux anciens conteneurs Serverless.
 
-## Activation
+## Activation proposée (non appliquée)
 
-L'environnement GitHub distinct `kapsule-staging` doit contenir `SCW_REGISTRY_SECRET_KEY`, clé d'une application IAM dédiée avec `ContainerRegistryFullAccess` sur le projet Assistant RH. Les droits IAM manquent actuellement pour créer cette identité. Ne pas copier la clé personnelle de l'opérateur. Provisionner aussi le secret Kubernetes `scw-registry` avec une identité de lecture du registre. Les secrets applicatifs sont préexistants dans Kubernetes ; aucun secret n'est passé aux valeurs Helm, aux logs ou aux artefacts GitHub.
+La livraison cible exclusivement `staging`, après promotion `dev` → `staging`.
+Le job `required-checks` exige la réussite des workflows `CI Tests` et `CodeQL`
+pour le même SHA et le même événement `push`. La publication reconstruit l’image,
+la scanne avec Trivy, puis publie son digest. Une révision dépassée de `staging`
+est refusée avant publication et avant déploiement.
 
-La publication se fait sur runner GitHub hébergé ; le déploiement se fait sur un runner privé dédié portant les labels `self-hosted`, `linux`, `x64`, `api-staging-deploy`, accessible uniquement aux workflows de confiance du dépôt. **Ne pas exécuter les jobs de PR sur ce runner.** Installer `git`, `node` compatible avec checkout v5, `bash`, `kubectl` et Helm3.19.0. Son kubeconfig doit cibler exactement `https://fce3ddcb-b9ff-49fb-8b7d-aca605272b0a.api.k8s.fr-par.scw.cloud:6443`, avec une identité Kubernetes limitée au namespace cible, et la CA du cluster. La sortie réseau doit être celle de la passerelle staging `51.15.255.192`, déjà autorisée. Aucun runner n'est encore enregistré ; le RBAC proposé est dans `deploy/ci-rbac.yaml` et a été appliqué au seul cluster staging le 13/10/2026 (droits vérifiés).
+L’environnement GitHub `kapsule-staging` est limité à la branche `staging` et
+contient déjà `SCW_REGISTRY_SECRET_KEY`, une identité dédiée au registre du projet
+`assistant-rh` (`c1d3f629-d08d-439d-ba76-f115ea06e579`). Les secrets applicatifs et
+`scw-registry` existent dans Kubernetes. Ne jamais passer leurs valeurs dans les
+valeurs Helm, les journaux ou les artefacts.
 
-La variable de dépôt `KAPSULE_STAGING_CD_ENABLED` reste `false` tant que ces prérequis ne sont pas satisfaits. Après validation, un `workflow_dispatch` avec `deploy=true` effectue la première livraison ; activer ensuite la variable pour les livraisons automatiques. Le bouton manuel n'est disponible que lorsque le workflow est intégré à la branche par défaut du dépôt. Les branches autorisées sont précisées ci-dessous et protégées par l'environnement GitHub.
+`KAPSULE_STAGING_CD_ENABLED` reste `false` jusqu’à l’approbation et la validation
+des runners. Le mode retenu est ensuite automatique, sans approbation GitHub par
+livraison. `LEGACY_STAGING_AUTOMATION_ENABLED=false` bloque les exécutions
+**automatiques** de Streamlit, migrations/seed, ingestion et préparation de release
+sur `staging`, ainsi que la recette privée visant l’ancienne base. Les lancements
+manuels historiques restent disponibles ; aucun n’appartient à ce lot. Les chemins
+`dev`/`main` et les tâches programmées historiques ne sont pas modifiés.
+Désactiver la nouvelle CD ne réactive donc pas les anciens déploiements.
 
-Le script refuse tout autre cluster, vérifie les objets prérequis, attend le rollout et effectue un contrôle de santé. `--atomic` restaure la release applicative en cas d'échec ; **cela ne restaure pas la base après une migration**. N'appliquer que des migrations compatibles avec la version précédente et conserver une sauvegarde avant toute migration destructive. Un rollback volontaire utilise `helm history` puis `helm rollback` dans le même namespace, après vérification de la compatibilité du schéma.
+La livraison automatique utilise Flux : GitHub publie les images et un chart
+OCI dans le registre existant ; `source-controller` récupère le chart et
+`helm-controller` gère la release Helm existante. Il n’y a aucun runner privé ni
+accès Kubernetes dans GitHub. Les contrôleurs proposés observent uniquement
+`assistant-rh-api`, avec des Roles locaux. Le contrôleur Helm utilise le compte
+`github-deploy` déjà limité à ce namespace. Aucun droit IAM Scaleway, GitHub App
+ou permission d’organisation supplémentaire n’est nécessaire.
+
+Le script `package-staging.py` utilise Helm pour figer les valeurs et le digest
+scanné dans un chart de version `0.<run_number>.<run_attempt>` ; `appVersion`
+contient le SHA source. Un hook de test en lecture seule vérifie `/healthz`, la
+base et la configuration après le rollout. Le chart OCI n’est publié qu’après
+les images et la vérification du SHA courant de `staging`.
+
+Les manifests Flux proposés sont dans
+`assistant-rh-infra/deliveries/staging-cicd-activation-2026-10-14/flux` et restent
+non appliqués. Les objets `OCIRepository` et `HelmRelease` sont fournis suspendus.
+L’adoption conserve le nom, le namespace et l’historique Helm. Activer seulement
+après vérification de l’artefact, du rendu et des droits sur le cluster attendu.
+Après une adoption réussie, les échecs d’upgrade ou de test peuvent être remédiés
+par rollback Helm. Pour la première adoption, conserver la révision Helm précédente
+et prévoir un rollback opérateur : Flux ne dispose pas encore de son historique
+de remédiation. Aucune migration n’est exécutée. Une évolution de schéma nécessite un lot distinct.
+
+Un workflow GitHub vert prouve la publication. Le déploiement est confirmé par
+`HelmRelease Ready=True`, la révision OCI attendue et la réussite du test Helm.
+Le mode automatique ne réactive pas les comptes de recette temporaires.
+Pour arrêter une livraison, désactiver la variable CD **et** suspendre la
+HelmRelease ; arrêter la publication seule n’annule pas un artefact déjà publié.
+Pour un rollback opérateur, suspendre Flux avant `helm rollback` et préparer une
+nouvelle livraison corrective avant reprise.
+
+Le bouton `workflow_dispatch` dépend de la présence du workflow sur la branche
+par défaut. La première activation repose sur la promotion `dev` → `staging` et
+son événement `push`, sans dépendre de ce bouton.
 
 ## Configuration applicative
 
@@ -27,6 +76,11 @@ Le nouveau staging a été initialisé le 14/10/2026 : schéma complet, migratio
 
 ## Vérification
 
-Sur chaque PR : rendu et lint Helm, construction Docker sans publication. Avant publication, Trivy bloque toute vulnérabilité HIGH/CRITICAL de l’image ; le digest publié correspond à cette image scannée. Avant activation : PostgreSQL privé joignable avec certificat validé, schéma initialisé, comptes/grants appropriés, secrets présents, runner connecté et une livraison manuelle réussie. Un `/healthz` ou heartbeat ne prouve pas une vraie conversation : tester ensuite authentification, `/v1/models`, échange SSE et droits individuels depuis Conversations.
+Sur chaque PR : rendu et lint Helm, construction Docker sans publication. Avant publication, Trivy bloque toute vulnérabilité HIGH/CRITICAL de l’image ; le digest publié correspond à cette image scannée. Avant activation : PostgreSQL privé joignable avec certificat validé, schéma initialisé, comptes/grants appropriés, secrets présents et contrôleurs Flux prêts. Un `/healthz` ou heartbeat ne prouve pas une vraie conversation : tester ensuite authentification, `/v1/models`, échange SSE et droits individuels depuis Conversations.
 
-Les runners JIT sont préparés par `assistant-rh-infra/scripts/start-staging-runner.py`. Le mode `--probe` a validé les outils, la connectivité GitHub et l’isolation RBAC des deux namespaces. Un runner n’est enregistré que pour un job de déploiement staging en attente, puis expire après son travail. Le renouvellement entièrement automatique requiert encore une GitHub App dédiée et ARC ; ne pas activer la variable CD avant cela.
+La première livraison manuelle et la recette HTTP authentifiée ont réussi le
+14/10/2026 (échange SSE, persistance, séparation de deux utilisateurs, logout).
+Les comptes temporaires ont été désactivés. Cette preuve ne valide pas encore
+Flux ni le prochain SHA : la première livraison automatique doit vérifier à
+nouveau les rollouts et la santé. Une recette authentifiée future requiert des
+comptes autorisés séparément.

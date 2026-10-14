@@ -11,6 +11,7 @@ on:
         default: false
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: kapsule-staging-${{ github.ref }}
   cancel-in-progress: false
@@ -24,10 +25,12 @@ jobs:
           persist-credentials: false
       - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
-          version: v3.19.0
+          version: v3.20.2
       - name: Validate Helm and shell
         run: |
           set -euo pipefail
+          python3 deploy/api/test_wait_required_checks.py
+          python3 deploy/api/test_package_staging.py
           bash -n deploy/api/deploy.sh
           helm lint deploy/api --set-string image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           helm template assistant-rh-api deploy/api --set-string image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa > /dev/null
@@ -35,9 +38,27 @@ jobs:
       - name: Build images without credentials
         run: |
           docker buildx build --platform linux/amd64 -f docker/api/Dockerfile .
-  publish:
+  required-checks:
     needs: validate
     if: >-
+      github.repository == 'DGAFP/assistant-rh' &&
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/staging' &&
+      (inputs.deploy == true || vars.KAPSULE_STAGING_CD_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Require successful CI on this exact revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 deploy/api/wait-required-checks.py
+  publish:
+    needs: [validate, required-checks]
+    if: >-
+      github.repository == 'DGAFP/assistant-rh' &&
       github.event_name != 'pull_request' &&
       github.ref == 'refs/heads/staging' &&
       (inputs.deploy == true || vars.KAPSULE_STAGING_CD_ENABLED == 'true')
@@ -50,7 +71,15 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.20.2
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: Refuse an obsolete staging revision
+        run: |
+          set -euo pipefail
+          tip=$(git ls-remote origin refs/heads/staging | cut -f1)
+          test "$tip" = "$GITHUB_SHA" || { echo 'staging advanced; refusing obsolete delivery' >&2; exit 1; }
       - name: Authenticate to the dedicated staging registry
         env:
           REGISTRY_KEY: ${{ secrets.SCW_REGISTRY_SECRET_KEY }}
@@ -79,22 +108,25 @@ jobs:
           docker push "$image"
           digest=$(docker image inspect "$image" --format '{{index .RepoDigests 0}}')
           echo "digest=${digest##*@}" >> "$GITHUB_OUTPUT"
+      - name: Package the validated staging release for Flux
+        id: chart
+        env:
+          IMAGE_DIGEST: ${{ steps.images.outputs.digest }}
+          BUNDLE_OUTPUT_DIR: ${{ runner.temp }}/staging-chart
+        run: python3 deploy/api/package-staging.py
+      - name: Publish the staging chart for Flux
+        env:
+          REGISTRY_KEY: ${{ secrets.SCW_REGISTRY_SECRET_KEY }}
+          CHART_PATH: ${{ steps.chart.outputs.chart_path }}
+        run: |
+          set -euo pipefail
+          tip=$(git ls-remote origin refs/heads/staging | cut -f1)
+          test "$tip" = "$GITHUB_SHA" || { echo 'staging advanced; refusing obsolete delivery' >&2; exit 1; }
+          printf '%s' "$REGISTRY_KEY" | helm registry login rg.fr-par.scw.cloud -u nologin --password-stdin
+          helm push "$CHART_PATH" oci://rg.fr-par.scw.cloud/assistant-rh-staging
+          echo "Chart published; deployment readiness is reported by the Flux HelmRelease." >> "$GITHUB_STEP_SUMMARY"
       - name: Logout
         if: always()
-        run: docker logout rg.fr-par.scw.cloud/assistant-rh-staging
-  deploy:
-    needs: publish
-    environment: kapsule-staging
-    runs-on: [self-hosted, linux, x64, api-staging-deploy]
-    timeout-minutes: 20
-    concurrency:
-      group: api-kapsule-staging
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-      - name: Deploy and verify
-        env:
-          IMAGE_DIGEST: ${{ needs.publish.outputs.digest }}
-        run: bash deploy/api/deploy.sh
+        run: |
+          docker logout rg.fr-par.scw.cloud/assistant-rh-staging
+          helm registry logout rg.fr-par.scw.cloud
