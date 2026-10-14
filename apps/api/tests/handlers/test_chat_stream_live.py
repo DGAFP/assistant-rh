@@ -1,6 +1,7 @@
 """Real TCP proof: no ASGITransport buffering, fake I/O ports, real API pipeline."""
 
 import asyncio
+import logging
 import socket
 
 import httpx
@@ -12,6 +13,7 @@ from assistant_rh_api.core.errors import InferenceFailure
 from assistant_rh_api.core.rag_configuration import RAGConfigurationService
 from assistant_rh_api.handlers.app import create_app
 from assistant_rh_api.handlers.chat_stream import StreamSettings
+from starlette.responses import StreamingResponse
 
 from apps.api.tests.auth_fakes import service
 from apps.api.tests.chat_fakes import Runtime
@@ -55,6 +57,8 @@ async def live(monkeypatch):
     with monkeypatch.context() as patch:
         patch.setattr(uvicorn, "run", lambda app_path, **options: server_options.update(options))
         main()
+    # Keep pytest's logging capture intact; Uvicorn configures process-global loggers.
+    server_options["log_config"] = None
     server = uvicorn.Server(uvicorn.Config(app, log_level="error", **server_options))
     task = asyncio.create_task(server.serve(sockets=[sock]))
     try:
@@ -68,6 +72,39 @@ async def live(monkeypatch):
         server.should_exit = True
         await asyncio.wait_for(task, 8)
         sock.close()
+
+
+@pytest.mark.parametrize("stream", [False, True])
+async def test_unexpected_error_does_not_leak_to_uvicorn_logs(live, caplog, stream):
+    app, _, _, base, _, _ = live
+    secret = "SECRET unexpected exception details"
+    request_id = "a" * 32
+
+    @app.get("/unexpected-error")
+    async def fail():
+        if stream:
+
+            async def chunks():
+                yield b"data: partial\n\n"
+                raise RuntimeError(secret)
+
+            return StreamingResponse(chunks(), media_type="text/event-stream")
+        raise RuntimeError(secret)
+
+    caplog.set_level(logging.INFO)
+    async with httpx.AsyncClient(base_url=base, headers={"X-Client-Request-Id": request_id}) as client:
+        if stream:
+            # A failed stream must remain incomplete, never turn into successful EOF.
+            with pytest.raises(httpx.RemoteProtocolError):
+                await client.get("/unexpected-error")
+        else:
+            response = await client.get("/unexpected-error")
+            assert response.status_code == 500
+            assert response.headers["X-Request-Id"] == request_id
+            assert response.json()["error"]["code"] == "internal_error"
+    assert "Exception in ASGI application" in caplog.text
+    assert f"request_id={request_id}" in caplog.text
+    assert secret not in caplog.text
 
 
 async def test_sdk_consumes_live_stream_and_post_header_error(live):
