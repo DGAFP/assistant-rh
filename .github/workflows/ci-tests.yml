@@ -43,7 +43,7 @@ jobs:
         run: uv sync --all-packages --group dev --frozen
 
       - name: Lint check
-        run: uv run --no-sync ruff check src apps/streamlit-ui/pages apps/api/src apps/api/tests tests --select E,F,I
+        run: uv run --no-sync ruff check src apps/streamlit-ui/pages apps/api/src apps/api/tests tests scripts/dev.py docker/dev --select E,F,I
 
       - name: Check API import boundaries
         run: uv run --no-sync lint-imports --config apps/api/pyproject.toml --no-cache
