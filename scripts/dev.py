@@ -294,7 +294,8 @@ class Stack:
             if supplied:
                 raise ValueError("CONVERSATIONS_DIR n'existe pas.")
             run(["git", "clone", "--no-checkout", FORK_URL, self.fork])
-        if not supplied and not self.contains_pin():
+        # A --no-checkout clone has no index yet: extract it even when its default branch already holds the pin.
+        if not supplied and (not (self.fork / ".git/index").exists() or not self.contains_pin()):
             # The pin may be reachable only from refs/pull/*, which a clone does not fetch.
             # Also completes a managed clone interrupted before its checkout; local edits still block it.
             known = subprocess.run(["git", "-C", str(self.fork), "cat-file", "-e", FORK_COMMIT + "^{commit}"], check=False, capture_output=True)

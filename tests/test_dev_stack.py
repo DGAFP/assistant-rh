@@ -188,6 +188,20 @@ def test_managed_fork_fetches_pin_absent_from_cloned_branches(stack, monkeypatch
     ]
 
 
+def test_fresh_managed_clone_is_extracted_even_when_default_branch_holds_pin(stack, monkeypatch, tmp_path):
+    stack.fork = tmp_path / "conversations"
+    changes = []
+    monkeypatch.setattr(subprocess, "run", lambda args, **kwargs: SimpleNamespace(returncode=0))
+    monkeypatch.setattr(dev, "run", lambda args, **kwargs: changes.append([str(arg) for arg in args]))
+    stack.checkout()
+    assert changes[-1] == ["git", "-C", str(stack.fork), "checkout", "--quiet", "--detach", dev.FORK_COMMIT]
+    (stack.fork / ".git").mkdir(parents=True)
+    (stack.fork / ".git/index").touch()
+    changes.clear()
+    stack.checkout()
+    assert changes == []
+
+
 def test_normal_start_preserves_dependencies_and_rebuild_renews_them(stack, monkeypatch):
     calls = []
     monkeypatch.setattr(stack, "checkout", lambda: None)
