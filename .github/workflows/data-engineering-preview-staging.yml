@@ -200,7 +200,7 @@ jobs:
     # Pull-request refs are intentionally not allowed by the scaleway-staging
     # environment. PRs keep the secretless plan job; image builds and previews
     # start only from an integrated staging ref or an approved manual dispatch.
-    if: ${{ github.event_name != 'pull_request' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && vars.LEGACY_STAGING_AUTOMATION_ENABLED == 'true')) && needs.plan.result == 'success' && (needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_builds == 'true' }}
+    if: ${{ github.event_name != 'pull_request' && needs.plan.result == 'success' && (needs.plan.outputs.mode == 'apply' || needs.plan.outputs.r2 == 'true') && needs.plan.outputs.has_builds == 'true' }}
     timeout-minutes: 90
     environment: scaleway-staging
     strategy:

@@ -49,7 +49,7 @@ concurrency:
 
 jobs:
   migrate-staging:
-    if: ${{ (github.event_name == 'push' && vars.LEGACY_STAGING_AUTOMATION_ENABLED == 'true') || (github.event_name == 'workflow_dispatch' && inputs.target == 'staging') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.target == 'staging') }}
     runs-on: ubuntu-latest
     concurrency:
       # Streamlit deploy also runs `supabase db push`. Serialize both jobs so

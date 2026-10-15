@@ -111,7 +111,6 @@ concurrency:
 
 jobs:
   rag-quality-eval:
-    if: ${{ github.event_name == 'workflow_dispatch' || vars.LEGACY_STAGING_AUTOMATION_ENABLED == 'true' }}
     name: rag quality
     runs-on: ubuntu-latest
     # Security boundary: both GitHub environments restrict deployments to the
