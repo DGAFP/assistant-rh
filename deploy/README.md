@@ -18,11 +18,14 @@ valeurs Helm, les journaux ou les artefacts.
 
 `KAPSULE_STAGING_CD_ENABLED` reste `false` jusqu’à l’approbation et la validation
 des runners. Le mode retenu est ensuite automatique, sans approbation GitHub par
-livraison. Le chemin historique reste actif et inchangé : déploiement Streamlit,
-migrations/seed, ingestion, recette privée et préparation de release Release Please
-continuent de s’exécuter sur `staging`. La nouvelle CD vise une base distincte et
-s’ajoute à ce chemin sans le remplacer ; l’activer ou la désactiver n’a aucun effet
-sur les déploiements historiques.
+livraison. `LEGACY_STAGING_AUTOMATION_ENABLED=false` bloque les exécutions
+**automatiques** de Streamlit, migrations/seed, ingestion et préparation de release
+sur `staging`, ainsi que la recette privée visant l’ancienne base. Les lancements
+manuels historiques restent disponibles ; aucun n’appartient à ce lot. Les chemins
+`dev`/`main` et les tâches programmées historiques sont conservés, sauf l’évaluation
+RAG automatique sur `dev`/`staging`, également bloquée par ce verrou ; son lancement
+manuel reste disponible.
+Désactiver la nouvelle CD ne réactive donc pas les anciens déploiements.
 
 La livraison automatique utilise Flux : GitHub publie les images et un chart
 OCI dans le registre existant ; `source-controller` récupère le chart et
