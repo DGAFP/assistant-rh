@@ -1,7 +1,7 @@
 # Conversations : identité individuelle et habilitations aux corpus
 
-> Note de conception du 2026-09-09, réalignée le 2026-10-07 sur le DAT Assistant RH v0.4 (1er octobre 2026) et sur les choix de [#596](https://github.com/DGAFP/assistant-rh/issues/596) du 6 octobre 2026. Direction retenue pour le temps 2, non implémentée.
-> Aucun changement du contrat B4, aucune migration ni livraison runtime dans cette note. En cas d'écart, le DAT prévaut ou l'écart est soumis à revue.
+> Note du 2026-09-09, réalignée le 2026-10-12 sur l’extrait validé du DAT communiqué ce jour dans [#596](https://github.com/DGAFP/assistant-rh/issues/596). Les principes ci-dessous sont confirmés ; les paramètres techniques livrés sont distingués dans le [contrat](14-conversations-delegation-contract.md).
+> Le socle API #597 → #601 → #602 → #603 est fusionné dans `dev`. Cette livraison ne prouve ni activation ni recette depuis le fork [DGAFP/conversations](https://github.com/DGAFP/conversations). Aucun déploiement ni changement du contrat B4 dans cette note.
 
 ## Périmètre et responsabilités
 
@@ -13,11 +13,11 @@ L'API Assistant RH ne duplique pas les appartenances aux groupes et ne tient pas
 
 Les frontières hexagonales existantes restent applicables : validation de la délégation au niveau des adaptateurs d'authentification, cas d'usage et politiques dans le core, persistance derrière les ports.
 
-## Choix retenus (#596, 6 octobre 2026)
+## Principes confirmés et profil livré (#596, 12 octobre 2026)
 
 | Sujet | Choix |
 |---|---|
-| Délégation | **Confiance de service.** L'API n'accepte que les appels du backend Conversations, joignable uniquement par le réseau privé et authentifié comme service (mTLS ou client credentials OAuth, à choisir). Le backend transmet l'identifiant de l'utilisateur et le périmètre autorisé. Pas de preuve utilisateur de bout en bout dans cette première version. Le DAT classe ce mécanisme parmi les arbitrages à clôturer : ce choix est proposé à la revue DGAFP. |
+| Délégation | **Délégation sécurisée par le backend Conversations**, qui transmet l’identité et les habilitations courantes ; l’API vérifie le service et le périmètre sans dupliquer les groupes. Le profil livré est un JWS EdDSA/Ed25519 par tentative HTTP, avec `iss`, `aud`, `kid`, durée ≤ 120 s et `jti` à usage unique. Le DAT confirme la chaîne de responsabilités ; son extrait ne prescrit pas cet algorithme ni ces durées. Voir le [contrat livré](14-conversations-delegation-contract.md). |
 | Identifiant auteur | Identifiant stable de l'utilisateur Conversations, persisté comme auteur des runs. Pas de registre d'utilisateurs côté API. |
 | Accès à un run individuel | Auteur + habilitation courante sur le ministère du run, quel que soit le groupe courant. |
 | Restrictions SQL | Écritures directes sur les feedbacks individuels : [#599](https://github.com/DGAFP/assistant-rh/issues/599). |
@@ -58,14 +58,14 @@ Les documents sont délivrés via le backend, après vérification des habilitat
 
 ## Journaux
 
-Un identifiant de requête corrèle Conversations et l'API. Les jetons ProConnect, les secrets de service et le contenu de la délégation ne sont jamais journalisés. Le pseudonyme d'audit des feedbacks reste à fournir par #596.
+Conversations génère un identifiant aléatoire de 32 caractères hexadécimaux par tentative et l’envoie dans `X-Client-Request-Id`. L’API le reprend dans `X-Request-Id` et ses journaux ; une valeur ambiguë ou invalide est remplacée. Les jetons ProConnect, les secrets de service et le contenu de délégation ne sont jamais journalisés. Le backend produit `audit_session` par HMAC-SHA-256 d’un identifiant interne aléatoire de session, avec une clé distincte de la signature ; ce pseudonyme est obligatoire pour écrire un feedback.
 
 ## Coexistence avec B4 et séquencement
 
 B4 conserve son contrat actuel : **mot de passe de groupe → session opaque de huit heures, non renouvelable**, bornée à ce groupe. D6, les routes d'auth actuelles et les contrôles d'ownership collectifs du [contrat API](02-api-contract.md) restent inchangés. Principaux groupe et utilisateur restent distincts : aucune réattribution automatique des anciens runs collectifs, aucune session de groupe permettant d'accéder aux runs individuels.
 
-1. Valider en revue DGAFP le choix de délégation par confiance de service, ou consigner l'écart au DAT.
-2. Développer côté Conversations l'admission, les habilitations ministérielles, le filtrage du catalogue et la délégation ; côté Assistant RH l'authentification du service, la vérification du périmètre délégué et l'auteur des runs.
+1. Consigner le rattachement du profil Ed25519 livré aux principes confirmés du DAT, et toute validation complémentaire des paramètres techniques, sans demander une nouvelle validation globale des responsabilités.
+2. Intégrer et tester dans `DGAFP/conversations` l’admission, les habilitations, le catalogue et la signature, puis vérifier le parcours réel avec l’API et ses comptes runtime provisionnés. Le socle API est livré ; sa fusion seule ne clôt pas l’intégration.
 3. Valider la coexistence des principaux groupe B4 et utilisateur individuel sans confusion de type ni conversion automatique.
 4. Autoriser séparément la bascule et le retrait éventuel de B4 après validation. Cette note ne change ni les jalons du temps 1 ni leur statut au [LEDGER](LEDGER.md).
 

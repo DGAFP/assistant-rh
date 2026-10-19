@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 
 
 def main() -> None:
     """Run the ASGI application with Uvicorn."""
     import uvicorn
 
+    log_config = deepcopy(uvicorn.config.LOGGING_CONFIG)
+    log_config["loggers"]["assistant_rh_api"] = {"handlers": ["default"], "level": "INFO", "propagate": False}
     uvicorn.run(
         "assistant_rh_api.handlers.app:app",
         host=os.getenv("API_HOST", "0.0.0.0"),
         port=int(os.getenv("API_PORT", "8000")),
         proxy_headers=False,
+        log_config=log_config,
         # Uvicorn waits for requests before lifespan shutdown. Bound that
         # wait so open SSE streams are cancelled and their cleanup is joined.
         timeout_graceful_shutdown=5,

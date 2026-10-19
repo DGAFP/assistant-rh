@@ -1,37 +1,38 @@
-# Note de revue DGAFP : délégation par confiance de service
+# Note de revue DGAFP : déclinaison technique de la délégation
 
-> Note du 2026-10-07 soumise à la revue DGAFP pour [#596](https://github.com/DGAFP/assistant-rh/issues/596). Le DAT Assistant RH v0.4 (1er octobre 2026) classe le mécanisme de délégation Conversations → API parmi les arbitrages à clôturer. Détail technique : [contrat de délégation](14-conversations-delegation-contract.md).
+> Note du 2026-10-07, réalignée le 2026-10-12 sur l’extrait validé du DAT communiqué dans [#596](https://github.com/DGAFP/assistant-rh/issues/596). Détail : [contrat de délégation](14-conversations-delegation-contract.md).
 
-## Décision demandée
+## Principes confirmés
 
-Valider, pour la première version de l'accès individuel via Conversations, que **l'API Assistant RH fait confiance au backend Conversations authentifié** pour lui transmettre l'identité de l'utilisateur et ses habilitations, sans preuve d'identité de l'utilisateur de bout en bout. À défaut, consigner l'écart au DAT et retenir l'une des alternatives ci-dessous.
+L’extrait confirme ProConnect/OIDC dans Conversations, l’admission sur invitation ou validation centrale DGAFP et la chaîne utilisateur → groupes → modèles ministériels. Conversations reste la référence des utilisateurs et habilitations ; son backend délègue identité individuelle et périmètre à l’API, qui vérifie le service et les informations déléguées sans dupliquer les appartenances.
 
-## Proposition
+Le contrôle d’accès est **auteur individuel + ministère actuellement autorisé**. Les groupes habilitent aux corpus ; ils ne partagent ni conversations, ni runs, ni feedbacks. Un ministère est fixé à la création d’une conversation. Un retrait bloque la prochaine question, l’historique concerné et tout nouvel accès documentaire ; l’historique est masqué puis rétabli si le droit revient. Les changements de droits portent auteur, date et objet dans l’audit d’administration.
 
-- Conversations reste la référence des utilisateurs, des groupes et des habilitations ministérielles ; l'accès est soumis à invitation ou validation par un administrateur central DGAFP.
-- À chaque appel, le backend Conversations signe une assertion courte (≤ 120 s) portant l'identifiant stable de l'utilisateur, les modèles accordés et le ministère de la conversation. L'API vérifie la signature avec une clé publique épinglée et refuse tout appel non signé, même s'il fournit un identifiant.
-- L'API ne conserve ni registre d'utilisateurs ni appartenance aux groupes. Elle borne chaque requête au périmètre délégué et rattache chaque run à son auteur, de façon immuable.
-- L'API n'est joignable que depuis le backend Conversations, par réseau privé.
+Ces responsabilités ne sont plus un arbitrage global ouvert. L’ancien texte demandant de choisir « mTLS ou OAuth » est remplacé par le profil déjà implémenté.
 
-## Alternatives écartées
+## Profil livré, à rattacher au DAT dans la revue technique
 
-| Alternative | Motif |
-|---|---|
-| mTLS entre Conversations et l'API | Authentifie le service mais pas le contenu de la délégation (en-têtes non signés) ; impose une PKI et une terminaison TLS au niveau de l'API. |
-| Client credentials via un serveur d'autorisation | Serveur d'autorisation à héberger et exploiter (ProConnect ne le fournit pas) ; la délégation reste à transporter à côté du jeton. |
-| Preuve utilisateur de bout en bout (échange de jeton ProConnect) | Plus forte, mais dépend d'un mécanisme d'échange non disponible à ce jour ; reportée sans changement du modèle d'auteur. |
+| Élément | Mise en œuvre API livrée | Vérification complémentaire |
+|---|---|---|
+| Authentification du service et preuve déléguée | JWS compact EdDSA/Ed25519, `kid` épinglé ; identité `sub` UUID, `iss` et `aud` contrôlés | Clé privée exclusivement backend ; clés et audiences séparées par environnement |
+| Durée et rejeu | ≤ 120 s, expiration stricte ; avance `iat`/`nbf` ≤ 30 s ; `jti` unique par tentative, anti-rejeu PostgreSQL partagé | Retry avec nouvelle assertion ; refus sur un autre réplica et après expiration |
+| Rotation/révocation | Chevauchement ancien/nouveau `kid`, puis retrait et redéploiement API | Responsable, procédure et stockage des clés à renseigner avant recette |
+| Opérations en cours | Retrait effectif à la requête suivante ; stream déjà autorisé terminé | Démonstration cible ; préciser les téléchargements avec #594 ; les octets déjà livrés ne sont pas révocables |
+| Audit | `audit_session` HMAC-SHA-256 d’un identifiant interne aléatoire de session, clé dédiée | Pseudonyme renouvelé à la reconnexion, distinct des cookies, bearers et UUID utilisateur |
+| Réseau | API uniquement joignable depuis le backend sur réseau privé | Contrôle de la topologie cible et absence d’exposition navigateur |
 
-## Risques acceptés et mesures
+L’extrait du DAT ne nomme pas Ed25519 et ne fixe pas ces durées. Décrire ces paramètres comme une implémentation livrée, consigner leur rattachement au DAT et les éventuelles validations complémentaires du circuit de revue. Ne pas affirmer que l’extrait les approuve explicitement.
 
-| Risque | Mesures |
-|---|---|
-| Un backend Conversations compromis peut agir au nom de n'importe quel utilisateur | Réseau privé ; clé de signature dédiée, conservée côté serveur, renouvelée périodiquement ; révocation par retrait de la clé et redéploiement ; assertions de 120 s au plus. |
-| Rejeu d'une assertion interceptée | Assertions courtes ; identifiant unique (`jti`) mémorisé par l'API et refusé s'il est déjà vu. |
-| Habilitation retirée pendant une réponse | Le retrait s'applique dès la requête suivante ; une réponse en cours se termine ; les octets déjà téléchargés ne sont pas révocables. |
+## Risques et garanties
 
-## Garanties maintenues
+Un backend Conversations compromis peut agir au nom des utilisateurs : limite explicite du mécanisme, réduite par le réseau privé, les clés dédiées, leur rotation et leur révocation. Une preuve utilisateur de bout en bout pourrait compléter le mécanisme ultérieurement ; elle n’est pas un prérequis réintroduit par cette note.
 
-- Deux utilisateurs d'un même groupe ont des identifiants auteur distincts ; l'appartenance à un groupe ne donne accès ni aux runs ni aux feedbacks d'un autre utilisateur.
-- Un utilisateur sans habilitation n'accède à aucun corpus ; un nom de modèle ne vaut pas autorisation.
-- Aucun jeton ProConnect, secret de service ou contenu de délégation n'est journalisé ni transmis au navigateur.
-- Le parcours historique par mot de passe de groupe (B4) reste inchangé pendant la transition ; aucun run collectif n'est réattribué à une personne.
+Aucun corpus sans habilitation ; aucune identité issue d’un email, SIRET ou champ libre du navigateur ; aucun jeton ProConnect, secret ou contenu de délégation dans les logs. L’identifiant de requête corrèle les journaux sans porter l’autorisation. Une bascule Albert/Scaleway interne à l’API conserve exactement le périmètre documentaire de la conversation.
+
+Les pouvoirs administrateurs restent explicites et audités. B4 conserve son fonctionnement pendant la transition : pas de backfill des runs collectifs, aucune session de groupe ouvrant les ressources individuelles, aucune décision implicite de retrait de Streamlit.
+
+## Recette encore nécessaire
+
+La stack API #597 → #601 → #602 → #603 fusionnée dans `dev` ne vaut pas activation. Provisionner et vérifier les comptes runtime non propriétaires selon le [runbook #599](../../deployment/SCALEWAY_DB_RUNTIME_ROLES.md), puis consigner révision du fork, révision API, environnement et résultats.
+
+Tester réellement depuis `DGAFP/conversations` : connexion ProConnect, approbation, catalogue multi-groupes, chat JSON/SSE, auteur du run, reconnexion/expiration/logout/désactivation, refus croisés entre utilisateurs, retrait/rétablissement des droits et feedback. Raccorder les documents protégés avec #594. Les tests locaux et mocks préparent cette recette ; ils ne clôturent pas #596.
