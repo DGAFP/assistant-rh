@@ -1,9 +1,13 @@
-"""Guards for the staging-to-local development workflow; no network or Docker required."""
+"""Guards for the staging-to-local development workflow; no external network or Docker required."""
 
 import subprocess
+import sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from threading import Thread
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from scripts import dev
 
@@ -210,3 +214,33 @@ def test_normal_start_preserves_dependencies_and_rebuild_renews_them(stack, monk
     stack.dev(rebuild=True)
     assert "--build" not in calls[0] and "--renew-anon-volumes" not in calls[0]
     assert "--build" in calls[1] and "--renew-anon-volumes" in calls[1]
+
+
+@pytest.mark.parametrize("status", [200, 503])
+def test_api_compose_healthcheck_without_curl(tmp_path, status):
+    """Run the actual Compose probe with only Python available, as in the API image."""
+    compose = yaml.safe_load((dev.ROOT / "docker/dev/compose.yml").read_text())
+    kind, *command = compose["services"]["api"]["healthcheck"]["test"]
+    assert kind == "CMD"
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    (tools / "python").symlink_to(sys.executable)
+
+    class Health(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(status if self.path == "/healthz" else 404)
+            self.end_headers()
+
+        def log_message(self, *_args):
+            pass
+
+    with HTTPServer(("127.0.0.1", 0), Health) as server:
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            command = [arg.replace("127.0.0.1:8000", f"127.0.0.1:{server.server_port}") for arg in command]
+            result = subprocess.run(command, env={"PATH": str(tools)}, capture_output=True, timeout=10, check=False)
+            assert (result.returncode == 0) == (status == 200), result.stderr.decode()
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
