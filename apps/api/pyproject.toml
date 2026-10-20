@@ -12,6 +12,7 @@ dependencies = [
     "psycopg-pool>=3.3,<4",
     "psycopg[binary]>=3.3.3,<4",
     "tzdata>=2025.2",
+    "urllib3>=2.8.0,<3",
     "uvicorn>=0.48.0,<1",
 ]
 
