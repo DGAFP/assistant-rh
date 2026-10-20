@@ -328,6 +328,7 @@ version = "0.14.0"
 source = { editable = "apps/api" }
 dependencies = [
     { name = "anyio" },
+    { name = "botocore" },
     { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -349,6 +350,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anyio", specifier = ">=4.14.2,<5" },
+    { name = "botocore", specifier = ">=1.35,<2" },
     { name = "cryptography", specifier = ">=50,<51" },
     { name = "fastapi", specifier = ">=0.136.3,<1" },
     { name = "httpx", specifier = ">=0.28.1,<1" },

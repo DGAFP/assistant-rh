@@ -11,6 +11,7 @@ TRACE_MIGRATION = ROOT / "supabase/migrations/20260625110000_rag_trace_events.sq
 MIGRATION = ROOT / "supabase/migrations/20260908094542_api_runtime_repositories.sql"
 FEEDBACK_MIGRATION = ROOT / "supabase/migrations/20261007120000_api_individual_identity.sql"
 ROLES_MIGRATION = ROOT / "supabase/migrations/20261007130000_api_runtime_roles.sql"
+DOCUMENT_MIGRATION = ROOT / "supabase/migrations/20261020120000_api_document_reads.sql"
 AUTH_MIGRATION = ROOT / "supabase/migrations/20260908180029_api_public_auth.sql"
 
 
@@ -23,6 +24,7 @@ def repository_dsn(synthetic_database_dsn):
         connection.execute(AUTH_MIGRATION.read_text())
         connection.execute(FEEDBACK_MIGRATION.read_text())
         connection.execute(ROLES_MIGRATION.read_text())
+        connection.execute(DOCUMENT_MIGRATION.read_text())
     return synthetic_database_dsn
 
 
@@ -37,7 +39,7 @@ async def repository_db(repository_dsn):
                     public.rag_trace_events, public.api_auth_limits, public.api_sessions, public.user_groups, public.system_prompts, public.acronyms,
                     public.rag_chunks_service_public, public.rag_chunks_matte, public.rag_chunks_dgafp,
                     public.rag_chunks_mso, public.rag_chunks_mi, public.rag_chunks_masa, public.rag_chunks_rgrh,
-                    public.rag_sections, public.rag_documents RESTART IDENTITY;
+                    public.rag_sections, public.rag_documents, public.documents RESTART IDENTITY;
                 INSERT INTO public.user_groups(slug, label, password_hash) VALUES ('synthetic', 'Synthetic', 'fixture-hash');
             """)
         yield database

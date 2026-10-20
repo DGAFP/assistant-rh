@@ -17,24 +17,29 @@ from assistant_rh_api.bootstrap import create_chat_service
 from assistant_rh_api.core.auth import AuthService
 from assistant_rh_api.core.catalog import ModelService
 from assistant_rh_api.core.chat import ChatService
+from assistant_rh_api.core.documents import DocumentService
 from assistant_rh_api.core.feedback import FeedbackService
 from assistant_rh_api.core.health import HealthProbe
 from assistant_rh_api.core.rag_configuration import RAGConfigurationService
 from assistant_rh_api.db.auth_stores import DelegationReplayStore, GroupStore, SessionStore
+from assistant_rh_api.db.documents import DocumentStore
 from assistant_rh_api.db.dsn import DatabaseSettings, resolve_dsn
 from assistant_rh_api.db.feedback_store import FeedbackStore
 from assistant_rh_api.db.health import PostgresHealthProbe
 from assistant_rh_api.db.login_limits import LoginLimits, PostgresLoginLimiter
 from assistant_rh_api.db.pool import Database
+from assistant_rh_api.db.run_store import ChatRunStore
 from assistant_rh_api.db.session_retention import maintain_sessions
 from assistant_rh_api.db.settings_stores import ConfigStore
 from assistant_rh_api.gateways.auth import LegacyPasswords, SessionTokens, SystemClock
 from assistant_rh_api.gateways.delegation import SignedDelegations
+from assistant_rh_api.gateways.documents import DocumentStorageSettings, S3Documents
 from assistant_rh_api.handlers.auth import create_auth_router
 from assistant_rh_api.handlers.auth_body import AuthBodyLimit
 from assistant_rh_api.handlers.chat import NonStreamRequests, create_chat_router
 from assistant_rh_api.handlers.chat_stream import StreamSettings, StreamWorkers
 from assistant_rh_api.handlers.correlation import RequestCorrelation
+from assistant_rh_api.handlers.documents import create_documents_router
 from assistant_rh_api.handlers.errors import register_error_handlers
 from assistant_rh_api.handlers.feedback import create_feedback_router
 from assistant_rh_api.handlers.health import create_health_router
@@ -57,6 +62,7 @@ def create_app(
     rag_configuration_service: RAGConfigurationService | None = None,
     chat_service: ChatService | None = None,
     feedback_service: FeedbackService | None = None,
+    document_service: DocumentService | None = None,
     stream_settings: StreamSettings | None = None,
 ) -> FastAPI:
     """Create the HTTP application without opening connections or loading RAG."""
@@ -98,6 +104,22 @@ def create_app(
             if health_probe is None:
                 application.state.health_probe = PostgresHealthProbe(runtime_database)
             async with AsyncExitStack() as resources, anyio.create_task_group() as tasks:
+                if document_service is None:
+                    document_database = runtime_database.separate_pool(max_size=2)
+                    resources.push_async_callback(document_database.close)
+                    await document_database.open()
+                    document_transport = await resources.enter_async_context(
+                        httpx.AsyncHTTPTransport(
+                            trust_env=False,
+                            retries=0,
+                            limits=httpx.Limits(max_connections=8, max_keepalive_connections=4),
+                        )
+                    )
+                    application.state.document_service = DocumentService(
+                        ChatRunStore(runtime_database),
+                        DocumentStore(document_database),
+                        S3Documents(document_transport, DocumentStorageSettings.from_environment(environment)),
+                    )
                 if chat_service is None:
                     client = await resources.enter_async_context(httpx.AsyncClient(trust_env=False))
                     application.state.chat_service = create_chat_service(
@@ -119,6 +141,7 @@ def create_app(
             application.state.rag_configuration_service = rag_configuration_service
             application.state.chat_service = chat_service
             application.state.feedback_service = feedback_service
+            application.state.document_service = document_service
 
     @asynccontextmanager
     async def managed_lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -135,6 +158,8 @@ def create_app(
     application.state.rag_configuration_service = rag_configuration_service
     application.state.chat_service = chat_service
     application.state.feedback_service = feedback_service
+    application.state.document_service = document_service
+    application.state.document_limiter = anyio.CapacityLimiter(8)
     application.state.non_stream_requests = NonStreamRequests()
     application.state.stream_workers = StreamWorkers(stream_settings or StreamSettings.from_environment(os.environ if environ is None else environ))
     application.add_middleware(AuthBodyLimit)
@@ -144,6 +169,7 @@ def create_app(
     application.include_router(create_models_router())
     application.include_router(create_chat_router())
     application.include_router(create_feedback_router())
+    application.include_router(create_documents_router())
     return application
 
 

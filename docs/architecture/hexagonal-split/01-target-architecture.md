@@ -31,7 +31,7 @@ flowchart TB
         end
 
         DB[db/ — psycopg<br/>· recherche <br> · documents/sections <br/> · prompts/acronymes<br/> · chat_runs/sources/traces <br> · rag_config <br/> · user_groups/sessions <br> · feedback courant/audit]
-        GW[gateways/ — httpx/crypto<br/>Albert/Scaleway LLM/embeddings · reranker · capability documentaire]
+        GW[gateways/ — httpx/crypto<br/>Albert/Scaleway LLM/embeddings · reranker · lecture documentaire S3 privée]
     end
 
     ST -->|HTTP| H

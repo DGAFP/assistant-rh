@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS public.acronyms (
 CREATE TABLE IF NOT EXISTS public.rag_documents (
     doc_id UUID PRIMARY KEY, short_id TEXT, title TEXT, source_url TEXT, publisher TEXT, doc_markdown TEXT, token_count INTEGER
 );
+ALTER TABLE public.rag_documents ADD COLUMN IF NOT EXISTS legacy_doc_id UUID;
+ALTER TABLE public.rag_documents ADD COLUMN IF NOT EXISTS storage_path TEXT;
+CREATE TABLE IF NOT EXISTS public.documents (id UUID PRIMARY KEY, filename TEXT, data BYTEA);
 CREATE TABLE IF NOT EXISTS public.rag_sections (
     section_id UUID PRIMARY KEY, doc_id UUID REFERENCES public.rag_documents(doc_id),
     heading TEXT, heading_path TEXT, section_markdown TEXT, references_juridiques JSONB
