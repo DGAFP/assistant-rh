@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import socket
+from unittest.mock import AsyncMock
 
 import httpx
 import openai
@@ -45,6 +46,7 @@ async def live(monkeypatch):
         database=DatabaseResource(),
         auth_service=auth,
         chat_service=runtime.service,
+        document_service=AsyncMock(),
         rag_configuration_service=RAGConfigurationService(runtime.config),
         environ={},
         stream_settings=StreamSettings(ping_seconds=0.01),

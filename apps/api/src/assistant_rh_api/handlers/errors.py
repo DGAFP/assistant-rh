@@ -17,6 +17,7 @@ from assistant_rh_api.core.errors import (
     MinistryForbidden,
     ModelNotFound,
 )
+from assistant_rh_api.core.errors.documents import DocumentNotFound, DocumentUnavailable
 
 
 class ChatUnavailable(Exception):
@@ -47,6 +48,10 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ApplicationError)
     async def application_error(request: Request, exc: ApplicationError) -> JSONResponse:
+        if isinstance(exc, DocumentNotFound):
+            return error_response(404, exc.code, "Document not found")
+        if isinstance(exc, DocumentUnavailable):
+            return error_response(503, "service_unavailable", "Service unavailable")
         if isinstance(exc, FeedbackInvalid):
             return error_response(422, exc.code, "Invalid feedback")
         if isinstance(exc, IndividualIdentityRequired):
