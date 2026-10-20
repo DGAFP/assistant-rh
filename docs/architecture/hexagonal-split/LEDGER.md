@@ -1147,3 +1147,79 @@ le disque pendant l'extraction des fixtures ; la suite complète relancée avec
 `tmp_path_retention_policy=failed` réussit (deux avertissements de dépréciation
 websockets). Ruff API, format des deux fichiers Python modifiés, quatre contrats
 d'import et `git diff --check` passent. Aucun accès à une base distante.
+
+
+### D2 — délivrance documentaire individuelle, 20 octobre 2026
+
+Implémentation locale de [#529](https://github.com/DGAFP/assistant-rh/issues/529) :
+`GET /v1/documents/{doc_ref}/content?completion_id=chatcmpl-<turn_id>`, réservé à
+une délégation individuelle fraîche de #596. Le contrôle réutilise le prédicat
+canonique auteur + ministère actuellement autorisé de `ChatRunStore.sources` et
+n'accepte que les références des sources finales persistées. Les diagnostics,
+substitutions, runs d'un autre auteur/même groupe, runs collectifs et retraits de
+droits ne donnent aucun accès ; B4 reçoit 403.
+
+Le contenu PDF legacy ou S3 est transmis au backend, avec `inline`/nom constant
+assaini, `private, no-store`, `nosniff` et longueur exacte. Aucun lien S3,
+capability ou redirection navigateur. La résolution part du `document_id`
+persisté et ne lit jamais une URL fournie par le client. L'ancien contrat de
+quinze minutes/302 est remplacé dans le contrat API, D17, les séquences, le plan
+et A3. `_PDF_Viewer` reste interne/historique ; il ne définit pas la cible publique.
+
+Bornes : tranches de 64 Kio, huit transferts par processus, deadline totale 120 s,
+timeouts S3 explicites et fermeture à l'annulation/déconnexion. La revue a relevé
+que le snapshot legacy pouvait saturer le pool auth/chat ; correction appliquée :
+pool documentaire séparé de deux connexions, ouvert/fermé par le lifespan et
+couvert par une régression avec deux lecteurs occupés. La migration
+`20261020120000_api_document_reads.sql` donne seulement `SELECT (id, data)` au
+rôle `arh_api` pour les PDF legacy. Aucune migration appliquée hors base synthétique.
+
+Preuves D2 : **47 tests ciblés passent** sur PostgreSQL/pgvector 17 jetable local
+(127.0.0.1:55499), avec données synthétiques uniquement. Autorisation SQL réelle,
+deux auteurs/droits courants, retrait/rétablissement, anti-rejeu et expiration de
+délégation, candidats non finaux, contournement B4, headers, erreurs, saturation,
+intégrité et annulation sont couverts. Transfert legacy de **11 000 009 octets**
+vérifié par SHA-256 sur un vrai socket HTTP backend, puis abandon du client avec
+libération du pool. S3 est simulé, avec un objet virtuel de 32 Mio lu par tranches,
+signature serveur, absence de redirection, confidentialité des logs même au
+niveau DEBUG et fermeture du lecteur. La revue
+indépendante confirme la correction du pool sans autre observation bloquante.
+
+Limites : PDF uniquement ; `Range`/`If-Range` ignorés avec un `200` complet et
+`Accept-Ranges: none`, sans prise en charge 206/416. Aucun test S3 Scaleway réel,
+aucun déploiement, aucune activation individuelle, aucun test de session
+ProConnect/logout/désactivation dans Conversations. Provisionner les comptes et
+secrets à lecture seule selon #599 et vérifier le réseau privé avant activation.
+La recette du lecteur navigateur, du proxy et des droits/session actuels demeure
+à réaliser dans #594/#596 ; ces tests API ne permettent pas de clôturer cette
+intégration.
+
+
+Validation globale : **1 447 tests API passent**, hors suite de rejeu privé M0b
+(non pertinente pour ce transfert documentaire, exclue comme dans le job CI
+principal). Ruff sur le périmètre CI, format des 16 fichiers Python concernés,
+les quatre contrats d'import et `git diff --check` passent. Deux avertissements
+de dépréciation de dépendances WebSocket existantes restent sans échec.
+
+### D2 — fermeture S3 résistante à l'annulation, 20 octobre 2026
+
+La revue de #617 a reproduit une fuite lors de la fermeture automatique HTTPX
+en fin de lecture, ainsi que lors d'une lecture interrompue déclenchant une
+fermeture interne HTTPcore. Le transport documentaire réutilise désormais le
+flux protégé du transport d'inférence : chaque lecture appartient à une tâche
+supervisée, la connexion est fermée avant d'interrompre une lecture pendante et
+le nettoyage résiste aux annulations répétées. Son budget distinct est de cinq
+secondes ; l'annulation est ensuite propagée. Le contexte de confidentialité
+des logs est conservé dans les tâches de lecture et de fermeture.
+
+Quatorze régressions dans `gateways/test_documents_cleanup.py` utilisent le vrai
+transport `AsyncHTTPTransport` et le pool HTTPcore avec un backend réseau
+synthétique, sans socket S3 : fin de lecture, sortie anticipée, lecture en
+attente, annulations asyncio/AnyIO, deadline, fermeture bloquée et logs privés.
+Les 64 tests ciblés documentaires/inférence passent. La suite API complète hors
+rejeu privé M0b passe : **1 461 tests**, avec les deux avertissements WebSocket
+existants. PostgreSQL/pgvector 17 jetable et données synthétiques uniquement ;
+Ruff sur le périmètre CI, format des fichiers Python modifiés, quatre contrats
+d'import et `git diff --check` passent. Une seconde revue indépendante ne relève
+plus de point bloquant. Ces preuves n'ajoutent ni recette S3 Scaleway réelle,
+ni déploiement, ni validation du lecteur Conversations.

@@ -4,8 +4,8 @@
 
 ## Conventions générales
 
-- Base : `https://<host>` ; les réponses applicatives sont en JSON UTF-8, sauf le flux SSE et la rédemption documentaire (bytes ou redirection) explicitement décrits ci-dessous.
-- **Auth publique** : `Authorization: Bearer <session opaque>`. `POST /v1/auth/session` émet après vérification du mot de passe une session bornée au groupe, à sa politique ministère et à huit heures. La route de rédemption documentaire `GET /v1/documents/access/{capability}` utilise sa capability courte à la place du bearer afin de permettre une navigation directe du navigateur.
+- Base : `https://<host>` ; les réponses applicatives sont en JSON UTF-8, sauf le flux SSE et la lecture documentaire (bytes PDF) explicitement décrits ci-dessous.
+- **Auth publique** : `Authorization: Bearer <session opaque>`. `POST /v1/auth/session` émet après vérification du mot de passe une session bornée au groupe, à sa politique ministère et à huit heures. Ce parcours B4 est historique. La cible publique Conversations utilise la délégation individuelle de [#596](14-conversations-delegation-contract.md), obligatoire pour la lecture documentaire ; aucun bearer API ne parvient au navigateur.
 - **Conservation du secret** : le bearer de session reste côté serveur du frontend. Il n'entre ni dans le cookie Streamlit, ni dans une URL, ni dans un log. Il n'existe pas de bundle statique de bearers par groupe.
 - **Admin hors v1** : les fonctions admin restent dans Streamlit avec accès DB direct sous l'exception A3. Aucun endpoint `/admin/*` n'est requis par ce contrat.
 - **Erreurs** : format OpenAI sur `/v1/*` :
@@ -254,22 +254,34 @@ Sans auth (probe). **200** `{ "status": "ok", "db": "ok", "config_loaded": true 
 
 ## Accès documentaire
 
-`POST /v1/documents/{doc_ref}/access-url`, avec `{ "completion_id": "chatcmpl-<turn_id>" }`, vérifie que le document figure dans les sources persistées du run et que la session appartient au groupe autorisé. La réponse contient une URL opaque de rédemption valable quinze minutes et son expiration :
+### Cible individuelle D2 — 20 octobre 2026 (#529)
 
-```json
-{ "url": "https://…", "expires_at": "2026-09-04T14:15:00Z" }
-```
+`GET /v1/documents/{doc_ref}/content?completion_id=chatcmpl-<turn_id>` est une route **serveur à serveur**, joignable depuis le backend Conversations sur le réseau privé. Elle exige `Authorization: Bearer <délégation individuelle signée>` selon [#596](14-conversations-delegation-contract.md). Une assertion fraîche est nécessaire pour chaque tentative HTTP, retries compris. Elle ne crée ni capability, ni URL de stockage, ni redirection.
 
-La relation `chat_run_sources` persiste `turn_id`, `doc_ref` et l'ordre des seules sources finales présentées avec le run. L'URL signée est créée au clic par le frontend authentifié et n'entre jamais dans le contenu ou l'historique du chat.
+Conversations expose sa propre route applicative authentifiée liée au message (#594). Il vérifie la session, l'admission, la propriété de la conversation et les droits courants, puis résout côté serveur message → `completion_id` → `doc_ref`. Ces références ne sont pas une autorisation en elles-mêmes. L'API vérifie l'auteur individuel immuable, le ministère actuellement autorisé et la présence exacte de `doc_ref` dans les **sources finales persistées** de `chat_run_sources`. Les candidats diagnostiques et les autres runs du même groupe n'accordent aucun accès. Une référence publique ne permet pas davantage de lire le run d'un tiers ; son URL canonique publique demeure disponible dans les sources.
 
-`GET /v1/documents/access/{capability}` utilise cette capability sans bearer de session supplémentaire. Un client capable de piloter la navigation peut suivre directement le lien ; au temps 1, `_PDF_Viewer` le rédime côté serveur afin de pouvoir détecter une expiration et piloter le rendu. Une capability invalide, expirée ou inconnue répond 404 au format d'erreur v1. Elle expire après quinze minutes, n'autorise qu'un document, n'est jamais persistée et doit être masquée dans les logs d'accès.
+Après autorisation, seul le `document_id` de cette source persistée résout `rag_documents` : PDF legacy via `legacy_doc_id`, sinon clé `storage_path` de la dropzone PDF privée. Aucune URL externe, clé S3 ou chemin fourni dans la requête ne sert de cible. Les clés acceptées sont celles des corpus `matte/`, `mi/`, `masa/`, `mso/`, avec suffixe PDF, sans segments vides, `.` ou `..`. Les autres formats bureautiques sont hors de cette première livraison ; un contenu non PDF n'est jamais rendu comme HTML.
 
-Les deux réponses de succès sont figées :
+**Succès pour les deux supports** : `200`, contenu PDF transmis progressivement, `Content-Type: application/pdf`, `Content-Disposition: inline; filename="document.pdf"` (nom constant assaini), `Content-Length` exacte, `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff`, `Accept-Ranges: none`. Le nom ne révèle ni titre ni clé de stockage. La signature `%PDF-` est vérifiée avant les headers. L'API signe un GET S3 côté serveur ; aucun en-tête S3, `Location`, cookie, bearer ou secret n'est relayé au navigateur. Conversations doit conserver ces garanties lors du proxy.
 
-- **PDF legacy PostgreSQL** : 200, body contenant les bytes, `Content-Type: application/pdf`, `Content-Disposition: inline; filename="<nom assaini>.pdf"`, `Cache-Control: private, no-store` et `X-Content-Type-Options: nosniff` ;
-- **objet S3** : 302 sans body avec `Location: <URL S3 présignée>` et `Cache-Control: private, no-store`. Les paramètres signés de la réponse S3 imposent un `Content-Type` issu d'une allowlist serveur, `Content-Disposition` avec nom assaini (`inline` pour un PDF, `attachment` sinon) et `Cache-Control: private, no-store`.
+**Plages d'octets** : cette version ne prend pas en charge Range. `Range` et `If-Range` sont ignorés et donnent une réponse complète `200` après de nouveaux contrôles, même pour une plage insatisfaisable ou multiple ; aucun `206`/`416` n'est émis. Le backend Conversations doit conserver ce comportement et le lecteur PDF doit être testé en chargement intégral dans #594. Une prise en charge ultérieure des plages nécessitera un contrat et des tests distincts, avec autorisation à chaque requête.
 
-La durée de la présignature S3 est la partie entière de la durée restante de la capability, jamais quinze minutes supplémentaires ; si cette durée est épuisée, la rédemption échoue. Une source publique conserve son URL canonique et n'a normalement pas besoin de cette route. La source interne est ouverte par un contrôle Streamlit qui conserve la session (`st.page_link`/`st.switch_page` ou rendu inline équivalent), jamais par une navigation URL créant une nouvelle session. `_PDF_Viewer` conserve seulement `doc_ref` et `completion_id`, crée une capability fraîche à chaque chargement, puis appelle la rédemption côté serveur sans suivre automatiquement la redirection. Sur un premier 404, il redemande une URL et réessaie une seule fois si sa session de huit heures reste valide. Il rend directement les bytes legacy ou transmet au navigateur la `Location` S3 courte retournée par l'API. Cette nouvelle demande refait les contrôles run/groupe/source ; une capability expirée ne peut pas se renouveler elle-même. Il n'existe aucune route de listing. Les règles complètes sont dans [A3](08-streamlit-api-parity.md#accès-documentaire-court).
+**Bornes et annulation** : buffers de 64 Kio au plus, huit transferts simultanés par processus, refus `503` à saturation ; deadline totale de 120 s comprenant l'ouverture et la contre-pression du consommateur. S3 : connexion/pool/écriture 5 s, lecture inactive 15 s, aucun retry ni suivi de redirection, proxy d'environnement désactivé. Legacy : pool documentaire séparé de deux connexions (deux attenteurs au plus, timeout du pool), sans consommer les connexions auth/chat ; tranches `substring(bytea)` dans un snapshot `REPEATABLE READ`, timeout SQL existant du pool, libération de la connexion à la fin ou à l'annulation ; aucun chargement intégral du bytea dans le processus API. La connexion DB est relâchée avant un transfert S3. Déconnexion ou annulation ferme le lecteur amont ; après engagement des headers, une panne interrompt le transfert au lieu d'ajouter du JSON au PDF. Un transfert déjà autorisé peut se terminer après retrait des droits selon #596 ; les octets délivrés ne sont pas révocables.
+
+| HTTP | Lecture documentaire |
+|---|---|
+| 401 | Délégation absente, invalide, expirée ou rejouée ; Conversations gère l'expiration/logout de sa propre session sans réémettre d'assertion. |
+| 403 | Session B4 de groupe : identité individuelle obligatoire. |
+| 404 `document_not_found` | Run/document absent, hors droits, source non finale, référence substituée ou support non consultable : réponse uniforme. |
+| 503 `service_unavailable` | Stockage/base indisponible, ouverture trop lente ou saturation ; aucun détail de stockage. |
+
+La fermeture du lecteur S3, y compris celle déclenchée automatiquement par HTTPX en fin de lecture ou par HTTPcore lors d'une lecture interrompue, est protégée contre l'annulation. Elle dispose d'un budget de nettoyage distinct de cinq secondes au plus après la deadline de transfert ; l'annulation est ensuite propagée, même si elle est répétée pendant ce nettoyage.
+
+Toutes les erreurs restent au format v1 et `Cache-Control: no-store`. Ne pas journaliser les assertions, signatures, secrets ni chemins de stockage ; les logs applicatifs conservent seulement corrélation et statut. Le transport documentaire évite notamment le log INFO des URL privées par `httpx.AsyncClient`. Les diagnostics DEBUG du signataire et du transport sont également filtrés dans le contexte de ce seul transfert, sans masquer les autres requêtes concurrentes.
+
+**Séparation historique B4** : les anciennes routes proposées `POST .../access-url` et `GET .../access/{capability}` ne sont pas implémentées et ne font plus partie du contrat cible. Aucune passerelle B4 vers un run individuel n'est ajoutée. `_PDF_Viewer` et ses lectures DB/S3 historiques restent des outils internes Streamlit ; ils ne consomment pas cette route et ne définissent pas le parcours public Conversations. Leur contrôle d'accès historique n'est pas une preuve de recette D2.
+
+Implémentation : `core/documents.py`, `db/documents.py`, `gateways/documents.py`, `handlers/documents.py`. La migration `20261020120000_api_document_reads.sql` accorde au rôle `arh_api` uniquement `SELECT (id, data)` sur les PDF legacy. Les restrictions et comptes runtime de #599 restent requis avant activation individuelle. Tests : `apps/api/tests/{db/test_documents.py,gateways/test_documents.py,handlers/test_documents_http.py}` ; preuves et limites dans le [LEDGER](LEDGER.md#d2--délivrance-documentaire-individuelle-20-octobre-2026).
 
 ## Surface admin reportée
 

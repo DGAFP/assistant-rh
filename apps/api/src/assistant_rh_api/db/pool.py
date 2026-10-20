@@ -4,6 +4,7 @@ import asyncio
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from typing import Any, Self
 
 import psycopg
@@ -63,6 +64,10 @@ class Database:
     def statistics(self) -> dict[str, int]:
         return self._pool.get_stats()
 
+    def separate_pool(self, *, max_size: int) -> "Database":
+        """Same target/timeouts, independent leases for long-lived readers."""
+        return Database(replace(self._settings, min_size=1, max_size=max_size, max_waiting=max_size))
+
     async def open(self) -> None:
         """Wait for initial connections; a failed/cancelled startup closes workers."""
         try:
@@ -120,7 +125,7 @@ class Database:
             await asyncio.gather(check, return_exceptions=True)
 
     @asynccontextmanager
-    async def transaction(self, *, read_only: bool = False) -> AsyncIterator[psycopg.AsyncConnection]:
+    async def transaction(self, *, read_only: bool = False, repeatable_read: bool = False) -> AsyncIterator[psycopg.AsyncConnection]:
         """Commit on success, rollback on any exception/cancellation, then release.
 
         Pass this connection to cooperating repositories for atomic writes.
@@ -133,6 +138,8 @@ class Database:
                 # also catches CancelledError and can serve a cancelled caller.
                 await self._check_connection(connection)
                 async with connection.transaction():
+                    if repeatable_read:
+                        await connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
                     if read_only:
                         await connection.execute("SET TRANSACTION READ ONLY")
                     await connection.execute(

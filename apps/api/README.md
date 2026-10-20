@@ -790,3 +790,39 @@ are purged in bounded batches by later claims.
 Rotation publishes a new `kid` next to the old one; removing a `kid` revokes it
 once the API restarts with the new key set (issued assertions expire within 120 s). The full contract, network restriction and accepted risks
 are in [the delegation contract](../../docs/architecture/hexagonal-split/14-conversations-delegation-contract.md).
+
+
+## Private document content (D2, #529)
+
+`GET /v1/documents/{doc_ref}/content?completion_id=chatcmpl-<turn_id>` serves
+PDF bytes to the Conversations backend using a fresh individual delegation for
+every HTTP attempt. It checks author, current ministry and final persisted source
+before resolving any storage target. B4 group sessions are refused. No browser
+capability, storage URL, redirect, or arbitrary URL/path input is supported.
+
+Legacy PDFs are read using 64 KiB SQL slices in a stable snapshot. A separate
+pool with at most two connections prevents slow downloads from exhausting the
+runtime auth/chat pool. S3 reads use the private PDF dropzone and server-side
+SigV4 through an asynchronous transport. Configure `SCW_DEFAULT_REGION` (default
+`fr-par`), `SCW_BUCKET_SOURCES_PDF` (default `assistant-rh-sources-pdf`),
+`SCW_ACCESS_KEY`, and `SCW_SECRET_KEY` with read-only object access for the API.
+These settings do not enable upload or grant any browser access. Apply
+`20261020120000_api_document_reads.sql` with the other runtime migrations before
+using legacy PDFs under the `arh_api` role; it grants only `SELECT (id, data)`.
+Existing #599 account and network restrictions still apply.
+
+All successful responses are `200 application/pdf`, inline `document.pdf`,
+`private, no-store`, `nosniff`, with an exact content length. `Range`/`If-Range`
+are ignored with a full `200` and `Accept-Ranges: none`; no `206`/`416` support is
+claimed. Eight transfers per process, 120-second total deadline; S3 connect/pool/
+write timeout 5 seconds, idle read 15 seconds. Failures after headers abort the
+transfer. The reader closes on disconnect/cancellation. Upstream cleanup, including
+interrupted reads and HTTPX's automatic EOF close, resists cancellation and has a separate five-second
+budget before cancellation propagates. Signing/network diagnostics are filtered in the private transfer context, even
+at DEBUG level, without changing global log levels. Do not add logs containing
+assertions, request headers or storage paths.
+
+See the [HTTP contract](../../docs/architecture/hexagonal-split/02-api-contract.md#accès-documentaire)
+for status codes, B4 separation and the #594 browser integration responsibilities.
+The API tests use only synthetic Postgres/PDFs and simulated S3; they do not prove
+Scaleway IAM, deployment, ProConnect sessions or the Conversations browser reader.
