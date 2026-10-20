@@ -15,8 +15,10 @@ from botocore.credentials import Credentials
 
 from assistant_rh_api.core.errors.documents import DocumentNotFound, DocumentUnavailable
 from assistant_rh_api.core.ports.documents import DocumentContent
+from assistant_rh_api.gateways.http import CancellationSafeStream
 
 CHUNK_BYTES = 64 * 1024
+CLOSE_TIMEOUT_SECONDS = 5.0
 _PRIVATE_TRANSFER = ContextVar("private_document_transfer", default=False)
 
 
@@ -98,6 +100,10 @@ class S3Documents:
                 # Direct transport avoids AsyncClient's INFO log of the private object URL.
                 # The transport has no cookies, redirects, retries or environment proxy.
                 response = await self.transport.handle_async_request(request)
+                # HTTPX also closes at EOF, before our finally block. Protect
+                # that path as well as explicit close on errors/early exit.
+                assert isinstance(response.stream, httpx.AsyncByteStream)
+                response.stream = CancellationSafeStream(response.stream, CLOSE_TIMEOUT_SECONDS)
                 if response.status_code == 404:
                     raise DocumentNotFound()
                 if response.status_code != 200:

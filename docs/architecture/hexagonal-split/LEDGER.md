@@ -1200,3 +1200,26 @@ Validation globale : **1 447 tests API passent**, hors suite de rejeu privé M0b
 principal). Ruff sur le périmètre CI, format des 16 fichiers Python concernés,
 les quatre contrats d'import et `git diff --check` passent. Deux avertissements
 de dépréciation de dépendances WebSocket existantes restent sans échec.
+
+### D2 — fermeture S3 résistante à l'annulation, 20 octobre 2026
+
+La revue de #617 a reproduit une fuite lors de la fermeture automatique HTTPX
+en fin de lecture, ainsi que lors d'une lecture interrompue déclenchant une
+fermeture interne HTTPcore. Le transport documentaire réutilise désormais le
+flux protégé du transport d'inférence : chaque lecture appartient à une tâche
+supervisée, la connexion est fermée avant d'interrompre une lecture pendante et
+le nettoyage résiste aux annulations répétées. Son budget distinct est de cinq
+secondes ; l'annulation est ensuite propagée. Le contexte de confidentialité
+des logs est conservé dans les tâches de lecture et de fermeture.
+
+Quatorze régressions dans `gateways/test_documents_cleanup.py` utilisent le vrai
+transport `AsyncHTTPTransport` et le pool HTTPcore avec un backend réseau
+synthétique, sans socket S3 : fin de lecture, sortie anticipée, lecture en
+attente, annulations asyncio/AnyIO, deadline, fermeture bloquée et logs privés.
+Les 64 tests ciblés documentaires/inférence passent. La suite API complète hors
+rejeu privé M0b passe : **1 461 tests**, avec les deux avertissements WebSocket
+existants. PostgreSQL/pgvector 17 jetable et données synthétiques uniquement ;
+Ruff sur le périmètre CI, format des fichiers Python modifiés, quatre contrats
+d'import et `git diff --check` passent. Une seconde revue indépendante ne relève
+plus de point bloquant. Ces preuves n'ajoutent ni recette S3 Scaleway réelle,
+ni déploiement, ni validation du lecteur Conversations.

@@ -275,6 +275,8 @@ Après autorisation, seul le `document_id` de cette source persistée résout `r
 | 404 `document_not_found` | Run/document absent, hors droits, source non finale, référence substituée ou support non consultable : réponse uniforme. |
 | 503 `service_unavailable` | Stockage/base indisponible, ouverture trop lente ou saturation ; aucun détail de stockage. |
 
+La fermeture du lecteur S3, y compris celle déclenchée automatiquement par HTTPX en fin de lecture ou par HTTPcore lors d'une lecture interrompue, est protégée contre l'annulation. Elle dispose d'un budget de nettoyage distinct de cinq secondes au plus après la deadline de transfert ; l'annulation est ensuite propagée, même si elle est répétée pendant ce nettoyage.
+
 Toutes les erreurs restent au format v1 et `Cache-Control: no-store`. Ne pas journaliser les assertions, signatures, secrets ni chemins de stockage ; les logs applicatifs conservent seulement corrélation et statut. Le transport documentaire évite notamment le log INFO des URL privées par `httpx.AsyncClient`. Les diagnostics DEBUG du signataire et du transport sont également filtrés dans le contexte de ce seul transfert, sans masquer les autres requêtes concurrentes.
 
 **Séparation historique B4** : les anciennes routes proposées `POST .../access-url` et `GET .../access/{capability}` ne sont pas implémentées et ne font plus partie du contrat cible. Aucune passerelle B4 vers un run individuel n'est ajoutée. `_PDF_Viewer` et ses lectures DB/S3 historiques restent des outils internes Streamlit ; ils ne consomment pas cette route et ne définissent pas le parcours public Conversations. Leur contrôle d'accès historique n'est pas une preuve de recette D2.

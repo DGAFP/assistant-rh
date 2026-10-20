@@ -816,7 +816,9 @@ All successful responses are `200 application/pdf`, inline `document.pdf`,
 are ignored with a full `200` and `Accept-Ranges: none`; no `206`/`416` support is
 claimed. Eight transfers per process, 120-second total deadline; S3 connect/pool/
 write timeout 5 seconds, idle read 15 seconds. Failures after headers abort the
-transfer. The reader closes on disconnect/cancellation. Signing/network diagnostics are filtered in the private transfer context, even
+transfer. The reader closes on disconnect/cancellation. Upstream cleanup, including
+interrupted reads and HTTPX's automatic EOF close, resists cancellation and has a separate five-second
+budget before cancellation propagates. Signing/network diagnostics are filtered in the private transfer context, even
 at DEBUG level, without changing global log levels. Do not add logs containing
 assertions, request headers or storage paths.
 
