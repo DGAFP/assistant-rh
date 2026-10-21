@@ -111,21 +111,31 @@ def final_sources(items: tuple[ContextItem, ...]) -> tuple[RunSource, ...]:
             document_id = str(UUID(raw_document_id))
         except ValueError:
             document_id = None
+        public_url = public_source_url(item.document_url or "")
+        hostname = urlsplit(public_url).hostname
+        publisher = item.publisher or ""
         title = item.document_title or str(metadata.get("full_title") or metadata.get("title") or item.heading or "Document")
+        if hostname in {"www.legifrance.gouv.fr", "legifrance.gouv.fr"}:
+            publisher = "Légifrance"
+            title = str(metadata.get("full_title") or metadata.get("title") or item.document_title or item.heading or "Document")
+            number = re.sub(r"^Article\b\s*", "", str(metadata.get("number") or "").strip(), flags=re.IGNORECASE).strip()
+            if number and not re.search(r"\bArticle\s+" + re.escape(number) + r"(?!\w)", title, re.IGNORECASE):
+                title = f"Article {number} — {title}"
+        elif hostname in {"www.service-public.fr", "www.service-public.gouv.fr"}:
+            publisher = "Service-Public"
         reference = str(document_id or metadata.get("doc_short_id") or raw_document_id or metadata.get("cid") or "")
         if not reference:
             reference = "source-" + sha256(f"{item.publisher}\n{item.section_id}\n{title}\n{item.document_url}".encode()).hexdigest()
         if reference in seen:
             continue
         seen.add(reference)
-        public_url = public_source_url(item.document_url or "")
         sources.append(
             RunSource(
                 doc_ref=reference,
                 title=redact_private_urls(title),
                 url=public_url,
                 document_id=document_id,
-                publisher=redact_private_urls(item.publisher or ""),
+                publisher=redact_private_urls(publisher),
                 access="public" if public_url else "authenticated",
             )
         )
