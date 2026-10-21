@@ -2072,3 +2072,34 @@ Les essais interrompus et les résultats négatifs sont conservés horsGit.
 
 [Preuve agrégée du run autorisé](evidence/sql_quality_attribution_live_20261021.json).
 Rapport détaillé et réponses/contextes dans l’archive locale privée attribution.
+
+
+## Run selector_staging_quality_load_20261021 — avant exécution
+
+Demande explicite : déployer le correctif de lecture JSON du sélecteur sur staging,
+refaire qualité et charge5/10 puis rechercher la limite jusqu’à50, sans changer
+le dimensionnement PostgreSQL. Branches dev/staging actualisées : les correctifs
+concurrents de noms de sources et de certificat sont conservés. Le prompt
+candidat rejeté dans l’analyse précédente n’est pas adopté.
+
+Référence qualité : nouveau passage HTTPS avant déploiement,20cas, cinqquestions
+fois quatreministères, puis même panel après sur le runtime réellement déployé.
+Critères factuels précédents conservés et réponses complètes archivées horsGit.
+Revue aveugle par paires ; une différence single-shot ne suffit pas à attribuer
+une régression, répétitions ciblées si nécessaire. Pas de score goldset100.
+
+Charge : échauffement1, deuxvagues chacune à5,10,20,30,40,50utilisateurs synthétiques
+authentifiés via Conversations HTTPS, nouvelleconversation et SSE réel. Succès :
+texte,finish,DONE,sans erreur ou échec parsing, réponse complète avant120s.
+Deuxvagues ne prouvent pas une charge continue. Stop de la montée si plus de10%
+d’échecs, redémarrage/indisponibilité des pods cibles, changement de révision
+ou configuration. P95 premiertexte supérieur à60s signalé comme dégradation.
+Après récupération vérifiée, répéter au plus unefois le palier dégradé sans
+augmenter la charge. Conserver tous les échecs et latences, ne pas retenter
+les appels individuels. Observer activité PostgreSQL, files/erreurs API et
+CPU/mémoire pods quand disponibles ; ne pas déduire CPU PostgreSQL de l’activité.
+
+Appels Albert et contextes autorisés par l’utilisateur dans ce fil. Aucun
+redimensionnement, modification partagée des prompts/rag_config/corpus ou
+déploiement de production. Comptes/sessions/conversations synthétiques nettoyés
+en fin de campagne. Plan et preuves privées : deliveries/selector-staging-2026-10-21.
