@@ -119,8 +119,11 @@ def final_sources(items: tuple[ContextItem, ...]) -> tuple[RunSource, ...]:
             publisher = "Légifrance"
             title = str(metadata.get("full_title") or metadata.get("title") or item.document_title or item.heading or "Document")
             number = re.sub(r"^Article\b\s*", "", str(metadata.get("number") or "").strip(), flags=re.IGNORECASE).strip()
-            if number and not re.search(r"\bArticle\s+" + re.escape(number) + r"(?!\w)", title, re.IGNORECASE):
-                title = f"Article {number} — {title}"
+            if number:
+                legal_title = re.sub(
+                    r"^(?:Article\s+)?" + re.escape(number) + r"(?!\w)(?:\s*[—–-]\s*|\s*$)", "", title.strip(), flags=re.IGNORECASE
+                ).strip()
+                title = f"{number} - {legal_title}" if legal_title else number
         elif hostname in {"www.service-public.fr", "www.service-public.gouv.fr"}:
             publisher = "Service-Public"
         reference = str(document_id or metadata.get("doc_short_id") or raw_document_id or metadata.get("cid") or "")
