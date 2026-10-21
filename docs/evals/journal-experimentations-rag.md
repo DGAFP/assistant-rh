@@ -1874,3 +1874,91 @@ les premiers échecs venaient de dépendances de test absentes et de l'archive
 privée non indiquée, corrigés dans l'environnement puis rejoués. La première
 version est verte en CI ; la version finale doit repasser les contrôles et la
 parité avant promotion. Revue indépendante sans blocage fonctionnel.
+
+
+## Préenregistrement `sql_quality_attribution_20261021`
+
+Suite à la comparaison live précédente (20 cas, réponses variables), isoler
+l'intervention SQL `54882aa` -> `9087227` avec la vraie composition API. Les
+40 traces historiques sont récupérées, mais leurs textes à 4096 caractères et
+listes à 40 éléments ne permettent pas de certifier l'égalité intégrale.
+
+Capture intégrale de 20 cas avec ancien pool/SearchStore, puis replay ancien et
+corrigé depuis la même bande HTTP d'inférence (classification, embeddings,
+rerank, sélection, génération SSE). SQL/contenus/configuration sont lus réellement
+sur staging, avec empreinte avant/après, même rôle/date/code hors intervention.
+Critère : capture = replay témoin = replay corrigé, sur chunks complets, sections,
+sélections, contextes, prompts et réponse. Refuser appels inconnus, sorties de
+bande non consommées et toute modification partagée. Aucun UPDATE rag_config,
+aucune modification d'image, schéma, prompt ou dimensionnement.
+
+Répéter deux fois les requêtes HTTP exactement enregistrées pour rerank,
+sélecteur et générateur sur les cas 4, 6, 10, 12, 15, 16 et 17. Mesurer les
+variations de scores/ordre, décisions après parsing et contenu de réponse ; ne
+pas compter les identifiants de réponse ou jetons d'usage comme variation de fond.
+Les erreurs/fallback/retry sont conservés ; une capture incomplète ou un statut
+HTTP non-2xx est exclu de la preuve de parité sémantique. Le transport observe
+les chunks au fil de leur consommation ; la complétion SSE exige le terminal
+validé par le vrai ChatGateway, sans assimiler EOF et succès ni drainer le flux.
+Ce protocole ne prouve pas une équivalence des délais ou des pannes.
+Les critères factuels du panel précédent
+restent figés. Les contrôles négatifs doivent détecter une bande modifiée ou un
+prompt différent. Ce test causal ciblé ne remplace pas le score qualité goldset ;
+il ne peut pas attribuer exhaustivement des sorties historiques tronquées ni
+exclure les interactions de timing fournisseur sous charge.
+
+Le premier lancement d'inférences a été refusé par l'approbation automatique
+avant exécution. Vérification en lecture seule : les 40 runs historiques ont
+utilisé Albert/openweight-large, rerank terminé sans repli. Le protocole est
+restreint par garde d'egress à `albert.api.etalab.gouv.fr`, la destination DINUM
+déjà configurée et utilisée par staging. Aucun appel Scaleway ni autre domaine
+n'est permis dans cette expérience ; une tentative échoue avant le réseau.
+Les clés HTTP ne sont jamais sérialisées.
+
+### Résultat partiel — analyse sans nouvelle inférence
+
+**60/60 comparaisons exactes du Retriever complet** : 20 requêtes historiques
+traitées × trois vecteurs figés issus du corpus, 129–150 chunks par comparaison.
+Textes, scores, métadonnées et ordre sont inclus. Les embeddings historiques
+des questions sont absents : ces sondes établissent une équivalence bornée,
+pas la restitution exhaustive des retrievers historiques.
+
+Sur les 40 traces, les 20 listes rerankées ont les mêmes identifiants et ordre ;
+six paires ne diffèrent que par les scores. Les prompts sélecteur reconstruits
+sont identiques dans 20/20 paires, contre 8/20 pour les requêtes générateur.
+Les choix de sections diffèrent dans 14/20 paires. Les 40 reconstitutions
+concordent avec les projections de contexte et préfixes générateur sauvegardés.
+Elles utilisent le corpus courant : un préfixe de 4 096 caractères ne certifie
+pas le suffixe historique, et une projection ne contient pas le texte complet.
+
+La reconstitution retrouve le prorata des congés (cas MASA 6) et le délai lié
+au passage en CDI (cas MI 15) dans les contextes après dont les réponses les
+omettent. Le cas MASA 10 généralise déjà avant le calendrier d'une population
+particulière, avec une même requête générateur reconstruite avant/après. Le cas
+MSO 16 transforme une règle de prise en compte d'interruptions en interdiction
+de renouvellement. Ces écarts suggèrent omissions/confusions de génération,
+sans régression SQL reproduite. Les effets de sélection, timing ou batching
+ne sont pas tous causalement isolés.
+
+Un candidat de consignes générales de périmètre et couverture est préparé dans
+l'archive privée ; il n'est ni appliqué ni validé. Il ne remplace aucune règle
+métier et ne peut récupérer une information éliminée par le sélecteur. Aucun
+prompt, rag_config, déploiement ou dimensionnement n'a été modifié.
+
+Deux lancements d'inférence ont été refusés avant exécution par l'approbation
+automatique, y compris avec Albert comme unique destination. Motif : consentement
+humain explicite requis pour la nouvelle transmission de contextes RH au
+fournisseur. La question est en attente ; aucun nouvel appel modèle exécuté.
+Le harnais exige un opt-in explicite et reste désactivé dans le manifeste.
+Le rejeu causal intégral, la répétition des modèles et la validation du candidat
+restent donc à faire ; aucun score qualité global n'est annoncé.
+
+Validation locale : 14 tests synthétiques hors réseau, dont requêtes modifiées,
+bande altérée/incomplète, multiplicité, destination interdite, absence de clé
+HTTP archivée, progressivité, erreur après premier token, abandon et [DONE]
+fractionné avec vrai ChatGateway sans EOF. La revue a fait corriger un buffering
+initial puis une mauvaise assimilation de la complétion SSE à l'EOF HTTP.
+
+[Preuve agrégée sans contextes RH](evidence/sql_quality_attribution_readonly_20261021.json).
+Les traces, contextes, réponses et le candidat de prompt restent hors Git dans
+l'archive locale `dat-sql-fix-2026-10-21/attribution`.
