@@ -43,6 +43,7 @@ class PackageTest(unittest.TestCase):
                 self.assertNotIn(RELEASE + "/templates/bundle-values.yaml", package.getnames())
             if RELEASE == "assistant-rh-api":
                 self.assertEqual(values["image"]["digest"], DIGEST)
+                self.assertEqual(values["streamWorkers"], 50)
             else:
                 self.assertEqual(values["image"]["tag"], "sha-" + SHA + "@" + DIGEST)
                 self.assertEqual(values["frontend"]["image"]["tag"], "sha-" + SHA + "@" + DIGEST)
@@ -59,6 +60,7 @@ class PackageTest(unittest.TestCase):
             rendered = subprocess.run(["helm", "template", RELEASE, str(archive), "-n", RELEASE], capture_output=True, text=True)
             self.assertEqual(rendered.returncode, 0, rendered.stderr)
             self.assertIn(DIGEST, rendered.stdout)
+            self.assertIn('name: API_STREAM_WORKERS, value: "50"', rendered.stdout)
             self.assertNotIn("kind: Ingress\n", rendered.stdout)
 
     def test_bad_identity_or_digest_cannot_produce_an_archive(self):
