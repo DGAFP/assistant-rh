@@ -30,6 +30,7 @@ spec:
           ports: [{name: http, containerPort: 8000}]
           env:
             - {name: APP_ENV, value: staging}
+            - {name: API_STREAM_WORKERS, value: {{ required "streamWorkers requis" .Values.streamWorkers | quote }}}
             - {name: PGSSLMODE, value: verify-ca}
             - {name: PGSSLROOTCERT, value: /etc/scaleway-ca/postgres.pem}
           envFrom:

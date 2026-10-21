@@ -1,4 +1,6 @@
 replicas: 2
+# Admission staging par processus ; la régulation SQL reste indépendante.
+streamWorkers: 50
 image:
   repository: rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api
   digest: ""
