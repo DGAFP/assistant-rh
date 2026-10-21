@@ -47,6 +47,8 @@ class DatabaseSettings:
     timeout_seconds: float = 2.0
     connect_timeout_seconds: int = 2
     statement_timeout_ms: int = 10_000
+    search_timeout_seconds: float = 10.0
+    search_max_waiting: int = 64
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "dsn", resolve_dsn(dsn=self.dsn))
@@ -57,5 +59,8 @@ class DatabaseSettings:
             or self.timeout_seconds <= 0
             or self.connect_timeout_seconds < 1
             or self.statement_timeout_ms < 1
+            or not isfinite(self.search_timeout_seconds)
+            or self.search_timeout_seconds <= 0
+            or self.search_max_waiting < 1
         ):
             raise DatabaseConfigurationError()
