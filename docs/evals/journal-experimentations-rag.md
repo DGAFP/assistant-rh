@@ -2155,3 +2155,76 @@ la montée quel que soit le taux global. Une répétition diagnostique nécessit
 tous les runs terminaux,10s de calme et aucune requête API longue/bloquée ;
 sinon pas de répétition après60s. Admission nominale100 avec2pods,150 pendant
 un surge : ce n’est pas un engagement de débit et le test n’excède pas50clients.
+
+
+## Run sql_search_capacity_20261021 — avant exécution
+
+Demande explicite : analyser et corriger les échecs SQL à 30, déployer le
+correctif staging puis refaire qualité et montée vers 50 sans redimensionner
+PostgreSQL. Référence live attendue : staging 3096e3d, admission 50 par processus,
+deux pods, pool 4 et recherche 3/file 64/attente 10 s. Les précédents résultats
+restent conservés : 40/40 à 20 ; deux essais 18/30 ; aucune mesure à 40/50.
+
+Diagnostic d'abord : plans SQL en lecture seule puis rejeu isolé des mêmes
+requêtes et embeddings capturés, sans nouvelle inférence. Mesurer attente
+d'admission, acquisition du pool et durée SQL ; comparer les résultats bruts
+et fusionnés, sans réduire sources, limites, probes ou critères de pertinence.
+Évaluer notamment la rafale de cinq lanes par question et un ordonnancement
+plus progressif. Le diagnostic SQL isolé n'est pas une qualification HTTPS.
+
+Après revue et tests : promotion par le circuit dev puis staging, vérification
+Flux et code chargé. Référence qualité : les 20 derniers cas staging3096e3d,
+dont 19 complets et une expiration génération, seulement si les entrées live
+correspondent. Pas de sélection d'une meilleure référence. Mêmes 20 cas après,
+revue factuelle aveugle et contrôle des réponses sous le plus haut palier tenté.
+Les différences single-shot ne prouvent pas une régression causale ; conserver
+les erreurs, fragments et divergences documentaires. Rejeu d'inférences figées
+pour isoler l'effet du SQL/ordonnancement, conformance M0b hors réseau si requise.
+
+Charge réelle HTTPS Conversations : échauffement 1, deux vagues à 5/10/20/30/40/50,
+barrière avant départ SSE, échéance 120 s, aucune relance individuelle. Succès :
+texte + finish + DONE, sans erreur ni étape/lanes manquantes. Arrêt de montée si
+plus de 10% d'échecs, erreur SQL/étape, timeout, télémétrie manquante ou instabilité.
+TTFT >60 s signalé sans masquer le succès sous 120 s. Après drainage terminal
+et 10 s sans requête longue/bloquée, une seule répétition diagnostique au même
+palier ; aucun palier supérieur après arrêt. Mémoire : trois observations
+distinctes >=85% de 1Gi ou une >=95%, métriques absentes/âgées de plus de 90 s
+ou surveillance arrêtée = arrêt. Premier contrôle obligatoire, watchdog 60 s.
+
+Aucun changement partagé de prompts/configuration/corpus, taille PostgreSQL,
+stockage, pool ou ressources pods sans justification du correctif. Pas de
+production ni Terraform apply. Comptes synthétiques nettoyés. Appels Albert et
+contextes RH déjà autorisés dans ce fil. Preuves privées hors Git :
+assistant-rh-infra/deliveries/sql-capacity-fix-2026-10-21.
+
+### Diagnostic et validation avant promotion
+
+Rejeu SQL isolé, deux pools identiques au runtime, requêtes et embeddings réels
+figés des 20 cas : référence séquentielle 20/20. Ancien fan-out à 30 questions :
+26/30, 16 lanes refusées à l'entrée d'une file déjà pleine, aucune erreur de
+checkout ou d'exécution SQL. Attente d'admission maximale des succès 8,157 s ;
+checkout maximal 75,54 ms, loin de la borne 2 s. Ce diagnostic équilibré et sans
+inférence ne reproduit pas exactement la distribution/temporisation HTTPS des
+deux précédents essais 18/30 ; il isole le mécanisme de débordement.
+
+Correctif : sémaphore local à chaque appel Retriever.retrieve, une seule lane
+SQL active/en attente par question ; questions toujours concurrentes, toutes
+les sources et lanes conservées. Aucun changement de requête SQL, classement,
+score, limite, probes, politique d'erreur, pool ou borne globale. Le code exact,
+chargé dans un processus de diagnostic isolé sans modifier les pods, termine
+30/30 puis 50/50 ; chaque résultat fusionné est strictement égal à la référence
+séquentielle correspondante. Les 50 terminent en 16,839 s dans ce diagnostic.
+Ce chiffre n'est pas une qualification de latence ou capacité HTTPS réelle.
+
+Revue indépendante sans bloquant. Tests ciblés retrieval : 46 passent, incluant
+2/30/50 questions concurrentes et cancellation avec lanes locales en attente.
+Suite API complète sur PostgreSQL synthétique local, avec archive privée M0b
+hors réseau : 1521 passent. Suite racine : 1679 passent, 46 skips. Ruff/format et
+quatre contrats d'import passent. Le premier sous-ensemble local avait échoué
+en préparation (archive non configurée et sockets sandbox interdits), puis la
+suite complète a été exécutée avec archive autorisée et sockets locaux permis.
+
+Preuves privées : benchmark-sequential.json, benchmark-baseline30.json,
+benchmark-real30.json et benchmark-real50.json. Les flags de pacing des deux
+derniers concernent seulement l'adaptateur de mesure (désactivé) ; le pacing est
+dans le code candidat, avec empreinte conservée dans candidate-code.json.

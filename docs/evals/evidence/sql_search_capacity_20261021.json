@@ -1,0 +1,71 @@
+{
+  "run_label": "sql_search_capacity_20261021",
+  "status": "preflight_passed_not_deployed",
+  "change": "One pending/active SQL lane per question; requests remain concurrent; search SQL, sources, scoring and pool settings unchanged",
+  "sql_only_scope": "Read-only staging DB,20 real captured embedding/query cases cycled across30/50 questions,2 runtime-sized pools; not the HTTPS load workload",
+  "baseline30": {
+    "label": "baseline30",
+    "questions": 30,
+    "paced_one_lane_per_question": false,
+    "successes": 26,
+    "exact_successes": 26,
+    "elapsed_seconds": 8.63,
+    "lane_errors": 16,
+    "queue_overflow_entries": 16,
+    "queue_cancelled": 0,
+    "checkout_errors": 0,
+    "sql_errors": 0
+  },
+  "candidate30": {
+    "label": "real30",
+    "questions": 30,
+    "paced_one_lane_per_question": false,
+    "successes": 30,
+    "exact_successes": 30,
+    "elapsed_seconds": 10.738,
+    "lane_errors": 0,
+    "queue_overflow_entries": 0,
+    "queue_cancelled": 0,
+    "checkout_errors": 0,
+    "sql_errors": 0
+  },
+  "candidate50": {
+    "label": "real50",
+    "questions": 50,
+    "paced_one_lane_per_question": false,
+    "successes": 50,
+    "exact_successes": 50,
+    "elapsed_seconds": 16.839,
+    "lane_errors": 0,
+    "queue_overflow_entries": 0,
+    "queue_cancelled": 0,
+    "checkout_errors": 0,
+    "sql_errors": 0
+  },
+  "candidate_core_pacing": true,
+  "candidate_benchmark_adapter_pacing": false,
+  "validation": {
+    "retrieval_targeted_passed": 46,
+    "api_full_synthetic_and_private_m0b_passed": 1521,
+    "root_passed": 1679,
+    "root_skipped": 46,
+    "import_contracts_kept": 4,
+    "ruff": "passed",
+    "independent_review": "no blockers"
+  },
+  "postgresql_resized": false,
+  "shared_rag_config_prompts_corpus_changed": false,
+  "private_evidence_sha256": {
+    "frozen-sql-inputs.json": "10c0cc6f7b0ee451bb3e5acfc07165dfbc326ea47f06de33b062bef38d983046",
+    "profile-baseline.json": "7e802db60164dde14cc7e1c5d0e05914e09afe12c2b6c3da2441b28c62a81522",
+    "benchmark-sequential.json": "657d4284fbdd1b93bc3ac1020d3853905171ea33fd6f6b112ec47d9a3085f547",
+    "benchmark-baseline30.json": "ed28a98be83d20a0d8ac7b005259ca5dfea57d64f0bf0e441b79d04e8e7647e4",
+    "benchmark-paced30.json": "b5da1c293055cca4e98126a0fabce6ed8b8dcc4b372b27622d517fe69b9414d1",
+    "benchmark-paced50.json": "9685914a9b021b432beb9ad50cd044b30ce0d32d0c00087c42a3cfd67ad7f908",
+    "benchmark-real30.json": "37b25c483b5c59a39a145642a64be9e5257e1a2087326fe1df45645c8f8cd220",
+    "benchmark-real50.json": "433264fc1f6e5d208a329da46dc6e22f182b4c94a8c2e8becbc9b8164615b4f0",
+    "candidate-code.json": "a34054233412fb469fd0c3ca0fd7a9fe8c6e3af0ce24c1ea641fd62c0589948d",
+    "deployment-before.json": "6dabf001464c5c4279da7725ebe76f83134d298002985d22afa2bc6e6dc5168c",
+    "postgres-before.json": "5047a3e1e52d4b3747f7cb17ec71ee603086cd82ca07636720488ce54216e5ca"
+  }
+}
