@@ -1223,3 +1223,48 @@ Ruff sur le périmètre CI, format des fichiers Python modifiés, quatre contrat
 d'import et `git diff --check` passent. Une seconde revue indépendante ne relève
 plus de point bloquant. Ces preuves n'ajoutent ni recette S3 Scaleway réelle,
 ni déploiement, ni validation du lecteur Conversations.
+
+
+### C5 — candidat de normalisation Markdown, analyse qualité du 21 octobre 2026
+
+La campagne causale SQL réalise 20 captures complètes puis deux rejeux avec
+les mêmes inférences : ancien et nouveau pool/SearchStore donnent exactement
+les mêmes six étapes, contextes, prompts et réponses. Les empreintes du corpus,
+des prompts, de la configuration et du rôle restent identiques, y compris à la
+reprise après un incident DNS. Cette preuve porte sur un panel séquentiel,
+pas sur les pannes ou la qualité en concurrence.
+
+Les répétitions et les traces historiques révèlent cinq réponses sélecteur complètes sous
+balise Markdown ouverte sans clôture. Le candidat local accepte leur objet JSON
+strict plutôt que de déclencher le repli sur les cinq premiers candidats.
+Aucun classement, minimum de sections ou comportement de rejet explicite n’est
+modifié. Les objets tronqués, la prose finale et les objets multiples restent
+refusés. Un contre-témoin vérifie l’ancien repli du runtime retenu.
+
+L’archive C5 publiée et ses checksums restent intacts. Le contrat
+`selector-markdown-wrapper-20261021/transition.json` est passé explicitement au
+rejeu : seule la sélection `rag-acronym-contract` change (index0, raison et
+décisions complètes), les trois autres sélections restent exactes. Le manifeste
+et le fichier historiques sont fixés par empreinte. Le rejeu sans transition
+continue de signaler la dérive intentionnelle. Les tests négatifs contrôlent
+empreintes, attentes non consommées et comparaisons sémantiques de prompt et
+réponse, même avec des références temporaires volontairement re-hashées.
+Ce companion C5 rejoue les étapes sur leurs entrées historiques indépendantes ;
+il ne réutilise pas une réponse générateur pour un nouveau contexte.
+
+L’effet sur les contextes et la qualité est évalué séparément sur les cinq
+sorties concernées : 15paires / 30générations Albert, même système et paramètres,
+ancien/nouveau contexte seulement. La présence d’un article ou délai est
+vérifiée dans le contexte final ; une section non choisie peut être réintroduite
+par l’inclusion d’un document entier. Un signal du cas MSO tempspartiel fait
+l’objet de répétitions exploratoires supplémentaires, variantes inchangées.
+Le candidat de consignes générales est écarté après 34paires / 68générations,
+faute de résolution fiable des erreurs de champ d’application.
+
+Validation locale : 1475tests API synthétiques passent ; deux témoins sémantiques
+C5 supplémentaires passent ensuite (15tests C5 au total), 165tests ciblés, les
+quatre contrats d’import et Ruff sont verts. Le rejeu privé M0b, téléchargé avec
+accord explicite puis vérifié par checksum, passe ses18tests hors réseau sans
+changer la référence. Aucun prompt/configuration partagée, déploiement ou taille
+PostgreSQL n’est modifié par cette analyse. Le candidat de parseur demeure une
+correction locale non promue ; cette analyse ne valide pas la qualité globale.

@@ -192,6 +192,42 @@ async def test_selector_matches_retained_runtime(monkeypatch, floor, raw):
     assert llm.calls[0].temperature == 0
 
 
+@pytest.mark.parametrize("opening", ["```json\n", "```\n", "```json\r\n"])
+async def test_selector_accepts_complete_json_with_unclosed_markdown_wrapper(opening, monkeypatch):
+    raw = opening + '{"selected_ids": [6, 2, 7], "reason": "three complementary sections"}'
+    fake_legacy = Mock()
+    fake_legacy.chat.return_value = raw
+    monkeypatch.setattr(legacy_selector, "LLMClient", lambda **kwargs: fake_legacy)
+    monkeypatch.setattr(legacy_selector, "load_prompt", lambda *args, **kwargs: TEMPLATE)
+    old = legacy_selector.ContextSelector(legacy_config.SelectorConfig(enabled=True))
+    retained = old.select("q", old_sections(sections()), ministry=resolve_ministry("mso"))
+    assert [s.section_id for s in retained] == ["s0", "s1", "s2", "s3", "s4"]
+    llm = LLM(raw)
+    result = await ContextSelector(SelectorConfig(enabled=True), Prompts(), Prompts(), llm).select("q", sections(), today="2026-10-21")
+    assert [s.section_id for s in result.sections] == ["s6", "s2", "s7"]
+    assert result.diagnostics.status == "selected"
+    assert result.diagnostics.reason == "three complementary sections"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '```json\n{"selected_ids": [6, 2',
+        '```json\n{"selected_ids": [6, 2]} trailing prose',
+        '```json\n{"selected_ids": [6, 2]} {"selected_ids": [7]}',
+        "```json\n[]",
+        "```json\nnull",
+        "```json\n3",
+        "```json\ntrue",
+        '```json\n"not a selection object"',
+    ],
+)
+async def test_selector_unclosed_wrapper_does_not_accept_incomplete_or_ambiguous_json(raw):
+    result = await ContextSelector(SelectorConfig(enabled=True), Prompts(), Prompts(), LLM(raw)).select("q", sections(), today="2026-10-21")
+    assert result.sections == sections()[:5]
+    assert result.diagnostics.status == "parse_failure"
+
+
 @pytest.mark.parametrize("enabled,count", [(False, 8), (False, 0), (True, 0)])
 async def test_selector_bypasses_do_no_io(enabled, count):
     prompts, llm = Prompts(error=AssertionError()), LLM(error=AssertionError())

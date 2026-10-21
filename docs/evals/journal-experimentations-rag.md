@@ -1874,3 +1874,232 @@ les premiers échecs venaient de dépendances de test absentes et de l'archive
 privée non indiquée, corrigés dans l'environnement puis rejoués. La première
 version est verte en CI ; la version finale doit repasser les contrôles et la
 parité avant promotion. Revue indépendante sans blocage fonctionnel.
+
+
+## Préenregistrement `sql_quality_attribution_20261021`
+
+Suite à la comparaison live précédente (20 cas, réponses variables), isoler
+l'intervention SQL `54882aa` -> `9087227` avec la vraie composition API. Les
+40 traces historiques sont récupérées, mais leurs textes à 4096 caractères et
+listes à 40 éléments ne permettent pas de certifier l'égalité intégrale.
+
+Capture intégrale de 20 cas avec ancien pool/SearchStore, puis replay ancien et
+corrigé depuis la même bande HTTP d'inférence (classification, embeddings,
+rerank, sélection, génération SSE). SQL/contenus/configuration sont lus réellement
+sur staging, avec empreinte avant/après, même rôle/date/code hors intervention.
+Critère : capture = replay témoin = replay corrigé, sur chunks complets, sections,
+sélections, contextes, prompts et réponse. Refuser appels inconnus, sorties de
+bande non consommées et toute modification partagée. Aucun UPDATE rag_config,
+aucune modification d'image, schéma, prompt ou dimensionnement.
+
+Répéter deux fois les requêtes HTTP exactement enregistrées pour rerank,
+sélecteur et générateur sur les cas 4, 6, 10, 12, 15, 16 et 17. Mesurer les
+variations de scores/ordre, décisions après parsing et contenu de réponse ; ne
+pas compter les identifiants de réponse ou jetons d'usage comme variation de fond.
+Les erreurs/fallback/retry sont conservés ; une capture incomplète ou un statut
+HTTP non-2xx est exclu de la preuve de parité sémantique. Le transport observe
+les chunks au fil de leur consommation ; la complétion SSE exige le terminal
+validé par le vrai ChatGateway, sans assimiler EOF et succès ni drainer le flux.
+Ce protocole ne prouve pas une équivalence des délais ou des pannes.
+Les critères factuels du panel précédent
+restent figés. Les contrôles négatifs doivent détecter une bande modifiée ou un
+prompt différent. Ce test causal ciblé ne remplace pas le score qualité goldset ;
+il ne peut pas attribuer exhaustivement des sorties historiques tronquées ni
+exclure les interactions de timing fournisseur sous charge.
+
+Le premier lancement d'inférences a été refusé par l'approbation automatique
+avant exécution. Vérification en lecture seule : les 40 runs historiques ont
+utilisé Albert/openweight-large, rerank terminé sans repli. Le protocole est
+restreint par garde d'egress à `albert.api.etalab.gouv.fr`, la destination DINUM
+déjà configurée et utilisée par staging. Aucun appel Scaleway ni autre domaine
+n'est permis dans cette expérience ; une tentative échoue avant le réseau.
+Les clés HTTP ne sont jamais sérialisées.
+
+### Résultat partiel — analyse sans nouvelle inférence
+
+**60/60 comparaisons exactes du Retriever complet** : 20 requêtes historiques
+traitées × trois vecteurs figés issus du corpus, 129–150 chunks par comparaison.
+Textes, scores, métadonnées et ordre sont inclus. Les embeddings historiques
+des questions sont absents : ces sondes établissent une équivalence bornée,
+pas la restitution exhaustive des retrievers historiques.
+
+Sur les 40 traces, les 20 listes rerankées ont les mêmes identifiants et ordre ;
+six paires ne diffèrent que par les scores. Les prompts sélecteur reconstruits
+sont identiques dans 20/20 paires, contre 8/20 pour les requêtes générateur.
+Les choix de sections diffèrent dans 14/20 paires. Les 40 reconstitutions
+concordent avec les projections de contexte et préfixes générateur sauvegardés.
+Elles utilisent le corpus courant : un préfixe de 4 096 caractères ne certifie
+pas le suffixe historique, et une projection ne contient pas le texte complet.
+
+La reconstitution retrouve le prorata des congés (cas MASA 6) et le délai lié
+au passage en CDI (cas MI 15) dans les contextes après dont les réponses les
+omettent. Le cas MASA 10 généralise déjà avant le calendrier d'une population
+particulière, avec une même requête générateur reconstruite avant/après. Le cas
+MSO 16 transforme une règle de prise en compte d'interruptions en interdiction
+de renouvellement. Ces écarts suggèrent omissions/confusions de génération,
+sans régression SQL reproduite. Les effets de sélection, timing ou batching
+ne sont pas tous causalement isolés.
+
+Un candidat de consignes générales de périmètre et couverture est préparé dans
+l'archive privée ; il n'est ni appliqué ni validé. Il ne remplace aucune règle
+métier et ne peut récupérer une information éliminée par le sélecteur. Aucun
+prompt, rag_config, déploiement ou dimensionnement n'a été modifié.
+
+Deux lancements d'inférence ont été refusés avant exécution par l'approbation
+automatique, y compris avec Albert comme unique destination. Motif : consentement
+humain explicite requis pour la nouvelle transmission de contextes RH au
+fournisseur. La question est en attente ; aucun nouvel appel modèle exécuté.
+Le harnais exige un opt-in explicite et reste désactivé dans le manifeste.
+Le rejeu causal intégral, la répétition des modèles et la validation du candidat
+restent donc à faire ; aucun score qualité global n'est annoncé.
+
+Validation locale : 14 tests synthétiques hors réseau, dont requêtes modifiées,
+bande altérée/incomplète, multiplicité, destination interdite, absence de clé
+HTTP archivée, progressivité, erreur après premier token, abandon et [DONE]
+fractionné avec vrai ChatGateway sans EOF. La revue a fait corriger un buffering
+initial puis une mauvaise assimilation de la complétion SSE à l'EOF HTTP.
+
+[Preuve agrégée sans contextes RH](evidence/sql_quality_attribution_readonly_20261021.json).
+Les traces, contextes, réponses et le candidat de prompt restent hors Git dans
+l'archive locale `dat-sql-fix-2026-10-21/attribution`.
+
+### Reprise explicitement autorisée
+
+Le 21 octobre, l’utilisateur autorise explicitement les appels Albert DINUM et
+les contextes RH pour la campagne des 20 cas et les répétitions ciblées. Le
+protocole reste borné à cette destination ; configuration partagée et PostgreSQL
+restent inchangés. La comparaison du candidat emploiera les mêmes contextes,
+sans publication du prompt avant validation.
+
+### Préenregistrement du candidat de prompt — contexte figé
+
+Après la capture causale, comparer les prompts courant et candidat sur les
+20 contextes complets capturés. Une génération par bras et par cas ; trois
+par bras pour les cas 4, 6, 10, 12, 15, 16, 17, soit 34 paires / 68 appels.
+Alterner le premier bras selon le cas et la répétition. Seul le message système
+rendu change ; modèle, température, date, historique et contexte documentaire
+restent identiques et leurs empreintes sont vérifiées avant émission.
+
+Réutiliser les critères factuels figés du panel précédent. Distinguer omission
+utile, affirmation non étayée/champ incorrect et simple variation rédactionnelle.
+Une consigne n'est retenue que si son effet favorable se reproduit sans créer
+de défaut nouveau dans le panel ; ce panel limité n'établit pas un score global.
+Aucun juge externe, mutation de prompt partagé ou nouvelle optimisation des
+consignes après lecture des réponses. Tous les essais, erreurs et résultats
+négatifs sont conservés. Une seule tentative HTTP par essai, même validation SSE
+que la vraie API et borne 120/240 secondes ; pas de repli fournisseur.
+
+Le premier essai de capture réel a échoué sur le décodage raw gzip du harnais,
+avant toute comparaison SQL. L'essai est archivé, la prise en charge Content-Encoding
+corrigée et testée sur JSON/SSE ; la reprise conserve la même intervention SQL.
+
+### Préenregistrement `selector_json_wrapper_quality_20261021`
+
+Défaut concret indépendant du SQL : cinq sorties sélecteur sur 81 examinées
+contiennent un JSON complet sous balise Markdown ouverte sans clôture. Le parseur
+les rejette et utilise les cinq premiers candidats. Les 76 autres sorties ne
+changent pas avec la correction locale, qui retire uniquement cette ouverture
+en tête et conserve le décodage JSON strict. Les entrées incomplètes, la prose
+finale et les objets multiples restent refusés.
+
+Rejeu en lecture seule des cinq cas touchés : deux variantes du cas MSO16,
+historique avant MSO12, historiques après MSO4 et MASA6. Même réponse sélecteur,
+mêmes agrégats et configuration ; ancien/nouveau parseur puis vrai ContextBuilder.
+Les contextes historiques témoin correspondent aux reconstructions précédentes.
+Aucune inférence à cette étape. Le contexte final peut changer, donc une sortie
+générateur figée ne permettrait pas de juger la qualité.
+
+Comparer séparément les générations sur ces deux contextes, avec le prompt
+système courant constant : trois répétitions par bras et par cas, soit 15paires /
+30appels Albert. Alterner premier bras. Seul le dernier message utilisateur
+contenant le contexte change ; modèle, température, date et système identiques.
+Conserver tous les échecs. Réutiliser les critères factuels figés associés aux
+questions originelles, distinguer perte de couverture et simple variation.
+N'appliquer aucune modification partagée avant revue des résultats. Cette
+correction ne rend pas les choix du modèle ni ses réponses déterministes.
+
+### Extension exploratoire du cas103, sans modification des variantes
+
+La revue aveugle initiale du test parseur observe zéro généralisation nette du
+calendrier scolaire dans les trois témoins contre deux dans les trois contextes
+corrigés. Les règles centrales sont pourtant présentes dans les deux contextes ;
+seul un article thérapeutique périphérique est retiré. Ajouter sept générations
+par bras de ce même cas, pour dix par contexte au total. Aucun changement de
+prompt, contexte, modèle, température ou critère après lecture. Cette extension
+est choisie après observation : conserver et présenter séparément les trois
+premiers et les sept suivants, sans test statistique confirmatoire ni nouvelle
+optimisation sur ce panel. Le correctif reste non déployé pendant cette analyse.
+
+### Résultat final de l’attribution et des candidats
+
+20/20 captures = replays ancien/corrigé exactement sur les six étapes, contextes,
+prompts et réponses ; mêmes empreintes corpus/prompts/config/role avant/après et
+entre reprises. L’ancien/nouveau SQL utilise cette fois les vrais embeddings
+capturés, pas seulement les trois sondes de corpus. Aucune régression SQL directe
+reproduite sur le panel séquentiel.
+
+Les sept triplets d’inférence montrent scores rerank variables6/7 sans changement
+d’ordre, choix sélecteur variables4/7, textes générateur variables7/7. Le prorata
+MASA figure dans deux réponses sur trois d’une même requête générateur, absent
+dans la troisième : omission variable malgré contexte identique.
+
+Le candidat de consignes est écarté : 68/68 générations terminées, mais le
+calendrier scolaire MASA est généralisé3/3 dans chaque bras, et des erreurs de
+conditions persistent. Revue aveugle indépendante des42réponses ciblées ; aucun
+score global ni amélioration uniforme revendiqués. Aucun prompt partagé changé.
+
+Le candidat parseur est implémenté et testé localement. Les cinq replays de
+contexte et30/30générations ne montrent pas de perte centrale sur les critères,
+mais les réponses restent imparfaites. Le préavisCDI est dans les deux contextes
+MSO renouvellement et leurs12réponses. Le signal initial MSO tempspartiel0/3 vs2/3
+est suivi de3/7 vs1/7 dans l’extension exploratoire, soit3/10 dans chaque groupe.
+Catégories ambiguë/omise distinctes ; extension post-observation, sans conclusion
+statistique confirmatoire. Le parseur restaure la sélection, sans établir une
+fiabilité factuelle globale. Aucune promotion/déploiement réalisé.
+
+Validation :1475tests API synthétiques et1676tests racine passent (45skips),
+165tests ciblés finaux, Ruff/format/4contrats d’import verts. Archive privéeM0b
+lue avec accord explicite, checksum vérifié :18tests horsréseau passent, sans
+changer la référence. Une transition C5 publique explicite autorise uniquement
+le changement de sélection du cas rag-acronym-contract, archive intacte ; les
+contre-tests sémantiques atteignent le prompt et la réponse au-delà des pins.
+La normalisation n’accepte que des objetsJSON complets sous l’ouverture,
+préservant le vieuxfallback sur[]/null/nombres/booléens/chaînes enveloppés.
+
+Staging conserve l’imageSQL a7f43c02 et2pods prêts. Ni PostgreSQL, ni configuration
+partagée, ni corpus modifiés. Aucun nouveau test de charge5/10 dans cette analyse.
+Les essais interrompus et les résultats négatifs sont conservés horsGit.
+
+[Preuve agrégée du run autorisé](evidence/sql_quality_attribution_live_20261021.json).
+Rapport détaillé et réponses/contextes dans l’archive locale privée attribution.
+
+
+## Run selector_staging_quality_load_20261021 — avant exécution
+
+Demande explicite : déployer le correctif de lecture JSON du sélecteur sur staging,
+refaire qualité et charge5/10 puis rechercher la limite jusqu’à50, sans changer
+le dimensionnement PostgreSQL. Branches dev/staging actualisées : les correctifs
+concurrents de noms de sources et de certificat sont conservés. Le prompt
+candidat rejeté dans l’analyse précédente n’est pas adopté.
+
+Référence qualité : nouveau passage HTTPS avant déploiement,20cas, cinqquestions
+fois quatreministères, puis même panel après sur le runtime réellement déployé.
+Critères factuels précédents conservés et réponses complètes archivées horsGit.
+Revue aveugle par paires ; une différence single-shot ne suffit pas à attribuer
+une régression, répétitions ciblées si nécessaire. Pas de score goldset100.
+
+Charge : échauffement1, deuxvagues chacune à5,10,20,30,40,50utilisateurs synthétiques
+authentifiés via Conversations HTTPS, nouvelleconversation et SSE réel. Succès :
+texte,finish,DONE,sans erreur ou échec parsing, réponse complète avant120s.
+Deuxvagues ne prouvent pas une charge continue. Stop de la montée si plus de10%
+d’échecs, redémarrage/indisponibilité des pods cibles, changement de révision
+ou configuration. P95 premiertexte supérieur à60s signalé comme dégradation.
+Après récupération vérifiée, répéter au plus unefois le palier dégradé sans
+augmenter la charge. Conserver tous les échecs et latences, ne pas retenter
+les appels individuels. Observer activité PostgreSQL, files/erreurs API et
+CPU/mémoire pods quand disponibles ; ne pas déduire CPU PostgreSQL de l’activité.
+
+Appels Albert et contextes autorisés par l’utilisateur dans ce fil. Aucun
+redimensionnement, modification partagée des prompts/rag_config/corpus ou
+déploiement de production. Comptes/sessions/conversations synthétiques nettoyés
+en fin de campagne. Plan et preuves privées : deliveries/selector-staging-2026-10-21.
