@@ -1,0 +1,235 @@
+{
+  "label": "selector-markdown-wrapper-20261021",
+  "historical_manifest_sha256": "b28134de781ccdf3b90496d259c655d6a6e7244e15770e3458f5e2f9b2bf0c0a",
+  "scope": "Explicit selector-only contract transition: complete JSON under an unclosed Markdown opening now serves selected index0 rather than fallback indices0..4. Original archive and frozen generator inputs/outputs remain unchanged. No end-to-end quality claim.",
+  "cases": {
+    "rag-acronym-contract": {
+      "fixture_sha256": "a6b3628a537ac10cde554a7b0a43b14946389f91d6a04ec87ce91c38ffa48aae",
+      "expected": {
+        "sections": [
+          {
+            "section_id": "98774ee4-d5e0-5a8a-aca2-369f1b83cb60",
+            "heading": "Renouvellement du CDD par avenant et respect des délais de prévenance",
+            "markdown": "## Renouvellement du CDD par avenant et respect des délais de prévenance\n\nLorsque les contrats sont conclus pour une durée déterminée, cette durée est au maximum de trois ans. Ces contrats sont renouvelables par reconduction expresse.\n\nLe renouvellement peut être effectué à durée déterminée dans la limite d'une durée globale maximale de six ans¹ ou à durée indéterminée.\n\nPour fidéliser les agents contractuels, il est demandé aux BRH de signaler aux N+1 qu'il est possible de CDIser les agents contractuels dès le 1ᵉʳ renouvellement (à 3 ans).\n\nLe renouvellement du CDD s'effectue par avenant au contrat initial.\n\nLes avenants aux contrats non déconcentrés² sont rédigés par le bureau des personnels contractuels et des ouvriers d'Etat (ESP4) et signés par le DRH. Les autres avenants sont rédigés par le BRH ou le SGCD et signés par l'autorité compétente (modèle joint en ANNEXE 4) avant d'être transmis au Centre régional de gestion des personnels (CRGP) compétent.\n\nSi le renouvellement s'accompagne d'une évolution de la rémunération, celle-ci est calculée conformément au 1-2.1 de la FICHE 3.\n\nLes BRH ou SGCD doivent veiller à respecter les deux formalités ci-après.³",
+            "chunks": [
+              {
+                "chunk_id": "83a532dbd675b4db09ade226e8e2ce9f7ebc9404",
+                "text": "Q: Renouvellement du CDD par avenant et respect des délais de prévenance\n\nR: Lorsque les contrats sont conclus pour une durée déterminée, cette durée est au maximum de trois ans. Ces contrats sont renouvelables par reconduction expresse.\n\nLe renouvellement peut être effectué à durée déterminée dans la limite d'une durée globale maximale de six ans¹ ou à durée indéterminée.\n\nPour fidéliser les agents contractuels, il est demandé aux BRH de signaler aux N+1 qu'il est possible de CDIser les agents contractuels dès le 1ᵉʳ renouvellement (à 3 ans).\n\nLe renouvellement du CDD s'effectue par avenant au contrat initial.\n\nLes avenants aux contrats non déconcentrés² sont rédigés par le bureau des personnels contractuels et des ouvriers d'Etat (ESP4) et signés par le DRH. Les autres avenants sont rédigés par le BRH ou le SGCD et signés par l'autorité compétente (modèle joint en ANNEXE 4) avant d'être transmis au Centre régional de gestion des personnels (CRGP) compétent.\n\nSi le renouvellement s'accompagne d'une évolution de la rémunération, celle-ci est calculée conformément au 1-2.1 de la FICHE 3.\n\nLes BRH ou SGCD doivent veiller à respecter les deux formalités ci-après.³",
+                "score": 0.19677419354838707,
+                "table_source": "MATTE",
+                "metadata": {
+                  "source_name": "a891f4d326_1---Fiche-5-Renouvellement-et-Delais-de-prevenance---Juillet-2024.pdf",
+                  "section_path": "FICHE 5 > Renouvellement du CDD par avenant et respect des délais de prévenance",
+                  "role": "QA_COMPOSITE",
+                  "thematique": "",
+                  "references_juridiques": [],
+                  "source_document_id": "25826b29-ee7d-568b-9b20-742e84868464",
+                  "doc_short_id": "A891F4D326",
+                  "doc_title": "Fiche MATTE n° 5 - Renouvellement et délais de prévenance - Juillet 2024",
+                  "source_score_mode": "semantic",
+                  "source_score": 0.7101491689682057,
+                  "score_source": "rag_chunks_matte",
+                  "fused_rrf_score": 0.016129032258064516,
+                  "merged_score_mode": "rrf_source_ceiling"
+                },
+                "section_id": "98774ee4-d5e0-5a8a-aca2-369f1b83cb60",
+                "embedding_model_used": "albert"
+              },
+              {
+                "chunk_id": "d93dc721d40de82897ce1512df9aa6a1c01fa3b6",
+                "text": "Q: Renouvellement du CDD par avenant et respect des délais de prévenance\nR: Lorsque les contrats sont conclus pour une durée déterminée, cette durée est au maximum de trois ans. Ces contrats sont renouvelables par reconduction expresse.\n\nLe renouvellement peut être effectué à durée déterminée dans la limite d'une durée globale maximale de six ans¹ ou à durée indéterminée.\n\nPour fidéliser les agents contractuels, il est demandé aux BRH de signaler aux N+1 qu'il est possible de CDIser les agents contractuels dès le 1ᵉʳ renouvellement (à 3 ans).\n\nLe renouvellement du CDD s'effectue par avenant au contrat initial.\n\nLes avenants aux contrats non déconcentrés² sont rédigés par le bureau des personnels contractuels et des ouvriers d'Etat (ESP4) et signés par le DRH. Les autres avenants sont rédigés par le BRH ou le SGCD et signés par l'autorité compétente (modèle joint en ANNEXE 4) avant d'être transmis au Centre régional de gestion des personnels (CRGP) compétent.\n\nSi le renouvellement s'accompagne d'une évolution de la rémunération, celle-ci est calculée conformément au 1-2.1 de la FICHE 3.\n\nLes BRH ou SGCD doivent veiller à respecter les deux formalités ci-après.³",
+                "score": 0.19365079365079363,
+                "table_source": "MATTE",
+                "metadata": {
+                  "source_name": "a891f4d326_1---Fiche-5-Renouvellement-et-Delais-de-prevenance---Juillet-2024.pdf",
+                  "section_path": "FICHE 5 > Renouvellement du CDD par avenant et respect des délais de prévenance",
+                  "role": "A_ATOMIC",
+                  "thematique": "",
+                  "references_juridiques": [],
+                  "source_document_id": "25826b29-ee7d-568b-9b20-742e84868464",
+                  "doc_short_id": "A891F4D326",
+                  "doc_title": "Fiche MATTE n° 5 - Renouvellement et délais de prévenance - Juillet 2024",
+                  "source_score_mode": "semantic",
+                  "source_score": 0.7101491689682057,
+                  "score_source": "rag_chunks_matte",
+                  "fused_rrf_score": 0.015873015873015872,
+                  "merged_score_mode": "rrf_source_ceiling"
+                },
+                "section_id": "98774ee4-d5e0-5a8a-aca2-369f1b83cb60",
+                "embedding_model_used": "albert"
+              }
+            ],
+            "score": 0.99664956,
+            "document_id": "25826b29-ee7d-568b-9b20-742e84868464",
+            "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+            "references_juridiques": [],
+            "heading_path": "FICHE 5 > Renouvellement du CDD par avenant et respect des délais de prévenance",
+            "metadata": {
+              "doc_id": "25826b29-ee7d-568b-9b20-742e84868464",
+              "doc_short_id": "A891F4D326",
+              "doc_title": "Fiche MATTE n° 5 - Renouvellement et délais de prévenance - Juillet 2024",
+              "doc_url": null,
+              "doc_publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+              "doc_date": "",
+              "doc_token_count": 794,
+              "chunk_count": 2,
+              "max_chunk_score": 0.19677419354838707,
+              "mean_chunk_score": 0.19521249359959036
+            }
+          }
+        ],
+        "decisions": {
+          "kept": [
+            {
+              "idx": 0,
+              "heading": "Renouvellement du CDD par avenant et respect des délais de prévenance",
+              "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+              "section_id": "98774ee4-d5e0-5a8a-aca2-369f1b83cb60",
+              "document_id": "25826b29-ee7d-568b-9b20-742e84868464"
+            }
+          ],
+          "removed": [
+            {
+              "idx": 1,
+              "heading": "I-3. La reconduction expresse du CDD en CDI au terme des 6 ans",
+              "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+              "section_id": "bd02202e-edd9-57e0-b994-1a6ff5f212c9",
+              "document_id": "5fd1eda2-b78d-57d9-a81b-a6c255f43229"
+            },
+            {
+              "idx": 2,
+              "heading": "",
+              "publisher": "DGAFP",
+              "section_id": "",
+              "document_id": "LEGIARTI000044421884"
+            },
+            {
+              "idx": 3,
+              "heading": "Durée du contrat",
+              "publisher": "Service-Public",
+              "section_id": "7315c2d1-2350-4a60-b9b6-f6ad0940e2d1",
+              "document_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f"
+            },
+            {
+              "idx": 4,
+              "heading": "Durée du contrat",
+              "publisher": "Service-Public",
+              "section_id": "5740d525-7844-4524-97a3-6cbaf40b1c69",
+              "document_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f"
+            },
+            {
+              "idx": 5,
+              "heading": "Durée du contrat",
+              "publisher": "Service-Public",
+              "section_id": "a31a2c35-a812-4d99-910e-d3644116b98d",
+              "document_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f"
+            },
+            {
+              "idx": 6,
+              "heading": "",
+              "publisher": "DGAFP",
+              "section_id": "",
+              "document_id": "LEGIARTI000044421976"
+            },
+            {
+              "idx": 7,
+              "heading": "",
+              "publisher": "DGAFP",
+              "section_id": "",
+              "document_id": "LEGIARTI000044421868"
+            },
+            {
+              "idx": 8,
+              "heading": "",
+              "publisher": "DGAFP",
+              "section_id": "",
+              "document_id": "LEGIARTI000044421906"
+            },
+            {
+              "idx": 9,
+              "heading": "Personnel associé",
+              "publisher": "Service-Public",
+              "section_id": "897784d4-1cff-4c5c-a4a5-f97d820e682d",
+              "document_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f"
+            },
+            {
+              "idx": 10,
+              "heading": "I-2. Recrutement direct en CDI",
+              "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+              "section_id": "f49efda9-e296-5211-a989-d9f0de9982ae",
+              "document_id": "5fd1eda2-b78d-57d9-a81b-a6c255f43229"
+            },
+            {
+              "idx": 11,
+              "heading": "Rupture",
+              "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+              "section_id": "edf9564b-cd95-58c4-bdf9-33767b3b3a1a",
+              "document_id": "2388e569-925c-5e50-9146-abda77809b5b"
+            },
+            {
+              "idx": 12,
+              "heading": "Accroissement temporaire ou saisonnier d'activité",
+              "publisher": "Service-Public",
+              "section_id": "c77f9099-83da-4121-868f-79e2692fb151",
+              "document_id": "47acc35e-6967-4cac-a78b-77ee2b1dbd8f"
+            },
+            {
+              "idx": 13,
+              "heading": "Quelles sont les sanctions disciplinaires applicables à l'agent contractuel?",
+              "publisher": "Service-Public",
+              "section_id": "326c485d-7930-5aab-b6b4-0bdea04df0bf",
+              "document_id": "b55efbe6-7d65-5bf0-a789-38f661e48d47"
+            },
+            {
+              "idx": 14,
+              "heading": "",
+              "publisher": "DGAFP",
+              "section_id": "",
+              "document_id": "LEGIARTI000044421930"
+            },
+            {
+              "idx": 15,
+              "heading": "",
+              "publisher": "DGAFP",
+              "section_id": "",
+              "document_id": "LEGIARTI000051962599"
+            },
+            {
+              "idx": 16,
+              "heading": "",
+              "publisher": "DGAFP",
+              "section_id": "",
+              "document_id": "LEGIARTI000006486501"
+            },
+            {
+              "idx": 17,
+              "heading": "Quel contrat choisir et pour quelle durée selon la situation ?",
+              "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+              "section_id": "08c595b2-46dd-5bcd-8319-b47c9c30b1e6",
+              "document_id": "a0018f44-d036-591c-a74a-8087e62c5510"
+            },
+            {
+              "idx": 18,
+              "heading": "I- L'arrivée à terme du contrat à durée déterminée",
+              "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+              "section_id": "cc8c24ea-0d36-5414-b4fb-65d67a450bc1",
+              "document_id": "e79fbb82-e13b-5794-945a-c980cf53f6a9"
+            },
+            {
+              "idx": 19,
+              "heading": "Des agents concernés par le dispositif de la durée maximale d'occupation d'un em",
+              "publisher": "Ministère de l'Aménagement du territoire et de la Transition écologique",
+              "section_id": "719d31ba-713c-5034-b040-ec823daaea1e",
+              "document_id": "73d8f244-1d9d-5f64-895e-087ea7569bb3"
+            }
+          ],
+          "reason": "Section [0] (MATTE) indique clairement que la durée maximale d’un CDD est de 3 ans, renouvelable jusqu’à un total de 6 ans, répondant directement à la question."
+        },
+        "raw_response": "```json\n{\n  \"selected_ids\": [0],\n  \"reason\": \"Section [0] (MATTE) indique clairement que la durée maximale d’un CDD est de 3 ans, renouvelable jusqu’à un total de 6 ans, répondant directement à la question.\"\n}",
+        "reason": "Section [0] (MATTE) indique clairement que la durée maximale d’un CDD est de 3 ans, renouvelable jusqu’à un total de 6 ans, répondant directement à la question.",
+        "all_rejected": false,
+        "prompt_chars": 46867
+      }
+    }
+  }
+}

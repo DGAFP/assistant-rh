@@ -42,6 +42,41 @@ def request_identity(method, url, body):
     return digest({"method": method, "url": url, "body": json.loads(body)})
 
 
+def response_headers(row):
+    headers = {"content-type": row["content_type"]}
+    if row.get("content_encoding"):
+        headers["content-encoding"] = row["content_encoding"]
+    return headers
+
+
+def decoded_response(row):
+    raw = b"".join(bytes.fromhex(c) for c in row["chunks"])
+    return httpx.Response(row["status"], headers=response_headers(row), content=raw).text
+
+
+def prompt_variant(body, baseline, candidate, ministry, today):
+    """Change only the rendered system prompt, retaining context and options."""
+    from assistant_rh_api.core.prompt_policy import generation_request
+
+    original = json.loads(body)
+    expected = generation_request(baseline, "", (), ministry, original["temperature"], today=today).messages[0].content
+    replacement = generation_request(candidate, "", (), ministry, original["temperature"], today=today).messages[0].content
+    assert original["messages"][0] == {"role": "system", "content": expected}, "Captured prompt differs from approved baseline"
+    changed = json.loads(body)
+    changed["messages"][0]["content"] = replacement
+    return changed
+
+
+def served_context_variant(body, candidate_body):
+    """A separate selector experiment changes only the final user context."""
+    original, changed = json.loads(body), json.loads(candidate_body)
+    assert original["messages"][-1]["role"] == changed["messages"][-1]["role"] == "user"
+    check = json.loads(candidate_body)
+    check["messages"][-1] = original["messages"][-1]
+    assert check == original, "Selector trial would change generation parameters or system prompt"
+    return changed
+
+
 class RecordingStream(httpx.AsyncByteStream):
     """Observe chunks as consumed, preserving mid-stream failures and closing."""
 
@@ -58,7 +93,7 @@ class RecordingStream(httpx.AsyncByteStream):
             self.row["stream_error_type"] = type(error).__name__
             raise
         else:
-            self.row["response"] = b"".join(bytes.fromhex(c) for c in self.row["chunks"]).decode()
+            self.row["response"] = decoded_response(self.row)
             self.row["complete"] = not self.row["content_type"].startswith("text/event-stream")
 
     async def aclose(self):
@@ -86,8 +121,10 @@ class InferenceTape(httpx.AsyncBaseTransport):
         self.live_requests = {}
 
     async def handle_async_request(self, request):
-        assert request.url.scheme == "https" and not request.url.query and not request.url.username
-        assert request.url.host in self.allowed_hosts, "Unapproved inference destination"
+        if request.url.scheme != "https" or request.url.query or request.url.username or request.url.password or request.url.fragment:
+            raise AssertionError("Unapproved inference URL")
+        if request.url.host not in self.allowed_hosts:
+            raise AssertionError("Unapproved inference destination")
         body = (await request.aread()).decode()
         url = str(request.url)
         key = request_identity(request.method, url, body)
@@ -101,6 +138,7 @@ class InferenceTape(httpx.AsyncBaseTransport):
                 "body": body,
                 "status": response.status_code,
                 "content_type": response.headers.get("content-type", ""),
+                "content_encoding": response.headers.get("content-encoding", ""),
                 "response": "",
                 "chunks": [],
                 "complete": False,
@@ -112,6 +150,7 @@ class InferenceTape(httpx.AsyncBaseTransport):
                 row.update(
                     chunks=[response.content.hex()],
                     response=response.content.decode(),
+                    content_encoding="",
                     complete=not row["content_type"].startswith("text/event-stream"),
                 )
             else:
@@ -129,7 +168,7 @@ class InferenceTape(httpx.AsyncBaseTransport):
                 raise AssertionError("Incomplete inference capture cannot establish parity")
             self.used[key] += 1
         chunks = row.get("chunks", [row["response"].encode().hex()])
-        return httpx.Response(row["status"], stream=ReplayStream(chunks), headers={"content-type": row["content_type"]}, request=request)
+        return httpx.Response(row["status"], stream=ReplayStream(chunks), headers=response_headers(row), request=request)
 
     @asynccontextmanager
     async def observe_chat_stream(self, stream_context):
@@ -143,7 +182,7 @@ class InferenceTape(httpx.AsyncBaseTransport):
                     if self.record and isinstance(event, StreamCompleted):
                         row = self.rows[-1]
                         assert json.loads(row["body"])["stream"] is True
-                        row["response"] = b"".join(bytes.fromhex(c) for c in row["chunks"]).decode()
+                        row["response"] = decoded_response(row)
                         row["complete"] = True
                     yield event
 
@@ -235,6 +274,8 @@ async def evaluate(manifest, emit):
     created = datetime.fromisoformat(manifest["created_at"])
     try:
         initial = await snapshot(new)
+        if manifest.get("expected_initial_snapshot") is not None:
+            assert plain(initial) == manifest["expected_initial_snapshot"], "Shared inputs changed since interrupted capture"
         configuration = await RAGConfigurationService(ConfigStore(new)).load()
         assert configuration.fallback is None
         config = configuration.config.value
@@ -261,7 +302,11 @@ async def evaluate(manifest, emit):
 
         for case in manifest["cases"]:
             record = InferenceTape(allow_live=True)
-            captured = await run(case, "baseline", record)
+            try:
+                captured = await run(case, "baseline", record)
+            except BaseException as error:
+                emit({"kind": "capture_failure", "case_id": case["id"], "error_type": type(error).__name__, "tape": record.rows})
+                raise
             rows = record.rows
             emit({"kind": "capture", "case_id": case["id"], "capture": captured, "tape": rows})
             assert all(r["complete"] and 200 <= r["status"] < 300 for r in rows), "Incomplete or failed capture excluded from semantic parity"
@@ -300,8 +345,20 @@ async def evaluate(manifest, emit):
                     async with httpx.AsyncClient(timeout=90) as client:
                         for _ in range(manifest["variance_repeats"]):
                             request = httpx.Request(row["method"], row["url"], headers=original.headers, content=row["body"].encode())
-                            response = await client.send(request)
-                            variants.append({"status": response.status_code, "response": response.text})
+                            try:
+                                response = await client.send(request)
+                                variants.append({"status": response.status_code, "response": response.text})
+                            except httpx.HTTPError as error:
+                                variants.append({"status": None, "response": None, "error_type": type(error).__name__})
+                            emit(
+                                {
+                                    "kind": "variance_progress",
+                                    "case_id": case["id"],
+                                    "finished_probes": probes,
+                                    "current_request": {k: row[k] for k in ("method", "url", "body", "key")},
+                                    "variants": variants,
+                                }
+                            )
                     probes.append(
                         {
                             "request": {k: row[k] for k in ("method", "url", "body", "key")},
@@ -316,6 +373,82 @@ async def evaluate(manifest, emit):
     finally:
         await old.close()
         await new.close()
+
+
+async def evaluate_prompt_candidate(manifest, emit):
+    """Paired generation only; no SQL, context selection or shared config writes."""
+    if manifest.get("allow_live_inference") is not True:
+        raise PermissionError("Explicit live-inference approval required")
+    from assistant_rh_api.core.models.inference import ChatRequest, Message, StreamCompleted, TextDelta
+    from assistant_rh_api.gateways.chat import ChatGateway
+    from assistant_rh_api.gateways.settings import Endpoint, RequestPolicy
+
+    today = datetime.fromisoformat(manifest["created_at"]).date().isoformat()
+    for case in manifest["cases"]:
+        row = case["generator_call"]
+        url = httpx.URL(row["url"])
+        assert url.scheme == "https" and url.host == "albert.api.etalab.gouv.fr" and not url.query
+        assert url.path.endswith("/chat/completions")
+        base = json.loads(row["body"])
+        intervention = manifest.get("intervention", "system_prompt")
+        if intervention == "served_context":
+            assert case["candidate_generator_call"]["url"] == row["url"]
+            candidate = served_context_variant(row["body"], case["candidate_generator_call"]["body"])
+        else:
+            assert intervention == "system_prompt"
+            candidate = prompt_variant(row["body"], manifest["baseline_prompt"], manifest["candidate_prompt"], case["ministry"], today)
+        bodies = {"baseline": base, "candidate": candidate}
+        repeats = 3 if case["id"] in manifest["variance_case_ids"] else 1
+        for repeat in range(repeats):
+            # Alternate first arm across cases and repetitions to limit time/order bias.
+            arms = ("baseline", "candidate") if (case["id"] + repeat) % 2 else ("candidate", "baseline")
+            for arm in arms:
+                body = bodies[arm]
+                tape = InferenceTape(allow_live=True)
+                result = {
+                    "kind": "prompt_trial",
+                    "case_id": case["id"],
+                    "ministry": case["ministry"],
+                    "arm": arm,
+                    "repeat": repeat,
+                    "intervention": intervention,
+                    "request_sha256": digest(body),
+                    "context_sha256": digest(body["messages"][1:]),
+                    "answer": "",
+                    "completed": False,
+                }
+                try:
+                    async with httpx.AsyncClient(transport=tape, timeout=90) as client:
+                        endpoint = Endpoint("albert", body["model"], str(url).removesuffix("/chat/completions"), os.environ["ALBERT_API_KEY"])
+                        gateway = ChatGateway(client, endpoint, policy=RequestPolicy(timeout=120, total_timeout=240, max_attempts=1))
+                        request = ChatRequest(tuple(Message(m["role"], m["content"]) for m in body["messages"]), body["temperature"])
+                        expected_payload = gateway._payload(request, endpoint, stream=True)
+                        expected_payload["stream_options"] = {"include_usage": True}
+                        assert expected_payload == body, "Trial would change parameters beyond the system prompt"
+                        async with tape.observe_chat_stream(gateway.stream(request)) as events:
+                            async for event in events:
+                                if isinstance(event, TextDelta):
+                                    result["answer"] += event.text
+                                elif isinstance(event, StreamCompleted):
+                                    result["completed"] = True
+                                    result["outcome"] = plain(event)
+                    assert len(tape.rows) == 1 and all(r["complete"] and r["status"] == 200 for r in tape.rows)
+                    assert request_identity(tape.rows[0]["method"], tape.rows[0]["url"], tape.rows[0]["body"]) == request_identity(
+                        "POST", str(url), json.dumps(body)
+                    )
+                except BaseException as error:
+                    result["error_type"] = type(error).__name__
+                    result["completed"] = False
+                    if hasattr(error, "attempts"):
+                        result["failure_attempts"] = plain(error.attempts)
+                    if hasattr(error, "partial"):
+                        result["partial_failure"] = error.partial
+                    if not isinstance(error, Exception):
+                        raise
+                finally:
+                    result["tape"] = tape.rows
+                    emit(result)
+    emit({"kind": "prompt_completed"})
 
 
 def main():
