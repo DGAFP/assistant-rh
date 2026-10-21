@@ -41,6 +41,84 @@ def test_full_document_and_section_use_same_canonical_reference():
     assert len(sources) == 1 and sources[0].doc_ref == document_id and sources[0].document_id == document_id
 
 
+@pytest.mark.parametrize("hostname", ["www.legifrance.gouv.fr", "legifrance.gouv.fr"])
+def test_legifrance_uses_article_name_and_canonical_source_type(hostname):
+    source = final_sources(
+        (
+            item(
+                document_title="PISTE",
+                document_url=f"https://{hostname}/codes/article_lc/LEGIARTI123",
+                publisher="DGAFP (Scaleway)",
+                metadata={"cid": "LEGIARTI123", "full_title": "Code général de la fonction publique", "number": "L332-1"},
+            ),
+        )
+    )[0]
+    assert source.publisher == "Légifrance"
+    assert source.title == "Article L332-1 - Code général de la fonction publique"
+    assert source.doc_ref == "LEGIARTI123"
+    assert source.access == "public"
+
+
+@pytest.mark.parametrize("hostname", ["www.service-public.fr", "www.service-public.gouv.fr"])
+def test_service_public_uses_fiche_name_and_canonical_source_type(hostname):
+    source = final_sources(
+        (
+            item(
+                document_title="Congés annuels d'un agent contractuel",
+                document_url=f"https://{hostname}/particuliers/vosdroits/F1",
+                publisher="Service-Public (Scaleway)",
+            ),
+        )
+    )[0]
+    assert source.publisher == "Service-Public"
+    assert source.title == "Congés annuels d'un agent contractuel"
+
+
+@pytest.mark.parametrize("number", ["L332-1", "1"])
+@pytest.mark.parametrize("template", ["Article {} — Code général de la fonction publique", "{} - Code général de la fonction publique"])
+def test_legifrance_normalizes_an_existing_article_name(number, template):
+    title = template.format(number)
+    source = final_sources(
+        (
+            item(
+                document_title=title,
+                document_url="https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI123",
+                metadata={"number": number},
+            ),
+        )
+    )[0]
+    assert source.title == f"Article {number} - Code général de la fonction publique"
+
+
+@pytest.mark.parametrize("number", ["1-3", "Article 1-3", "article 1-3"])
+@pytest.mark.parametrize("title", ["Décret du 17 janvier 1986", "Article 1-3 — Décret du 17 janvier 1986"])
+def test_legifrance_normalizes_legacy_article_numbers_without_repeating_the_prefix(number, title):
+    source = final_sources(
+        (
+            item(
+                document_title="PISTE",
+                document_url="https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI123",
+                metadata={"number": number, "full_title": title},
+            ),
+        )
+    )[0]
+    assert source.title == "Article 1-3 - Décret du 17 janvier 1986"
+
+
+@pytest.mark.parametrize("title", ["Article L332-1", "L332-1"])
+def test_legifrance_keeps_the_number_without_a_dangling_separator_when_no_legal_title_is_available(title):
+    source = final_sources(
+        (item(document_title=title, document_url="https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI123", metadata={"number": "L332-1"}),)
+    )[0]
+    assert source.title == "Article L332-1"
+
+
+def test_unsafe_public_url_does_not_override_the_source_type():
+    source = final_sources((item(document_url="https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI123?signature=private"),))[0]
+    assert source.publisher == "MATTE"
+    assert source.access == "authenticated"
+
+
 @pytest.mark.parametrize("has_sources", [False, True])
 @pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
 def test_generated_sources_are_replaced_by_served_context_only(has_sources, newline):
