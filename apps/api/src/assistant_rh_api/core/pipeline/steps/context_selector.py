@@ -32,7 +32,18 @@ class _ParseResult:
 def _extract_json(raw: str) -> Any:
     text = raw.strip()
     match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-    return json.loads((match.group(1) if match else text).strip())
+    if match:
+        text = match.group(1)
+    else:
+        # A complete JSON object can still have an unclosed Markdown wrapper.
+        # Keep JSON decoding strict: incomplete objects and trailing prose fail.
+        opening = re.match(r"^```(?:json)?[ \t]*\r?\n", text)
+        if opening:
+            value = json.loads(text[opening.end() :].strip())
+            if not isinstance(value, dict):
+                raise ValueError("Expected a selection object under the Markdown opening")
+            return value
+    return json.loads(text.strip())
 
 
 def _parse_response(raw: str, n_items: int) -> _ParseResult:
