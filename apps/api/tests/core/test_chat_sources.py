@@ -54,7 +54,7 @@ def test_legifrance_uses_article_name_and_canonical_source_type(hostname):
         )
     )[0]
     assert source.publisher == "Légifrance"
-    assert source.title == "Article L332-1 — Code général de la fonction publique"
+    assert source.title == "Article L332-1 - Code général de la fonction publique"
     assert source.doc_ref == "LEGIARTI123"
     assert source.access == "public"
 
@@ -75,8 +75,9 @@ def test_service_public_uses_fiche_name_and_canonical_source_type(hostname):
 
 
 @pytest.mark.parametrize("number", ["L332-1", "1"])
-def test_legifrance_preserves_an_existing_article_name(number):
-    title = f"Article {number} — Code général de la fonction publique"
+@pytest.mark.parametrize("template", ["Article {} — Code général de la fonction publique", "{} - Code général de la fonction publique"])
+def test_legifrance_normalizes_an_existing_article_name(number, template):
+    title = template.format(number)
     source = final_sources(
         (
             item(
@@ -86,7 +87,7 @@ def test_legifrance_preserves_an_existing_article_name(number):
             ),
         )
     )[0]
-    assert source.title == title
+    assert source.title == f"Article {number} - Code général de la fonction publique"
 
 
 @pytest.mark.parametrize("number", ["1-3", "Article 1-3", "article 1-3"])
@@ -101,7 +102,15 @@ def test_legifrance_normalizes_legacy_article_numbers_without_repeating_the_pref
             ),
         )
     )[0]
-    assert source.title == "Article 1-3 — Décret du 17 janvier 1986"
+    assert source.title == "Article 1-3 - Décret du 17 janvier 1986"
+
+
+@pytest.mark.parametrize("title", ["Article L332-1", "L332-1"])
+def test_legifrance_keeps_the_number_without_a_dangling_separator_when_no_legal_title_is_available(title):
+    source = final_sources(
+        (item(document_title=title, document_url="https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI123", metadata={"number": "L332-1"}),)
+    )[0]
+    assert source.title == "Article L332-1"
 
 
 def test_unsafe_public_url_does_not_override_the_source_type():
