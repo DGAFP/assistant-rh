@@ -45,6 +45,10 @@ class Database:
     def __init__(self, settings: DatabaseSettings) -> None:
         self._settings = settings
         self._individual_feedback_schema: bool | None = None
+        # Retrieval fans out across sources. Admit SQL work before pool checkout,
+        # leaving one lease for authentication/configuration/traces when possible.
+        self._search_slots = asyncio.Semaphore(max(1, settings.max_size - 1))
+        self._search_waiting = 0
         self._pool = AsyncConnectionPool(
             conninfo=settings.dsn,
             connection_class=_SafeConnection,
@@ -103,6 +107,27 @@ class Database:
     async def close(self) -> None:
         self._individual_feedback_schema = None
         await self._pool.close()
+
+    @asynccontextmanager
+    async def search_transaction(self) -> AsyncIterator[psycopg.AsyncConnection]:
+        """Bound search fan-out across all stores sharing this application pool."""
+        if self.closed or (self._search_slots.locked() and self._search_waiting >= self._settings.search_max_waiting):
+            raise DatabaseUnavailable()
+        self._search_waiting += 1
+        try:
+            try:
+                async with asyncio.timeout(self._settings.search_timeout_seconds):
+                    await self._search_slots.acquire()
+            except TimeoutError:
+                raise DatabaseUnavailable() from None
+        finally:
+            self._search_waiting -= 1
+        # An acquisition cancelled while queued never enters this release block.
+        try:
+            async with self.transaction(read_only=True) as connection:
+                yield connection
+        finally:
+            self._search_slots.release()
 
     async def _check_connection(self, connection: psycopg.AsyncConnection) -> None:
         # Wait without cancelling psycopg: its cancellation handler can itself

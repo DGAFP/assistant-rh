@@ -74,8 +74,36 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
         )
         params = (request.query, request.query, request.query, request.limit)
     else:
+        resolutions = sql.SQL("")
+        if {"short_id", "section_path"} <= existing:
+            # Resolve a legacy section once per document/path, rather than once
+            # per chunk and again for joins/order. Keep the historical resolver,
+            # including exact-path priority and UUID tie-break, unchanged.
+            direct = sql.SQL("t.section_id") if "section_id" in existing else sql.SQL("NULL::uuid")
+            unresolved = sql.SQL("WHERE section_id IS NULL") if "section_id" in existing else sql.SQL("")
+            resolutions = sql.SQL("""
+                section_keys AS MATERIALIZED (
+                    SELECT DISTINCT short_id, section_path FROM {table} {unresolved}
+                ), resolved_sections AS MATERIALIZED (
+                    SELECT t.short_id, t.section_path, {section} AS section_id FROM section_keys t
+                ),
+            """).format(
+                table=sql.Identifier("public", table),
+                unresolved=unresolved,
+                section=section_expression({"short_id", "section_path"}),
+            )
+            base = sql.SQL("""
+                SELECT t.{id} AS chunk_id, t.chunk_text, COALESCE({direct}, r.section_id) AS section_id, {meta} AS metadata
+                FROM {table} t LEFT JOIN resolved_sections r
+                  ON r.short_id = t.short_id AND r.section_path = t.section_path
+            """).format(
+                id=sql.Identifier(id_column),
+                direct=direct,
+                meta=metadata_expression(existing),
+                table=sql.Identifier("public", table),
+            )
         statement = sql.SQL("""
-            WITH parsed AS (SELECT {query} AS q), candidates AS ({base})
+            WITH parsed AS (SELECT {query} AS q), {resolutions} candidates AS ({base})
             SELECT c.chunk_id::text, c.chunk_text, c.section_id,
                    c.metadata || jsonb_build_object('heading', s.heading, 'heading_path', s.heading_path,
                        'doc_title', d.title, 'doc_url', d.source_url, 'doc_short_id', d.short_id,
@@ -88,7 +116,7 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
             LEFT JOIN public.rag_documents d ON d.doc_id = s.doc_id CROSS JOIN parsed
             WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ parsed.q
             ORDER BY score DESC, c.chunk_id, c.section_id LIMIT %s
-        """).format(query=TSQUERY, base=base)
+        """).format(query=TSQUERY, resolutions=resolutions, base=base)
         params = (request.query, request.query, request.query, request.limit)
     return statement, params
 
@@ -124,7 +152,7 @@ class SearchStore(SearchPort):
 
     async def search(self, request: SearchRequest) -> tuple[RawChunk, ...]:
         spec = self._validate(request)
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.search_transaction() as connection:
             existing = await columns(connection, spec.source.name)
             statement, params = _query(request, spec, existing)
             if request.mode == "vector" and request.probes:
@@ -136,7 +164,7 @@ class SearchStore(SearchPort):
         """Two raw lanes from one statement snapshot, with no SQL fusion policy."""
         vector_request = replace(request, mode="vector")
         spec = self._validate(vector_request)
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.search_transaction() as connection:
             existing = await columns(connection, spec.source.name)
             vector_sql, vector_params = _query(vector_request, spec, existing, hybrid=True)
             lexical_sql, lexical_params = _query(replace(request, mode="lexical"), spec, existing)

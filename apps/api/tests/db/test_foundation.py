@@ -200,3 +200,87 @@ async def test_error_translation_suppresses_driver_details(error, expected) -> N
         with translate_database_errors():
             raise error("postgresql://synthetic:secret@host/db")
     assert "postgresql" not in "".join(traceback.format_exception(caught.value))
+
+
+async def test_search_admission_reserves_a_lease_for_other_repositories(synthetic_database_dsn):
+    database = Database(DatabaseSettings(dsn=synthetic_database_dsn, max_size=4, timeout_seconds=0.25))
+    await database.open()
+    release = asyncio.Event()
+    full = asyncio.Event()
+    active = peak = 0
+
+    async def search():
+        nonlocal active, peak
+        async with database.search_transaction() as connection:
+            active += 1
+            peak = max(peak, active)
+            if active == 3:
+                full.set()
+            try:
+                await release.wait()
+                await connection.execute("SELECT pg_sleep(0.005)")
+            finally:
+                active -= 1
+
+    tasks = [asyncio.create_task(search()) for _ in range(50)]
+    try:
+        await asyncio.wait_for(full.wait(), 2)
+        assert await read_marker(database)  # auth/config/traces still get a lease
+        release.set()
+        await asyncio.wait_for(asyncio.gather(*tasks), 5)
+        assert peak == 3
+        assert database.statistics().get("requests_errors", 0) == 0
+    finally:
+        release.set()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await database.close()
+
+
+async def test_search_admission_bounds_waiters_and_recovers_from_cancellation(synthetic_database_dsn):
+    database = Database(
+        DatabaseSettings(
+            dsn=synthetic_database_dsn,
+            max_size=1,
+            search_max_waiting=1,
+            search_timeout_seconds=0.1,
+        )
+    )
+    await database.open()
+    entered = asyncio.Event()
+
+    async def held_search():
+        async with database.search_transaction():
+            entered.set()
+            await asyncio.Event().wait()
+
+    holder = asyncio.create_task(held_search())
+    waiter = None
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        waiter = asyncio.create_task(held_search())
+        while database._search_waiting != 1:
+            await asyncio.sleep(0)
+        with pytest.raises(DatabaseUnavailable):
+            async with database.search_transaction():
+                pytest.fail("bounded search queue must reject overflow")
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        with pytest.raises(DatabaseUnavailable):
+            async with database.search_transaction():
+                pytest.fail("admission timeout must be bounded")
+        holder.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await holder
+        async with database.search_transaction() as connection:
+            assert await (await connection.execute("SELECT 1")).fetchone() == (1,)
+        assert database._search_waiting == 0
+    finally:
+        holder.cancel()
+        if waiter:
+            waiter.cancel()
+        await asyncio.gather(holder, *([waiter] if waiter else []), return_exceptions=True)
+        await database.close()
+    with pytest.raises(DatabaseUnavailable):
+        async with database.search_transaction():
+            pytest.fail("closed search pool cannot issue a lease")

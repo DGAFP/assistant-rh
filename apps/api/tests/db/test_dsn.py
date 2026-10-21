@@ -29,7 +29,15 @@ def test_invalid_dsn_errors_do_not_leak_input(dsn: str) -> None:
 
 def test_settings_hide_dsn_and_bound_resources() -> None:
     assert "private-marker" not in repr(DatabaseSettings(dsn=DSN))
-    for options in ({"max_size": 0}, {"min_size": 0}, {"max_waiting": 0}, {"timeout_seconds": float("nan")}):
+    for options in (
+        {"max_size": 0},
+        {"min_size": 0},
+        {"max_waiting": 0},
+        {"timeout_seconds": float("nan")},
+        {"search_timeout_seconds": 0},
+        {"search_timeout_seconds": float("inf")},
+        {"search_max_waiting": 0},
+    ):
         with pytest.raises(DatabaseConfigurationError):
             DatabaseSettings(dsn=DSN, **options)
 

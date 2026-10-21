@@ -1834,3 +1834,22 @@ lancé. La PR peut passer en revue ; la fiabilisation du juge reste distincte.
 [Preuve agrégée](evidence/m1_api_parity_frozen_replay_20260930.json), empreinte
 `2d24b9bc92a484cd6f3fe03f514ade778db84679f927a5ae85fdad1505bf99c3`.
 Archive complète privée, avec sources, conservée hors Git.
+
+
+## Régulation SQL — préenregistrement `sql_backpressure_20261021`
+
+Comparaison avant/après sur staging, sans redimensionnement PostgreSQL, sans
+modification des modèles, prompts, corpus ni `rag_config`. Deux changements :
+admission bornée des recherches avant le pool et résolution des sections
+Service-Public par couple document/chemin. Les règles de ranking sont conservées.
+
+Contrôles prévus : égalité exacte des tuples SQL avant/après (identifiants,
+texte, section, métadonnées, score, rang), tests d'annulation/file/pool, puis
+20 réponses HTTPS séquentielles appariées (cinq questions contractuels sur les
+quatre ministères : CDI, congés annuels, temps partiel, renouvellement CDD, congé
+de formation). Réponses et sources conservées hors Git ; contrôle des erreurs,
+présence des sources et des critères factuels, avec revue des écarts. Il s'agit
+d'un panel borné sur la vraie API, pas de la campagne historique de 100 questions
+ni d'une estimation statistique du score qualité global. Enfin deux vagues à
+5 et deux à 10 utilisateurs, succès mesuré jusqu'à la fin SSE et non au HTTP 200.
+Résultats négatifs inclus ; aucun changement de paramètres pour améliorer le score.
