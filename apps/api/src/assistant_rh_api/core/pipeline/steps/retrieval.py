@@ -257,15 +257,20 @@ class Retriever:
         per_source: dict[str, tuple[RetrievedChunk, ...]] = {}
         failures: list[RetrievalFailure] = []
         failure_codes: set[str] = set()
+        # One pending SQL lane per question, rather than a fan-out that fills
+        # the shared admission queue before other questions can make progress.
+        # Requests remain concurrent; every source/lane still runs unchanged.
+        search_slot = asyncio.Semaphore(1)
 
         async def run(source: RetrievalSource, *, heading: bool) -> None:
             lane = "heading" if heading else "chunks"
             name = HEADING_PREFIX + source.name if heading else source.name
             try:
-                if heading:
-                    chunks = await self._headings(source, query, limit, config.ivfflat_probes)
-                else:
-                    chunks = await self._chunks(source, query, embedding, config, mode, limit, source.key in force_hybrid_tables)
+                async with search_slot:
+                    if heading:
+                        chunks = await self._headings(source, query, limit, config.ivfflat_probes)
+                    else:
+                        chunks = await self._chunks(source, query, embedding, config, mode, limit, source.key in force_hybrid_tables)
                 per_source[name] = chunks
             except Exception as exc:
                 code = _failure_code(exc)
