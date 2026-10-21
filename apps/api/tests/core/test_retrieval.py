@@ -104,6 +104,53 @@ async def test_concurrent_requests_keep_model_scope_config_and_results_separate(
             assert call.embedding_model == ("albert" if call.query == "albert" else "bge_scaleway")
 
 
+@pytest.mark.parametrize("count", [2, 30, 50])
+async def test_search_fan_out_does_not_multiply_pending_work_but_requests_remain_concurrent(count):
+    released, all_started = asyncio.Event(), asyncio.Event()
+    active, peaks, seen = {}, {}, set()
+
+    class WaitingSearch(Search):
+        async def search(self, request):
+            key = request.query
+            active[key] = active.get(key, 0) + 1
+            peaks[key] = max(peaks.get(key, 0), active[key])
+            seen.add(key)
+            if len(seen) == count:
+                all_started.set()
+            try:
+                await released.wait()
+                return await super().search(request)
+            finally:
+                active[key] -= 1
+
+    port = WaitingSearch()
+    retriever = Retriever(port, {"albert": Embeddings()}, SOURCES)
+    ministries = ("matte", "masa", "mi", "mso")
+    tasks = [
+        asyncio.create_task(retriever.retrieve(f"question-{index}", RetrievalConfig(), selected_ministry=ministries[index % 4]))
+        for index in range(count)
+    ]
+    try:
+        await asyncio.wait_for(all_started.wait(), 2)
+        assert sum(active.values()) == count
+        assert set(peaks.values()) == {1}
+    finally:
+        released.set()
+        results = await asyncio.gather(*tasks)
+    assert set(peaks.values()) == {1}
+    for index, result in enumerate(results):
+        assert result.sources == (ministries[index % 4], "service_public", "dgafp")
+        calls = [call for call in port.calls if call.query == f"question-{index}"]
+        assert {(call.source, call.mode) for call in calls} == {
+            (ministries[index % 4], "vector"),
+            (ministries[index % 4], "heading"),
+            ("service_public", "vector"),
+            ("service_public", "heading"),
+            ("dgafp", "vector"),
+            ("dgafp", "lexical"),
+        }
+
+
 async def test_order_does_not_depend_on_task_completion(caplog):
     config = RetrievalConfig(search_mode=SearchMode.HYBRID)
     runs = [await Retriever(Search(reverse=bool(i % 2)), {"albert": Embeddings()}, SOURCES).retrieve("albert", config) for i in range(10)]
@@ -140,7 +187,8 @@ async def test_embedding_failure_and_empty_pools_do_not_invent_fallback():
     assert merge_sources({"empty": ()}) == ()
 
 
-async def test_cancellation_propagates_and_joins_search_children(caplog):
+@pytest.mark.parametrize("scoped", [False, True])
+async def test_cancellation_propagates_and_joins_search_children(caplog, scoped):
     started = asyncio.Event()
     stopped = asyncio.Event()
 
@@ -152,7 +200,11 @@ async def test_cancellation_propagates_and_joins_search_children(caplog):
             finally:
                 stopped.set()
 
-    task = asyncio.create_task(Retriever(WaitingSearch(), {"albert": Embeddings()}, SOURCES).retrieve("q", RetrievalConfig(tables=("rgrh",))))
+    task = asyncio.create_task(
+        Retriever(WaitingSearch(), {"albert": Embeddings()}, SOURCES).retrieve(
+            "q", RetrievalConfig(tables=("rgrh",)), selected_ministry="matte" if scoped else None
+        )
+    )
     await started.wait()
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
