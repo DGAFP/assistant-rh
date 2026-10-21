@@ -1834,3 +1834,43 @@ lancé. La PR peut passer en revue ; la fiabilisation du juge reste distincte.
 [Preuve agrégée](evidence/m1_api_parity_frozen_replay_20260930.json), empreinte
 `2d24b9bc92a484cd6f3fe03f514ade778db84679f927a5ae85fdad1505bf99c3`.
 Archive complète privée, avec sources, conservée hors Git.
+
+
+## Régulation SQL — préenregistrement `sql_backpressure_20261021`
+
+Comparaison avant/après sur staging, sans redimensionnement PostgreSQL, sans
+modification des modèles, prompts, corpus ni `rag_config`. Deux changements :
+admission bornée des recherches avant le pool et résolution des sections
+Service-Public par couple document/chemin. Les règles de ranking sont conservées.
+
+Contrôles prévus : égalité exacte des tuples SQL avant/après (identifiants,
+texte, section, métadonnées, score, rang), tests d'annulation/file/pool, puis
+20 réponses HTTPS séquentielles appariées (cinq questions contractuels sur les
+quatre ministères : CDI, congés annuels, temps partiel, renouvellement CDD, congé
+de formation). Réponses et sources conservées hors Git ; contrôle des erreurs,
+présence des sources et des critères factuels, avec revue des écarts. Il s'agit
+d'un panel borné sur la vraie API, pas de la campagne historique de 100 questions
+ni d'une estimation statistique du score qualité global. Enfin deux vagues à
+5 et deux à 10 utilisateurs, succès mesuré jusqu'à la fin SSE et non au HTTP 200.
+Résultats négatifs inclus ; aucun changement de paramètres pour améliorer le score.
+
+### Contrôles avant promotion
+
+La référence HTTPS termine 20/20 réponses, avec sources, sur les cinq questions
+et quatre ministères. Ce taux mesure la complétion ; ce n'est pas un score
+de justesse. Les réponses sont conservées pour revue appariée. Une généralisation
+du calendrier scolaire apparaît déjà dans la référence temps partiel MATTE ;
+ce point devra être suivi dans le bras corrigé, sans modifier le panel.
+
+Les 63 comparaisons SQL en lecture seule sur le corpus réel sont exactement
+égales (sept sources, trois voies, sept formulations pour heading). Le premier
+plan optimisé conservait un calcul plein texte sur des sections non référencées.
+Après restriction aux IDs réellement utilisés par la source, les sept mesures
+Service-Public passent de 711–929 ms à 105–174 ms, sans changement de tuples.
+La projection matérialisée est limitée aux colonnes effectivement utilisées.
+
+Tests locaux : 1 483 tests API validés, y compris les scénarios M0b privés ;
+les premiers échecs venaient de dépendances de test absentes et de l'archive
+privée non indiquée, corrigés dans l'environnement puis rejoués. La première
+version est verte en CI ; la version finale doit repasser les contrôles et la
+parité avant promotion. Revue indépendante sans blocage fonctionnel.
