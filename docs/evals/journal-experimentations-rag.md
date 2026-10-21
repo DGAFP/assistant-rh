@@ -2228,3 +2228,45 @@ Preuves privées : benchmark-sequential.json, benchmark-baseline30.json,
 benchmark-real30.json et benchmark-real50.json. Les flags de pacing des deux
 derniers concernent seulement l'adaptateur de mesure (désactivé) ; le pacing est
 dans le code candidat, avec empreinte conservée dans candidate-code.json.
+
+
+### Résultats staging — sql_search_capacity_20261021
+
+PR #633 squash dev58f7edfe, promotion PR #634 merge staging86707388. CI dev,
+rejeu privé M0b dev, CI staging et publication Kapsule réussis ; Flux et les deux
+pods disponibles vérifiés avec empreintes du code. PostgreSQL, pool, ressources
+pods et données partagées inchangés. Aucune production ni Terraform apply.
+
+Qualité séquentielle : 20/20 complets après, contre 19/20 et une expiration à
+120 s avant ; tous les essais sont conservés. Les 140 étapes sont ok, aucun
+échec/fallback fournisseur observé. Revue factuelle aveugle de 20 paires, puis
+20 paires du premier palier maximal, à 40 : 19 complets et un échec sans réponse,
+sans sélection des succès. 220 citations exactes vérifiées. Erreurs documentaires
+et différences défavorables persistantes (prorata, portée CDI/renouvellement,
+réemploi), avec des améliorations ailleurs. Aucun score global ni régression
+causale SQL établie ; résultats SQL figés exactement égaux sur 30 et 50.
+Corpus de contrôle parfois divergent/versionné, sans validation du droit actuel.
+Sources de contrôle : 27 documents consultés lors de la première revue, capture
+intermédiaire enrichie à 28, puis 29 consultés pour la revue sous charge.
+
+HTTPS : échauffement 1/1 ; deux vagues à 5 : 10/10 ; à 10 : 20/20 ; à 20 :
+40/40 ; à 30 : 60/60. Premier 40 : 39/40. Arrêt sur erreur de retriever ; unique
+répétition diagnostique à 40 après drainage : 37/40, mêmes questions/ministères
+par index utilisateur. L'échec initial reste conservé. **50 non testé en HTTPS**.
+30 confirmé sans erreur sur deux vagues ; 40 instable. Les journaux identifient une lane chunks DGAFP au premier essai,
+puis trois lanes heading Service-Public dans la répétition, database_unavailable. La télémétrie ne distingue pas
+admission/checkout/exécution ; les métriques de ces retrievers sont absentes,
+le compteur failed_lanes=0 ne prouve donc pas zéro erreur. Pas d’attribution
+à Albert. Campagne principale : 170/171 ; répétition : 37/40.
+
+Rafales réelles avec échéance 120 s, aucune relance individuelle ; endurance
+non qualifiée. Pics échantillonnés API : 130,96 Mi et 0,415 cœur par pod. PG :
+maximum huit requêtes actives, âge maximal 2,808 s sur les deux campagnes,
+aucun blocage observé. Pas de métrique CPU/RAM VM PG. Après drainage, un appel
+RAG de récupération réussit en 34,501 s avec sept étapes ok. Santé finale et
+nettoyage comptes/groupes/conversations des quatre préfixes vérifiés.
+
+Agrégat : docs/evals/evidence/sql_search_capacity_20261021.json.
+Rapport privé : assistant-rh-infra/deliveries/sql-capacity-fix-2026-10-21/
+rapport-tests-staging.md. Le commit de résultats local est distinct du code
+86707388 effectivement déployé ; aucune nouvelle livraison pour ces preuves.
