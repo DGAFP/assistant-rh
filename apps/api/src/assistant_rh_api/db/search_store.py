@@ -75,32 +75,46 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
         params = (request.query, request.query, request.query, request.limit)
     else:
         resolutions = sql.SQL("")
+        sections = sql.Identifier("public", "rag_sections")
         if {"short_id", "section_path"} <= existing:
             # Resolve a legacy section once per document/path, rather than once
             # per chunk and again for joins/order. Keep the historical resolver,
             # including exact-path priority and UUID tie-break, unchanged.
             direct = sql.SQL("t.section_id") if "section_id" in existing else sql.SQL("NULL::uuid")
             unresolved = sql.SQL("WHERE section_id IS NULL") if "section_id" in existing else sql.SQL("")
+            relations = sql.SQL("""
+                FROM {table} t LEFT JOIN resolved_sections r
+                  ON r.short_id = t.short_id AND r.section_path = t.section_path
+            """).format(table=sql.Identifier("public", table))
             resolutions = sql.SQL("""
                 section_keys AS MATERIALIZED (
                     SELECT DISTINCT short_id, section_path FROM {table} {unresolved}
                 ), resolved_sections AS MATERIALIZED (
                     SELECT t.short_id, t.section_path, {section} AS section_id FROM section_keys t
+                ), candidate_sections AS (
+                    SELECT DISTINCT COALESCE({direct}, r.section_id) AS section_id {relations}
+                ), relevant_sections AS MATERIALIZED (
+                    SELECT s.section_id, s.doc_id, s.heading, s.heading_path FROM public.rag_sections s
+                    JOIN candidate_sections c ON c.section_id = s.section_id
                 ),
             """).format(
                 table=sql.Identifier("public", table),
                 unresolved=unresolved,
                 section=section_expression({"short_id", "section_path"}),
+                direct=direct,
+                relations=relations,
             )
+            # Avoid evaluating French text search over sections absent from this
+            # source. Materialize IDs/sections, not chunk text or chunk metadata.
+            sections = sql.Identifier("relevant_sections")
             base = sql.SQL("""
                 SELECT t.{id} AS chunk_id, t.chunk_text, COALESCE({direct}, r.section_id) AS section_id, {meta} AS metadata
-                FROM {table} t LEFT JOIN resolved_sections r
-                  ON r.short_id = t.short_id AND r.section_path = t.section_path
+                {relations}
             """).format(
                 id=sql.Identifier(id_column),
                 direct=direct,
                 meta=metadata_expression(existing),
-                table=sql.Identifier("public", table),
+                relations=relations,
             )
         statement = sql.SQL("""
             WITH parsed AS (SELECT {query} AS q), {resolutions} candidates AS ({base})
@@ -112,11 +126,11 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
                    ROW_NUMBER() OVER (ORDER BY
                        ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) DESC,
                        c.chunk_id, c.section_id) AS rank
-            FROM candidates c JOIN public.rag_sections s ON s.section_id = c.section_id
+            FROM candidates c JOIN {sections} s ON s.section_id = c.section_id
             LEFT JOIN public.rag_documents d ON d.doc_id = s.doc_id CROSS JOIN parsed
             WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ parsed.q
             ORDER BY score DESC, c.chunk_id, c.section_id LIMIT %s
-        """).format(query=TSQUERY, resolutions=resolutions, base=base)
+        """).format(query=TSQUERY, resolutions=resolutions, base=base, sections=sections)
         params = (request.query, request.query, request.query, request.limit)
     return statement, params
 
