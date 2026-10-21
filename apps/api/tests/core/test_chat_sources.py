@@ -89,6 +89,21 @@ def test_legifrance_preserves_an_existing_article_name(number):
     assert source.title == title
 
 
+@pytest.mark.parametrize("number", ["1-3", "Article 1-3", "article 1-3"])
+@pytest.mark.parametrize("title", ["Décret du 17 janvier 1986", "Article 1-3 — Décret du 17 janvier 1986"])
+def test_legifrance_normalizes_legacy_article_numbers_without_repeating_the_prefix(number, title):
+    source = final_sources(
+        (
+            item(
+                document_title="PISTE",
+                document_url="https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI123",
+                metadata={"number": number, "full_title": title},
+            ),
+        )
+    )[0]
+    assert source.title == "Article 1-3 — Décret du 17 janvier 1986"
+
+
 def test_unsafe_public_url_does_not_override_the_source_type():
     source = final_sources((item(document_url="https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI123?signature=private"),))[0]
     assert source.publisher == "MATTE"
