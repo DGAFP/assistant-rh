@@ -2103,3 +2103,55 @@ Appels Albert et contextes autorisés par l’utilisateur dans ce fil. Aucun
 redimensionnement, modification partagée des prompts/rag_config/corpus ou
 déploiement de production. Comptes/sessions/conversations synthétiques nettoyés
 en fin de campagne. Plan et preuves privées : deliveries/selector-staging-2026-10-21.
+
+
+## Run staging_stream_admission_50_20261021 — avant exécution
+
+Demande explicite : augmenter l’admission API staging pour viser50 simultanées,
+refaire la montée en charge et la qualité, sans redimensionner PostgreSQL.
+Changement ciblé du chart staging : API_STREAM_WORKERS8→50 par processus,
+avec un seul worker par pod et deux pods. La valeur50 par pod tolère aussi
+une distribution inégale des50 clients. Aucun changement du défaut runtime8,
+du pool4, de la régulation recherche3/queue64/attente10s, des ressources pods,
+du tampon SSE32 ou des prompts/configuration/corpus.
+
+Référence qualité : les20 derniers cas HTTPS du staging435d72fb, même sélecteur
+et mêmes critères, seulement si la vérification live initiale confirme les
+empreintes des entrées partagées. Garder ces réponses sans reroll. Après la
+hausse déployée et vérifiée, mêmes20cas séquentiels, revue aveugle de fidélité
+aux documents ; pas de score goldset100 ni de causalité depuis une seule paire.
+Sous charge, conserver les réponses et revoir un panel équilibré du plus haut
+palier atteint, en distinguant la dégradation technique des erreurs factuelles.
+
+Montée HTTPS Conversations authentifiée : échauffement1 puis deux vagues
+à5,10,20,30,40,50, barrière avant flux, échéance globale120s. Succès exige
+texte,finish,DONE sans erreur SSE. TTFT>60s est un signal de latence dégradée,
+pas un échec technique sous120s. Pas de retry individuel. Audit API après
+chaque vague : statuts, événements, lanesSQL, tentatives/replis provider ;
+rejets avant pipeline séparés des traces manquantes inattendues.
+
+Arrêt de la montée si plus de10% d’échecs par vague, erreur de laneSQL/étape,
+instabilité/redémarrage/pod cible manquant, télémétrie incomplète inexpliquée
+ou mémoire mesurée durablement à85% de la limite. Après récupération, au plus
+une répétition diagnostique au même palier, sans augmenter. Si l’état sain
+ne revient pas ou si les erreursSQL persistent après charge, restaurer8 via
+le chart staging. Toute interprétation conserve les échecs et bornes observées.
+
+Snapshots des modules/paramètres/ressources et données partagées avant/après ;
+activité PostgreSQL et métriques pods pendant les vagues, sans assimiler activité
+et CPU PostgreSQL. Comptes/sessions/conversations synthétiques nettoyés en fin
+de campagne. Appels RH Albert et campagne réelle autorisés dans ce fil.
+Preuves privées : assistant-rh-infra/deliveries/stream-capacity-50-2026-10-21.
+Aucune livraison production ni modification Terraform/PostgreSQL.
+
+Bornes précisées avant toute charge : mémoire API échantillonnée avec les
+timestamps metrics-server (scrutation ~2s plus temps des commandes). Trois
+observations distinctes à85% de1Gio, ou une à95%, annulent la vague et arrêtent
+la montée ; métrique absente = arrêt avant augmentation. Les échantillons
+répétés du même timestamp ne prouvent pas une durée de pression mémoire.
+Tous les appels hors rejets pré-pipeline doivent avoir leur run API terminal
+avant le palier suivant, puis pause5s et contrôle santé. Tout timeout arrête
+la montée quel que soit le taux global. Une répétition diagnostique nécessite
+tous les runs terminaux,10s de calme et aucune requête API longue/bloquée ;
+sinon pas de répétition après60s. Admission nominale100 avec2pods,150 pendant
+un surge : ce n’est pas un engagement de débit et le test n’excède pas50clients.
