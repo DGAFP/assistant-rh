@@ -65,6 +65,16 @@ son événement `push`, sans dépendre de ce bouton.
 
 ## Configuration applicative
 
+Le chart staging fixe `API_DB_SEARCH_TIMEOUT_SECONDS=30` : il borne l'attente
+du créneau de recherche, sans augmenter le pool de quatre connexions ni les
+trois recherches SQL concurrentes par processus. L'acquisition de connexion
+reste à deux secondes et l'exécution SQL à dix secondes. Le défaut applicatif
+reste dix secondes ; l'override explicite accepte seulement une valeur finie
+strictement positive et au plus trente secondes. Une attente plus longue ne
+garantit pas la capacité à cinquante : elle doit être validée en charge réelle.
+Les journaux distinguent les refus de file, expirations d'admission, de checkout,
+de vérification de connexion et annulations SQL, sans texte de requête ni DSN.
+
 La livraison automatique et le déclenchement manuel acceptent uniquement `staging`. La promotion suit `dev` → `staging`.
 
 Namespace `assistant-rh-api`, release/service `assistant-rh-api`, URL interne `http://assistant-rh-api.assistant-rh-api.svc.cluster.local:8000`. Aucun Ingress. L'isolation réseau est gérée par Terraform et autorise Conversations.

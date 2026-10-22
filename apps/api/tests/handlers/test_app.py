@@ -48,9 +48,10 @@ def test_application_factory_does_not_open_a_database_connection(monkeypatch) ->
         raise AssertionError("application creation must not open Postgres")
 
     monkeypatch.setattr("assistant_rh_api.db.pool.psycopg.AsyncConnection.connect", fail_if_called)
-    monkeypatch.setattr("assistant_rh_api.handlers.app.resolve_dsn", fail_if_called)
+    monkeypatch.setattr("assistant_rh_api.db.dsn.resolve_dsn", fail_if_called)
+    monkeypatch.setattr("assistant_rh_api.handlers.app.DatabaseSettings.from_environment", fail_if_called)
 
-    create_app()
+    create_app(environ={"SCW_POSTGRES_DSN": "postgresql://synthetic@localhost/test", "API_DB_SEARCH_TIMEOUT_SECONDS": "30"})
 
 
 def test_application_version_matches_distribution_metadata() -> None:

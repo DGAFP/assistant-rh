@@ -31,6 +31,7 @@ spec:
           env:
             - {name: APP_ENV, value: staging}
             - {name: API_STREAM_WORKERS, value: {{ required "streamWorkers requis" .Values.streamWorkers | quote }}}
+            - {name: API_DB_SEARCH_TIMEOUT_SECONDS, value: {{ required "sqlSearchAdmissionTimeoutSeconds requis" .Values.sqlSearchAdmissionTimeoutSeconds | quote }}}
             - {name: PGSSLMODE, value: verify-ca}
             - {name: PGSSLROOTCERT, value: /etc/scaleway-ca/postgres.pem}
           envFrom:

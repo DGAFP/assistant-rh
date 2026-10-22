@@ -44,6 +44,7 @@ class PackageTest(unittest.TestCase):
             if RELEASE == "assistant-rh-api":
                 self.assertEqual(values["image"]["digest"], DIGEST)
                 self.assertEqual(values["streamWorkers"], 50)
+                self.assertEqual(values["sqlSearchAdmissionTimeoutSeconds"], 30)
             else:
                 self.assertEqual(values["image"]["tag"], "sha-" + SHA + "@" + DIGEST)
                 self.assertEqual(values["frontend"]["image"]["tag"], "sha-" + SHA + "@" + DIGEST)
@@ -61,6 +62,7 @@ class PackageTest(unittest.TestCase):
             self.assertEqual(rendered.returncode, 0, rendered.stderr)
             self.assertIn(DIGEST, rendered.stdout)
             self.assertIn('name: API_STREAM_WORKERS, value: "50"', rendered.stdout)
+            self.assertIn('name: API_DB_SEARCH_TIMEOUT_SECONDS, value: "30"', rendered.stdout)
             self.assertNotIn("kind: Ingress\n", rendered.stdout)
 
     def test_bad_identity_or_digest_cannot_produce_an_archive(self):
