@@ -1,6 +1,7 @@
 """Bounded async pool owned by one application lifespan/event loop."""
 
 import asyncio
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -14,6 +15,8 @@ from psycopg_pool import AsyncConnectionPool
 from assistant_rh_api.core.errors import DatabaseUnavailable
 from assistant_rh_api.db.dsn import DatabaseSettings, validate_libpq_environment
 from assistant_rh_api.db.errors import translate_database_errors
+
+logger = logging.getLogger(__name__)
 
 
 class _SafeConnection(psycopg.AsyncConnection):
@@ -111,7 +114,11 @@ class Database:
     @asynccontextmanager
     async def search_transaction(self) -> AsyncIterator[psycopg.AsyncConnection]:
         """Bound search fan-out across all stores sharing this application pool."""
-        if self.closed or (self._search_slots.locked() and self._search_waiting >= self._settings.search_max_waiting):
+        if self.closed:
+            logger.warning("Database search unavailable (reason=pool_closed)")
+            raise DatabaseUnavailable()
+        if self._search_slots.locked() and self._search_waiting >= self._settings.search_max_waiting:
+            logger.warning("Database search unavailable (reason=admission_queue_full)")
             raise DatabaseUnavailable()
         self._search_waiting += 1
         try:
@@ -119,6 +126,7 @@ class Database:
                 async with asyncio.timeout(self._settings.search_timeout_seconds):
                     await self._search_slots.acquire()
             except TimeoutError:
+                logger.warning("Database search unavailable (reason=admission_timeout)")
                 raise DatabaseUnavailable() from None
         finally:
             self._search_waiting -= 1
@@ -136,6 +144,7 @@ class Database:
         try:
             done, _ = await asyncio.wait({check}, timeout=self._settings.timeout_seconds)
             if not done:
+                logger.warning("Database connection unavailable (reason=connection_check_timeout)")
                 raise TimeoutError
             await check
         except asyncio.CancelledError:

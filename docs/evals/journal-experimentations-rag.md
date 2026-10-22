@@ -2270,3 +2270,66 @@ Agrégat : docs/evals/evidence/sql_search_capacity_20261021.json.
 Rapport privé : assistant-rh-infra/deliveries/sql-capacity-fix-2026-10-21/
 rapport-tests-staging.md. Le commit de résultats local est distinct du code
 86707388 effectivement déployé ; aucune nouvelle livraison pour ces preuves.
+
+
+## Run sql_admission40_20261022 — avant exécution (22 octobre 2026)
+
+Demande : corriger les erreurs SQL DGAFP/Service-Public à 40 et refaire la
+montée vers 50 avec qualité, sans redimensionner PostgreSQL. Référence staging
+86707388 ; résultats précédents conservés : 60/60 à 30, 39/40 puis 37/40 à 40,
+aucun 50 HTTPS. Une erreur chunks DGAFP et trois heading Service-Public ; cause
+précise admission/checkout/exécution non distinguée dans les traces initiales.
+
+Diagnostic isolé en lecture seule : sept reformulations réelles capturées,
+embeddings figés, mesure admission/pool/check/SQL, répartition équilibrée et
+asymétrique. Comparer résultats bruts/fusionnés et conserver tous les échecs.
+Ne pas attribuer les erreurs à la VM sans preuve. Correctif guidé par les mesures,
+puis tests ciblés, conformance hors réseau et revue indépendante avant promotion.
+
+Après livraison vérifiée : même panel qualité 20 cas, référence précédente
+20 complets réutilisable uniquement si code et données partagées correspondent.
+Montée HTTPS [1,5,5,10,10,20,20,30,30,40,40,50,50], barrière de départ SSE,
+échéance 120 s, aucune relance individuelle. Succès texte+finish+DONE et audit
+terminal des étapes API. Arrêt sur erreur SQL/étape, timeout, télémétrie manquante,
+instabilité ou plus de 10% d'échecs. Mémoire : trois mesures distinctes >=85%
+de 1Gi ou une >=95%, métriques manquantes/âgées >90s ou watchdog >60s = arrêt.
+Une seule répétition diagnostique au palier arrêté après drainage terminal et
+10s sans requête longue/bloquée ; aucun palier supérieur pour cette révision.
+
+Revue factuelle aveugle avant/après et du premier plus haut palier tenté :
+20 premières combinaisons question/ministère, tri utilisateur, sans filtre de
+succès. Fragments conservés non évaluables, aucun score global ni causalité
+sur single-shot. Aucune mutation des prompts/config/corpus ni production ou
+Terraform apply. PostgreSQL reste inchangé ; connexions/ressources ne sont pas
+augmentées sans cause mesurée. Comptes synthétiques nettoyés en fin de campagne.
+Appels Albert et contextes RH déjà autorisés dans ce fil. Preuves privées :
+assistant-rh-infra/deliveries/sql-admission-40-2026-10-22.
+
+### Diagnostic et correctif avant livraison — sql_admission40_20261022
+
+Sept reformulations/embeddings déjà capturés, aucune nouvelle inférence pour le
+diagnostic. Rejeu isolé des 40 entrées de la dernière répétition : 40/40 et
+résultats identiques en séquentiel, répartition équilibrée, 85/15 et un seul
+pool. Ce diagnostic SQL seul ne reproduit pas les quatre échecs HTTPS historiques.
+En concentrant 50 appels sur un pool avec l'ancien délai 10s : 43/50, sept
+expirations d'admission, zéro erreur checkout/check/exécution. Checkout maximal
+67,548ms et SQL maximal1497,387ms. L'override30s termine50/50, résultats égaux
+à la référence figée ; attente maximale11,673s, checkout65,920ms. Ce sont des
+mesures SQL isolées, pas une qualification HTTPS ou de saturation de VM.
+
+Correctif : override explicite API_DB_SEARCH_TIMEOUT_SECONDS=30 dans le chart
+staging, défaut applicatif10 et bornage0<val<=30. Pool4, concurrence recherche3,
+file64, checkout2s, timeout SQL10s et toutes les requêtes/classements inchangés.
+Journaux internes à catégories fixes pour distinguer admission/checkout/check/
+annulationSQL, sans texte pilote, DSN ni requête. Un check expiré peut produire
+un avertissement spécifique puis connection_error ; ne pas compter ces lignes
+comme deux incidents. Les traces historiques ne prouvent pas directement que
+chacun des quatre échecs40 était une expiration d'admission : la nouvelle
+recette HTTPS et ses catégories doivent confirmer le comportement corrigé.
+
+90tests ciblés avec PostgreSQL synthétique local passent, incluant annulation,
+réutilisation, trois recherches et lease réservé, lifespan avec override30.
+Revue indépendante sans bloquant ; 31tests supplémentaires indépendants passent
+et13sont skips faute de DSN dans son environnement, deux tests packaging passent.
+Ruff/format, quatre contrats d'import, Helm lint et sept tests de garde CI passent.
+Suite API complète/conformance et suite racine en cours avant promotion.

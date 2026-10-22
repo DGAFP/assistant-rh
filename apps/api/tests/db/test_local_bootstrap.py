@@ -11,15 +11,22 @@ pytestmark = pytest.mark.anyio
 ROOT = Path(__file__).resolve().parents[4]
 
 
-async def test_local_bootstrap_manifest_supports_public_auth(synthetic_database_dsn):
+@pytest.mark.parametrize("admission_timeout", [None, "30"])
+async def test_local_bootstrap_manifest_supports_public_auth(synthetic_database_dsn, admission_timeout):
     # The same ordered files are consumed by Compose's init-local-db.sh.
     manifest = ROOT / "docker/api/bootstrap-local.txt"
     with psycopg.connect(synthetic_database_dsn) as connection:
         for _ in range(2):
             for filename in manifest.read_text().splitlines():
                 connection.execute((ROOT / filename).read_text())
-    app = create_app(database=Database(DatabaseSettings(dsn=synthetic_database_dsn)), environ={})
+    if admission_timeout is None:
+        app = create_app(database=Database(DatabaseSettings(dsn=synthetic_database_dsn)), environ={})
+    else:
+        app = create_app(environ={"SCW_POSTGRES_DSN": synthetic_database_dsn, "API_DB_SEARCH_TIMEOUT_SECONDS": admission_timeout})
     async with app.router.lifespan_context(app):
+        if admission_timeout is not None:
+            assert app.state.database._settings.search_timeout_seconds == 30
+            assert app.state.database._settings.max_size == 4
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
             assert (await client.get("/healthz")).status_code == 200
             groups = await client.get("/v1/auth/groups")
