@@ -10,7 +10,7 @@ from assistant_rh_api.core.errors import DatabaseConflict, DatabaseFailure, Data
 from assistant_rh_api.db.dsn import DatabaseSettings
 from assistant_rh_api.db.errors import translate_database_errors
 from assistant_rh_api.db.pool import Database
-from psycopg_pool import AsyncConnectionPool
+from psycopg_pool import AsyncConnectionPool, PoolClosed, PoolTimeout, TooManyRequests
 
 pytestmark = pytest.mark.anyio
 
@@ -202,6 +202,25 @@ async def test_error_translation_suppresses_driver_details(error, expected) -> N
     assert "postgresql" not in "".join(traceback.format_exception(caught.value))
 
 
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [
+        (PoolClosed, "pool_closed"),
+        (PoolTimeout, "pool_checkout_timeout"),
+        (TooManyRequests, "pool_queue_full"),
+        (psycopg.errors.QueryCanceled, "query_cancelled"),
+        (psycopg.OperationalError, "connection_error"),
+    ],
+)
+async def test_unavailable_logs_only_a_fixed_reason_without_driver_details(error, reason, caplog):
+    with pytest.raises(DatabaseUnavailable):
+        with translate_database_errors():
+            raise error("postgresql://synthetic:private-marker@host/db SQL private-marker")
+    assert f"reason={reason}" in caplog.text
+    assert "private-marker" not in caplog.text
+    assert "postgresql" not in caplog.text
+
+
 async def test_search_admission_reserves_a_lease_for_other_repositories(synthetic_database_dsn):
     database = Database(DatabaseSettings(dsn=synthetic_database_dsn, max_size=4, timeout_seconds=0.25))
     await database.open()
@@ -236,7 +255,7 @@ async def test_search_admission_reserves_a_lease_for_other_repositories(syntheti
         await database.close()
 
 
-async def test_search_admission_bounds_waiters_and_recovers_from_cancellation(synthetic_database_dsn):
+async def test_search_admission_bounds_waiters_and_recovers_from_cancellation(synthetic_database_dsn, caplog):
     database = Database(
         DatabaseSettings(
             dsn=synthetic_database_dsn,
@@ -263,12 +282,14 @@ async def test_search_admission_bounds_waiters_and_recovers_from_cancellation(sy
         with pytest.raises(DatabaseUnavailable):
             async with database.search_transaction():
                 pytest.fail("bounded search queue must reject overflow")
+        assert "reason=admission_queue_full" in caplog.text
         waiter.cancel()
         with pytest.raises(asyncio.CancelledError):
             await waiter
         with pytest.raises(DatabaseUnavailable):
             async with database.search_transaction():
                 pytest.fail("admission timeout must be bounded")
+        assert "reason=admission_timeout" in caplog.text
         holder.cancel()
         with pytest.raises(asyncio.CancelledError):
             await holder
@@ -284,3 +305,4 @@ async def test_search_admission_bounds_waiters_and_recovers_from_cancellation(sy
     with pytest.raises(DatabaseUnavailable):
         async with database.search_transaction():
             pytest.fail("closed search pool cannot issue a lease")
+    assert "reason=pool_closed" in caplog.text

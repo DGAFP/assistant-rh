@@ -23,7 +23,7 @@ from assistant_rh_api.core.health import HealthProbe
 from assistant_rh_api.core.rag_configuration import RAGConfigurationService
 from assistant_rh_api.db.auth_stores import DelegationReplayStore, GroupStore, SessionStore
 from assistant_rh_api.db.documents import DocumentStore
-from assistant_rh_api.db.dsn import DatabaseSettings, resolve_dsn
+from assistant_rh_api.db.dsn import DatabaseSettings
 from assistant_rh_api.db.feedback_store import FeedbackStore
 from assistant_rh_api.db.health import PostgresHealthProbe
 from assistant_rh_api.db.login_limits import LoginLimits, PostgresLoginLimiter
@@ -73,7 +73,7 @@ def create_app(
         environment = os.environ if environ is None else environ
         if runtime_database is None and health_probe is None:
             if environment.get("SCW_POSTGRES_DSN", "").strip():
-                runtime_database = Database(DatabaseSettings(dsn=resolve_dsn(environ=environment)))
+                runtime_database = Database(DatabaseSettings.from_environment(environment))
         application.state.database = runtime_database
         if runtime_database is None:
             if rag_configuration_service is not None:

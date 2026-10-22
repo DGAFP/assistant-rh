@@ -42,6 +42,24 @@ def test_settings_hide_dsn_and_bound_resources() -> None:
             DatabaseSettings(dsn=DSN, **options)
 
 
+def test_search_admission_override_keeps_other_database_limits(monkeypatch) -> None:
+    monkeypatch.setenv("API_DB_SEARCH_TIMEOUT_SECONDS", "30")
+    default = DatabaseSettings.from_environment({"SCW_POSTGRES_DSN": DSN})
+    assert default.search_timeout_seconds == 10
+    override = DatabaseSettings.from_environment({"SCW_POSTGRES_DSN": DSN, "API_DB_SEARCH_TIMEOUT_SECONDS": "30"})
+    assert override.search_timeout_seconds == 30
+    assert (override.max_size, override.max_waiting, override.timeout_seconds, override.statement_timeout_ms) == (4, 16, 2, 10_000)
+    assert override.search_max_waiting == 64
+
+
+@pytest.mark.parametrize("value", ["", "private-marker", "0", "-1", "nan", "inf", "30.01"])
+def test_invalid_admission_override_is_bounded_and_does_not_leak(value) -> None:
+    with pytest.raises(DatabaseConfigurationError) as caught:
+        DatabaseSettings.from_environment({"SCW_POSTGRES_DSN": DSN, "API_DB_SEARCH_TIMEOUT_SECONDS": value})
+    assert str(caught.value) == "database_configuration_error"
+    assert "private-marker" not in repr(caught.value)
+
+
 @pytest.mark.anyio
 @pytest.mark.parametrize("variable", ["PGHOST", "PGHOSTADDR", "PGPORT", "PGDATABASE", "PGUSER", "PGSERVICE", "PGSERVICEFILE"])
 async def test_ambient_libpq_target_is_refused_before_startup_and_reconnection(monkeypatch, variable) -> None:
