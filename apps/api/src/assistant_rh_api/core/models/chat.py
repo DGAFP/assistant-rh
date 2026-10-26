@@ -11,6 +11,7 @@ from assistant_rh_api.core.models.configuration import JsonValue
 from assistant_rh_api.core.models.context import ContextItem
 from assistant_rh_api.core.models.conversations import RunMetrics, TraceEvent
 from assistant_rh_api.core.models.inference import Message, TokenUsage
+from assistant_rh_api.core.observability import Observation, observe
 from assistant_rh_api.core.ports.system import ClockPort
 from assistant_rh_api.core.trace_values import attempt_trace, trace_payload
 
@@ -132,6 +133,7 @@ class RunContext:
                     error_type="cancelled" if status == "cancelled" else "stage_failed",
                 )
             )
+            observe(Observation("stage", name, status, max(0, self.clock.monotonic() - start)))
             try:
                 await self.publish(name, "cancelled" if status == "cancelled" else "failed", attempt)
             except (Exception, asyncio.CancelledError):
@@ -148,6 +150,7 @@ class RunContext:
                 metrics=trace_payload(measure(result)) if measure is not None else None,
             )
         )
+        observe(Observation("stage", name, "ok", max(0, self.clock.monotonic() - start)))
         await self.publish(name, "completed", attempt)
         return result
 
