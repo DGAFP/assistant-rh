@@ -141,6 +141,7 @@ async def test_live_ping_while_retrieval_waits_and_socket_close_cancels(live):
             async for line in response.aiter_lines():
                 if line == ": ping":
                     assert entered.is_set()
+                    assert app.state.telemetry.registry.get_sample_value("assistant_rh_sse_first_text_seconds_count") == 0
                     break
             # Other requests remain responsive while retrieval is pending.
             assert (await client.get("/v1/models")).status_code == 200

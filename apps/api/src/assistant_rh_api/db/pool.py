@@ -13,6 +13,7 @@ from psycopg.abc import PQGen
 from psycopg_pool import AsyncConnectionPool
 
 from assistant_rh_api.core.errors import DatabaseUnavailable
+from assistant_rh_api.core.observability import Observation, observe
 from assistant_rh_api.db.dsn import DatabaseSettings, validate_libpq_environment
 from assistant_rh_api.db.errors import translate_database_errors
 
@@ -52,6 +53,7 @@ class Database:
         # leaving one lease for authentication/configuration/traces when possible.
         self._search_slots = asyncio.Semaphore(max(1, settings.max_size - 1))
         self._search_waiting = 0
+        self._search_active = 0
         self._pool = AsyncConnectionPool(
             conninfo=settings.dsn,
             connection_class=_SafeConnection,
@@ -69,7 +71,12 @@ class Database:
         return self._pool.closed
 
     def statistics(self) -> dict[str, int]:
-        return self._pool.get_stats()
+        return {
+            **self._pool.get_stats(),
+            "search_active": self._search_active,
+            "search_waiting": self._search_waiting,
+            "search_capacity": max(1, self._settings.max_size - 1),
+        }
 
     def separate_pool(self, *, max_size: int) -> "Database":
         """Same target/timeouts, independent leases for long-lived readers."""
@@ -116,9 +123,11 @@ class Database:
         """Bound search fan-out across all stores sharing this application pool."""
         if self.closed:
             logger.warning("Database search unavailable (reason=pool_closed)")
+            observe(Observation("database", "database", "pool_closed"))
             raise DatabaseUnavailable()
         if self._search_slots.locked() and self._search_waiting >= self._settings.search_max_waiting:
             logger.warning("Database search unavailable (reason=admission_queue_full)")
+            observe(Observation("database", "database", "admission_queue_full"))
             raise DatabaseUnavailable()
         self._search_waiting += 1
         try:
@@ -127,14 +136,17 @@ class Database:
                     await self._search_slots.acquire()
             except TimeoutError:
                 logger.warning("Database search unavailable (reason=admission_timeout)")
+                observe(Observation("database", "database", "admission_timeout"))
                 raise DatabaseUnavailable() from None
         finally:
             self._search_waiting -= 1
+        self._search_active += 1
         # An acquisition cancelled while queued never enters this release block.
         try:
             async with self.transaction(read_only=True) as connection:
                 yield connection
         finally:
+            self._search_active -= 1
             self._search_slots.release()
 
     async def _check_connection(self, connection: psycopg.AsyncConnection) -> None:

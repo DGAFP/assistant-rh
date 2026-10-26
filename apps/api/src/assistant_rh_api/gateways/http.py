@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any, TypeVar
@@ -11,6 +12,7 @@ import httpx
 
 from assistant_rh_api.core.errors import InferenceFailure
 from assistant_rh_api.core.models.inference import Attempt, FailureKind
+from assistant_rh_api.core.observability import Observation, observe
 from assistant_rh_api.gateways.settings import Endpoint, RequestPolicy
 
 T = TypeVar("T")
@@ -120,6 +122,8 @@ class InferenceHTTP:
     @asynccontextmanager
     async def open(self, endpoint: Endpoint, path: str, payload: dict[str, Any], deadline: float) -> AsyncIterator[httpx.Response]:
         response = None
+        started = time.monotonic()
+        outcome = "ok"
         try:
             request = self.client.build_request(
                 "POST",
@@ -143,12 +147,26 @@ class InferenceHTTP:
                 raise WireFailure("rejected", status)
             yield response
         except (TimeoutError, httpx.TimeoutException):
+            outcome = "timeout"
             raise WireFailure("timeout") from None
         except httpx.DecodingError:
+            outcome = "invalid_response"
             raise invalid() from None
         except httpx.RequestError:
+            outcome = "unavailable"
             raise WireFailure("unavailable") from None
+        except WireFailure as exc:
+            outcome = exc.kind
+            raise
+        except (asyncio.CancelledError, GeneratorExit):
+            outcome = "cancelled"
+            raise
+        except Exception:
+            outcome = "error"
+            raise
         finally:
+            operation = {"/chat/completions": "chat", "/embeddings": "embeddings", "/rerank": "rerank"}.get(path, "other")
+            observe(Observation("provider", operation, outcome, time.monotonic() - started, endpoint.provider))
             if response is not None:
                 try:
                     await response.aclose()

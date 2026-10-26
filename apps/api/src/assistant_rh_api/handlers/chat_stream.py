@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import time
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 
@@ -119,6 +120,7 @@ class ChatStreamResponse(Response):
         self.finished = asyncio.Event()
         self.serving: asyncio.Task[None] | None = None
         self.shutting_down = False
+        self.observation = {"outcome": "incomplete", "first_text_at": None}
 
     async def publish(self, event: PipelineEvent) -> None:
         self.cancellation.checkpoint()
@@ -173,8 +175,11 @@ class ChatStreamResponse(Response):
                     reading.cancel()
                     await asyncio.gather(reading, return_exceptions=True)
             await self._send(send, self.chunk({"content": text}))
+            if text and self.observation["first_text_at"] is None:
+                self.observation["first_text_at"] = time.monotonic()
 
     async def _send_error(self, send: Send) -> None:
+        self.observation["outcome"] = "failed"
         await self._send(
             send,
             data({"error": {"message": "Service momentanément indisponible", "type": "server_error", "code": "stream_error"}}),
@@ -189,6 +194,7 @@ class ChatStreamResponse(Response):
         if self.include_usage:
             await self._send(send, data({**self.base, "choices": [], "usage": asdict(result.usage)}))
         await self._send(send, b"data: [DONE]\n\n")
+        self.observation["outcome"] = "completed"
 
     async def _disconnect(self, receive: Receive) -> None:
         while (await receive())["type"] != "http.disconnect":
@@ -222,6 +228,7 @@ class ChatStreamResponse(Response):
         await self.finished.wait()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        scope.setdefault("state", {})["chat_stream_observation"] = self.observation
         if self.shutting_down:
             await error_response(503, "service_unavailable", "Service unavailable")(scope, receive, send)
             return
@@ -243,7 +250,13 @@ class ChatStreamResponse(Response):
             # Only the server cancels the ASGI task (graceful-shutdown deadline).
             reason = "shutdown"
             raise
+        except Exception:
+            self.observation["outcome"] = "failed"
+            raise
         finally:
+            if self.observation["outcome"] == "incomplete":
+                self.observation["outcome"] = "shutdown" if self.shutting_down else reason
+
             # Run the whole cleanup in an independent task, not the cancelled ASGI scope.
             async def cleanup() -> None:
                 serving.cancel()
