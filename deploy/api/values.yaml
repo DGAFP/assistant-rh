@@ -3,6 +3,8 @@ replicas: 2
 streamWorkers: 50
 # Délai d'admission SQL staging ; pool, connexions et timeout SQL inchangés.
 sqlSearchAdmissionTimeoutSeconds: 30
+# Port interne distinct du trafic utilisateur ; une seule instance Uvicorn par pod.
+metricsPort: 9109
 image:
   repository: rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api
   digest: ""

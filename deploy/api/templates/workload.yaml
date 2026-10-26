@@ -27,9 +27,12 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: {drop: [ALL]}
-          ports: [{name: http, containerPort: 8000}]
+          ports:
+            - {name: http, containerPort: 8000}
+            - {name: metrics, containerPort: {{ .Values.metricsPort }}}
           env:
             - {name: APP_ENV, value: staging}
+            - {name: API_METRICS_PORT, value: {{ .Values.metricsPort | quote }}}
             - {name: API_STREAM_WORKERS, value: {{ required "streamWorkers requis" .Values.streamWorkers | quote }}}
             - {name: API_DB_SEARCH_TIMEOUT_SECONDS, value: {{ required "sqlSearchAdmissionTimeoutSeconds requis" .Values.sqlSearchAdmissionTimeoutSeconds | quote }}}
             - {name: PGSSLMODE, value: verify-ca}
@@ -68,6 +71,22 @@ spec:
   type: ClusterIP
   selector: {app: assistant-rh-api}
   ports: [{name: http, port: 8000, targetPort: http}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: assistant-rh-api-metrics
+spec:
+  podSelector:
+    matchLabels: {app: assistant-rh-api}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: monitoring}
+          podSelector:
+            matchLabels: {assistant-rh-telemetry: collector}
+      ports: [{protocol: TCP, port: {{ .Values.metricsPort }}}]
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

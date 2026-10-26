@@ -11,6 +11,7 @@ from importlib.metadata import version as distribution_version
 import anyio
 import httpx
 from fastapi import FastAPI
+from prometheus_client import start_http_server
 from starlette.types import ASGIApp
 
 from assistant_rh_api.bootstrap import create_chat_service
@@ -44,12 +45,13 @@ from assistant_rh_api.handlers.errors import register_error_handlers
 from assistant_rh_api.handlers.feedback import create_feedback_router
 from assistant_rh_api.handlers.health import create_health_router
 from assistant_rh_api.handlers.models import create_models_router
+from assistant_rh_api.telemetry import PoolCollector, Telemetry
 
 
 class CorrelatedFastAPI(FastAPI):
     def build_middleware_stack(self) -> ASGIApp:
         # Include ServerErrorMiddleware so unexpected 500 responses are correlated too.
-        return RequestCorrelation(super().build_middleware_stack())
+        return RequestCorrelation(super().build_middleware_stack(), self.state.telemetry)
 
 
 def create_app(
@@ -146,10 +148,18 @@ def create_app(
     @asynccontextmanager
     async def managed_lifespan(application: FastAPI) -> AsyncIterator[None]:
         async with lifespan(application):
+            environment = os.environ if environ is None else environ
+            server = thread = None
+            if environment.get("API_METRICS_PORT"):
+                server, thread = start_http_server(int(environment["API_METRICS_PORT"]), registry=application.state.telemetry.registry)
             try:
                 yield
             finally:
                 await asyncio.gather(application.state.stream_workers.aclose(), application.state.non_stream_requests.aclose())
+                if server is not None:
+                    await asyncio.to_thread(server.shutdown)
+                    server.server_close()
+                    await asyncio.to_thread(thread.join)
 
     application = CorrelatedFastAPI(title="Assistant RH API", version=distribution_version("assistant-rh-api"), lifespan=managed_lifespan)
     application.state.health_probe = health_probe or PostgresHealthProbe()
@@ -162,6 +172,12 @@ def create_app(
     application.state.document_limiter = anyio.CapacityLimiter(8)
     application.state.non_stream_requests = NonStreamRequests()
     application.state.stream_workers = StreamWorkers(stream_settings or StreamSettings.from_environment(os.environ if environ is None else environ))
+    application.state.telemetry = telemetry = Telemetry()
+    telemetry.stream_active.set_function(lambda: len(application.state.stream_workers.active))
+    telemetry.stream_capacity.set(application.state.stream_workers.settings.workers)
+    telemetry.registry.register(
+        PoolCollector(lambda: application.state.database.statistics() if hasattr(getattr(application.state, "database", None), "statistics") else {})
+    )
     application.add_middleware(AuthBodyLimit)
     register_error_handlers(application)
     application.include_router(create_health_router())

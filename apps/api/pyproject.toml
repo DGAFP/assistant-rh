@@ -10,6 +10,7 @@ dependencies = [
     "cryptography>=50,<51",
     "fastapi>=0.136.3,<1",
     "httpx>=0.28.1,<1",
+    "prometheus-client>=0.24,<1",
     "psycopg-pool>=3.3,<4",
     "psycopg[binary]>=3.3.3,<4",
     "tzdata>=2025.2",
