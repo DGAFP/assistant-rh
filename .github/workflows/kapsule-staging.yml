@@ -29,6 +29,8 @@ jobs:
       - name: Validate Helm and shell
         run: |
           set -euo pipefail
+          python3 -m pip install 'PyYAML==6.0.3'
+          python3 deploy/api/test_deploy_permissions.py
           python3 deploy/api/test_wait_required_checks.py
           python3 deploy/api/test_package_staging.py
           bash -n deploy/api/deploy.sh
