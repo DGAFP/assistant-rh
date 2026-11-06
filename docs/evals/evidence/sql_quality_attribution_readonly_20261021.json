@@ -1,0 +1,35 @@
+{
+  "run_label": "sql_quality_attribution_20261021",
+  "status": "readonly_analysis_complete_live_inference_pending_explicit_approval",
+  "sql_intervention": {
+    "baseline": "54882aa",
+    "deployed_staging": "9087227dc5c7ab281870591bd47385c542354c00"
+  },
+  "full_retriever_comparisons": {
+    "count": 60,
+    "exact": 60,
+    "queries": 20,
+    "fixed_corpus_vector_fixtures": 3,
+    "historical_question_embeddings_available": false
+  },
+  "historical_traces": 40,
+  "reconstruction": {
+    "context_projection_matches": 40,
+    "generator_prefix_matches": 40,
+    "identical_selector_prompt_pairs": 20,
+    "identical_generator_request_pairs": 8,
+    "different_selected_id_order_pairs": 14,
+    "scope": "Current corpus rehydrated using historical identities; compatible with saved projections/prefixes, not authenticated complete historical prompts"
+  },
+  "new_model_calls_executed": false,
+  "runtime_changed": false,
+  "postgresql_resized": false,
+  "candidate_prompt_status": "prepared_not_applied_not_quality_validated",
+  "private_evidence_sha256": {
+    "sql-full-retriever-parity.json": "cc90f9be7c91427f40187bc6bbc35a866d8271be2bbcabe24722d28277c91706",
+    "historical-stage-comparison.json": "8295668e9a77f81cca7351a5c156b3acd93eba550f4e4264b541b77509fe785e",
+    "historical-rerank-comparison.json": "55cfa58557197f3e8d081236abf5fac866ca46a80e720b6bfd6ff9103a32742f",
+    "historical-provider-outcomes.json": "8c190634abd8f495266d76123eb2804f78a762e6a0dffacb8a8d5e7046e41747",
+    "rehydrated-prompts.json": "fe737f62a6a747049e360bce53443ecebe09e499835ca97dcc8c90ed68dfd781"
+  }
+}

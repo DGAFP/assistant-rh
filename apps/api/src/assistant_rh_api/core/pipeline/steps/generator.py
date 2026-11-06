@@ -2,9 +2,10 @@
 
 The composition root binds llm to config.provider/model followed by
 config.fallback_provider/model (Albert then Scaleway by default), using B3's
-pre-content-only fallback. Non-stream generation preserves the legacy absence
-of history; streaming keeps every supplied history message in order. C6 owns
-retrieval retry before passing the final all_rejected flag; C7 owns SSE transport.
+pre-content-only fallback. Both transports generate from the same inputs
+without history (C1 parity); stream() accepts an optional history for callers
+that opt in. C6 owns retrieval retry before passing the final all_rejected flag;
+C7 owns SSE transport.
 """
 
 from collections.abc import AsyncIterator, Sequence

@@ -105,3 +105,52 @@ async def test_lost_checkout_response_discards_lease_and_pool_recovers(synthetic
             await proxy.close()
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("phase", ["query", "commit", "rollback", "body"])
+@pytest.mark.parametrize("cancel_caller", [False, True], ids=["deadline", "caller-cancellation"])
+async def test_lost_transaction_response_discards_lease_and_pool_recovers(synthetic_database_dsn, phase, cancel_caller):
+    async with proxied_database(synthetic_database_dsn, timeout_seconds=0.5) as (database, proxy):
+        async with database.transaction() as connection:
+            original_pid = connection.info.backend_pid
+            original = (await (await connection.execute("SELECT updated_by FROM public.rag_config WHERE id = 1")).fetchone())[0]
+        entered = asyncio.Event()
+
+        async def writer():
+            async with asyncio.timeout(5 if cancel_caller else 0.25):
+                async with database.transaction() as connection:
+                    await connection.execute("UPDATE public.rag_config SET updated_by = 'lost-response' WHERE id = 1")
+                    proxy.drop_responses = True
+                    entered.set()
+                    if phase == "query":
+                        await connection.execute("SELECT 1")
+                    elif phase == "rollback":
+                        raise ValueError("roll back this transaction")
+                    elif phase == "body":
+                        await asyncio.Event().wait()
+
+        task = asyncio.create_task(writer())
+        try:
+            await asyncio.wait_for(entered.wait(), 1)
+            if phase != "body":
+                await asyncio.wait_for(proxy.response_dropped.wait(), 1)
+            if cancel_caller:
+                task.cancel()
+                await asyncio.sleep(0)
+                task.cancel()  # Repeated cancellation must still join driver I/O.
+            done, _ = await asyncio.wait({task}, timeout=1)
+            assert task in done, "transaction retained its lease after the deadline/cancellation"
+            with pytest.raises(asyncio.CancelledError if cancel_caller else TimeoutError):
+                await task
+            assert database.statistics()["returns_bad"] == 1
+            proxy.drop_responses = False
+            async with database.transaction() as connection:
+                assert connection.info.backend_pid != original_pid
+                actual = (await (await connection.execute("SELECT updated_by FROM public.rag_config WHERE id = 1")).fetchone())[0]
+                assert actual == ("lost-response" if phase == "commit" else original)
+                await connection.execute("UPDATE public.rag_config SET updated_by = %s WHERE id = 1", (original,))
+        finally:
+            await proxy.close()
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)

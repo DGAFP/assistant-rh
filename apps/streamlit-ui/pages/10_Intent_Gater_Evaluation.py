@@ -58,10 +58,11 @@ def get_conn():
 
 
 def ensure_tables():
-    """Create tables if they don't exist (idempotent)."""
+    """Create tables if they don't exist (idempotent, no DDL for non-owner runtime roles)."""
     with get_conn() as conn:
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS intent_eval_goldset (
+            DO $ddl$ BEGIN IF to_regclass('public.intent_eval_goldset') IS NULL THEN
+            CREATE TABLE intent_eval_goldset (
                 id SERIAL PRIMARY KEY,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 question TEXT NOT NULL,
@@ -75,10 +76,12 @@ def ensure_tables():
                 source_id TEXT,
                 tags TEXT[],
                 notes TEXT
-            )
+            );
+            END IF; END $ddl$
         """)
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS intent_eval_experiments (
+            DO $ddl$ BEGIN IF to_regclass('public.intent_eval_experiments') IS NULL THEN
+            CREATE TABLE intent_eval_experiments (
                 id SERIAL PRIMARY KEY,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 name TEXT NOT NULL,
@@ -92,7 +95,8 @@ def ensure_tables():
                 results_detail JSONB,
                 confusion_matrix JSONB,
                 total_time_seconds FLOAT
-            )
+            );
+            END IF; END $ddl$
         """)
         conn.commit()
 

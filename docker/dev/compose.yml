@@ -1,0 +1,129 @@
+# Separate from docker/api/compose.yml: this developer stack may hold staging corpus data.
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    ports:
+      - "127.0.0.1:${DEV_DB_PORT}:5432"
+    environment:
+      POSTGRES_USER: dev_owner
+      POSTGRES_PASSWORD: local-dev-only
+      POSTGRES_DB: assistant_rh
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/dev/init-db.sh:/docker-entrypoint-initdb.d/10-dev.sh:ro
+      - ./docker/dev/bootstrap-api.sh:/workspace/docker/dev/bootstrap-api.sh:ro
+      - ./docker/api/bootstrap-local.txt:/workspace/docker/api/bootstrap-local.txt:ro
+      - ./apps/api/tests/fixtures:/workspace/apps/api/tests/fixtures:ro
+      - ./supabase/migrations:/workspace/supabase/migrations:ro
+      - ./.dev/dumps:/state
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U dev_owner -d assistant_rh"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    init: true
+    ports:
+      - "127.0.0.1:${DEV_API_PORT}:8000"
+    env_file:
+      - path: ./.dev/api.env
+        format: raw
+    environment:
+      SCW_POSTGRES_DSN: postgresql://dev_api:local-dev-only@db:5432/assistant_rh?sslmode=disable
+      APP_ENV: local
+      PYTHONPATH: /app/apps/api/src
+    volumes:
+      - ./apps/api/src:/app/apps/api/src:ro
+    command: [python, -m, uvicorn, "assistant_rh_api.handlers.app:app", --host, "0.0.0.0", --port, "8000", --reload, --reload-dir, /app/apps/api/src, --no-proxy-headers]
+    stop_grace_period: 150s
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+  conversations:
+    build:
+      context: ${CONVERSATIONS_DIR}
+      target: backend-development
+      args:
+        DOCKER_USER: ${DEV_UID}
+    user: ${DEV_UID}
+    init: true
+    ports:
+      - "127.0.0.1:${DEV_BACKEND_PORT}:8000"
+    env_file:
+      - path: ./.dev/conversations.env
+        format: raw
+    environment:
+      DJANGO_SETTINGS_MODULE: conversations_settings
+      DJANGO_CONFIGURATION: LocalDev
+      PYTHONPATH: /dev-tools:/app
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: conversations
+      DB_USER: dev_owner
+      DB_PASSWORD: local-dev-only
+      ASSISTANT_RH_ENABLED: "true"
+      ASSISTANT_RH_LOCAL_LOGIN_ENABLED: "true"
+      ASSISTANT_RH_API_URL: http://api:8000/v1
+      ASSISTANT_RH_DELEGATION_ISSUER: conversations-local
+      ASSISTANT_RH_API_AUDIENCE: assistant-rh-local
+      ASSISTANT_RH_SIGNING_KID: local-dev
+      ASSISTANT_RH_SIGNING_KEY_FILE: /state/signing.pem
+      ASSISTANT_RH_AUDIT_KEY_FILE: /state/audit.key
+      LLM_CONFIGURATION_FILE_PATH: /state/models.json
+    volumes:
+      - ${CONVERSATIONS_DIR}/src/backend:/app
+      - /app/.venv
+      - ./docker/dev:/dev-tools:ro
+      - ./.dev/signing.pem:/state/signing.pem:ro
+      - ./.dev/audit.key:/state/audit.key:ro
+      - ./.dev/models.json:/state/models.json:ro
+    command: [sh, -ec, "python manage.py migrate --noinput && python /dev-tools/seed-conversations.py && python manage.py runserver 0.0.0.0:8000"]
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1.0/config/')"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+
+  frontend:
+    build:
+      context: ${CONVERSATIONS_DIR}
+      dockerfile: src/frontend/Dockerfile
+      target: conversations-dev
+    user: ${DEV_UID}
+    init: true
+    ports:
+      - "127.0.0.1:${DEV_FRONTEND_PORT}:3000"
+    environment:
+      # Use the browser's origin, including when only port 3000 is forwarded.
+      VITE_API_ORIGIN: ""
+      VITE_PRODUCT_NAME: Assistant RH
+    volumes:
+      - ${CONVERSATIONS_DIR}/src/frontend:/home/frontend
+      - /home/frontend/node_modules
+      - /home/frontend/apps/conversations/node_modules
+      - ./docker/dev:/dev-tools:ro
+    command: [yarn, dev, --config, /dev-tools/vite.config.mts, --configLoader, runner]
+    depends_on:
+      conversations:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+volumes:
+  pgdata:

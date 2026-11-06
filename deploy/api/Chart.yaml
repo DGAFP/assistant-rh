@@ -1,0 +1,5 @@
+apiVersion: v2
+name: assistant-rh-api
+description: API interne Assistant RH sur Kapsule
+version: 0.1.0
+type: application

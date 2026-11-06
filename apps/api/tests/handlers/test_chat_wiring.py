@@ -29,6 +29,7 @@ async def test_injected_model_policy_is_used_for_execution(monkeypatch, model):
     runtime = Runtime()
     app = create_app(
         database=AsyncMock(),
+        document_service=AsyncMock(),
         environ={},
         auth_service=auth,
         model_service=Models(),

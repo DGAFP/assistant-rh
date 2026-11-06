@@ -60,6 +60,7 @@ from assistant_rh_rag_pipeline.ministry_scope import MINISTRY_CATALOG
 from assistant_rh_rag_pipeline.models import Chunk
 
 from src.ui.admin_auth import is_admin
+from src.ui.answer_markdown import finalize_streamed_answer, format_answer_markdown
 from src.ui.chatbot_feedback import (
     is_feedback_pending,
     render_feedback_block,
@@ -756,7 +757,7 @@ def _chat_exit_dialog():
     if pending["evaluate"]:
         turn = next(t for t in st.session_state.turns if t.id == pending["turn_id"])
         st.caption("Votre avis porte sur la réponse non évaluée ci-dessous. Il sera enregistré avant de continuer.")
-        st.markdown(turn.assistant)
+        st.markdown(format_answer_markdown(turn.assistant))
         render_feedback_block(turn)
 
 
@@ -1304,7 +1305,7 @@ for idx, t in enumerate(st.session_state.turns):
         st.markdown(t.user)
     with st.chat_message("assistant"):
         # unsafe_allow_html=True pour supporter les <br/> dans les tableaux (GPT-OSS)
-        st.markdown(t.assistant, unsafe_allow_html=True)
+        st.markdown(format_answer_markdown(t.assistant), unsafe_allow_html=True)
         # 📚 Afficher les sources pour l'historique (sauf si réponse négative ou sources à cacher)
         if not is_negative_response(t.assistant) and not should_hide_sources(t.assistant):
             render_sources(t.retrieved, key_suffix=f"history_{idx}", legal_refs=t.legal_refs)
@@ -1382,7 +1383,7 @@ if query:
             if not qr_v3.should_proceed:
                 with st.chat_message("assistant"):
                     v3_response = qr_v3.direct_response or ""
-                    st.markdown(v3_response)
+                    st.markdown(format_answer_markdown(v3_response))
                 turn_obj = Turn(id=turn_id, user=query, assistant=v3_response, retrieved=[], prompt_used="")
                 st.session_state.turns.append(turn_obj)
 
@@ -1440,13 +1441,8 @@ if query:
                 with response_placeholder:
                     v3_response_raw = st.write_stream(_stream_clear_on_first(stream_generator, status_placeholder))
 
-                # 🧹 Handle HTML in response (GPT-OSS uses <br> for line breaks in tables)
-                v3_response = v3_response_raw
-                if "<br" in v3_response_raw:
-                    # Normalize <br> variants to <br/>
-                    v3_response = v3_response_raw.replace("<br>", "<br/>").replace("<br />", "<br/>")
-                    # Re-render with HTML support for proper table formatting
-                    response_placeholder.markdown(v3_response, unsafe_allow_html=True)
+                # 🧹 Normalize <br> and render math; history and logs keep the generated math.
+                v3_response = finalize_streamed_answer(response_placeholder, v3_response_raw)
 
                 t_v3_end = time.time()
 

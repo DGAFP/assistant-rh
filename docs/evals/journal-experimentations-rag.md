@@ -1248,3 +1248,1088 @@ ne doit pas être forcé par un réglage qualité.
 **Décision** : M0a et M0b sont figés comme références du chantier API. Aucune
 curation goldset ni amélioration pipeline n'a été introduite ; #421 reste une
 dette distincte à traiter hors de ce jalon.
+
+## M1 — `m1_local_smoke_20260921` (21/09/2026, préparé)
+
+**Avant lancement** : vérification du runner apparié sur q1 (MATTE) et q27
+(MSO), sur la copie PostgreSQL locale du corpus staging. Deux paires au maximum
+s'exécutent simultanément, avec une instance historique par question et le
+service core partagé. Les deux runtimes écrivent leurs runs/traces localement ;
+les items d'évaluation référencent leur `turn_id`. Aucun log utilisateur distant
+n'est copié. Le run de référence M0a #240 et ses 98 items sont copiés localement.
+
+Configuration inchangée, fingerprint `51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce` ;
+générateur Albert `deepseek-v4-flash`, selector Albert `openweight-large`, juge
+Scaleway `mistral-medium-3.5-128b`, majorité de trois votes, RAGAS désactivé,
+scope `per-question`. Empreintes du code, questions et prompt enregistrées par
+le runner. Les modifications mesurées ajoutent les métriques et projections SQL
+manquantes et corrigent l’attribution des fallbacks dans le logger historique,
+sans changement des décisions RAG. pgvector local 0.8.6, staging
+0.8.2 : les résultats live seront appariés sur le même clone, avec #240 comme
+référence historique complémentaire. Ce smoke de deux questions ne donne pas
+à lui seul de GO M1.
+
+**Résultats** : runs **locaux #241 (legacy) / #242 (core)** terminés, 2/2
+items chacun sans erreur ni échec du juge ; hit_rate 1,0 des deux côtés.
+Judge pass : 1,0 historique et 0,5 core. Ce petit panel valide le câblage,
+pas la parité qualité. Les quatre runs de chat et leurs 26 événements sont
+présents en base ; environnement `local` et métriques des six étapes métier
+renseignés. Les questions, réponses gold et références des 98 questions sont
+identiques aux items M0a #240 après normalisation du format des références.
+Artefacts privés dans `_local/m1-20260921/smoke`. Le premier démarrage a
+échoué à la validation des arguments avant création de run ou appel provider.
+
+
+## M1 — `m1_local_paired_98_20260921` (21/09/2026, terminé)
+
+**Avant lancement** : comparaison appariée complète des 98 questions M0a sur
+le même snapshot local, ancien runtime et nouveau core. Même configuration
+`51d6256b…`, juge Scaleway `mistral-medium-3.5-128b` en majorité de trois votes,
+RAGAS désactivé, scope `per-question`, deux paires concurrentes au maximum.
+Appels Albert/Scaleway et juge autorisés explicitement ; toutes les écritures
+de chat, traces et évaluation restent locales. Le logger historique attribue
+désormais les fallbacks au provider/modèle réellement utilisés.
+
+Tolérances conservées du runner M0a : baisse maximale de 0,05 pour
+`judge_pass_rate` et `doc_recall_avg`, avec lecture par corpus. Comparer le core
+au runtime historique apparié et au run M0a #240 ; les écarts de corpus/pgvector
+depuis M0a restent une limite explicite. Empreintes des sources, questions et
+prompt dans les métadonnées des runs. Aucun réglage qualité entre les bras.
+
+**Résultats** : runs locaux **#243 (historique) et #244 (core)** terminés,
+98/98 chacun, sans erreur d'item ni de juge. Les deux obtiennent **64/98**
+PASS (`0,653061`), un rappel documentaire `0,729138` et un hit rate `0,826531`.
+Les seuils passent entre les deux bras et contre M0a #240 : delta juge nul,
+delta rappel contre M0a `+0,004859`.
+
+Relecture DB : 196 chats associés aux 196 items, 578 événements historiques et
+676 événements core, tous `local`, aucune incohérence de configuration,
+scope, provider/modèle, métriques, sources ou trace. Deux courts-circuits par
+moteur ; l'API conserve correctement provider/modèle SQL `null` sans génération.
+Les 290 appels LLM core réussis disposent de compteurs d'usage ; une tentative
+de classification a échoué avant reprise, sans échec de run. Les tokens de cette
+tentative interrompue ne sont pas inventés.
+
+Code `16e6afe`, empreinte sources
+`885ad582ee104e2b713d54dfd0d6e14885c8b1bcf8d128c04556f89752434582`.
+Artefacts privés : `_local/m1-20260921/full` et `assessment-final.json`.
+La décision finale utilise néanmoins le run corrigé suivant : l'égalité des
+scores globaux ne dispense pas de corriger l'ordre des références découvert
+pendant cette évaluation.
+
+## M1 — `m1_local_core_orderfix_20260921` (21/09/2026, terminé — GO technique)
+
+**Avant lancement** : le premier panel a révélé un écart déterministe dans
+le texte des références Service-Public : l'adaptateur DB triait les clés JSON
+avant leur rendu historique en chaîne dans le prompt. Le test SQL synthétique
+`service-public-references` échoue avant correction et passe après. Le snapshot
+immuable conserve désormais l'ordre reçu ; seul le calcul de révision trie les
+clés. Aucun réglage de modèle, prompt, retrieval ou juge.
+
+Réévaluation des **98 questions côté core uniquement**, comparées au bras
+historique local #243 et à M0a #240. Le premier panel #243/#244 termine dans
+son checkout figé ; le correctif est mesuré dans un checkout séparé. Cette
+réutilisation du témoin évite 98 générations et 294 votes juge supplémentaires.
+Même clone, configuration `51d6256b…`, questions, gold, scope `per-question`,
+juge Scaleway `mistral-medium-3.5-128b` en majorité de trois votes, sans RAGAS.
+Deux questions core simultanées au maximum. Les exécutions se chevauchent : les
+latences mesurées décrivent ces runs, sans servir de benchmark de performance.
+Les appels providers restent dans l'autorisation du smoke et du panel M1 ;
+toutes les écritures DB et les artefacts restent locaux.
+
+Tolérances inchangées : baisse maximale de 0,05 de `judge_pass_rate` et de
+`doc_recall_avg`, contre le témoin #243 et M0a #240 ; analyse par corpus.
+Empreintes du code, des questions et du prompt attachées au nouveau run.
+
+**Résultats** : run local **#245**, 98/98, sans erreur d'item ni de juge.
+Code mesuré `17c1955abd5d78e828b03bd86115dc36dc52d932` ; configuration
+`51d6256b…`, empreinte des sources
+`5ddfa118df1133323e9325ed9837911dbdb8fbe207edc27169678030210a41a8`,
+questions `afd6cfc9…`, prompt `108979e4…`. Code et questions inchangés entre le
+lancement et la fin ; les douze comptages du corpus sont également inchangés.
+
+| Mesure | M0a #240 | Historique local #243 | Core corrigé local #245 |
+|---|---:|---:|---:|
+| judge_pass (majorité de 3) | 64/98 · 0,6531 | 64/98 · 0,6531 | **67/98 · 0,6837** |
+| doc_recall | 0,7243 | 0,7291 | **0,7291** |
+| hit_rate | 0,8061 | 0,8265 | **0,8265** |
+| Erreurs d'item / juge | 0 / 0 | 0 / 0 | **0 / 0** |
+
+Les deux gates globaux passent contre #243 et #240 : delta juge `+0,030612`,
+delta rappel `0` contre #243 et `+0,004859` contre M0a. Hors des huit questions
+déjà taguées `juge_borderline`, les deux bras locaux sont à **62/90** ; ce run
+ne démontre donc pas une amélioration de qualité attribuable au correctif.
+
+| Corpus | n | PASS historique | PASS core corrigé | Rappel documentaire, identique entre bras |
+|---|---:|---:|---:|---:|
+| DGAFP | 2 | 2 | 2 | 0,0349 |
+| MATTE | 12 | 7 | 5 | 0,7907 |
+| MSO | 4 | 3 | 4 | 0,6786 |
+| Service-Public | 14 | 7 | 9 | 0,9286 |
+| manual | 55 | 36 | 37 | 0,6579 |
+| synthetic | 11 | 9 | 10 | 0,9091 |
+
+L'analyse appariée compte sept passages FAIL→PASS et quatre PASS→FAIL.
+Sur MATTE, q4 et q33 reculent malgré un rappel documentaire égal à 1 dans les
+deux bras : refus de réponse jugé insuffisant pour q4, incomplétude pour q33.
+Les deux contextes communs de q4 sont désormais textuellement identiques après
+la correction d'ordre. Ces cas restent à surveiller en canary ; les petits
+dénominateurs par corpus ne remplacent pas les tolérances globales fixées avant
+lancement. Aucun réglage de qualité ni exclusion de question pour obtenir le GO.
+
+Relecture DB finale : **98 chats core, 676 événements, 206 sources servies**,
+aucun item orphelin ni incohérence de trace, scope, configuration, compteurs,
+provider/modèle ou latence. 290 appels LLM réussis disposent de leur usage ;
+trois tentatives de classification ont échoué avant reprise, sans échec final.
+Leurs tokens non retournés restent inconnus. Les requêtes q30/MSO et q31/MATTE
+se chevauchent réellement ; leur isolation complète est aussi couverte par les
+tests de concurrence. Le smoke streamé ci-dessous valide les TTFT en DB.
+
+**Décision : GO technique M1 vers D1–D4 après intégration des PR #579 et #580.**
+Replays exacts 7/7, 27 sorties d'étapes, cinq contrôles négatifs détectés ;
+964 tests API, 1 551 tests historiques (45 ignorés), mypy, Ruff et quatre
+contrats d'import passent. La section « Reports depuis le runtime existant »
+du LEDGER est vide. L'opérabilité du proxy et les métriques de coût complet
+restent D4/M2. La différence pgvector 0.8.6 local / 0.8.2 staging et les index
+reconstruits restent une limite explicite de cette preuve live locale.
+
+[Preuve agrégée publiée](evidence/m1_api_parity_local_20260921.json), empreinte
+`96809b972c5a83fd9deedde1ed0c65f2888bfee467771d34c71091283b53125d`.
+Artefacts détaillés privés : `_local/m1-20260921/core-orderfix` et
+`orderfix-assessment-final.json` ; aucun texte de question/réponse/contexte dans
+la preuve publiée.
+
+## Smoke streaming — `m1_local_stream_metrics_20260921` (21/09/2026, terminé)
+
+**Avant lancement** : un tour q27/MSO sur le core corrigé `17c1955`, mêmes
+providers Albert/Scaleway et clone local, sans juge. Vérifier avec des deltas
+réels que les TTFT du run et de la génération sont distincts, puis relire le
+run, ses sources, les compteurs d'usage et les timings SQL. Ce contrôle de
+persistance complète les tests SSE/TCP de C7 ; il passe directement par le
+service et ne constitue pas un nouveau test de proxy HTTP. Exécution détachée,
+logs et écritures locaux, dans le périmètre du smoke autorisé.
+
+**Résultats** : run `29c79ac84f3748d6ad79c93496e69d5b`, statut `completed`,
+87 deltas et 1 332 caractères ; une source et sept événements `local` relus.
+Durée du run `12 645 ms`, premier token depuis le début du run `6 063 ms`,
+premier token depuis le début de génération `298 ms` ; les colonnes SQL
+`ttft_ms` et `v3_ttft_ms` valent bien `298`. Provider réel Albert,
+modèle `deepseek-v4-flash`, usage déclaré : 2 545 tokens d'entrée et 330 de
+sortie, aucun fallback. Les valeurs JSON et SQL concordent.
+Artefact privé : `_local/m1-20260921/stream-metrics.json`.
+
+## M1 — `m1_local_paired_98_20260928` (28–29/09/2026, terminé — NO-GO)
+
+**Avant lancement** : nouvelle comparaison appariée des 98 questions M0a,
+après intégration de C7 et des corrections de `dev` (`7a1e5ac`) dans #580.
+Le runner joint désormais tous les bras avant finalisation et attend la
+persistance des annulations ; les estimations de volume core sont complétées.
+Les protections de contexte vide, sources privées et pannes DB de `dev`
+sont conservées. Les résultats du 21 septembre ne sont pas réattribués.
+
+Même clone PostgreSQL local `assistant_rh_rag_local` sur `127.0.0.1:55434`,
+pgvector 0.8.6, 4 882 documents et 10 397 sections. Les écritures d'évaluation,
+chats et traces sont locales ; la base synthétique des tests utilise le port
+55466. Les appels de génération, sélection et jugement utilisent les providers
+Albert/Scaleway déjà configurés. Aucun changement de configuration distante.
+
+Configuration attendue `51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce`,
+générateur Albert `deepseek-v4-flash`, selector Albert `openweight-large`, juge
+Scaleway `mistral-medium-3.5-128b`, majorité de trois votes, sans RAGAS,
+scope `per-question`, deux paires simultanées au maximum. Les deux bras
+s'exécutent sur le même code et snapshot, sans réglage qualité intermédiaire.
+Tolérances M0a conservées : baisse maximale de 0,05 sur `judge_pass_rate`
+et `doc_recall_avg`, contre le témoin apparié et #240 ; lecture par corpus,
+avec attention aux q4/q33 MATTE et aux questions déjà taguées instables.
+
+Le protocole prévoit de vérifier les empreintes du code, du panel, de la
+configuration, des prompts et du corpus avant et après. Artefacts privés hors
+Git dans `/tmp/assistant-rh-m1-20260928/`. Résultats finaux ci-dessous.
+
+**Préflight terminé** sur `73e53767bb28f8ae1d98bea6b505b3ee7564f9ff` : les
+98 questions, réponses gold et références sont identiques aux items #240.
+Sources `e728708b4c0e64430ad526bcecdc9983ef2861a6c8770f4892d9efb74012081a`,
+panel `afd6cfc97a4232e9f8b9253d9d9b5b930c63ed83421f544f5c8178a42e163bdc`,
+snapshot config/prompts/acronymes/corpus
+`092e036595dcb78d144fa128f07f05a55b3c5fe7dc3a8f70274a7af78abae572`.
+Les comptages correspondent au clone du 21 septembre. Détail privé dans
+`/tmp/assistant-rh-m1-20260928/before.json`.
+
+**Arrêt initial avant autorisation** : le contrôle automatique a refusé les appels
+Albert/Scaleway faute d'autorisation explicite de transmettre ce panel.
+À ce stade, aucun nouveau run ID, appel provider ou résultat live ; les
+résultats #243/#245 demeurent historiques.
+
+**Autorisation obtenue le 28 septembre** : l'utilisateur autorise explicitement
+l'évaluation complète et la transmission des questions, extraits de corpus et
+réponses à Albert/DINUM et Scaleway. Lancement de la paire prévu avec les
+paramètres et les écritures locales décrits ci-dessus.
+
+**Lancé** : runs locaux **#246 (historique) / #247 (core)** sur `ea1115e`,
+avec les mêmes sources `e728708b…` que le préflight et les tests. Processus
+détaché, résultats privés dans `/tmp/assistant-rh-m1-20260928/paired/`.
+La première paire termine sans erreur d'item ni de juge. Décision en attente
+du panel complet ; CI Tests et CodeQL passent sur `4c7d293`.
+
+**Interruption technique** : #246/#247 finissent `failed` avec
+`ConnectionTimeout` lors de l'insertion d'un item, après une interruption
+prolongée de l'exécution locale. Respectivement 57 et 58 items sont enregistrés,
+sans erreur d'item ni de juge. Trois chats supplémentaires (deux historiques,
+un core) sont persistés sans item d'évaluation associé ; ils restent conservés
+et exclus de la comparaison qualité. Aucun de ces runs n'est déclaré complet.
+
+**Avant reprise** : les empreintes sources, panel et snapshot complet restent
+strictement identiques au préflight (`e728708b…`, `afd6cfc9…`, `092e0365…`).
+Compléter seulement les **41 questions historiques manquantes** sous le label
+`m1_local_resume_41_20260928` et les **40 questions core manquantes** sous
+`m1_local_resume_40_20260928`, avec `--runtime legacy` / `--runtime core`.
+Deux questions simultanées au maximum par moteur, mêmes modèles, trois votes,
+scope, configuration et corpus ; autorisation de la campagne complète inchangée.
+Les runs interrompus ne sont ni écrasés ni réétiquetés. La comparaison finale
+assemblera 98 IDs uniques par moteur, en conservant les run IDs d'origine et
+en distinguant les interruptions de l'évaluation qualité.
+
+**Second arrêt local, constaté le 29 septembre** : #248 (core) finit `failed`
+sur `OperationalError` avec 16 items ; le worker #249 (historique) a disparu
+après 16 items et son statut `running` est régularisé en échec. Le système
+signale des arrêts OOM ; l'audit intermédiaire chargé en mémoire a lui-même
+été tué (137). L'audit est réduit aux colonnes utiles, sans charger les corps
+de contextes/prompts/traces. Aucun code moteur ni paramètre provider ne change.
+Le total acquis est de 73 items historiques et 74 core, sans erreur d'item.
+Trois chats supplémentaires sans item associé s'ajoutent aux trois précédents.
+
+**Avant continuation finale — `m1_local_remaining_25_20260929`** : snapshot,
+panel et sources toujours identiques. Reprendre les 25 IDs absents de
+l'intersection des deux bras avec `--runtime both`, deux paires au maximum,
+mêmes modèles, trois votes et scope. Le résultat core q223 de #248 est
+recalculé avec son témoin historique pour apparier la date des prompts après
+le changement de jour ; il reste conservé mais n'entre pas dans l'agrégat
+final. Ce choix est fixé avant le nouveau jugement, indépendamment du score.
+Les 73 paires acquises et les 25 nouvelles formeront le panel de 98, avec
+provenance par run et date. Aucun run interrompu n'est réécrit en succès.
+
+**Résultat final le 29 septembre** : **#250 historique / #251 core** terminent
+chacun 25/25 à 05:09 UTC, sur `c116d48`. Les reprises #248/#249 mesuraient
+`99ef0f0` et la paire initiale `ea1115e` ; seules les pièces de documentation
+ont changé entre ces commits. Les sources restent celles testées à `73e5376`.
+L'assemblage contient **98 IDs uniques par moteur**, identiques à #240 :
+historique **#246 + #249 + #250**, core **#247 + #248 + #251**, hors q223/#248
+remplacé selon le protocole ci-dessus. Ces assemblages ne sont pas de nouveaux
+run IDs en base. Les quatre runs interrompus restent en échec.
+
+| Mesure | M0a #240 | Historique apparié | Core apparié |
+|---|---:|---:|---:|
+| Réponses validées | 64/98 (65,31 %) | 68/98 (69,39 %) | **62/98 (63,27 %)** |
+| Rappel documentaire | 0,724278 | 0,729138 | **0,729138** |
+| Hit rate | 0,806122 | 0,826531 | **0,826531** |
+| Retrieval gap déterministe | 0,193878 | 0,173469 | **0,173469** |
+
+| Corpus | n | PASS historique | PASS core | Rappel documentaire identique entre bras |
+|---|---:|---:|---:|---:|
+| DGAFP | 2 | 2 | 2 | 0,034884 |
+| MATTE | 12 | 6 | 6 | 0,790675 |
+| MSO | 4 | 4 | 3 | 0,678571 |
+| Service-Public | 14 | 10 | 7 | 0,928571 |
+| manual | 55 | 36 | 35 | 0,657879 |
+| synthetic | 11 | 10 | 9 | 0,909091 |
+
+**Décision : NO-GO M1 vers D1–D4.** Le core respecte les tolérances contre
+M0a, mais son `judge_pass_rate` baisse de **0,061224 (6,12 points)** contre
+le témoin apparié, au-delà de la baisse maximale autorisée de **0,05**.
+Le seuil de rappel passe avec un delta nul. Le GO du 21 septembre reste
+attaché à son ancienne révision ; il ne valide pas le code courant. La PR
+#580 reste en brouillon. Aucun seuil, question ou paramètre n'est ajusté
+après lecture des scores pour changer cette décision.
+
+L'analyse appariée compte **60 PASS/PASS, 28 FAIL/FAIL, deux progrès et huit
+reculs**. Les progrès concernent q1 et q211 ; les reculs q6, q20, q28, q186,
+q188, q827, q926 et q4538. Tous les reculs conservent le rappel documentaire
+de leur témoin. Sept sont classés `incomplete` par le juge ; q4538 est classé
+`retrieval_gap` malgré un rappel égal à 1, ce qui ne prouve pas à lui seul
+une perte de retrieval. q186/q827/q926 ont les mêmes contextes textuels et
+longueurs de prompt ; les cinq autres diffèrent. Aucune cause déterministe
+n'est établie, et la variance ne suffit pas à écarter ce résultat. Hors des
+huit questions déjà taguées `juge_borderline`, historique **63/90**, core
+**59/90** : diagnostic secondaire, sans effet sur le seuil du panel complet.
+
+Les **98 jugements sont terminés dans chaque bras**, sans échec final d'item.
+Un jugement core a seulement deux votes concordants sur trois demandés
+(`2/2`) ; les autres ont trois votes. La couverture d'usage juge core est
+incomplète : le coût total reste inconnu, sans extrapolation du vote manquant.
+Les 290 appels LLM core réussis ont leurs compteurs d'usage ; une tentative
+de classification échouée avant reprise reste sans usage factice.
+
+**Audit final** : les 196 items retenus correspondent à 196 chats distincts.
+Historique : **98 chats et 578 événements** ; core : **98 chats, 676 événements
+et 203 sources persistées**. Aucune incohérence détectée de scope, trace,
+configuration, provider/modèle, compteurs ou latence. Les six chats interrompus
+sans item et le résultat q223/#248 remplacé restent conservés hors agrégat.
+Les empreintes initiales et finales du code, du panel et du snapshot sont
+identiques. Les dates effectivement rendues dans les prompts concordent entre
+moteurs sur les 98 paires : 73 acquises le 28, 25 le 29. Aucun chevauchement
+temporel inter-ministères n'a été observé dans ce panel ; l'isolation concurrente
+est couverte par les tests déterministes. Le clone pgvector 0.8.6 et ses index
+reconstruits ne prouvent pas l'identité des plans/rankings avec staging 0.8.2.
+
+Replays M0b **7/7 exacts**, 27 sorties d'étapes, sept résultats structurés et
+cinq contrôles négatifs détectés ; **1 257 tests API / 1 574 historiques**
+réussis (46 historiques ignorés), Ruff, mypy et quatre contrats d'import au
+vert sur les mêmes sources. La section des reports de parité du LEDGER est
+vide ; le blocage actuel porte sur le seuil live, pas sur une dette masquée.
+
+[Preuve agrégée publiée](evidence/m1_api_parity_local_20260928.json), empreinte
+`845fd6862b1441b9cac1afe2436a15184c9854ac00e1a943b4b675984dcd1ab3`.
+Artefacts détaillés privés : `/tmp/assistant-rh-m1-20260928/`, notamment
+`final-assessment-final.json`, `before.json`, `after.json`, `prompt-dates.json`
+et `loss-diagnostics.json`. La preuve publiée contient agrégats, IDs et
+empreintes ; les textes de questions, réponses et contextes restent privés.
+
+## M1 — diagnostic des écarts (30/09/2026, analyse terminée)
+
+Lecture des 196 items de la campagne des 28–29 septembre, sans nouveau run,
+appel provider ou écriture DB. Sources `e728708b…`, panel `afd6cfc9…` et
+snapshot `092e0365…` vérifiés inchangés. CI Tests et CodeQL passent sur
+`b57c498`. Les scores officiels et le **NO-GO** restent inchangés.
+
+Prompts reconstruits et recoupés avec les traces/longueurs conservées : sur
+96 paires RAG, **64 prompts sélecteur identiques**, dont **26 sélections
+différentes** ; **56 entrées de génération identiques**, dont **54 réponses
+différentes**. Les 192 réponses sélecteur enregistrées sont interprétées de
+la même façon par les deux parseurs. Les deux autres paires sont des réponses
+directes, sans génération.
+
+Quatre reculs (q6/q20/q28/q4538) suivent une sélection différente malgré le
+même prompt ; q188 reçoit déjà des candidats différents, notamment à cause
+de la résolution SQL ambiguë de sections Service-Public. La section MATTE
+pertinente demeure disponible dans les deux bras. Les trois autres reculs
+(q186/q827/q926) partagent leurs entrées de génération et révèlent des motifs
+juge incohérents : le témoin historique est crédité d'éléments absents de sa
+réponse, dont l'absence est ensuite pénalisée côté core. Ces constats ne
+certifient pas les réponses core et ne modifient aucun vote.
+
+Le rappel global inclut les documents récupérés en amont, même éliminés par
+le sélecteur. À la sortie du context builder, le rappel moyen est **0,460268
+historique / 0,450397 core** ; pour q6, il passe de **1 à 0,6**, malgré un
+rappel global égal à 1. La limite B2 des associations de sections ambiguës
+est reproduite en lecture seule avec les helpers SQL réels ; elle reste
+distincte des replays M0b exacts aux ports.
+
+[Diagnostic détaillé](../architecture/hexagonal-split/13-m1-run-metrics.md#diagnostic-du-30-septembre-2026)
+et [preuve agrégée](evidence/m1_api_parity_diagnosis_20260930.json), empreinte
+`0bdc551f3459157dae63b95db68863d73b177b0e8a580fc696be5f4bcb90eba7`.
+Artefacts privés dans `/tmp/assistant-rh-m1-investigate-20260930/`. Les requêtes
+HTTP complètes d'origine n'étant pas enregistrées côté core, l'égalité des
+prompts est reconstruite et recoupée ; aucun nouveau résultat live n'est
+revendiqué et aucune correction du score officiel n'est appliquée.
+
+## M1 — réévaluation `gold-quotes-v1` (30/09/2026, protocole avant lancement)
+
+Autorisation utilisateur de poursuivre le diagnostic et les corrections,
+puis de relancer une comparaison complète. Label
+`m1_rejudge_gold_quotes_v1_20260930`, suffixes `m0a`, `legacy`, `core`.
+Réévaluation de **294 réponses enregistrées**, sans nouvelle génération :
+M0a #240, historique #246/#249/#250, core #247/#248/#251, avec la seule
+exclusion déjà déclarée de q223/#248. Les anciens items et verdicts restent
+intacts. Les 98 textes question/gold concordent dans les trois bras.
+Empreinte du manifeste d'entrées :
+`6dd46790aef6fd88ad701da5aa00621e0f086050b82d9214e50a05947f2ef120`.
+
+Le juge reste Scaleway `mistral-medium-3.5-128b`, température 0,
+majorité de trois votes avec quorum de deux, même rubrique, mêmes seuils,
+sans RAGAS ni addendum implicite. Chaque vote énumère les points requis du
+gold, leur couverture et des citations exactes. La validation mécanique
+vérifie leur présence dans les textes (espaces normalisés), **pas leur
+implication sémantique ni l'exhaustivité de l'audit**. Une seule réparation
+d'une preuve mal formée est autorisée, indépendamment du verdict ; une
+preuve encore invalide devient une erreur du juge. Aucun vote négatif
+valide n'est relancé. Les trois audits et usages sont conservés.
+
+Le scope porte `judge_evidence=gold-quotes-v1` : ces scores ne seront pas
+comparés directement aux anciens scores. Concurrence de deux jugements,
+écritures uniquement sur le clone local, checkpoint privé après chaque
+réponse dans `/tmp/assistant-rh-m1-rejudge-20260930/`. Aucun provider de
+génération n'est sollicité. Le script reproductible est
+`scripts/conformance/m1_rejudge.py` ; `--prepare-only` a confirmé 98 items
+uniques par bras. L'ordre question/bras est fixé avant les appels ; aucun
+nom de moteur n'est transmis au juge.
+
+La correction SQL sera évaluée dans une **nouvelle paire complète**, avec
+ce même protocole de juge et les seuils existants (baisse maximale de
+5 points de pass rate et de rappel contre le témoin et M0a réévaluée).
+La campagne initiale reste **NO-GO** ; aucun recalcul rétroactif ni sélection
+des seules questions perdantes n'est utilisé pour faire passer M1.
+
+### Résultat technique v1 : #252 / #253 / #254, campagne interrompue
+
+Trois items seulement (q1 dans chaque bras), neuf votes, aucun jugement
+valide : les citations produites restent non littérales après réparation.
+Arrêt demandé dès le premier échec de quorum ; les deux autres jugements
+déjà engagés ont été attendus et sauvegardés. Les trois runs sont `failed`,
+avec checkpoints et compteurs conservés. Aucun score de qualité ni résultat
+de gate n'est déduit de cet échec du protocole de citation. Pas de reprise
+de ces runs ni de remplacement de leurs items.
+
+### Relance v2 préenregistrée : passages numérotés
+
+Label `m1_rejudge_gold_passages_v2_20260930`, mêmes 294 entrées et même
+empreinte, scope `judge_evidence=gold-passages-v2`. Chaque texte est découpé
+en phrases/lignes sans réécriture. Le juge sélectionne des identifiants de
+passages ; le code vérifie leurs bornes et extrait les citations exactes.
+Cela évite de demander au modèle de recopier sans altération les textes
+français et leur Markdown. Le modèle doit toujours justifier chaque point
+requis ; la validation ne certifie toujours pas l'implication sémantique.
+
+Même rubrique, modèle, température, majorité et seuils. Les réparations
+restent bornées à une par vote mal formé. Un échec final de quorum arrête
+désormais automatiquement les tâches en attente ; les appels engagés sont
+attendus et conservés. Aucun verdict négatif valide ne déclenche de reprise.
+Concurrence fixée à **quatre** jugements, uniquement sur réponses stockées.
+Artefacts privés : `/tmp/assistant-rh-m1-rejudge-v2-20260930/`.
+Les tests de validation des passages, quorum, conservation des votes et
+sélection du panel passent. Aucune donnée textuelle brute n'est publiée.
+
+### Correction indépendante de la résolution SQL
+
+Le résolveur historique départage désormais les chemins/titres identiques
+par `section_id`, comme le core, dans les deux schémas Service-Public
+(sans colonne `section_id`, ou colonne partiellement renseignée). Une
+relation explicite reste prioritaire. Le test différentiel garde les deux
+sections ambiguës, insérées dans l'ordre inverse, pour les 15 combinaisons
+mode/ministère ; le test de migration partielle exécute les deux helpers SQL.
+Les deux divergences réelles du diagnostic se résolvent maintenant de façon
+identique en lecture seule. Ce correctif ne prétend pas deviner le sens d'un
+titre ambigu ni remplacer une réingestion avec liens explicites.
+**1 257 tests API réussis**, aucun ignoré, dont les replays M0b privés.
+
+## M1 — paire complète après départage SQL (30/09/2026, protocole avant lancement)
+
+Label `m1_sql_ties_gold_passages_v2_20260930`, suffixes `legacy` et `core`.
+Les deux moteurs régénèrent chacun les **98 réponses**, avec la correction
+de départage SQL historique et le juge `gold-passages-v2` : aucun résultat
+de la paire précédente n'est substitué. Sources mesurées
+`440699d13d50ff5362e153eadfd73bb958ac7077e53f962772d479fee4abf5c0`
+(code `cf937ee`), panel `afd6cfc9…`, configuration `51d6256b…`, snapshot
+corpus/config/prompts/acronymes `092e0365…`, tous vérifiés avant lancement.
+
+Paramètres identiques à la campagne du 28 septembre : Albert
+`deepseek-v4-flash` pour la génération, `openweight-large` pour le sélecteur,
+`openweight-medium` pour l'intention, scope `per-question`, juge Scaleway
+`mistral-medium-3.5-128b`, majorité de trois, sans RAGAS, concurrence maximale
+de deux paires. Seules les écritures du clone local sont autorisées.
+Artefacts privés dans `/tmp/assistant-rh-m1-v2-20260930/`. Les résultats
+seront comparés au témoin régénéré et à M0a réévaluée #255, avec baisse
+maximale de **0,05** sur le pass rate et le rappel. Les anciens jugements
+#252–254 sont invalides ; les réévaluations #255–257 utilisent v2.
+
+Avant cette campagne : **1 257 tests API / 1 583 tests historiques réussis**,
+46 historiques ignorés ; lint ciblé et diff vérifiés. Les scores partiels ne
+permettent pas de conclure. La PR reste draft et la phase D reste bloquée
+jusqu'à comparaison complète, audit de persistance et contrôle des empreintes.
+
+Consignation de fin détachée préparée dans
+`/tmp/assistant-rh-m1-v2-20260930/finish.py` : attend la fin des deux processus,
+relit les résultats, audite chats/traces/scopes/sources/modèles, compare les
+dates des prompts et les empreintes avant/après, puis publie uniquement les
+agrégats. Les scénarios GO et NO-GO du rendu documentaire sont vérifiés dans
+des copies temporaires ; un garde rejette les champs de texte brut. Si le
+worktree ou les empreintes changent, la vigie conserve le bilan privé et
+n'écrase aucun travail. Elle ne fait aucun appel provider et ne relance aucun
+vote. Après un bilan valide, elle met à jour preuve, journal, rapport, LEDGER,
+plan et description de #580 ; la PR reste draft, sans merge ni déploiement.
+
+## M1 — bilan corrigé du 30/09/2026 (#255–259)
+
+**GO technique M1 — campagne corrigée du 30/09/2026.** Core 60/98, témoin apparié 62/98, M0a réévaluée 60/98. Seuils inchangés : baisse maximale de 5 points de pass rate et de rappel contre chaque référence.
+
+| Mesure | Run | Items | PASS / jugés | Rappel | Hit rate |
+|---|---:|---:|---:|---:|---:|
+| m0a_rejudged | #255 | 98/98 (completed) | 60/98 | 0.724278 | 0.806122 |
+| legacy_rejudged | #256 | 98/98 (completed) | 64/98 | 0.729138 | 0.826531 |
+| core_rejudged | #257 | 98/98 (completed) | 58/98 | 0.729138 | 0.826531 |
+| legacy_live | #258 | 98/98 (completed) | 62/98 | 0.729138 | 0.826531 |
+| core_live | #259 | 98/98 (completed) | 60/98 | 0.729138 | 0.826531 |
+
+- `core_rejudged_vs_legacy_rejudged` : FAIL, panel complet/comparable : True/True.
+- `core_live_vs_legacy_live` : PASS, panel complet/comparable : True/True.
+- `core_live_vs_m0a_rejudged` : PASS, panel complet/comparable : True/True.
+
+Empreintes code, panel et snapshot inchangées. Les comparaisons utilisent toutes `gold-passages-v2`. Les scores et le NO-GO du 29 septembre restent historiques ; aucune réécriture de ces verdicts. La validation des citations porte sur leur provenance, pas sur leur implication sémantique. La campagne visait les 294 réponses stockées et la nouvelle paire complète, sans sélection selon le score ; les effectifs réellement terminés figurent au tableau.
+
+[Preuve agrégée](evidence/m1_api_parity_followup_20260930.json). Empreinte `b8acbd1c3325a593d5d1122399ca14a084a65d7d85bd21527cafb9d5afa7140a`. Artefacts détaillés privés, écritures uniquement locales. Les 196 items ont été persistés avant disparition du processus pendant la finalisation. Le statut core et les agrégats ont été reconstruits depuis ces lignes, sans rejouer de question ni modifier les verdicts ; les agrégats legacy reconstruits sont identiques à ceux déjà finalisés. Cause de terminaison non établie. Bilan consigné après cette récupération locale ; aucun appel provider depuis la vigie. PR conservée en brouillon ; aucun merge ni déploiement.
+
+## M1 — diagnostic hors ligne de la paire corrigée (30/09/2026)
+
+Analyse des 98 paires #258–259 et de leurs dix verdicts discordants, sans
+nouvel appel aux fournisseurs ni modification des items ou des votes.
+Le résultat officiel reste 60/98 core contre 62/98 historique (GO au seuil
+préenregistré, six pertes et quatre gains).
+
+Le départage SQL est aligné sur les 12 506 observations de chunks communs.
+Sur 95 prompts sélecteur identiques, 49 sélections servies diffèrent ; sur
+51 paires de messages de génération identiques, 50 réponses diffèrent.
+Les 192 sorties brutes du sélecteur sont interprétées pareil par les deux
+parseurs, dont huit échecs déclenchant le repli commun. Les pertes de sources
+utiles sont observables sur q6, q224 et q225 ; des incohérences du juge
+favorisent les deux bras, notamment q177, q186, q189 et q827.
+
+La provenance des citations ne garantit pas leur implication sémantique ni
+une grille de complétude commune. Prochain travail prioritaire : critères
+atomiques figés par question, puis rejeu des mêmes sorties de modèles dans
+les deux moteurs et traitement commun des enveloppes mal formées. Aucune
+nouvelle campagne n'est lancée pour obtenir un meilleur score.
+
+[Analyse détaillée](../architecture/hexagonal-split/13-m1-run-metrics.md) et
+[preuve agrégée](evidence/m1_api_parity_corrected_diagnosis_20260930.json),
+empreinte `cfcb0925ec9d3d43f1aeb6133a955f542baed2e838155815835277717ed458aa`.
+Les limites de reconstruction des prompts et de finalisation sont documentées.
+PR #580 conservée en brouillon.
+
+## M1 — préenregistrement du rejeu déterministe `m1_frozen_outputs_20260930`
+
+Contrôle hors ligne sur les 98 questions du run #259, sources de code au
+commit `534ef86`. Aucun nouveau jugement ni appel d'inférence. Les réponses
+brutes du classificateur et du sélecteur, la réponse finale et les scores de
+sections sont figés depuis la campagne. Les données complètes nécessaires
+sont préparées en lecture seule depuis le clone local inchangé.
+
+Les traces M1 ne conservent pas tous les vecteurs et rangs bruts des recherches.
+Le contrôle injecte donc un même pool de chunks à la frontière de sortie du
+retriever : identifiants/ordre et scores journalisés, textes et métadonnées
+réhydratés. Les scores de chunks journalisés sont arrondis. Il exerce les
+vrais traitements de requête, agrégation, sélection, construction du contexte
+et génération, ainsi que leur orchestration. Il ne constitue pas un rejeu
+intégral des appels SQL, embeddings ou transports/fallbacks fournisseurs.
+Le texte enregistré du fallback q222 est injecté comme résultat figé, sans
+simuler à nouveau les pannes du fournisseur.
+
+Critère : égalité exacte des projections d'étapes, des requêtes d'inférence,
+des contextes, des références et des réponses finales ; consommation complète
+des appels enregistrés. Rejeu final avec réseau interdit. Tout écart sera
+rapporté, sans modifier les verdicts M1. Les sept scénarios M0b complets et
+leurs contrôles négatifs seront exécutés séparément. Les données détaillées
+restent privées hors Git ; seuls les agrégats et empreintes seront publiés.
+
+### Résultat du rejeu `m1_frozen_outputs_20260930`
+
+**98/98 paires exactes**, avec 578 étapes et 386 appels simulés par moteur.
+Les 96 prompts sélecteur et 96 prompts utilisateur du générateur correspondent
+aux messages reconstruits du run #259 ; ses 98 réponses finales sont conservées.
+Les deux moteurs ont été réexécutés hors réseau, après préparation locale en
+lecture seule. Les cinq mutations volontaires sont détectées (prompt, chunk,
+contexte, réponse, appel supplémentaire).
+
+Le premier cas a révélé un écart réel de prompt : départage non déterministe
+des acronymes historiques de même priorité (CDI/CDD contre CDD/CDI). Le chargeur
+historique a été aligné sur celui du core et testé sur les deux schémas de table.
+Après cette correction, le panel complet passe. Cela ne mesure pas la part de
+ce défaut dans l'ancien écart de qualité.
+
+Validation : 274 tests ciblés, dont les sept scénarios M0b et leurs contrôles
+négatifs, plus quatre tests d'intégrité du panel M1 ; Ruff et contrôle de diff.
+Les limites annoncées restent applicables : frontière de retrieval figée,
+scores de chunks arrondis, absence de rejeu des transports/fallbacks. Les
+scores live précédents sont conservés ; aucun nouvel appel provider n'a été
+lancé. La PR peut passer en revue ; la fiabilisation du juge reste distincte.
+
+[Preuve agrégée](evidence/m1_api_parity_frozen_replay_20260930.json), empreinte
+`2d24b9bc92a484cd6f3fe03f514ade778db84679f927a5ae85fdad1505bf99c3`.
+Archive complète privée, avec sources, conservée hors Git.
+
+
+## Régulation SQL — préenregistrement `sql_backpressure_20261021`
+
+Comparaison avant/après sur staging, sans redimensionnement PostgreSQL, sans
+modification des modèles, prompts, corpus ni `rag_config`. Deux changements :
+admission bornée des recherches avant le pool et résolution des sections
+Service-Public par couple document/chemin. Les règles de ranking sont conservées.
+
+Contrôles prévus : égalité exacte des tuples SQL avant/après (identifiants,
+texte, section, métadonnées, score, rang), tests d'annulation/file/pool, puis
+20 réponses HTTPS séquentielles appariées (cinq questions contractuels sur les
+quatre ministères : CDI, congés annuels, temps partiel, renouvellement CDD, congé
+de formation). Réponses et sources conservées hors Git ; contrôle des erreurs,
+présence des sources et des critères factuels, avec revue des écarts. Il s'agit
+d'un panel borné sur la vraie API, pas de la campagne historique de 100 questions
+ni d'une estimation statistique du score qualité global. Enfin deux vagues à
+5 et deux à 10 utilisateurs, succès mesuré jusqu'à la fin SSE et non au HTTP 200.
+Résultats négatifs inclus ; aucun changement de paramètres pour améliorer le score.
+
+### Contrôles avant promotion
+
+La référence HTTPS termine 20/20 réponses, avec sources, sur les cinq questions
+et quatre ministères. Ce taux mesure la complétion ; ce n'est pas un score
+de justesse. Les réponses sont conservées pour revue appariée. Une généralisation
+du calendrier scolaire apparaît déjà dans la référence temps partiel MATTE ;
+ce point devra être suivi dans le bras corrigé, sans modifier le panel.
+
+Les 63 comparaisons SQL en lecture seule sur le corpus réel sont exactement
+égales (sept sources, trois voies, sept formulations pour heading). Le premier
+plan optimisé conservait un calcul plein texte sur des sections non référencées.
+Après restriction aux IDs réellement utilisés par la source, les sept mesures
+Service-Public passent de 711–929 ms à 105–174 ms, sans changement de tuples.
+La projection matérialisée est limitée aux colonnes effectivement utilisées.
+
+Tests locaux : 1 483 tests API validés, y compris les scénarios M0b privés ;
+les premiers échecs venaient de dépendances de test absentes et de l'archive
+privée non indiquée, corrigés dans l'environnement puis rejoués. La première
+version est verte en CI ; la version finale doit repasser les contrôles et la
+parité avant promotion. Revue indépendante sans blocage fonctionnel.
+
+
+## Préenregistrement `sql_quality_attribution_20261021`
+
+Suite à la comparaison live précédente (20 cas, réponses variables), isoler
+l'intervention SQL `54882aa` -> `9087227` avec la vraie composition API. Les
+40 traces historiques sont récupérées, mais leurs textes à 4096 caractères et
+listes à 40 éléments ne permettent pas de certifier l'égalité intégrale.
+
+Capture intégrale de 20 cas avec ancien pool/SearchStore, puis replay ancien et
+corrigé depuis la même bande HTTP d'inférence (classification, embeddings,
+rerank, sélection, génération SSE). SQL/contenus/configuration sont lus réellement
+sur staging, avec empreinte avant/après, même rôle/date/code hors intervention.
+Critère : capture = replay témoin = replay corrigé, sur chunks complets, sections,
+sélections, contextes, prompts et réponse. Refuser appels inconnus, sorties de
+bande non consommées et toute modification partagée. Aucun UPDATE rag_config,
+aucune modification d'image, schéma, prompt ou dimensionnement.
+
+Répéter deux fois les requêtes HTTP exactement enregistrées pour rerank,
+sélecteur et générateur sur les cas 4, 6, 10, 12, 15, 16 et 17. Mesurer les
+variations de scores/ordre, décisions après parsing et contenu de réponse ; ne
+pas compter les identifiants de réponse ou jetons d'usage comme variation de fond.
+Les erreurs/fallback/retry sont conservés ; une capture incomplète ou un statut
+HTTP non-2xx est exclu de la preuve de parité sémantique. Le transport observe
+les chunks au fil de leur consommation ; la complétion SSE exige le terminal
+validé par le vrai ChatGateway, sans assimiler EOF et succès ni drainer le flux.
+Ce protocole ne prouve pas une équivalence des délais ou des pannes.
+Les critères factuels du panel précédent
+restent figés. Les contrôles négatifs doivent détecter une bande modifiée ou un
+prompt différent. Ce test causal ciblé ne remplace pas le score qualité goldset ;
+il ne peut pas attribuer exhaustivement des sorties historiques tronquées ni
+exclure les interactions de timing fournisseur sous charge.
+
+Le premier lancement d'inférences a été refusé par l'approbation automatique
+avant exécution. Vérification en lecture seule : les 40 runs historiques ont
+utilisé Albert/openweight-large, rerank terminé sans repli. Le protocole est
+restreint par garde d'egress à `albert.api.etalab.gouv.fr`, la destination DINUM
+déjà configurée et utilisée par staging. Aucun appel Scaleway ni autre domaine
+n'est permis dans cette expérience ; une tentative échoue avant le réseau.
+Les clés HTTP ne sont jamais sérialisées.
+
+### Résultat partiel — analyse sans nouvelle inférence
+
+**60/60 comparaisons exactes du Retriever complet** : 20 requêtes historiques
+traitées × trois vecteurs figés issus du corpus, 129–150 chunks par comparaison.
+Textes, scores, métadonnées et ordre sont inclus. Les embeddings historiques
+des questions sont absents : ces sondes établissent une équivalence bornée,
+pas la restitution exhaustive des retrievers historiques.
+
+Sur les 40 traces, les 20 listes rerankées ont les mêmes identifiants et ordre ;
+six paires ne diffèrent que par les scores. Les prompts sélecteur reconstruits
+sont identiques dans 20/20 paires, contre 8/20 pour les requêtes générateur.
+Les choix de sections diffèrent dans 14/20 paires. Les 40 reconstitutions
+concordent avec les projections de contexte et préfixes générateur sauvegardés.
+Elles utilisent le corpus courant : un préfixe de 4 096 caractères ne certifie
+pas le suffixe historique, et une projection ne contient pas le texte complet.
+
+La reconstitution retrouve le prorata des congés (cas MASA 6) et le délai lié
+au passage en CDI (cas MI 15) dans les contextes après dont les réponses les
+omettent. Le cas MASA 10 généralise déjà avant le calendrier d'une population
+particulière, avec une même requête générateur reconstruite avant/après. Le cas
+MSO 16 transforme une règle de prise en compte d'interruptions en interdiction
+de renouvellement. Ces écarts suggèrent omissions/confusions de génération,
+sans régression SQL reproduite. Les effets de sélection, timing ou batching
+ne sont pas tous causalement isolés.
+
+Un candidat de consignes générales de périmètre et couverture est préparé dans
+l'archive privée ; il n'est ni appliqué ni validé. Il ne remplace aucune règle
+métier et ne peut récupérer une information éliminée par le sélecteur. Aucun
+prompt, rag_config, déploiement ou dimensionnement n'a été modifié.
+
+Deux lancements d'inférence ont été refusés avant exécution par l'approbation
+automatique, y compris avec Albert comme unique destination. Motif : consentement
+humain explicite requis pour la nouvelle transmission de contextes RH au
+fournisseur. La question est en attente ; aucun nouvel appel modèle exécuté.
+Le harnais exige un opt-in explicite et reste désactivé dans le manifeste.
+Le rejeu causal intégral, la répétition des modèles et la validation du candidat
+restent donc à faire ; aucun score qualité global n'est annoncé.
+
+Validation locale : 14 tests synthétiques hors réseau, dont requêtes modifiées,
+bande altérée/incomplète, multiplicité, destination interdite, absence de clé
+HTTP archivée, progressivité, erreur après premier token, abandon et [DONE]
+fractionné avec vrai ChatGateway sans EOF. La revue a fait corriger un buffering
+initial puis une mauvaise assimilation de la complétion SSE à l'EOF HTTP.
+
+[Preuve agrégée sans contextes RH](evidence/sql_quality_attribution_readonly_20261021.json).
+Les traces, contextes, réponses et le candidat de prompt restent hors Git dans
+l'archive locale `dat-sql-fix-2026-10-21/attribution`.
+
+### Reprise explicitement autorisée
+
+Le 21 octobre, l’utilisateur autorise explicitement les appels Albert DINUM et
+les contextes RH pour la campagne des 20 cas et les répétitions ciblées. Le
+protocole reste borné à cette destination ; configuration partagée et PostgreSQL
+restent inchangés. La comparaison du candidat emploiera les mêmes contextes,
+sans publication du prompt avant validation.
+
+### Préenregistrement du candidat de prompt — contexte figé
+
+Après la capture causale, comparer les prompts courant et candidat sur les
+20 contextes complets capturés. Une génération par bras et par cas ; trois
+par bras pour les cas 4, 6, 10, 12, 15, 16, 17, soit 34 paires / 68 appels.
+Alterner le premier bras selon le cas et la répétition. Seul le message système
+rendu change ; modèle, température, date, historique et contexte documentaire
+restent identiques et leurs empreintes sont vérifiées avant émission.
+
+Réutiliser les critères factuels figés du panel précédent. Distinguer omission
+utile, affirmation non étayée/champ incorrect et simple variation rédactionnelle.
+Une consigne n'est retenue que si son effet favorable se reproduit sans créer
+de défaut nouveau dans le panel ; ce panel limité n'établit pas un score global.
+Aucun juge externe, mutation de prompt partagé ou nouvelle optimisation des
+consignes après lecture des réponses. Tous les essais, erreurs et résultats
+négatifs sont conservés. Une seule tentative HTTP par essai, même validation SSE
+que la vraie API et borne 120/240 secondes ; pas de repli fournisseur.
+
+Le premier essai de capture réel a échoué sur le décodage raw gzip du harnais,
+avant toute comparaison SQL. L'essai est archivé, la prise en charge Content-Encoding
+corrigée et testée sur JSON/SSE ; la reprise conserve la même intervention SQL.
+
+### Préenregistrement `selector_json_wrapper_quality_20261021`
+
+Défaut concret indépendant du SQL : cinq sorties sélecteur sur 81 examinées
+contiennent un JSON complet sous balise Markdown ouverte sans clôture. Le parseur
+les rejette et utilise les cinq premiers candidats. Les 76 autres sorties ne
+changent pas avec la correction locale, qui retire uniquement cette ouverture
+en tête et conserve le décodage JSON strict. Les entrées incomplètes, la prose
+finale et les objets multiples restent refusés.
+
+Rejeu en lecture seule des cinq cas touchés : deux variantes du cas MSO16,
+historique avant MSO12, historiques après MSO4 et MASA6. Même réponse sélecteur,
+mêmes agrégats et configuration ; ancien/nouveau parseur puis vrai ContextBuilder.
+Les contextes historiques témoin correspondent aux reconstructions précédentes.
+Aucune inférence à cette étape. Le contexte final peut changer, donc une sortie
+générateur figée ne permettrait pas de juger la qualité.
+
+Comparer séparément les générations sur ces deux contextes, avec le prompt
+système courant constant : trois répétitions par bras et par cas, soit 15paires /
+30appels Albert. Alterner premier bras. Seul le dernier message utilisateur
+contenant le contexte change ; modèle, température, date et système identiques.
+Conserver tous les échecs. Réutiliser les critères factuels figés associés aux
+questions originelles, distinguer perte de couverture et simple variation.
+N'appliquer aucune modification partagée avant revue des résultats. Cette
+correction ne rend pas les choix du modèle ni ses réponses déterministes.
+
+### Extension exploratoire du cas103, sans modification des variantes
+
+La revue aveugle initiale du test parseur observe zéro généralisation nette du
+calendrier scolaire dans les trois témoins contre deux dans les trois contextes
+corrigés. Les règles centrales sont pourtant présentes dans les deux contextes ;
+seul un article thérapeutique périphérique est retiré. Ajouter sept générations
+par bras de ce même cas, pour dix par contexte au total. Aucun changement de
+prompt, contexte, modèle, température ou critère après lecture. Cette extension
+est choisie après observation : conserver et présenter séparément les trois
+premiers et les sept suivants, sans test statistique confirmatoire ni nouvelle
+optimisation sur ce panel. Le correctif reste non déployé pendant cette analyse.
+
+### Résultat final de l’attribution et des candidats
+
+20/20 captures = replays ancien/corrigé exactement sur les six étapes, contextes,
+prompts et réponses ; mêmes empreintes corpus/prompts/config/role avant/après et
+entre reprises. L’ancien/nouveau SQL utilise cette fois les vrais embeddings
+capturés, pas seulement les trois sondes de corpus. Aucune régression SQL directe
+reproduite sur le panel séquentiel.
+
+Les sept triplets d’inférence montrent scores rerank variables6/7 sans changement
+d’ordre, choix sélecteur variables4/7, textes générateur variables7/7. Le prorata
+MASA figure dans deux réponses sur trois d’une même requête générateur, absent
+dans la troisième : omission variable malgré contexte identique.
+
+Le candidat de consignes est écarté : 68/68 générations terminées, mais le
+calendrier scolaire MASA est généralisé3/3 dans chaque bras, et des erreurs de
+conditions persistent. Revue aveugle indépendante des42réponses ciblées ; aucun
+score global ni amélioration uniforme revendiqués. Aucun prompt partagé changé.
+
+Le candidat parseur est implémenté et testé localement. Les cinq replays de
+contexte et30/30générations ne montrent pas de perte centrale sur les critères,
+mais les réponses restent imparfaites. Le préavisCDI est dans les deux contextes
+MSO renouvellement et leurs12réponses. Le signal initial MSO tempspartiel0/3 vs2/3
+est suivi de3/7 vs1/7 dans l’extension exploratoire, soit3/10 dans chaque groupe.
+Catégories ambiguë/omise distinctes ; extension post-observation, sans conclusion
+statistique confirmatoire. Le parseur restaure la sélection, sans établir une
+fiabilité factuelle globale. Aucune promotion/déploiement réalisé.
+
+Validation :1475tests API synthétiques et1676tests racine passent (45skips),
+165tests ciblés finaux, Ruff/format/4contrats d’import verts. Archive privéeM0b
+lue avec accord explicite, checksum vérifié :18tests horsréseau passent, sans
+changer la référence. Une transition C5 publique explicite autorise uniquement
+le changement de sélection du cas rag-acronym-contract, archive intacte ; les
+contre-tests sémantiques atteignent le prompt et la réponse au-delà des pins.
+La normalisation n’accepte que des objetsJSON complets sous l’ouverture,
+préservant le vieuxfallback sur[]/null/nombres/booléens/chaînes enveloppés.
+
+Staging conserve l’imageSQL a7f43c02 et2pods prêts. Ni PostgreSQL, ni configuration
+partagée, ni corpus modifiés. Aucun nouveau test de charge5/10 dans cette analyse.
+Les essais interrompus et les résultats négatifs sont conservés horsGit.
+
+[Preuve agrégée du run autorisé](evidence/sql_quality_attribution_live_20261021.json).
+Rapport détaillé et réponses/contextes dans l’archive locale privée attribution.
+
+
+## Run selector_staging_quality_load_20261021 — avant exécution
+
+Demande explicite : déployer le correctif de lecture JSON du sélecteur sur staging,
+refaire qualité et charge5/10 puis rechercher la limite jusqu’à50, sans changer
+le dimensionnement PostgreSQL. Branches dev/staging actualisées : les correctifs
+concurrents de noms de sources et de certificat sont conservés. Le prompt
+candidat rejeté dans l’analyse précédente n’est pas adopté.
+
+Référence qualité : nouveau passage HTTPS avant déploiement,20cas, cinqquestions
+fois quatreministères, puis même panel après sur le runtime réellement déployé.
+Critères factuels précédents conservés et réponses complètes archivées horsGit.
+Revue aveugle par paires ; une différence single-shot ne suffit pas à attribuer
+une régression, répétitions ciblées si nécessaire. Pas de score goldset100.
+
+Charge : échauffement1, deuxvagues chacune à5,10,20,30,40,50utilisateurs synthétiques
+authentifiés via Conversations HTTPS, nouvelleconversation et SSE réel. Succès :
+texte,finish,DONE,sans erreur ou échec parsing, réponse complète avant120s.
+Deuxvagues ne prouvent pas une charge continue. Stop de la montée si plus de10%
+d’échecs, redémarrage/indisponibilité des pods cibles, changement de révision
+ou configuration. P95 premiertexte supérieur à60s signalé comme dégradation.
+Après récupération vérifiée, répéter au plus unefois le palier dégradé sans
+augmenter la charge. Conserver tous les échecs et latences, ne pas retenter
+les appels individuels. Observer activité PostgreSQL, files/erreurs API et
+CPU/mémoire pods quand disponibles ; ne pas déduire CPU PostgreSQL de l’activité.
+
+Appels Albert et contextes autorisés par l’utilisateur dans ce fil. Aucun
+redimensionnement, modification partagée des prompts/rag_config/corpus ou
+déploiement de production. Comptes/sessions/conversations synthétiques nettoyés
+en fin de campagne. Plan et preuves privées : deliveries/selector-staging-2026-10-21.
+
+
+## Run staging_stream_admission_50_20261021 — avant exécution
+
+Demande explicite : augmenter l’admission API staging pour viser50 simultanées,
+refaire la montée en charge et la qualité, sans redimensionner PostgreSQL.
+Changement ciblé du chart staging : API_STREAM_WORKERS8→50 par processus,
+avec un seul worker par pod et deux pods. La valeur50 par pod tolère aussi
+une distribution inégale des50 clients. Aucun changement du défaut runtime8,
+du pool4, de la régulation recherche3/queue64/attente10s, des ressources pods,
+du tampon SSE32 ou des prompts/configuration/corpus.
+
+Référence qualité : les20 derniers cas HTTPS du staging435d72fb, même sélecteur
+et mêmes critères, seulement si la vérification live initiale confirme les
+empreintes des entrées partagées. Garder ces réponses sans reroll. Après la
+hausse déployée et vérifiée, mêmes20cas séquentiels, revue aveugle de fidélité
+aux documents ; pas de score goldset100 ni de causalité depuis une seule paire.
+Sous charge, conserver les réponses et revoir un panel équilibré du plus haut
+palier atteint, en distinguant la dégradation technique des erreurs factuelles.
+
+Montée HTTPS Conversations authentifiée : échauffement1 puis deux vagues
+à5,10,20,30,40,50, barrière avant flux, échéance globale120s. Succès exige
+texte,finish,DONE sans erreur SSE. TTFT>60s est un signal de latence dégradée,
+pas un échec technique sous120s. Pas de retry individuel. Audit API après
+chaque vague : statuts, événements, lanesSQL, tentatives/replis provider ;
+rejets avant pipeline séparés des traces manquantes inattendues.
+
+Arrêt de la montée si plus de10% d’échecs par vague, erreur de laneSQL/étape,
+instabilité/redémarrage/pod cible manquant, télémétrie incomplète inexpliquée
+ou mémoire mesurée durablement à85% de la limite. Après récupération, au plus
+une répétition diagnostique au même palier, sans augmenter. Si l’état sain
+ne revient pas ou si les erreursSQL persistent après charge, restaurer8 via
+le chart staging. Toute interprétation conserve les échecs et bornes observées.
+
+Snapshots des modules/paramètres/ressources et données partagées avant/après ;
+activité PostgreSQL et métriques pods pendant les vagues, sans assimiler activité
+et CPU PostgreSQL. Comptes/sessions/conversations synthétiques nettoyés en fin
+de campagne. Appels RH Albert et campagne réelle autorisés dans ce fil.
+Preuves privées : assistant-rh-infra/deliveries/stream-capacity-50-2026-10-21.
+Aucune livraison production ni modification Terraform/PostgreSQL.
+
+Bornes précisées avant toute charge : mémoire API échantillonnée avec les
+timestamps metrics-server (scrutation ~2s plus temps des commandes). Trois
+observations distinctes à85% de1Gio, ou une à95%, annulent la vague et arrêtent
+la montée ; métrique absente = arrêt avant augmentation. Les échantillons
+répétés du même timestamp ne prouvent pas une durée de pression mémoire.
+Tous les appels hors rejets pré-pipeline doivent avoir leur run API terminal
+avant le palier suivant, puis pause5s et contrôle santé. Tout timeout arrête
+la montée quel que soit le taux global. Une répétition diagnostique nécessite
+tous les runs terminaux,10s de calme et aucune requête API longue/bloquée ;
+sinon pas de répétition après60s. Admission nominale100 avec2pods,150 pendant
+un surge : ce n’est pas un engagement de débit et le test n’excède pas50clients.
+
+
+## Run sql_search_capacity_20261021 — avant exécution
+
+Demande explicite : analyser et corriger les échecs SQL à 30, déployer le
+correctif staging puis refaire qualité et montée vers 50 sans redimensionner
+PostgreSQL. Référence live attendue : staging 3096e3d, admission 50 par processus,
+deux pods, pool 4 et recherche 3/file 64/attente 10 s. Les précédents résultats
+restent conservés : 40/40 à 20 ; deux essais 18/30 ; aucune mesure à 40/50.
+
+Diagnostic d'abord : plans SQL en lecture seule puis rejeu isolé des mêmes
+requêtes et embeddings capturés, sans nouvelle inférence. Mesurer attente
+d'admission, acquisition du pool et durée SQL ; comparer les résultats bruts
+et fusionnés, sans réduire sources, limites, probes ou critères de pertinence.
+Évaluer notamment la rafale de cinq lanes par question et un ordonnancement
+plus progressif. Le diagnostic SQL isolé n'est pas une qualification HTTPS.
+
+Après revue et tests : promotion par le circuit dev puis staging, vérification
+Flux et code chargé. Référence qualité : les 20 derniers cas staging3096e3d,
+dont 19 complets et une expiration génération, seulement si les entrées live
+correspondent. Pas de sélection d'une meilleure référence. Mêmes 20 cas après,
+revue factuelle aveugle et contrôle des réponses sous le plus haut palier tenté.
+Les différences single-shot ne prouvent pas une régression causale ; conserver
+les erreurs, fragments et divergences documentaires. Rejeu d'inférences figées
+pour isoler l'effet du SQL/ordonnancement, conformance M0b hors réseau si requise.
+
+Charge réelle HTTPS Conversations : échauffement 1, deux vagues à 5/10/20/30/40/50,
+barrière avant départ SSE, échéance 120 s, aucune relance individuelle. Succès :
+texte + finish + DONE, sans erreur ni étape/lanes manquantes. Arrêt de montée si
+plus de 10% d'échecs, erreur SQL/étape, timeout, télémétrie manquante ou instabilité.
+TTFT >60 s signalé sans masquer le succès sous 120 s. Après drainage terminal
+et 10 s sans requête longue/bloquée, une seule répétition diagnostique au même
+palier ; aucun palier supérieur après arrêt. Mémoire : trois observations
+distinctes >=85% de 1Gi ou une >=95%, métriques absentes/âgées de plus de 90 s
+ou surveillance arrêtée = arrêt. Premier contrôle obligatoire, watchdog 60 s.
+
+Aucun changement partagé de prompts/configuration/corpus, taille PostgreSQL,
+stockage, pool ou ressources pods sans justification du correctif. Pas de
+production ni Terraform apply. Comptes synthétiques nettoyés. Appels Albert et
+contextes RH déjà autorisés dans ce fil. Preuves privées hors Git :
+assistant-rh-infra/deliveries/sql-capacity-fix-2026-10-21.
+
+### Diagnostic et validation avant promotion
+
+Rejeu SQL isolé, deux pools identiques au runtime, requêtes et embeddings réels
+figés des 20 cas : référence séquentielle 20/20. Ancien fan-out à 30 questions :
+26/30, 16 lanes refusées à l'entrée d'une file déjà pleine, aucune erreur de
+checkout ou d'exécution SQL. Attente d'admission maximale des succès 8,157 s ;
+checkout maximal 75,54 ms, loin de la borne 2 s. Ce diagnostic équilibré et sans
+inférence ne reproduit pas exactement la distribution/temporisation HTTPS des
+deux précédents essais 18/30 ; il isole le mécanisme de débordement.
+
+Correctif : sémaphore local à chaque appel Retriever.retrieve, une seule lane
+SQL active/en attente par question ; questions toujours concurrentes, toutes
+les sources et lanes conservées. Aucun changement de requête SQL, classement,
+score, limite, probes, politique d'erreur, pool ou borne globale. Le code exact,
+chargé dans un processus de diagnostic isolé sans modifier les pods, termine
+30/30 puis 50/50 ; chaque résultat fusionné est strictement égal à la référence
+séquentielle correspondante. Les 50 terminent en 16,839 s dans ce diagnostic.
+Ce chiffre n'est pas une qualification de latence ou capacité HTTPS réelle.
+
+Revue indépendante sans bloquant. Tests ciblés retrieval : 46 passent, incluant
+2/30/50 questions concurrentes et cancellation avec lanes locales en attente.
+Suite API complète sur PostgreSQL synthétique local, avec archive privée M0b
+hors réseau : 1521 passent. Suite racine : 1679 passent, 46 skips. Ruff/format et
+quatre contrats d'import passent. Le premier sous-ensemble local avait échoué
+en préparation (archive non configurée et sockets sandbox interdits), puis la
+suite complète a été exécutée avec archive autorisée et sockets locaux permis.
+
+Preuves privées : benchmark-sequential.json, benchmark-baseline30.json,
+benchmark-real30.json et benchmark-real50.json. Les flags de pacing des deux
+derniers concernent seulement l'adaptateur de mesure (désactivé) ; le pacing est
+dans le code candidat, avec empreinte conservée dans candidate-code.json.
+
+
+### Résultats staging — sql_search_capacity_20261021
+
+PR #633 squash dev58f7edfe, promotion PR #634 merge staging86707388. CI dev,
+rejeu privé M0b dev, CI staging et publication Kapsule réussis ; Flux et les deux
+pods disponibles vérifiés avec empreintes du code. PostgreSQL, pool, ressources
+pods et données partagées inchangés. Aucune production ni Terraform apply.
+
+Qualité séquentielle : 20/20 complets après, contre 19/20 et une expiration à
+120 s avant ; tous les essais sont conservés. Les 140 étapes sont ok, aucun
+échec/fallback fournisseur observé. Revue factuelle aveugle de 20 paires, puis
+20 paires du premier palier maximal, à 40 : 19 complets et un échec sans réponse,
+sans sélection des succès. 220 citations exactes vérifiées. Erreurs documentaires
+et différences défavorables persistantes (prorata, portée CDI/renouvellement,
+réemploi), avec des améliorations ailleurs. Aucun score global ni régression
+causale SQL établie ; résultats SQL figés exactement égaux sur 30 et 50.
+Corpus de contrôle parfois divergent/versionné, sans validation du droit actuel.
+Sources de contrôle : 27 documents consultés lors de la première revue, capture
+intermédiaire enrichie à 28, puis 29 consultés pour la revue sous charge.
+
+HTTPS : échauffement 1/1 ; deux vagues à 5 : 10/10 ; à 10 : 20/20 ; à 20 :
+40/40 ; à 30 : 60/60. Premier 40 : 39/40. Arrêt sur erreur de retriever ; unique
+répétition diagnostique à 40 après drainage : 37/40, mêmes questions/ministères
+par index utilisateur. L'échec initial reste conservé. **50 non testé en HTTPS**.
+30 confirmé sans erreur sur deux vagues ; 40 instable. Les journaux identifient une lane chunks DGAFP au premier essai,
+puis trois lanes heading Service-Public dans la répétition, database_unavailable. La télémétrie ne distingue pas
+admission/checkout/exécution ; les métriques de ces retrievers sont absentes,
+le compteur failed_lanes=0 ne prouve donc pas zéro erreur. Pas d’attribution
+à Albert. Campagne principale : 170/171 ; répétition : 37/40.
+
+Rafales réelles avec échéance 120 s, aucune relance individuelle ; endurance
+non qualifiée. Pics échantillonnés API : 130,96 Mi et 0,415 cœur par pod. PG :
+maximum huit requêtes actives, âge maximal 2,808 s sur les deux campagnes,
+aucun blocage observé. Pas de métrique CPU/RAM VM PG. Après drainage, un appel
+RAG de récupération réussit en 34,501 s avec sept étapes ok. Santé finale et
+nettoyage comptes/groupes/conversations des quatre préfixes vérifiés.
+
+Agrégat : docs/evals/evidence/sql_search_capacity_20261021.json.
+Rapport privé : assistant-rh-infra/deliveries/sql-capacity-fix-2026-10-21/
+rapport-tests-staging.md. Le commit de résultats local est distinct du code
+86707388 effectivement déployé ; aucune nouvelle livraison pour ces preuves.
+
+
+## Run sql_admission40_20261022 — avant exécution (22 octobre 2026)
+
+Demande : corriger les erreurs SQL DGAFP/Service-Public à 40 et refaire la
+montée vers 50 avec qualité, sans redimensionner PostgreSQL. Référence staging
+86707388 ; résultats précédents conservés : 60/60 à 30, 39/40 puis 37/40 à 40,
+aucun 50 HTTPS. Une erreur chunks DGAFP et trois heading Service-Public ; cause
+précise admission/checkout/exécution non distinguée dans les traces initiales.
+
+Diagnostic isolé en lecture seule : sept reformulations réelles capturées,
+embeddings figés, mesure admission/pool/check/SQL, répartition équilibrée et
+asymétrique. Comparer résultats bruts/fusionnés et conserver tous les échecs.
+Ne pas attribuer les erreurs à la VM sans preuve. Correctif guidé par les mesures,
+puis tests ciblés, conformance hors réseau et revue indépendante avant promotion.
+
+Après livraison vérifiée : même panel qualité 20 cas, référence précédente
+20 complets réutilisable uniquement si code et données partagées correspondent.
+Montée HTTPS [1,5,5,10,10,20,20,30,30,40,40,50,50], barrière de départ SSE,
+échéance 120 s, aucune relance individuelle. Succès texte+finish+DONE et audit
+terminal des étapes API. Arrêt sur erreur SQL/étape, timeout, télémétrie manquante,
+instabilité ou plus de 10% d'échecs. Mémoire : trois mesures distinctes >=85%
+de 1Gi ou une >=95%, métriques manquantes/âgées >90s ou watchdog >60s = arrêt.
+Une seule répétition diagnostique au palier arrêté après drainage terminal et
+10s sans requête longue/bloquée ; aucun palier supérieur pour cette révision.
+
+Revue factuelle aveugle avant/après et du premier plus haut palier tenté :
+20 premières combinaisons question/ministère, tri utilisateur, sans filtre de
+succès. Fragments conservés non évaluables, aucun score global ni causalité
+sur single-shot. Aucune mutation des prompts/config/corpus ni production ou
+Terraform apply. PostgreSQL reste inchangé ; connexions/ressources ne sont pas
+augmentées sans cause mesurée. Comptes synthétiques nettoyés en fin de campagne.
+Appels Albert et contextes RH déjà autorisés dans ce fil. Preuves privées :
+assistant-rh-infra/deliveries/sql-admission-40-2026-10-22.
+
+### Diagnostic et correctif avant livraison — sql_admission40_20261022
+
+Sept reformulations/embeddings déjà capturés, aucune nouvelle inférence pour le
+diagnostic. Rejeu isolé des 40 entrées de la dernière répétition : 40/40 et
+résultats identiques en séquentiel, répartition équilibrée, 85/15 et un seul
+pool. Ce diagnostic SQL seul ne reproduit pas les quatre échecs HTTPS historiques.
+En concentrant 50 appels sur un pool avec l'ancien délai 10s : 43/50, sept
+expirations d'admission, zéro erreur checkout/check/exécution. Checkout maximal
+67,548ms et SQL maximal1497,387ms. L'override30s termine50/50, résultats égaux
+à la référence figée ; attente maximale11,673s, checkout65,920ms. Ce sont des
+mesures SQL isolées, pas une qualification HTTPS ou de saturation de VM.
+
+Correctif : override explicite API_DB_SEARCH_TIMEOUT_SECONDS=30 dans le chart
+staging, défaut applicatif10 et bornage0<val<=30. Pool4, concurrence recherche3,
+file64, checkout2s, timeout SQL10s et toutes les requêtes/classements inchangés.
+Journaux internes à catégories fixes pour distinguer admission/checkout/check/
+annulationSQL, sans texte pilote, DSN ni requête. Un check expiré peut produire
+un avertissement spécifique puis connection_error ; ne pas compter ces lignes
+comme deux incidents. Les traces historiques ne prouvent pas directement que
+chacun des quatre échecs40 était une expiration d'admission : la nouvelle
+recette HTTPS et ses catégories doivent confirmer le comportement corrigé.
+
+90tests ciblés avec PostgreSQL synthétique local passent, incluant annulation,
+réutilisation, trois recherches et lease réservé, lifespan avec override30.
+Revue indépendante sans bloquant ; 31tests supplémentaires indépendants passent
+et13sont skips faute de DSN dans son environnement, deux tests packaging passent.
+Ruff/format, quatre contrats d'import, Helm lint et sept tests de garde CI passent.
+Suite API complète/conformance et suite racine en cours avant promotion.

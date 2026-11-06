@@ -52,7 +52,7 @@ La DB et les providers existent déjà. C1 fixe le contrat à partir du spike A2
 | **C4** | Extraction du section aggregator et du context builder : accès sections/documents/références via `ContentStorePort` | Conformance agrégation/contexte |
 | **C5** | Extraction du context selector, de la composition du prompt ministère et du generator | Replays + anti-hallucination/no-answer/fallback |
 | **C6** ([#463](https://github.com/DGAFP/assistant-rh/issues/463)) | Handler HTTP non-stream `/v1/chat/completions` et tous ses tests de transport selon C1 ; `Pipeline`/`ChatService` réel, `RunContext` par requête, événements de toutes les étapes et persistance atomique du run, de ses sources finales ordonnées et de ses traces | Matrice HTTP C1 + conformance bout en bout + tests de concurrence et d'atomicité |
-| **C7** ([#464](https://github.com/DGAFP/assistant-rh/issues/464)) | Streaming SSE selon C1/A2 : worker borné, file async, pings, erreur post-headers, annulation et persistance avant `[DONE]` | Tests stream/déconnexion/erreur sur local et homelab |
+| **C7** ([#464](https://github.com/DGAFP/assistant-rh/issues/464)) | Streaming SSE selon C1/A2 : worker borné, file async, pings, erreur post-headers, annulation et persistance avant `[DONE]` | [Preuves C7](12-c7-streaming.md) : 958 tests API validés, SDK/TCP, instance `conversations` et test réel sur copie locale du corpus |
 
 **Jalon M1 — parité moteur** :
 
@@ -60,12 +60,16 @@ La DB et les providers existent déjà. C1 fixe le contrat à partir du spike A2
 - goldset live apparié : aucune régression au-delà des tolérances M0a ;
 - deux requêtes simultanées de ministères différents ne partagent ni prompt, ni résultat, ni trace.
 
+**GO technique M1 — campagne corrigée du 30/09/2026.** Core 60/98, témoin apparié 62/98, M0a réévaluée 60/98. Seuils inchangés : baisse maximale de 5 points de pass rate et de rappel contre chaque référence.
+
+[Preuve M1](13-m1-run-metrics.md) et [PR #580](https://github.com/DGAFP/assistant-rh/pull/580). Le jalon permet la poursuite de D après intégration ; aucun déploiement n’est effectué. Le rejeu complémentaire valide 98 paires exactes après la frontière de retrieval et corrige le départage des acronymes ; la PR peut passer en revue. La fiabilité du juge reste à traiter séparément.
+
 ## Phase D — fonctions API restantes et déploiement dark
 
 | PR / étape | Contenu |
 |---|---|
-| **D1** | Sur le schéma nettoyé par B2, `POST /v1/feedback` verrouille le `chat_run` parent, vérifie l'ownership, rend le retry identique sans écriture et archive/remplace atomiquement. Une modification conserve les annotations humaines, efface/replanifie l'analyse IA et journalise groupe + hash de session. |
-| **D2** | `POST /v1/documents/{doc_ref}/access-url` puis `GET /v1/documents/access/{capability}` : autorisation par `chat_run_sources`, capability 15 min créée au clic, réponse 200 PDF legacy ou 302 S3 avec headers sûrs et présignature bornée à la durée restante ; rédemption serveur et retry unique de `_PDF_Viewer` par nouvelle demande authentifiée ; aucun endpoint admin. |
+| **D1 — #528** | Préparation transactionnelle disponible : POST/GET individuels, contrôle d'auteur et droits courants sous verrou du parent, retry sans écriture, archivage atomique, conservation des annotations et invalidation IA avec génération. Auteur UUID nullable/immuable, aucun backfill collectif ; audit acteur/groupe/session pseudonymisée. Migrations D1 et rôles runtime livrées (`20261007120000`, `20261007130000`) ; application, provisionnement et grants réels à vérifier selon #599 avant activation. B4 reste compatible sans D1. **Validation Conversations dépend de #596** : délégation par confiance de service (réseau privé et authentification du backend Conversations), identifiant stable de l'utilisateur Conversations sans registre côté API, périmètre délégué vérifié à chaque requête et pseudonyme d'audit ; restrictions SQL des écritures directes dans #599. Accès à un run individuel : auteur et ministère encore autorisé, quel que soit le groupe courant. L'auth B4 ne crée pas de principal individuel et reçoit 403 sur ces routes ; Streamlit direct reste historique. Tests synthétiques ne prouvent pas le login Conversations. |
+| **D2** | `GET /v1/documents/{doc_ref}/content?completion_id=...` : délégation individuelle fraîche, auteur + ministère courant + `chat_run_sources`, contenu PDF legacy/S3 privé transmis au backend Conversations, sans URL S3 ni capability ; buffers bornés, timeouts/annulation ; Range ignoré avec 200 complet. Contrat et preuves dans [D2](02-api-contract.md#accès-documentaire). Intégration navigateur #594. |
 | **D3** | Runner via-API : conformance exacte en replay et goldset live séparé ; tests de transport conservés avec le SDK OpenAI et le provider `conversations` épinglé, au moyen d'une session de test créée à la volée. La reconstruction RAG-ops est hors chantier. |
 | **D4** | Déployer le container complet sur Scaleway staging en mode dark. Valider pour la première fois le proxy réel : cold start, pings/buffering SSE, timeout, mémoire, déconnexion et observabilité |
 
@@ -75,7 +79,7 @@ La DB et les providers existent déjà. C1 fixe le contrat à partir du spike A2
 
 | PR / étape | Contenu |
 |---|---|
-| **E1** | Client public auth/models/Chat Completions SSE/feedback/documents avec bearer dans la session serveur : perte d'état → réauthentification, logout → révocation. Le fast-path de cohorte `?group=<slug>` et ses liens sont retirés ; le paramètre est ignoré dans les modes `direct` et `api` afin qu'un rollback ne le réactive pas. Streamlit limite aussi les logins visiteur + slug. Les liens documentaires HTML/nouvel onglet deviennent une navigation Streamlit conservant la session ; `_PDF_Viewer` rédime côté serveur, rend le 200 PDF ou la 302 S3 et retente une fois après 404. `RAG_CHAT_BACKEND=direct\|api`, défaut `direct`. |
+| **E1** | Client public auth/models/Chat Completions SSE/feedback/documents avec bearer dans la session serveur : perte d'état → réauthentification, logout → révocation. Le fast-path de cohorte `?group=<slug>` et ses liens sont retirés ; le paramètre est ignoré dans les modes `direct` et `api` afin qu'un rollback ne le réactive pas. Streamlit limite aussi les logins visiteur + slug. Les dispositions documentaires Streamlit initialement envisagées sont remplacées par D2/#594 côté Conversations ; Streamlit reste interne. Le flag historique `RAG_CHAT_BACKEND=direct\|api` conserve son défaut `direct`. |
 | **E2** | Garde CI de frontière publique et vérification de l'exception admin : pages publiques sans DB en mode API, allowlist des modules admin, les deux chemins actuels de `require_admin()` testés et smoke des pages admin conservées |
 | **E3** | Activer `api` pour un canary staging borné ; comparer qualité, satisfaction, erreurs, latence et complétude des logs |
 | **E4** | Fenêtre de stabilité staging de 5 jours ouvrés minimum ; exercices `api → direct`, perte d'état Streamlit, expiration 8 h, logout et invalidation des sessions par reset |
@@ -102,7 +106,7 @@ La [matrice A3 détaillée](08-streamlit-api-parity.md#matrice-page-par-page) fa
 | `02_Chat_Logs`, `03_Feedback_Dashboard`, `04_Admin_Config`, `12_Pipeline_Timeline`, `13_admin`, `14_User_Groups` | Exception admin Streamlit avec DB directe ; API admin reportée | Maintien après M4 |
 | `05_DB_Explorer`, `06_Goldset_Explorer`, `08`, `09`, `10` | Exception admin Streamlit ; RAG-ops éventuel hors chantier | Maintien après M4 |
 | `15_Import_Sources` | Outil ingestion Grist/S3 séparé, inchangé et sans accès Postgres RAG | Hors chantier RAG |
-| `_PDF_Viewer` | Client de la route documentaire étroite ; URL publique sinon référence stable et URL signée 15 min créée au clic | B2/D2/E1 |
+| `_PDF_Viewer` | Outil interne historique ; ne définit pas le parcours individuel. Documents publics Conversations : D2 + #594, sans accès DB du fork ni URL S3 navigateur. | B2/D2/#594 |
 | `archive/07`, `archive/11` | Archivage antérieur conservé avec remplacements documentés | Déjà terminé |
 
 ## Après le chantier

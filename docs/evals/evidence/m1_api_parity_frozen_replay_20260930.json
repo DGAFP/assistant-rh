@@ -1,0 +1,79 @@
+{
+  "schema": "m1-frozen-replay-v1",
+  "run_label": "m1_frozen_outputs_20260930",
+  "source_run": 259,
+  "scope": "Query processing, aggregation, selection, context building and generation after a shared rehydrated retrieval pool. Chunk scores rounded as logged. SQL searches, embeddings and provider transports/fallbacks excluded.",
+  "code_revision": "Working tree after 534ef86; source fingerprint and archived source files identify the exact checked code.",
+  "source_fingerprint": "712ad138314fde0b93c091a7c9b2728caf287e59a238b7db2d775c3319e0f6d4",
+  "input_manifest_sha256": "ce175896f246c6d7b842b81d05e2609af5eb9ec79e6d2742c8e908fe309983d6",
+  "private_archive": {
+    "filename": "m1-frozen-outputs-20260930.tar.gz",
+    "sha256": "5483d97650d68e542db590aea516793c233def52655ea25753f7d8d3b1b176c3",
+    "bytes": 47263603
+  },
+  "result": {
+    "pairs": 98,
+    "rag_pairs": 96,
+    "direct_response_pairs": 2,
+    "exact": true,
+    "stages_compared_per_engine": 578,
+    "inference_calls_replayed_per_engine": 386,
+    "provider_calls": 0,
+    "database_writes": 0,
+    "offline_replay": "Both engines; TCP/DNS and sync/async PostgreSQL connects denied. Local read-only preparation happened before the offline phase.",
+    "original_core_selector_prompts_matched": 96,
+    "original_core_generator_user_prompts_matched": 96,
+    "original_core_answers_matched": 98
+  },
+  "negative_controls": [
+    {
+      "mutation": "provider-prompt",
+      "detected": true
+    },
+    {
+      "mutation": "retrieval-text",
+      "detected": true
+    },
+    {
+      "mutation": "context",
+      "detected": true
+    },
+    {
+      "mutation": "answer",
+      "detected": true
+    },
+    {
+      "mutation": "extra-call",
+      "detected": true
+    }
+  ],
+  "discovered_difference": {
+    "location": "legacy acronym database loader",
+    "observed_question_id": 1,
+    "legacy_detected_acronym_order": [
+      "CDI",
+      "CDD"
+    ],
+    "core_detected_acronym_order": [
+      "CDD",
+      "CDI"
+    ],
+    "cause": "Legacy ORDER BY priority alone leaves ties unspecified; core also orders by acronym with C collation and id.",
+    "fix": "Use the same priority/acronym/id ordering, including schemas without priority, in the legacy loader.",
+    "scope": "A real input difference, not proof that it caused the prior quality gap."
+  },
+  "validation": {
+    "targeted_tests_passed": 274,
+    "replay_integrity_tests_passed": 4,
+    "m0b_complete_scenarios": 7,
+    "m0b_negative_controls": 5,
+    "ruff": "passed"
+  },
+  "limits": [
+    "The retrieval output pool is rehydrated with logged rounded chunk scores; original raw SQL lanes and embedding vectors were not retained.",
+    "The frozen reranking outcomes and model texts are dependency inputs; provider transport failures and q222 fallback routing are not replayed.",
+    "This proves exact engine parity only for the recorded shared inputs and the stated boundary. It does not prove live-model determinism or judge reliability.",
+    "The previous live scores (60/98 core, 62/98 legacy) are preserved; the acronym-order fix has not been remeasured with new provider calls."
+  ],
+  "evidence_fingerprint": "2d24b9bc92a484cd6f3fe03f514ade778db84679f927a5ae85fdad1505bf99c3"
+}

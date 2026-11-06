@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   prepare-promotion:
-    if: ${{ github.ref_name == 'staging' }}
+    if: ${{ github.ref_name == 'staging' && vars.LEGACY_STAGING_AUTOMATION_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:

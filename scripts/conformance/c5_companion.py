@@ -240,7 +240,7 @@ def record(output, source, env_file):
     dump(output / "manifest.json", manifest)
 
 
-async def replay(output):
+async def replay(output, *, selector_transition=None):
     from assistant_rh_api.core.models import context, retrieval
     from assistant_rh_api.core.models.configuration import Prompt, Snapshot
     from assistant_rh_api.core.models.inference import Attempt, Completion, TokenUsage
@@ -249,6 +249,9 @@ async def replay(output):
     from assistant_rh_api.core.pipeline.steps.generator import Generator
 
     manifest = json.loads((output / "manifest.json").read_text())
+    transition = json.loads(selector_transition.read_text()) if selector_transition else None
+    if transition:
+        assert digest(output / "manifest.json") == transition["historical_manifest_sha256"], "Transition targets another historical manifest"
     for name, expected in manifest["files"].items():
         assert digest(output / name) == expected, f"fixture hash mismatch: {name}"
     config = json.loads((output / "config.json").read_text())
@@ -281,6 +284,7 @@ async def replay(output):
             )
 
     report = []
+    intentional_changes = []
     for path in sorted(output.glob("rag-*.json")):
         case = json.loads(path.read_text())
         candidates = tuple(
@@ -298,7 +302,15 @@ async def replay(output):
             "all_rejected": selection.all_rejected,
             "prompt_chars": selection.diagnostics.prompt_chars,
         }
-        assert actual == case["selector_expected"], f"selector differs: {case['id']}"
+        expected = case["selector_expected"]
+        historical_exact = actual == expected
+        if transition and case["id"] in transition["cases"]:
+            approved = transition["cases"][case["id"]]
+            assert digest(path) == approved["fixture_sha256"], "Transition fixture changed"
+            assert approved["expected"] != expected, "Transition must declare a real historical change"
+            expected = approved["expected"]
+            intentional_changes.append(case["id"])
+        assert actual == expected, f"selector differs: {case['id']}"
         assert llm.calls == 1
         llm = RecordedLLM(case["generator_call"])
         generator = Generator(configured(GenerationConfig, config["generation"], LLMProvider), Store(), Store(), llm)
@@ -327,20 +339,25 @@ async def replay(output):
                 "generator_fallback_count": result.diagnostics.fallback_count,
                 "generator_usage": plain(result.diagnostics.outcome.usage),
                 "exact": True,
+                "historical_selector_exact": historical_exact,
             }
         )
     assert len(report) == 4, "four RAG cases required"
+    if transition:
+        assert set(intentional_changes) == set(transition["cases"]), "Unconsumed selector transition"
     return {
         "exact_comparison": True,
         "cases": report,
         "scope": manifest["scope"],
+        "selector_transition": transition["label"] if transition else None,
+        "intentional_selector_changes": intentional_changes,
         "candidate_source_hashes": {str(p.relative_to(ROOT)): digest(p) for p in sorted((ROOT / "apps/api/src/assistant_rh_api/core").rglob("*.py"))},
     }
 
 
-async def negative_controls(output):
+async def negative_controls(output, *, selector_transition=None):
     """Prove that a green live replay becomes red on three independent mutations."""
-    await replay(output)
+    await replay(output, selector_transition=selector_transition)
     results = []
     for mutation in ("unhashed-fixture", "prompt-with-new-hash", "answer-with-new-hash"):
         with tempfile.TemporaryDirectory(prefix="c5-negative-") as directory:
@@ -360,7 +377,7 @@ async def negative_controls(output):
                 manifest["files"][path.name] = digest(path)
                 dump(copied / "manifest.json", manifest)
             try:
-                await replay(copied)
+                await replay(copied, selector_transition=selector_transition)
             except AssertionError as exc:
                 results.append({"mutation": mutation, "detected": True, "reason": str(exc)})
             else:
@@ -374,6 +391,7 @@ def main():
     parser.add_argument("output", type=Path)
     parser.add_argument("--source", type=Path, help="extracted C4 evidence-v2 directory (record only)")
     parser.add_argument("--env-file", type=Path, help="explicit private dotenv file (record only)")
+    parser.add_argument("--selector-transition", type=Path, help="explicit versioned selector contract transition (replay/check only)")
     args = parser.parse_args()
     if args.mode == "record":
         if not args.source or not args.env_file:
@@ -389,7 +407,7 @@ def main():
             ),
         ):
             action = replay if args.mode == "replay" else negative_controls
-            print(json.dumps(asyncio.run(action(args.output)), ensure_ascii=False, indent=2))
+            print(json.dumps(asyncio.run(action(args.output, selector_transition=args.selector_transition)), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

@@ -47,8 +47,8 @@ async def test_semantic_candidates_match_legacy_with_an_approximate_index(reposi
 
         class PlannerSettings:
             @asynccontextmanager
-            async def transaction(self, **kwargs):
-                async with repository_db.transaction(**kwargs) as connection:
+            async def search_transaction(self):
+                async with repository_db.search_transaction() as connection:
                     # Reproduce the plan transition observed on the staging corpus.
                     await connection.execute("SELECT set_config('random_page_cost', '16', true)")
                     yield connection

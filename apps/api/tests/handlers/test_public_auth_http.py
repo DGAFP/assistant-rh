@@ -135,3 +135,6 @@ def test_canonical_server_entrypoint_disables_proxy_header_rewriting(monkeypatch
     monkeypatch.setattr(uvicorn, "run", lambda *args, **kwargs: calls.append(kwargs))
     main()
     assert calls[0]["proxy_headers"] is False
+    # The production entrypoint must emit correlation logs, not only Uvicorn access logs.
+    logger = calls[0]["log_config"]["loggers"]["assistant_rh_api"]
+    assert logger["level"] == "INFO" and logger["handlers"] == ["default"]

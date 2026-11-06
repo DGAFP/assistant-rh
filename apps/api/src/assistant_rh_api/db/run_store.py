@@ -5,14 +5,32 @@ import re
 from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 from datetime import datetime, timezone
+from uuid import UUID
 
+from psycopg import sql
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from assistant_rh_api.core.models.conversations import ChatRun, RunSource, TraceEvent
+from assistant_rh_api.core.errors import DatabaseUnavailable
+from assistant_rh_api.core.models.conversations import ChatRun, RunMetrics, RunSource, TraceEvent
 from assistant_rh_api.core.ports.conversations import ChatRunStorePort
 from assistant_rh_api.db.pool import Database
 from assistant_rh_api.db.revisions import freeze_json
+from assistant_rh_api.db.run_summary import legacy_summary
+
+
+def run_access(individual_schema: bool) -> sql.Composed:
+    """Named parameters and one fail-closed policy for feedback and source reads.
+
+    Individual runs: author + current ministry right, whatever the current group (DAT v0.4).
+    Collective runs: no author, same group + current ministry right.
+    """
+    return sql.SQL("""
+        r.turn_id = %(turn_id)s
+        AND {author} IS NOT DISTINCT FROM %(user_id)s::uuid
+        AND ({author} IS NOT NULL OR r.user_group = %(group_slug)s)
+        AND r.selected_ministry = ANY(%(ministries)s::text[])
+    """).format(author=sql.SQL("r.author_user_id" if individual_schema else "NULL::uuid"))
 
 
 def json_data(value: object) -> object:
@@ -23,6 +41,8 @@ def json_data(value: object) -> object:
         return {key: json_data(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):
         return [json_data(item) for item in value]
+    if isinstance(value, UUID):
+        return str(value)
     if isinstance(value, datetime):
         return value.isoformat()
     return value
@@ -41,6 +61,13 @@ def aware(timestamp: datetime | None) -> datetime | None:
     return timestamp.replace(tzinfo=timezone.utc) if timestamp.tzinfo is None else timestamp
 
 
+def run_metrics(value: object) -> RunMetrics | None:
+    # Ignore keys written by newer releases instead of failing every read of the run.
+    if not isinstance(value, Mapping):
+        return None
+    return RunMetrics(**{f.name: value[f.name] for f in fields(RunMetrics) if f.name in value})
+
+
 def trace_event(row: dict) -> TraceEvent:
     return TraceEvent(
         row["stage"],
@@ -56,8 +83,15 @@ def trace_event(row: dict) -> TraceEvent:
 
 
 class ChatRunStore(ChatRunStorePort):
-    def __init__(self, database: Database) -> None:
+    def __init__(self, database: Database, *, environment: str = "") -> None:
         self._database = database
+        # Same label as the legacy logger's _env_label, so both runtimes share rag_trace_events.env.
+        label = environment.strip().lower()
+        self._environment = "prod" if label == "production" else label
+
+    async def require_individual_schema(self) -> None:
+        if not await self._database.individual_feedback_schema():
+            raise DatabaseUnavailable()
 
     async def finalize(self, run: ChatRun) -> None:
         if not re.fullmatch(r"(?:chatcmpl-)?[0-9a-f]{32}", run.turn_id):
@@ -66,30 +100,32 @@ class ChatRunStore(ChatRunStorePort):
             raise ValueError("only completed runs may grant source authority")
         if run.timestamp is None or run.timestamp.tzinfo is None:
             raise ValueError("run timestamp must be timezone aware")
+        if run.author_user_id is not None:
+            await self.require_individual_schema()
         async with self._database.transaction() as connection:
             # INSERT deliberately refuses collisions; it never overwrites a run
             # or changes the ownership/source authority of an existing answer.
+            row = {
+                "turn_id": run.turn_id,
+                "trace_id": run.trace_id,
+                "ts": run.timestamp.astimezone(timezone.utc).replace(tzinfo=None),
+                "user_group": run.group_slug,
+                "api_session_hash": run.session_hash,
+                "conversation_id": run.conversation_id,
+                "question": run.question,
+                "answer": run.answer,
+                "selected_ministry": run.selected_ministry,
+                "retrieved": as_jsonb([{"id": s.doc_ref, "source": s.title, "doc_title": s.title, "url": s.url} for s in run.sources]),
+                "api_record": as_jsonb(run),
+                **legacy_summary(run),
+            }
+            if run.author_user_id is not None:
+                row["author_user_id"] = run.author_user_id
             await connection.execute(
-                """
-                INSERT INTO public.chat_runs
-                    (turn_id, trace_id, ts, user_group, api_session_hash, conversation_id, question, answer,
-                     selected_ministry, model, retrieved, api_record)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-                (
-                    run.turn_id,
-                    run.trace_id,
-                    run.timestamp.astimezone(timezone.utc).replace(tzinfo=None),
-                    run.group_slug,
-                    run.session_hash,
-                    run.conversation_id,
-                    run.question,
-                    run.answer,
-                    run.selected_ministry,
-                    run.model,
-                    as_jsonb([{"id": s.doc_ref, "source": s.title, "doc_title": s.title, "url": s.url} for s in run.sources]),
-                    as_jsonb(run),
+                sql.SQL("INSERT INTO public.chat_runs ({}) VALUES ({})").format(
+                    sql.SQL(", ").join(map(sql.Identifier, row)), sql.SQL(", ").join(sql.Placeholder() for _ in row)
                 ),
+                tuple(row.values()),
             )
             for ordinal, source in enumerate(run.sources):
                 await connection.execute(
@@ -103,13 +139,14 @@ class ChatRunStore(ChatRunStorePort):
                 await connection.execute(
                     """
                     INSERT INTO public.rag_trace_events
-                        (turn_id, trace_id, event_index, stage, duration_ms, status, attempt_name,
+                        (turn_id, trace_id, env, event_index, stage, duration_ms, status, attempt_name,
                          input_ref, output_ref, metrics, error_type, error_message)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                     (
                         run.turn_id,
                         run.trace_id,
+                        self._environment,
                         index,
                         event.stage,
                         event.duration_ms,
@@ -165,23 +202,26 @@ class ChatRunStore(ChatRunStorePort):
             row.get("question") or "",
             row.get("answer") or "",
             row.get("selected_ministry") or "",
-            row.get("model") or "",
+            record.get("model", row.get("model")) or "",
             sources,
             events,
             freeze_json(record.get("diagnostics")),
             record.get("status", "completed"),
+            run_metrics(record.get("metrics")),
+            row.get("author_user_id"),
         )
 
-    async def sources(self, turn_id: str, group_slug: str) -> tuple[RunSource, ...]:
+    async def sources(self, turn_id: str, group_slug: str, *, ministries: tuple[str, ...], user_id: UUID | None = None) -> tuple[RunSource, ...]:
+        individual_schema = await self._database.individual_feedback_schema()
         async with self._database.transaction(read_only=True) as connection:
             rows = await (
                 await connection.execute(
-                    """
+                    sql.SQL("""
                 SELECT s.doc_ref, s.title, s.url, s.document_id, r.api_record FROM public.chat_run_sources s
                 JOIN public.chat_runs r ON r.turn_id = s.turn_id
-                WHERE r.turn_id = %s AND r.user_group = %s ORDER BY s.ordinal
-            """,
-                    (turn_id, group_slug),
+                WHERE {} ORDER BY s.ordinal
+            """).format(run_access(individual_schema)),
+                    {"turn_id": turn_id, "group_slug": group_slug, "user_id": user_id, "ministries": list(ministries)},
                 )
             ).fetchall()
         sources = []

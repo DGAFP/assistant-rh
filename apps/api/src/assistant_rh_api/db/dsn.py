@@ -47,6 +47,19 @@ class DatabaseSettings:
     timeout_seconds: float = 2.0
     connect_timeout_seconds: int = 2
     statement_timeout_ms: int = 10_000
+    search_timeout_seconds: float = 10.0
+    search_max_waiting: int = 64
+
+    @classmethod
+    def from_environment(cls, environ: Mapping[str, str]) -> "DatabaseSettings":
+        """Allow bounded admission latency without increasing DB concurrency."""
+        try:
+            search_timeout = float(environ.get("API_DB_SEARCH_TIMEOUT_SECONDS", "10"))
+        except (TypeError, ValueError, OverflowError):
+            raise DatabaseConfigurationError() from None
+        if not 0 < search_timeout <= 30:
+            raise DatabaseConfigurationError()
+        return cls(dsn=resolve_dsn(environ=environ), search_timeout_seconds=search_timeout)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "dsn", resolve_dsn(dsn=self.dsn))
@@ -57,5 +70,8 @@ class DatabaseSettings:
             or self.timeout_seconds <= 0
             or self.connect_timeout_seconds < 1
             or self.statement_timeout_ms < 1
+            or not isfinite(self.search_timeout_seconds)
+            or self.search_timeout_seconds <= 0
+            or self.search_max_waiting < 1
         ):
             raise DatabaseConfigurationError()

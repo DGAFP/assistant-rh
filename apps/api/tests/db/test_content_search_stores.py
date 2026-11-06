@@ -94,15 +94,31 @@ async def test_vector_provider_columns_and_transaction_local_probes(corpus):
         assert (await cursor.fetchone())[0] == "1"
 
 
-async def test_legacy_and_partial_service_public_relations(corpus):
+async def test_legacy_and_partial_service_public_relations(corpus, repository_dsn):
+    import psycopg
+    from assistant_rh_rag_pipeline.config import CHUNK_TABLES, RetrievalConfig
+    from assistant_rh_rag_pipeline.retriever import Retriever
+
+    def legacy_sections():
+        # Fresh resolver in each schema state: exercise both legacy SQL branches.
+        legacy = Retriever(RetrievalConfig(), dsn=repository_dsn)
+        section = legacy._section_select_sql(CHUNK_TABLES["service_public"])
+        with psycopg.connect(repository_dsn) as connection:
+            return [
+                (row[0], str(row[1]))
+                for row in connection.execute(f"SELECT t.hash_id {section} FROM public.rag_chunks_service_public t ORDER BY t.hash_id")
+            ]
+
     store = SearchStore(corpus)
     request = SearchRequest("service_public", "heading", query="congés")
     assert all(c.section_id == SEC1 for c in await store.search(request))
+    assert legacy_sections() == [("a", SEC1), ("b", SEC1)]
     try:
         async with corpus.transaction() as connection:
             await connection.execute("ALTER TABLE public.rag_chunks_service_public ADD COLUMN section_id UUID")
             await connection.execute("UPDATE public.rag_chunks_service_public SET section_id = %s WHERE hash_id = 'b'", (SEC2,))
         assert [c.section_id for c in await store.search(request)] == [SEC1, SEC2]
+        assert legacy_sections() == [("a", SEC1), ("b", SEC2)]
     finally:
         async with corpus.transaction() as connection:
             await connection.execute("ALTER TABLE public.rag_chunks_service_public DROP COLUMN section_id")
@@ -188,10 +204,8 @@ async def test_core_stage_exact_legacy_parity_on_synthetic_postgres(corpus, repo
     # Different vector/lexical order, ties, absent lanes, R2 duplicates and
     # section-backed metadata. Only synthetic content in the guarded test DB.
     async with corpus.transaction() as connection:
-        # Exact parity requires an unambiguous legacy section relation. The
-        # separate B2 tie tests above retain both sections and assert SEC1;
-        # legacy's LIMIT 1 has no id tie-break and can pick SEC2 instead.
-        await connection.execute("DELETE FROM public.rag_sections WHERE section_id = %s", (SEC2,))
+        # Keep both ambiguous sections: both SQL paths must select SEC1 even
+        # though SEC2 was inserted first, including all ministry/search modes.
         await connection.execute("""
             INSERT INTO public.rag_chunks_dgafp(chunk_id, chunk_text, cid, embedding_m3, embedding_bge_scw)
             VALUES ('CID_0', 'congés annuels', 'CID', '[1,0,0]', '[0,1,0]'),
@@ -257,3 +271,63 @@ async def test_missing_lexical_column_is_partial_or_scoped_failure_without_text_
     finally:
         async with corpus.transaction() as connection:
             await connection.execute("ALTER TABLE public.rag_chunks_dgafp RENAME COLUMN unavailable_tsv TO chunk_text_tsv")
+
+
+@pytest.mark.parametrize("direct_section", [False, True])
+async def test_heading_batch_resolution_matches_historical_full_rows(corpus, direct_section):
+    from assistant_rh_api.db.content_store import columns, metadata_expression, section_expression
+    from assistant_rh_api.db.search_catalog import search_catalog
+    from assistant_rh_api.db.search_store import TSQUERY, _query
+
+    try:
+        async with corpus.transaction() as connection:
+            if direct_section:
+                await connection.execute("ALTER TABLE public.rag_chunks_service_public ADD COLUMN section_id UUID")
+                await connection.execute("UPDATE public.rag_chunks_service_public SET section_id = %s WHERE hash_id = 'b'", (MISSING,))
+            await connection.execute("""
+                INSERT INTO public.rag_chunks_service_public(hash_id, chunk_text, short_id, section_path)
+                VALUES ('fallback', 'Fallback', 'F1', 'Other > Congés'),
+                       ('null-path', 'Null', 'F1', NULL), ('null-document', 'Null', NULL, 'Guide > Congés'),
+                       ('absent-path', 'Absent', 'F1', 'Missing'), ('absent-document', 'Absent', 'missing', 'Guide > Congés'),
+                       ('duplicate-key', 'Repeated path', 'F1', 'Guide > Congés')
+            """)
+            # An exact match wins over a lower-UUID heading-only match. Duplicate
+            # document short_ids retain the resolver's existing UUID tie-break.
+            await connection.execute("""
+                INSERT INTO public.rag_documents(doc_id, short_id, title) VALUES
+                    ('00000000-0000-0000-0000-000000000002', 'F1', 'Autre congés');
+                INSERT INTO public.rag_sections(section_id, doc_id, heading, heading_path) VALUES
+                    ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001', 'Congés', 'Elsewhere'),
+                    ('00000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000002', 'Congés', 'Guide > Congés');
+            """)
+        spec = next(t for t in search_catalog() if t.source.key == "service_public")
+        async with corpus.transaction(read_only=True) as connection:
+            existing = await columns(connection, spec.source.name)
+            historical = sql.SQL("""
+                WITH parsed AS (SELECT {query} AS q), candidates AS (
+                    SELECT t.hash_id AS chunk_id, t.chunk_text, {section} AS section_id, {meta} AS metadata
+                    FROM public.rag_chunks_service_public t
+                )
+                SELECT c.chunk_id::text, c.chunk_text, c.section_id,
+                    c.metadata || jsonb_build_object('heading', s.heading, 'heading_path', s.heading_path,
+                        'doc_title', d.title, 'doc_url', d.source_url, 'doc_short_id', d.short_id,
+                        'source_name', d.title, 'source_document_id', d.short_id),
+                    ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) AS score,
+                    ROW_NUMBER() OVER (ORDER BY ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) DESC,
+                        c.chunk_id, c.section_id) AS rank
+                FROM candidates c JOIN public.rag_sections s ON s.section_id = c.section_id
+                LEFT JOIN public.rag_documents d ON d.doc_id = s.doc_id CROSS JOIN parsed
+                WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ parsed.q
+                ORDER BY score DESC, c.chunk_id, c.section_id LIMIT %s
+            """).format(query=TSQUERY, section=section_expression(existing), meta=metadata_expression(existing))
+            for query in ("congés", "guide", "autre", "introuvable", "de la et"):
+                for limit in (1, 30):
+                    request = SearchRequest("service_public", "heading", query=query, limit=limit)
+                    statement, params = _query(request, spec, existing)
+                    expected = await (await connection.execute(historical, params)).fetchall()
+                    actual = await (await connection.execute(statement, params)).fetchall()
+                    assert actual == expected
+    finally:
+        if direct_section:
+            async with corpus.transaction() as connection:
+                await connection.execute("ALTER TABLE public.rag_chunks_service_public DROP COLUMN section_id")

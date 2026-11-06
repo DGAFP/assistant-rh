@@ -10,7 +10,7 @@ from assistant_rh_api.core.errors import DatabaseConflict, DatabaseFailure, Data
 from assistant_rh_api.db.dsn import DatabaseSettings
 from assistant_rh_api.db.errors import translate_database_errors
 from assistant_rh_api.db.pool import Database
-from psycopg_pool import AsyncConnectionPool
+from psycopg_pool import AsyncConnectionPool, PoolClosed, PoolTimeout, TooManyRequests
 
 pytestmark = pytest.mark.anyio
 
@@ -200,3 +200,109 @@ async def test_error_translation_suppresses_driver_details(error, expected) -> N
         with translate_database_errors():
             raise error("postgresql://synthetic:secret@host/db")
     assert "postgresql" not in "".join(traceback.format_exception(caught.value))
+
+
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [
+        (PoolClosed, "pool_closed"),
+        (PoolTimeout, "pool_checkout_timeout"),
+        (TooManyRequests, "pool_queue_full"),
+        (psycopg.errors.QueryCanceled, "query_cancelled"),
+        (psycopg.OperationalError, "connection_error"),
+    ],
+)
+async def test_unavailable_logs_only_a_fixed_reason_without_driver_details(error, reason, caplog):
+    with pytest.raises(DatabaseUnavailable):
+        with translate_database_errors():
+            raise error("postgresql://synthetic:private-marker@host/db SQL private-marker")
+    assert f"reason={reason}" in caplog.text
+    assert "private-marker" not in caplog.text
+    assert "postgresql" not in caplog.text
+
+
+async def test_search_admission_reserves_a_lease_for_other_repositories(synthetic_database_dsn):
+    database = Database(DatabaseSettings(dsn=synthetic_database_dsn, max_size=4, timeout_seconds=0.25))
+    await database.open()
+    release = asyncio.Event()
+    full = asyncio.Event()
+    active = peak = 0
+
+    async def search():
+        nonlocal active, peak
+        async with database.search_transaction() as connection:
+            active += 1
+            peak = max(peak, active)
+            if active == 3:
+                full.set()
+            try:
+                await release.wait()
+                await connection.execute("SELECT pg_sleep(0.005)")
+            finally:
+                active -= 1
+
+    tasks = [asyncio.create_task(search()) for _ in range(50)]
+    try:
+        await asyncio.wait_for(full.wait(), 2)
+        assert await read_marker(database)  # auth/config/traces still get a lease
+        release.set()
+        await asyncio.wait_for(asyncio.gather(*tasks), 5)
+        assert peak == 3
+        assert database.statistics().get("requests_errors", 0) == 0
+    finally:
+        release.set()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await database.close()
+
+
+async def test_search_admission_bounds_waiters_and_recovers_from_cancellation(synthetic_database_dsn, caplog):
+    database = Database(
+        DatabaseSettings(
+            dsn=synthetic_database_dsn,
+            max_size=1,
+            search_max_waiting=1,
+            search_timeout_seconds=0.1,
+        )
+    )
+    await database.open()
+    entered = asyncio.Event()
+
+    async def held_search():
+        async with database.search_transaction():
+            entered.set()
+            await asyncio.Event().wait()
+
+    holder = asyncio.create_task(held_search())
+    waiter = None
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        waiter = asyncio.create_task(held_search())
+        while database._search_waiting != 1:
+            await asyncio.sleep(0)
+        with pytest.raises(DatabaseUnavailable):
+            async with database.search_transaction():
+                pytest.fail("bounded search queue must reject overflow")
+        assert "reason=admission_queue_full" in caplog.text
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        with pytest.raises(DatabaseUnavailable):
+            async with database.search_transaction():
+                pytest.fail("admission timeout must be bounded")
+        assert "reason=admission_timeout" in caplog.text
+        holder.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await holder
+        async with database.search_transaction() as connection:
+            assert await (await connection.execute("SELECT 1")).fetchone() == (1,)
+        assert database._search_waiting == 0
+    finally:
+        holder.cancel()
+        if waiter:
+            waiter.cancel()
+        await asyncio.gather(holder, *([waiter] if waiter else []), return_exceptions=True)
+        await database.close()
+    with pytest.raises(DatabaseUnavailable):
+        async with database.search_transaction():
+            pytest.fail("closed search pool cannot issue a lease")
+    assert "reason=pool_closed" in caplog.text
