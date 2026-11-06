@@ -28,13 +28,6 @@ updates:
         update-types:
           - "minor"
           - "patch"
-      # Majors stay separate: they need individual review.
-      python-major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
