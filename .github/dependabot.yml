@@ -1,30 +1,56 @@
 version: 2
 updates:
-  # Enable version updates for pip dependencies
-  - package-ecosystem: "pip"
+  # Version updates for the uv workspace (pyproject.toml + uv.lock).
+  #
+  # The previous entry used the "pip" ecosystem against requirements files
+  # that this repo does not have, so it never covered the lockfile that CI
+  # verifies with `uv sync --frozen`.
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "09:00"
       timezone: "Europe/Paris"
-    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "security"
     commit-message:
-      prefix: "security"
+      prefix: "chore(deps)"
       include: "scope"
-    reviewers: []
-    # Group security updates together
     groups:
-      security-updates:
+      # One PR per weekly cycle for minor + patch bumps.
+      python-minor-patch:
         patterns:
           - "*"
         update-types:
-          - "security"
-    # Ignore specific packages if needed (uncomment to use)
-    # ignore:
-    #   - dependency-name: "package-name"
-    #     versions: ["x.x.x"]
+          - "minor"
+          - "patch"
+      # Majors stay separate: they need individual review.
+      python-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
 
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Paris"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions:
+        patterns:
+          - "*"
