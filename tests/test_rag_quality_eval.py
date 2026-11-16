@@ -1868,7 +1868,9 @@ def test_secret_backed_rag_eval_relies_on_environment_branch_policy() -> None:
 def test_rag_eval_dispatch_strings_are_not_interpolated_in_shell() -> None:
     workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/rag-quality-eval.yml").read_text(encoding="utf-8")
     resolve_step = workflow.split("      - name: Resolve eval parameters", 1)[1].split("      - name: Run RAG quality eval", 1)[0]
-    script = resolve_step.split("        run: |", 1)[1]
+    # The resolver body lives in .github/scripts now; the workflow step only
+    # passes the inputs through its env block.
+    script = (Path(__file__).resolve().parents[1] / ".github/scripts/resolve_rag_eval_params.sh").read_text(encoding="utf-8")
 
     assert "${{ inputs." not in script
     for variable in (
@@ -1894,9 +1896,9 @@ def test_rag_eval_dispatch_strings_are_not_interpolated_in_shell() -> None:
     ],
 )
 def test_rag_eval_dispatch_rejects_shell_payloads(variable: str, tmp_path: Path) -> None:
-    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/rag-quality-eval.yml").read_text(encoding="utf-8")
-    resolve_step = workflow.split("      - name: Resolve eval parameters", 1)[1].split("      - name: Run RAG quality eval", 1)[0]
-    script = resolve_step.split("        run: |", 1)[1]
+    # Run the extracted resolver directly: the workflow step only forwards
+    # inputs via env, so the injection surface is the script itself.
+    script_path = Path(__file__).resolve().parents[1] / ".github/scripts/resolve_rag_eval_params.sh"
     marker = tmp_path / "payload-executed"
     github_env = tmp_path / "github-env"
     env = {
@@ -1924,7 +1926,7 @@ def test_rag_eval_dispatch_rejects_shell_payloads(variable: str, tmp_path: Path)
     }
     env[variable] = f"safe; touch {marker}"
 
-    completed = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, check=False)
+    completed = subprocess.run(["bash", str(script_path)], env=env, capture_output=True, text=True, check=False)
 
     assert completed.returncode != 0
     assert not marker.exists()
