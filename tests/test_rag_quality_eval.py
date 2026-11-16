@@ -1657,6 +1657,24 @@ def test_rag_quality_workflow_watches_protocol_script() -> None:
     assert '- ".github/scripts/rag_quality_protocol.py"' in paths_block
 
 
+def test_rag_quality_workflow_watches_extracted_shell_scripts() -> None:
+    # The resolver and the evaluator invocation used to be inline in the
+    # workflow, so editing them matched the workflow's own path. Now they are
+    # separate files and must appear in the filter, or a change to parameter
+    # validation would never trigger the staging smoke evaluation.
+    root = Path(__file__).parents[1]
+    workflow = (root / ".github/workflows/rag-quality-eval.yml").read_text(encoding="utf-8")
+    paths_block = workflow.split("paths:", 1)[1].split("workflow_dispatch:", 1)[0]
+
+    for script in ("resolve_rag_eval_params.sh", "run_rag_quality_eval.sh"):
+        assert (root / ".github/scripts" / script).is_file()
+        assert f'- ".github/scripts/{script}"' in paths_block
+
+    # The workflow must actually invoke them, not merely watch them.
+    for script in ("resolve_rag_eval_params.sh", "run_rag_quality_eval.sh"):
+        assert f"bash .github/scripts/{script}" in workflow
+
+
 @pytest.mark.parametrize(
     ("kwargs", "expected"),
     [

@@ -13,6 +13,11 @@ on:
       - "scripts/run_rag_quality_eval.py"
       - "scripts/prepare_goldset.py"
       - ".github/scripts/rag_quality_protocol.py"
+      # The parameter resolver and evaluator invocation used to live inline in
+      # this workflow, so a change to them matched the workflow path below.
+      # They are separate scripts now and must be listed explicitly.
+      - ".github/scripts/resolve_rag_eval_params.sh"
+      - ".github/scripts/run_rag_quality_eval.sh"
       - "supabase/migrations/**rag_quality_eval**.sql"
       - "pyproject.toml"
       - "uv.lock"
