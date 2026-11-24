@@ -2333,3 +2333,130 @@ Revue indépendante sans bloquant ; 31tests supplémentaires indépendants passe
 et13sont skips faute de DSN dans son environnement, deux tests packaging passent.
 Ruff/format, quatre contrats d'import, Helm lint et sept tests de garde CI passent.
 Suite API complète/conformance et suite racine en cours avant promotion.
+
+
+## PR #644 — correction de la précision du contexte (24 novembre 2026)
+
+Panel transversal `baseline_v1` de 98 questions. Références figées, avec le même
+overlay de 16 références staging que dans la comparaison précédente. Référence
+`dev` à 74d7f29, PR à 11625d3 avec ses corrections locales. Exécution du pipeline
+API sur un clone PostgreSQL local en lecture seule de la même base d'évaluation,
+avec configuration runtime inchangée. Les inférences vont aux points d'accès
+Albert DINUM et Scaleway autorisés. Juge Scaleway Mistral Medium 3.5 (majorité de
+3 votes pour le panel complet), RAGAS Llama 3.3 70B. Staging sert de source des
+références figées. Ce protocole permet de comparer le code de la PR avant merge.
+
+### `pr644_baseline_v1_precision_pilot` — avant exécution
+
+Pilote ciblé sur les 11 pertes de verdict, les cas 11 et 16, et cinq baisses de
+précision supplémentaires. Le passage des sections aux documents entiers est
+mesuré à sélection identique. Le pilote utilise le seuil de 3 500 tokens en
+mode large, filtre les passages textuellement identiques du même document et
+mesure la réponse avec un premier vote.
+
+Le pilote donne un verdict favorable aux cas 9, 186, 203 et 204 et maintient
+les cas 11 et 16. Le cas 33 cumule deux ajouts du reranker avant les passages
+retenus. Le cas 177 développe une fiche sur le congé de présence parentale
+après un seul passage réintégré. Le cas 203 ajoute un guide de 27 717 caractères
+sur une seule réintégration. Le score nul RAGAS du cas 4534 dans le run précédent
+est associé à un contexte vide. Le pilote montre également une mauvaise
+association de passages par le sélecteur et une référence perdue au reranking,
+ce qui motive un suivi distinct de la construction du contexte.
+
+### `pr644_baseline_v1_precision` — avant exécution
+
+Panel complet de 98 questions, même copie des données et mêmes références que
+`baseline-v1-dev` et `baseline-v1-final`. Le pipeline de l'API réintègre
+toujours les passages de secours. Il les place après la sélection explicite,
+les garde sous forme d'extraits et leur affecte le budget restant. Deux
+passages à texte et références identiques du même document comptent une fois.
+Le seuil des documents entiers reste celui du runtime. Lanceur API détaché,
+sorties locales. Le CLI standard construit le pipeline Python legacy et ne
+mesurerait pas ce correctif API.
+
+#### Analyse des onze pertes de verdict
+
+| Cas | Premier écart utile observé |
+|---|---|
+| 3 | L'article 45-1-1 est servi dans les deux versions. Une fiche entière supplémentaire élargit le contexte de la PR. Le pilote avec des extraits obtient encore une abstention sur la suspension de l'indemnité. |
+| 9 | Le rappel servi passe de 0,44 à 0,22 au sélecteur. Le reranker réintroduit une section de F13117, puis le builder l'étend à 27 717 caractères. |
+| 20 | La fiche F18029 reste présente. Dans le pilote, l'article 34 bis est classé 12e et le sélecteur l'écarte. La réponse omet le cas du temps partiel de droit. |
+| 33 | Quatre sections F515 remplacent les sources juridiques de la référence de comparaison. Deux passages réintroduits précèdent les passages choisis par le sélecteur dans le pilote. |
+| 177 | Le passage de F565 sur le congé de présence parentale revient en complément de F517 et est étendu à 16 446 caractères. L'article 19 est offert au sélecteur et écarté. |
+| 186 | L'article L332-5 est retrouvé et écarté par le sélecteur dans les deux runs précédents. Le contexte de la PR sert aussi deux guides entiers et la réponse omet la réserve sur les motifs illégaux. |
+| 187 | L'article L332-28 existe dans le corpus, avec deux chunks. Il manque au pool de recherche dans les deux runs précédents. Les candidats juridiques portent notamment sur les articles L342 et L343. |
+| 188 | L'article L332-25 est retrouvé et servi par la PR. La réponse donne les bornes de durée et omet la transformation en CDI. Le guide entier peut masquer le passage précis sur le contrat de projet. |
+| 203 | L'article R331-2 reste présent. Un complément F13117 fait injecter un guide de 27 717 caractères et le second article de `dev` disparaît. Le pilote en extrait retrouve un verdict favorable. |
+| 204 | L'article 27 attendu existe dans le corpus mais manque au pool dans les deux runs précédents. La PR sert un autre article et omet l'équivalence de conditions. Le pilote retrouve le verdict avec un autre contexte pertinent. |
+| 221 | L'article 10 attendu existe dans le corpus mais manque au pool. Deux passages F515 servis dans le run précédent reproduisent le même texte. Le jugement relève des précisions au-delà de la réponse attendue. |
+
+Le test de revue reproduit un cas limite sur les compléments annotés d'un
+document déjà servi en entier. L'extrait reste éligible s'il porte des références
+propres et tient dans le budget de texte restant. Si le budget est épuisé ces
+annotations peuvent être écartées avec le complément. Les références de la
+sélection explicite disposent du budget juridique en premier.
+
+#### Résultats du panel complet `pr644_baseline_v1_precision`
+
+API locale à partir de 11625d3, empreinte du diff API `8e2ca0dabe29`.
+98 réponses, 98 verdicts majoritaires et 98 mesures sur chacun des trois
+scores RAGAS. Zéro échec API et zéro fallback du reranker.
+
+| Indicateur | dev | PR précédente | Compléments en extraits |
+|---|---:|---:|---:|
+| Verdicts favorables | 66/98 | 63/98 | 60/98 |
+| Précision du contexte RAGAS | 0,90051 | 0,84280 | 0,89579 |
+| Rappel du contexte RAGAS | 0,87833 | 0,86627 | 0,86542 |
+| Fidélité RAGAS | 0,91636 | 0,90610 | 0,92680 |
+| Rappel documentaire servi | 0,39599 | 0,45308 | 0,43792 |
+| Hit rate | 0,54082 | 0,58163 | 0,56122 |
+| Sans document attendu | 45,9 % | 41,8 % | 43,9 % |
+| Caractères de contexte moyens | 14 701 | 18 012 | 17 016 |
+
+Verdicts par corpus, dans le même ordre. MATTE 8/12, 7/12, 7/12. MSO 3/4,
+4/4, 3/4. Service-Public 11/14, 10/14, 9/14. DGAFP 1/2 dans les trois.
+Manual 35/55, 32/55, 32/55. Synthetic 8/11, 9/11, 8/11.
+
+Les cas 9, 186, 187, 203, 204 et 221 repassent. Les cas 3, 20, 33, 177 et
+188 restent en échec. Le 11 passe à 2/3 et le 16 à 3/3. Sur le 16, F527 est
+premier dans le contexte et F3026 reste en extrait. Le 203 passe de 30 745 à
+8 244 caractères et retrouve le meilleur verdict à l'unanimité. Sur le 33,
+la précision monte de 0,639 à 0,950. Le juge relève encore deux précisions
+de procédure omises. L'article 34 bis est écarté par le sélecteur sur le 20.
+
+Sur les 66 cas dont le texte de contexte a changé, la précision gagne
+0,07868. Sur les 32 avec les mêmes textes et le même ordre, la moyenne
+reste stable. Le 210 bascule malgré des textes de contexte identiques. Le
+28 perd la fiche entière F513 alors que l'extrait et l'article sont servis.
+Le seuil de baisse de cinq points de verdicts est dépassé par rapport à
+`dev` (−6,12 points). Cette variante n'est pas validée pour le merge.
+
+### `pr644_baseline_v1_compact_supplement_pilot` — avant exécution
+
+Essai ciblé avec les mêmes références et un vote exploratoire. Un seul document
+de secours peut être développé lorsque son passage est le mieux classé par
+le reranker, que le document tient dans le seuil standard de 3 500 tokens et
+qu'il reste de la place après la sélection explicite. Le document reste à la
+fin du contexte. Le cas 28 teste la perte des informations voisines, tandis
+que les cas 9, 16, 177, 203 et 221 testent le risque de dilution.
+
+#### Résultats du pilote `pr644_baseline_v1_compact_supplement_pilot`
+
+10/10 réponses, zéro échec API, un vote par réponse. Ordre de reranking et
+sélections identiques au premier rejeu sur les dix entrées. Le développement
+d'un complément change le contexte des seuls cas 2, 16 et 28 de ce pilote.
+Le 2 repasse, le 16 reste favorable et le 28 échoue encore malgré la fiche
+F513 entière. Les 177 et 4530 repassent et le 203 rebascule avec des textes
+identiques, ce qui montre l'effet possible du générateur ou du juge en
+dehors du builder. La variante n'est pas retenue.
+
+Dans le clone, les articles attendus aux cas 187, 204 et 221 possèdent chacun
+deux chunks avec embeddings M3 et étaient absents du pool des deux runs
+précédents. Les verdicts repassent avec les sources alternatives observées
+dans le rejeu. Le cas 4534 récupère un contexte pertinent selon RAGAS
+(précision 0 → 1), avec un verdict encore défavorable.
+
+Vérifications code. 1 543 tests API et 1 679 tests racine passent, ainsi que
+Ruff et les quatre contrats d'import. Rapport agrégé et différences par cas
+dans `.cache/pr-644-goldset/comparison-pr644-precision.json`. Correctif de
+construction testé localement, PR #644 ouverte sur 11625d3.
