@@ -179,7 +179,12 @@ async def test_selector_matches_retained_runtime(monkeypatch, floor, raw):
     old = legacy_selector.ContextSelector(legacy_config.SelectorConfig(enabled=True, min_kept_sections=floor))
     candidates = sections()
     expected = old.select("Question", old_sections(candidates), ministry=resolve_ministry("mso"))
-    selector = ContextSelector(SelectorConfig(enabled=True, min_kept_sections=floor), Prompts({"v3_selector_business.md": TEMPLATE}), Prompts(), llm)
+    selector = ContextSelector(
+        SelectorConfig(enabled=True, min_kept_sections=floor, reranker_union_top_k=0),
+        Prompts({"v3_selector_business.md": TEMPLATE}),
+        Prompts(),
+        llm,
+    )
     result = await selector.select("Question", candidates, "mso", today="2026-09-14")
     assert [s.section_id for s in result.sections] == [s.section_id for s in expected]
     assert plain(result.diagnostics.decisions) == old.last_decisions
@@ -203,7 +208,9 @@ async def test_selector_accepts_complete_json_with_unclosed_markdown_wrapper(ope
     retained = old.select("q", old_sections(sections()), ministry=resolve_ministry("mso"))
     assert [s.section_id for s in retained] == ["s0", "s1", "s2", "s3", "s4"]
     llm = LLM(raw)
-    result = await ContextSelector(SelectorConfig(enabled=True), Prompts(), Prompts(), llm).select("q", sections(), today="2026-10-21")
+    result = await ContextSelector(SelectorConfig(enabled=True, reranker_union_top_k=0), Prompts(), Prompts(), llm).select(
+        "q", sections(), today="2026-10-21"
+    )
     assert [s.section_id for s in result.sections] == ["s6", "s2", "s7"]
     assert result.diagnostics.status == "selected"
     assert result.diagnostics.reason == "three complementary sections"
@@ -278,13 +285,16 @@ async def test_generator_exact_prompts_and_answer_against_legacy(monkeypatch, mi
     new = Generator(GenerationConfig(), prompts, Prompts(), llm)
     result = await new.generate("Question", context, ministry, today="2026-09-14")
     assert result.answer == expected
-    assert result.diagnostics.request.messages == (Message("system", old.last_system_prompt), Message("user", old.last_full_prompt))
+    assert result.diagnostics.request.messages[0] == Message("system", old.last_system_prompt)
+    user_prompt = result.diagnostics.request.messages[-1].content
+    assert "[Source 1] Décret — Cadre légal (DGAFP)" in user_prompt
+    assert "[Source 2] Modalités (MSO)" in user_prompt
     assert result.diagnostics.outcome.usage == llm.usage
     assert result.diagnostics.fallback_count == 0
-    assert "Article 1 : règle générale." in old.last_full_prompt
-    assert "Une condition propre au ministère." in old.last_full_prompt
-    assert "uniquement sur les sources" in old.last_full_prompt
-    assert "dites-le explicitement et n'inventez pas" in old.last_full_prompt
+    assert "Article 1 : règle générale." in user_prompt
+    assert "Une condition propre au ministère." in user_prompt
+    assert "uniquement sur les sources" in user_prompt
+    assert "dites-le explicitement et n'inventez pas" in user_prompt
 
 
 @pytest.mark.parametrize("ministry", [None, "matte", "mso", "mi", "masa", "unknown"])
@@ -356,7 +366,7 @@ async def test_shared_steps_keep_concurrent_requests_and_diagnostics_isolated():
             text = '{"selected_ids": [1]}' if "question-b" in request.messages[-1].content else '{"selected_ids": [0]}'
             return Completion(text, "albert", "model", (Attempt("albert", "model"),))
 
-    selector = ContextSelector(SelectorConfig(enabled=True), Prompts(), Prompts(), Echo())
+    selector = ContextSelector(SelectorConfig(enabled=True, reranker_union_top_k=0), Prompts(), Prompts(), Echo())
     generator = Generator(GenerationConfig(), Prompts(), Prompts(), Echo())
     a, b = await asyncio.gather(
         selector.select("question-a", sections(), "matte", today="2026-09-14"), selector.select("question-b", sections(), "mso", today="2026-09-14")
@@ -473,9 +483,9 @@ async def test_selector_template_fallback_matches_legacy(monkeypatch, template):
     old = legacy_selector.ContextSelector(legacy_config.SelectorConfig(enabled=True))
     expected = old.select("q", old_sections(sections()))
     llm = LLM(fake.chat.return_value)
-    result = await ContextSelector(SelectorConfig(enabled=True), Prompts({"v3_selector_business.md": template}), Prompts(), llm).select(
-        "q", sections(), today="2026-09-14"
-    )
+    result = await ContextSelector(
+        SelectorConfig(enabled=True, reranker_union_top_k=0), Prompts({"v3_selector_business.md": template}), Prompts(), llm
+    ).select("q", sections(), today="2026-09-14")
     assert result.diagnostics.user_prompt == fake.chat.call_args.args[0]
     assert [s.section_id for s in result.sections] == [s.section_id for s in expected]
 
@@ -543,14 +553,11 @@ async def test_request_date_substitution_keeps_raw_snapshot_and_exact_legacy_pro
     fake = Mock(last_provider_used="albert", fallback_count=0)
     fake.chat.return_value = llm.text
     if name == "selector.md":
-        monkeypatch.setattr(legacy_selector, "LLMClient", lambda **kwargs: fake)
-        monkeypatch.setattr(legacy_selector, "load_prompt", lambda *args, **kwargs: raw.replace("{today}", today))
-        old = legacy_selector.ContextSelector(legacy_config.SelectorConfig(enabled=True))
-        old.select("q", old_sections(sections()), ministry=resolve_ministry("mso"))
-        new = ContextSelector(SelectorConfig(enabled=True), Prompts({"v3_selector_business.md": raw}), Prompts(), llm)
+        new = ContextSelector(SelectorConfig(enabled=True, reranker_union_top_k=0), Prompts({"v3_selector_business.md": raw}), Prompts(), llm)
         result = await new.select("q", sections(), "mso", today=today)
-        assert result.diagnostics.user_prompt == fake.chat.call_args.args[0]
         rendered = result.diagnostics.user_prompt
+        # selector.md already contains '**Redondance et complémentarité**', so it is not duplicated at the bottom.
+        assert rendered.count("Redondance et complémentarité") == 1
     else:
         monkeypatch.setattr(legacy_generator, "load_prompt", lambda *args, **kwargs: raw.replace("{today}", today))
         old = legacy_generator.StreamingGenerator(legacy_config.GenerationConfig())
@@ -577,3 +584,64 @@ async def test_configured_persona_prompt_keeps_same_name_packaged_fallback(db_er
     assert db.calls == [name]
     assert "Adressez toujours la réponse au gestionnaire RH" in result.diagnostics.request.messages[0].content
     assert "{today}" not in result.diagnostics.request.messages[0].content
+
+
+async def test_selector_reranker_union_keeps_high_confidence_top_candidates_without_breaking_rejection():
+    candidates = (
+        AggregatedSection("top-0", "Cadre légal", "Texte 0", (), 0.94, publisher="DGAFP"),
+        AggregatedSection("top-1", "Exceptions", "Texte 1", (), 0.42, publisher="Service-Public"),
+        AggregatedSection("picked", "Fiche pratique", "Texte 2", (), 0.81, publisher="MATTE"),
+    )
+    selector = ContextSelector(
+        SelectorConfig(enabled=True, reranker_union_top_k=2, reranker_union_min_score=0.5),
+        Prompts(),
+        Prompts(),
+        LLM('{"selected_ids": [2], "reason": "fiche directe"}'),
+    )
+    selected = await selector.select("q", candidates, "matte", today="2026-09-14")
+    # top-0 (0.94 >= 0.5) is rescued after LLM's primary pick [2]; top-1 (0.42 < 0.5) is not forced.
+    assert [s.section_id for s in selected.sections] == ["picked", "top-0"]
+    assert selected.diagnostics.decisions["reranker_union_added"] == (0,)
+
+    rejected_selector = ContextSelector(
+        SelectorConfig(enabled=True, reranker_union_top_k=2, reranker_union_min_score=0.5),
+        Prompts(),
+        Prompts(),
+        LLM('{"selected_ids": [], "reason": "hors sujet"}'),
+    )
+    rejected = await rejected_selector.select("q", candidates, "matte", today="2026-09-14")
+    assert rejected.all_rejected is True and rejected.sections == ()
+
+
+async def test_selector_prompt_places_complementary_rule_before_response_format_and_includes_breadcrumbs():
+    db_template = "Question: {query}\n\n{context}\n\n## Format de réponse\nRéponds UNIQUEMENT avec un JSON."
+    candidates = (
+        AggregatedSection(
+            "s0",
+            "Durée et quotité",
+            "Contenu enseignant",
+            (),
+            0.9,
+            publisher="Service-Public",
+            heading_path="Temps partiel > Personnels enseignants > Durée et quotité",
+            metadata={"doc_title": "Temps partiel d'un agent contractuel"},
+        ),
+    )
+    result = await ContextSelector(
+        SelectorConfig(enabled=True),
+        Prompts({"v3_selector_business.md": db_template}),
+        Prompts(),
+        LLM('{"selected_ids": [0]}'),
+    ).select("q", candidates, "matte", today="2026-09-14")
+    prompt = result.diagnostics.user_prompt
+    assert prompt.index("## Redondance et complémentarité") < prompt.index("## Format de réponse")
+    assert "[0] Temps partiel d'un agent contractuel — Temps partiel > Personnels enseignants > Durée et quotité (Service-Public)" in prompt
+
+
+async def test_generator_generate_includes_conversation_history():
+    llm = LLM("Réponse tenant compte du contexte.")
+    history = (Message("user", "Je suis en CDD de 2 ans."), Message("assistant", "Noté."))
+    result = await Generator(GenerationConfig(), Prompts(), Prompts(), llm).generate(
+        "Puis-je le renouveler ?", items(), "matte", history, today="2026-09-14"
+    )
+    assert result.diagnostics.request.messages[1:-1] == history

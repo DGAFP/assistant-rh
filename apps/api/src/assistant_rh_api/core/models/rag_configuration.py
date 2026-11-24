@@ -64,7 +64,8 @@ class SectionAggregationConfig:
     weight_chunk_count: float = 0.2
     enable_section_reranker: bool = True
     section_rerank_top_k: int = 20
-    rerank_input_k: int = 20
+    rerank_input_k: int = 40
+    per_publisher_rerank_quota: bool = True
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -78,6 +79,7 @@ class ContextBuildConfig:
     doc_entire_threshold: int = 3500
     max_sections: int = 12
     triangulation_sections: int = 2
+    triangulation_min_score: float = 0.05
     legal_refs_budget: int = 1000
     token_budget_wide: int = 12000
     max_full_docs_wide: int = 2
@@ -116,6 +118,8 @@ class SelectorConfig:
     temperature: float = 0.0
     prompt_name: str = "v3_selector_business.md"
     min_kept_sections: int = 0
+    reranker_union_top_k: int = 2
+    reranker_union_min_score: float = 0.5
 
     def to_dict(self) -> dict:
         return {**asdict(self), "provider": self.provider.value}
@@ -140,6 +144,8 @@ class QueryProcessorConfig:
     enable_intent_gating: bool = True
     intent_model: str = "openweight-medium"
     intent_prompt_name: str = "intent_unified.md"
+    intent_confidence_threshold: float = 0.7
+    max_history_message_chars: int = 800
     enable_hyde: bool = False
 
     def to_dict(self) -> dict:

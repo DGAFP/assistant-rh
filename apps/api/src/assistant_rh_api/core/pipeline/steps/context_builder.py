@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -12,6 +14,49 @@ from assistant_rh_api.core.errors import DatabaseConflict, DatabaseFailure, Data
 from assistant_rh_api.core.models.context import AggregatedSection, ContextBuildDiagnostics, ContextBuildResult, ContextItem, estimate_tokens
 from assistant_rh_api.core.models.rag_configuration import ContextBuildConfig
 from assistant_rh_api.core.ports.retrieval import ContentStorePort
+
+_REF_HINT_KEYS = ("source", "title", "titre", "full_title", "text", "texte", "label", "complement")
+_REF_STOPWORDS = frozenset("a art article articles au aux dans de des du en et l la le les n no par pour sur un une".split())
+
+
+def _ref_tokens(value: str) -> set[str]:
+    decomposed = unicodedata.normalize("NFKD", value.lower())
+    ascii_text = "".join(char for char in decomposed if not unicodedata.combining(char))
+    tokens = {tok for tok in re.findall(r"[a-z0-9]+", ascii_text) if len(tok) > 1 and tok not in _REF_STOPWORDS}
+    if "cgfp" in tokens:
+        tokens.update(("code", "general", "fonction", "publique"))
+    return tokens
+
+
+def _match_reference_candidate(ref_entry: Mapping[str, Any], candidates: Sequence[dict[str, str]]) -> dict[str, str] | None:
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+    hint_parts = [str(ref_entry[key]) for key in _REF_HINT_KEYS if isinstance(ref_entry.get(key), str) and ref_entry[key].strip()]
+    if not hint_parts:
+        return None
+    hint_tokens = _ref_tokens(" ".join(hint_parts))
+    if not hint_tokens:
+        return None
+    scored: list[tuple[int, float, int]] = []
+    for idx, candidate in enumerate(candidates):
+        cand_tokens = _ref_tokens(candidate.get("title", ""))
+        if not cand_tokens:
+            continue
+        common = hint_tokens & cand_tokens
+        if not common:
+            continue
+        has_specific_token = len(common) >= 2 or any(any(ch.isdigit() for ch in tok) or len(tok) >= 5 for tok in common)
+        if not has_specific_token:
+            continue
+        scored.append((len(common), len(common) / len(cand_tokens), idx))
+    if not scored:
+        return None
+    scored.sort(key=lambda row: (row[0], row[1]), reverse=True)
+    if len(scored) > 1 and (scored[0][0], scored[0][1]) == (scored[1][0], scored[1][1]):
+        return None
+    return candidates[scored[0][2]]
 
 
 def thaw(value: Any) -> Any:
@@ -70,9 +115,13 @@ class ContextBuilder:
         sorted_docs = sorted(by_doc.items(), key=lambda kv: doc_max_score[kv[0]], reverse=True)
 
         def _section_key(s: AggregatedSection) -> str:
-            # Unique-and-stable across both loops. `id(s)` is fine because the
-            # input list is stable for the lifetime of this build().
-            return s.section_id or s.heading or f"_obj_{id(s)}"
+            # Unique-and-stable across both loops without colliding when two
+            # positional standalone chunks of a long legal article share a heading.
+            if s.section_id:
+                return f"sec:{s.section_id}"
+            if s.chunks:
+                return f"chunk:{s.publisher or ''}:{s.chunks[0].chunk_id}"
+            return f"_obj_{id(s)}"
 
         # Step 1 – doc-entire for small documents. We always include qualifying
         # small docs (within budget and the max_full_docs cap); the original
@@ -131,12 +180,15 @@ class ContextBuilder:
             top_section = max(sections, key=lambda s: s.score or 0.0)
             primary_publisher = top_section.publisher
 
-        # Step 3 – triangulation (ignores budget to guarantee publisher diversity)
+        # Step 3 – triangulation (ignores budget to guarantee publisher diversity,
+        # gated by triangulation_min_score so near-zero reranked noise is skipped)
         tri_added = 0
         for s in sections:
             if tri_added >= self.config.triangulation_sections:
                 break
             if s.publisher == primary_publisher:
+                continue
+            if (s.score or 0.0) < self.config.triangulation_min_score:
                 continue
             key = _section_key(s)
             if key in used_ids:
@@ -156,7 +208,10 @@ class ContextBuilder:
         # Step 4 – resolve legal references from rag_chunks_dgafp and inject
         refs_tokens = 0
         all_ref_numbers = self._collect_ref_numbers(selected)
-        cid_map = await self._resolve_cids(all_ref_numbers, store_errors) if all_ref_numbers else {}
+        candidates_by_number = await self._resolve_reference_candidates(all_ref_numbers, store_errors) if all_ref_numbers else {}
+        cid_map: dict[str, dict[str, str]] = {
+            number: dict(candidates[0]) for number, candidates in candidates_by_number.items() if len(candidates) == 1
+        }
 
         # Allocate the legal-refs budget primary-content-first: triangulation
         # items are publisher-diversity fillers and must not consume refs_budget
@@ -167,7 +222,12 @@ class ContextBuilder:
         for index in refs_order:
             item = selected[index]
             if item.references_juridiques and refs_tokens < refs_budget:
-                item = self._enrich_refs_with_cid(item, cid_map)
+                item, matched_refs = self._enrich_refs_with_cid(item, candidates_by_number)
+                for number, resolved in matched_refs:
+                    if number not in cid_map:
+                        cid_map[number] = dict(resolved)
+                    elif cid_map[number]["cid"] != resolved["cid"]:
+                        cid_map[f"{number}@{resolved['cid']}"] = dict(resolved)
                 selected[index] = item
                 ref_text = self._format_references(item.references_juridiques)
                 ref_tokens = estimate_tokens(ref_text)
@@ -207,10 +267,7 @@ class ContextBuilder:
     def _full_doc_to_item(self, doc_row: dict, matched_sections: List[AggregatedSection]) -> ContextItem:
         """Convert a rag_documents row into a single ContextItem with the full document content."""
         best_score = max((s.score for s in matched_sections), default=0.0)
-        all_refs = []
-        for s in matched_sections:
-            if s.references_juridiques:
-                all_refs.append(s.references_juridiques)
+        merged_refs = self._merge_section_references(matched_sections)
         return ContextItem(
             section_id=None,
             heading=doc_row.get("title", ""),
@@ -219,7 +276,7 @@ class ContextBuilder:
             publisher=doc_row.get("publisher", ""),
             document_title=doc_row.get("title", ""),
             document_url=doc_row.get("source_url"),
-            references_juridiques=all_refs[0] if all_refs else None,
+            references_juridiques=merged_refs,
             token_estimate=doc_row.get("token_count") or estimate_tokens(doc_row.get("doc_markdown", "")),
             metadata={
                 "doc_id": str(doc_row.get("doc_id", "")),
@@ -230,7 +287,40 @@ class ContextBuilder:
             },
         )
 
+    @staticmethod
+    def _merge_section_references(matched_sections: Sequence[AggregatedSection]) -> Any:
+        raw_blocks = [thaw(s.references_juridiques) for s in matched_sections if s.references_juridiques]
+        if not raw_blocks:
+            return None
+        if len(raw_blocks) == 1:
+            return raw_blocks[0]
+        merged: list[Any] = []
+        seen: set[str] = set()
+        all_list_like = True
+        for block in raw_blocks:
+            parsed = block
+            if isinstance(parsed, str):
+                try:
+                    parsed = json.loads(parsed)
+                except (ValueError, json.JSONDecodeError):
+                    all_list_like = False
+                    break
+            if not isinstance(parsed, list):
+                all_list_like = False
+                break
+            for entry in parsed:
+                canonical = json.dumps(entry, sort_keys=True, ensure_ascii=False)
+                if canonical not in seen:
+                    seen.add(canonical)
+                    merged.append(entry)
+        if all_list_like:
+            return merged or None
+        return raw_blocks[0]
+
     def _section_to_item(self, s: AggregatedSection) -> ContextItem:
+        meta = dict(s.metadata)
+        if s.heading_path:
+            meta["heading_path"] = s.heading_path
         return ContextItem(
             section_id=s.section_id,
             heading=s.heading,
@@ -241,7 +331,7 @@ class ContextBuilder:
             document_url=cast(str | None, s.metadata.get("doc_url")),
             references_juridiques=s.references_juridiques,
             token_estimate=s.token_estimate,
-            metadata=s.metadata,
+            metadata=meta,
         )
 
     @staticmethod
@@ -263,32 +353,43 @@ class ContextBuilder:
                         numbers.append(r["number"])
         return list(dict.fromkeys(numbers))
 
-    async def _resolve_cids(self, numbers: List[str], errors: list[str]) -> dict[str, dict[str, str]]:
+    async def _resolve_reference_candidates(self, numbers: List[str], errors: list[str]) -> dict[str, list[dict[str, str]]]:
         try:
             references = await self.content_store.references(tuple(numbers))
         except (DatabaseUnavailable, DatabaseFailure, DatabaseConflict) as exc:
             errors.append(exc.code)
             return {}
-        # B2 specifies stable port ordering; preserve the legacy last nonempty CID.
-        return {ref.number: {"cid": ref.cid, "url": ref.url, "title": ref.title} for ref in references if ref.cid}
+        grouped: dict[str, dict[str, dict[str, str]]] = defaultdict(dict)
+        for ref in references:
+            if ref.cid:
+                grouped[ref.number][ref.cid] = {"cid": ref.cid, "url": ref.url, "title": ref.title}
+        return {number: list(by_cid.values()) for number, by_cid in grouped.items() if by_cid}
 
     @staticmethod
-    def _enrich_refs_with_cid(item: ContextItem, cid_map: Dict[str, Dict[str, str]]) -> ContextItem:
-        """Add cid/url to references_juridiques entries if found in cid_map."""
+    def _enrich_refs_with_cid(
+        item: ContextItem,
+        candidates_by_number: Mapping[str, Sequence[dict[str, str]]],
+    ) -> tuple[ContextItem, list[tuple[str, dict[str, str]]]]:
+        """Add cid/url to references_juridiques entries when unambiguous or title-disambiguated."""
         refs = thaw(item.references_juridiques)
         if not refs:
-            return item
+            return item, []
         if isinstance(refs, str):
             try:
                 refs = json.loads(refs)
             except (ValueError, json.JSONDecodeError):
-                return item
+                return item, []
+        matched: list[tuple[str, dict[str, str]]] = []
         if isinstance(refs, list):
             for r in refs:
-                if isinstance(r, dict) and r.get("number") in cid_map:
-                    r.update(cid_map[r["number"]])
-            return replace(item, references_juridiques=tuple(refs))
-        return item
+                if isinstance(r, dict) and r.get("number") in candidates_by_number:
+                    number = str(r["number"])
+                    resolved = _match_reference_candidate(r, candidates_by_number[number])
+                    if resolved is not None:
+                        r.update(resolved)
+                        matched.append((number, resolved))
+            return replace(item, references_juridiques=tuple(refs)), matched
+        return item, []
 
     @staticmethod
     def _format_references(refs) -> str:

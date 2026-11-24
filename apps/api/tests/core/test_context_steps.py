@@ -147,36 +147,60 @@ def corpus():
         (True, "question", 20, 20, True),
     ],
 )
-async def test_aggregation_matches_retained_runtime(enabled, query, input_k, top_k, fallback):
+async def test_aggregation_synthesizes_legal_headings_and_preserves_hierarchy_in_rerank(enabled, query, input_k, top_k, fallback):
     chunks, store = corpus()
     before = plain(chunks)
-    config = SectionAggregationConfig(enable_section_reranker=enabled, rerank_input_k=input_k, section_rerank_top_k=top_k)
+    config = SectionAggregationConfig(
+        enable_section_reranker=enabled,
+        rerank_input_k=input_k,
+        section_rerank_top_k=top_k,
+        per_publisher_rerank_quota=False,
+    )
     reranker = Reranker(fallback)
-    legacy = LegacyAggregator(legacy_config.SectionAggregationConfig(**asdict(config)), dsn="unused")
+    legacy = LegacyAggregator(
+        legacy_config.SectionAggregationConfig(
+            enable_section_reranker=enabled,
+            rerank_input_k=input_k,
+            section_rerank_top_k=top_k,
+        ),
+        dsn="unused",
+    )
     legacy._fetch_sections = Mock(return_value={row.section_id: section_row(row) for row in store.section_rows})
     legacy._reranker = Mock()
     legacy._reranker.rerank.side_effect = lambda query, texts, top_k: reranker.rank(texts, top_k=top_k)
     expected = legacy.aggregate_with_diagnostics([legacy_models.RetrievedChunk(**plain(c)) for c in chunks], query)
     actual = await SectionAggregator(config, store, reranker).aggregate_with_diagnostics(chunks, query)
-    assert plain(actual.sections) == plain(expected.sections)
-    for name in plain(expected.diagnostics):
-        assert plain(getattr(actual.diagnostics, name)) == plain(getattr(expected.diagnostics, name))
+    assert len(actual.sections) == len(expected.sections)
+    for act_sec, exp_sec in zip(actual.sections, expected.sections, strict=True):
+        assert act_sec.section_id == exp_sec.section_id
+        assert act_sec.score == exp_sec.score
+        if act_sec.section_id is None and act_sec.metadata.get("cid") == "CID":
+            assert act_sec.heading == "Article L1 - Code"
+            assert act_sec.metadata["doc_title"] == "Article L1 - Code"
+        else:
+            assert act_sec.heading == exp_sec.heading
+    assert actual.diagnostics.reranker_status == expected.diagnostics.reranker_status
     assert actual.diagnostics.reranker_fallback == fallback
     assert plain(chunks) == before
     assert store.calls == [("sections", ("s-a", "s-b", "missing-section", "orphan"))]
     if reranker.calls:
-        assert list(reranker.calls[0][1]) == legacy._reranker.rerank.call_args.args[1]
-        assert len(reranker.calls[0][1]) <= max(input_k, top_k)
+        rerank_docs = reranker.calls[0][1]
+        assert len(rerank_docs) <= max(input_k, top_k)
+        assert rerank_docs[0].startswith("# Guide congés — Guide > Congés\n\n")
+        assert any(doc.startswith("# Article L1 - Code\n\n") for doc in rerank_docs)
 
 
 @pytest.mark.parametrize("mode", [ContextMode.STANDARD, ContextMode.WIDE])
 @pytest.mark.parametrize(
     "case", ["full", "budget", "missing", "empty-document", "zero-tokens", "unknown-tokens", "ties", "triangulation", "refs-cap", "no-refs-budget"]
 )
-async def test_context_matches_retained_runtime(mode, case):
+async def test_context_builds_hierarchical_headers_and_merges_full_doc_references(mode, case):
     chunks, store = corpus()
+    legacy_agg = LegacyAggregator(legacy_config.SectionAggregationConfig(enable_section_reranker=False), dsn="unused")
+    legacy_agg._fetch_sections = Mock(return_value={row.section_id: section_row(row) for row in store.section_rows})
+    legacy_sections = list(legacy_agg.aggregate([legacy_models.RetrievedChunk(**plain(c)) for c in chunks]))
     sections = list(await SectionAggregator(SectionAggregationConfig(enable_section_reranker=False), store, Reranker()).aggregate(chunks))
-    kwargs = {"context_mode": mode}
+    kwargs = {"context_mode": mode, "triangulation_min_score": 0.0}
     if case == "budget":
         kwargs.update(token_budget=4, token_budget_wide=5, triangulation_sections=0)
     if case == "missing":
@@ -187,8 +211,12 @@ async def test_context_matches_retained_runtime(mode, case):
         store.document_rows = (replace(store.document_rows[0], token_count=0),)
     if case == "unknown-tokens":
         sections = [replace(s, metadata={**s.metadata, "doc_token_count": 0}) for s in sections]
+        for ls in legacy_sections:
+            ls.metadata = {**ls.metadata, "doc_token_count": 0}
     if case == "ties":
         sections = [replace(s, score=0.5) for s in sections]
+        for ls in legacy_sections:
+            ls.score = 0.5
     if case == "triangulation":
         kwargs.update(max_sections=1, max_sections_wide=1, max_full_docs=0, max_full_docs_wide=0, token_budget=10, token_budget_wide=10)
     if case == "refs-cap":
@@ -196,31 +224,28 @@ async def test_context_matches_retained_runtime(mode, case):
     if case == "no-refs-budget":
         kwargs.update(legal_refs_budget=0, legal_refs_budget_wide=0)
     config = ContextBuildConfig(**kwargs)
-    values = asdict(config)
-    values["context_mode"] = legacy_config.ContextMode(mode.value)
-    legacy = LegacyBuilder(legacy_config.ContextBuildConfig(**values), dsn="unused")
+    legacy_values = {k: v for k, v in asdict(config).items() if k in legacy_config.ContextBuildConfig.__dataclass_fields__}
+    legacy_values["context_mode"] = legacy_config.ContextMode(mode.value)
+    legacy = LegacyBuilder(legacy_config.ContextBuildConfig(**legacy_values), dsn="unused")
     docs = {row.doc_id: document_row(row) for row in store.document_rows}
     refs = {row.number: {"cid": row.cid, "url": row.url, "title": row.title} for row in store.reference_rows if row.cid}
     legacy._load_full_document = Mock(side_effect=lambda doc_id: copy.deepcopy(docs.get(doc_id)))
     legacy._resolve_cids = Mock(side_effect=lambda numbers: {n: copy.deepcopy(refs[n]) for n in numbers if n in refs})
-    legacy_sections = [
-        legacy_models.AggregatedSection(
-            **{
-                **plain(s),
-                "chunks": [legacy_models.RetrievedChunk(**plain(c)) for c in s.chunks],
-            }
-        )
-        for s in sections
-    ]
     before = plain(sections)
     expected = legacy.build(legacy_sections)
     actual = await ContextBuilder(config, store).build(sections)
-    assert plain(actual.items) == plain(expected)
+    assert [(i.section_id, i.publisher, i.score) for i in actual.items] == [(e.section_id, e.publisher, e.score) for e in expected]
     assert plain(actual.resolved_refs) == legacy.last_resolved_refs
-    assert format_for_prompt(actual.items) == legacy.format_for_prompt(expected)
     assert actual.diagnostics.tokens_used == sum(item.token_estimate for item in actual.items)
     assert plain(sections) == before
     assert [call[1][0] for call in store.calls if call[0] == "documents"] == [call.args[0] for call in legacy._load_full_document.call_args_list]
+    full_docs = [item for item in actual.items if item.metadata.get("is_doc_entire")]
+    if full_docs:
+        ref_numbers = [entry["number"] for entry in full_docs[0].references_juridiques]
+        assert ref_numbers == ["L1", "L2"]
+    formatted = format_for_prompt(actual.items)
+    if any(item.section_id == "s-a" for item in actual.items):
+        assert "Guide congés — Guide > Congés (MATTE)" in formatted
 
 
 @pytest.mark.parametrize("refs", [[{"number": "L1"}], '[{"number":"L1"}]', "[broken json", {"code": "L1"}, [], None])
@@ -357,3 +382,65 @@ async def test_concurrent_aggregation_diagnostics_and_scores_are_isolated():
     assert plain(chunks) == before
     with pytest.raises(TypeError):
         ranked.diagnostics.chunks_after_rerank[0]["doc_id"] = "other-request"
+
+
+async def test_per_publisher_rerank_quota_rescues_underrepresented_corpora():
+    sp_chunks = [
+        RetrievedChunk(f"sp-{i}", f"Fiche SP {i}", 0.9 - i * 0.01, "Service-Public", {"doc_title": f"SP {i}"}, None, "albert") for i in range(6)
+    ]
+    dgafp_chunk = RetrievedChunk(
+        "LAW_0",
+        "Article décisif",
+        0.2,
+        "DGAFP",
+        {"cid": "LAW", "number": "45", "full_title": "Décret n° 86-83"},
+        None,
+        "albert",
+    )
+    matte_chunk = RetrievedChunk("matte-0", "Guide ministère", 0.25, "MATTE", {"doc_title": "Guide MATTE"}, None, "albert")
+    reranker = Reranker(fallback=True)
+    config = SectionAggregationConfig(rerank_input_k=4, section_rerank_top_k=4, per_publisher_rerank_quota=True)
+    result = await SectionAggregator(config, Content(), reranker).aggregate((*sp_chunks, matte_chunk, dgafp_chunk), "question")
+    publishers = {s.publisher for s in result}
+    assert {"Service-Public", "MATTE", "DGAFP"} <= publishers
+
+
+async def test_colliding_bare_article_numbers_disambiguate_by_title_or_skip_ambiguous():
+    refs_db = (
+        LegalReference("3", "CID-1986", "https://www.legifrance.gouv.fr/loda/article_lc/CID-1986", "Décret n° 86-83 du 17 janvier 1986"),
+        LegalReference("3", "CID-2025", "https://www.legifrance.gouv.fr/loda/article_lc/CID-2025", "Décret n° 2025-999 relatif aux primes"),
+    )
+    qualified = AggregatedSection(
+        "s-qual",
+        "Contrat",
+        "Contenu",
+        (),
+        0.9,
+        publisher="MATTE",
+        references_juridiques=({"number": "3", "label": "Article 3 du décret n° 86-83"},),
+    )
+    bare = AggregatedSection(
+        "s-bare",
+        "Autre",
+        "Contenu",
+        (),
+        0.8,
+        publisher="MSO",
+        references_juridiques=({"number": "3"},),
+    )
+    built = await ContextBuilder(ContextBuildConfig(), Content(references=refs_db)).build((qualified, bare))
+    qual_item = next(i for i in built.items if i.section_id == "s-qual")
+    bare_item = next(i for i in built.items if i.section_id == "s-bare")
+    assert qual_item.references_juridiques[0]["cid"] == "CID-1986"
+    assert "cid" not in bare_item.references_juridiques[0]
+
+
+async def test_triangulation_min_score_skips_near_zero_noise():
+    sections = (
+        AggregatedSection("s1", "Pertinent", "Texte principal", (), 0.92, publisher="MATTE"),
+        AggregatedSection("s2", "Hors sujet", "Bruit complet", (), 0.001, publisher="Service-Public"),
+    )
+    config = ContextBuildConfig(max_sections=1, triangulation_sections=2, triangulation_min_score=0.05)
+    built = await ContextBuilder(config, Content()).build(sections)
+    assert [i.section_id for i in built.items] == ["s1"]
+    assert built.diagnostics.triangulation_count == 0

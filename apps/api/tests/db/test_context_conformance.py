@@ -79,7 +79,14 @@ async def test_content_sql_matches_legacy_context(repository_db, repository_dsn,
         actual = await ContextBuilder(ContextBuildConfig(), ContentStore(repository_db)).build(actual_sections)
         assert plain(actual.items) == plain(expected)
         assert plain(actual.resolved_refs) == legacy_builder.last_resolved_refs
-        assert format_for_prompt(actual.items) == legacy_builder.format_for_prompt(expected)
+        if case == "nullable-token-count":
+            assert format_for_prompt(actual.items) == legacy_builder.format_for_prompt(expected).replace(
+                "### [Source 1] Guide (Synthetic)",
+                "### [Source 1] Guide — Section (Synthetic)",
+                1,
+            )
+        else:
+            assert format_for_prompt(actual.items) == legacy_builder.format_for_prompt(expected)
     finally:
         async with repository_db.transaction() as connection:
             await connection.execute("ALTER TABLE public.rag_documents DROP COLUMN last_updated_date")

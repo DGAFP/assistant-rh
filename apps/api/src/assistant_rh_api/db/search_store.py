@@ -16,6 +16,7 @@ from assistant_rh_api.db.search_catalog import SearchTable, search_catalog
 TSQUERY = sql.SQL("""CASE WHEN plainto_tsquery('french', %s)::text = ''
     THEN plainto_tsquery('french', %s)
     ELSE to_tsquery('french', replace(plainto_tsquery('french', %s)::text, ' & ', ' | ')) END""")
+HEADING_MAX_CHUNKS_PER_SECTION = 2
 
 
 def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hybrid: bool = False) -> tuple[sql.Composed, tuple]:
@@ -117,20 +118,31 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
                 relations=relations,
             )
         statement = sql.SQL("""
-            WITH parsed AS (SELECT {query} AS q), {resolutions} candidates AS ({base})
-            SELECT c.chunk_id::text, c.chunk_text, c.section_id,
-                   c.metadata || jsonb_build_object('heading', s.heading, 'heading_path', s.heading_path,
-                       'doc_title', d.title, 'doc_url', d.source_url, 'doc_short_id', d.short_id,
-                       'source_name', d.title, 'source_document_id', d.short_id),
-                   ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) AS score,
-                   ROW_NUMBER() OVER (ORDER BY
-                       ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) DESC,
-                       c.chunk_id, c.section_id) AS rank
-            FROM candidates c JOIN {sections} s ON s.section_id = c.section_id
-            LEFT JOIN public.rag_documents d ON d.doc_id = s.doc_id CROSS JOIN parsed
-            WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ parsed.q
-            ORDER BY score DESC, c.chunk_id, c.section_id LIMIT %s
-        """).format(query=TSQUERY, resolutions=resolutions, base=base, sections=sections)
+            WITH parsed AS (SELECT {query} AS q), {resolutions} candidates AS ({base}),
+                 per_section AS (
+                     SELECT c.chunk_id::text AS chunk_id, c.chunk_text, c.section_id,
+                            c.metadata || jsonb_build_object('heading', s.heading, 'heading_path', s.heading_path,
+                                'doc_title', d.title, 'doc_url', d.source_url, 'doc_short_id', d.short_id,
+                                'source_name', COALESCE(c.metadata->>'source_name', d.title),
+                                'source_document_id', COALESCE(c.metadata->>'source_document_id', d.short_id)) AS metadata,
+                            ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) AS score,
+                            ROW_NUMBER() OVER (PARTITION BY c.section_id ORDER BY c.chunk_id) AS section_chunk_rn
+                     FROM candidates c JOIN {sections} s ON s.section_id = c.section_id
+                     LEFT JOIN public.rag_documents d ON d.doc_id = s.doc_id CROSS JOIN parsed
+                     WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ parsed.q
+                 )
+            SELECT chunk_id, chunk_text, section_id, metadata, score,
+                   ROW_NUMBER() OVER (ORDER BY score DESC, chunk_id, section_id) AS rank
+            FROM per_section
+            WHERE section_chunk_rn <= {max_per_section}
+            ORDER BY score DESC, chunk_id, section_id LIMIT %s
+        """).format(
+            query=TSQUERY,
+            resolutions=resolutions,
+            base=base,
+            sections=sections,
+            max_per_section=sql.Literal(HEADING_MAX_CHUNKS_PER_SECTION),
+        )
         params = (request.query, request.query, request.query, request.limit)
     return statement, params
 

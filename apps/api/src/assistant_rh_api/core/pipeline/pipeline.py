@@ -67,6 +67,7 @@ class Pipeline:
         config = self._config.retrieval
         built, rejected = await self._retrieve_and_build(
             query.query_for_retrieval,
+            request.question,
             ministry,
             context,
             attempt="initial",
@@ -78,6 +79,7 @@ class Pipeline:
         if retry:
             built, rejected = await self._retrieve_and_build(
                 query.query_for_retrieval,
+                request.question,
                 ministry,
                 context,
                 attempt="selector_retry",
@@ -89,23 +91,33 @@ class Pipeline:
             context.diagnostics["selector_retry_succeeded"] = bool(built.items) and not rejected
         context.diagnostics["selector_all_rejected"] = rejected
 
+        recent_history = request.history[-8:]
+
         async def generate() -> GenerationResult:
             context.generation_started()
             # No candidates or an empty build require no-answer in both transports.
             all_rejected = rejected or not built.items
             if not stream:
                 generated = await self._generator.generate(
-                    query.query_for_retrieval, built.items, ministry, today=context.today, all_rejected=all_rejected
+                    query.query_for_retrieval,
+                    built.items,
+                    ministry,
+                    recent_history,
+                    today=context.today,
+                    all_rejected=all_rejected,
                 )
                 # Without deltas, the whole answer is the first token.
                 if generated.answer:
                     context.first_token()
                 return generated
-            # C1 keeps API generation inputs identical across transports.
-            # C6 passes history only to the query processor.
             answer = AnswerStream()
             async with self._generator.stream(
-                query.query_for_retrieval, built.items, ministry=ministry, today=context.today, all_rejected=all_rejected
+                query.query_for_retrieval,
+                built.items,
+                recent_history,
+                ministry=ministry,
+                today=context.today,
+                all_rejected=all_rejected,
             ) as events:
                 async for event in events:
                     if isinstance(event, TextDelta):
@@ -123,11 +135,19 @@ class Pipeline:
         return PipelineResult(answer=generated.answer, items=built.items)
 
     async def _retrieve_and_build(
-        self, query: str, ministry: str, context: RunContext, *, attempt: str, search_mode: SearchMode, top_k: int
+        self,
+        query: str,
+        raw_query: str,
+        ministry: str,
+        context: RunContext,
+        *,
+        attempt: str,
+        search_mode: SearchMode,
+        top_k: int,
     ) -> tuple[ContextBuildResult, bool]:
         retrieved = await context.stage(
             "retriever",
-            lambda: self._retrieve(query, ministry, context, search_mode=search_mode, top_k=top_k),
+            lambda: self._retrieve(query, raw_query, ministry, context, search_mode=search_mode, top_k=top_k),
             project=retrieval_trace,
             measure=retrieval_metrics,
             attempt=attempt,
@@ -153,8 +173,24 @@ class Pipeline:
         )
         return built, selected.all_rejected
 
-    async def _retrieve(self, query: str, ministry: str, context: RunContext, *, search_mode: SearchMode, top_k: int) -> RetrievalResult:
-        retrieved = await self._retriever.retrieve(query, self._config.retrieval, selected_ministry=ministry, search_mode=search_mode, top_k=top_k)
+    async def _retrieve(
+        self,
+        query: str,
+        raw_query: str,
+        ministry: str,
+        context: RunContext,
+        *,
+        search_mode: SearchMode,
+        top_k: int,
+    ) -> RetrievalResult:
+        retrieved = await self._retriever.retrieve(
+            query,
+            self._config.retrieval,
+            raw_query=raw_query,
+            selected_ministry=ministry,
+            search_mode=search_mode,
+            top_k=top_k,
+        )
         if retrieved.embedding_failed:
             # A provider outage must fail the run, not generate an answer without context.
             context.diagnostics["embedding_failed"] = True

@@ -14,7 +14,7 @@ from assistant_rh_api.core.ministry_policy import MINISTRIES
 from assistant_rh_api.core.models.configuration import Prompt, Snapshot
 from assistant_rh_api.core.models.context import AggregatedSection, ContextItem
 from assistant_rh_api.core.models.inference import ChatRequest, Message
-from assistant_rh_api.core.pipeline.steps.context_formatting import format_for_prompt
+from assistant_rh_api.core.pipeline.steps.context_formatting import format_for_prompt, section_context_label
 from assistant_rh_api.core.ports.configuration import PromptStorePort
 
 USER_PROMPT_TEMPLATE = """Voici le contexte documentaire pour repondre a la question :
@@ -132,10 +132,19 @@ def render_ministry_prompt(template: str, ministry: str | None) -> str:
 
 
 def selector_prompt(template: str, query: str, sections: Sequence[AggregatedSection], ministry: str | None, *, today: str) -> str:
-    if "## Redondance et complémentarité" not in template:
-        template = f"{template.rstrip()}\n{COMPLEMENTARY_SOURCE_SELECTION_RULE}"
+    if "## Redondance et complémentarité" not in template and "**Redondance et complémentarité**" not in template:
+        marker = "## Format de réponse"
+        if marker in template:
+            before, after = template.split(marker, 1)
+            template = f"{before.rstrip()}\n{COMPLEMENTARY_SOURCE_SELECTION_RULE.rstrip()}\n\n{marker}{after}"
+        else:
+            template = f"{template.rstrip()}\n{COMPLEMENTARY_SOURCE_SELECTION_RULE}"
     template = render_ministry_prompt(template.replace("{today}", today), ministry)
-    context = "\n\n---\n\n".join(f"[{i}] {sec.heading} ({sec.publisher or 'unknown'})\n{sec.markdown}" for i, sec in enumerate(sections))
+    context = "\n\n---\n\n".join(
+        f"[{i}] {section_context_label(str(sec.metadata.get('doc_title') or ''), sec.heading, sec.heading_path)} "
+        f"({sec.publisher or 'unknown'})\n{sec.markdown}"
+        for i, sec in enumerate(sections)
+    )
     try:
         return template.format_map(defaultdict(str, query=query, context=context, theme=""))
     except (ValueError, KeyError, IndexError, AttributeError, TypeError):

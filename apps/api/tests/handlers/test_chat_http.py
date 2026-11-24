@@ -85,10 +85,13 @@ async def test_history_validation_pairing_and_text_parts(chat):
     run = next(iter(runtime.runs.rows.values()))
     assert run.question == "Et alors ?"
     prompt = runtime.llm.calls[0].messages[0].content
-    # C1 retains U2/A2..U6/A6; the preserved C2 prompt policy reads its last 8 messages.
+    # C1 retains U2/A2..U6/A6; both QueryProcessor and Generator receive the last 8 sanitized messages.
     assert "U3" in prompt and "A6" in prompt
     assert not any(word in prompt for word in ["orphan", "replaced", "IGNORED", "old sources", "after question", "U1"])
-    assert len(runtime.llm.calls[-1].messages) == 2  # C5 non-stream policy is unchanged.
+    gen_messages = runtime.llm.calls[-1].messages
+    assert len(gen_messages) == 10
+    assert [m.content for m in gen_messages[1:-1]] == ["U3", "A3", "U4", "A4", "U5", "A5", "U6", "A6"]
+    assert not any(word in str(gen_messages) for word in ["orphan", "replaced", "IGNORED", "old sources", "after question", "U1"])
 
 
 @pytest.mark.parametrize(

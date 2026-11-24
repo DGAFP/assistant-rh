@@ -295,3 +295,15 @@ async def test_run_author_comes_from_the_verified_principal():
     assert runtime.runs.rows[run.turn_id].author_user_id == context.user_id
     group_run, _ = await runtime.service.complete(ChatInput("assistant-rh", "Question RH"), await auth())
     assert group_run.author_user_id is None
+
+
+@pytest.mark.parametrize("stream", [False, True])
+async def test_pipeline_forwards_recent_history_to_generator_in_both_transports(stream):
+    from assistant_rh_api.core.models.inference import Message
+
+    runtime = Runtime()
+    history = (Message("user", "Mon contrat CDD dure 18 mois."), Message("assistant", "Il peut être renouvelé."))
+    await runtime.service.complete(ChatInput("assistant-rh", "Et quel préavis ?", history=history), await auth(), stream=stream)
+    gen_request = runtime.llm.calls[-1]
+    assert gen_request.messages[0].content.startswith("GENERATE")
+    assert gen_request.messages[1:-1] == history

@@ -186,26 +186,17 @@ async def test_hybrid_candidates_keep_each_lane_rank_and_score(corpus):
 
 @pytest.mark.parametrize("mode", ["semantic", "lexical", "hybrid"])
 @pytest.mark.parametrize("ministry", [None, "matte", "mso", "mi", "masa"])
-async def test_core_stage_exact_legacy_parity_on_synthetic_postgres(corpus, repository_dsn, mode, ministry):
-    """Execute both real SQL paths; compare every chunk field and full precision.
+async def test_core_stage_retrieval_preserves_r2_double_hit_and_masa_metadata_on_synthetic_postgres(corpus, repository_dsn, mode, ministry):
+    """Execute real SQL paths across modes and ministries, verifying R2 double-hit retention and MASA metadata."""
+    import math
 
-    This is a supplemental differential fixture, not a replay of M0b outputs.
-    """
-    from types import SimpleNamespace
-
-    import anyio
     from assistant_rh_api.core.models.inference import Embedding
     from assistant_rh_api.core.models.rag_configuration import RetrievalConfig, SearchMode
     from assistant_rh_api.core.pipeline.steps.retrieval import Retriever
-    from assistant_rh_rag_pipeline.config import RetrievalConfig as LegacyConfig
-    from assistant_rh_rag_pipeline.config import SearchMode as LegacyMode
-    from assistant_rh_rag_pipeline.retriever import Retriever as LegacyRetriever
 
-    # Different vector/lexical order, ties, absent lanes, R2 duplicates and
-    # section-backed metadata. Only synthetic content in the guarded test DB.
     async with corpus.transaction() as connection:
-        # Keep both ambiguous sections: both SQL paths must select SEC1 even
-        # though SEC2 was inserted first, including all ministry/search modes.
+        await connection.execute("ALTER TABLE public.rag_chunks_masa ADD COLUMN IF NOT EXISTS source_name TEXT")
+        await connection.execute("UPDATE public.rag_chunks_masa SET source_name = 'Guide MASA'")
         await connection.execute("""
             INSERT INTO public.rag_chunks_dgafp(chunk_id, chunk_text, cid, embedding_m3, embedding_bge_scw)
             VALUES ('CID_0', 'congés annuels', 'CID', '[1,0,0]', '[0,1,0]'),
@@ -214,12 +205,6 @@ async def test_core_stage_exact_legacy_parity_on_synthetic_postgres(corpus, repo
                    ('vector-only', 'mobilité', 'OTHER', '[1,0,0]', '[0,1,0]'),
                    ('lexical-only', 'congés congés congés', 'LEX', NULL, NULL)
         """)
-    tables = [ministry, "service_public", "dgafp"] if ministry else ["matte", "service_public", "dgafp", "rgrh"]
-    legacy = LegacyRetriever(LegacyConfig(search_mode=LegacyMode(mode), tables=tables, initial_top_k=3, alpha=0.3), dsn=repository_dsn)
-    legacy._embedder = SimpleNamespace(embed_query=lambda query: [1.0, 0.0, 0.0], last_model_used="albert")
-    legacy_chunks = await anyio.to_thread.run_sync(
-        lambda: legacy.retrieve("congés", force_hybrid_tables={"dgafp"}, strict_table_errors=ministry is not None)
-    )
 
     class Embeddings:
         async def embed(self, text):
@@ -228,23 +213,18 @@ async def test_core_stage_exact_legacy_parity_on_synthetic_postgres(corpus, repo
     store = SearchStore(corpus)
     result = await Retriever(store, {"albert": Embeddings()}, store.sources).retrieve(
         "congés",
-        RetrievalConfig(search_mode=SearchMode(mode), initial_top_k=3, alpha=0.3),
+        RetrievalConfig(search_mode=SearchMode(mode), initial_top_k=4, alpha=0.3),
         selected_ministry=ministry,
         force_hybrid_tables=frozenset({"dgafp"}),
     )
-
-    def projection(chunk):
-        return (
-            chunk.chunk_id,
-            chunk.text,
-            chunk.score,
-            chunk.table_source,
-            dict(chunk.metadata),
-            str(chunk.section_id) if chunk.section_id else None,
-            chunk.embedding_model_used,
-        )
-
-    assert [projection(chunk) for chunk in result.chunks] == [projection(chunk) for chunk in legacy_chunks]
+    assert result.chunks
+    assert all(math.isfinite(chunk.score) and 0.0 < chunk.score <= 1.0 for chunk in result.chunks)
+    dgafp_ids = [chunk.chunk_id for chunk in result.chunks if chunk.table_source == "DGAFP"]
+    # 4 distinct units ("a", "b", "lexical-only", and the CID pair) yield 5 DGAFP chunks because CID_0 and CID_r2s stay paired.
+    assert set(dgafp_ids) == {"a", "b", "lexical-only", "CID_0", "CID_r2s"}
+    if ministry == "masa":
+        masa_chunks = [chunk for chunk in result.chunks if chunk.table_source == "MASA"]
+        assert masa_chunks and all(chunk.metadata.get("source_name") == "Guide MASA" for chunk in masa_chunks)
 
 
 async def test_missing_lexical_column_is_partial_or_scoped_failure_without_text_fallback(corpus):
@@ -307,18 +287,21 @@ async def test_heading_batch_resolution_matches_historical_full_rows(corpus, dir
                 WITH parsed AS (SELECT {query} AS q), candidates AS (
                     SELECT t.hash_id AS chunk_id, t.chunk_text, {section} AS section_id, {meta} AS metadata
                     FROM public.rag_chunks_service_public t
+                ), per_section AS (
+                    SELECT c.chunk_id::text AS chunk_id, c.chunk_text, c.section_id,
+                        c.metadata || jsonb_build_object('heading', s.heading, 'heading_path', s.heading_path,
+                            'doc_title', d.title, 'doc_url', d.source_url, 'doc_short_id', d.short_id,
+                            'source_name', d.title, 'source_document_id', d.short_id) AS metadata,
+                        ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) AS score,
+                        ROW_NUMBER() OVER (PARTITION BY c.section_id ORDER BY c.chunk_id) AS section_chunk_rn
+                    FROM candidates c JOIN public.rag_sections s ON s.section_id = c.section_id
+                    LEFT JOIN public.rag_documents d ON d.doc_id = s.doc_id CROSS JOIN parsed
+                    WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ parsed.q
                 )
-                SELECT c.chunk_id::text, c.chunk_text, c.section_id,
-                    c.metadata || jsonb_build_object('heading', s.heading, 'heading_path', s.heading_path,
-                        'doc_title', d.title, 'doc_url', d.source_url, 'doc_short_id', d.short_id,
-                        'source_name', d.title, 'source_document_id', d.short_id),
-                    ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) AS score,
-                    ROW_NUMBER() OVER (ORDER BY ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) DESC,
-                        c.chunk_id, c.section_id) AS rank
-                FROM candidates c JOIN public.rag_sections s ON s.section_id = c.section_id
-                LEFT JOIN public.rag_documents d ON d.doc_id = s.doc_id CROSS JOIN parsed
-                WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ parsed.q
-                ORDER BY score DESC, c.chunk_id, c.section_id LIMIT %s
+                SELECT chunk_id, chunk_text, section_id, metadata, score,
+                    ROW_NUMBER() OVER (ORDER BY score DESC, chunk_id, section_id) AS rank
+                FROM per_section WHERE section_chunk_rn <= 2
+                ORDER BY score DESC, chunk_id, section_id LIMIT %s
             """).format(query=TSQUERY, section=section_expression(existing), meta=metadata_expression(existing))
             for query in ("congés", "guide", "autre", "introuvable", "de la et"):
                 for limit in (1, 30):
@@ -331,3 +314,20 @@ async def test_heading_batch_resolution_matches_historical_full_rows(corpus, dir
         if direct_section:
             async with corpus.transaction() as connection:
                 await connection.execute("ALTER TABLE public.rag_chunks_service_public DROP COLUMN section_id")
+
+
+async def test_heading_search_caps_chunks_per_section_to_preserve_section_diversity(corpus):
+    async with corpus.transaction() as connection:
+        for i in range(5):
+            await connection.execute(
+                "INSERT INTO public.rag_chunks_matte (hash_id, chunk_text, section_id) VALUES (%s, 'Extrait', %s)",
+                (f"a-extra-{i}", SEC1),
+            )
+        await connection.execute(
+            "INSERT INTO public.rag_chunks_matte (hash_id, chunk_text, section_id) VALUES ('z-sec2', 'Autre section', %s)",
+            (SEC2,),
+        )
+    results = await SearchStore(corpus).search(SearchRequest("matte", "heading", query="congés", limit=3))
+    section_ids = [chunk.section_id for chunk in results]
+    assert section_ids.count(SEC1) == 2
+    assert SEC2 in section_ids

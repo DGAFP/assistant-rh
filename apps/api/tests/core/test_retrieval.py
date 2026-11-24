@@ -278,10 +278,24 @@ async def test_hybrid_uses_finite_missing_rank_and_id_ties(alpha):
         assert [chunk.chunk_id for chunk in result] == ["a", "b"]
 
 
-async def test_r2_keeps_best_summary_pair_before_cutoff_without_deduplicating_other_articles():
-    chunks = tuple(RetrievedChunk(cid, "identical", 1, "DGAFP", {"cid": "law"}, None, "albert") for cid in ("law_r2s", "law_0", "law_1", "law_2"))
-    assert [c.chunk_id for c in merge_r2_pairs(chunks, 3)] == ["law_r2s", "law_1", "law_2"]
+async def test_r2_keeps_double_hit_pair_within_distinct_unit_cutoff():
+    chunks = tuple(
+        RetrievedChunk(cid, "identical", 1, "DGAFP", {"cid": "law"}, None, "albert") for cid in ("law_r2s", "law_0", "law_1", "law_2", "law_3")
+    )
+    # 3 distinct article units ("law" pair, "law_1", "law_2") are admitted; both R2 mates stay so SectionAggregator sees chunk_count=2.
+    assert [c.chunk_id for c in merge_r2_pairs(chunks, 3)] == ["law_r2s", "law_0", "law_1", "law_2"]
     assert [c.chunk_id for c in merge_r2_pairs(tuple(replace(c, metadata={}) for c in chunks), 3)] == ["law_r2s", "law_0", "law_1"]
+
+
+def test_heading_match_score_uses_doc_title_and_resists_acronym_dilution():
+    # SQL heading search matches d.title; Python gate must retain matches on doc_title.
+    assert heading_match_score("Modalités", "Cas général > Modalités", "télétravail", doc_title="Télétravail dans la fonction publique") > 0.0
+    # Parenthetical acronym expansions must not dilute query token coverage on short headings.
+    expanded = (
+        "RIFSEEP (Régime Indemnitaire tenant compte des Fonctions, des Sujétions, de l'Expertise et de l'Engagement Professionnel) "
+        "agents contractuels"
+    )
+    assert heading_match_score("RIFSEEP des agents contractuels", "Rémunération > RIFSEEP", expanded, raw_query="RIFSEEP agents contractuels") == 1.0
 
 
 @pytest.mark.parametrize(
@@ -322,6 +336,26 @@ async def test_cross_source_fusion_matches_legacy_with_heading_duplicates_and_em
     assert [(c.chunk_id, c.score, c.table_source, dict(c.metadata)) for c in actual] == [
         (c.chunk_id, c.score, c.table_source, c.metadata) for c in expected
     ]
+    masa_fused = merge_sources(
+        {
+            "heading:rag_chunks_masa": (
+                chunk(
+                    "m1",
+                    1.0,
+                    "MASA",
+                    source_name="Titre Document",
+                    heading_search=True,
+                    heading_match_score=1.0,
+                    retrieval_path="heading",
+                ),
+            ),
+            "rag_chunks_masa": (chunk("m1", 0.8, "MASA", source_name="Guide MASA", thematique="Congés", role="Gestionnaire"),),
+        }
+    )
+    assert masa_fused[0].metadata["source_name"] == "Guide MASA"
+    assert masa_fused[0].metadata["thematique"] == "Congés"
+    assert masa_fused[0].metadata["role"] == "Gestionnaire"
+    assert masa_fused[0].metadata["retrieval_path"] == "chunk+heading"
 
 
 @pytest.mark.parametrize("mode", list(SearchMode))

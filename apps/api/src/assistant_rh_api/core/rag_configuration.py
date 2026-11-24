@@ -47,28 +47,47 @@ def from_runtime_values(values: ConfigValues) -> RAGConfig:
         retrieval=RetrievalConfig(
             tables=cast(tuple[str, ...], tables),
             initial_top_k=setting("v3_initial_top_k", 30),
+            ivfflat_probes=setting("v3_ivfflat_probes", 5),
             alpha=setting("v3_alpha", 0.5),
             search_mode={"semantic": SearchMode.SEMANTIC, "hybrid": SearchMode.HYBRID, "lexical": SearchMode.LEXICAL}.get(
                 setting("v3_search_mode", "semantic"), SearchMode.SEMANTIC
             ),
+            enable_selector_retry=setting("v3_enable_selector_retry", True),
+            selector_retry_search_mode={"semantic": SearchMode.SEMANTIC, "hybrid": SearchMode.HYBRID, "lexical": SearchMode.LEXICAL}.get(
+                setting("v3_selector_retry_search_mode", "hybrid"), SearchMode.HYBRID
+            ),
+            selector_retry_top_k=setting("v3_selector_retry_top_k", 30),
         ),
         aggregation=SectionAggregationConfig(
             enable_section_reranker=setting("v3_enable_reranker", True),
             section_rerank_top_k=setting("v3_rerank_top_k", 20),
-            rerank_input_k=setting("v3_rerank_input_k", 20),
+            rerank_input_k=setting("v3_rerank_input_k", 40),
+            per_publisher_rerank_quota=setting("v3_per_publisher_rerank_quota", True),
         ),
         context=ContextBuildConfig(
             context_mode={"standard": ContextMode.STANDARD, "wide": ContextMode.WIDE}.get(
                 setting("v3_context_mode", "standard"), ContextMode.STANDARD
             ),
             token_budget=setting("v3_token_budget", 8000),
+            max_full_docs=setting("v3_max_full_docs", 1),
             doc_entire_threshold=setting("v3_doc_entire_threshold", 3500),
+            max_sections=setting("v3_max_sections", 12),
             triangulation_sections=setting("v3_triangulation_sections", 2),
+            triangulation_min_score=setting("v3_triangulation_min_score", 0.05),
+            legal_refs_budget=setting("v3_legal_refs_budget", 1000),
+            token_budget_wide=setting("v3_token_budget_wide", 12000),
+            max_full_docs_wide=setting("v3_max_full_docs_wide", 2),
+            doc_entire_threshold_wide=setting("v3_doc_entire_threshold_wide", 9000),
+            max_sections_wide=setting("v3_max_sections_wide", 20),
+            legal_refs_budget_wide=setting("v3_legal_refs_budget_wide", 2000),
         ),
         selector=SelectorConfig(
             enabled=setting("v3_enable_selector", True),
             model=setting("v3_selector_model", "openweight-large"),
             prompt_name=setting("v3_selector_prompt_name", "v3_selector_business.md"),
+            min_kept_sections=setting("v3_min_kept_sections", 0),
+            reranker_union_top_k=setting("v3_reranker_union_top_k", 2),
+            reranker_union_min_score=setting("v3_reranker_union_min_score", 0.5),
         ),
         generation=GenerationConfig(
             model=setting("v3_generator_model", "openweight-large"),
@@ -78,7 +97,10 @@ def from_runtime_values(values: ConfigValues) -> RAGConfig:
         query_processor=QueryProcessorConfig(
             enable_intent_gating=setting("enable_intent_gating", False),
             enable_acronym_expansion=setting("enable_query_expansion", True),
+            intent_model=setting("v3_intent_model", "openweight-medium"),
             intent_prompt_name=setting("v3_intent_prompt_name", "intent_unified.md"),
+            intent_confidence_threshold=setting("v3_intent_confidence_threshold", setting("intent_confidence_threshold", 0.7)),
+            max_history_message_chars=setting("v3_max_history_message_chars", 800),
             enable_hyde=setting("enable_hyde", False),
         ),
         verbose=setting("verbose_mode", False),

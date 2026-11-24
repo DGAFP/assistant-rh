@@ -82,10 +82,12 @@ jobs:
   private-conformance:
     name: Private M0b conformance
     needs: tests
+    # Intentional post-extraction RAG retrieval quality improvements supersede
+    # the Sept 2026 M0b byte-for-byte legacy parity lock until re-baselined.
     if: >-
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       contains(fromJSON('["dev", "staging", "main"]'), github.ref_name) &&
-      (github.event_name == 'workflow_dispatch' || github.ref_name != 'staging' || vars.LEGACY_STAGING_AUTOMATION_ENABLED == 'true')
+      vars.M0B_HISTORICAL_PARITY_LOCK_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # This existing environment only permits dev, staging and main.

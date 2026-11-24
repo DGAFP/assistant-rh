@@ -84,6 +84,25 @@ def _decision_entry(idx: int, section: AggregatedSection) -> ConfigValues:
     }
 
 
+def _union_reranked_ids(
+    selected: list[int],
+    candidates: Sequence[AggregatedSection],
+    *,
+    top_k: int,
+    min_score: float,
+) -> list[int]:
+    """Preserve top-K high-confidence reranked candidates when the selector keeps a partial subset."""
+    if not selected or top_k <= 0:
+        return list(selected)
+    merged = list(selected)
+    seen = set(merged)
+    for idx in range(min(top_k, len(candidates))):
+        if idx not in seen and (candidates[idx].score or 0.0) >= min_score:
+            merged.append(idx)
+            seen.add(idx)
+    return merged
+
+
 def _top_up_ids(selected: list[int], total: int, floor: int) -> list[int]:
     served = list(selected)
     seen = set(served)
@@ -145,13 +164,21 @@ class ContextSelector:
         if not parsed.ids:
             return SelectionResult(candidates[:5], replace(diagnostics, status="parse_failure"))
         selected = list(dict.fromkeys(parsed.ids))
-        served = _top_up_ids(selected, len(candidates), self._config.min_kept_sections or 0)
+        with_union = _union_reranked_ids(
+            selected,
+            candidates,
+            top_k=self._config.reranker_union_top_k,
+            min_score=self._config.reranker_union_min_score,
+        )
+        served = _top_up_ids(with_union, len(candidates), self._config.min_kept_sections or 0)
         served_set = set(served)
         decisions: dict[str, Any] = {
             "kept": tuple(_decision_entry(i, candidates[i]) for i in served),
             "removed": tuple(_decision_entry(i, sec) for i, sec in enumerate(candidates) if i not in served_set),
             "reason": reason,
         }
-        if len(served) > len(selected):
+        if len(with_union) > len(selected):
+            decisions["reranker_union_added"] = tuple(with_union[len(selected) :])
+        if len(served) > len(with_union):
             decisions["topped_up_to_min"] = {"floor": self._config.min_kept_sections, "selected_by_llm": len(selected), "served": len(served)}
         return SelectionResult(tuple(candidates[i] for i in served), replace(diagnostics, decisions=decisions))

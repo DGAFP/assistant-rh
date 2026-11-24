@@ -102,15 +102,15 @@ def _heading_tokens(value: str) -> set[str]:
     return {token for token in _normalize_text(value).split() if len(token) > 1 and token not in HEADING_STOPWORDS}
 
 
-def heading_match_score(heading: str, heading_path: str, query: str) -> float:
+def _single_heading_match_score(heading: str, heading_path: str, query: str, doc_title: str = "") -> float:
     query_norm = _normalize_text(query)
-    candidates = [value for value in (_normalize_text(heading), _normalize_text(heading_path)) if value]
+    candidates = [value for value in (_normalize_text(heading), _normalize_text(heading_path), _normalize_text(doc_title)) if value]
     if not query_norm or not candidates:
         return 0.0
     if any(candidate == query_norm or candidate in query_norm or query_norm in candidate for candidate in candidates):
         return 1.0
     query_tokens = _heading_tokens(query)
-    heading_tokens = _heading_tokens(f"{heading} {heading_path}")
+    heading_tokens = _heading_tokens(f"{doc_title} {heading} {heading_path}")
     if not query_tokens or not heading_tokens:
         return 0.0
     overlap = len(query_tokens & heading_tokens)
@@ -123,6 +123,28 @@ def heading_match_score(heading: str, heading_path: str, query: str) -> float:
     token_score = (0.7 * coverage_query) + (0.3 * coverage_heading)
     fuzzy_score = max(SequenceMatcher(None, query_norm, candidate).ratio() for candidate in candidates)
     return min(max(token_score, fuzzy_score if fuzzy_score >= 0.72 else 0.0), 0.99)
+
+
+def heading_match_score(
+    heading: str,
+    heading_path: str,
+    query: str,
+    *,
+    doc_title: str = "",
+    raw_query: str | None = None,
+) -> float:
+    variants: list[str] = []
+    for candidate_query in (query, raw_query):
+        if not candidate_query:
+            continue
+        if candidate_query not in variants:
+            variants.append(candidate_query)
+        stripped = re.sub(r"\s*\([^()]*\)", "", candidate_query).strip()
+        if stripped and stripped not in variants:
+            variants.append(stripped)
+    if not variants:
+        return 0.0
+    return max(_single_heading_match_score(heading, heading_path, variant, doc_title) for variant in variants)
 
 
 def _raw_order(chunks: tuple[RawChunk, ...]) -> tuple[RawChunk, ...]:
@@ -147,19 +169,51 @@ def fuse_hybrid(vector: tuple[RawChunk, ...], lexical: tuple[RawChunk, ...], *, 
 
 
 def merge_r2_pairs(chunks: tuple[RetrievedChunk, ...], top_k: int) -> tuple[RetrievedChunk, ...]:
-    result = []
-    seen = set()
+    """Keep up to ``top_k`` distinct article units while retaining R2 ``_0``/``_r2s`` double-hit mates."""
+    if top_k <= 0:
+        return ()
+    result: list[RetrievedChunk] = []
+    admitted_cids: set[tuple[str, str]] = set()
+    seen_chunks: set[tuple[str, str]] = set()
+    distinct_units = 0
     for chunk in chunks:
+        chunk_key = (chunk.table_source, chunk.chunk_id)
+        if chunk_key in seen_chunks:
+            continue
         cid = str(chunk.metadata.get("cid") or "").strip()
         if cid and chunk.chunk_id in (f"{cid}_0", f"{cid}_r2s"):
-            key = (chunk.table_source, cid)
-            if key in seen:
+            pair_key = (chunk.table_source, cid)
+            if pair_key in admitted_cids:
+                seen_chunks.add(chunk_key)
+                result.append(chunk)
                 continue
-            seen.add(key)
+            if distinct_units >= top_k:
+                continue
+            admitted_cids.add(pair_key)
+            seen_chunks.add(chunk_key)
+            distinct_units += 1
+            result.append(chunk)
+            continue
+        if distinct_units >= top_k:
+            continue
+        seen_chunks.add(chunk_key)
+        distinct_units += 1
         result.append(chunk)
-        if len(result) >= top_k:
-            break
     return tuple(result)
+
+
+_HEADING_FUSION_KEYS = frozenset(
+    {
+        "source_score",
+        "source_score_mode",
+        "score_source",
+        "retrieval_path",
+        "heading_search",
+        "heading_match_score",
+        "matched_heading",
+        "matched_heading_path",
+    }
+)
 
 
 def merge_sources(per_source: Mapping[str, tuple[RetrievedChunk, ...]]) -> tuple[RetrievedChunk, ...]:
@@ -185,6 +239,9 @@ def merge_sources(per_source: Mapping[str, tuple[RetrievedChunk, ...]]) -> tuple
                 metadata["heading_match_score"] = max(_heading_score(previous), _heading_score(chunk))
                 metadata["retrieval_path"] = "chunk+heading"
             elif metadata.get("heading_search") is True:
+                for meta_key, meta_value in chunk.metadata.items():
+                    if meta_key not in _HEADING_FUSION_KEYS and meta_value is not None:
+                        metadata[meta_key] = meta_value
                 metadata["retrieval_path"] = "chunk+heading"
             previous_raw = metadata.get("source_score")
             if not isinstance(previous_raw, (int, float)) or chunk.score > previous_raw:
@@ -217,6 +274,7 @@ class Retriever:
         query: str,
         config: RetrievalConfig,
         *,
+        raw_query: str | None = None,
         selected_ministry: str | None = None,
         tables: tuple[str, ...] | None = None,
         force_hybrid_tables: frozenset[str] = frozenset(),
@@ -268,7 +326,7 @@ class Retriever:
             try:
                 async with search_slot:
                     if heading:
-                        chunks = await self._headings(source, query, limit, config.ivfflat_probes)
+                        chunks = await self._headings(source, query, limit, config.ivfflat_probes, raw_query=raw_query)
                     else:
                         chunks = await self._chunks(source, query, embedding, config, mode, limit, source.key in force_hybrid_tables)
                 per_source[name] = chunks
@@ -347,16 +405,29 @@ class Retriever:
             chunks = merge_r2_pairs(chunks, limit)
         return tuple(sorted(chunks, key=chunk_sort_key))
 
-    async def _headings(self, source: RetrievalSource, query: str, limit: int, probes: int) -> tuple[RetrievedChunk, ...]:
+    async def _headings(
+        self,
+        source: RetrievalSource,
+        query: str,
+        limit: int,
+        probes: int,
+        *,
+        raw_query: str | None = None,
+    ) -> tuple[RetrievedChunk, ...]:
         raw = await self._search.search(SearchRequest(source.key, "heading", query=query, limit=limit, probes=probes))
         chunks = []
         for chunk in _raw_order(raw):
             heading = str(chunk.metadata.get("heading") or "")
             path = str(chunk.metadata.get("heading_path") or "")
-            score = heading_match_score(heading, path, query)
+            doc_title = str(chunk.metadata.get("doc_title") or chunk.metadata.get("source_name") or "")
+            score = heading_match_score(heading, path, query, doc_title=doc_title, raw_query=raw_query)
             if score <= 0.0:
                 continue
-            metadata = {key: chunk.metadata[key] for key in ("source_name", "source_document_id", "doc_url") if chunk.metadata.get(key) is not None}
+            metadata = {
+                key: chunk.metadata[key]
+                for key in (*source.metadata_fields, "source_name", "source_document_id", "doc_short_id", "doc_title", "doc_url")
+                if chunk.metadata.get(key) is not None
+            }
             metadata.update(
                 retrieval_path="heading",
                 source_score_mode="heading",

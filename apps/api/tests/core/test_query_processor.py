@@ -56,12 +56,14 @@ def legacy_result(query, raw, *, acronyms=ACRONYMS, template=TEMPLATE, config=No
         llm.chat.side_effect = raw
     else:
         llm.chat.return_value = raw
+    legacy_fields = set(LegacyConfig.__dataclass_fields__)
+    legacy_kwargs = {k: v for k, v in config.to_dict().items() if k in legacy_fields}
     with (
         patch("assistant_rh_rag_pipeline.query_processor.get_acronym_dict", return_value={a.short: a.expansion for a in acronyms}),
         patch("assistant_rh_rag_pipeline.query_processor.load_prompt", return_value=template.replace("{today}", TODAY) if template else template),
         patch("assistant_rh_rag_pipeline.query_processor.LLMClient", return_value=llm) as constructor,
     ):
-        result = LegacyProcessor(LegacyConfig(**config.to_dict())).process(query, history, get_ministry(ministry) if ministry else None)
+        result = LegacyProcessor(LegacyConfig(**legacy_kwargs)).process(query, history, get_ministry(ministry) if ministry else None)
     if config.enable_intent_gating:
         constructor.assert_called_once_with(provider="albert", model=config.intent_model, temperature=0.0)
     return result, llm
@@ -98,9 +100,10 @@ RAW_CASES = [
 async def test_full_output_and_llm_request_match_legacy(raw):
     query = unicodedata.normalize("NFD", "Selon quel texte le CDD relève de la FPE ?")
     history = [{"role": "user" if i % 2 == 0 else "assistant", "content": f"{i}:" + "é" * 350} for i in range(11)]
-    proc, _, _, _, llm = make_processor(raw=raw)
+    config = QueryProcessorConfig(max_history_message_chars=300, intent_confidence_threshold=0.0)
+    proc, _, _, _, llm = make_processor(raw=raw, config=config)
     actual = await proc.process(query, history, "mso", today=TODAY)
-    expected, legacy_llm = legacy_result(query, raw, history=history, ministry="mso")
+    expected, legacy_llm = legacy_result(query, raw, history=history, ministry="mso", config=config)
     assert comparable(actual.result) == comparable(expected)
     assert actual.diagnostics.classification_status == "completed"
     assert actual.diagnostics.classification_error is None
@@ -571,3 +574,50 @@ async def test_sensitive_exception_message_is_not_a_fallback_reason():
     outcome = await proc.process("CDD", today=TODAY)
     assert outcome.result.intent_reason == "provider_failure"
     assert "private provider details" not in json.dumps(asdict(outcome))
+
+
+async def test_followup_reformulated_query_preserves_acronym_expansions():
+    raw = json.dumps(
+        {
+            "intent": "rag_query",
+            "reformulated_query": "Quelles sont les règles de renouvellement d'un CDD dans la FPE ?",
+            "query_for_retrieval": None,
+            "confidence": 0.92,
+        }
+    )
+    proc, _, _, _, _ = make_processor(raw=raw)
+    outcome = await proc.process(
+        "Et lors de son renouvellement ?",
+        [{"role": "user", "content": "Durée CDD FPE ?"}, {"role": "assistant", "content": "3 ans maximum."}],
+        today=TODAY,
+    )
+    assert outcome.result.query_for_retrieval == (
+        "Quelles sont les règles de renouvellement d'un CDD (contrat à durée déterminée) dans la FPE (fonction publique d'État) ?"
+    )
+    assert outcome.result.expanded_acronyms == ("CDD", "FPE")
+    assert outcome.result.was_expanded is True
+
+
+@pytest.mark.parametrize("intent", ["out_of_scope", "clarification", "document_request"])
+async def test_low_confidence_rejection_proceeds_to_rag_while_high_confidence_short_circuits(intent):
+    low_raw = json.dumps({"intent": intent, "confidence": 0.55})
+    high_raw = json.dumps({"intent": intent, "confidence": 0.9})
+    low_proc, *_ = make_processor(raw=low_raw)
+    high_proc, *_ = make_processor(raw=high_raw)
+    low_outcome = await low_proc.process("Question RH ambiguë", today=TODAY)
+    high_outcome = await high_proc.process("Question hors sujet", today=TODAY)
+    assert low_outcome.result.should_proceed is True
+    assert low_outcome.result.direct_response is None
+    assert high_outcome.result.should_proceed is False
+    assert high_outcome.result.direct_response is not None
+
+
+async def test_default_history_formatting_keeps_up_to_800_characters():
+    history = [
+        {"role": "user", "content": "Question initiale"},
+        {"role": "assistant", "content": "A" * 600 + " CRITERE_IMPORTANT"},
+    ]
+    proc, _, _, _, llm = make_processor()
+    await proc.process("Et ensuite ?", history, today=TODAY)
+    prompt = llm.complete.call_args.args[0].messages[0].content
+    assert "CRITERE_IMPORTANT" in prompt
