@@ -2,7 +2,7 @@
 
 ## Décision au 25 novembre 2026
 
-**NO-GO de qualification M2.** API staging publiée depuis `21aa3e3a3bb37d78456c3e846cb47d9e70e429f0` et base du travail local `74d7f29fa65f10bbb1dfaba577f14bebfa599160`. La CI confirme la publication du chart et des images API. Depuis ce poste, la connexion au plan de contrôle Kapsule est réinitialisée sur le port 6443. Les digests actifs, la réconciliation Flux et les mesures du proxy restent à relever depuis un réseau d’administration autorisé. [Publication API](https://github.com/DGAFP/assistant-rh/actions/runs/40498924160) · [D4 #531](https://github.com/DGAFP/assistant-rh/issues/531)
+**NO-GO de qualification M2.** API staging publiée depuis `21aa3e3a3bb37d78456c3e846cb47d9e70e429f0` et base du travail local `74d7f29fa65f10bbb1dfaba577f14bebfa599160`. L’accès opérateur temporaire a permis de confirmer la réconciliation Flux et les deux pods API au digest `sha256:432d8d3d51cb863902a20e6eaa6c46c2f028bb92462065f9c46b502d4d18a891`, publié par ce workflow. La santé de l’API privée est vérifiée depuis Conversations. Les mesures du proxy et l’essai de rollback restent à réaliser. L’entrée ACL temporaire a été retirée et la liste initiale vérifiée. [Publication API](https://github.com/DGAFP/assistant-rh/actions/runs/40498924160) · [D4 #531](https://github.com/DGAFP/assistant-rh/issues/531)
 
 La branche Conversations `staging` pointe sur `7ac0eb11b54510d5244443a2d09bd0a9acc7ecc8`. La relance du Main Workflow sur ce SHA a échoué sur trois avis HIGH dans le verrou Python. La PR Conversations #26 met à jour les deux paquets concernés. Le retour de CI, la publication et la recette navigateur du feedback restent des prérequis de l’intégration. [Relance de la CI](https://github.com/DGAFP/conversations/actions/runs/42277777619/attempts/2) · [Correctif Conversations #26](https://github.com/DGAFP/conversations/pull/26) · [E1 #533](https://github.com/DGAFP/assistant-rh/issues/533)
 
@@ -75,10 +75,13 @@ questions MATTE et 4 MSO. Son empreinte est
 
 Le rejeu déterministe M1 requiert aussi les traces et réponses fournisseurs
 figées dans son archive. Les identifiants locaux M1 #258 et #259 correspondent
-à d’autres runs sur le serveur PostgreSQL staging. Depuis ce poste, une
-nouvelle vérification du plan de contrôle Kapsule a confirmé la réinitialisation
-de la connexion réseau. Le goldset staging reste en attente d’un accès interne
-et d’une délégation de recette.
+à d’autres runs sur le serveur PostgreSQL staging.
+
+Le lancement du goldset live reste en attente d’autorisation explicite pour
+la transmission des questions et des extraits documentaires à Albert DINUM,
+ainsi que pour la création et la purge des traces temporaires. Le runtime
+staging utilise Albert, avec repli Scaleway désactivé. Aucun appel
+d’inférence de cette campagne n’a été exécuté.
 
 ## Vérification Scaleway et retour arrière
 

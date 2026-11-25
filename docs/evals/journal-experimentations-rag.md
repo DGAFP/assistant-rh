@@ -2362,3 +2362,32 @@ HTTP avec 98 questions et les références résolues sur le corpus de la base.
 Le clone local est refusé par le contrôle d’empreinte. Ce contrôle porte
 sur les entrées du goldset. Le rejeu déterministe des réponses de fournisseurs
 requiert toujours l’archive M1. [Recette HTTP](../architecture/hexagonal-split/17-m2-staging-qualification.md)
+
+## M2 — préenregistrement `m1_http_staging_20261125`
+
+Panel M1 de 98 questions, empreinte source `afd6cfc9…` et export HTTP
+`2dfa5144…`. L’API Kapsule publie la révision `21aa3e3`, chart
+`0.55.1+78870b6dd828`, image `sha256:432d8d3d…`. Deux pods utilisent
+ce même digest. Conversations appelle l’API via le réseau privé depuis
+la révision `3fe712b7`. Deux requêtes simultanées au maximum et une
+délégation #596 neuve par requête. Les comptes de recette ne peuvent
+accéder qu’à MATTE et MSO.
+
+Les empreintes initiales de configuration, corpus et modèles sont
+`a3f91465…`, `798ae4cb…` et `0ab54f64…`. Collecter les résultats de
+transport et le rappel des sources servies. Le jugement M1 requiert un
+contexte de génération complet et vérifié, ainsi qu’un rappel de
+retrieval comparable. Vérifier les empreintes après la collecte et purger
+les identités, sessions et lignes de recette à la fin.
+
+Le contrôle depuis le backend Conversations confirme `/healthz` avec
+configuration et base chargées, ainsi qu’un refus HTTP 401 du catalogue
+sans délégation. La candidate utilise Albert DINUM pour l’inférence. Le
+repli Scaleway est désactivé dans le pod. Le préflight du compte de purge
+confirme ses droits en lecture seule.
+
+Campagne en attente. Le contrôle d’approbation a bloqué le lancement avant
+la création des comptes de recette et tout appel d’inférence. Le trafic
+prévu inclut l’envoi du panel et des extraits documentaires à Albert DINUM.
+L’entrée ACL temporaire de staging a été retirée et la liste initiale
+vérifiée.
