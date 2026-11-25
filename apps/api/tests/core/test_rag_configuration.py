@@ -34,7 +34,7 @@ def _expected_dict_with_api_extensions(values: dict) -> dict:
     expected["context"]["max_sections_wide"] = values.get("v3_max_sections_wide", 20)
     expected["context"]["legal_refs_budget_wide"] = values.get("v3_legal_refs_budget_wide", 2000)
     expected["selector"]["min_kept_sections"] = values.get("v3_min_kept_sections", 0)
-    expected["selector"]["reranker_union_top_k"] = values.get("v3_reranker_union_top_k", 2)
+    expected["selector"]["reranker_union_top_k"] = values.get("v3_reranker_union_top_k", 0)
     expected["selector"]["reranker_union_min_score"] = values.get("v3_reranker_union_min_score", 0.5)
     expected["query_processor"]["intent_model"] = values.get("v3_intent_model", "openweight-medium")
     expected["query_processor"]["intent_confidence_threshold"] = values.get(
@@ -119,7 +119,7 @@ def test_bare_defaults_are_distinct_from_admin_defaults_and_match_legacy():
     legacy["aggregation"]["rerank_input_k"] = 40
     legacy["aggregation"]["per_publisher_rerank_quota"] = True
     legacy["context"]["triangulation_min_score"] = 0.05
-    legacy["selector"]["reranker_union_top_k"] = 2
+    legacy["selector"]["reranker_union_top_k"] = 0
     legacy["selector"]["reranker_union_min_score"] = 0.5
     legacy["query_processor"]["intent_confidence_threshold"] = 0.7
     legacy["query_processor"]["max_history_message_chars"] = 800

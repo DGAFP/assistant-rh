@@ -2460,3 +2460,62 @@ Vérifications code. 1 543 tests API et 1 679 tests racine passent, ainsi que
 Ruff et les quatre contrats d'import. Rapport agrégé et différences par cas
 dans `.cache/pr-644-goldset/comparison-pr644-precision.json`. Correctif de
 construction testé localement, PR #644 ouverte sur 11625d3.
+
+### `pr644_baseline_v1_no_union` — avant exécution (25 novembre 2026)
+
+Ablation stricte d'un seul paramètre sur le code corrigé de la PR (même
+empreinte du diff API `8e2ca0dabe29`, sur 11625d3) : `reranker_union_top_k=0`
+appliqué en surcharge du lanceur, sans écriture dans `rag_config`. Tout le
+reste est identique à `pr644_baseline_v1_precision` : panel `baseline_v1` de 98
+questions, même overlay de 16 références, même juge Mistral Medium 3.5 avec 3
+votes, mêmes RAGAS Llama 3.3 70B, générateur `deepseek-v4-flash`. La base est un
+nouveau clone jetable du volume `assistant_rh_local_pgdata`, qui n'a pas été
+modifié depuis le run précédent.
+
+Motif : dans le run corrigé, l'union reranker a ajouté des passages sur 63
+questions sur 98. Sur ces 63 questions, les verdicts favorables passent de 43
+(`dev`) à 38, contre 23 → 22 sur les 35 autres. Sept des dix reculs face à `dev`
+ont l'union active (2, 3, 14, 33, 177, 210, 220). Hypothèse : sans union,
+l'écart à `dev` repasse sous le seuil de 5 points. Caveat de bruit : un rejeu de
+`dev` sur 32 questions change 5 verdicts, dont 3 à contexte identique.
+
+#### Résultats `pr644_baseline_v1_no_union`
+
+98 réponses, 98 verdicts majoritaires sur 3 votes, 98 mesures RAGAS complètes.
+Zéro échec API, zéro repli du reranker. Surcharge vérifiée dans `run.json` :
+`reranker_union_top_k=0`, `rerank_input_k=40`.
+
+| Indicateur | dev | PR corrigée (union) | PR sans union |
+|---|---:|---:|---:|
+| Verdicts favorables | 66/98 | 60/98 | **68/98** |
+| Précision du contexte RAGAS | 0,90051 | 0,89579 | 0,89141 |
+| Rappel du contexte RAGAS | 0,87833 | 0,86542 | 0,85884 |
+| Fidélité RAGAS | 0,91636 | 0,92680 | 0,88991 |
+| Rappel documentaire servi | 0,39599 | 0,43792 | 0,41852 |
+| Hit rate | 0,54082 | 0,56122 | 0,54082 |
+| Caractères de contexte moyens | 14 701 | 17 016 | 15 052 |
+
+Face à `dev` : +10 (1, 11, 28, 31, 189, 190, 200, 206, 211, 4530) et −8
+(16, 33, 187, 188, 204, 221, 227, 4528), soit +2,04 points ; McNemar exact
+p = 0,82. Face à la PR corrigée : +14 et −6, soit +8,16 points ; p = 0,12.
+Sur les 63 questions où l'union se déclenchait, on a 45 verdicts favorables
+sans union, contre 38 avec union et 43 sur `dev`. Les 35 autres questions sont
+inchangées (23 favorables, comme sur `dev`). Les reculs attribués à l'union
+(2, 3, 14, 20, 177, 210, 220) repassent ; le 227 reste en échec. Le cas 16 est
+le seul que l'union sauvait réellement.
+
+Lecture : le seuil de recul de 5 points est respecté (+2,04 points), et le
+rappel documentaire reste au-dessus de `dev` (+2,25 points). L'écart avec `dev`
+est dans le bruit : c'est une non-régression, pas un gain démontré. La fidélité
+baisse de 2,6 points face à `dev`, mais surtout à cause de deux cas mesurés une
+seule fois (219 : 1,0 → 0,0 alors que son verdict est favorable ; 32). Les pertes
+restantes (187, 204, 221) sont les articles absents des résultats de recherche
+déjà identifiés. Recommandation : retirer l'union reranker de la PR 644, ou la
+garder désactivée par défaut (`reranker_union_top_k=0`), et retester tout
+nouveau seuil plus strict dans une ablation séparée.
+
+Décision appliquée (25 novembre 2026) : `reranker_union_top_k` vaut 0 par
+défaut, dans `SelectorConfig` et dans le mapping runtime `v3_reranker_union_top_k`.
+Le mécanisme reste disponible en surcharge pour une ablation future avec un
+seuil plus strict. La configuration mesurée par `pr644_baseline_v1_no_union`
+devient le comportement par défaut de la PR.

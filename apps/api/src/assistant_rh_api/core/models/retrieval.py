@@ -59,6 +59,7 @@ class SearchRequest:
     embedding_model: Literal["albert", "bge_scaleway"] = "albert"
     limit: int = 20
     probes: int = 10
+    use_heading_term_rarity: bool = False
 
 
 @dataclass(frozen=True, slots=True)

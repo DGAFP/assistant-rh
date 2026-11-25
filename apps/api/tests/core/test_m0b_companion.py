@@ -18,7 +18,10 @@ EVIDENCE = ROOT / "tests/conformance/companions/m0b-full-20260917"
 ARCHIVE = Path(os.environ["M0B_PRIVATE_ARCHIVE"]) if os.environ.get("M0B_PRIVATE_ARCHIVE") else None
 pytestmark = [
     pytest.mark.anyio,
-    pytest.mark.skip(reason="Superseded by post-extraction RAG retrieval quality improvements; pending M0b companion re-recording."),
+    pytest.mark.skipif(
+        os.environ.get("M0B_HISTORICAL_PARITY_LOCK_ENABLED") != "true",
+        reason="Historical M0b parity is opt-in after the RAG quality changes.",
+    ),
 ]
 
 

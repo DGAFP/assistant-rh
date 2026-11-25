@@ -121,11 +121,24 @@ jobs:
       - name: Replay all seven scenarios and negative controls
         env:
           PYTHON_DOTENV_DISABLED: "1"
+          M0B_HISTORICAL_PARITY_LOCK_ENABLED: "true"
         run: |
-          if uv run --no-sync python -m pytest apps/api/tests/core/test_m0b_companion.py -q \
+          report="$RUNNER_TEMP/historical-replay.xml"
+          if ! uv run --no-sync python -m pytest -q --junitxml="$report" \
+            apps/api/tests/core/test_m0b_companion.py \
+            apps/api/tests/core/test_c5_companion.py \
+            apps/api/tests/core/test_c5_acceptance_evidence.py \
             > "$RUNNER_TEMP/m0b-private.log" 2>&1; then
-            echo "Private conformance: all tests passed."
-          else
             echo "::error::Private conformance failed; reproduce locally on this revision."
             exit 1
           fi
+          python - "$report" <<'PY'
+          import sys
+          from xml.etree import ElementTree
+
+          cases = ElementTree.parse(sys.argv[1]).findall(".//testcase")
+          replayed_m0b = any(case.attrib["name"] == "test_seven_published_scenarios_replay_through_production_composition" for case in cases)
+          if not replayed_m0b or any(case.find("skipped") is not None for case in cases):
+              sys.exit("Historical conformance did not execute the complete replay.")
+          print(f"Historical conformance: {len(cases)} tests executed.")
+          PY

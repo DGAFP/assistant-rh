@@ -19,6 +19,7 @@ from assistant_rh_api.core.models.retrieval import RetrievedChunk
 from assistant_rh_api.core.pipeline.steps.context_selector import ContextSelector
 from assistant_rh_api.core.pipeline.steps.generator import Generator
 from assistant_rh_api.core.prompt_policy import NO_ANSWER, load_prompt, render_ministry_prompt
+from assistant_rh_api.core.rag_configuration import from_runtime_values
 from assistant_rh_api.gateways.chat import ChatGateway
 from assistant_rh_api.gateways.packaged_prompts import PackagedPromptStore
 from assistant_rh_api.gateways.settings import Endpoint, RequestPolicy
@@ -598,10 +599,13 @@ async def test_selector_reranker_union_keeps_high_confidence_top_candidates_with
         Prompts(),
         LLM('{"selected_ids": [2], "reason": "fiche directe"}'),
     )
-    selected = await selector.select("q", candidates, "matte", today="2026-09-14")
+    selected = await selector.select("q", candidates, "matte", today="2026-09-14", reranked=True)
     # top-0 (0.94 >= 0.5) is rescued after LLM's primary pick [2]; top-1 (0.42 < 0.5) is not forced.
     assert [s.section_id for s in selected.sections] == ["picked", "top-0"]
     assert selected.diagnostics.decisions["reranker_union_added"] == (0,)
+    assert selected.supplemental_count == 1
+    unranked = await selector.select("q", candidates, "matte", today="2026-09-14")
+    assert [s.section_id for s in unranked.sections] == ["picked"]
 
     rejected_selector = ContextSelector(
         SelectorConfig(enabled=True, reranker_union_top_k=2, reranker_union_min_score=0.5),
@@ -609,8 +613,23 @@ async def test_selector_reranker_union_keeps_high_confidence_top_candidates_with
         Prompts(),
         LLM('{"selected_ids": [], "reason": "hors sujet"}'),
     )
-    rejected = await rejected_selector.select("q", candidates, "matte", today="2026-09-14")
+    rejected = await rejected_selector.select("q", candidates, "matte", today="2026-09-14", reranked=True)
     assert rejected.all_rejected is True and rejected.sections == ()
+
+
+async def test_selector_reranker_union_is_disabled_by_default():
+    # baseline_v1 ablation (2026-11-25): the union cost 6 pass points vs dev, so it stays opt-in.
+    candidates = (
+        AggregatedSection("top-0", "Cadre légal", "Texte 0", (), 0.94, publisher="DGAFP"),
+        AggregatedSection("picked", "Fiche pratique", "Texte 1", (), 0.81, publisher="MATTE"),
+    )
+    for config in (SelectorConfig(enabled=True), from_runtime_values({}).selector):
+        assert config.reranker_union_top_k == 0
+        selector = ContextSelector(config, Prompts(), Prompts(), LLM('{"selected_ids": [1], "reason": "fiche directe"}'))
+        selected = await selector.select("q", candidates, "matte", today="2026-09-14", reranked=True)
+        assert [s.section_id for s in selected.sections] == ["picked"]
+        assert "reranker_union_added" not in selected.diagnostics.decisions
+        assert selected.supplemental_count == 0
 
 
 async def test_selector_prompt_places_complementary_rule_before_response_format_and_includes_breadcrumbs():

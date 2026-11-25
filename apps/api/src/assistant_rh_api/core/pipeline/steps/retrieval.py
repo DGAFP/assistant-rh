@@ -102,15 +102,15 @@ def _heading_tokens(value: str) -> set[str]:
     return {token for token in _normalize_text(value).split() if len(token) > 1 and token not in HEADING_STOPWORDS}
 
 
-def _single_heading_match_score(heading: str, heading_path: str, query: str, doc_title: str = "") -> float:
+def _single_heading_match_score(heading: str, heading_path: str, query: str) -> float:
     query_norm = _normalize_text(query)
-    candidates = [value for value in (_normalize_text(heading), _normalize_text(heading_path), _normalize_text(doc_title)) if value]
+    candidates = [value for value in (_normalize_text(heading), _normalize_text(heading_path)) if value]
     if not query_norm or not candidates:
         return 0.0
     if any(candidate == query_norm or candidate in query_norm or query_norm in candidate for candidate in candidates):
         return 1.0
     query_tokens = _heading_tokens(query)
-    heading_tokens = _heading_tokens(f"{doc_title} {heading} {heading_path}")
+    heading_tokens = _heading_tokens(f"{heading} {heading_path}")
     if not query_tokens or not heading_tokens:
         return 0.0
     overlap = len(query_tokens & heading_tokens)
@@ -142,9 +142,14 @@ def heading_match_score(
         stripped = re.sub(r"\s*\([^()]*\)", "", candidate_query).strip()
         if stripped and stripped not in variants:
             variants.append(stripped)
-    if not variants:
-        return 0.0
-    return max(_single_heading_match_score(heading, heading_path, variant, doc_title) for variant in variants)
+    root, _, branch = heading_path.partition(" > ")
+    if doc_title and _normalize_text(root) == _normalize_text(doc_title):
+        heading_path = branch
+    score = max((_single_heading_match_score(heading, heading_path, variant) for variant in variants), default=0.0)
+    if not score or not doc_title:
+        return score
+    title_score = max(_single_heading_match_score(doc_title, "", variant) for variant in variants)
+    return score + 0.1 * max(0.0, title_score - score)
 
 
 def _raw_order(chunks: tuple[RawChunk, ...]) -> tuple[RawChunk, ...]:
@@ -414,7 +419,17 @@ class Retriever:
         *,
         raw_query: str | None = None,
     ) -> tuple[RetrievedChunk, ...]:
-        raw = await self._search.search(SearchRequest(source.key, "heading", query=query, limit=limit, probes=probes))
+        heading_query = query
+        # Acronym expansions can add frequent institutional terms. Keep
+        # reformulations unless removing the expansions recovers the question.
+        without_expansion = re.sub(r"\b([A-Z][A-Z0-9]+)\s+\([^()]+\)", r"\1", query)
+        expansion_only = bool(raw_query and without_expansion != query and without_expansion.split() == raw_query.split())
+        if expansion_only and source.key != "service_public":
+            heading_query = without_expansion
+        use_rarity = source.key == "service_public" or heading_query != query
+        raw = await self._search.search(
+            SearchRequest(source.key, "heading", query=heading_query, limit=limit, probes=probes, use_heading_term_rarity=use_rarity)
+        )
         chunks = []
         for chunk in _raw_order(raw):
             heading = str(chunk.metadata.get("heading") or "")
@@ -436,5 +451,7 @@ class Retriever:
                 matched_heading=heading,
                 matched_heading_path=path,
             )
-            chunks.append(RetrievedChunk(chunk.chunk_id, chunk.text, score, source.publisher, metadata, chunk.section_id, "heading"))
+            # Keep the adapter's rarity ranking after applying the section match gate.
+            ranking_score = chunk.score if use_rarity else score
+            chunks.append(RetrievedChunk(chunk.chunk_id, chunk.text, ranking_score, source.publisher, metadata, chunk.section_id, "heading"))
         return tuple(sorted(chunks, key=chunk_sort_key)[:limit])

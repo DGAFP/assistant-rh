@@ -204,14 +204,11 @@ class SectionAggregator:
         by_publisher: dict[str, list[int]] = {}
         for idx, section in enumerate(sections):
             by_publisher.setdefault(section.publisher or "", []).append(idx)
-        n_publishers = len(by_publisher)
-        quota = input_k // n_publishers if n_publishers > 1 else 0
-        if quota <= 0:
+        if len(by_publisher) > input_k:
             return sections[:input_k]
-        chosen_indices: set[int] = set()
-        for indices in by_publisher.values():
-            for idx in indices[:quota]:
-                chosen_indices.add(idx)
+        # Guarantee one representative per publisher, then use the remaining
+        # slots for the strongest sections across the whole retrieval pool.
+        chosen_indices = {indices[0] for indices in by_publisher.values()}
         for idx in range(len(sections)):
             if len(chosen_indices) >= input_k:
                 break

@@ -106,7 +106,7 @@ class RuntimeRAGConfig:
     v3_enable_reranker: bool = True
     v3_rerank_top_k: int = 20
     # Entrée du reranker (candidats vus), découplée de la sortie top_k.
-    v3_rerank_input_k: int = 20
+    v3_rerank_input_k: int = 40
     v3_alpha: float = 0.5
     v3_selector_model: str = "openweight-large"
     v3_selector_prompt_name: str = "v3_selector_business.md"

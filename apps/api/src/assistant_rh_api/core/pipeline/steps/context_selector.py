@@ -122,7 +122,9 @@ class ContextSelector:
         self._packaged_prompts = packaged_prompts
         self._llm = llm
 
-    async def select(self, query: str, sections: Sequence[AggregatedSection], ministry: str | None = None, *, today: str) -> SelectionResult:
+    async def select(
+        self, query: str, sections: Sequence[AggregatedSection], ministry: str | None = None, *, today: str, reranked: bool = False
+    ) -> SelectionResult:
         candidates = tuple(sections)
         if not self._config.enabled or not candidates:
             return SelectionResult(candidates, SelectionDiagnostics("disabled" if not self._config.enabled else "empty"))
@@ -164,12 +166,14 @@ class ContextSelector:
         if not parsed.ids:
             return SelectionResult(candidates[:5], replace(diagnostics, status="parse_failure"))
         selected = list(dict.fromkeys(parsed.ids))
-        with_union = _union_reranked_ids(
-            selected,
-            candidates,
-            top_k=self._config.reranker_union_top_k,
-            min_score=self._config.reranker_union_min_score,
-        )
+        with_union = selected
+        if reranked:
+            with_union = _union_reranked_ids(
+                selected,
+                candidates,
+                top_k=self._config.reranker_union_top_k,
+                min_score=self._config.reranker_union_min_score,
+            )
         served = _top_up_ids(with_union, len(candidates), self._config.min_kept_sections or 0)
         served_set = set(served)
         decisions: dict[str, Any] = {
@@ -181,4 +185,8 @@ class ContextSelector:
             decisions["reranker_union_added"] = tuple(with_union[len(selected) :])
         if len(served) > len(with_union):
             decisions["topped_up_to_min"] = {"floor": self._config.min_kept_sections, "selected_by_llm": len(selected), "served": len(served)}
-        return SelectionResult(tuple(candidates[i] for i in served), replace(diagnostics, decisions=decisions))
+        return SelectionResult(
+            tuple(candidates[i] for i in served),
+            replace(diagnostics, decisions=decisions),
+            supplemental_count=len(served) - len(selected),
+        )

@@ -248,6 +248,35 @@ async def test_context_builds_hierarchical_headers_and_merges_full_doc_reference
         assert "Guide congés — Guide > Congés (MATTE)" in formatted
 
 
+async def test_selector_supplements_keep_excerpt_and_follow_primary_evidence():
+    _, store = corpus()
+    primary = AggregatedSection("direct", "Procédure", "Texte utile", (), 0.7, "primary-doc", "Service-Public")
+    duplicate = replace(primary, section_id="duplicate", heading="Procédure détaillée")
+    supplement = AggregatedSection("related", "Guide", "Passage associé", (), 0.99, "doc-a", "MATTE", metadata={"doc_token_count": 120})
+    config = ContextBuildConfig(context_mode=ContextMode.WIDE, token_budget_wide=12)
+
+    result = await ContextBuilder(config, store).build((primary, duplicate, supplement), reranked=True, supplemental_count=1)
+
+    assert [item.section_id for item in result.items] == ["direct", "related"]
+    assert result.items[1].metadata["is_selector_supplement"] is True
+    assert result.diagnostics.full_doc_count == 0
+    assert store.calls == []
+
+
+async def test_expanded_primary_document_retains_supplement_annotations():
+    _, store = corpus()
+    primary = AggregatedSection("direct", "Congés", "Texte utile", (), 0.7, "doc-a", "MATTE", [{"number": "L1"}], metadata={"doc_token_count": 120})
+    supplement = replace(primary, section_id="related", score=0.99, references_juridiques=[{"number": "L2"}])
+    result = await ContextBuilder(ContextBuildConfig(), store).build((primary, supplement), reranked=True, supplemental_count=1)
+
+    assert len(result.items) == 2
+    assert result.items[0].metadata["is_doc_entire"] is True
+    assert result.items[0].score == primary.score
+    assert [ref["number"] for ref in result.items[0].references_juridiques] == ["L1"]
+    assert result.items[1].metadata["is_selector_supplement"] is True
+    assert [ref["number"] for ref in result.items[1].references_juridiques] == ["L2"]
+
+
 @pytest.mark.parametrize("refs", [[{"number": "L1"}], '[{"number":"L1"}]', "[broken json", {"code": "L1"}, [], None])
 async def test_legal_reference_formats_and_metadata_immutability(refs):
     section = AggregatedSection(
@@ -405,6 +434,14 @@ async def test_per_publisher_rerank_quota_rescues_underrepresented_corpora():
     assert {"Service-Public", "MATTE", "DGAFP"} <= publishers
 
 
+def test_per_publisher_rerank_quota_preserves_stronger_sections_at_the_global_cutoff():
+    dominant = [AggregatedSection(f"main-{i}", "", "", (), 0.9 - i / 100, publisher="MATTE") for i in range(10)]
+    minority = [AggregatedSection(f"other-{i}", "", "", (), 0.3 - i / 100, publisher="Service-Public") for i in range(3)]
+    aggregator = SectionAggregator(SectionAggregationConfig(), Content(), Reranker())
+
+    assert aggregator._select_rerank_candidates(dominant + minority, 8) == dominant[:7] + minority[:1]
+
+
 async def test_colliding_bare_article_numbers_disambiguate_by_title_or_skip_ambiguous():
     refs_db = (
         LegalReference("3", "CID-1986", "https://www.legifrance.gouv.fr/loda/article_lc/CID-1986", "Décret n° 86-83 du 17 janvier 1986"),
@@ -435,12 +472,27 @@ async def test_colliding_bare_article_numbers_disambiguate_by_title_or_skip_ambi
     assert "cid" not in bare_item.references_juridiques[0]
 
 
-async def test_triangulation_min_score_skips_near_zero_noise():
+@pytest.mark.parametrize("reranked", [True, False])
+async def test_triangulation_min_score_requires_provider_scores(reranked):
     sections = (
         AggregatedSection("s1", "Pertinent", "Texte principal", (), 0.92, publisher="MATTE"),
         AggregatedSection("s2", "Hors sujet", "Bruit complet", (), 0.001, publisher="Service-Public"),
     )
     config = ContextBuildConfig(max_sections=1, triangulation_sections=2, triangulation_min_score=0.05)
-    built = await ContextBuilder(config, Content()).build(sections)
-    assert [i.section_id for i in built.items] == ["s1"]
-    assert built.diagnostics.triangulation_count == 0
+    built = await ContextBuilder(config, Content()).build(sections, reranked=reranked)
+    assert [i.section_id for i in built.items] == (["s1"] if reranked else ["s1", "s2"])
+    assert built.diagnostics.triangulation_count == (0 if reranked else 1)
+
+
+@pytest.mark.parametrize("n_candidates", [1, 2])
+@pytest.mark.parametrize("label", ["Article 3 du décret n° 91-155", "Article 3 de la loi n° 86-83"])
+async def test_conflicting_statute_never_resolves_an_article(n_candidates, label):
+    rows = (
+        LegalReference("3", "CID-1986", "https://example.invalid/86-83", "Décret n° 86-83 relatif aux agents contractuels"),
+        LegalReference("3", "CID-2025", "https://example.invalid/2025-999", "Décret n° 2025-999 relatif aux primes"),
+    )
+    section = AggregatedSection("s", "Contrats", "Extrait", (), 0.8, references_juridiques=({"number": "3", "label": label},))
+    result = await ContextBuilder(ContextBuildConfig(), Content(references=rows[:n_candidates])).build((section,))
+    assert not result.resolved_refs
+    assert "url" not in result.items[0].references_juridiques[0]
+    assert "example.invalid" not in result.items[0].content

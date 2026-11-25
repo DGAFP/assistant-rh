@@ -16,27 +16,47 @@ from assistant_rh_api.core.models.rag_configuration import ContextBuildConfig
 from assistant_rh_api.core.ports.retrieval import ContentStorePort
 
 _REF_HINT_KEYS = ("source", "title", "titre", "full_title", "text", "texte", "label", "complement")
-_REF_STOPWORDS = frozenset("a art article articles au aux dans de des du en et l la le les n no par pour sur un une".split())
+_REF_STOPWORDS = frozenset(
+    (
+        "a art article articles arrete au aux circulaire code dans de decret des du en et l la le les loi n no ordonnance par pour relatif sur un une"
+    ).split()
+)
+_STATUTE_NUMBER = re.compile(
+    r"\b(decret|loi|ordonnance|arrete)\s*(?:n\s*[°ºo.]\s*)?(\d{2,4})\s*[-‐‑–]\s*(\d+)\b",
+)
+
+
+def _normalize_reference(value: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", value.lower())
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
 
 
 def _ref_tokens(value: str) -> set[str]:
-    decomposed = unicodedata.normalize("NFKD", value.lower())
-    ascii_text = "".join(char for char in decomposed if not unicodedata.combining(char))
-    tokens = {tok for tok in re.findall(r"[a-z0-9]+", ascii_text) if len(tok) > 1 and tok not in _REF_STOPWORDS}
+    tokens = {tok for tok in re.findall(r"[a-z0-9]+", _normalize_reference(value)) if len(tok) > 1 and tok not in _REF_STOPWORDS}
     if "cgfp" in tokens:
-        tokens.update(("code", "general", "fonction", "publique"))
+        tokens.update(("general", "fonction", "publique"))
     return tokens
 
 
 def _match_reference_candidate(ref_entry: Mapping[str, Any], candidates: Sequence[dict[str, str]]) -> dict[str, str] | None:
     if not candidates:
         return None
+    hint_parts = [str(ref_entry[key]) for key in _REF_HINT_KEYS if isinstance(ref_entry.get(key), str) and ref_entry[key].strip()]
+    hint = " ".join(hint_parts)
+    statute_numbers = set(_STATUTE_NUMBER.findall(_normalize_reference(hint)))
+    if statute_numbers:
+        if len(statute_numbers) != 1:
+            return None
+        candidates = [
+            candidate
+            for candidate in candidates
+            if statute_numbers.intersection(_STATUTE_NUMBER.findall(_normalize_reference(candidate.get("title", ""))))
+        ]
     if len(candidates) == 1:
         return candidates[0]
-    hint_parts = [str(ref_entry[key]) for key in _REF_HINT_KEYS if isinstance(ref_entry.get(key), str) and ref_entry[key].strip()]
     if not hint_parts:
         return None
-    hint_tokens = _ref_tokens(" ".join(hint_parts))
+    hint_tokens = _ref_tokens(hint)
     if not hint_tokens:
         return None
     scored: list[tuple[int, float, int]] = []
@@ -73,9 +93,9 @@ class ContextBuilder:
     Build the final context for the LLM generator from ranked sections.
 
     Strategy:
-      1. If the top document is small (< ``doc_entire_threshold`` tokens),
-         include **all its sections** up to ``max_full_docs``.
-      2. Fill remaining budget with the highest-scored individual sections.
+      1. Expand qualifying documents from the primary selection.
+      2. Fill the remaining budget with individual sections, primary first.
+         Sections added by selector fallbacks stay as excerpts.
       3. **Triangulation**: always inject at least ``triangulation_sections``
          sections from publishers *other* than the top one.
       4. Append legal references cited inside the selected sections.
@@ -85,7 +105,7 @@ class ContextBuilder:
         self.config = config
         self.content_store = content_store
 
-    async def build(self, sections: Sequence[AggregatedSection]) -> ContextBuildResult:
+    async def build(self, sections: Sequence[AggregatedSection], *, reranked: bool = False, supplemental_count: int = 0) -> ContextBuildResult:
         sections = tuple(sections)
         if not sections:
             return ContextBuildResult((), {}, ContextBuildDiagnostics(token_budget=self.config.get_token_budget()))
@@ -100,12 +120,14 @@ class ContextBuilder:
         selected: List[ContextItem] = []
         used_ids: Set[str] = set()
         tokens_used = 0
-        full_doc_count = 0
+        full_docs: set[str] = set()
+        primary_count = len(sections) - supplemental_count
+        primary_sections = sections[:primary_count]
 
         # Group by document (only sections that have a document_id). Sections
         # without a document_id are picked up by the Step-2 loop directly.
         by_doc: Dict[str, List[AggregatedSection]] = defaultdict(list)
-        for s in sections:
+        for s in primary_sections:
             if s.document_id:
                 by_doc[str(s.document_id)].append(s)
 
@@ -123,12 +145,23 @@ class ContextBuilder:
                 return f"chunk:{s.publisher or ''}:{s.chunks[0].chunk_id}"
             return f"_obj_{id(s)}"
 
-        # Step 1 – doc-entire for small documents. We always include qualifying
-        # small docs (within budget and the max_full_docs cap); the original
-        # legifrance-q2 ordering bug is fixed by the score-sort at the end of
-        # Step 2 below, not by suppressing doc-entires here.
+        # Different indexed headings can contain the same passage. Keep distinct
+        # references when the source provides different legal annotations.
+        seen_passages: dict[tuple[str, str], list[Any]] = defaultdict(list)
+
+        def _record_passage(section: AggregatedSection) -> bool:
+            content = section.markdown.strip()
+            if not section.document_id or not content:
+                return True
+            previous_refs = seen_passages[section.document_id, content]
+            if section.references_juridiques in previous_refs:
+                return False
+            previous_refs.append(section.references_juridiques)
+            return True
+
+        # Step 1 – expand only documents supported by the primary selection.
         for doc_id, doc_sections in sorted_docs:
-            if full_doc_count >= max_full_docs:
+            if len(full_docs) >= max_full_docs:
                 break
             doc_token_count = cast(int, doc_sections[0].metadata.get("doc_token_count", 0) or 0)
             if doc_token_count <= 0 or doc_token_count > doc_threshold:
@@ -146,52 +179,64 @@ class ContextBuilder:
             # of its constituents, so the post-Step-2 sort places it correctly.
             item = replace(item, score=doc_max_score[doc_id])
             selected.append(item)
-            for s in doc_sections:
-                used_ids.add(_section_key(s))
+            full_docs.add(doc_id)
             tokens_used += item.token_estimate
-            full_doc_count += 1
 
-        # Step 2 – fill with top individual sections (from selector/reranker order)
-        for s in sections:
+        # Step 2 – spend the budget on the primary selection before its supplements.
+        for index, s in enumerate(sections):
             key = _section_key(s)
             if key in used_ids:
                 continue
+            is_supplement = index >= primary_count
+            if s.document_id in full_docs:
+                # A full document covers the excerpt's text. A supplement
+                # can still provide distinct legal annotations on that text.
+                if not is_supplement or not s.references_juridiques:
+                    continue
+                if any(primary.references_juridiques == s.references_juridiques for primary in by_doc[s.document_id]):
+                    continue
             item = self._section_to_item(s)
             if tokens_used + item.token_estimate > budget:
                 continue
             if len(selected) >= max_sections:
                 break
+            if not _record_passage(s):
+                continue
+            if is_supplement:
+                item = replace(item, metadata={**item.metadata, "is_selector_supplement": True})
             selected.append(item)
             used_ids.add(key)
             tokens_used += item.token_estimate
 
-        # The sort key puts highest-scoring items first; on exact score ties,
+        # Sort by relevance within each group; on exact score ties,
         # standalone chunks beat doc-entires (promotion intent from review
         # finding #7) and Python's stable sort preserves retrieval order for
         # the remaining ties.
         def _sort_key(item):
-            return (-(item.score or 0.0), 1 if item.metadata.get("is_doc_entire") else 0)
+            return (bool(item.metadata.get("is_selector_supplement")), -(item.score or 0.0), bool(item.metadata.get("is_doc_entire")))
 
         # Determine the "primary publisher" for triangulation BEFORE appending —
         # use the highest-scored section in the input rather than `selected[0]`
         # so triangulation depends on the data, not on insertion ordering.
         primary_publisher = None
-        if sections:
-            top_section = max(sections, key=lambda s: s.score or 0.0)
+        if primary_sections:
+            top_section = max(primary_sections, key=lambda s: s.score or 0.0)
             primary_publisher = top_section.publisher
 
         # Step 3 – triangulation (ignores budget to guarantee publisher diversity,
         # gated by triangulation_min_score so near-zero reranked noise is skipped)
         tri_added = 0
-        for s in sections:
+        for s in primary_sections:
             if tri_added >= self.config.triangulation_sections:
                 break
             if s.publisher == primary_publisher:
                 continue
-            if (s.score or 0.0) < self.config.triangulation_min_score:
+            if reranked and s.score < self.config.triangulation_min_score:
                 continue
             key = _section_key(s)
-            if key in used_ids:
+            if key in used_ids or s.document_id in full_docs:
+                continue
+            if not _record_passage(s):
                 continue
             item = self._section_to_item(s)
             item = replace(item, metadata={**item.metadata, "is_triangulation": True})
@@ -209,25 +254,28 @@ class ContextBuilder:
         refs_tokens = 0
         all_ref_numbers = self._collect_ref_numbers(selected)
         candidates_by_number = await self._resolve_reference_candidates(all_ref_numbers, store_errors) if all_ref_numbers else {}
-        cid_map: dict[str, dict[str, str]] = {
-            number: dict(candidates[0]) for number, candidates in candidates_by_number.items() if len(candidates) == 1
-        }
+        cid_map: dict[str, dict[str, str]] = {}
 
         # Allocate the legal-refs budget primary-content-first: triangulation
         # items are publisher-diversity fillers and must not consume refs_budget
         # ahead of the answer-bearing primary sources, even when they outscore
         # them. Stable sort preserves the score order within each group, so the
         # prompt order (``selected``) is untouched — only the refs pass reorders.
-        refs_order = sorted(range(len(selected)), key=lambda index: bool(selected[index].metadata.get("is_triangulation")))
+        refs_order = sorted(
+            range(len(selected)),
+            key=lambda index: (bool(selected[index].metadata.get("is_selector_supplement")), bool(selected[index].metadata.get("is_triangulation"))),
+        )
         for index in refs_order:
             item = selected[index]
-            if item.references_juridiques and refs_tokens < refs_budget:
-                item, matched_refs = self._enrich_refs_with_cid(item, candidates_by_number)
-                for number, resolved in matched_refs:
-                    if number not in cid_map:
-                        cid_map[number] = dict(resolved)
-                    elif cid_map[number]["cid"] != resolved["cid"]:
-                        cid_map[f"{number}@{resolved['cid']}"] = dict(resolved)
+            if not item.references_juridiques:
+                continue
+            item, matched_refs = self._enrich_refs_with_cid(item, candidates_by_number)
+            for number, resolved in matched_refs:
+                if number not in cid_map:
+                    cid_map[number] = dict(resolved)
+                elif cid_map[number]["cid"] != resolved["cid"]:
+                    cid_map[f"{number}@{resolved['cid']}"] = dict(resolved)
+            if refs_tokens < refs_budget:
                 selected[index] = item
                 ref_text = self._format_references(item.references_juridiques)
                 ref_tokens = estimate_tokens(ref_text)
@@ -243,7 +291,7 @@ class ContextBuilder:
         return ContextBuildResult(
             tuple(selected),
             cid_map,
-            ContextBuildDiagnostics(tokens_used, budget, full_doc_count, tri_added, refs_tokens, tuple(store_errors)),
+            ContextBuildDiagnostics(tokens_used, budget, len(full_docs), tri_added, refs_tokens, tuple(store_errors)),
         )
 
     async def _load_full_document(self, doc_id: str, errors: list[str]) -> dict | None:

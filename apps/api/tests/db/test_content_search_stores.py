@@ -254,7 +254,7 @@ async def test_missing_lexical_column_is_partial_or_scoped_failure_without_text_
 
 
 @pytest.mark.parametrize("direct_section", [False, True])
-async def test_heading_batch_resolution_matches_historical_full_rows(corpus, direct_section):
+async def test_heading_batch_resolution_preserves_historical_section_and_metadata(corpus, direct_section):
     from assistant_rh_api.db.content_store import columns, metadata_expression, section_expression
     from assistant_rh_api.db.search_catalog import search_catalog
     from assistant_rh_api.db.search_store import TSQUERY, _query
@@ -292,11 +292,11 @@ async def test_heading_batch_resolution_matches_historical_full_rows(corpus, dir
                         c.metadata || jsonb_build_object('heading', s.heading, 'heading_path', s.heading_path,
                             'doc_title', d.title, 'doc_url', d.source_url, 'doc_short_id', d.short_id,
                             'source_name', d.title, 'source_document_id', d.short_id) AS metadata,
-                        ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) AS score,
+                        ts_rank_cd(to_tsvector('french', concat_ws(' ', s.heading, s.heading_path)), parsed.q) AS score,
                         ROW_NUMBER() OVER (PARTITION BY c.section_id ORDER BY c.chunk_id) AS section_chunk_rn
                     FROM candidates c JOIN public.rag_sections s ON s.section_id = c.section_id
                     LEFT JOIN public.rag_documents d ON d.doc_id = s.doc_id CROSS JOIN parsed
-                    WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ parsed.q
+                    WHERE to_tsvector('french', concat_ws(' ', s.heading, s.heading_path)) @@ parsed.q
                 )
                 SELECT chunk_id, chunk_text, section_id, metadata, score,
                     ROW_NUMBER() OVER (ORDER BY score DESC, chunk_id, section_id) AS rank
@@ -304,12 +304,11 @@ async def test_heading_batch_resolution_matches_historical_full_rows(corpus, dir
                 ORDER BY score DESC, chunk_id, section_id LIMIT %s
             """).format(query=TSQUERY, section=section_expression(existing), meta=metadata_expression(existing))
             for query in ("congés", "guide", "autre", "introuvable", "de la et"):
-                for limit in (1, 30):
-                    request = SearchRequest("service_public", "heading", query=query, limit=limit)
-                    statement, params = _query(request, spec, existing)
-                    expected = await (await connection.execute(historical, params)).fetchall()
-                    actual = await (await connection.execute(statement, params)).fetchall()
-                    assert actual == expected
+                request = SearchRequest("service_public", "heading", query=query, limit=30)
+                statement, params = _query(request, spec, existing)
+                expected = await (await connection.execute(historical, (query, query, query, request.limit))).fetchall()
+                actual = await (await connection.execute(statement, params)).fetchall()
+                assert {row[0]: row[1:4] for row in actual} == {row[0]: row[1:4] for row in expected}
     finally:
         if direct_section:
             async with corpus.transaction() as connection:
@@ -331,3 +330,39 @@ async def test_heading_search_caps_chunks_per_section_to_preserve_section_divers
     section_ids = [chunk.section_id for chunk in results]
     assert section_ids.count(SEC1) == 2
     assert SEC2 in section_ids
+
+
+async def test_heading_search_excludes_a_document_title_repeated_in_unrelated_breadcrumbs(corpus):
+    async with corpus.transaction() as connection:
+        await connection.execute(
+            "UPDATE public.rag_sections SET heading = 'Conditions', heading_path = 'Congés > Conditions' WHERE section_id = %s",
+            (SEC1,),
+        )
+        await connection.execute(
+            "INSERT INTO public.rag_chunks_matte (hash_id, chunk_text, section_id) VALUES ('section-heading-match', 'Autre section', %s)",
+            (SEC2,),
+        )
+    results = await SearchStore(corpus).search(SearchRequest("matte", "heading", query="congés", limit=1))
+    assert [chunk.section_id for chunk in results] == [SEC2]
+
+
+async def test_heading_search_prioritizes_a_rare_term_over_repeated_generic_terms(corpus):
+    async with corpus.transaction() as connection:
+        await connection.execute(
+            """UPDATE public.rag_sections SET heading = 'Congés congés',
+                 heading_path = CASE WHEN section_id = %s THEN 'Guide un > Congés congés' ELSE 'Guide deux > Congés congés' END
+               WHERE section_id = ANY(%s::uuid[])""",
+            (SEC1, [SEC1, SEC2]),
+        )
+        await connection.execute(
+            "INSERT INTO public.rag_sections(section_id, doc_id, heading, heading_path) VALUES (%s, %s, 'Concours', 'Concours')",
+            (MISSING, DOC),
+        )
+        await connection.execute("""
+            UPDATE public.rag_chunks_service_public
+            SET section_path = CASE WHEN hash_id = 'a' THEN 'Guide un > Congés congés' ELSE 'Guide deux > Congés congés' END;
+            INSERT INTO public.rag_chunks_service_public (hash_id, chunk_text, short_id, section_path)
+                VALUES ('rare-heading', 'Extrait pertinent', 'F1', 'Concours')
+        """)
+    results = await SearchStore(corpus).search(SearchRequest("service_public", "heading", query="congés concours", limit=1))
+    assert [(chunk.chunk_id, chunk.section_id, chunk.rank) for chunk in results] == [("rare-heading", MISSING, 1)]

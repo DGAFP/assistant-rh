@@ -34,6 +34,7 @@ class SelectionDiagnostics:
 class SelectionResult:
     sections: tuple[AggregatedSection, ...]
     diagnostics: SelectionDiagnostics
+    supplemental_count: int = 0  # Heuristic additions at the end of sections.
 
     @property
     def all_rejected(self) -> bool:

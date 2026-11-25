@@ -86,7 +86,7 @@ def from_runtime_values(values: ConfigValues) -> RAGConfig:
             model=setting("v3_selector_model", "openweight-large"),
             prompt_name=setting("v3_selector_prompt_name", "v3_selector_business.md"),
             min_kept_sections=setting("v3_min_kept_sections", 0),
-            reranker_union_top_k=setting("v3_reranker_union_top_k", 2),
+            reranker_union_top_k=setting("v3_reranker_union_top_k", 0),
             reranker_union_min_score=setting("v3_reranker_union_min_score", 0.5),
         ),
         generation=GenerationConfig(

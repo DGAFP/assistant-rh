@@ -159,9 +159,11 @@ class Pipeline:
             measure=aggregation_metrics,
             attempt=attempt,
         )
+        ranking = aggregated.diagnostics
+        reranked = ranking.reranker_status == "completed" and not ranking.reranker_fallback
         selected = await context.stage(
             "context-selector",
-            lambda: self._selector.select(query, aggregated.sections, ministry, today=context.today),
+            lambda: self._selector.select(query, aggregated.sections, ministry, today=context.today, reranked=reranked),
             project=selection_trace,
             measure=selection_metrics,
             attempt=attempt,
@@ -169,7 +171,11 @@ class Pipeline:
         if selected.all_rejected and not selected.sections:
             return ContextBuildResult(items=(), resolved_refs={}, diagnostics=ContextBuildDiagnostics()), True
         built = await context.stage(
-            "context-builder", lambda: self._builder.build(selected.sections), project=context_trace, measure=context_metrics, attempt=attempt
+            "context-builder",
+            lambda: self._builder.build(selected.sections, reranked=reranked, supplemental_count=selected.supplemental_count),
+            project=context_trace,
+            measure=context_metrics,
+            attempt=attempt,
         )
         return built, selected.all_rejected
 

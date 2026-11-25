@@ -5,14 +5,15 @@ import pytest
 from assistant_rh_api.core.errors import ApplicationError, DatabaseFailure, InferenceFailure
 from assistant_rh_api.core.models.chat import Cancellation, ChatInput
 from assistant_rh_api.core.models.context import ContextBuildDiagnostics, ContextBuildResult
-from assistant_rh_api.core.models.inference import Attempt
+from assistant_rh_api.core.models.inference import Attempt, RankedDocument, Reranking
+from assistant_rh_api.core.models.retrieval import RawChunk
 from assistant_rh_api.core.pipeline.steps.context_builder import ContextBuilder
 from assistant_rh_api.core.prompt_policy import NO_ANSWER
 from assistant_rh_api.core.sources import SOURCES_MARKER
 from assistant_rh_api.db.run_store import json_data
 
 from apps.api.tests.auth_fakes import individual_context, service
-from apps.api.tests.chat_fakes import Runtime
+from apps.api.tests.chat_fakes import Reranker, Runtime
 
 pytestmark = pytest.mark.anyio
 
@@ -245,7 +246,7 @@ async def test_empty_final_context_never_calls_generation_without_explicit_rejec
         runtime.search.empty = True
     else:
 
-        async def empty_build(self, sections):
+        async def empty_build(self, sections, *, reranked=False, supplemental_count=0):
             assert sections
             return ContextBuildResult(items=(), resolved_refs={}, diagnostics=ContextBuildDiagnostics())
 
@@ -307,3 +308,30 @@ async def test_pipeline_forwards_recent_history_to_generator_in_both_transports(
     gen_request = runtime.llm.calls[-1]
     assert gen_request.messages[0].content.startswith("GENERATE")
     assert gen_request.messages[1:-1] == history
+
+
+@pytest.mark.parametrize("ranking", ["success", "fallback", "failure", "disabled", "union_off_by_default"])
+async def test_pipeline_only_restores_selector_candidates_after_a_successful_rerank(monkeypatch, ranking):
+    # The union is opt-in since the 2026-11-25 baseline_v1 ablation; the last case checks the default.
+    union = {} if ranking == "union_off_by_default" else {"v3_reranker_union_top_k": 2}
+    runtime = Runtime(v3_enable_reranker=ranking != "disabled", **union)
+    runtime.llm.selector_responses = ['{"selected_ids":[1]}']
+    search = runtime.search.search
+
+    async def search_two_sections(request):
+        if request.source == "matte" and request.mode != "heading":
+            return (
+                RawChunk("matte", "first", "Première section", None, 0.9, 1, {}),
+                RawChunk("matte", "second", "Deuxième section", None, 0.8, 2, {}),
+            )
+        return await search(request)
+
+    async def rerank(self, query, documents, *, top_k=None):
+        if ranking == "failure":
+            raise InferenceFailure((Attempt("albert", "rerank", "rate_limited", 429),))
+        return Reranking((RankedDocument(0, 1.0), RankedDocument(1, 0.9)), (), fallback=ranking == "fallback")
+
+    monkeypatch.setattr(runtime.search, "search", search_two_sections)
+    monkeypatch.setattr(Reranker, "rerank", rerank)
+    _, result = await runtime.service.complete(ChatInput("assistant-rh", "Question RH"), await auth())
+    assert {item.content for item in result.items} == ({"Première section", "Deuxième section"} if ranking == "success" else {"Deuxième section"})

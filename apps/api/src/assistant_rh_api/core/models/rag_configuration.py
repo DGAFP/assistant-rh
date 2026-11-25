@@ -118,7 +118,9 @@ class SelectorConfig:
     temperature: float = 0.0
     prompt_name: str = "v3_selector_business.md"
     min_kept_sections: int = 0
-    reranker_union_top_k: int = 2
+    # Disabled by default: on baseline_v1 (98 questions) the union fired on 63
+    # questions and cost 6 pass points vs dev; re-enable only through an ablation.
+    reranker_union_top_k: int = 0
     reranker_union_min_score: float = 0.5
 
     def to_dict(self) -> dict:
