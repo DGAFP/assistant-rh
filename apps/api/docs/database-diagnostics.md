@@ -17,7 +17,11 @@ mêmes champs comme attributs du `LogRecord` pour les collecteurs structurés :
 - `operation` : valeur de `DBOperation` codée dans le dépôt, jamais un nom de
   prompt, une table choisie par le client, une URL ou un contenu utilisateur.
 - `category` : intégrité, sérialisation, deadlock, indisponibilité/capacité du
-  pool, connexion, vérification de connexion, instruction ou erreur applicative.
+  pool, connexion, capacité du serveur, vérification de connexion, instruction ou
+  erreur applicative. Les SQLSTATE `08xxx` et `57P0x` (arrêt, démarrage ou
+  récupération du serveur) restent `connection`, la classe `53` (ressources
+  insuffisantes) est `server_capacity` ; seules les autres erreurs opérationnelles,
+  comme `57014`, sont classées `statement`.
 - `code` : code DB public stable, même si le handler répond par un code HTTP
   générique différent. Par exemple une erreur DB peut produire `internal_error`.
 - `sqlstate` : code PostgreSQL reconnu par psycopg, ou `null`. Par exemple `42P01`
@@ -26,7 +30,8 @@ mêmes champs comme attributs du `LogRecord` pour les collecteurs structurés :
   n'est copiée. Les timeouts du pool et erreurs purement réseau n'ont souvent
   aucun SQLSTATE ; un code serveur inconnu est également omis.
 - `correlation_id` : identifiant opaque généré côté serveur. Pour HTTP, il est
-  retourné dans `X-Request-ID` et partagé par les diagnostics de cette requête.
+  retourné dans `X-Request-ID` et partagé par les diagnostics de cette requête,
+  y compris sur la 500 générique d'une exception non gérée.
   Les valeurs entrantes `X-Request-ID`, `traceparent` et les bearers ne sont pas
   reprises. Il s'agit d'une corrélation locale, pas d'une intégration OpenTelemetry.
 - `event=database_recovery`, niveau `WARNING`, signifie que le point de décision
@@ -42,7 +47,9 @@ Le diagnostic ne donne donc volontairement pas l'objet SQL ni la valeur fautive.
 
 | Chemin | Journalisation |
 | --- | --- |
-| Exception DB atteignant le handler HTTP | Un `ERROR`, diagnostic conservé même après un emballage applicatif |
+| Exception DB atteignant le handler HTTP | Un `ERROR`, diagnostic conservé même après un emballage applicatif ou dans un `ExceptionGroup` |
+| Conflit de création de session au login | Un `WARNING` `session.create` dans `AuthService` ; le 401 qui suit n'ajoute pas d'`ERROR` |
+| Requête sans base runtime configurée | Un `ERROR` `db.unconfigured`, catégorie `application` |
 | Repli de `RAGConfigurationService.load` | Un `WARNING`, valeurs par défaut et code de repli conservés |
 | Échec du contrôle de santé | Un `ERROR` avant le rapport de santé générique |
 | Nettoyage périodique des sessions | Un `WARNING` par échec, nouvelle corrélation par itération, nouvel essai à l'intervalle existant |
@@ -61,7 +68,13 @@ connexions et transactions ne sont pas copiées dans les logs.
 Une tentative échouée du worker et l'expiration de l'attente d'ouverture sont
 deux événements distincts : `db.connect` et `db.pool.open`. Il peut y avoir plusieurs
 tentatives. Les workers héritent de la corrélation du cycle de vie qui ouvre le
-pool ; un échec de reconnexion n'est pas attribué à une requête cliente.
+pool ; un échec de reconnexion n'est pas attribué à une requête cliente. Ils
+sont lancés dans le contexte `db.connect` : un abandon de reconnexion en cours
+d'exécution n'est jamais étiqueté `db.pool.open`.
+
+Une erreur DB levée pendant le traitement d'une autre garde son propre
+diagnostic : elle n'hérite pas de la catégorie de la première et n'est pas
+supprimée comme doublon si la première a déjà été journalisée.
 
 Toutes les transactions des dépôts actuels portent une opération explicite. Les
 appels directs à `Database.transaction()` gardent la valeur `db.transaction`.

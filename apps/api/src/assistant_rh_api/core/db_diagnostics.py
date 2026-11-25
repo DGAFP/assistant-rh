@@ -25,6 +25,7 @@ class DBOperation(StrEnum):
     ROLLBACK = "db.rollback"
     RESET = "db.pool.reset"
     HEALTH = "db.health"
+    UNCONFIGURED = "db.unconfigured"
     CONFIG_LOAD = "config.load"
     PROMPT_GET = "prompt.get"
     ACRONYM_LOAD = "acronym.load"
@@ -57,6 +58,7 @@ DBCategory = Literal[
     "pool_timeout",
     "pool_capacity",
     "connection",
+    "server_capacity",
     "interface",
     "statement",
     "connection_check",
@@ -114,22 +116,35 @@ def attach_diagnostic(
     return diagnostic
 
 
+def own_diagnostic(exc: BaseException) -> DatabaseDiagnostic | None:
+    """Only the diagnostic attached to this exception, never one it was raised while handling."""
+    diagnostic = getattr(exc, "_database_diagnostic", None)
+    return diagnostic if isinstance(diagnostic, DatabaseDiagnostic) else None
+
+
 def database_diagnostic(exc: BaseException) -> DatabaseDiagnostic | None:
-    """Follow explicit/implicit wrapping, including safe `raise ... from None`."""
+    """Follow explicit/implicit wrapping, including safe `raise ... from None` and task groups."""
     seen: set[int] = set()
-    current: BaseException | None = exc
-    while current is not None and id(current) not in seen:
+    pending: list[BaseException] = [exc]
+    while pending:
+        current = pending.pop(0)
+        if id(current) in seen:
+            continue
         seen.add(id(current))
-        diagnostic = getattr(current, "_database_diagnostic", None)
-        if isinstance(diagnostic, DatabaseDiagnostic):
+        if (diagnostic := own_diagnostic(current)) is not None:
             return diagnostic
-        current = current.__cause__ or current.__context__
+        if isinstance(current, BaseExceptionGroup):
+            pending.extend(current.exceptions)
+        if (wrapped := current.__cause__ or current.__context__) is not None:
+            pending.append(wrapped)
     return None
 
 
 def report_database_error(exc: Exception, *, operation: DBOperation = DBOperation.TRANSACTION, recovered: bool = False) -> None:
-    diagnostic = database_diagnostic(exc)
-    if diagnostic is None:
+    diagnostic = own_diagnostic(exc) or database_diagnostic(exc)
+    if diagnostic is None or diagnostic is not own_diagnostic(exc) and diagnostic.reported:
+        # A DB error raised while handling an earlier, already reported one is a
+        # new failure, not a duplicate: give it its own diagnostic.
         for error in (DatabaseConflict, DatabaseUnavailable, DatabaseFailure):
             if isinstance(exc, error):
                 diagnostic = attach_diagnostic(exc, operation=operation, category="application", code=error.code)

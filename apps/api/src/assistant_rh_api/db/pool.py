@@ -41,7 +41,8 @@ class _PoolDiagnosticFilter(logging.Filter):
         if record.levelno < logging.WARNING:
             return False
         if diagnostic is None:
-            if record.name == "psycopg.transaction" or owned and "rollback" in str(record.msg):
+            message = str(record.msg)
+            if record.name == "psycopg.transaction" or owned and ("rollback" in message or "rolling back" in message):
                 operation = DBOperation.ROLLBACK
             elif owned:
                 operation = DBOperation.RESET
@@ -107,7 +108,11 @@ class Database:
         try:
             validate_libpq_environment(os.environ)
             with translate_database_errors(DBOperation.OPEN):
-                await self._pool.open(wait=True, timeout=self._settings.timeout_seconds)
+                # Workers and the scheduler are spawned here and keep a copy of
+                # this context for the pool's lifetime: label their later records
+                # as connection work, never as this startup operation.
+                with driver_logging(DBOperation.CONNECT):
+                    await self._pool.open(wait=True, timeout=self._settings.timeout_seconds)
         except BaseException as exc:
             if isinstance(exc, Exception):
                 report_database_error(exc, operation=DBOperation.OPEN)

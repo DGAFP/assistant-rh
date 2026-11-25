@@ -7,7 +7,7 @@ from typing import Iterator, cast
 import psycopg
 from psycopg_pool import PoolClosed, PoolTimeout, TooManyRequests
 
-from assistant_rh_api.core.db_diagnostics import DBCategory, DBOperation, attach_diagnostic, database_diagnostic
+from assistant_rh_api.core.db_diagnostics import DBCategory, DBOperation, attach_diagnostic, database_diagnostic, own_diagnostic
 from assistant_rh_api.core.errors import DatabaseConflict, DatabaseFailure, DatabaseUnavailable
 
 driver_operation: ContextVar[DBOperation | None] = ContextVar("db_driver_operation", default=None)
@@ -48,8 +48,12 @@ def diagnostic_category(exc: Exception) -> DBCategory:
         (psycopg.OperationalError, "connection"),
     ):
         if isinstance(exc, error):
-            if category == "connection" and (state := safe_sqlstate(exc)) is not None and not state.startswith("08"):
-                return "statement"
+            if category == "connection" and (state := safe_sqlstate(exc)) is not None:
+                if state.startswith("53"):
+                    return "server_capacity"
+                # Server shutdown/startup/crash recovery are availability, not SQL.
+                if not state.startswith(("08", "57P0")):
+                    return "statement"
             return cast(DBCategory, category)
     return "statement"
 
@@ -62,7 +66,10 @@ def translate_database_errors(operation: DBOperation = DBOperation.TRANSACTION) 
         with driver_logging(operation):
             yield
     except (DatabaseConflict, DatabaseUnavailable, DatabaseFailure) as exc:
-        if database_diagnostic(exc) is None:
+        wrapped = database_diagnostic(exc)
+        # Keep a wrapped, unreported diagnostic; never borrow one already logged
+        # for an earlier error this one was merely raised while handling.
+        if own_diagnostic(exc) is None and (wrapped is None or wrapped.reported):
             if isinstance(exc, DatabaseConflict):
                 code = DatabaseConflict.code
             elif isinstance(exc, DatabaseUnavailable):
@@ -79,7 +86,9 @@ def translate_database_errors(operation: DBOperation = DBOperation.TRANSACTION) 
             translated = DatabaseUnavailable()
         else:
             translated = DatabaseFailure()
-        previous = database_diagnostic(exc)
+        # Only a diagnostic attached by our own boundary (connection check), not
+        # the context of an earlier error, e.g. close() failing after open().
+        previous = own_diagnostic(exc)
         attach_diagnostic(
             translated,
             operation=operation,

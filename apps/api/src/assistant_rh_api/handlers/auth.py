@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from assistant_rh_api.core.auth import AuthContext, AuthService, InvalidCredentials
+from assistant_rh_api.core.db_diagnostics import DBOperation, attach_diagnostic
 from assistant_rh_api.core.errors import DatabaseUnavailable
 
 
@@ -27,7 +28,10 @@ class LoginRequest(BaseModel):
 def get_auth_service(request: Request) -> AuthService:
     service = request.app.state.auth_service
     if service is None:
-        raise DatabaseUnavailable()
+        # No runtime database was configured: no transaction was attempted.
+        unavailable = DatabaseUnavailable()
+        attach_diagnostic(unavailable, operation=DBOperation.UNCONFIGURED, category="application", code=unavailable.code)
+        raise unavailable
     return service
 
 

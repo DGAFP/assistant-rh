@@ -48,6 +48,8 @@ def assert_safe(caplog):
         (psycopg.errors.DeadlockDetected, DatabaseConflict, "deadlock", "40P01"),
         (psycopg.errors.UndefinedTable, DatabaseFailure, "statement", "42P01"),
         (psycopg.errors.QueryCanceled, DatabaseUnavailable, "statement", "57014"),
+        (psycopg.errors.AdminShutdown, DatabaseUnavailable, "connection", "57P01"),
+        (psycopg.errors.TooManyConnections, DatabaseUnavailable, "server_capacity", "53300"),
         (psycopg.OperationalError, DatabaseUnavailable, "connection", None),
         (psycopg.InterfaceError, DatabaseUnavailable, "interface", None),
         (PoolClosed, DatabaseUnavailable, "pool_closed", None),
@@ -254,7 +256,7 @@ async def test_pool_background_rollback_does_not_leak_exception_or_connection(ca
     await database._pool._reset_connection(connection)
     connection.close.assert_awaited_once()
     assert len(records(caplog)) == 2  # abnormal return, then failed rollback
-    assert records(caplog)[-1].operation == "db.rollback"
+    assert [record.operation for record in records(caplog)] == ["db.rollback", "db.rollback"]
     assert_safe(caplog)
 
 
@@ -283,3 +285,127 @@ def test_driver_debug_output_inside_owned_call_cannot_expose_details(caplog):
         logging.getLogger("psycopg").debug("connection failed: %s", SYNTHETIC_DRIVER_MESSAGE)
         logging.getLogger("psycopg.transaction").debug(SYNTHETIC_DRIVER_MESSAGE, exc_info=True)
     assert not caplog.records
+
+
+@pytest.mark.anyio
+async def test_pool_workers_are_not_labelled_as_startup(caplog, monkeypatch):
+    from assistant_rh_api.db.dsn import DatabaseSettings
+    from assistant_rh_api.db.errors import driver_operation
+    from psycopg_pool import AsyncConnectionPool
+
+    # Workers copy the context active when the pool spawns them, for its lifetime.
+    spawned = []
+    start_workers = AsyncConnectionPool._start_workers
+
+    def capture(pool):
+        spawned.append(driver_operation.get())
+        start_workers(pool)
+
+    monkeypatch.setattr(AsyncConnectionPool, "_start_workers", capture)
+    monkeypatch.setattr(psycopg.AsyncConnection, "connect", AsyncMock(side_effect=psycopg.OperationalError(SYNTHETIC_DRIVER_MESSAGE)))
+    with pytest.raises(DatabaseUnavailable):
+        await Database(DatabaseSettings(dsn=SETTINGS_DSN, timeout_seconds=0.05)).open()
+    assert spawned == [DBOperation.CONNECT]
+    assert_safe(caplog)
+
+
+@pytest.mark.anyio
+async def test_close_failure_after_failed_open_keeps_its_own_diagnostic(caplog):
+    from assistant_rh_api.db.dsn import DatabaseSettings
+
+    pool = Mock(
+        open=AsyncMock(side_effect=PoolTimeout(SYNTHETIC_DRIVER_MESSAGE)),
+        close=AsyncMock(side_effect=psycopg.InterfaceError(SYNTHETIC_DRIVER_MESSAGE)),
+    )
+    database = Database(DatabaseSettings(dsn=SETTINGS_DSN))
+    database._pool = pool
+    with pytest.raises(DatabaseUnavailable) as caught:
+        await database.open()
+    assert database_diagnostic(caught.value).operation == DBOperation.CLOSE
+    opened, closed = records(caplog)
+    assert (opened.operation, opened.category) == ("db.pool.open", "pool_timeout")
+    assert (closed.operation, closed.category) == ("db.pool.close", "interface")
+    assert_safe(caplog)
+
+
+def test_new_failure_while_handling_reported_one_is_still_logged(caplog):
+    with diagnostic_context():
+        try:
+            with translate_database_errors(DBOperation.CONFIG_LOAD):
+                raise psycopg.errors.UndefinedTable(SYNTHETIC_DRIVER_MESSAGE)
+        except DatabaseFailure as first:
+            report_database_error(first, recovered=True)
+            try:
+                with translate_database_errors(DBOperation.PROMPT_GET):
+                    raise DatabaseFailure()
+            except DatabaseFailure as second:
+                report_database_error(second)
+            try:
+                raise DatabaseUnavailable()
+            except DatabaseUnavailable as third:
+                report_database_error(third, operation=DBOperation.HEALTH)
+    recovery, failure, unavailable = records(caplog)
+    assert (recovery.operation, recovery.levelno) == ("config.load", logging.WARNING)
+    assert (failure.operation, failure.category, failure.sqlstate, failure.levelno) == ("prompt.get", "application", None, logging.ERROR)
+    assert (unavailable.operation, unavailable.category) == ("db.health", "application")
+
+
+@pytest.mark.anyio
+async def test_login_conflict_is_a_recovery_at_its_decision_point(caplog):
+    from apps.api.tests.auth_fakes import service
+
+    auth = service()
+
+    async def conflicting(*args):
+        with translate_database_errors(DBOperation.SESSION_CREATE):
+            raise DatabaseConflict()
+
+    auth.sessions.create = conflicting
+    with pytest.raises(InvalidCredentials) as caught:
+        await auth.login("beta", "password", "source")
+    report_database_error(caught.value)  # the HTTP handler must not escalate it
+    [record] = records(caplog)
+    assert (record.event, record.operation, record.levelno) == ("database_recovery", "session.create", logging.WARNING)
+
+
+@pytest.mark.anyio
+async def test_unconfigured_database_is_not_reported_as_a_transaction(caplog):
+    application = create_app(environ={})
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url="http://test") as client:
+        response = await client.get("/v1/models", headers={"Authorization": "Bearer private-token"})
+    assert response.status_code == 503
+    [record] = records(caplog)
+    assert (record.operation, record.category) == ("db.unconfigured", "application")
+    assert record.correlation_id == response.headers["x-request-id"]
+
+
+@pytest.mark.anyio
+async def test_unhandled_error_keeps_generic_500_with_correlation_and_task_group_diagnostic(caplog):
+    application = create_app(environ={})
+
+    @application.get("/task-group")
+    async def fail():
+        raise RuntimeError("not a database error")
+
+    transport = httpx.ASGITransport(app=application, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/task-group")
+    assert response.status_code == 500 and response.text == "Internal Server Error"
+    assert len(response.headers.get_list("x-request-id")) == 1
+    assert not records(caplog)
+
+    @application.get("/wrapped-group")
+    async def wrapped():
+        try:
+            with translate_database_errors(DBOperation.SEARCH):
+                raise psycopg.errors.UndefinedTable(SYNTHETIC_DRIVER_MESSAGE)
+        except DatabaseFailure as exc:
+            raise ExceptionGroup("tasks", [exc]) from None
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/wrapped-group")
+    assert response.status_code == 500
+    [record] = records(caplog)
+    assert (record.operation, record.sqlstate) == ("search.search", "42P01")
+    assert record.correlation_id == response.headers["x-request-id"]
+    assert_safe(caplog)

@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+from assistant_rh_api.core.db_diagnostics import DBOperation, report_database_error
 from assistant_rh_api.core.errors import ApplicationError, DatabaseConflict
 from assistant_rh_api.core.ministry_policy import MINISTRIES, valid_ministry_policy, validate_ministry_policy
 from assistant_rh_api.core.models.auth import Group, Session
@@ -90,8 +91,10 @@ class AuthService:
         session = Session(digest, group.slug, now, now + SESSION_LIFETIME, group.password_hash or "", group.credential_revision)
         try:
             await self.sessions.create(session)
-        except DatabaseConflict:
+        except DatabaseConflict as exc:
             # A concurrent password/policy change must not issue a stale session.
+            # This is the decision point: a handled 401, not a DB failure.
+            report_database_error(exc, operation=DBOperation.SESSION_CREATE, recovered=True)
             raise InvalidCredentials() from None
         return IssuedSession(token, AuthContext(group, session))
 
