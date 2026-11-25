@@ -25,14 +25,27 @@ def read_json(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def capture_binding(proof):
+    capture, recall, replay = (proof[key] for key in ("capture", "retrieval_recall", "exact_http_replay"))
+    if capture["sha256"] != recall["archive_sha256"] or capture["sha256"] != replay["sha256"] or not replay["http_json_exact"]:
+        raise ValueError("Published recall and exact HTTP replay must cover the same capture")
+    return {
+        "capture_campaign": capture["campaign"],
+        "archive_sha256": capture["sha256"],
+        "panel_sha256": proof["panel_sha256"],
+        "aliases_sha256": recall["aliases_sha256"],
+        "reference_input_sha256": proof["judge"]["manifest"]["input_sha256"],
+    }
+
+
 def prepare(archive, panel_file, reference_inputs, dsn, output):
     proof = read_json(FOLLOWUP)
+    binding = capture_binding(proof)
     assessment = read_json(M1_EVIDENCE)["assessment"]
-    prior = proof["judge"]["manifest"]
     if (
-        digest(archive) != proof["capture"]["sha256"]
-        or digest(panel_file) != proof["panel_sha256"]
-        or digest(reference_inputs) != prior["input_sha256"]
+        digest(archive) != binding["archive_sha256"]
+        or digest(panel_file) != binding["panel_sha256"]
+        or digest(reference_inputs) != binding["reference_input_sha256"]
     ):
         raise ValueError("An input does not match the previously verified capture, panel or references")
     panel = {row["id"]: row for row in load_panel(panel_file)}
@@ -48,7 +61,7 @@ def prepare(archive, panel_file, reference_inputs, dsn, output):
     ):
         raise ValueError("Unexpected M1 evaluator settings")
     aliases, aliases_sha256 = load_aliases(dsn)
-    if aliases_sha256 != proof["retrieval_recall"]["aliases_sha256"]:
+    if aliases_sha256 != binding["aliases_sha256"]:
         raise ValueError("Document aliases changed since the capture was scored")
 
     cases = []
@@ -81,11 +94,7 @@ def prepare(archive, panel_file, reference_inputs, dsn, output):
     write_private(inputs, cases)
     manifest = {
         "run_label": "m1_gate_same_capture_20261125",
-        "capture_campaign": proof["capture"]["campaign"],
-        "archive_sha256": proof["capture"]["sha256"],
-        "panel_sha256": proof["panel_sha256"],
-        "aliases_sha256": aliases_sha256,
-        "reference_input_sha256": prior["input_sha256"],
+        **binding,
         "input_sha256": digest(inputs),
         "cases": len(cases),
         "judge_provider": scope["judge_provider"],
@@ -103,6 +112,9 @@ def prepare(archive, panel_file, reference_inputs, dsn, output):
 
 
 def report(output):
+    proof = read_json(FOLLOWUP)
+    binding = capture_binding(proof)
+    assessment = read_json(M1_EVIDENCE)["assessment"]
     manifest = read_json(output / "judge-manifest.json")
     judgment = read_json(output / "judge-summary.json")
     if judgment["manifest"] != manifest or digest(output / "judge-inputs.json") != manifest["input_sha256"]:
@@ -111,12 +123,20 @@ def report(output):
     judged = counts.get("pass", 0) + counts.get("fail", 0)
     total = manifest["cases"]
     retrieval = manifest["retrieval"]
-    complete = judged == total == retrieval["recall_scored"] and not counts.get("unjudged")
+    scope = assessment["runs"]["core_live"]["fingerprints"]["eval_scope"]
+    if (
+        any(manifest.get(key) != value for key, value in binding.items())
+        or manifest["eval_scope"] != scope
+        or total != scope["question_count"]
+        or total != proof["exact_http_replay"]["cases"]
+        or any(retrieval[key] != proof["retrieval_recall"][key] for key in ("questions", "recall_scored", "questions_with_hit", "doc_recall_avg"))
+    ):
+        raise ValueError("Gate does not match the registered M1 capture and scope")
+    complete = judged == sum(counts.values()) == total == retrieval["recall_scored"] and not counts.get("unjudged")
     aggregate = {
         "judge_pass_rate": counts.get("pass", 0) / judged if judged else None,
         "doc_recall_avg": retrieval["doc_recall_avg"],
     }
-    assessment = read_json(M1_EVIDENCE)["assessment"]
     gate_thresholds = assessment["comparisons"]["core_live_vs_legacy_live"]["metrics"]
     comparisons = {}
     for name in REFERENCES:
@@ -134,7 +154,7 @@ def report(output):
     return {
         "schema": "assistant-rh-m1-same-capture-gate-v1",
         "manifest": manifest,
-        "deployment": read_json(FOLLOWUP)["deployment"],
+        "deployment": proof["deployment"],
         "judgment": {key: judgment[key] for key in ("outcomes", "by_corpus", "failed_votes")},
         "aggregate": aggregate,
         "complete": complete,
@@ -160,6 +180,8 @@ def main():
     else:
         result = report(output)
     print(json.dumps(result, ensure_ascii=False))
+    if args.mode == "report" and result["gate"] != "pass":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
