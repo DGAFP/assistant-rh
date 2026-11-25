@@ -8,7 +8,7 @@ La branche Conversations `staging` pointe sur `7ac0eb11b54510d5244443a2d09bd0a9a
 
 | Vérification | Preuve disponible | Preuve attendue |
 | --- | --- | --- |
-| D3 — replay exact | Parité du scénario local synthétique avec historique, route HTTP réelle et délégation signée. | Rejeu du panel privé M1 de 98 questions via la route JSON, sur le SHA retenu. |
+| D3 — replay exact | 7/7 scénarios enregistrés de M0b comparés exactement entre core direct et route JSON avec délégation signée, hors réseau. Le scénario de suivi est aussi couvert avec des entrées synthétiques. | Rejeu du panel privé M1 de 98 questions via la route JSON, sur le SHA retenu. |
 | D3 — clients | OpenAI `3.20.0` et `pydantic-ai-slim` `2.54.0` passent le smoke avec le serveur synthétique TCP. L’erreur post-headers est un `ModelAPIError` causé par l’`APIError` `stream_error`. | Vérifier le provider dans le backend Conversations déployé et ses appels privés à l’API. |
 | D3 — goldset live | Collecteur HTTP et rapport de transport validés sur données synthétiques. | Exécuter les 98 questions sur la candidate et comparer les jugements et rappels au seuil M1. |
 | D4 — opérabilité | Suite API locale sur PostgreSQL 17 et pgvector, **1 524 tests réussis**. Les sockets locales couvrent pings, déconnexions, erreurs et arrêt avec finalisation. | Relever les résultats via le proxy Scaleway et éprouver le retour arrière staging. |
@@ -33,7 +33,33 @@ uv run --no-sync python -m scripts.conformance.m2_goldset_http \
   --report "$TRANSPORT_REPORT" --private-capture "$PRIVATE_CAPTURE"
 ```
 
-Le rapport compte les réponses valides, les échecs de transport et les références attendues effectivement servies. Le rappel des sources servies est une mesure distincte du rappel de retrieval de M1. Utiliser l’identifiant de run de la capture privée pour réunir le contexte effectivement servi au générateur, puis appliquer le protocole M1 `gold-passages-v2` à trois votes. Appliquer la tolérance maximale de cinq points sur le pass rate et le rappel de retrieval contre chacune des références M1. Consigner les références de run dans le journal. Les outils RAG-ops conservent leur périmètre actuel.
+Le rapport compte les réponses valides, les échecs de transport et les références attendues effectivement servies. Le rappel des sources servies est une mesure distincte du rappel de retrieval de M1. Associer à l’identifiant du run une capture autorisée et complète du contexte effectivement servi au générateur. Les traces opérationnelles peuvent être tronquées. Appliquer le protocole M1 `gold-passages-v2` à trois votes et la tolérance maximale de cinq points sur le pass rate et le rappel de retrieval contre chacune des références M1. Consigner les références de run dans le journal. Les outils RAG-ops conservent leur périmètre actuel.
+
+### Preuve complémentaire D3 du 25 novembre
+
+Le [compagnon M0b](../../../tests/conformance/companions/m0b-full-20260917/README.md)
+est vérifié avec son SHA-256 publié. La commande ci-dessous rejoue deux fois les
+sept scénarios enregistrés, avec des ports DB et fournisseurs figés. Le test
+compare les projections d’étapes, la réponse, les sources publiques et
+protégées et l’usage. Le runner contrôle l’enveloppe HTTP brute puis compare le
+résultat structuré du traitement au core direct.
+
+34 tests ciblés passent. Le collecteur live a aussi été exécuté sur un
+serveur HTTP local avec deux requêtes synthétiques, deux délégations
+distinctes et récupération des deux références attendues. Les réponses
+restent dans la capture privée, avec permissions `0600`.
+
+```sh
+PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.conformance.m0b_companion \
+  replay "$M0B_EVIDENCE_DIR" --http --report "$M0B_HTTP_REPORT"
+```
+
+La suite privée vérifie l’empreinte de l’archive et effectue ce rejeu à partir de
+`M0B_PRIVATE_ARCHIVE`. L’archive M1 de 98 questions reste à retrouver. Le dépôt
+privé de conformance configuré contient l’archive M0b. Depuis ce poste, une
+nouvelle vérification du plan de contrôle Kapsule a confirmé la réinitialisation
+de la connexion réseau. Le goldset staging reste en attente d’un accès interne
+et d’une délégation de recette.
 
 ## Vérification Scaleway et retour arrière
 

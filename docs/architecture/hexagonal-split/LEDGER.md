@@ -1283,3 +1283,9 @@ privé et le goldset de la candidate. D4 #531 porte la vérification Kapsule,
 le proxy et le rollback. M2 #532 porte le cloisonnement documentaire et la
 matrice API avec #599. E1 #533 porte le rejeu navigateur après publication du
 feedback. [Correctif de publication Conversations](https://github.com/DGAFP/conversations/pull/26)
+
+Pour D3 #530, le rejeu complémentaire M0b établit la comparaison exacte
+core ↔ HTTP sur les sept scénarios privés vérifiés par empreinte. Le
+[dossier M2](17-m2-staging-qualification.md#preuve-complémentaire-d3-du-25-novembre)
+consigne la commande et les prérequis restants pour le panel M1 et le goldset
+sur le déploiement Scaleway.

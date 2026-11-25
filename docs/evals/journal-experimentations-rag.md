@@ -2348,3 +2348,10 @@ La collecte live est préparée. La révision déployée, les empreintes du corp
 et de la configuration et la session de recette restent à vérifier depuis un
 accès staging fonctionnel. Consigner le label au lancement et les résultats
 à la fin de la campagne. [Protocole et état M2](../architecture/hexagonal-split/17-m2-staging-qualification.md)
+
+Le rejeu complémentaire `m0b_http_20261125` passe **7/7 scénarios
+enregistrés** via la route JSON avec délégation individuelle. Il couvre les
+27 étapes et 23 appels d’inférence enregistrés par voie d’exécution, avec
+égalité du résultat structuré entre le core et HTTP. La suite vérifie
+l’empreinte de l’archive reconnue et détecte les cinq mutations prévues.
+La campagne goldset live reste à lancer depuis le réseau de recette.

@@ -23,6 +23,7 @@ pytestmark = pytest.mark.anyio
 def published(tmp_path, monkeypatch):
     if ARCHIVE is None or not ARCHIVE.is_file():
         pytest.fail("M0B_PRIVATE_ARCHIVE must point to the privately downloaded conformance archive")
+
     def blocked(*args, **kwargs):
         raise AssertionError("M0b replay must remain offline")
 
@@ -42,9 +43,11 @@ def published(tmp_path, monkeypatch):
     return directory
 
 
-async def test_seven_published_scenarios_replay_through_production_composition(published):
-    result = await companion.replay(published)
+@pytest.mark.parametrize("http", [False, True])
+async def test_seven_published_scenarios_replay_through_production_composition(published, http):
+    result = await companion.replay(published, http=http)
     assert result["exact_comparison"] and result["network"] == "denied"
+    assert result["http_json_comparison"] is http
     assert len(result["cases"]) == 7
     assert [row["stages"] for row in result["cases"]] == [6, 6, 6, 6, 1, 1, 1]
     assert sum(row["inference_calls"] for row in result["cases"]) == 23
