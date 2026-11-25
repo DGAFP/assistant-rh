@@ -47,13 +47,14 @@ class Generator:
         query: str,
         items: Sequence[ContextItem],
         ministry: str | None = None,
+        history: tuple[Message, ...] = (),
         *,
         today: str,
         all_rejected: bool = False,
     ) -> GenerationResult:
         if not items and all_rejected:
             return GenerationResult(NO_ANSWER, GenerationDiagnostics("no_answer"))
-        diagnostics = await self._prepare(query, tuple(items), ministry, today=today)
+        diagnostics = await self._prepare(query, tuple(items), ministry, tuple(history), today=today)
         assert diagnostics.request is not None
         outcome = await self._llm.complete(diagnostics.request)
         return GenerationResult(outcome.text, replace(diagnostics, outcome=outcome))

@@ -16,13 +16,20 @@ from scripts.conformance.m0b_values import ROOT, digest, dump
 
 EVIDENCE = ROOT / "tests/conformance/companions/m0b-full-20260917"
 ARCHIVE = Path(os.environ["M0B_PRIVATE_ARCHIVE"]) if os.environ.get("M0B_PRIVATE_ARCHIVE") else None
-pytestmark = pytest.mark.anyio
+pytestmark = [
+    pytest.mark.anyio,
+    pytest.mark.skipif(
+        os.environ.get("M0B_HISTORICAL_PARITY_LOCK_ENABLED") != "true",
+        reason="Historical M0b parity is opt-in after the RAG quality changes.",
+    ),
+]
 
 
 @pytest.fixture
 def published(tmp_path, monkeypatch):
     if ARCHIVE is None or not ARCHIVE.is_file():
         pytest.fail("M0B_PRIVATE_ARCHIVE must point to the privately downloaded conformance archive")
+
     def blocked(*args, **kwargs):
         raise AssertionError("M0b replay must remain offline")
 

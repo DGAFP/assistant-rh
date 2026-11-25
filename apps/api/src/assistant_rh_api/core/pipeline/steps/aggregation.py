@@ -11,7 +11,11 @@ from assistant_rh_api.core.models.context import AggregatedSection, SectionAggre
 from assistant_rh_api.core.models.inference import Reranking
 from assistant_rh_api.core.models.rag_configuration import SectionAggregationConfig
 from assistant_rh_api.core.models.retrieval import RetrievedChunk, freeze_metadata
-from assistant_rh_api.core.pipeline.steps.context_formatting import serialize_section_chunks
+from assistant_rh_api.core.pipeline.steps.context_formatting import (
+    section_context_label,
+    serialize_section_chunks,
+    standalone_legal_label,
+)
 from assistant_rh_api.core.ports.inference import RerankerPort
 from assistant_rh_api.core.ports.retrieval import ContentStorePort
 
@@ -99,7 +103,8 @@ class SectionAggregator:
             doc_short_id = (
                 meta.get("doc_short_id") or first_meta.get("doc_short_id") or first_meta.get("short_id") or first_meta.get("source_document_id") or ""
             )
-            doc_title = meta.get("doc_title") or first_meta.get("doc_title") or first_meta.get("source_name", "")
+            legal_label = standalone_legal_label(first_meta) if is_standalone else ""
+            doc_title = meta.get("doc_title") or first_meta.get("doc_title") or first_meta.get("source_name") or legal_label
             doc_url = meta.get("doc_url") or first_meta.get("doc_url") or first_meta.get("url")
 
             sec_metadata = {
@@ -126,14 +131,14 @@ class SectionAggregator:
             sections.append(
                 AggregatedSection(
                     section_id=None if is_standalone else key,
-                    heading=cast(str, meta.get("heading") or first_meta.get("doc_title") or first_meta.get("source_name", "")),
+                    heading=cast(str, meta.get("heading") or first_meta.get("doc_title") or first_meta.get("source_name") or legal_label),
                     markdown=meta.get("section_markdown", first.text),
                     chunks=tuple(group),
                     score=agg_score,
                     document_id=str(doc_id) if doc_id and not is_standalone else None,
                     publisher=meta.get("doc_publisher") or first.table_source,
                     references_juridiques=meta.get("references_juridiques"),
-                    heading_path=meta.get("heading_path"),
+                    heading_path=meta.get("heading_path") or first_meta.get("section_path"),
                     metadata=sec_metadata,
                 )
             )
@@ -193,13 +198,33 @@ class SectionAggregator:
             }
         return metadata
 
+    def _select_rerank_candidates(self, sections: List[AggregatedSection], input_k: int) -> List[AggregatedSection]:
+        if len(sections) <= input_k or not self.config.per_publisher_rerank_quota:
+            return sections[:input_k]
+        by_publisher: dict[str, list[int]] = {}
+        for idx, section in enumerate(sections):
+            by_publisher.setdefault(section.publisher or "", []).append(idx)
+        if len(by_publisher) > input_k:
+            return sections[:input_k]
+        # Guarantee one representative per publisher, then use the remaining
+        # slots for the strongest sections across the whole retrieval pool.
+        chosen_indices = {indices[0] for indices in by_publisher.values()}
+        for idx in range(len(sections)):
+            if len(chosen_indices) >= input_k:
+                break
+            chosen_indices.add(idx)
+        # Preserve global pre-rerank score ordering for deterministic tie breaking.
+        return [sections[idx] for idx in sorted(chosen_indices)]
+
     async def _rerank(self, query: str, sections: List[AggregatedSection]) -> tuple[List[AggregatedSection], str, str, Reranking]:
         input_k = max(self.config.rerank_input_k, self.config.section_rerank_top_k)
-        candidates = sections[:input_k]
-        texts = tuple(f"# {s.heading}\n\n{s.markdown[:1500]}" for s in candidates)
+        candidates = self._select_rerank_candidates(sections, input_k)
+        texts = tuple(
+            f"# {section_context_label(str(s.metadata.get('doc_title') or ''), s.heading, s.heading_path)}\n\n{s.markdown[:1500]}" for s in candidates
+        )
         try:
             outcome = await self.reranker.rerank(query, texts, top_k=self.config.section_rerank_top_k)
         except InferenceFailure as exc:
-            return sections[: self.config.section_rerank_top_k], "failed", exc.code, Reranking((), exc.attempts)
+            return candidates[: self.config.section_rerank_top_k], "failed", exc.code, Reranking((), exc.attempts)
         # The port provides ranking order, including input-index tie breaking.
         return [replace(candidates[row.index], score=row.score) for row in outcome.documents], "completed", "", outcome

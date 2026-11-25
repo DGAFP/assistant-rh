@@ -40,17 +40,31 @@ from assistant_rh_api.core.ports.inference import LLMPort
 logger = logging.getLogger(__name__)
 
 
-def format_history(history: Sequence[Mapping[str, str]] | None) -> str:
+def format_history(history: Sequence[Mapping[str, str]] | None, *, max_message_chars: int = 800) -> str:
     """Format before loading the prompt, preserving historical error priority."""
     if history and len(history) >= 2:
         parts = []
         for message in history[-8:]:
             role = "Utilisateur" if message["role"] == "user" else "Assistant"
             content = message["content"]
-            content = content[:300] + "..." if len(content) > 300 else content
+            content = content[:max_message_chars] + "..." if len(content) > max_message_chars else content
             parts.append(f"{role}: {content}")
         return "\n".join(parts)
     return "(Pas d'historique de conversation)"
+
+
+def expand_unexpanded_acronyms(text: str, acronyms: Mapping[str, str]) -> str:
+    """Expand acronyms in reformulated follow-up queries unless already expanded."""
+    if not text or not acronyms:
+        return text
+    expanded = text
+    for short, full in acronyms.items():
+        if full.lower() in expanded.lower():
+            continue
+        pattern = r"\b" + re.escape(short) + r"\b(?!\s*\()"
+        if re.search(pattern, expanded):
+            expanded = re.sub(pattern, f"{short} ({full})", expanded)
+    return expanded
 
 
 def format_acronyms(detected: Mapping[str, str]) -> str:
@@ -183,7 +197,7 @@ class QueryProcessor:
         classification_status: Literal["disabled", "completed", "degraded"] = "disabled"
         classification_error: Literal["provider_failure", "invalid_response"] | None = None
         if self._config.enable_intent_gating:
-            history_text = format_history(conversation_history)
+            history_text = format_history(conversation_history, max_message_chars=self._config.max_history_message_chars)
             acronyms_section = format_acronyms(detected)
             try:
                 prompt_snapshot = await self._load_prompt(errors)
@@ -217,23 +231,43 @@ class QueryProcessor:
             needs_legal = should_force_legal_search(query=query, processed_query=processed, intent_data=intent_data)
         else:
             needs_legal = bool(llm_needs_legal)
-        expanded_acronyms = tuple(short for short, full in detected.items() if short in processed and full in processed)
+        raw_enriched = intent_data.get("enriched_query", "")
+        should_expand_enriched = bool(raw_enriched) and self._config.enable_acronym_expansion
+        enriched_query = expand_unexpanded_acronyms(raw_enriched, acronyms) if should_expand_enriched else raw_enriched
+        effective_retrieval = enriched_query or processed
+        enriched_hits = {k: v for k, v in acronyms.items() if raw_enriched and re.search(r"\b" + re.escape(k) + r"\b", raw_enriched)}
+        candidate_acronyms = {**detected, **enriched_hits}
+        expanded_acronyms = tuple(
+            short
+            for short, full in candidate_acronyms.items()
+            if (short in processed and full in processed) or (short in effective_retrieval and full in effective_retrieval)
+        )
+        intent = intent_data["intent"]
+        confidence = intent_data.get("confidence", 1.0)
+        low_confidence_rejection = (
+            self._config.enable_intent_gating
+            and intent_data.get("classify_ok", False)
+            and intent in (Intent.OUT_OF_SCOPE, Intent.CLARIFICATION, Intent.DOCUMENT_REQUEST)
+            and confidence < self._config.intent_confidence_threshold
+        )
+        is_in_scope = intent in (Intent.RAG_QUERY, Intent.FOLLOW_UP) or low_confidence_rejection
+        direct_response = None if low_confidence_rejection else intent_data.get("direct_response")
         result = QueryProcessResult(
             original_query=query,
             processed_query=processed,
-            enriched_query=intent_data.get("enriched_query", ""),
+            enriched_query=enriched_query,
             expanded_acronyms=expanded_acronyms,
             detected_acronyms=tuple(Acronym(short, full) for short, full in detected.items()),
             was_expanded=bool(expanded_acronyms),
-            is_in_scope=intent_data["intent"] in (Intent.RAG_QUERY, Intent.FOLLOW_UP),
-            intent=intent_data["intent"],
-            intent_confidence=intent_data.get("confidence", 1.0),
+            is_in_scope=is_in_scope,
+            intent=intent,
+            intent_confidence=confidence,
             intent_reason=intent_data.get("reasoning"),
             needs_legal_search=needs_legal,
             needs_legal_search_llm=llm_needs_legal,
             theme=intent_data.get("theme"),
-            was_enriched=bool(intent_data.get("enriched_query")),
-            direct_response=intent_data.get("direct_response"),
+            was_enriched=bool(enriched_query),
+            direct_response=direct_response,
             intent_raw_response=intent_data.get("raw"),
         )
         return QueryProcessing(

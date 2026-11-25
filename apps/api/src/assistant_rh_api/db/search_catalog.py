@@ -25,8 +25,7 @@ def search_catalog(environ: Mapping[str, str] | None = None) -> tuple[SearchTabl
         ("matte", "MATTE", True, GUIDE_FIELDS),
         ("mso", "MSO", True, GUIDE_FIELDS),
         ("mi", "MI", True, GUIDE_FIELDS),
-        # The historical metadata allowlist has no MASA entry.
-        ("masa", "MASA", True, ()),
+        ("masa", "MASA", True, GUIDE_FIELDS),
         ("service_public", "Service-Public", True, GUIDE_FIELDS),
         ("dgafp", "DGAFP", False, LEGAL_FIELDS),
         ("rgrh", "RGRH", False, GUIDE_FIELDS),

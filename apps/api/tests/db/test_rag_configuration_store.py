@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from assistant_rh_api.core.errors import RAGConfigurationError
 from assistant_rh_api.core.rag_configuration import RAGConfigurationService
@@ -7,6 +9,22 @@ from assistant_rh_api.db.settings_stores import ConfigStore
 from assistant_rh_api.handlers.app import create_app
 
 pytestmark = pytest.mark.anyio
+
+
+@pytest.mark.parametrize(("previous", "expected"), [("{}", 40), ('{"v3_rerank_input_k":20}', 40), ('{"v3_rerank_input_k":30}', 30)])
+async def test_rerank_default_migration_preserves_explicit_nondefault_values(repository_db, previous, expected):
+    path = Path(__file__).resolve().parents[4] / "supabase/migrations/20261124173000_raise_rag_rerank_input_default.sql"
+    migration = path.read_text()
+    async with repository_db.transaction() as connection:
+        async with connection.transaction(force_rollback=True):
+            await connection.execute(
+                """UPDATE public.rag_config SET config = %s::jsonb || '{"v3_enable_selector":false}'::jsonb WHERE id = 1""",
+                (previous,),
+            )
+            await connection.execute(migration)
+            await connection.execute(migration)
+            row = await (await connection.execute("SELECT config FROM public.rag_config WHERE id = 1")).fetchone()
+            assert row[0] == {"v3_rerank_input_k": expected, "v3_enable_selector": False}
 
 
 async def test_admin_json_update_affects_next_snapshot_only(repository_db):

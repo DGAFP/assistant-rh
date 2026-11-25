@@ -16,6 +16,7 @@ from assistant_rh_api.db.search_catalog import SearchTable, search_catalog
 TSQUERY = sql.SQL("""CASE WHEN plainto_tsquery('french', %s)::text = ''
     THEN plainto_tsquery('french', %s)
     ELSE to_tsquery('french', replace(plainto_tsquery('french', %s)::text, ' & ', ' | ')) END""")
+HEADING_MAX_CHUNKS_PER_SECTION = 2
 
 
 def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hybrid: bool = False) -> tuple[sql.Composed, tuple]:
@@ -74,8 +75,35 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
         )
         params = (request.query, request.query, request.query, request.limit)
     else:
-        resolutions = sql.SQL("")
-        sections = sql.Identifier("public", "rag_sections")
+        # The shared catalogue uses repeatable labels across many publications.
+        # Count each matched lexeme once per section to downweight those labels.
+        rare_heading_scores = spec.source.key == "service_public" or request.use_heading_term_rarity
+        parsed_terms = sql.SQL(", tsvector_to_array(to_tsvector('french', %s)) AS lexemes") if rare_heading_scores else sql.SQL("")
+        term_columns = sql.SQL("heading.tokens, parsed.lexemes,") if rare_heading_scores else sql.SQL("")
+        score = sql.SQL("scores.score") if rare_heading_scores else sql.SQL("s.lexical_score")
+        score_join = sql.SQL("JOIN section_scores scores ON scores.section_id = c.section_id") if rare_heading_scores else sql.SQL("")
+        rarity_ctes = (
+            sql.SQL("""
+                 matching_terms AS (
+                     SELECT s.section_id, term.lexeme, count(*) OVER (PARTITION BY term.lexeme) AS section_frequency
+                     FROM matched_sections s CROSS JOIN LATERAL unnest(tsvector_to_array(s.tokens)) AS term(lexeme)
+                     WHERE term.lexeme = ANY(s.lexemes)
+                 ),
+                 section_scores AS (
+                     SELECT section_id, sum(1.0 / sqrt(section_frequency) ORDER BY lexeme) AS score
+                     FROM matching_terms GROUP BY section_id
+                 ),
+        """)
+            if rare_heading_scores
+            else sql.SQL("")
+        )
+        resolutions = sql.SQL("""
+            relevant_sections AS MATERIALIZED (
+                SELECT s.section_id, s.doc_id, s.heading, s.heading_path
+                FROM public.rag_sections s
+                JOIN (SELECT DISTINCT {section} AS section_id FROM {table} t) ids USING (section_id)
+            ),
+        """).format(section=section_expression(existing), table=sql.Identifier("public", table))
         if {"short_id", "section_path"} <= existing:
             # Resolve a legacy section once per document/path, rather than once
             # per chunk and again for joins/order. Keep the historical resolver,
@@ -106,7 +134,6 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
             )
             # Avoid evaluating French text search over sections absent from this
             # source. Materialize IDs/sections, not chunk text or chunk metadata.
-            sections = sql.Identifier("relevant_sections")
             base = sql.SQL("""
                 SELECT t.{id} AS chunk_id, t.chunk_text, COALESCE({direct}, r.section_id) AS section_id, {meta} AS metadata
                 {relations}
@@ -117,21 +144,51 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
                 relations=relations,
             )
         statement = sql.SQL("""
-            WITH parsed AS (SELECT {query} AS q), {resolutions} candidates AS ({base})
-            SELECT c.chunk_id::text, c.chunk_text, c.section_id,
-                   c.metadata || jsonb_build_object('heading', s.heading, 'heading_path', s.heading_path,
-                       'doc_title', d.title, 'doc_url', d.source_url, 'doc_short_id', d.short_id,
-                       'source_name', d.title, 'source_document_id', d.short_id),
-                   ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) AS score,
-                   ROW_NUMBER() OVER (ORDER BY
-                       ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) DESC,
-                       c.chunk_id, c.section_id) AS rank
-            FROM candidates c JOIN {sections} s ON s.section_id = c.section_id
-            LEFT JOIN public.rag_documents d ON d.doc_id = s.doc_id CROSS JOIN parsed
-            WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ parsed.q
-            ORDER BY score DESC, c.chunk_id, c.section_id LIMIT %s
-        """).format(query=TSQUERY, resolutions=resolutions, base=base, sections=sections)
-        params = (request.query, request.query, request.query, request.limit)
+            WITH parsed AS (SELECT {query} AS q {parsed_terms}),
+                 {resolutions}
+                 matched_sections AS MATERIALIZED (
+                     SELECT s.section_id, s.heading, s.heading_path, d.title, d.source_url, d.short_id,
+                            {term_columns} ts_rank_cd(heading.tokens, parsed.q) AS lexical_score
+                     FROM relevant_sections s LEFT JOIN public.rag_documents d ON d.doc_id = s.doc_id CROSS JOIN parsed
+                     CROSS JOIN LATERAL (
+                         SELECT to_tsvector('french', concat_ws(' ', s.heading, CASE
+                             WHEN s.heading_path = d.title THEN NULL
+                             WHEN starts_with(s.heading_path, d.title || ' > ') THEN substr(s.heading_path, length(d.title) + 4)
+                             ELSE s.heading_path END
+                         )) AS tokens
+                     ) heading
+                     WHERE heading.tokens @@ parsed.q
+                 ),
+                 {rarity_ctes}
+                 candidates AS ({base}),
+                 per_section AS (
+                     SELECT c.chunk_id::text AS chunk_id, c.chunk_text, c.section_id,
+                            c.metadata || jsonb_build_object('heading', s.heading, 'heading_path', s.heading_path,
+                                'doc_title', s.title, 'doc_url', s.source_url, 'doc_short_id', s.short_id,
+                                'source_name', COALESCE(c.metadata->>'source_name', s.title),
+                                'source_document_id', COALESCE(c.metadata->>'source_document_id', s.short_id)) AS metadata,
+                            {score} AS score, s.lexical_score,
+                            ROW_NUMBER() OVER (PARTITION BY c.section_id ORDER BY c.chunk_id) AS section_chunk_rn
+                     FROM candidates c JOIN matched_sections s ON s.section_id = c.section_id
+                     {score_join}
+                 )
+            SELECT chunk_id, chunk_text, section_id, metadata, score,
+                   ROW_NUMBER() OVER (ORDER BY score DESC, lexical_score DESC, chunk_id, section_id) AS rank
+            FROM per_section
+            WHERE section_chunk_rn <= {max_per_section}
+            ORDER BY score DESC, lexical_score DESC, chunk_id, section_id LIMIT %s
+        """).format(
+            query=TSQUERY,
+            parsed_terms=parsed_terms,
+            term_columns=term_columns,
+            rarity_ctes=rarity_ctes,
+            score=score,
+            score_join=score_join,
+            resolutions=resolutions,
+            base=base,
+            max_per_section=sql.Literal(HEADING_MAX_CHUNKS_PER_SECTION),
+        )
+        params = (request.query,) * (4 if rare_heading_scores else 3) + (request.limit,)
     return statement, params
 
 

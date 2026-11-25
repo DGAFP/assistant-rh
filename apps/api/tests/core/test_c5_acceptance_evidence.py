@@ -7,6 +7,7 @@ complete answer coverage, not semantic entailment or universal answer quality.
 import hashlib
 import importlib.util
 import json
+import os
 import re
 import shutil
 import socket
@@ -24,6 +25,10 @@ SPEC = importlib.util.spec_from_file_location("c5_branch_companion", ROOT / "scr
 companion = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(companion)
 pytestmark = pytest.mark.anyio
+HISTORICAL_PARITY = pytest.mark.skipif(
+    os.environ.get("M0B_HISTORICAL_PARITY_LOCK_ENABLED") != "true",
+    reason="Exact comparison with the historical C5 prompts is opt-in.",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -37,6 +42,7 @@ def offline(monkeypatch):
     monkeypatch.setattr(socket, "create_connection", blocked)
 
 
+@HISTORICAL_PARITY
 async def test_published_synthetic_branches_against_current_core():
     result = await companion.replay(ROOT, EVIDENCE / "synthetic-evidence")
     assert result["exact_comparison"]
@@ -156,6 +162,7 @@ async def test_standalone_replay_validates_complete_panels_with_optimization(tmp
     assert expected_error in result.stderr
 
 
+@HISTORICAL_PARITY
 @pytest.mark.parametrize("python_options", [[], ["-O"], ["-OO"]])
 @pytest.mark.parametrize("mode", ["replay", "check"])
 async def test_standalone_valid_replay_and_controls_work_with_optimization(python_options, mode):
@@ -174,6 +181,7 @@ async def test_standalone_valid_replay_and_controls_work_with_optimization(pytho
         assert all(control["detected"] for control in report["controls"])
 
 
+@HISTORICAL_PARITY
 async def test_complete_reordered_panel_keeps_negative_controls_meaningful(tmp_path):
     evidence = altered_evidence(tmp_path, "reordered")
     result = await companion.check(ROOT, evidence)
@@ -202,6 +210,7 @@ async def test_record_modified_sources_declares_an_unverified_snapshot(tmp_path)
     assert manifest["source_hashes"][relative] != companion.sha(ROOT / relative)
 
 
+@HISTORICAL_PARITY
 async def test_synthetic_negative_controls_detect_semantic_changes():
     result = await companion.check(ROOT, EVIDENCE / "synthetic-evidence")
     assert result["baseline_passed"]

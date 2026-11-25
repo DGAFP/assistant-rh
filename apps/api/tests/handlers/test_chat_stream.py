@@ -475,7 +475,7 @@ async def test_stream_history_and_concurrent_ministries_remain_request_owned(set
         assert run.conversation_id == "same" and run.group_slug == ("beta" if run.selected_ministry == "matte" else "other")
         prompt = run.events[-1].output_ref["diagnostics"]["request"]["messages"]
         assert run.selected_ministry.upper() in prompt[0]["content"]
-        assert len(prompt) == 2  # Generation matches C6; history is used by the query processor.
+        assert len(prompt) == 10  # System + last 8 sanitized history turns + user prompt.
         assert "CLIENT_SECRET" not in str(prompt) and "OLD" not in str(prompt)
     assert not app.state.stream_workers.active
 
@@ -517,7 +517,7 @@ async def test_transport_choice_keeps_generation_inputs_answer_and_sources_ident
         streamed = await client.post("/v1/chat/completions", json=payload)
     assert runtime.llm.calls == old_calls
     assert "PREVIOUS_QUESTION" in old_calls[0].messages[0].content
-    assert "PREVIOUS_QUESTION" not in str(old_calls[-1])
+    assert [m.content for m in old_calls[-1].messages[1:-1]] == ["PREVIOUS_QUESTION", "PREVIOUS_ANSWER"]
     chunks = [json.loads(line[6:]) for line in streamed.text.splitlines() if line.startswith("data: {")]
     assert "".join(c["choices"][0]["delta"].get("content", "") for c in chunks) == plain["choices"][0]["message"]["content"]
     assert chunks[-1]["x_assistant_rh"]["sources"] == plain["x_assistant_rh"]["sources"]

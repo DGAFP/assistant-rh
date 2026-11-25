@@ -278,10 +278,70 @@ async def test_hybrid_uses_finite_missing_rank_and_id_ties(alpha):
         assert [chunk.chunk_id for chunk in result] == ["a", "b"]
 
 
-async def test_r2_keeps_best_summary_pair_before_cutoff_without_deduplicating_other_articles():
-    chunks = tuple(RetrievedChunk(cid, "identical", 1, "DGAFP", {"cid": "law"}, None, "albert") for cid in ("law_r2s", "law_0", "law_1", "law_2"))
-    assert [c.chunk_id for c in merge_r2_pairs(chunks, 3)] == ["law_r2s", "law_1", "law_2"]
+async def test_r2_keeps_double_hit_pair_within_distinct_unit_cutoff():
+    chunks = tuple(
+        RetrievedChunk(cid, "identical", 1, "DGAFP", {"cid": "law"}, None, "albert") for cid in ("law_r2s", "law_0", "law_1", "law_2", "law_3")
+    )
+    # 3 distinct article units ("law" pair, "law_1", "law_2") are admitted; both R2 mates stay so SectionAggregator sees chunk_count=2.
+    assert [c.chunk_id for c in merge_r2_pairs(chunks, 3)] == ["law_r2s", "law_0", "law_1", "law_2"]
     assert [c.chunk_id for c in merge_r2_pairs(tuple(replace(c, metadata={}) for c in chunks), 3)] == ["law_r2s", "law_0", "law_1"]
+
+
+def test_heading_match_score_requires_a_section_match_and_resists_acronym_dilution():
+    title = "Télétravail dans la fonction publique"
+    assert heading_match_score("Modalités", f"{title} > Cas général > Modalités", "télétravail", doc_title=title) == 0.0
+    assert heading_match_score("Télétravail", "Conditions > Télétravail", "télétravail", doc_title=title) == 1.0
+    # Parenthetical acronym expansions must not dilute query token coverage on short headings.
+    expanded = (
+        "RIFSEEP (Régime Indemnitaire tenant compte des Fonctions, des Sujétions, de l'Expertise et de l'Engagement Professionnel) "
+        "agents contractuels"
+    )
+    assert heading_match_score("RIFSEEP des agents contractuels", "Rémunération > RIFSEEP", expanded, raw_query="RIFSEEP agents contractuels") == 1.0
+
+
+async def test_service_public_fusion_uses_adapter_heading_rank_after_python_relevance_gate():
+    class HeadingSearch(Search):
+        async def search(self, request):
+            if request.mode == "heading":
+                return (
+                    RawChunk(request.source, "rare", "Modalités des épreuves", "s1", 0.8, 1, {"heading": "Concours ou examen"}),
+                    RawChunk(request.source, "generic", "Guide général", "s2", 0.1, 2, {"heading": "Agent contractuel"}),
+                    RawChunk(request.source, "unrelated", "Congés", "s3", 1.0, 3, {"heading": "Congés annuels"}),
+                )
+            return ()
+
+    retriever = Retriever(HeadingSearch(), {"albert": Embeddings()}, SOURCES)
+    config = RetrievalConfig(tables=("service_public",))
+    result = await retriever.retrieve("Frais de concours pour un agent contractuel", config)
+
+    assert [chunk.chunk_id for chunk in result.chunks] == ["rare", "generic"]
+
+
+@pytest.mark.parametrize(
+    ("query", "raw_question", "expected_query", "uses_rarity"),
+    [
+        (
+            "Quelles sont les règles au MATTE (Ministère de la Transition écologique) ?",
+            "Quelles sont les règles au MATTE ?",
+            "Quelles sont les règles au MATTE ?",
+            True,
+        ),
+        (
+            "Quels congés sont possibles au MATTE (Ministère de la Transition écologique) ?",
+            "Et les congés ?",
+            "Quels congés sont possibles au MATTE (Ministère de la Transition écologique) ?",
+            False,
+        ),
+    ],
+)
+async def test_ministry_heading_search_only_removes_expansions_without_a_reformulation(query, raw_question, expected_query, uses_rarity):
+    port = Search()
+    retriever = Retriever(port, {"albert": Embeddings()}, SOURCES)
+    await retriever.retrieve(query, RetrievalConfig(tables=("matte",)), raw_query=raw_question)
+    heading = next(call for call in port.calls if call.mode == "heading")
+
+    assert (heading.query, heading.use_heading_term_rarity) == (expected_query, uses_rarity)
+    assert next(call for call in port.calls if call.mode == "vector").query == query
 
 
 @pytest.mark.parametrize(
@@ -322,6 +382,26 @@ async def test_cross_source_fusion_matches_legacy_with_heading_duplicates_and_em
     assert [(c.chunk_id, c.score, c.table_source, dict(c.metadata)) for c in actual] == [
         (c.chunk_id, c.score, c.table_source, c.metadata) for c in expected
     ]
+    masa_fused = merge_sources(
+        {
+            "heading:rag_chunks_masa": (
+                chunk(
+                    "m1",
+                    1.0,
+                    "MASA",
+                    source_name="Titre Document",
+                    heading_search=True,
+                    heading_match_score=1.0,
+                    retrieval_path="heading",
+                ),
+            ),
+            "rag_chunks_masa": (chunk("m1", 0.8, "MASA", source_name="Guide MASA", thematique="Congés", role="Gestionnaire"),),
+        }
+    )
+    assert masa_fused[0].metadata["source_name"] == "Guide MASA"
+    assert masa_fused[0].metadata["thematique"] == "Congés"
+    assert masa_fused[0].metadata["role"] == "Gestionnaire"
+    assert masa_fused[0].metadata["retrieval_path"] == "chunk+heading"
 
 
 @pytest.mark.parametrize("mode", list(SearchMode))

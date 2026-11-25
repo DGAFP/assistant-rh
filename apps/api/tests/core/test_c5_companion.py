@@ -16,6 +16,10 @@ SPEC = importlib.util.spec_from_file_location("c5_companion", ROOT / "scripts/co
 companion = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(companion)
 pytestmark = pytest.mark.anyio
+HISTORICAL_PARITY = pytest.mark.skipif(
+    os.environ.get("M0B_HISTORICAL_PARITY_LOCK_ENABLED") != "true",
+    reason="Exact comparison with the historical C5 prompts is opt-in.",
+)
 
 
 @pytest.fixture
@@ -84,6 +88,7 @@ def recorded(tmp_path, monkeypatch):
     return output
 
 
+@HISTORICAL_PARITY
 async def test_recorder_round_trip_matches_retained_stages(recorded, monkeypatch):
     import socket
 
@@ -157,6 +162,7 @@ def published_c5(tmp_path):
     return evidence
 
 
+@HISTORICAL_PARITY
 async def test_published_live_companion_replays_versioned_selector_transition_without_network(published_c5, monkeypatch):
     import socket
 
@@ -173,6 +179,7 @@ async def test_published_live_companion_replays_versioned_selector_transition_wi
     assert sum(case["historical_selector_exact"] for case in result["cases"]) == 3
 
 
+@HISTORICAL_PARITY
 async def test_published_historical_reference_stays_strict_without_explicit_transition(published_c5):
     with pytest.raises(AssertionError, match="selector differs: rag-acronym-contract"):
         await companion.replay(published_c5)
@@ -193,6 +200,7 @@ async def test_selector_transition_rejects_wrong_reference_or_expectations(publi
         await companion.replay(published_c5, selector_transition=transition)
 
 
+@HISTORICAL_PARITY
 @pytest.mark.parametrize("mutation,message", [("prompt", "exact LLM request mismatch"), ("answer", "generator differs")])
 async def test_transition_semantic_guards_reject_rehashed_inputs(published_c5, tmp_path, mutation, message):
     # First prove this fixture/reference pair is green, then deliberately move

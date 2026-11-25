@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any, Dict, List, Optional
 
@@ -9,10 +10,45 @@ from assistant_rh_api.core.models.context import AggregatedSection, ContextItem
 from assistant_rh_api.core.models.retrieval import RetrievedChunk
 
 
+def standalone_legal_label(metadata: Mapping[str, Any]) -> str:
+    """Build a canonical article label for standalone legal chunks (DGAFP / Légifrance)."""
+    raw_title = str(metadata.get("full_title") or metadata.get("title") or "").strip()
+    raw_number = re.sub(r"^Article\b\s*", "", str(metadata.get("number") or "").strip(), flags=re.IGNORECASE).strip()
+    if raw_number:
+        legal_title = re.sub(
+            r"^(?:Article\s+)?" + re.escape(raw_number) + r"(?!\w)(?:\s*[—–-]\s*|\s*$)",
+            "",
+            raw_title,
+            flags=re.IGNORECASE,
+        ).strip()
+        return f"Article {raw_number} - {legal_title}" if legal_title else f"Article {raw_number}"
+    return raw_title
+
+
+def section_context_label(doc_title: str | None, heading: str | None, heading_path: str | None = None) -> str:
+    """Combine document title and section breadcrumb without redundant prefixes."""
+    title = (doc_title or "").strip()
+    leaf = (heading or "").strip()
+    path = (heading_path or "").strip()
+    if path:
+        section_label = f"{path} > {leaf}" if leaf and leaf.lower() not in path.lower() else path
+    else:
+        section_label = leaf
+    if title and section_label:
+        if section_label.lower() == title.lower():
+            return title
+        if section_label.lower().startswith(title.lower() + " >"):
+            return section_label
+        return f"{title} — {section_label}"
+    return title or section_label
+
+
 def format_for_prompt(items: Sequence[ContextItem]) -> str:
     parts = []
     for i, item in enumerate(items, 1):
-        header = f"[Source {i}] {item.document_title or item.heading}"
+        heading_path = str(item.metadata.get("heading_path") or "") if item.metadata else ""
+        label = section_context_label(item.document_title, item.heading, heading_path or None)
+        header = f"[Source {i}] {label}"
         if item.publisher:
             header += f" ({item.publisher})"
         parts.append(f"### {header}\n\n```markdown\n{item.content}\n```\n\n---\n")
