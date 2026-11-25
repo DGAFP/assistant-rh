@@ -36,6 +36,8 @@ from assistant_rh_rag_pipeline.query_processor import _fold as _fold_text
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
+from src.goldset.config_overrides import apply_config_overrides, parse_override
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
 # Juge LLM: OpenRouter/Grok 4.5 (décision 2026-07-21, revue #329). L'exigence
@@ -691,6 +693,9 @@ def build_eval_scope(args: argparse.Namespace, questions: list[GoldsetQuestion])
         # Partie de la clé de comparabilité: un run scopé « all ministries »
         # n'est pas comparable à un run historique sans scope.
         "ministry_scope": getattr(args, "ministry_scope", "none"),
+        # Un run du pipeline apps/api n'est comparable qu'à un autre run api.
+        # Clé absente en legacy : les baselines historiques restent comparables.
+        **({"pipeline": "api"} if getattr(args, "pipeline", "legacy") == "api" else {}),
     }
 
 
@@ -2361,6 +2366,36 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-kept-sections", type=int, default=None, help="Override selector.min_kept_sections (ablation; 0=désactivé).")
     parser.add_argument("--doc-entire-threshold-wide", type=int, default=None, help="Override context.doc_entire_threshold_wide (ablation).")
     parser.add_argument(
+        "--reranker-union-top-k",
+        type=int,
+        default=None,
+        help=(
+            "Override selector.reranker_union_top_k (ablation ; 0 = pas d'union reranker). N'existe que dans le "
+            "pipeline apps/api qui porte ce champ : refusé explicitement sinon."
+        ),
+    )
+    parser.add_argument(
+        "--config-override",
+        action="append",
+        default=[],
+        metavar="SECTION.CHAMP=VALEUR",
+        help=(
+            "Surcharge générique d'une clé de la config RAG imbriquée (ex. aggregation.rerank_input_k=40, "
+            "selector.min_kept_sections=4), en mémoire, sans écrire dans rag_config. Répétable. Le type est "
+            "déduit de la valeur courante ; un champ absent de la config de la branche est refusé."
+        ),
+    )
+    parser.add_argument(
+        "--pipeline",
+        choices=["legacy", "api"],
+        default="legacy",
+        help=(
+            "Pipeline évalué. 'legacy' (défaut) = packages/rag-pipeline, référence figée. 'api' = pipeline "
+            "hexagonal d'apps/api servi en prod, construit comme l'API (RAGConfigurationService + adaptateurs DB). "
+            "'api' exige --ministry-scope per-question et `uv sync --all-packages --group dev`."
+        ),
+    )
+    parser.add_argument(
         "--ministry-scope",
         choices=["per-question", "all", "none"],
         default="per-question",
@@ -2454,18 +2489,8 @@ def derive_completion_status(items: list[EvalItem], *, judge_enabled: bool, raga
     return status, error
 
 
-def run_eval(args: argparse.Namespace) -> EvalSummary:
-    if args.any_goldset and not args.tag:
-        raise ValueError("At least one --tag is required with --any-goldset.")
-    if not args.skip_judge:
-        args.judge_votes = normalize_judge_votes(args.judge_votes)
-        args.judge_model = resolve_judge_model(args.judge_provider, args.judge_model)
-
-    dsn = resolve_dsn(args.dsn, args.dsn_env)
-    # The pipeline and prompt/config helpers read the canonical runtime DSN.
-    # Bind the explicitly selected eval target for this process so staging
-    # evals do not accidentally fetch prompts/config from a local Supabase DSN.
-    os.environ["SCW_POSTGRES_DSN"] = dsn
+def _configure_legacy(args: argparse.Namespace) -> tuple[RAGConfig, list[str], str]:
+    """Config runtime du pipeline legacy + surcharges CLI -> ``(config, ajustements, prompt générateur)``."""
     runtime_config = get_rag_config()
     pipeline_config = runtime_config_to_rag_config(runtime_config)
     config_adjustments: list[str] = []
@@ -2514,6 +2539,15 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
     if args.doc_entire_threshold_wide is not None:
         pipeline_config.context.doc_entire_threshold_wide = args.doc_entire_threshold_wide
         config_adjustments.append(f"doc_entire_threshold_wide={args.doc_entire_threshold_wide}")
+    # Surcharges génériques (et champs propres à apps/api, refusés ici s'ils
+    # n'existent pas dans la config legacy) : même mécanisme que --pipeline api.
+    generic_overrides: list[tuple[str, Any]] = []
+    if getattr(args, "reranker_union_top_k", None) is not None:
+        generic_overrides.append(("selector.reranker_union_top_k", args.reranker_union_top_k))
+    generic_overrides.extend(parse_override(spec) for spec in getattr(args, "config_override", None) or [])
+    if generic_overrides:
+        pipeline_config, generic_adjustments = apply_config_overrides(pipeline_config, generic_overrides)
+        config_adjustments.extend(generic_adjustments)
     # Le fingerprint doit couvrir le CONTENU du prompt générateur, pas
     # seulement son nom : le corps vit en base et peut être édité en place —
     # sinon --skip-if-started dédupliquerait un run post-édition contre le run
@@ -2524,8 +2558,68 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
         or get_prompt_content("generator.md", render_today=False)
         or ""
     )
+    return pipeline_config, config_adjustments, resolved_prompt
+
+
+def _configure_api(args: argparse.Namespace, api_pipeline: Any) -> tuple[Any, list[str], str]:
+    """Config runtime d'apps/api + surcharges CLI -> ``(config, ajustements, prompt générateur)``.
+
+    Mêmes flags nommés que le legacy (traduits vers les chemins du RAGConfig
+    d'apps/api), puis ``--config-override``. Rien n'est écrit dans rag_config.
+    """
+    from src.goldset.api_pipeline import named_overrides
+
+    if args.system_prompt_name and not api_pipeline.prompt_exists(args.system_prompt_name):
+        # Même garde que le legacy : le repli silencieux sur generator.md ferait
+        # mesurer le prompt générique sous le nom demandé.
+        raise RuntimeError(f"--system-prompt-name {args.system_prompt_name!r} introuvable ou vide sur le DSN cible.")
+    overrides = named_overrides(args)
+    overrides.extend(parse_override(spec) for spec in getattr(args, "config_override", None) or [])
+    pipeline_config, config_adjustments = api_pipeline.configure(overrides)
+    return pipeline_config, config_adjustments, api_pipeline.generator_prompt_content()
+
+
+def run_eval(args: argparse.Namespace) -> EvalSummary:
+    if args.any_goldset and not args.tag:
+        raise ValueError("At least one --tag is required with --any-goldset.")
+    if getattr(args, "pipeline", "legacy") != "api":
+        return _run_eval(args, api_pipeline=None)
+    if getattr(args, "ministry_scope", "per-question") != "per-question":
+        # Le pipeline API route toujours par ministère (comme un agent dans l'app) :
+        # ni scope « all » ni « none ».
+        raise ValueError("--pipeline api exige --ministry-scope per-question.")
+    from src.goldset.api_pipeline import ApiEvalPipeline, drop_ambient_libpq_targets
+
+    dsn = resolve_dsn(args.dsn, args.dsn_env)
+    dropped = drop_ambient_libpq_targets(os.environ)
+    if dropped:
+        print(f"[pipeline api] variables libpq ambiantes ignorées (DSN explicite) : {', '.join(dropped)}", flush=True)
+    with ApiEvalPipeline(dsn=dsn, environ=os.environ) as api_pipeline:
+        return _run_eval(args, api_pipeline=api_pipeline)
+
+
+def _run_eval(args: argparse.Namespace, *, api_pipeline: Any = None) -> EvalSummary:
+    if args.any_goldset and not args.tag:
+        raise ValueError("At least one --tag is required with --any-goldset.")
+    if not args.skip_judge:
+        args.judge_votes = normalize_judge_votes(args.judge_votes)
+        args.judge_model = resolve_judge_model(args.judge_provider, args.judge_model)
+
+    dsn = resolve_dsn(args.dsn, args.dsn_env)
+    # The pipeline and prompt/config helpers read the canonical runtime DSN.
+    # Bind the explicitly selected eval target for this process so staging
+    # evals do not accidentally fetch prompts/config from a local Supabase DSN.
+    os.environ["SCW_POSTGRES_DSN"] = dsn
+    pipeline_kind = "api" if api_pipeline is not None else "legacy"
+    if api_pipeline is not None:
+        pipeline_config, config_adjustments, resolved_prompt = _configure_api(args, api_pipeline)
+        # Un pipeline api et un legacy à config identique ne doivent jamais se dédupliquer.
+        fingerprint_extra: dict[str, Any] = {"pipeline": "api"}
+    else:
+        pipeline_config, config_adjustments, resolved_prompt = _configure_legacy(args)
+        fingerprint_extra = {}
     generator_system_prompt_sha = hashlib.sha256(resolved_prompt.encode("utf-8")).hexdigest()
-    config_hash = config_fingerprint(pipeline_config, extra={"generator_system_prompt_sha": generator_system_prompt_sha})
+    config_hash = config_fingerprint(pipeline_config, extra={"generator_system_prompt_sha": generator_system_prompt_sha, **fingerprint_extra})
     git_sha = _git_sha()
     run_label = args.run_label or f"{datetime.now(tz=UTC).strftime('%Y%m%dT%H%M%SZ')}_{args.goldset_name}"
     output_dir = args.output_dir or (DEFAULT_OUTPUT_ROOT / args.goldset_name / run_label)
@@ -2609,6 +2703,8 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                     metadata={
                         "created_by": "scripts/run_rag_quality_eval.py",
                         "started_at": _now_iso(),
+                        "pipeline": pipeline_kind,
+                        **({"config_revision": api_pipeline.config_revision} if api_pipeline is not None else {}),
                         "config_adjustments": config_adjustments,
                         "generator_system_prompt_sha": generator_system_prompt_sha,
                         "dedupe_scope": args.dedupe_scope,
@@ -2619,7 +2715,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 )
                 conn.commit()
 
-    pipe = create_pipeline(config=pipeline_config, dsn=dsn)
+    pipe = api_pipeline if api_pipeline is not None else create_pipeline(config=pipeline_config, dsn=dsn)
     api_key = os.getenv("SCALEWAY_API_KEY", "").strip()  # RAGAS (Scaleway)
     # Le provider pilote réellement la clé ET la base URL du juge (revue #318):
     # --judge-provider scaleway utilise la clé/endpoint Scaleway, openrouter les
@@ -2719,6 +2815,7 @@ def run_eval(args: argparse.Namespace) -> EvalSummary:
                 "ragas_model": args.ragas_model if not args.skip_ragas else "",
                 "config_adjustments": config_adjustments,
                 "generator_system_prompt_sha": generator_system_prompt_sha,
+                "pipeline": pipeline_kind,
                 "git_sha": git_sha,
                 "dedupe_scope": args.dedupe_scope,
                 "eval_scope": eval_scope,

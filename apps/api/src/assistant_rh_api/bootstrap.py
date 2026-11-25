@@ -1,6 +1,6 @@
 """Assemble chat services from database and provider adapters."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 import httpx
 
@@ -14,6 +14,7 @@ from assistant_rh_api.core.pipeline.steps.context_selector import ContextSelecto
 from assistant_rh_api.core.pipeline.steps.generator import Generator
 from assistant_rh_api.core.pipeline.steps.query_processor import QueryProcessor
 from assistant_rh_api.core.pipeline.steps.retrieval import Retriever
+from assistant_rh_api.core.ports.system import ClockPort
 from assistant_rh_api.core.rag_configuration import RAGConfigurationService
 from assistant_rh_api.db.content_store import ContentStore
 from assistant_rh_api.db.pool import Database
@@ -30,16 +31,19 @@ from assistant_rh_api.gateways.rerank import RerankerGateway
 from assistant_rh_api.gateways.settings import Endpoint
 
 
-def create_chat_service(
+def create_pipeline_factory(
     database: Database,
-    configurations: RAGConfigurationService,
     client: httpx.AsyncClient,
     environ: Mapping[str, str],
     *,
-    models: ModelService | None = None,
-) -> ChatService:
+    clock: ClockPort,
+) -> Callable[[RAGConfig], Pipeline]:
+    """Build the per-request pipeline factory served by the API.
+
+    Public so that offline tooling (goldset evaluation) measures exactly the
+    production composition instead of re-wiring adapters on its own.
+    """
     environment = dict(environ)
-    clock = SystemClock()
     circuit = EmbeddingCircuit(clock)
     catalogue = search_catalog()
     search = SearchStore(database, catalogue)
@@ -90,5 +94,19 @@ def create_chat_service(
             generator=Generator(config=config.generation, prompts=prompts, packaged_prompts=packaged, llm=generator_llm),
         )
 
+    return pipeline
+
+
+def create_chat_service(
+    database: Database,
+    configurations: RAGConfigurationService,
+    client: httpx.AsyncClient,
+    environ: Mapping[str, str],
+    *,
+    models: ModelService | None = None,
+) -> ChatService:
+    environment = dict(environ)
+    clock = SystemClock()
+    pipeline = create_pipeline_factory(database, client, environment, clock=clock)
     runs = ChatRunStore(database, environment=environment.get("APP_ENV") or environment.get("APP_SCALEWAY_ENV") or "")
     return ChatService(configurations=configurations, pipeline_factory=pipeline, runs=runs, clock=clock, ids=RunIds(), models=models)
