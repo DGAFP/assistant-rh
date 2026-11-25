@@ -205,4 +205,23 @@ def decode(operation, value):
         return tuple(Document(**row) for row in value)
     if operation == "content.references":
         return tuple(LegalReference(**row) for row in value)
+    if operation == "retriever.retrieve":
+        from assistant_rh_api.core.models.inference import Attempt, Embedding
+        from assistant_rh_api.core.models.retrieval import RetrievedChunk
+        from assistant_rh_api.core.pipeline.steps.retrieval import RetrievalFailure, RetrievalResult
+
+        def attempts(rows):
+            return tuple(Attempt(**row) for row in rows)
+
+        embedding = value["embedding"]
+        if embedding is not None:
+            embedding = Embedding(tuple(embedding["vector"]), embedding["model"], embedding["provider"], attempts(embedding["attempts"]))
+        return RetrievalResult(
+            chunks=tuple(RetrievedChunk(**row) for row in value["chunks"]),
+            sources=tuple(value["sources"]),
+            failures=tuple(RetrievalFailure(**row) for row in value["failures"]),
+            embedding=embedding,
+            embedding_failed=value["embedding_failed"],
+            embedding_attempts=attempts(value["embedding_attempts"]),
+        )
     raise AssertionError(f"Unknown port result type: {operation}")

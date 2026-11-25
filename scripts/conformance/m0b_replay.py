@@ -37,6 +37,21 @@ class Inference:
                 "messages": plain(request.messages),
             },
         )
+        if "typed_failure" in call:
+            from assistant_rh_api.core.errors import InferenceFailure
+
+            failure = call["typed_failure"]
+            raise InferenceFailure(tuple(Attempt(**attempt) for attempt in failure["attempts"]), partial=failure["partial"])
+        if "typed_completion" in call:
+            value = call["typed_completion"]
+            return Completion(
+                value["text"],
+                value["provider"],
+                value["model"],
+                tuple(Attempt(**attempt) for attempt in value["attempts"]),
+                value["finish_reason"],
+                TokenUsage(**value["usage"]) if value["usage"] is not None else None,
+            )
         usage = call["response"].get("usage")
         usage = TokenUsage(*(usage[key] for key in ("prompt_tokens", "completion_tokens", "total_tokens"))) if usage else None
         return Completion(
@@ -50,9 +65,16 @@ class Inference:
         return Embedding(tuple(value["vector"]), value["model"], value["provider"], ())
 
     async def rerank(self, query, documents, *, top_k=None):
-        from assistant_rh_api.core.models.inference import RankedDocument, Reranking
+        from assistant_rh_api.core.models.inference import Attempt, RankedDocument, Reranking
 
         value = self.tape.take("reranker.rerank", {"query": query, "documents": list(documents), "top_k": top_k})
+        if "typed_reranking" in value:
+            recorded = value["typed_reranking"]
+            return Reranking(
+                tuple(RankedDocument(**document) for document in recorded["documents"]),
+                tuple(Attempt(**attempt) for attempt in recorded["attempts"]),
+                recorded["fallback"],
+            )
         return Reranking(tuple(RankedDocument(*row) for row in value["result"]), (), False)
 
 
@@ -162,6 +184,8 @@ async def run_candidate(case, stores, *, complete=None):
         "SystemClock": lambda: clock,
         "RunIds": lambda: SimpleNamespace(new_id=lambda: next(ids)),
     }
+    if "retriever" in stores:
+        replacements["Retriever"] = lambda **kwargs: stores["retriever"]
     environment = {"ALBERT_API_KEY": "offline-fixture", "SCALEWAY_API_KEY": "offline-fixture"}
     auth = AuthContext(
         Group(
@@ -232,6 +256,8 @@ async def replay_candidate(case, *, complete=None):
 
     tape = Tape(case["stores"])
     stores = {name: ReplayStore(name, tape) for name in ("config", "search", "content", "prompts", "packaged", "acronyms")}
+    if case.get("retrieval_boundary") == "retriever_output":
+        stores["retriever"] = ReplayStore("retriever", tape)
     with deny_network():
         actual = await run_candidate(case, stores, complete=complete)
     tape.assert_consumed()
