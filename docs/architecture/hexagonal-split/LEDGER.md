@@ -1295,3 +1295,10 @@ staging est identique à la référence M1 et ses questions correspondent aux
 entrées de M0a #240. L’exporteur refuse le clone local dont l’empreinte
 diffère. Le rejeu déterministe attend toujours les entrées et sorties
 fournisseurs archivées.
+
+Sur la candidate Scaleway `21aa3e3`, le goldset live de #530 est
+exécuté : **98/98 réponses** concordent avec les runs persistés. Le contrôle
+documentaire individuel passe pour l’auteur et le second compte du même
+groupe. Le jugement de référence et le rappel de retrieval comparable à M1
+restent ouverts. La campagne a été purgée et l’ACL opérateur rétablie.
+[Résultats agrégés](../../evals/evidence/m2_http_goldset_staging_20261125.json)

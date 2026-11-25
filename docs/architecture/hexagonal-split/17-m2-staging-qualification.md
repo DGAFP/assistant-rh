@@ -10,7 +10,7 @@ La branche Conversations `staging` pointe sur `7ac0eb11b54510d5244443a2d09bd0a9a
 | --- | --- | --- |
 | D3 — replay exact | 7/7 scénarios enregistrés de M0b comparés exactement entre core direct et route JSON avec délégation signée, hors réseau. Le scénario de suivi est aussi couvert avec des entrées synthétiques. | Rejeu du panel privé M1 de 98 questions via la route JSON, sur le SHA retenu. |
 | D3 — clients | OpenAI `3.20.0` et `pydantic-ai-slim` `2.54.0` passent le smoke avec le serveur synthétique TCP. L’erreur post-headers est un `ModelAPIError` causé par l’`APIError` `stream_error`. | Vérifier le provider dans le backend Conversations déployé et ses appels privés à l’API. |
-| D3 — goldset live | Panel M1 de 98 questions vérifié et exporté depuis PostgreSQL staging. Collecteur HTTP et rapport de transport validés sur données synthétiques. | Exécuter les 98 questions sur la candidate et comparer les jugements et rappels au seuil M1. |
+| D3 — goldset live | Les 98 questions M1 ont reçu une réponse JSON valide sur l’API staging, avec 98 réponses persistées identiques. La collecte a servi au moins une référence attendue pour 53 questions. | Appliquer le jugement de référence M1 et produire une mesure comparable du rappel de retrieval. |
 | D4 — opérabilité | Suite API locale sur PostgreSQL 17 et pgvector, **1 524 tests réussis**. Les sockets locales couvrent pings, déconnexions, erreurs et arrêt avec finalisation. | Relever les résultats via le proxy Scaleway et éprouver le retour arrière staging. |
 | M2 — feedback et documents | Scénarios synthétiques d’auteur, d’habilitations courantes, de révocation et de documents privés. | Vérifier les rôles runtime #599, corriger puis qualifier le cloisonnement recherche → hydratation → délivrance sur les corpus concernés et rejouer la matrice API sur staging. |
 | E1 — parcours navigateur | Historique, chat et PDF vérifiés dans les [recettes de livraison](https://github.com/DGAFP/assistant-rh/pull/618). | Rejouer le parcours intégré sur les images actives, y compris feedback persistant et modification, puis les scénarios de droits et de session. |
@@ -77,11 +77,28 @@ Le rejeu déterministe M1 requiert aussi les traces et réponses fournisseurs
 figées dans son archive. Les identifiants locaux M1 #258 et #259 correspondent
 à d’autres runs sur le serveur PostgreSQL staging.
 
-Le lancement du goldset live reste en attente d’autorisation explicite pour
-la transmission des questions et des extraits documentaires à Albert DINUM,
-ainsi que pour la création et la purge des traces temporaires. Le runtime
-staging utilise Albert, avec repli Scaleway désactivé. Aucun appel
-d’inférence de cette campagne n’a été exécuté.
+### Goldset HTTP sur l’API staging du 25 novembre
+
+Les **98 requêtes** du panel vérifié ont abouti sur la révision `21aa3e3`
+depuis le backend Conversations, avec une délégation neuve par appel et
+deux requêtes simultanées au maximum. Les réponses et références retournées
+correspondent aux 98 runs persistés. La latence médiane est de **12,63 s**
+et le p95 de **38,55 s**. Parmi les 98 réponses, 53 contiennent au moins
+une référence attendue. Le rappel moyen par question des références servies
+est de **45,14 %**, avec la méthode de correspondance du collecteur HTTP.
+
+Le PDF privé de recette est accessible par son auteur en HTTP 200, sans
+redirection. Le second compte du même groupe reçoit un HTTP 404. Les
+empreintes de la configuration, des modèles et du corpus restent identiques
+avant et après la campagne. Le nettoyage confirme zéro compte ou groupe
+de la campagne, la suppression de **98 runs et 676 traces**, et le
+rétablissement de la liste ACL initiale.
+
+Les projections de contexte et préfixes des prompts correspondent pour les
+96 réponses générées. Les deux autres suivent une branche de réponse
+directe. Les traces de retrieval sont tronquées sur les 96 exécutions RAG.
+Le jugement de référence et la mesure comparable du rappel de retrieval
+restent à réaliser. [Résultats agrégés](../../evals/evidence/m2_http_goldset_staging_20261125.json)
 
 ## Vérification Scaleway et retour arrière
 

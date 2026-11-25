@@ -2386,8 +2386,24 @@ sans délégation. La candidate utilise Albert DINUM pour l’inférence. Le
 repli Scaleway est désactivé dans le pod. Le préflight du compte de purge
 confirme ses droits en lecture seule.
 
-Campagne en attente. Le contrôle d’approbation a bloqué le lancement avant
-la création des comptes de recette et tout appel d’inférence. Le trafic
-prévu inclut l’envoi du panel et des extraits documentaires à Albert DINUM.
-L’entrée ACL temporaire de staging a été retirée et la liste initiale
-vérifiée.
+Le premier lancement a été suspendu avant tout appel d’inférence. La
+collecte a repris après l’autorisation explicite pour Albert DINUM et les
+traces temporaires.
+
+### Résultat de `m1_http_staging_20261125`
+
+Les **98/98 réponses HTTP valides** sont identiques aux runs persistés.
+MATTE : 94/94. MSO : 4/4. Latence médiane **12,63 s**, p95 **38,55 s**.
+53 questions servent au moins une référence attendue. Le rappel moyen des
+références servies atteint **45,14 %**. Le contrôle PDF retourne 200 pour
+l’auteur et 404 pour l’autre compte du même groupe.
+
+La reconstruction de 96 contextes concorde avec les projections et les
+préfixes de prompts enregistrés. Deux questions suivent une réponse
+directe. La troncature des listes de retrieval empêche le calcul du rappel
+comparable à M1. Le jugement de référence reste à réaliser.
+
+La candidate et ses empreintes sont inchangées après la collecte. La purge
+supprime 98 runs et 676 traces. Le groupe, les comptes et les sessions de
+recette ont été nettoyés, et l’ACL initiale est rétablie.
+[Résultats agrégés](evidence/m2_http_goldset_staging_20261125.json)
