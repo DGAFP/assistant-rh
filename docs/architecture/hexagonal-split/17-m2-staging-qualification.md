@@ -8,9 +8,9 @@ La branche Conversations `staging` pointe sur `7ac0eb11b54510d5244443a2d09bd0a9a
 
 | Vérification | Preuve disponible | Preuve attendue |
 | --- | --- | --- |
-| D3 — replay exact | 7/7 scénarios enregistrés de M0b comparés exactement entre core direct et route JSON avec délégation signée, hors réseau. Le scénario de suivi est aussi couvert avec des entrées synthétiques. | Rejeu du panel privé M1 de 98 questions via la route JSON, sur le SHA retenu. |
+| D3 — replay exact | 98/98 cas de la capture staging comparés exactement entre core direct et route JSON depuis la sortie du retriever. Les sept scénarios enregistrés de M0b passent également. | Retrouver l’archive privée de septembre pour rejouer le run M1 #259. |
 | D3 — clients | OpenAI `3.20.0` et `pydantic-ai-slim` `2.54.0` passent le smoke avec le serveur synthétique TCP. L’erreur post-headers est un `ModelAPIError` causé par l’`APIError` `stream_error`. | Vérifier le provider dans le backend Conversations déployé et ses appels privés à l’API. |
-| D3 — goldset live | Les 98 questions M1 ont reçu une réponse JSON valide sur l’API staging, avec 98 réponses persistées identiques. La collecte a servi au moins une référence attendue pour 53 questions. | Appliquer le jugement de référence M1 et produire une mesure comparable du rappel de retrieval. |
+| D3 — goldset live | 98/98 réponses JSON valides et identiques aux runs persistés. Le juge valide 69/98 réponses. Une capture complète du même panel donne un rappel de retrieval de 72,51 %. | Mesurer le jugement et le rappel sur la même campagne pour valider le gate M1. |
 | D4 — opérabilité | Suite API locale sur PostgreSQL 17 et pgvector, **1 524 tests réussis**. Les sockets locales couvrent pings, déconnexions, erreurs et arrêt avec finalisation. | Relever les résultats via le proxy Scaleway et éprouver le retour arrière staging. |
 | M2 — feedback et documents | Scénarios synthétiques d’auteur, d’habilitations courantes, de révocation et de documents privés. | Vérifier les rôles runtime #599, corriger puis qualifier le cloisonnement recherche → hydratation → délivrance sur les corpus concernés et rejouer la matrice API sur staging. |
 | E1 — parcours navigateur | Historique, chat et PDF vérifiés dans les [recettes de livraison](https://github.com/DGAFP/assistant-rh/pull/618). | Rejouer le parcours intégré sur les images actives, y compris feedback persistant et modification, puis les scénarios de droits et de session. |
@@ -97,8 +97,63 @@ rétablissement de la liste ACL initiale.
 Les projections de contexte et préfixes des prompts correspondent pour les
 96 réponses générées. Les deux autres suivent une branche de réponse
 directe. Les traces de retrieval sont tronquées sur les 96 exécutions RAG.
-Le jugement de référence et la mesure comparable du rappel de retrieval
-restent à réaliser. [Résultats agrégés](../../evals/evidence/m2_http_goldset_staging_20261125.json)
+[Résultats agrégés](../../evals/evidence/m2_http_goldset_staging_20261125.json)
+
+### Jugement des réponses HTTP
+
+Le bras `m1_http_staging_judge_20261125` utilise la référence M0a #240,
+le juge Scaleway `mistral-medium-3.5-128b` et trois votes selon
+`gold-passages-v2`. Il valide **69 réponses sur 98 (70,41 %)** et fournit
+294 votes exploitables. Les diagnostics de retrieval sont absents des
+entrées du juge à cause de la troncature des traces HTTP. L’écart avec
+les scores M1 est donc indicatif.
+
+```sh
+PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.conformance.m2_judge prepare \
+  --campaign "$HTTP_PRIVATE_DIR" --env-file "$STAGING_DB_ENV" --output "$JUDGE_DIR"
+
+PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.conformance.m2_judge judge \
+  --env-file "$M1_JUDGE_ENV" --output "$JUDGE_DIR"
+```
+
+### Rappel M1 et rejeu sur une nouvelle capture staging
+
+La capture complémentaire utilise le moteur du pod de staging en lecture
+seule, avec les mêmes 98 questions. Elle conserve les sorties du retriever
+avant la réduction des traces et les appels d’inférence en aval. Elle
+alimente un rejeu de la route JSON avec une délégation synthétique neuve
+par cas. Le runner vérifie l’intégralité des appels enregistrés, les étapes,
+la réponse, les sources, l’usage et l’enveloppe HTTP, hors réseau.
+
+La conformance exacte s’applique à cette nouvelle capture, à partir de la
+sortie du retriever. Le rejeu historique du lot de septembre requiert
+l’archive privée M1 #259. Les réponses de la collecte HTTP initiale
+alimentent le jugement de qualité.
+
+Le rapprochement des 80 cas sauvegardés et des 18 cas repris confirme
+les 98 identifiants, questions et modèles attendus. Le rappel documentaire
+M1 atteint **72,51 %** contre **72,91 %** sur M1 core live et legacy live
+et **72,43 %** sur M0a rejugé. Les écarts respectent la tolérance de
+cinq points. Au moins un document attendu est retrouvé pour **81/98**
+questions. Le rejeu exact passe sur **98/98 cas**. Les deux pods, le
+corpus, les réglages et les modèles concordent avec le point de reprise,
+et la liste ACL initiale est rétablie. [Résultats agrégés](../../evals/evidence/m2_d3_staging_followup_20261125.json)
+
+Exécuter les commandes depuis un environnement uv où l’API et les
+outils d’évaluation sont installés.
+
+```sh
+PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.conformance.m2_frozen_api \
+  "$FROZEN_JSONL" --sha256 "$FROZEN_SHA256" --count 98
+
+PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.conformance.m2_recall \
+  "$FROZEN_JSONL" --archive-sha256 "$FROZEN_SHA256" \
+  --panel "$GOLDSET_JSONL" --panel-sha256 "$GOLDSET_SHA256" --env-file "$STAGING_DB_ENV"
+```
+
+Les captures privées contiennent les questions, contextes et réponses.
+Le dossier de recette versionne les résultats agrégés et les empreintes
+nécessaires pour vérifier les fichiers détenus par les personnes habilitées.
 
 ## Vérification Scaleway et retour arrière
 

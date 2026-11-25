@@ -1287,18 +1287,24 @@ feedback. [Correctif de publication Conversations](https://github.com/DGAFP/conv
 Pour D3 #530, le rejeu complémentaire M0b établit la comparaison exacte
 core ↔ HTTP sur les sept scénarios privés vérifiés par empreinte. Le
 [dossier M2](17-m2-staging-qualification.md#preuve-complémentaire-d3-du-25-novembre)
-consigne la commande et les prérequis restants pour le panel M1 et le goldset
-sur le déploiement Scaleway.
+consigne les commandes pour le panel M1 et le goldset sur le déploiement
+Scaleway.
 
-Le panel de collecte des 98 questions est prêt. Son empreinte PostgreSQL
-staging est identique à la référence M1 et ses questions correspondent aux
-entrées de M0a #240. L’exporteur refuse le clone local dont l’empreinte
-diffère. Le rejeu déterministe attend toujours les entrées et sorties
-fournisseurs archivées.
+Le panel de 98 questions en PostgreSQL staging a l’empreinte de la
+référence M1 et correspond aux entrées de M0a #240. L’exporteur refuse
+le clone local dont l’empreinte diffère.
 
-Sur la candidate Scaleway `21aa3e3`, le goldset live de #530 est
-exécuté : **98/98 réponses** concordent avec les runs persistés. Le contrôle
-documentaire individuel passe pour l’auteur et le second compte du même
-groupe. Le jugement de référence et le rappel de retrieval comparable à M1
-restent ouverts. La campagne a été purgée et l’ACL opérateur rétablie.
+Sur la candidate Scaleway `21aa3e3`, les **98/98 réponses** concordent
+avec les runs persistés. Le PDF est accessible à l’auteur et refusé au
+second compte du même groupe. Le juge M1 valide **69/98 réponses** avec
+les contextes reconstruits. La campagne HTTP a été purgée.
 [Résultats agrégés](../../evals/evidence/m2_http_goldset_staging_20261125.json)
+
+La seconde capture rassemble les 80 cas sauvegardés et les 18 cas repris.
+Elle donne un rappel de retrieval de **72,51 %**, dans la tolérance de
+cinq points des références M1, et **98/98 replays exacts** du core et de
+la route JSON depuis la sortie du retriever. L’image et les empreintes
+staging sont vérifiées, et la liste ACL initiale est rétablie. Le gate
+M1 demande des résultats de jugement et de rappel issus de la même
+campagne. L’archive du run M1 #259 reste à retrouver.
+[Bilan #530](../../evals/evidence/m2_d3_staging_followup_20261125.json)

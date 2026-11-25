@@ -2407,3 +2407,59 @@ La candidate et ses empreintes sont inchangées après la collecte. La purge
 supprime 98 runs et 676 traces. Le groupe, les comptes et les sessions de
 recette ont été nettoyés, et l’ACL initiale est rétablie.
 [Résultats agrégés](evidence/m2_http_goldset_staging_20261125.json)
+
+## M2 — préenregistrement `m1_http_staging_judge_20261125`
+
+Juger les 98 réponses capturées sur l’API `21aa3e3` avec les réponses de
+référence M0a #240 et les contextes reconstruits pour les 96 parcours RAG.
+Juge souverain M1 `mistral-medium-3.5-128b` sur Scaleway AI, majorité de
+trois votes et citations vérifiées selon `gold-passages-v2`. Conserver les
+votes dans des fichiers privés et comparer les scores aux bras M1.
+Les diagnostics de rappel sont laissés vides car la capture HTTP initiale
+conserve un inventaire de retrieval tronqué. Le jugement de cette capture et
+la mesure sur une nouvelle capture complète ont des provenances distinctes.
+
+### Résultat de `m1_http_staging_judge_20261125`
+
+Le juge valide **69/98 réponses (70,41 %)**. Les 98 questions ont un
+verdict majoritaire et les **294 votes** sont exploitables. Le score dépasse
+M1 legacy live (62/98) de 7,14 points et M1 core live et M0a rejugé (60/98
+chacun) de 9,18 points. Les diagnostics de retrieval étant absents
+des entrées du juge, cette comparaison ne valide pas le gate M1.
+
+## M2 — préenregistrement `m1_http_frozen_recapture_20261125`
+
+Reprendre les 98 questions de M1 sur le code `21aa3e3` et le corpus
+dont les empreintes ont été relevées lors de la collecte HTTP. Enregistrer
+les sorties de recherche complètes et les appels d’inférence lors d’une
+seconde campagne isolée en lecture seule. Deux appels simultanés au plus
+vers Albert DINUM. Les runs de la capture sont conservés en mémoire.
+
+Cette nouvelle capture fournit le rappel selon la métrique M1 et les
+entrées d’un rejeu exact du moteur direct puis de la route JSON HTTP,
+avec contrôle des empreintes et réseau coupé. Elle est datée et
+versionnée séparément du rejeu historique de septembre.
+
+Capture interrompue à la demande après **80/98 cas complets**. Les
+empreintes staging correspondent à celles du début. Les processus de
+capture sont arrêtés et l’ACL initiale est rétablie. Les 18 questions
+restantes sont identifiées dans le point de reprise privé. Le rappel
+global et le rejeu des 98 cas restent à vérifier après la reprise.
+
+### Résultat de `m1_http_frozen_recapture_20261125`
+
+Les 18 questions manquantes ont été capturées après vérification de
+l’image et des empreintes staging. Les 98 cas correspondent au panel
+certifié, dont 96 parcours avec retrieval et deux réponses directes.
+Le rappel documentaire M1 est de **72,51 %** sur les 98 questions.
+**81/98** retrouvent au moins un document attendu. L’écart est de
+−0,41 point contre M1 legacy live et core live et de +0,08 point
+contre M0a rejugé.
+
+Le test de conformance passe sur **98/98 cas** depuis la sortie du
+retriever. Les étapes comparées, réponses, sources, usages et enveloppes
+JSON sont exacts. Les empreintes de staging concordent après la reprise,
+les runs de capture restent en mémoire et l’ACL initiale est rétablie.
+Le score du juge provient de la collecte HTTP initiale. Le rejeu du lot
+historique de septembre requiert toujours l’archive M1 #259.
+[Bilan #530](evidence/m2_d3_staging_followup_20261125.json)
