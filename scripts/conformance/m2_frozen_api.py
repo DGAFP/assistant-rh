@@ -2,7 +2,6 @@
 
 import argparse
 import asyncio
-import hashlib
 import json
 import os
 from contextlib import ExitStack
@@ -26,7 +25,7 @@ from assistant_rh_api.db.settings_stores import ConfigStore
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 from scripts.conformance.m0b_replay import candidate_stage, compare, replay_candidate
-from scripts.conformance.m0b_values import RecordedStore, assert_equal, final_output, legacy_sources, plain, require
+from scripts.conformance.m0b_values import RecordedStore, assert_equal, digest, final_output, legacy_sources, plain, require
 
 
 class ChatRecorder:
@@ -155,7 +154,10 @@ async def capture_case(row, database, client, environment, today):
 async def capture_staging(panel, today):
     environment = dict(os.environ)
     target = conninfo_to_dict(environment["SCW_POSTGRES_DSN"])
-    require(environment["APP_ENV"] == "staging" and target["host"] == "10.10.1.2", "Expected the private Kapsule staging database")
+    require(
+        environment["APP_ENV"] == "staging" and target["host"] == "10.10.1.2" and target.get("hostaddr", target["host"]) == target["host"],
+        "Expected the private Kapsule staging database",
+    )
     require(not environment.get("SCALEWAY_API_KEY"), "The capture permits Albert DINUM only")
     albert = urlsplit(environment["ALBERT_BASE_URL"])
     require(albert.scheme == "https" and albert.hostname == "albert.api.etalab.gouv.fr", "Unexpected inference destination")
@@ -167,6 +169,9 @@ async def capture_staging(panel, today):
 
     await database.open()
     try:
+        async with database.transaction() as connection:
+            readonly = await (await connection.execute("SHOW transaction_read_only")).fetchone()
+            require(readonly == ("on",), "Capture database transaction is writable")
         async with httpx.AsyncClient(follow_redirects=False, trust_env=False, event_hooks={"request": [enforce_destination]}) as client:
             for row in panel:
                 case = await capture_case(row, database, client, environment, today)
@@ -178,9 +183,7 @@ async def capture_staging(panel, today):
 async def replay(path, expected_count, sha256):
     from scripts.conformance.m2_http_replay import complete_over_http
 
-    with path.open("rb") as source:
-        hasher = hashlib.file_digest(source, "sha256").hexdigest()
-    require(hasher == sha256, "Capture archive fingerprint mismatch")
+    require(digest(path) == sha256, "Capture archive fingerprint mismatch")
     seen = set()
     with path.open(encoding="utf-8") as stream:
         for line in stream:
@@ -194,7 +197,7 @@ async def replay(path, expected_count, sha256):
             assert_equal(direct["api"], case["api"], case_id + " recorded API result")
             assert_equal(via_http, direct, case_id + " HTTP vs direct core")
     require(len(seen) == expected_count, "Incomplete capture")
-    return {"cases": len(seen), "sha256": hasher, "http_json_exact": True, "network": "denied"}
+    return {"cases": len(seen), "sha256": sha256, "http_json_exact": True, "network": "python_connections_denied"}
 
 
 def main():

@@ -37,7 +37,8 @@ def dump(path, value):
 
 
 def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    with path.open("rb") as source:
+        return hashlib.file_digest(source, "sha256").hexdigest()
 
 
 def require(condition, message):

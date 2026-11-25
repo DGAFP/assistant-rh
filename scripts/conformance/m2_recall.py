@@ -1,6 +1,7 @@
 """Measure M1 document recall from an unbounded, privately frozen capture."""
 
 import argparse
+import hashlib
 import json
 from collections import defaultdict
 from pathlib import Path
@@ -10,7 +11,7 @@ from types import SimpleNamespace
 import psycopg
 from assistant_rh_rag_pipeline.models import ContextItem, RetrievedChunk, _chunk_log_dict, context_item_document_id
 
-from scripts.conformance.m0b_values import digest
+from scripts.conformance.m0b_values import canonical, digest
 from scripts.conformance.m2_goldset_http import load_panel
 from scripts.conformance.m2_panel import M1_EVIDENCE, readonly_staging_dsn
 from src.goldset import eval as quality
@@ -52,6 +53,7 @@ def evaluate(archive, archive_sha256, panel_file, panel_sha256, dsn):
     aliases = quality.load_gold_id_maps(dsn)["aliases"]
     if not aliases:
         raise ValueError("No M1 corpus identifier aliases")
+    aliases_sha256 = hashlib.sha256(canonical({key: sorted(values) for key, values in aliases.items()}).encode()).hexdigest()
     groups = defaultdict(list)
     seen = set()
     with archive.open(encoding="utf-8") as stream:
@@ -84,6 +86,7 @@ def evaluate(archive, archive_sha256, panel_file, panel_sha256, dsn):
     return {
         "archive_sha256": archive_sha256,
         "panel_sha256": panel_sha256,
+        "aliases_sha256": aliases_sha256,
         **aggregate,
         "by_model": {model: summarize(rows) for model, rows in sorted(groups.items())},
         "threshold_comparisons": comparisons,

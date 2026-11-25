@@ -122,6 +122,7 @@ def deny_network():
         patch.object(socket.socket, "connect", denied),
         patch.object(socket.socket, "connect_ex", denied),
         patch.object(socket, "create_connection", denied),
+        patch.object(socket, "getaddrinfo", denied),
     ):
         yield
 
