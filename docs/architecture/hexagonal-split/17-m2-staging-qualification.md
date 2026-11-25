@@ -10,7 +10,7 @@ La branche Conversations `staging` pointe sur `7ac0eb11b54510d5244443a2d09bd0a9a
 | --- | --- | --- |
 | D3 — replay exact | 7/7 scénarios enregistrés de M0b comparés exactement entre core direct et route JSON avec délégation signée, hors réseau. Le scénario de suivi est aussi couvert avec des entrées synthétiques. | Rejeu du panel privé M1 de 98 questions via la route JSON, sur le SHA retenu. |
 | D3 — clients | OpenAI `3.20.0` et `pydantic-ai-slim` `2.54.0` passent le smoke avec le serveur synthétique TCP. L’erreur post-headers est un `ModelAPIError` causé par l’`APIError` `stream_error`. | Vérifier le provider dans le backend Conversations déployé et ses appels privés à l’API. |
-| D3 — goldset live | Collecteur HTTP et rapport de transport validés sur données synthétiques. | Exécuter les 98 questions sur la candidate et comparer les jugements et rappels au seuil M1. |
+| D3 — goldset live | Panel M1 de 98 questions vérifié et exporté depuis PostgreSQL staging. Collecteur HTTP et rapport de transport validés sur données synthétiques. | Exécuter les 98 questions sur la candidate et comparer les jugements et rappels au seuil M1. |
 | D4 — opérabilité | Suite API locale sur PostgreSQL 17 et pgvector, **1 524 tests réussis**. Les sockets locales couvrent pings, déconnexions, erreurs et arrêt avec finalisation. | Relever les résultats via le proxy Scaleway et éprouver le retour arrière staging. |
 | M2 — feedback et documents | Scénarios synthétiques d’auteur, d’habilitations courantes, de révocation et de documents privés. | Vérifier les rôles runtime #599, corriger puis qualifier le cloisonnement recherche → hydratation → délivrance sur les corpus concernés et rejouer la matrice API sur staging. |
 | E1 — parcours navigateur | Historique, chat et PDF vérifiés dans les [recettes de livraison](https://github.com/DGAFP/assistant-rh/pull/618). | Rejouer le parcours intégré sur les images actives, y compris feedback persistant et modification, puis les scénarios de droits et de session. |
@@ -24,7 +24,17 @@ uv run --no-sync python -m scripts.conformance.m1_replay \
   "$M1_FROZEN_DIR" --http --check --report "$REPLAY_REPORT"
 ```
 
-Pour la collecte live, figer le panel JSONL avec `id`, `model`, `question` et `expected_doc_refs`. Résoudre les références documentaires depuis le snapshot du corpus de la candidate. Le manifeste de déploiement contient `environment: staging`, `git_sha`, `image_digest`, `config_sha256`, `corpus_sha256` et `model_config_sha256`. Relever les empreintes avant et après la campagne. Préparer une identité et une clé réservées à la recette dans l’environnement isolé. Le programme de signature reçoit le modèle demandé en argument et produit sur stdout une délégation #596 limitée à ce modèle, avec un nouveau `jti` à chaque appel. Révoquer la clé de recette et nettoyer les runs, traces et feedbacks associés à la fin.
+Pour la collecte live, l’exporteur lit le tag `baseline_v1` dans PostgreSQL
+staging, contrôle l’empreinte publiée de M1 et résout les références
+documentaires avec la même logique que le banc M1. Il écrit un panel JSONL
+privé au format attendu par le collecteur.
+
+```sh
+uv run --no-sync python -m scripts.conformance.m2_panel \
+  --env-file "$STAGING_DB_ENV" --output "$GOLDSET_JSONL"
+```
+
+Le manifeste de déploiement contient `environment: staging`, `git_sha`, `image_digest`, `config_sha256`, `corpus_sha256` et `model_config_sha256`. Relever les empreintes avant et après la campagne. Préparer une identité et une clé réservées à la recette dans l’environnement isolé. Le programme de signature reçoit le modèle demandé en argument et produit sur stdout une délégation #596 limitée à ce modèle, avec un nouveau `jti` à chaque appel. Révoquer la clé de recette et nettoyer les runs, traces et feedbacks associés à la fin.
 
 ```sh
 uv run --no-sync python -m scripts.conformance.m2_goldset_http \
@@ -55,8 +65,17 @@ PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.conformance.m0b_comp
 ```
 
 La suite privée vérifie l’empreinte de l’archive et effectue ce rejeu à partir de
-`M0B_PRIVATE_ARCHIVE`. L’archive M1 de 98 questions reste à retrouver. Le dépôt
-privé de conformance configuré contient l’archive M0b. Depuis ce poste, une
+`M0B_PRIVATE_ARCHIVE`. Les 98 questions et leurs références ont été exportées
+en lecture seule depuis `SCW_POSTGRES_DSN_STAGING`. L’empreinte du panel source,
+`afd6cfc97a4232e9f8b9253d9d9b5b930c63ed83421f544f5c8178a42e163bdc`, correspond
+à M1 et la comparaison avec le run M0a #240 confirme les identifiants,
+questions, réponses attendues et références. Le JSONL de collecte couvre 94
+questions MATTE et 4 MSO. Son empreinte est
+`2dfa514409f67a9df87f3dbd2ce65a1798016ede984d550738fd0630bb386c41`.
+
+Le rejeu déterministe M1 requiert aussi les traces et réponses fournisseurs
+figées dans son archive. Les identifiants locaux M1 #258 et #259 correspondent
+à d’autres runs sur le serveur PostgreSQL staging. Depuis ce poste, une
 nouvelle vérification du plan de contrôle Kapsule a confirmé la réinitialisation
 de la connexion réseau. Le goldset staging reste en attente d’un accès interne
 et d’une délégation de recette.

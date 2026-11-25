@@ -1289,3 +1289,9 @@ core ↔ HTTP sur les sept scénarios privés vérifiés par empreinte. Le
 [dossier M2](17-m2-staging-qualification.md#preuve-complémentaire-d3-du-25-novembre)
 consigne la commande et les prérequis restants pour le panel M1 et le goldset
 sur le déploiement Scaleway.
+
+Le panel de collecte des 98 questions est prêt. Son empreinte PostgreSQL
+staging est identique à la référence M1 et ses questions correspondent aux
+entrées de M0a #240. L’exporteur refuse le clone local dont l’empreinte
+diffère. Le rejeu déterministe attend toujours les entrées et sorties
+fournisseurs archivées.

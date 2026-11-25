@@ -2355,3 +2355,10 @@ enregistrés** via la route JSON avec délégation individuelle. Il couvre les
 égalité du résultat structuré entre le core et HTTP. La suite vérifie
 l’empreinte de l’archive reconnue et détecte les cinq mutations prévues.
 La campagne goldset live reste à lancer depuis le réseau de recette.
+
+Le panel `baseline_v1` de PostgreSQL staging correspond exactement à
+l’empreinte M1 `afd6cfc9…`. Il est exporté en lecture seule pour la collecte
+HTTP avec 98 questions et les références résolues sur le corpus de la base.
+Le clone local est refusé par le contrôle d’empreinte. Ce contrôle porte
+sur les entrées du goldset. Le rejeu déterministe des réponses de fournisseurs
+requiert toujours l’archive M1. [Recette HTTP](../architecture/hexagonal-split/17-m2-staging-qualification.md)
