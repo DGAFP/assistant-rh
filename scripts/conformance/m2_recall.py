@@ -46,15 +46,15 @@ def summarize(rows):
     }
 
 
-def evaluate(archive, archive_sha256, panel_file, panel_sha256, dsn):
-    if digest(archive) != archive_sha256 or digest(panel_file) != panel_sha256:
-        raise ValueError("Capture or M1 panel differs from its registered fingerprint")
-    panel = {row["id"]: row for row in load_panel(panel_file)}
+def load_aliases(dsn):
     aliases = quality.load_gold_id_maps(dsn)["aliases"]
     if not aliases:
         raise ValueError("No M1 corpus identifier aliases")
     aliases_sha256 = hashlib.sha256(canonical({key: sorted(values) for key, values in aliases.items()}).encode()).hexdigest()
-    groups = defaultdict(list)
+    return aliases, aliases_sha256
+
+
+def scored_cases(archive, panel, aliases):
     seen = set()
     with archive.open(encoding="utf-8") as stream:
         for line in stream:
@@ -70,11 +70,22 @@ def evaluate(archive, archive_sha256, panel_file, panel_sha256, dsn):
                 raise ValueError(f"Capture does not match the certified panel at question {case_id}")
             seen.add(case_id)
             result = evaluation_result(case)
-            retrieved = quality.retrieved_doc_ids(result, quality.context_payload(result))
+            contexts = quality.context_payload(result)
+            retrieved = quality.retrieved_doc_ids(result, contexts)
             metrics = quality.deterministic_metrics(row["expected_doc_refs"], retrieved, aliases=aliases)
-            groups[row["model"]].append(metrics)
+            yield row, case, contexts, metrics
     if seen != panel.keys():
         raise ValueError("Capture does not cover the certified M1 panel")
+
+
+def evaluate(archive, archive_sha256, panel_file, panel_sha256, dsn):
+    if digest(archive) != archive_sha256 or digest(panel_file) != panel_sha256:
+        raise ValueError("Capture or M1 panel differs from its registered fingerprint")
+    panel = {row["id"]: row for row in load_panel(panel_file)}
+    aliases, aliases_sha256 = load_aliases(dsn)
+    groups = defaultdict(list)
+    for row, _, _, metrics in scored_cases(archive, panel, aliases):
+        groups[row["model"]].append(metrics)
     aggregate = summarize([row for rows in groups.values() for row in rows])
     reference = json.loads(M1_EVIDENCE.read_text(encoding="utf-8"))["assessment"]
     max_drop = reference["comparisons"]["core_live_vs_legacy_live"]["metrics"]["doc_recall_avg"]["max_drop"]

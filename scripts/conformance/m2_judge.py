@@ -164,7 +164,7 @@ def judge(output, env_file):
             gold_answer=row["gold_answer"],
             answer=row["answer"],
             contexts=row["contexts"],
-            deterministic_metrics={},
+            deterministic_metrics=row.get("deterministic_metrics", {}),
             model=manifest["judge_model"],
             provider="scaleway",
             base_url=JUDGE_URL,
