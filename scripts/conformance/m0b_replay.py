@@ -104,7 +104,7 @@ def deny_network():
         yield
 
 
-async def run_candidate(case, stores):
+async def run_candidate(case, stores, *, complete=None):
     from assistant_rh_api import bootstrap
     from assistant_rh_api.core import chat
     from assistant_rh_api.core.auth import AuthContext
@@ -143,6 +143,9 @@ async def run_candidate(case, stores):
             return result
 
     class Runs:
+        async def require_individual_schema(self):
+            pass
+
         async def finalize(self, run):
             finalized.append(run)
 
@@ -184,7 +187,10 @@ async def run_candidate(case, stores):
         patches.enter_context(patch.object(chat, "RunContext", ObservedContext))
         service = bootstrap.create_chat_service(None, RAGConfigurationService(stores["config"]), None, environment)
         try:
-            run, result = await service.complete(request, auth)
+            if complete is None:
+                run, result = await service.complete(request, auth)
+            else:
+                run, result = await complete(service, request, auth)
         except Exception:
             if failures:
                 raise failures[0] from None
@@ -221,12 +227,16 @@ def compare(case, actual):
     }
 
 
-async def replay_case(case):
+async def replay_candidate(case, *, complete=None):
     from scripts.conformance.m0b_values import ReplayStore
 
     tape = Tape(case["stores"])
     stores = {name: ReplayStore(name, tape) for name in ("config", "search", "content", "prompts", "packaged", "acronyms")}
     with deny_network():
-        actual = await run_candidate(case, stores)
+        actual = await run_candidate(case, stores, complete=complete)
     tape.assert_consumed()
-    return compare(case, actual)
+    return actual
+
+
+async def replay_case(case):
+    return compare(case, await replay_candidate(case))

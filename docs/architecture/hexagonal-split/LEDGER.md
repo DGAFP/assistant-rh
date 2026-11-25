@@ -1268,3 +1268,18 @@ accord explicite puis vérifié par checksum, passe ses18tests hors réseau sans
 changer la référence. Aucun prompt/configuration partagée, déploiement ou taille
 PostgreSQL n’est modifié par cette analyse. Le candidat de parseur demeure une
 correction locale non promue ; cette analyse ne valide pas la qualité globale.
+
+## D3, D4 et M2 — recette de la candidate du 25 novembre 2026
+
+Le rejeu M1 peut passer par la route JSON réelle avec une délégation
+individuelle éphémère. Le collecteur live relève le transport et les sources
+servies. Localement, 1 524 tests API synthétiques et 14 tests du banc de
+transport passent. Le smoke du provider utilise les versions du verrou
+Conversations `7ac0eb11`, OpenAI 3.20.0 et Pydantic AI 2.54.0.
+
+Le [dossier de recette M2](17-m2-staging-qualification.md) rattache les preuves
+aux révisions et consigne un NO-GO de qualification. D3 #530 porte le rejeu
+privé et le goldset de la candidate. D4 #531 porte la vérification Kapsule,
+le proxy et le rollback. M2 #532 porte le cloisonnement documentaire et la
+matrice API avec #599. E1 #533 porte le rejeu navigateur après publication du
+feedback. [Correctif de publication Conversations](https://github.com/DGAFP/conversations/pull/26)

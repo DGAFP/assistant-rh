@@ -2333,3 +2333,18 @@ Revue indépendante sans bloquant ; 31tests supplémentaires indépendants passe
 et13sont skips faute de DSN dans son environnement, deux tests packaging passent.
 Ruff/format, quatre contrats d'import, Helm lint et sept tests de garde CI passent.
 Suite API complète/conformance et suite racine en cours avant promotion.
+
+## M2 — préparation de la recette HTTP du 25 novembre 2026
+
+Sur la base `74d7f29`, exercice de la parité directe ↔ route HTTP sur un
+scénario synthétique avec historique et délégation individuelle. Vérification
+de l’enveloppe JSON, du résultat structuré, des sources, de l’usage et du run
+enregistré dans le store de test. Le serveur TCP de replay confirme la
+compatibilité du SDK OpenAI 3.20.0 et de Pydantic AI 2.54.0 avec les réponses
+JSON, SSE et l’erreur post-headers. Le panel privé de 98 questions reste à
+rejouer sur la candidate.
+
+La collecte live est préparée. La révision déployée, les empreintes du corpus
+et de la configuration et la session de recette restent à vérifier depuis un
+accès staging fonctionnel. Consigner le label au lancement et les résultats
+à la fin de la campagne. [Protocole et état M2](../architecture/hexagonal-split/17-m2-staging-qualification.md)

@@ -14,7 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from scripts.conformance.m0b_replay import deny_network, replay_case
+from scripts.conformance.m0b_replay import compare, deny_network, replay_candidate
 from scripts.conformance.m0b_values import ROOT, Tape, assert_equal, digest, dump, invocation, require
 
 
@@ -125,7 +125,7 @@ def replay_legacy(case):
     assert_equal(calls["legacy"], expected, "legacy retrieval consumption")
 
 
-async def replay_frozen_case(case):
+async def replay_frozen_case(case, *, http=False):
     import socket
 
     import psycopg
@@ -141,10 +141,17 @@ async def replay_frozen_case(case):
     ):
         replay_legacy(case)
         with frozen_retrieval(case) as calls:
-            result = await replay_case(case)
+            direct = await replay_candidate(case)
+        if http:
+            from scripts.conformance.m2_http_replay import complete_over_http
+
+            with frozen_retrieval(case) as http_calls:
+                via_http = await replay_candidate(case, complete=complete_over_http)
+            assert_equal(http_calls["core"], calls["core"], "HTTP retrieval consumption")
+            assert_equal(via_http, direct, "HTTP vs direct core result")
     expected = int(any(s["stage"] == "retriever" for s in case["expected"]["stages"]))
     assert_equal(calls["core"], expected, "retrieval consumption")
-    return result
+    return compare(case, direct)
 
 
 async def negative_controls(case):
@@ -172,7 +179,7 @@ async def negative_controls(case):
     return results
 
 
-async def replay(directory: Path, *, check=False):
+async def replay(directory: Path, *, check=False, http=False):
     manifest = json.loads((directory / "manifest.json").read_text())
     require(manifest["schema"] == "m1-frozen-after-retrieval-v1", "Unsupported replay schema")
     ids = manifest["question_ids"]
@@ -186,12 +193,13 @@ async def replay(directory: Path, *, check=False):
         require(digest(path) == manifest["files"][path.name], "Fixture hash mismatch")
         case = json.loads(path.read_text())
         assert_equal(case["fixture"]["id"], f"q{qid}", "fixture identity")
-        results.append(await replay_frozen_case(case))
+        results.append(await replay_frozen_case(case, http=http))
         if control_case is None and case["retrieved_chunks"]:
             control_case = case
     return {
         "schema": manifest["schema"],
         "exact_comparison": True,
+        "http_json_comparison": http,
         "network": "denied",
         "scope": manifest["scope"],
         "manifest_sha256": digest(directory / "manifest.json"),
@@ -210,10 +218,11 @@ def main():
     parser.add_argument("directory", type=Path)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--check", action="store_true", help="Also require five intentional mutations to fail")
+    parser.add_argument("--http", action="store_true", help="Also replay the real JSON route with synthetic individual delegation")
     args = parser.parse_args()
-    result = asyncio.run(replay(args.directory, check=args.check))
+    result = asyncio.run(replay(args.directory, check=args.check, http=args.http))
     dump(args.report, result)
-    print(json.dumps({"exact_comparison": True, "questions": len(result["cases"]), "network": result["network"]}))
+    print(json.dumps({key: result[key] for key in ("exact_comparison", "http_json_comparison", "network")} | {"questions": len(result["cases"])}))
 
 
 if __name__ == "__main__":
