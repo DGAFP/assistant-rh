@@ -1304,7 +1304,30 @@ La seconde capture rassemble les 80 cas sauvegardés et les 18 cas repris.
 Elle donne un rappel de retrieval de **72,51 %**, dans la tolérance de
 cinq points des références M1, et **98/98 replays exacts** du core et de
 la route JSON depuis la sortie du retriever. L’image et les empreintes
-staging sont vérifiées, et la liste ACL initiale est rétablie. Le gate
-M1 demande des résultats de jugement et de rappel issus de la même
-campagne. L’archive du run M1 #259 reste à retrouver.
+staging sont vérifiées, et la liste ACL initiale est rétablie. L’archive
+du run M1 #259 reste à retrouver.
 [Bilan #530](../../evals/evidence/m2_d3_staging_followup_20261125.json)
+
+Le gate M1 sur la même capture obtient **65/98 réponses validées** avec
+294 votes exploitables et **72,51 %** de rappel documentaire. Les
+comparaisons contre le legacy live #258, le core live #259 et M0a
+rejugé #255 passent. Le jugement utilise le corps servi et les
+diagnostics de recherche propres à chaque cas.
+[Gate M1 de #530](../../evals/evidence/m2_m1_gate_same_capture_20261125.json)
+
+### Complément opérabilité de la phase D
+
+Sur le proxy HTTPS staging, un flux SSE se termine en **47,195 s**.
+Un second échange est arrêté depuis Conversations et le run API est
+persisté `cancelled`. L’accès privé depuis Conversations, les métriques
+SSE et le rôle PostgreSQL effectif de l’API sont observés. Les données de
+recette sont purgées et l’ACL initiale est rétablie. Le chart précédent
+`0.52.1+14799ef13eb0` et son image sont identifiés dans l’historique Flux.
+[Preuves #531 et contrôle #599](../../evals/evidence/m2_d4_staging_operability_20261125.json)
+
+Le cloisonnement entre recherche, hydratation et délivrance ainsi que la
+matrice feedback et documents restent ouverts dans #532. Sur le fork
+Conversations, la CI du correctif de dépendances passe, et son job de
+publication est ignoré sur la PR. Frontend et backend staging utilisent
+encore `3fe712b7`. Le rejeu du feedback reste suivi par #595 et #533.
+[Correctif Conversations #26](https://github.com/DGAFP/conversations/pull/26)

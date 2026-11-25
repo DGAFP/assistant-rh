@@ -2463,3 +2463,32 @@ les runs de capture restent en mémoire et l’ACL initiale est rétablie.
 Le score du juge provient de la collecte HTTP initiale. Le rejeu du lot
 historique de septembre requiert toujours l’archive M1 #259.
 [Bilan #530](evidence/m2_d3_staging_followup_20261125.json)
+
+## M2 — préenregistrement `m1_gate_same_capture_20261125`
+
+Mesurer le rappel et juger les réponses de la même capture
+`m1_http_frozen_recapture_20261125` sur l’API `21aa3e3`. Figer les
+98 réponses, contextes effectivement utilisés et diagnostics de retrieval
+à partir de l’archive `4e84366b…`. Vérifier le panel M1, les références
+M0a #240 et l’empreinte des alias documentaires avant le jugement.
+
+Utiliser Scaleway AI `mistral-medium-3.5-128b`, trois votes,
+`gold-passages-v2` et le calcul M1 des diagnostics. Comparer au legacy
+live #258, au core live #259 et à M0a rejugé #255, avec une baisse
+maximale de cinq points sur chacune des deux métriques. Le protocole
+porte sur la capture complète dont le rejeu JSON est déjà vérifié.
+
+### Résultat de `m1_gate_same_capture_20261125`
+
+**Gate M1 validé.** **65/98 réponses (66,33 %)** passent le jugement
+et les **294 votes** sont exploitables. Le rappel documentaire des mêmes
+cas est de **72,51 %**, avec au moins un document attendu retrouvé pour
+81 questions. Le corps de la réponse servi est jugé avant le bloc des
+sources, avec les contextes et les diagnostics de retrieval de la
+même capture.
+
+Face à M1 legacy live, la validation gagne 3,06 points et le rappel
+recule de 0,41 point. Face à M1 core live, les écarts sont de
++5,10 et −0,41 point. Face à M0a rejugé, les écarts sont de +5,10
+et +0,08 point. Tous respectent la tolérance de cinq points.
+[Preuve du gate M1](evidence/m2_m1_gate_same_capture_20261125.json)

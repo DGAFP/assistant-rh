@@ -2,16 +2,16 @@
 
 ## Décision au 25 novembre 2026
 
-**NO-GO de qualification M2.** API staging publiée depuis `21aa3e3a3bb37d78456c3e846cb47d9e70e429f0` et base du travail local `74d7f29fa65f10bbb1dfaba577f14bebfa599160`. L’accès opérateur temporaire a permis de confirmer la réconciliation Flux et les deux pods API au digest `sha256:432d8d3d51cb863902a20e6eaa6c46c2f028bb92462065f9c46b502d4d18a891`, publié par ce workflow. La santé de l’API privée est vérifiée depuis Conversations. Les mesures du proxy et l’essai de rollback restent à réaliser. L’entrée ACL temporaire a été retirée et la liste initiale vérifiée. [Publication API](https://github.com/DGAFP/assistant-rh/actions/runs/40498924160) · [D4 #531](https://github.com/DGAFP/assistant-rh/issues/531)
+**NO-GO de qualification M2.** L’API staging `21aa3e3a3bb37d78456c3e846cb47d9e70e429f0` est réconciliée sur deux pods au digest `sha256:432d8d3d51cb863902a20e6eaa6c46c2f028bb92462065f9c46b502d4d18a891`. Le gate M1 passe. Le SSE à travers le proxy et l’arrêt depuis Conversations passent aussi sur la candidate. Les pings, les erreurs après envoi des en-têtes et le rollback staging restent à qualifier, ainsi que le cloisonnement documentaire et la matrice de feedback de #532. L’ACL initiale est rétablie. [Publication API](https://github.com/DGAFP/assistant-rh/actions/runs/40498924160) · [D4 #531](https://github.com/DGAFP/assistant-rh/issues/531) · [M2 #532](https://github.com/DGAFP/assistant-rh/issues/532)
 
-La branche Conversations `staging` pointe sur `7ac0eb11b54510d5244443a2d09bd0a9acc7ecc8`. La relance du Main Workflow sur ce SHA a échoué sur trois avis HIGH dans le verrou Python. La PR Conversations #26 met à jour les deux paquets concernés. Le retour de CI, la publication et la recette navigateur du feedback restent des prérequis de l’intégration. [Relance de la CI](https://github.com/DGAFP/conversations/actions/runs/42277777619/attempts/2) · [Correctif Conversations #26](https://github.com/DGAFP/conversations/pull/26) · [E1 #533](https://github.com/DGAFP/assistant-rh/issues/533)
+La CI du correctif de dépendances Conversations #26 est verte. Le job de publication de la PR est ignoré et les pods frontend et backend utilisent encore `3fe712b7`. La publication du feedback et sa recette navigateur restent à faire en phase E. [CI Conversations #26](https://github.com/DGAFP/conversations/actions/runs/45634251796) · [Workflow de publication](https://github.com/DGAFP/conversations/actions/runs/45634251791) · [E1 #533](https://github.com/DGAFP/assistant-rh/issues/533)
 
 | Vérification | Preuve disponible | Preuve attendue |
 | --- | --- | --- |
 | D3 — replay exact | 98/98 cas de la capture staging comparés exactement entre core direct et route JSON depuis la sortie du retriever. Les sept scénarios enregistrés de M0b passent également. | Retrouver l’archive privée de septembre pour rejouer le run M1 #259. |
 | D3 — clients | OpenAI `3.20.0` et `pydantic-ai-slim` `2.54.0` passent le smoke avec le serveur synthétique TCP. L’erreur post-headers est un `ModelAPIError` causé par l’`APIError` `stream_error`. | Vérifier le provider dans le backend Conversations déployé et ses appels privés à l’API. |
-| D3 — goldset live | 98/98 réponses JSON valides et identiques aux runs persistés. Le juge valide 69/98 réponses. Une capture complète du même panel donne un rappel de retrieval de 72,51 %. | Mesurer le jugement et le rappel sur la même campagne pour valider le gate M1. |
-| D4 — opérabilité | Suite API locale sur PostgreSQL 17 et pgvector, **1 524 tests réussis**. Les sockets locales couvrent pings, déconnexions, erreurs et arrêt avec finalisation. | Relever les résultats via le proxy Scaleway et éprouver le retour arrière staging. |
+| D3 — goldset live | 98/98 réponses JSON valides et identiques aux runs persistés. Le gate M1 sur la capture complète donne **65/98 réponses validées** et **72,51 %** de rappel documentaire. | Gate M1 dans les tolérances des trois références. |
+| D4 — opérabilité | Suite API locale sur PostgreSQL 17 et pgvector, **1 524 tests réussis**. Sur le proxy HTTPS staging, un flux de **47,2 s** se termine normalement et une demande d’arrêt produit un run `cancelled`. | Qualifier les pings, les erreurs après envoi des en-têtes, les limites sous charge et le retour arrière staging. |
 | M2 — feedback et documents | Scénarios synthétiques d’auteur, d’habilitations courantes, de révocation et de documents privés. | Vérifier les rôles runtime #599, corriger puis qualifier le cloisonnement recherche → hydratation → délivrance sur les corpus concernés et rejouer la matrice API sur staging. |
 | E1 — parcours navigateur | Historique, chat et PDF vérifiés dans les [recettes de livraison](https://github.com/DGAFP/assistant-rh/pull/618). | Rejouer le parcours intégré sur les images actives, y compris feedback persistant et modification, puis les scénarios de droits et de session. |
 
@@ -155,7 +155,63 @@ Les captures privées contiennent les questions, contextes et réponses.
 Le dossier de recette versionne les résultats agrégés et les empreintes
 nécessaires pour vérifier les fichiers détenus par les personnes habilitées.
 
+### Gate M1 sur la même capture
+
+Les 98 réponses de `m1_http_frozen_recapture_20261125` sont jugées avec
+leurs contextes et leurs diagnostics de retrieval. Le juge reçoit le
+corps servi avant le bloc de sources ajouté par l’API. Les 294 votes
+sont exploitables et **65 réponses sur 98 (66,33 %)** sont validées.
+Le rappel des mêmes cas est de **72,51 %**. Le gate passe sur les deux
+métriques face aux trois références, avec une tolérance de cinq points.
+
+| Référence M1 | Écart de validation | Écart de rappel |
+| --- | ---: | ---: |
+| Legacy live #258 | +3,06 points | −0,41 point |
+| Core live #259 | +5,10 points | −0,41 point |
+| M0a rejugé #255 | +5,10 points | +0,08 point |
+
+```sh
+PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.conformance.m2_gate prepare \
+  --archive "$FROZEN_JSONL" --panel "$GOLDSET_JSONL" --reference-inputs "$VERIFIED_M0A_INPUTS" \
+  --env-file "$STAGING_DB_ENV" --output "$GATE_DIR"
+
+PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.conformance.m2_judge judge \
+  --env-file "$M1_JUDGE_ENV" --output "$GATE_DIR"
+
+PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.conformance.m2_gate report --output "$GATE_DIR"
+```
+
+Le rapport vérifie que le manifeste correspond à la capture versionnée
+et renvoie un code non nul si le gate échoue.
+[Preuve du gate M1](../../evals/evidence/m2_m1_gate_same_capture_20261125.json)
+
 ## Vérification Scaleway et retour arrière
+
+Sur l’API `21aa3e3` et Conversations `3fe712b7`, le smoke HTTPS
+authentifié reçoit les en-têtes en **0,094 s**, le premier texte en
+**21,662 s** et le marqueur terminal après **47,195 s**, avec 550
+fragments de texte. Le second échange déclenche l’action d’arrêt après
+le premier texte. Elle retourne 200 et le run API est persisté
+`cancelled`. Le compteur `disconnect` du pod sondé passe de 81 à 82
+et la jauge des flux actifs revient à zéro. Aucun ping n’a été observé
+sur ces deux échanges. Le premier essai avec `Accept: text/event-stream`
+est rejeté par la négociation HTTP de Conversations. Les smokes valides
+utilisent la négociation du navigateur.
+
+Le backend Conversations résout le Service privé, obtient 200 sur
+`/healthz` et 401 sur le catalogue sans délégation. Le load balancer
+annonce 300 s côté client et serveur. Les deux pods API ont une limite
+de 1 Gi et consomment 68 et 66 Mi au relevé. Le rôle API réel peut écrire
+les feedbacks, les deux triggers attendus sont actifs et ce rôle ne
+détient pas les tables protégées. Les deux comptes de recette, les deux
+runs et leurs 14 traces ont été nettoyés, et l’ACL initiale est rétablie.
+[Preuves D4 et contrôle du rôle API](../../evals/evidence/m2_d4_staging_operability_20261125.json)
+
+Le dernier chart déployé avant la candidate est `0.52.1+14799ef13eb0`,
+associé à `4701d04`. Les deux révisions contiennent le même code, le
+même verrou de dépendances et les mêmes migrations. L’historique Flux
+et le ReplicaSet précédent fournissent les références pour l’essai de
+retour arrière.
 
 1. Relever les révisions de chart, les digests démarrés des deux applications et l’état Flux. Vérifier les migrations et les rôles #599 avant le trafic de recette.
 2. Depuis le backend Conversations, vérifier la résolution du Service privé API et `/healthz`. Via l’entrée staging, relever les horaires SSE du premier en-tête, des pings et du premier texte sur un flux long. Relever mémoire, redémarrages et limites sur les workloads.
