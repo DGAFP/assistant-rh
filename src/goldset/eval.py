@@ -36,7 +36,7 @@ from assistant_rh_rag_pipeline.query_processor import _fold as _fold_text
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
-from src.goldset.config_overrides import apply_config_overrides, parse_override
+from src.goldset.config_overrides import apply_config_overrides, parse_override, prompt_override_values
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / ".cache" / "assistant-rh" / "evals"
@@ -2548,6 +2548,11 @@ def _configure_legacy(args: argparse.Namespace) -> tuple[RAGConfig, list[str], s
     if generic_overrides:
         pipeline_config, generic_adjustments = apply_config_overrides(pipeline_config, generic_overrides)
         config_adjustments.extend(generic_adjustments)
+        # Même garde que --system-prompt-name pour un prompt surchargé via
+        # --config-override : pas de repli silencieux sur le prompt par défaut.
+        for path, name in prompt_override_values(pipeline_config, generic_overrides):
+            if get_prompt_content(name, render_today=False) is None:
+                raise RuntimeError(f"{path}={name!r} : prompt introuvable ou inactif sur le DSN cible.")
     # Le fingerprint doit couvrir le CONTENU du prompt générateur, pas
     # seulement son nom : le corps vit en base et peut être édité en place —
     # sinon --skip-if-started dédupliquerait un run post-édition contre le run
@@ -2576,6 +2581,11 @@ def _configure_api(args: argparse.Namespace, api_pipeline: Any) -> tuple[Any, li
     overrides = named_overrides(args)
     overrides.extend(parse_override(spec) for spec in getattr(args, "config_override", None) or [])
     pipeline_config, config_adjustments = api_pipeline.configure(overrides)
+    # Tout prompt surchargé (flag nommé ou --config-override) doit exister :
+    # load_prompt retomberait sinon silencieusement sur le prompt packagé.
+    for path, name in prompt_override_values(pipeline_config, overrides):
+        if not api_pipeline.prompt_exists(name):
+            raise RuntimeError(f"{path}={name!r} : prompt introuvable ou vide sur le DSN cible.")
     return pipeline_config, config_adjustments, api_pipeline.generator_prompt_content()
 
 

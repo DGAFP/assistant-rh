@@ -6,7 +6,7 @@ import httpx
 
 from assistant_rh_api.core.catalog import ModelService
 from assistant_rh_api.core.chat import ChatService
-from assistant_rh_api.core.models.rag_configuration import RAGConfig
+from assistant_rh_api.core.models.rag_configuration import LLMProvider, RAGConfig
 from assistant_rh_api.core.pipeline.pipeline import Pipeline
 from assistant_rh_api.core.pipeline.steps.aggregation import SectionAggregator
 from assistant_rh_api.core.pipeline.steps.context_builder import ContextBuilder
@@ -79,8 +79,14 @@ def create_pipeline_factory(
             embeddings["bge_scaleway"] = EmbeddingGateway(client, scaleway_embed)
         intent_llm = ChatGateway(client, endpoint("albert", config.query_processor.intent_model))
         selector_llm = ChatGateway(client, endpoint(config.selector.provider.value, config.selector.model))
+        # Seule chaîne de repli admise : Albert -> Scaleway (validate_chain). Un
+        # primaire Scaleway (A/B, ou rag_config modifiée) tourne sans repli au
+        # lieu de faire échouer la construction du pipeline.
+        has_fallback_chain = (config.generation.provider, config.generation.fallback_provider) == (LLMProvider.ALBERT, LLMProvider.SCALEWAY)
         fallback = (
-            endpoint(config.generation.fallback_provider.value, config.generation.fallback_model) if environment.get("SCALEWAY_API_KEY") else None
+            endpoint(config.generation.fallback_provider.value, config.generation.fallback_model)
+            if has_fallback_chain and environment.get("SCALEWAY_API_KEY")
+            else None
         )
         generator_llm = ChatGateway(client, primary=endpoint(config.generation.provider.value, config.generation.model), fallback=fallback)
         reranker = RerankerGateway(client, endpoint("albert", environment.get("ALBERT_RERANK_MODEL", "openweight-rerank")))

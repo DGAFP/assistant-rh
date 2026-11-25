@@ -328,6 +328,26 @@ def test_create_pipeline_factory_composes_the_served_pipeline() -> None:
     assert isinstance(asyncio.run(build()), Pipeline)
 
 
+def _generator_providers(config: ApiRAGConfig, environ: dict[str, str]) -> list[str]:
+    from assistant_rh_api.bootstrap import create_pipeline_factory
+
+    async def build() -> Pipeline:
+        async with httpx.AsyncClient(trust_env=False) as client:
+            return create_pipeline_factory(object(), client, environ, clock=Clock())(config)
+
+    return [endpoint.provider for endpoint in asyncio.run(build())._generator._llm._endpoints]
+
+
+def test_scaleway_primary_generator_runs_without_the_albert_fallback_chain() -> None:
+    # Régression : avec SCALEWAY_API_KEY, la fabrique ajoutait toujours le repli
+    # Scaleway, et validate_chain refusait Scaleway -> Scaleway (A/B --generator-provider scaleway).
+    environ = {"ALBERT_API_KEY": "a", "SCALEWAY_API_KEY": "k"}
+    scaleway = apply_config_overrides(ApiRAGConfig(), [("generation.provider", LLMProvider.SCALEWAY)])[0]
+    assert _generator_providers(scaleway, environ) == ["scaleway"]
+    assert _generator_providers(ApiRAGConfig(), environ) == ["albert", "scaleway"]  # chaîne servie inchangée
+    assert _generator_providers(ApiRAGConfig(), {"ALBERT_API_KEY": "a"}) == ["albert"]
+
+
 def test_unconfigured_api_pipeline_cannot_run() -> None:
     pipe = api_module.ApiEvalPipeline(dsn=DSN, environ={})
     with pytest.raises(RuntimeError, match="configure"):
@@ -360,3 +380,31 @@ def test_legacy_mode_refuses_the_api_only_reranker_union(monkeypatch) -> None:
     args = build_parser().parse_args(["--goldset-name", "g", "--reranker-union-top-k", "0"])
     with pytest.raises(ValueError, match="champ inconnu 'selector.reranker_union_top_k'"):
         eval_module._configure_legacy(args)
+
+
+def test_legacy_mode_validates_prompt_names_set_through_generic_overrides(monkeypatch) -> None:
+    _legacy_runtime(monkeypatch)
+    monkeypatch.setattr(eval_module, "get_prompt_content", lambda name, render_today=False: None if name == "absent.md" else "PROMPT")
+    args = build_parser().parse_args(["--goldset-name", "g", "--config-override", "generation.system_prompt_name=absent.md"])
+    with pytest.raises(RuntimeError, match="generation.system_prompt_name='absent.md' : prompt introuvable"):
+        eval_module._configure_legacy(args)
+
+
+def test_api_mode_validates_every_overridden_prompt_name() -> None:
+    checked: list[str] = []
+
+    def configure(overrides):
+        return apply_config_overrides(ApiRAGConfig(), overrides)
+
+    def prompt_exists(name: str) -> bool:
+        checked.append(name)
+        return name != "absent.md"
+
+    pipe = SimpleNamespace(configure=configure, prompt_exists=prompt_exists, generator_prompt_content=lambda: "PROMPT")
+    ok = build_parser().parse_args(["--goldset-name", "g", "--pipeline", "api", "--config-override", "selector.prompt_name=sel.md"])
+    assert eval_module._configure_api(ok, pipe)[2] == "PROMPT"
+    assert checked == ["sel.md"]
+
+    bad = build_parser().parse_args(["--goldset-name", "g", "--pipeline", "api", "--config-override", "generation.system_prompt_name=absent.md"])
+    with pytest.raises(RuntimeError, match="generation.system_prompt_name='absent.md' : prompt introuvable"):
+        eval_module._configure_api(bad, pipe)

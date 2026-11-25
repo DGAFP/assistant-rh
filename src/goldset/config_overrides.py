@@ -70,6 +70,21 @@ def coerce_value(current: Any, raw: Any, *, path: str) -> Any:
     raise ValueError(f"{path} : type {type(current).__name__} non surchargeable")
 
 
+def prompt_override_values(config: Any, overrides: list[tuple[str, Any]]) -> list[tuple[str, str]]:
+    """``[(chemin, nom)]`` des surcharges qui désignent un prompt (champ ``*prompt_name``).
+
+    Les chargeurs de prompt (legacy comme ``apps/api``) retombent silencieusement
+    sur un prompt par défaut quand le nom est introuvable : l'appelant doit donc
+    vérifier chaque nom surchargé, lu dans la config déjà surchargée (``config``).
+    """
+    found: list[tuple[str, str]] = []
+    for path, _ in overrides:
+        section_name, _, field_name = path.partition(".")
+        if field_name.endswith("prompt_name"):
+            found.append((path, str(getattr(getattr(config, section_name), field_name))))
+    return found
+
+
 def _field_names(obj: Any) -> list[str]:
     return [field.name for field in dataclasses.fields(obj)]
 
