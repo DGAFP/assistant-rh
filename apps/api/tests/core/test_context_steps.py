@@ -372,3 +372,11 @@ async def test_scoped_aggregation_keeps_only_verified_document_associations(refe
     aggregator = SectionAggregator(SectionAggregationConfig(enable_section_reranker=False), Content(), Reranker())
     sections = (await aggregator.aggregate_with_diagnostics((chunk,), ministry="matte")).sections
     assert sections[0].metadata["doc_id"] == expected
+
+
+async def test_scoped_aggregation_uses_canonical_document_of_standalone_excerpt():
+    doc_id = "00000000-0000-0000-0000-000000000001"
+    chunk = RetrievedChunk("a", "Approved excerpt", 0.7, "MASA", {"doc_id": doc_id}, None, "albert")
+    aggregator = SectionAggregator(SectionAggregationConfig(enable_section_reranker=False), Content(), Reranker())
+    result = await aggregator.aggregate_with_diagnostics((chunk,), ministry="masa")
+    assert result.sections[0].metadata["doc_id"] == doc_id

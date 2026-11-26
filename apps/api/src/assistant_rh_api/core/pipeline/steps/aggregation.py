@@ -100,6 +100,8 @@ class SectionAggregator:
             # Scoped search checks canonical UUID links in SQL. An unavailable
             # section cannot grant authority, nor can a legacy text alias.
             doc_id = meta.get("doc_id")
+            if not doc_id and ministry is not None and first.section_id is None:
+                doc_id = first_meta.get("doc_id")
             if not doc_id:
                 raw_reference = first_meta.get("source_document_id")
                 doc_id = raw_reference
