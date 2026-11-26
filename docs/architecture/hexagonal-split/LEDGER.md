@@ -1356,3 +1356,35 @@ Elles se terminent en **122 à 149 s**. Le pic mesuré par pod est de **115 MiB*
 l’API et de **1 487 MiB** pour Conversations. Les deux pods API restent
 prêts. Les données de recette sont purgées et l’ACL initiale est rétablie.
 [Preuve SSE #531](../../evals/evidence/m2_d4_staging_sse_20261126.json)
+
+### M2 #532 / #599 — complément sur `2043a66`, 26 novembre 2026
+
+Le cloisonnement documentaire a été corrigé par #650/#654, promu par #655 et
+recetté sur les quatre ministères dans #532. Les deux pods API servent le digest
+`sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b`.
+Les 102 fichiers Python de l’image correspondent à `dev` `533bedb` et les deux
+corps de triggers installés correspondent à la migration des rôles.
+
+La suite API complète passe : **1 572 tests**, avec rejeu M0b privé. Le premier
+passage a rencontré un timeout isolé sur la récupération après perte de réponse
+au commit ; les sept tests ciblés puis le passage complet final réussissent.
+24 contrôles HTTP de délégation passent depuis Conversations. Le compte API réel
+écrit les trois familles de colonnes d’un feedback synthétique avec rollback
+complet. Les probes sont `scripts/integration/m2_delegation_staging.py` et
+`scripts/conformance/m2_runtime_roles.py`. Le second retourne `incomplete`
+tant que les autres identités runtime ne peuvent pas être exercées.
+
+Les comptes, groupe, sessions et marqueurs anti-rejeu sont nettoyés ; aucun
+run RAG durable n’est créé et l’ACL Kubernetes initiale est rétablie.
+[Preuve partielle M2](../../evals/evidence/m2_api_acceptance_partial_20261126.json)
+
+**NO-GO M2 maintenu.** Le profil local reçoit `403 permissions_denied` sur
+les secrets du migrateur de la base privée ; les `.env` retrouvés ciblent
+l’ancien staging. Aucun droit n’est élargi pour poursuivre la recette.
+
+| Reste à faire | Suivi | Responsable | Statut |
+| --- | --- | --- | --- |
+| Matrice feedback HTTP sur fixtures existantes, audit et nettoyage | #532 | pcasad | Bloqué sur accès opérateur staging |
+| Autres identités runtime, annotations/analyse et historique collectif | #599 | pcasad | Bloqué sur accès opérateur staging |
+| Matrice documentaire complémentaire, transferts et annulation | #532 | pcasad | À terminer ; couverture synthétique distincte |
+| Validité du gate qualité sur la candidate finale et décision M2 | #532 | pcasad | À consigner avant clôture #526 |

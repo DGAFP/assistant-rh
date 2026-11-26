@@ -2,9 +2,29 @@
 
 ## Décision au 26 novembre 2026
 
-**NO-GO de qualification M2.** L’API staging `21aa3e3a3bb37d78456c3e846cb47d9e70e429f0` est réconciliée sur deux pods au digest `sha256:432d8d3d51cb863902a20e6eaa6c46c2f028bb92462065f9c46b502d4d18a891`. Le gate M1 passe. D4 a exercé le SSE privé et HTTPS, la coupure réseau, l’erreur SSE contrôlée en loopback dans l’image staging et le rollback. Les mesures HTTPS couvrent trois flux simultanés jusqu’à 148,608 s. Le cloisonnement documentaire et la matrice de feedback de #532 restent à qualifier. [Publication API](https://github.com/DGAFP/assistant-rh/actions/runs/40498924160) · [D4 #531](https://github.com/DGAFP/assistant-rh/issues/531) · [M2 #532](https://github.com/DGAFP/assistant-rh/issues/532)
+**NO-GO maintenu : qualification M2 incomplète.** La candidate staging est désormais `2043a66b9da9b88a7e44c0ce1efdcc3896a36353`, publiée par [#655](https://github.com/DGAFP/assistant-rh/pull/655), au digest `sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b`. Ses deux pods sont prêts sans redémarrage. Le correctif de cloisonnement a sa recette multiministérielle dans [#532](https://github.com/DGAFP/assistant-rh/issues/532). La matrice HTTP complète du feedback, les cas documentaires complémentaires, les essais sous les autres comptes runtime et la décision sur cette candidate restent à terminer.
 
-La CI du correctif de dépendances Conversations #26 est verte. Le job de publication de la PR est ignoré et les pods frontend et backend utilisent encore `3fe712b7`. La publication du feedback et sa recette navigateur restent à faire en phase E. [CI Conversations #26](https://github.com/DGAFP/conversations/actions/runs/45634251796) · [Workflow de publication](https://github.com/DGAFP/conversations/actions/runs/45634251791) · [E1 #533](https://github.com/DGAFP/assistant-rh/issues/533)
+Les preuves D3 et D4 ci-dessous portent sur `21aa3e3` : rejeu exact 98/98, qualité dans les tolérances M1, SSE, déconnexion, erreur après en-têtes et rollback. Leur validité sur la candidate finale doit être explicitée dans la décision M2. La recette navigateur complète reste en phase E dans [#533](https://github.com/DGAFP/assistant-rh/issues/533).
+
+## Complément de recette du 26 novembre — candidate `2043a66`
+
+La [preuve agrégée](../../evals/evidence/m2_api_acceptance_partial_20261126.json) distingue les vérifications réussies des scénarios encore ouverts.
+
+- Les **102 fichiers Python** de l’image API sont identiques au code de `dev` `533bedb` utilisé pour les tests. Les corps des deux triggers installés correspondent exactement à la migration versionnée. La suite API complète, incluant le rejeu M0b privé et les deux tests du probe SQL, passe : **1 572 tests**. Un premier passage a rencontré un timeout isolé de récupération après perte de réponse au commit ; le rejeu ciblé des sept tests puis le passage complet final réussissent sans changement du runtime.
+- **24 contrôles HTTP** passent depuis le backend Conversations : santé, catalogue courant, assertion invalide, anti-rejeu, refus uniformes pour ressources inexistantes, reconnexion, retrait/rétablissement des habilitations, désactivation et logout. Les versions réellement installées sont OpenAI `3.20.0` et Pydantic AI `2.54.0`.
+- Le compte API réel peut modifier le contenu, les annotations et l’analyse d’un feedback synthétique dans une transaction intégralement annulée. Les trois rôles métier sont sans login, sans propriété, sans `TRUNCATE` ni privilège `TRIGGER` ; les deux garde-fous sont actifs. Le probe retourne **`incomplete`**, car le compte API ne peut pas exercer les autres identités runtime.
+- Les deux comptes Django, le groupe, les trois sessions et les marqueurs anti-rejeu de cette recette ont été nettoyés. Aucun run RAG durable n’a été créé. Les lignes SQL de recette ont été annulées. La règle Kubernetes temporaire est retirée et les ACL initiales sont préservées.
+
+Ces contrôles sur des identifiants inexistants ne prouvent pas les refus d’accès à un feedback ou document réellement détenu par un autre auteur. Cette partie exige des fixtures isolées avec un moyen de nettoyage opérateur.
+
+**Accès manquant.** Le profil Scaleway des `.env` locaux reçoit `403 permissions_denied` sur les secrets du migrateur de la nouvelle base privée. Ses DSN pointent vers l’ancien staging. Aucun droit IAM ou SQL n’a été ajouté. Il faut rendre disponible le compte de migration staging, ou un profil autorisé à lire son secret, avant les scénarios qui créent des fixtures durables et leur nettoyage. Le secret n’est jamais à transmettre dans une issue ou une PR.
+
+Probes reproductibles :
+
+- `scripts/integration/m2_delegation_staging.py`, exécuté avec Python dans le backend Conversations staging. Sa sortie enveloppe contient une liste privée de `jti` pour le nettoyage ciblé ; seule la clé `report` est destinée aux preuves versionnées.
+- `scripts/conformance/m2_runtime_roles.py`, exécuté dans l’image API avec le DSN staging existant. Il refuse les autres cibles, n’applique ni migration ni grant et annule ses fixtures. Un code de sortie **2** signale une couverture incomplète ; il ne vaut pas GO.
+
+La recette SQL sur PostgreSQL synthétique vérifie aussi que le probe couvre les trois logins avec leurs droits hérités, ne laisse aucune ligne et ne transforme pas une couverture API seule en GO.
 
 | Vérification | Preuve disponible | Preuve attendue |
 | --- | --- | --- |
@@ -12,7 +32,7 @@ La CI du correctif de dépendances Conversations #26 est verte. Le job de public
 | D3 — clients | OpenAI `3.20.0` et `pydantic-ai-slim` `2.54.0` passent le smoke avec le serveur synthétique TCP. L’erreur post-headers est un `ModelAPIError` causé par l’`APIError` `stream_error`. | Vérifier le provider dans le backend Conversations déployé et ses appels privés à l’API. |
 | D3 — goldset live | 98/98 réponses JSON valides et identiques aux runs persistés. Le gate M1 sur la capture complète donne **65/98 réponses validées** et **72,51 %** de rappel documentaire. | Gate M1 dans les tolérances des trois références. |
 | D4 — opérabilité | Trois flux HTTPS simultanés s’achèvent chacun après un keepalive reçu par le client. La coupure réseau du flux privé persiste `cancelled` et le contrôle d’erreur en isolation persiste `failed`. Après rollback et restauration, la réconciliation et les contrôles santé/catalogue passent. | Vérifier la couverture des durées et de la concurrence attendues à partir du périmètre mesuré. |
-| M2 — feedback et documents | Scénarios synthétiques d’auteur, d’habilitations courantes, de révocation et de documents privés. | Vérifier les rôles runtime #599, corriger puis qualifier le cloisonnement recherche → hydratation → délivrance sur les corpus concernés et rejouer la matrice API sur staging. |
+| M2 — feedback et documents | Cloisonnement multiministériel et PDF auteur/pair/révocation validés sur `2043a66` dans #532. Délégation et garde-fous complétés par la recette ci-dessus. | Terminer la matrice HTTP sur des ressources existantes, les transferts documentaires et les essais sous les autres comptes runtime #599 ; rattacher la décision à la candidate finale. |
 | E1 — parcours navigateur | Historique, chat et PDF vérifiés dans les [recettes de livraison](https://github.com/DGAFP/assistant-rh/pull/618). | Rejouer le parcours intégré sur les images actives, y compris feedback persistant et modification, puis les scénarios de droits et de session. |
 
 ## Rejeu déterministe et qualité live

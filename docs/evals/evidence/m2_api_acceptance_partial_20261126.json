@@ -1,0 +1,329 @@
+{
+  "schema": "assistant-rh-m2-api-acceptance-partial-v1",
+  "date": "2026-11-26",
+  "decision": "NO-GO: qualification incomplete",
+  "issues": [
+    526,
+    532,
+    599
+  ],
+  "deployment": {
+    "api_revision": "2043a66b9da9b88a7e44c0ce1efdcc3896a36353",
+    "api_revision_reference": "https://github.com/DGAFP/assistant-rh/issues/532",
+    "tested_dev_revision": "533bedb652dc5d3a3b2c826be1e197ff6ac66405",
+    "api_pods": [
+      {
+        "name": "assistant-rh-api-5f888d866-g2b4h",
+        "image_digest": "sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b",
+        "ready": true,
+        "restarts": 0
+      },
+      {
+        "name": "assistant-rh-api-5f888d866-x8kzx",
+        "image_digest": "sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b",
+        "ready": true,
+        "restarts": 0
+      }
+    ],
+    "conversations_backend_pods": [
+      {
+        "name": "conversations-backend-746cd59fd7-6gq7p",
+        "image_digest": "sha256:374f1985a3f8425ab02a8ce8a79f58c53da37e2031cec63d92e5893333ec4663",
+        "ready": true,
+        "restarts": 0
+      },
+      {
+        "name": "conversations-backend-746cd59fd7-sqhrb",
+        "image_digest": "sha256:374f1985a3f8425ab02a8ce8a79f58c53da37e2031cec63d92e5893333ec4663",
+        "ready": true,
+        "restarts": 0
+      }
+    ]
+  },
+  "source_binding": {
+    "python_files_compared": 102,
+    "different_files": [],
+    "runtime_manifest_sha256": "8511ab3e3331d57f54fd2eeb69264ea87bdd4943d1e1f3c28078a9ccabea429c"
+  },
+  "installed_guards": {
+    "api_feedback_individual_guard": {
+      "body_sha256": "dd6925a3f9d82b8e77da58b60b38f8006ec49a873a6f90e83b6bbd9cbe9a7605",
+      "matches_versioned_migration": true
+    },
+    "api_run_author_immutable": {
+      "body_sha256": "900aaf814acac6adb8d9b294506bf4b76c072ba92e72e85a3f6128fa6218e44a",
+      "matches_versioned_migration": true
+    }
+  },
+  "delegation": {
+    "schema": "assistant-rh-m2-delegation-probe-v1",
+    "started_at": "2026-11-26T17:32:17.009894+00:00",
+    "scope": "deployed delegation and missing-resource refusals; no RAG fixtures or inference",
+    "versions": {
+      "openai": "3.20.0",
+      "pydantic-ai-slim": "2.54.0",
+      "django": "5.2.18",
+      "httpx": "0.28.1"
+    },
+    "checks": [
+      {
+        "name": "health",
+        "passed": true
+      },
+      {
+        "name": "unauthenticated_catalog",
+        "passed": true
+      },
+      {
+        "name": "invalid_assertion",
+        "passed": true
+      },
+      {
+        "name": "current_catalog",
+        "passed": true
+      },
+      {
+        "name": "assertion_replay",
+        "passed": true
+      },
+      {
+        "name": "author_missing_get_feedback",
+        "passed": true
+      },
+      {
+        "name": "author_safe_headers_get_feedback",
+        "passed": true
+      },
+      {
+        "name": "author_missing_post_feedback",
+        "passed": true
+      },
+      {
+        "name": "author_safe_headers_post_feedback",
+        "passed": true
+      },
+      {
+        "name": "author_missing_get_documents",
+        "passed": true
+      },
+      {
+        "name": "author_safe_headers_get_documents",
+        "passed": true
+      },
+      {
+        "name": "same_group_peer_missing_get_feedback",
+        "passed": true
+      },
+      {
+        "name": "same_group_peer_safe_headers_get_feedback",
+        "passed": true
+      },
+      {
+        "name": "same_group_peer_missing_post_feedback",
+        "passed": true
+      },
+      {
+        "name": "same_group_peer_safe_headers_post_feedback",
+        "passed": true
+      },
+      {
+        "name": "same_group_peer_missing_get_documents",
+        "passed": true
+      },
+      {
+        "name": "same_group_peer_safe_headers_get_documents",
+        "passed": true
+      },
+      {
+        "name": "reconnected_identity",
+        "passed": true
+      },
+      {
+        "name": "reconnected_delegation",
+        "passed": true
+      },
+      {
+        "name": "withdrawal_blocks_signing",
+        "passed": true
+      },
+      {
+        "name": "withdrawal_empties_catalog",
+        "passed": true
+      },
+      {
+        "name": "rights_restored",
+        "passed": true
+      },
+      {
+        "name": "deactivation_blocks_signing",
+        "passed": true
+      },
+      {
+        "name": "logout_blocks_signing",
+        "passed": true
+      }
+    ],
+    "cleanup": {
+      "users_removed": true,
+      "group_removed": true,
+      "sessions_removed": true,
+      "rag_runs_created": 0,
+      "replay_rows_remaining": 0
+    },
+    "finished_at": "2026-11-26T17:32:19.126584+00:00"
+  },
+  "runtime_roles": {
+    "schema": "assistant-rh-m2-runtime-roles-probe-v1",
+    "at": "2026-11-26T17:35:41.338121+00:00",
+    "checks": [
+      {
+        "name": "arh_api_cannot_disable_guards",
+        "passed": true
+      },
+      {
+        "name": "arh_streamlit_cannot_disable_guards",
+        "passed": true
+      },
+      {
+        "name": "arh_analysis_cannot_disable_guards",
+        "passed": true
+      },
+      {
+        "name": "both_guards_enabled",
+        "passed": true
+      },
+      {
+        "name": "arh_api_comment",
+        "passed": true,
+        "sqlstate": null
+      },
+      {
+        "name": "arh_api_theme",
+        "passed": true,
+        "sqlstate": null
+      },
+      {
+        "name": "arh_api_ai_reason",
+        "passed": true,
+        "sqlstate": null
+      }
+    ],
+    "role_exercises": {
+      "arh_api": "exercised",
+      "arh_streamlit": "not_exercised_missing_runtime_login_or_operator_authority",
+      "arh_analysis": "not_exercised_missing_runtime_login_or_operator_authority"
+    },
+    "connection_user": "assistant_rh_api",
+    "grants": [
+      {
+        "rolname": "arh_api",
+        "rolcanlogin": false,
+        "rolsuper": false,
+        "content_update": true,
+        "annotation_update": true,
+        "analysis_update": true,
+        "truncate": false,
+        "trigger": false,
+        "owner": false
+      },
+      {
+        "rolname": "arh_streamlit",
+        "rolcanlogin": false,
+        "rolsuper": false,
+        "content_update": true,
+        "annotation_update": true,
+        "analysis_update": true,
+        "truncate": false,
+        "trigger": false,
+        "owner": false
+      },
+      {
+        "rolname": "arh_analysis",
+        "rolcanlogin": false,
+        "rolsuper": false,
+        "content_update": false,
+        "annotation_update": false,
+        "analysis_update": true,
+        "truncate": false,
+        "trigger": false,
+        "owner": false
+      }
+    ],
+    "triggers": [
+      {
+        "tgname": "api_feedback_individual_guard",
+        "tgenabled": "O"
+      },
+      {
+        "tgname": "api_run_author_immutable",
+        "tgenabled": "O"
+      }
+    ],
+    "cleanup": {
+      "fixture_rows_remaining": 0,
+      "transaction_rolled_back": true
+    },
+    "complete": false,
+    "passed": true,
+    "gate": "incomplete"
+  },
+  "access_blocker": {
+    "service": "Scaleway Secret Manager",
+    "operation": "read existing staging migrator credential",
+    "http_status": 403,
+    "reason": "permissions_denied",
+    "local_env_target": "legacy staging, not the private Kapsule database",
+    "permission_changes_performed": false
+  },
+  "remaining": [
+    {
+      "issue": 532,
+      "owner": "pcasad",
+      "status": "blocked_on_operator_access",
+      "work": "Complete feedback HTTP matrix on committed isolated fixtures, including peer, revocation, retries, concurrent updates, audit and cleanup."
+    },
+    {
+      "issue": 532,
+      "owner": "pcasad",
+      "status": "pending",
+      "work": "Complete document HTTP transfer and refusal matrix; no legacy PDFs exist in the staging corpus. Synthetic legacy/32 MiB/cleanup coverage remains separate."
+    },
+    {
+      "issue": 599,
+      "owner": "pcasad",
+      "status": "blocked_on_operator_access",
+      "work": "Exercise actual non-API runtime identities and collective legacy writes without adding rights to the API login."
+    },
+    {
+      "issue": 532,
+      "owner": "pcasad",
+      "status": "pending",
+      "work": "Confirm or rerun the M1 quality gate on the final API revision and record the explicit M2 decision. The existing live gate covers 21aa3e3."
+    }
+  ],
+  "local_validation": {
+    "api_tests": {
+      "tests": "1572",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "107.511"
+    },
+    "junit_sha256": "29d95a1ea35ca3d117f9dbfdbeb6bd4e9436336066df393797ea1d833c1852c0",
+    "private_m0b_archive_checksum_verified": true,
+    "targeted_acceptance_tests_passed": 121,
+    "first_full_pass": {
+      "passed": 1569,
+      "failed": 1,
+      "failure": "test_lost_commit_response_releases_requests_without_retry[True-True]: pool recovery checkout timeout",
+      "targeted_rerun_passed": 7
+    },
+    "ruff": "pass",
+    "import_contracts_kept": 4
+  },
+  "cleanup": {
+    "temporary_rules_removed": 1,
+    "initial_rules_preserved": true,
+    "acl_restored": true
+  }
+}
