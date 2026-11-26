@@ -185,7 +185,7 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
             statement = sql.SQL("""
                 WITH parsed AS (SELECT {query} AS q),
                 {resolutions}
-                candidates AS ({candidates}),
+                candidates AS MATERIALIZED ({candidates}),
                 section_scores AS MATERIALIZED (
                     SELECT s.section_id, s.heading, s.heading_path, d.doc_id,
                            d.title, d.source_url, d.short_id,
