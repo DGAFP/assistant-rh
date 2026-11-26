@@ -2492,3 +2492,54 @@ recule de 0,41 point. Face à M1 core live, les écarts sont de
 +5,10 et −0,41 point. Face à M0a rejugé, les écarts sont de +5,10
 et +0,08 point. Tous respectent la tolérance de cinq points.
 [Preuve du gate M1](evidence/m2_m1_gate_same_capture_20261125.json)
+
+## Outillage — mode `--pipeline api` de la CLI d'éval (25 novembre 2026)
+
+La CLI standard (`scripts/run_rag_quality_eval.py`) ne construisait que le
+pipeline legacy figé (`packages/rag-pipeline`). Les changements d'`apps/api`,
+le pipeline servi en prod, lui étaient donc invisibles. La PR #644 a dû être
+qualifiée avec des lanceurs ad hoc hors dépôt, sans enregistrement dans
+`rag_quality_eval_runs`. Le mode `--pipeline api` construit le `Pipeline`
+d'`apps/api` comme l'API (`RAGConfigurationService` + adaptateurs DB et
+providers via `create_pipeline_factory`), avec les mêmes métriques, le même
+juge, le même `--record-db` et les mêmes surcharges CLI (`--rerank-input-k`,
+`--min-kept-sections`, `--reranker-union-top-k`, `--config-override`), sans
+écriture dans `rag_config`. Un run api porte `pipeline=api` dans son
+`eval_scope` et son empreinte de config : il ne se compare qu'à un autre run api.
+
+### `api_cli_smoke_20261125` — avant exécution
+
+Smoke de mise en service du mode api : `--pipeline api --limit 5` sur le clone
+local (`assistant-rh-local-pg`, port 55432, seed staging), panel `baseline_v1`,
+`--ministry-scope per-question`, config runtime du clone inchangée (générateur
+`deepseek-v4-flash`, sélecteur `openweight-large`, `rerank_input_k=40`, mode
+large), aucune surcharge. Juge par défaut (Scaleway, 1 vote), RAGAS actif.
+Code : branche `feat/eval-pipeline-api` sur `dev` 74d7f29. Objet : vérifier que
+le run tourne, s'enregistre et produit les métriques par étage, pas mesurer la
+qualité (5 questions, single-shot).
+
+#### Résultats du smoke `api_cli_smoke_20261125` (run local 219)
+
+Run 219 sur `assistant-rh-local-pg`, statut `completed`, 5/5 réponses, zéro
+échec du pipeline, du juge ou de RAGAS. Les 5 premières questions du panel
+sont MATTE, routées sur le ministère `matte`. Générateur servi
+`deepseek-v4-flash` sans fallback. Révision de config `rag_config` tracée dans
+les métadonnées du run, `pipeline=api` dans l'`eval_scope` et l'agrégat.
+Juge `mistral-medium-3.5-128b`, 1 vote.
+
+| Indicateur | Valeur |
+|---|---:|
+| Verdicts favorables | 3/5 |
+| Hit rate | 0,80 |
+| Rappel documentaire | 0,70 |
+| Sans document attendu | 20 % |
+| Précision du contexte RAGAS | 0,90 |
+| Fidélité RAGAS | 0,92 |
+
+Funnel par étage (tentative `initial`, hit rate / rappel) : pool 0,80 / 0,70,
+sections top 12 et top 20 0,60 / 0,60, sélecteur 0,60 / 0,48, contexte servi
+0,60 / 0,48. Lecture : le mode api tourne, s'enregistre et alimente les mêmes
+métriques que le legacy, funnel compris. Aucune conclusion de qualité sur
+5 questions en single-shot. Le code était encore non commité au lancement
+(`git_sha` = `dev` 74d7f29 dans le run). Le diff est celui de la PR qui
+introduit le mode.

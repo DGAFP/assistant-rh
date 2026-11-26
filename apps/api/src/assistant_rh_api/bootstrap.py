@@ -1,12 +1,12 @@
 """Assemble chat services from database and provider adapters."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 import httpx
 
 from assistant_rh_api.core.catalog import ModelService
 from assistant_rh_api.core.chat import ChatService
-from assistant_rh_api.core.models.rag_configuration import RAGConfig
+from assistant_rh_api.core.models.rag_configuration import LLMProvider, RAGConfig
 from assistant_rh_api.core.pipeline.pipeline import Pipeline
 from assistant_rh_api.core.pipeline.steps.aggregation import SectionAggregator
 from assistant_rh_api.core.pipeline.steps.context_builder import ContextBuilder
@@ -14,6 +14,7 @@ from assistant_rh_api.core.pipeline.steps.context_selector import ContextSelecto
 from assistant_rh_api.core.pipeline.steps.generator import Generator
 from assistant_rh_api.core.pipeline.steps.query_processor import QueryProcessor
 from assistant_rh_api.core.pipeline.steps.retrieval import Retriever
+from assistant_rh_api.core.ports.system import ClockPort
 from assistant_rh_api.core.rag_configuration import RAGConfigurationService
 from assistant_rh_api.db.content_store import ContentStore
 from assistant_rh_api.db.pool import Database
@@ -30,16 +31,19 @@ from assistant_rh_api.gateways.rerank import RerankerGateway
 from assistant_rh_api.gateways.settings import Endpoint
 
 
-def create_chat_service(
+def create_pipeline_factory(
     database: Database,
-    configurations: RAGConfigurationService,
     client: httpx.AsyncClient,
     environ: Mapping[str, str],
     *,
-    models: ModelService | None = None,
-) -> ChatService:
+    clock: ClockPort,
+) -> Callable[[RAGConfig], Pipeline]:
+    """Build the per-request pipeline factory served by the API.
+
+    Public so that offline tooling (goldset evaluation) measures exactly the
+    production composition instead of re-wiring adapters on its own.
+    """
     environment = dict(environ)
-    clock = SystemClock()
     circuit = EmbeddingCircuit(clock)
     catalogue = search_catalog()
     search = SearchStore(database, catalogue)
@@ -75,8 +79,14 @@ def create_chat_service(
             embeddings["bge_scaleway"] = EmbeddingGateway(client, scaleway_embed)
         intent_llm = ChatGateway(client, endpoint("albert", config.query_processor.intent_model))
         selector_llm = ChatGateway(client, endpoint(config.selector.provider.value, config.selector.model))
+        # Seule chaîne de repli admise : Albert -> Scaleway (validate_chain). Un
+        # primaire Scaleway (A/B, ou rag_config modifiée) tourne sans repli au
+        # lieu de faire échouer la construction du pipeline.
+        has_fallback_chain = (config.generation.provider, config.generation.fallback_provider) == (LLMProvider.ALBERT, LLMProvider.SCALEWAY)
         fallback = (
-            endpoint(config.generation.fallback_provider.value, config.generation.fallback_model) if environment.get("SCALEWAY_API_KEY") else None
+            endpoint(config.generation.fallback_provider.value, config.generation.fallback_model)
+            if has_fallback_chain and environment.get("SCALEWAY_API_KEY")
+            else None
         )
         generator_llm = ChatGateway(client, primary=endpoint(config.generation.provider.value, config.generation.model), fallback=fallback)
         reranker = RerankerGateway(client, endpoint("albert", environment.get("ALBERT_RERANK_MODEL", "openweight-rerank")))
@@ -90,5 +100,19 @@ def create_chat_service(
             generator=Generator(config=config.generation, prompts=prompts, packaged_prompts=packaged, llm=generator_llm),
         )
 
+    return pipeline
+
+
+def create_chat_service(
+    database: Database,
+    configurations: RAGConfigurationService,
+    client: httpx.AsyncClient,
+    environ: Mapping[str, str],
+    *,
+    models: ModelService | None = None,
+) -> ChatService:
+    environment = dict(environ)
+    clock = SystemClock()
+    pipeline = create_pipeline_factory(database, client, environment, clock=clock)
     runs = ChatRunStore(database, environment=environment.get("APP_ENV") or environment.get("APP_SCALEWAY_ENV") or "")
     return ChatService(configurations=configurations, pipeline_factory=pipeline, runs=runs, clock=clock, ids=RunIds(), models=models)
