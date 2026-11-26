@@ -42,12 +42,12 @@ class Content:
         self.reference_rows = references
         self.calls = []
 
-    async def sections(self, ids):
+    async def sections(self, ids, *, ministry=None):
         self.calls.append(("sections", ids))
         await asyncio.sleep(0)
         return tuple(row for row in self.section_rows if row.section_id in ids)
 
-    async def documents(self, ids):
+    async def documents(self, ids, *, ministry=None):
         self.calls.append(("documents", ids))
         await asyncio.sleep(0)
         return tuple(row for row in self.document_rows if row.doc_id in ids)
@@ -247,7 +247,7 @@ async def test_content_failures_preserve_fallback_and_report_safe_code(error_typ
     config = SectionAggregationConfig(enable_section_reranker=False)
     sections = await SectionAggregator(config, store, Reranker()).aggregate(chunks)
 
-    async def fail(*args):
+    async def fail(*args, **kwargs):
         raise error_type() from RuntimeError("sensitive-dsn-sentinel")
 
     setattr(store, operation, fail)

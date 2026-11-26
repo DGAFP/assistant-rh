@@ -229,3 +229,18 @@ class ChatRunStore(ChatRunStorePort):
             metadata: dict = next((s for s in (row[4] or {}).get("sources", []) if s["doc_ref"] == row[0]), {})
             sources.append(RunSource(row[0], row[1], row[2], row[3], metadata.get("publisher", ""), metadata.get("access", "authenticated")))
         return tuple(sources)
+
+    async def document_source(self, turn_id: str, doc_ref: str, *, ministries: tuple[str, ...], user_id: UUID) -> tuple[str, str] | None:
+        await self.require_individual_schema()
+        async with self._database.transaction(read_only=True) as connection:
+            row = await (
+                await connection.execute(
+                    sql.SQL("""
+                        SELECT s.document_id, r.selected_ministry
+                        FROM public.chat_run_sources s JOIN public.chat_runs r ON r.turn_id = s.turn_id
+                        WHERE {} AND s.doc_ref = %(doc_ref)s AND s.document_id IS NOT NULL
+                    """).format(run_access(True)),
+                    {"turn_id": turn_id, "doc_ref": doc_ref, "group_slug": "", "user_id": user_id, "ministries": list(ministries)},
+                )
+            ).fetchone()
+        return row

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS public.rag_documents (
 );
 ALTER TABLE public.rag_documents ADD COLUMN IF NOT EXISTS legacy_doc_id UUID;
 ALTER TABLE public.rag_documents ADD COLUMN IF NOT EXISTS storage_path TEXT;
+ALTER TABLE public.rag_documents ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'matte';
 CREATE TABLE IF NOT EXISTS public.documents (id UUID PRIMARY KEY, filename TEXT, data BYTEA);
 CREATE TABLE IF NOT EXISTS public.rag_sections (
     section_id UUID PRIMARY KEY, doc_id UUID REFERENCES public.rag_documents(doc_id),

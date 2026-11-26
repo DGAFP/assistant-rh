@@ -40,7 +40,7 @@ class ContextBuilder:
         self.config = config
         self.content_store = content_store
 
-    async def build(self, sections: Sequence[AggregatedSection]) -> ContextBuildResult:
+    async def build(self, sections: Sequence[AggregatedSection], *, ministry: str | None = None) -> ContextBuildResult:
         sections = tuple(sections)
         if not sections:
             return ContextBuildResult((), {}, ContextBuildDiagnostics(token_budget=self.config.get_token_budget()))
@@ -87,7 +87,7 @@ class ContextBuilder:
             if tokens_used + doc_token_count > budget:
                 continue
 
-            doc_row = await self._load_full_document(doc_id, store_errors)
+            doc_row = await self._load_full_document(doc_id, store_errors, ministry)
             if not doc_row or not doc_row.get("doc_markdown"):
                 continue
 
@@ -186,9 +186,9 @@ class ContextBuilder:
             ContextBuildDiagnostics(tokens_used, budget, full_doc_count, tri_added, refs_tokens, tuple(store_errors)),
         )
 
-    async def _load_full_document(self, doc_id: str, errors: list[str]) -> dict | None:
+    async def _load_full_document(self, doc_id: str, errors: list[str], ministry: str | None) -> dict | None:
         try:
-            documents = await self.content_store.documents((doc_id,))
+            documents = await self.content_store.documents((doc_id,), ministry=ministry)
         except (DatabaseUnavailable, DatabaseFailure, DatabaseConflict) as exc:
             errors.append(exc.code)
             return None

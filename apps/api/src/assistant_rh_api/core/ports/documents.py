@@ -14,6 +14,12 @@ class DocumentContent:
 
 
 @dataclass(frozen=True, slots=True)
+class AuthorizedDocument:
+    document_id: UUID
+    ministry: str
+
+
+@dataclass(frozen=True, slots=True)
 class StoredDocument:
     title: str
     storage_path: str = field(default="", repr=False)
@@ -21,7 +27,7 @@ class StoredDocument:
 
 
 class DocumentStorePort(Protocol):
-    def open(self, document_id: UUID) -> AbstractAsyncContextManager[StoredDocument]: ...
+    def open(self, document: AuthorizedDocument) -> AbstractAsyncContextManager[StoredDocument]: ...
 
 
 class ObjectDocumentPort(Protocol):
