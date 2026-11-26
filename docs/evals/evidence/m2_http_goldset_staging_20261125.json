@@ -1,0 +1,128 @@
+{
+  "schema": "assistant-rh-live-http-m1-staging-v1",
+  "panel_sha256": "2dfa514409f67a9df87f3dbd2ce65a1798016ede984d550738fd0630bb386c41",
+  "planned_questions": 98,
+  "transport_and_served_references": {
+    "requests": 98,
+    "completed": 98,
+    "outcomes": {
+      "completed": 98
+    },
+    "p50_response_ms": 12630,
+    "p95_response_ms": 38554,
+    "cases_with_expected_references_and_completed_transport": 98,
+    "cases_with_any_expected_reference_served": 53,
+    "expected_references_served": 62,
+    "expected_references": 203,
+    "mean_served_reference_recall": 0.451361
+  },
+  "by_model": {
+    "assistant-rh-matte": {
+      "requests": 94,
+      "completed": 94,
+      "outcomes": {
+        "completed": 94
+      },
+      "p50_response_ms": 12759,
+      "p95_response_ms": 38554,
+      "cases_with_expected_references_and_completed_transport": 94,
+      "cases_with_any_expected_reference_served": 51,
+      "expected_references_served": 59,
+      "expected_references": 193,
+      "mean_served_reference_recall": 0.459929
+    },
+    "assistant-rh-mso": {
+      "requests": 4,
+      "completed": 4,
+      "outcomes": {
+        "completed": 4
+      },
+      "p50_response_ms": 11146,
+      "p95_response_ms": 14505,
+      "cases_with_expected_references_and_completed_transport": 4,
+      "cases_with_any_expected_reference_served": 2,
+      "expected_references_served": 3,
+      "expected_references": 10,
+      "mean_served_reference_recall": 0.25
+    }
+  },
+  "document_access": [
+    {
+      "kind": "document_access",
+      "owner": {
+        "status": 200,
+        "pdf": true,
+        "redirect": false
+      },
+      "other_same_group": {
+        "status": 404,
+        "pdf": false,
+        "redirect": false
+      }
+    }
+  ],
+  "identity_cleanup": [
+    {
+      "kind": "identity_cleanup",
+      "remaining_users": 0,
+      "remaining_groups": 0
+    }
+  ],
+  "persisted_responses_matching_http": 98,
+  "context_reconstruction": {
+    "trace_projection_and_prompt_prefix_matched": 96,
+    "no_generation_context": 2
+  },
+  "complete_retrieval_traces": 2,
+  "terminal_event": {
+    "kind": "finished"
+  },
+  "campaign": "m1_http_staging_20261125",
+  "deployment": {
+    "environment": "staging",
+    "git_sha": "21aa3e3a3bb37d78456c3e846cb47d9e70e429f0",
+    "chart": "0.55.1+78870b6dd828",
+    "api_image_digest": "sha256:432d8d3d51cb863902a20e6eaa6c46c2f028bb92462065f9c46b502d4d18a891",
+    "conversations_backend_git_sha": "3fe712b7d025d61da1c5ff4d35bf173a03bc1788",
+    "ready_api_pods_before_and_after": 2,
+    "release": "https://github.com/DGAFP/assistant-rh/actions/runs/40498924160"
+  },
+  "profile": {
+    "transport": "private API from Conversations backend",
+    "max_concurrent_requests": 2,
+    "provider": "Albert DINUM",
+    "scaleway_fallback": false,
+    "test_identity_grants": [
+      "matte",
+      "mso"
+    ]
+  },
+  "fingerprint_before_and_after": {
+    "config_sha256": "a3f914651ca5b03846a152e209171589a943e0ae5b405869d4e7ba5d26f926af",
+    "corpus_sha256": "798ae4cba1439274a76ef21f00bf2902280d65e103e6f1b8ba9caea15550c681",
+    "models_sha256": "0ab54f64bef685db1ad38b4442fce2461ab399607ddff781ff33b096793b1879",
+    "method": "ordered corpus rows; config, prompt and acronym table digests; explicit model settings"
+  },
+  "tracing": {
+    "complete_by_context": {
+      "no_generation_context": 2
+    },
+    "incomplete_by_context": {
+      "trace_projection_and_prompt_prefix_matched": 96
+    }
+  },
+  "cleanup": {
+    "runs_deleted": 98,
+    "traces_deleted": 676,
+    "remaining_runs": 0,
+    "remaining_campaign_identities": 0,
+    "remaining_campaign_groups": 0,
+    "temporary_acl_removed": true,
+    "initial_acl_verified": true
+  },
+  "m1_quality_gate": {
+    "judge": "pending",
+    "retrieval_recall": "unavailable_from_bounded_traces",
+    "frozen_replay": "missing_m1_archive"
+  }
+}
