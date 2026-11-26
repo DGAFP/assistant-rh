@@ -1,7 +1,6 @@
 """Content delivery to Conversations; each HTTP request reauthenticates first."""
 
 import asyncio
-from uuid import UUID
 
 import anyio
 from fastapi import APIRouter, Request
@@ -11,6 +10,7 @@ from starlette.types import Receive, Scope, Send
 from assistant_rh_api.core.documents import DocumentService
 from assistant_rh_api.core.errors import DatabaseUnavailable
 from assistant_rh_api.core.errors.documents import DocumentUnavailable
+from assistant_rh_api.core.ports.documents import AuthorizedDocument
 from assistant_rh_api.handlers.auth import Authenticated
 from assistant_rh_api.handlers.errors import error_response
 
@@ -18,9 +18,9 @@ from assistant_rh_api.handlers.errors import error_response
 class DocumentResponse(Response):
     """Own the reader until ASGI finishes, including disconnects and send failures."""
 
-    def __init__(self, service: DocumentService, document_id: UUID, limiter: anyio.CapacityLimiter) -> None:
+    def __init__(self, service: DocumentService, document: AuthorizedDocument, limiter: anyio.CapacityLimiter) -> None:
         super().__init__()
-        self.service, self.document_id, self.limiter = service, document_id, limiter
+        self.service, self.document, self.limiter = service, document, limiter
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         try:
@@ -39,7 +39,7 @@ class DocumentResponse(Response):
         try:
             # Total deadline includes opening, reading and downstream backpressure.
             async with asyncio.timeout(120):
-                async with self.service.open(self.document_id) as content:
+                async with self.service.open(self.document) as content:
                     response = StreamingResponse(
                         content.chunks,
                         media_type="application/pdf",
@@ -71,9 +71,9 @@ def create_documents_router() -> APIRouter:
         service = request.app.state.document_service
         if service is None:
             raise DatabaseUnavailable()
-        document_id = await service.authorize(completion_id, doc_ref, auth)
+        document = await service.authorize(completion_id, doc_ref, auth)
         # Range/If-Range are deliberately ignored: every request gets the entire
         # PDF with 200, after fresh authorization (RFC 9110 allows this).
-        return DocumentResponse(service, document_id, request.app.state.document_limiter)
+        return DocumentResponse(service, document, request.app.state.document_limiter)
 
     return router

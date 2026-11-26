@@ -268,9 +268,11 @@ class Retriever:
             try:
                 async with search_slot:
                     if heading:
-                        chunks = await self._headings(source, query, limit, config.ivfflat_probes)
+                        chunks = await self._headings(source, query, limit, config.ivfflat_probes, scoped=selected_ministry is not None)
                     else:
-                        chunks = await self._chunks(source, query, embedding, config, mode, limit, source.key in force_hybrid_tables)
+                        chunks = await self._chunks(
+                            source, query, embedding, config, mode, limit, source.key in force_hybrid_tables, scoped=selected_ministry is not None
+                        )
                 per_source[name] = chunks
             except Exception as exc:
                 code = _failure_code(exc)
@@ -310,9 +312,11 @@ class Retriever:
         mode: SearchMode,
         limit: int,
         force_hybrid: bool,
+        *,
+        scoped: bool,
     ) -> tuple[RetrievedChunk, ...]:
         fetch_k = limit * 2 if source.r2_pairs else limit
-        request = SearchRequest(source.key, "vector", query, embedding.vector, embedding.model, fetch_k, config.ivfflat_probes)
+        request = SearchRequest(source.key, "vector", query, embedding.vector, embedding.model, fetch_k, config.ivfflat_probes, scoped=scoped)
         if mode == SearchMode.LEXICAL:
             raw = _raw_order(await self._search.search(replace(request, mode="lexical")))
             score_mode = "lexical"
@@ -336,6 +340,7 @@ class Retriever:
                         for key in (*source.metadata_fields, "doc_short_id", "doc_title", "doc_url")
                         if chunk.metadata.get(key) is not None
                     },
+                    **({"doc_id": chunk.metadata["doc_id"]} if scoped and chunk.section_id is None and chunk.metadata.get("doc_id") else {}),
                     "source_score_mode": score_mode,
                 },
                 chunk.section_id if source.headings else None,
@@ -347,8 +352,8 @@ class Retriever:
             chunks = merge_r2_pairs(chunks, limit)
         return tuple(sorted(chunks, key=chunk_sort_key))
 
-    async def _headings(self, source: RetrievalSource, query: str, limit: int, probes: int) -> tuple[RetrievedChunk, ...]:
-        raw = await self._search.search(SearchRequest(source.key, "heading", query=query, limit=limit, probes=probes))
+    async def _headings(self, source: RetrievalSource, query: str, limit: int, probes: int, *, scoped: bool) -> tuple[RetrievedChunk, ...]:
+        raw = await self._search.search(SearchRequest(source.key, "heading", query=query, limit=limit, probes=probes, scoped=scoped))
         chunks = []
         for chunk in _raw_order(raw):
             heading = str(chunk.metadata.get("heading") or "")

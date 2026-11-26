@@ -6,8 +6,7 @@ import httpx
 import pytest
 from assistant_rh_api.core.documents import DocumentService
 from assistant_rh_api.core.errors.documents import DocumentNotFound, DocumentUnavailable
-from assistant_rh_api.core.models.conversations import RunSource
-from assistant_rh_api.core.ports.documents import DocumentContent, StoredDocument
+from assistant_rh_api.core.ports.documents import AuthorizedDocument, DocumentContent, StoredDocument
 from assistant_rh_api.gateways.documents import DocumentStorageSettings, S3Documents
 from assistant_rh_api.handlers.app import create_app
 from assistant_rh_api.handlers.auth import resolve_bearer
@@ -36,13 +35,10 @@ class S3Stream(httpx.AsyncByteStream):
 
 
 class Runs:
-    async def require_individual_schema(self):
-        pass
-
-    async def sources(self, turn_id, group_slug, *, ministries, user_id):
-        if turn_id == "run" and user_id == OWNER and "matte" in ministries:
-            return (RunSource("final", "Title", "", str(DOC_ID)),)
-        return ()
+    async def document_source(self, turn_id, doc_ref, *, ministries, user_id):
+        if turn_id == "run" and doc_ref == "final" and user_id == OWNER and "matte" in ministries:
+            return str(DOC_ID), "matte"
+        return None
 
 
 class Documents:
@@ -51,8 +47,8 @@ class Documents:
         self.s3 = s3
 
     @asynccontextmanager
-    async def open(self, document_id):
-        assert document_id == DOC_ID
+    async def open(self, document):
+        assert document == AuthorizedDocument(DOC_ID, "matte")
         self.opened += 1
 
         async def chunks():
@@ -181,10 +177,27 @@ async def test_s3_content_transfers_through_backend_without_redirect():
     assert str(requests[0].url).endswith("/matte/private-key.pdf") and "?" not in str(requests[0].url)
 
 
+async def test_pdf_rejects_storage_keys_outside_the_run_ministry_before_opening_s3():
+    class DocumentsWithDifferentStorageCorpus:
+        @asynccontextmanager
+        async def open(self, document):
+            yield StoredDocument("Synthetic PDF", "mso/private.pdf")
+
+    async def s3(request):
+        pytest.fail("The object transport must not be called for a different corpus")
+
+    objects = S3Documents(httpx.MockTransport(s3), DocumentStorageSettings(access_key="synthetic", secret_key="synthetic"))
+    app, _ = application(documents=DocumentsWithDifferentStorageCorpus(), objects=objects)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(PATH)
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "document_not_found"
+
+
 @pytest.mark.parametrize("event", ["disconnect", "send_error", "cancel"])
 async def test_reader_and_admission_released_on_interrupted_transfer(event):
     app, documents = application()
-    response = DocumentResponse(app.state.document_service, DOC_ID, app.state.document_limiter)
+    response = DocumentResponse(app.state.document_service, AuthorizedDocument(DOC_ID, "matte"), app.state.document_limiter)
     begun = asyncio.Event()
     sent = []
 

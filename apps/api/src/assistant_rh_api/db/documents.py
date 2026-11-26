@@ -2,10 +2,9 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from uuid import UUID
 
 from assistant_rh_api.core.errors.documents import DocumentNotFound, DocumentUnavailable
-from assistant_rh_api.core.ports.documents import DocumentContent, StoredDocument
+from assistant_rh_api.core.ports.documents import AuthorizedDocument, DocumentContent, StoredDocument
 from assistant_rh_api.db.pool import Database
 
 DOCUMENT_CHUNK_BYTES = 64 * 1024
@@ -16,14 +15,14 @@ class DocumentStore:
         self.database = database
 
     @asynccontextmanager
-    async def open(self, document_id: UUID) -> AsyncIterator[StoredDocument]:
+    async def open(self, document: AuthorizedDocument) -> AsyncIterator[StoredDocument]:
         async with self.database.transaction(read_only=True, repeatable_read=True) as connection:
             row = await (
                 await connection.execute(
                     """
-                SELECT title, storage_path, legacy_doc_id FROM public.rag_documents WHERE doc_id = %s
+                SELECT title, storage_path, legacy_doc_id FROM public.rag_documents WHERE doc_id = %s AND lower(btrim(source)) = %s
                 """,
-                    (document_id,),
+                    (document.document_id, document.ministry),
                 )
             ).fetchone()
             if row is None:
