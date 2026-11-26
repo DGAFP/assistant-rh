@@ -1331,3 +1331,13 @@ Conversations, la CI du correctif de dépendances passe, et son job de
 publication est ignoré sur la PR. Frontend et backend staging utilisent
 encore `3fe712b7`. Le rejeu du feedback reste suivi par #595 et #533.
 [Correctif Conversations #26](https://github.com/DGAFP/conversations/pull/26)
+
+### D4 #531 — retour arrière staging du 26 novembre 2026
+
+Flux passe du chart `0.55.1+78870b6dd828` au chart précédent
+`0.52.1+14799ef13eb0`, puis restaure le sélecteur initial et
+redéploie le chart et l’image de départ. Les révisions Helm **11 → 12 → 13**
+et les deux pods prêts attestent les transitions. Le backend
+Conversations obtient HTTP 200 sur `/healthz` et HTTP 401 sur le
+catalogue sans délégation aux trois états. L’ACL initiale est rétablie.
+[Preuve #531](../../evals/evidence/m2_d4_staging_rollback_20261126.json)
