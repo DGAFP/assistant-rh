@@ -2,7 +2,7 @@
 
 ## Décision au 26 novembre 2026
 
-**NO-GO de qualification M2.** L’API staging `21aa3e3a3bb37d78456c3e846cb47d9e70e429f0` est réconciliée sur deux pods au digest `sha256:432d8d3d51cb863902a20e6eaa6c46c2f028bb92462065f9c46b502d4d18a891`. Le gate M1 passe. Le SSE à travers le proxy et l’arrêt depuis Conversations passent sur la candidate. Le rollback staging et la remise en place de la candidate sont vérifiés. Les pings, les erreurs après envoi des en-têtes et les limites sous charge restent à qualifier, ainsi que le cloisonnement documentaire et la matrice de feedback de #532. [Publication API](https://github.com/DGAFP/assistant-rh/actions/runs/40498924160) · [D4 #531](https://github.com/DGAFP/assistant-rh/issues/531) · [M2 #532](https://github.com/DGAFP/assistant-rh/issues/532)
+**NO-GO de qualification M2.** L’API staging `21aa3e3a3bb37d78456c3e846cb47d9e70e429f0` est réconciliée sur deux pods au digest `sha256:432d8d3d51cb863902a20e6eaa6c46c2f028bb92462065f9c46b502d4d18a891`. Le gate M1 passe. D4 a exercé le SSE privé et HTTPS, la coupure réseau, l’erreur SSE contrôlée en loopback dans l’image staging et le rollback. Les mesures HTTPS couvrent trois flux simultanés jusqu’à 148,608 s. Le cloisonnement documentaire et la matrice de feedback de #532 restent à qualifier. [Publication API](https://github.com/DGAFP/assistant-rh/actions/runs/40498924160) · [D4 #531](https://github.com/DGAFP/assistant-rh/issues/531) · [M2 #532](https://github.com/DGAFP/assistant-rh/issues/532)
 
 La CI du correctif de dépendances Conversations #26 est verte. Le job de publication de la PR est ignoré et les pods frontend et backend utilisent encore `3fe712b7`. La publication du feedback et sa recette navigateur restent à faire en phase E. [CI Conversations #26](https://github.com/DGAFP/conversations/actions/runs/45634251796) · [Workflow de publication](https://github.com/DGAFP/conversations/actions/runs/45634251791) · [E1 #533](https://github.com/DGAFP/assistant-rh/issues/533)
 
@@ -11,7 +11,7 @@ La CI du correctif de dépendances Conversations #26 est verte. Le job de public
 | D3 — replay exact | 98/98 cas de la capture staging comparés exactement entre core direct et route JSON depuis la sortie du retriever. Les sept scénarios enregistrés de M0b passent également. | Retrouver l’archive privée de septembre pour rejouer le run M1 #259. |
 | D3 — clients | OpenAI `3.20.0` et `pydantic-ai-slim` `2.54.0` passent le smoke avec le serveur synthétique TCP. L’erreur post-headers est un `ModelAPIError` causé par l’`APIError` `stream_error`. | Vérifier le provider dans le backend Conversations déployé et ses appels privés à l’API. |
 | D3 — goldset live | 98/98 réponses JSON valides et identiques aux runs persistés. Le gate M1 sur la capture complète donne **65/98 réponses validées** et **72,51 %** de rappel documentaire. | Gate M1 dans les tolérances des trois références. |
-| D4 — opérabilité | Sur le proxy HTTPS staging, un flux de **47,2 s** se termine normalement et une demande d’arrêt produit un run `cancelled`. Le retour au chart précédent et le redéploiement exact de la candidate passent. La suite API locale donne **1 524 tests réussis**. | Qualifier les pings, les erreurs après envoi des en-têtes et les limites sous charge. |
+| D4 — opérabilité | Trois flux HTTPS simultanés s’achèvent chacun après un keepalive reçu par le client. La coupure réseau du flux privé persiste `cancelled` et le contrôle d’erreur en isolation persiste `failed`. Après rollback et restauration, la réconciliation et les contrôles santé/catalogue passent. | Vérifier la couverture des durées et de la concurrence attendues à partir du périmètre mesuré. |
 | M2 — feedback et documents | Scénarios synthétiques d’auteur, d’habilitations courantes, de révocation et de documents privés. | Vérifier les rôles runtime #599, corriger puis qualifier le cloisonnement recherche → hydratation → délivrance sur les corpus concernés et rejouer la matrice API sur staging. |
 | E1 — parcours navigateur | Historique, chat et PDF vérifiés dans les [recettes de livraison](https://github.com/DGAFP/assistant-rh/pull/618). | Rejouer le parcours intégré sur les images actives, y compris feedback persistant et modification, puis les scénarios de droits et de session. |
 
@@ -240,6 +240,29 @@ Helm **13**, avec deux pods prêts. Depuis le backend Conversations,
 `/healthz` répond HTTP 200 et le catalogue sans délégation HTTP 401
 aux trois états. La liste ACL initiale est rétablie.
 [Preuve du rollback et de la restauration](../../evals/evidence/m2_d4_staging_rollback_20261126.json)
+
+### Campagne SSE D4 du 26 novembre 2026
+
+| Trajet | Observation |
+| --- | --- |
+| Service privé API depuis Conversations | Le flux complet dure **175,439 s**. Les 17 commentaires `: ping` arrivent à dix secondes d’intervalle, avec un premier texte à **70,024 s** et un run `completed`. |
+| Coupure réseau sur le service privé | Le client ferme la connexion au premier ping à **10,038 s**, avant le marqueur terminal. Le run est persisté `cancelled` avec le motif `disconnect`. |
+| Erreur SSE contrôlée | Un processus isolé de l’image candidate écoute en loopback avec une authentification synthétique. Après HTTP 200 et un ping, le flux émet `stream_error`. Le PostgreSQL staging contient un run `failed` sans sources. Le journal contient l’échec, le compteur `failed` s’incrémente et la jauge revient à zéro. |
+| Proxy HTTPS Scaleway | Les trois flux se chevauchent **122,143 s**. Chaque client reçoit un `data-keepalive` de Conversations après **55,098 à 55,161 s**, puis le premier texte après **59,051 à 64,052 s**. Aucun commentaire `: ping` de l’API n’est observé sur ce trajet. Les flux se terminent en **122,143 à 148,608 s** et les trois runs sont persistés `completed`. |
+
+Le load balancer et Traefik configurent des délais de **300 s**. Le pic
+observé pendant l’essai est de **115 MiB** sur un pod API (limite
+**1 GiB**) et **1 487 MiB** sur un pod Conversations (limite **2 GiB**).
+Le test HTTPS couvre trois flux simultanés, avec une durée maximale de
+**148,608 s**. Les valeurs de **300 s** pour les délais et de **50 flux
+par pod API** pour la concurrence proviennent de la configuration. Les
+pods API créés au retour de rollback atteignent l’état prêt en **6 et 7 s**. Après les essais, les deux pods
+sont prêts, sans redémarrage, et sans flux actif au relevé.
+
+Conversations obtient encore HTTP 200 sur `/healthz` et HTTP 401 sur
+le catalogue sans délégation. Les comptes, runs et traces synthétiques
+sont purgés et l’ACL initiale est rétablie.
+[Preuves SSE #531](../../evals/evidence/m2_d4_staging_sse_20261126.json)
 
 1. Relever les révisions de chart, les digests démarrés des deux applications et l’état Flux. Vérifier les migrations et les rôles #599 avant le trafic de recette.
 2. Depuis le backend Conversations, vérifier la résolution du Service privé API et `/healthz`. Via l’entrée staging, relever les horaires SSE du premier en-tête, des pings et du premier texte sur un flux long. Relever mémoire, redémarrages et limites sur les workloads.
