@@ -434,3 +434,18 @@ async def test_legacy_document_resolution_requires_a_unique_or_explicit_identity
     finally:
         async with corpus.transaction() as connection:
             await connection.execute("ALTER TABLE public.rag_chunks_service_public DROP COLUMN source_document_id")
+
+
+async def test_scoped_heading_checks_document_agreement_before_selecting_top_result(corpus):
+    wrong_parent = "00000000-0000-0000-0000-000000000095"
+    async with corpus.transaction() as connection:
+        await connection.execute("INSERT INTO public.rag_documents (doc_id, source) VALUES (%s, 'matte')", (wrong_parent,))
+        await connection.execute("ALTER TABLE public.rag_chunks_matte ADD COLUMN source_document_id UUID")
+        await connection.execute("UPDATE public.rag_chunks_matte SET source_document_id = %s WHERE hash_id = 'a'", (wrong_parent,))
+    try:
+        request = SearchRequest("matte", "heading", query="congés", limit=1, scoped=True)
+        chunks = await SearchStore(corpus).search(request)
+        assert [(chunk.chunk_id, chunk.section_id, chunk.rank) for chunk in chunks] == [("b", SEC1, 1)]
+    finally:
+        async with corpus.transaction() as connection:
+            await connection.execute("ALTER TABLE public.rag_chunks_matte DROP COLUMN source_document_id")
