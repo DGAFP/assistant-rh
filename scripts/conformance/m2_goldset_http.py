@@ -82,20 +82,37 @@ def sign(signer, model):
     return token
 
 
+def valid_usage(usage):
+    return isinstance(usage, dict) and all(
+        type(usage.get(key)) is int and usage[key] >= 0 for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+    )
+
+
+def valid_source(source):
+    if not isinstance(source, dict):
+        return False
+    if not all(isinstance(source.get(key), str) for key in ("doc_ref", "title", "publisher")) or not source["doc_ref"].strip():
+        return False
+    access = source.get("access")
+    return (access == "authenticated" and "url" in source and source["url"] is None) or (
+        access == "public" and isinstance(source.get("url"), str) and source["url"].startswith("https://")
+    )
+
+
 def complete(client, row, token):
     started = time.monotonic()
 
     def elapsed():
         return round((time.monotonic() - started) * 1000)
 
-    base = {"id": row["id"], "model": row["model"]}
+    transport = {"id": row["id"], "model": row["model"]}
     try:
         response = client.post(
             "chat/completions",
             headers={"Authorization": "Bearer " + token},
             json={"model": row["model"], "stream": False, "messages": [{"role": "user", "content": row["question"]}]},
         )
-        transport = {**base, "status": response.status_code, "elapsed_ms": elapsed()}
+        transport |= {"status": response.status_code, "elapsed_ms": elapsed()}
         if response.status_code != 200:
             return {**transport, "outcome": "http_error"}, None
         payload = response.json()
@@ -107,6 +124,10 @@ def complete(client, row, token):
         if (
             payload["object"] != "chat.completion"
             or payload["model"] != row["model"]
+            or type(payload["created"]) is not int
+            or payload["created"] < 0
+            or not valid_usage(payload["usage"])
+            or type(choice["index"]) is not int
             or choice["index"] != 0
             or choice["message"]["role"] != "assistant"
             or choice["finish_reason"] != "stop"
@@ -116,7 +137,7 @@ def complete(client, row, token):
             or not re.fullmatch(r"[a-f0-9]{32}", turn_id)
             or extension["ministry"] != MODELS[row["model"]]
             or not isinstance(sources, list)
-            or any(source["access"] == "authenticated" and source["url"] is not None for source in sources)
+            or not all(valid_source(source) for source in sources)
         ):
             raise ValueError("Invalid completion envelope")
         expected = set(row["expected_doc_refs"])
@@ -124,9 +145,9 @@ def complete(client, row, token):
         quality = {"id": row["id"], "gold_sources": len(expected), "gold_sources_served": len(expected & observed)}
         return {**transport, "outcome": "completed"}, (quality, {"id": row["id"], "turn_id": turn_id, "answer": answer, "sources": sources})
     except httpx.HTTPError as exc:
-        return {**base, "outcome": type(exc).__name__, "elapsed_ms": elapsed()}, None
+        return {**transport, "outcome": type(exc).__name__, "elapsed_ms": elapsed()}, None
     except (KeyError, TypeError, ValueError, AttributeError):
-        return {**base, "outcome": "invalid_response", "elapsed_ms": elapsed()}, None
+        return {**transport, "outcome": "invalid_response", "elapsed_ms": elapsed()}, None
 
 
 def run(args, capture=None):

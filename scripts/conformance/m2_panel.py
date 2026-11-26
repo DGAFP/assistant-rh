@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 import psycopg
+from assistant_rh_api.db.dsn import resolve_dsn, validate_libpq_environment
 from dotenv import dotenv_values
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
@@ -18,13 +19,19 @@ M1_EVIDENCE = ROOT / "docs/evals/evidence/m1_api_parity_followup_20260930.json"
 
 
 def readonly_staging_dsn(env_file):
+    validate_libpq_environment(os.environ)
     environment = dotenv_values(env_file)
-    staging = conninfo_to_dict(environment["SCW_POSTGRES_DSN_STAGING"])
+    staging = conninfo_to_dict(resolve_dsn(dsn=environment["SCW_POSTGRES_DSN_STAGING"]))
     production_dsn = environment.get("SCW_POSTGRES_DSN_PROD")
     if production_dsn:
-        production = conninfo_to_dict(production_dsn)
-        target_keys = ("host", "hostaddr", "port", "dbname")
-        if all(staging.get(key) == production.get(key) for key in target_keys):
+        production = conninfo_to_dict(resolve_dsn(dsn=production_dsn))
+
+        def targets(parameters):
+            hosts = {host.strip().lower().rstrip(".") for key in ("host", "hostaddr") for host in parameters.get(key, "").split(",") if host}
+            ports = {int(port or "5432") for port in parameters.get("port", "").split(",")}
+            return {(host, port, parameters["dbname"]) for host in hosts for port in ports}
+
+        if targets(staging) & targets(production):
             raise ValueError("Staging DSN matches production")
     options = staging.get("options", "")
     return make_conninfo(

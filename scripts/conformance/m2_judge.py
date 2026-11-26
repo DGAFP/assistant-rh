@@ -47,14 +47,31 @@ def evidence_digest(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
-def prepare(campaign, env_file, output):
+def read_historical_campaign(campaign):
     panel_path = campaign.parent / "m1-http-panel.jsonl"
     answers_path, contexts_path = campaign / "events.jsonl", campaign / "campaign-contexts.jsonl"
     summary = json.loads((campaign / "aggregate.json").read_text(encoding="utf-8"))
     if digest(panel_path) != summary["panel_sha256"] or summary["persisted_responses_matching_http"] != 98:
         raise ValueError("The verified staging panel or response inventory differs")
-    panel = {row["id"]: row for row in load_panel(panel_path)}
     answers = index_unique((row for row in read_jsonl(answers_path) if row["kind"] == "case"), lambda row: row["transport"]["id"])
+    return panel_path, contexts_path, answers, {"http_events_sha256": digest(answers_path)}
+
+
+def read_live_campaign(panel_path, report_path, answers_path, contexts_path):
+    summary = json.loads(report_path.read_text(encoding="utf-8"))
+    if summary["kind"] != "live_http_goldset" or not summary["quality_complete"] or digest(panel_path) != summary["panel_sha256"]:
+        raise ValueError("Expected a complete HTTP report for the supplied panel")
+    transports = index_unique(summary["transport"], lambda row: row["id"])
+    responses = index_unique(read_jsonl(answers_path), lambda row: row["id"])
+    if transports.keys() != responses.keys() or any(row["status"] != 200 for row in transports.values()):
+        raise ValueError("Collector report and private HTTP responses differ")
+    answers = {question_id: {"transport": transports[question_id], "private": row} for question_id, row in responses.items()}
+    return panel_path, contexts_path, answers, {"http_responses_sha256": digest(answers_path), "transport_report_sha256": digest(report_path)}
+
+
+def prepare(env_file, output, campaign):
+    panel_path, contexts_path, answers, fingerprints = campaign
+    panel = {row["id"]: row for row in load_panel(panel_path)}
     contexts = index_unique(read_jsonl(contexts_path), lambda row: row["turn_id"])
     if (
         len(panel) != 98
@@ -109,7 +126,7 @@ def prepare(campaign, env_file, output):
         "cases": len(cases),
         "input_sha256": digest(output / "judge-inputs.json"),
         "panel_sha256": digest(panel_path),
-        "http_events_sha256": digest(answers_path),
+        **fingerprints,
         "reconstructed_contexts_sha256": digest(contexts_path),
         "m0a_reference_sha256": hashlib.sha256(canonical(references).encode()).hexdigest(),
         "judge_provider": "scaleway",
@@ -196,16 +213,25 @@ def judge(output, env_file):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("prepare", "judge"))
-    parser.add_argument("--campaign", type=Path)
+    parser.add_argument("--campaign", type=Path, help="Historical staging evidence directory")
+    parser.add_argument("--panel", type=Path)
+    parser.add_argument("--transport-report", type=Path)
+    parser.add_argument("--private-capture", type=Path)
+    parser.add_argument("--verified-contexts", type=Path)
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     os.environ["PYTHON_DOTENV_DISABLED"] = "1"
     output = private_directory(args.output)
     if args.mode == "prepare":
-        if args.campaign is None:
-            parser.error("prepare requires --campaign")
-        result = prepare(args.campaign, args.env_file, output)
+        files = (args.panel, args.transport_report, args.private_capture, args.verified_contexts)
+        if args.campaign is not None and all(path is None for path in files):
+            campaign = read_historical_campaign(args.campaign)
+        elif args.campaign is None and all(path is not None for path in files):
+            campaign = read_live_campaign(*files)
+        else:
+            parser.error("prepare requires either --campaign or --panel, --transport-report, --private-capture and --verified-contexts")
+        result = prepare(args.env_file, output, campaign)
     else:
         result = judge(output, args.env_file)
     print(json.dumps(result, ensure_ascii=False))

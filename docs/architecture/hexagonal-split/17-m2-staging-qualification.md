@@ -43,7 +43,7 @@ uv run --no-sync python -m scripts.conformance.m2_goldset_http \
   --report "$TRANSPORT_REPORT" --private-capture "$PRIVATE_CAPTURE"
 ```
 
-Le rapport compte les réponses valides, les échecs de transport et les références attendues effectivement servies. Le rappel des sources servies est une mesure distincte du rappel de retrieval de M1. Associer à l’identifiant du run une capture autorisée et complète du contexte effectivement servi au générateur. Les traces opérationnelles peuvent être tronquées. Appliquer le protocole M1 `gold-passages-v2` à trois votes et la tolérance maximale de cinq points sur le pass rate et le rappel de retrieval contre chacune des références M1. Consigner les références de run dans le journal. Les outils RAG-ops conservent leur périmètre actuel.
+Le rapport compte les réponses valides, les échecs de transport et les références attendues effectivement servies. Le rappel des sources servies est une mesure distincte du rappel de retrieval de M1. Le collecteur fournit les réponses et identifiants de run dans `PRIVATE_CAPTURE`. Le jugement des réponses HTTP exige aussi une capture privée des contextes vérifiés avant la purge des runs. La mesure conjointe du jugement et du rappel utilise la capture complète décrite plus bas.
 
 ### Preuve complémentaire D3 du 25 novembre
 
@@ -101,20 +101,37 @@ directe. Les traces de retrieval sont tronquées sur les 96 exécutions RAG.
 
 ### Jugement des réponses HTTP
 
-Le bras `m1_http_staging_judge_20261125` utilise la référence M0a #240,
+Le bras historique `m1_http_staging_judge_20261125` utilise la référence M0a #240,
 le juge Scaleway `mistral-medium-3.5-128b` et trois votes selon
 `gold-passages-v2`. Il valide **69 réponses sur 98 (70,41 %)** et fournit
 294 votes exploitables. Les diagnostics de retrieval sont absents des
 entrées du juge à cause de la troncature des traces HTTP. L’écart avec
 les scores M1 est donc indicatif.
 
+Pour préparer un jugement à partir du collecteur, fournir `TRANSPORT_REPORT`,
+`PRIVATE_CAPTURE` et un JSONL privé `VERIFIED_CONTEXTS` avec une ligne par
+`turn_id`. Ce fichier contient `model`, `status` (`completed`), la liste
+`contexts` et les empreintes `answer_sha256` et `sources_sha256` du run
+persisté. Le hachage porte sur le JSON UTF-8 avec les clés triées et les
+caractères Unicode conservés. Le statut `context_status` vaut
+`trace_projection_and_prompt_prefix_matched` après rapprochement des extraits
+avec la trace et le préfixe de génération, ou `no_generation_context`
+pour une réponse directe avec une liste vide. Le juge vérifie ce
+rapprochement à partir des empreintes avant de préparer ses entrées.
+
 ```sh
 PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.conformance.m2_judge prepare \
-  --campaign "$HTTP_PRIVATE_DIR" --env-file "$STAGING_DB_ENV" --output "$JUDGE_DIR"
+  --panel "$GOLDSET_JSONL" --transport-report "$TRANSPORT_REPORT" \
+  --private-capture "$PRIVATE_CAPTURE" --verified-contexts "$VERIFIED_CONTEXTS" \
+  --env-file "$STAGING_DB_ENV" --output "$JUDGE_DIR"
 
 PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.conformance.m2_judge judge \
   --env-file "$M1_JUDGE_ENV" --output "$JUDGE_DIR"
 ```
+
+Le format historique s’ouvre avec `--campaign`. Son répertoire contient
+`aggregate.json`, `events.jsonl` et `campaign-contexts.jsonl`, avec
+`m1-http-panel.jsonl` dans le répertoire parent.
 
 ### Rappel M1 et rejeu sur une nouvelle capture staging
 
