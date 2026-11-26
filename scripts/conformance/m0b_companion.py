@@ -13,7 +13,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from scripts.conformance.m0b_replay import replay_case
+from scripts.conformance.m0b_replay import compare, replay_candidate, replay_case
 from scripts.conformance.m0b_values import BASELINE, PANEL, ROOT, assert_equal, digest, dump, require
 
 
@@ -47,20 +47,29 @@ def verify(directory):
     return manifest, cases
 
 
-async def replay(directory):
+async def replay(directory, *, http=False):
     manifest, cases = verify(directory)
-    results = []
-    for case in cases:
-        results.append(await replay_case(case))
+    run_case = replay_http_case if http else replay_case
     return {
         "exact_comparison": True,
+        "http_json_comparison": http,
         "network": "denied",
         "scope": manifest["scope"],
-        "cases": results,
+        "cases": [await run_case(case) for case in cases],
         "candidate_source_hashes": {
             str(path.relative_to(ROOT)): digest(path) for path in sorted((ROOT / "apps/api/src/assistant_rh_api").rglob("*.py"))
         },
     }
+
+
+async def replay_http_case(case):
+    from scripts.conformance.m2_http_replay import complete_over_http
+
+    direct = await replay_candidate(case)
+    result = compare(case, direct)
+    via_http = await replay_candidate(case, complete=complete_over_http)
+    assert_equal(via_http, direct, case["fixture"]["id"] + " HTTP vs direct core result")
+    return result
 
 
 async def check(directory):
@@ -105,15 +114,20 @@ def main():
     parser.add_argument("--env-file", type=Path)
     parser.add_argument("--limit", type=int, help="Development capture only; a partial panel cannot pass verification")
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--http", action="store_true", help="Replay and compare the real JSON route with synthetic individual delegation")
     args = parser.parse_args()
+    if args.http and args.mode != "replay":
+        parser.error("--http requires replay")
     if args.mode == "record":
         if args.env_file is None:
             parser.error("record requires --env-file")
         from scripts.conformance.m0b_record import record
 
         result = asyncio.run(record(args.directory, args.env_file, args.limit))
+    elif args.mode == "replay":
+        result = asyncio.run(replay(args.directory, http=args.http))
     else:
-        result = asyncio.run((replay if args.mode == "replay" else check)(args.directory))
+        result = asyncio.run(check(args.directory))
     if args.report:
         dump(args.report, result)
     print(

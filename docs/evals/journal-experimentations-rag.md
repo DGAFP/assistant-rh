@@ -2333,3 +2333,162 @@ Revue indépendante sans bloquant ; 31tests supplémentaires indépendants passe
 et13sont skips faute de DSN dans son environnement, deux tests packaging passent.
 Ruff/format, quatre contrats d'import, Helm lint et sept tests de garde CI passent.
 Suite API complète/conformance et suite racine en cours avant promotion.
+
+## M2 — préparation de la recette HTTP du 25 novembre 2026
+
+Sur la base `74d7f29`, exercice de la parité directe ↔ route HTTP sur un
+scénario synthétique avec historique et délégation individuelle. Vérification
+de l’enveloppe JSON, du résultat structuré, des sources, de l’usage et du run
+enregistré dans le store de test. Le serveur TCP de replay confirme la
+compatibilité du SDK OpenAI 3.20.0 et de Pydantic AI 2.54.0 avec les réponses
+JSON, SSE et l’erreur post-headers. Le panel privé de 98 questions reste à
+rejouer sur la candidate.
+
+La collecte live est préparée. La révision déployée, les empreintes du corpus
+et de la configuration et la session de recette restent à vérifier depuis un
+accès staging fonctionnel. Consigner le label au lancement et les résultats
+à la fin de la campagne. [Protocole et état M2](../architecture/hexagonal-split/17-m2-staging-qualification.md)
+
+Le rejeu complémentaire `m0b_http_20261125` passe **7/7 scénarios
+enregistrés** via la route JSON avec délégation individuelle. Il couvre les
+27 étapes et 23 appels d’inférence enregistrés par voie d’exécution, avec
+égalité du résultat structuré entre le core et HTTP. La suite vérifie
+l’empreinte de l’archive reconnue et détecte les cinq mutations prévues.
+La campagne goldset live reste à lancer depuis le réseau de recette.
+
+Le panel `baseline_v1` de PostgreSQL staging correspond exactement à
+l’empreinte M1 `afd6cfc9…`. Il est exporté en lecture seule pour la collecte
+HTTP avec 98 questions et les références résolues sur le corpus de la base.
+Le clone local est refusé par le contrôle d’empreinte. Ce contrôle porte
+sur les entrées du goldset. Le rejeu déterministe des réponses de fournisseurs
+requiert toujours l’archive M1. [Recette HTTP](../architecture/hexagonal-split/17-m2-staging-qualification.md)
+
+## M2 — préenregistrement `m1_http_staging_20261125`
+
+Panel M1 de 98 questions, empreinte source `afd6cfc9…` et export HTTP
+`2dfa5144…`. L’API Kapsule publie la révision `21aa3e3`, chart
+`0.55.1+78870b6dd828`, image `sha256:432d8d3d…`. Deux pods utilisent
+ce même digest. Conversations appelle l’API via le réseau privé depuis
+la révision `3fe712b7`. Deux requêtes simultanées au maximum et une
+délégation #596 neuve par requête. Les comptes de recette ne peuvent
+accéder qu’à MATTE et MSO.
+
+Les empreintes initiales de configuration, corpus et modèles sont
+`a3f91465…`, `798ae4cb…` et `0ab54f64…`. Collecter les résultats de
+transport et le rappel des sources servies. Le jugement M1 requiert un
+contexte de génération complet et vérifié, ainsi qu’un rappel de
+retrieval comparable. Vérifier les empreintes après la collecte et purger
+les identités, sessions et lignes de recette à la fin.
+
+Le contrôle depuis le backend Conversations confirme `/healthz` avec
+configuration et base chargées, ainsi qu’un refus HTTP 401 du catalogue
+sans délégation. La candidate utilise Albert DINUM pour l’inférence. Le
+repli Scaleway est désactivé dans le pod. Le préflight du compte de purge
+confirme ses droits en lecture seule.
+
+Le premier lancement a été suspendu avant tout appel d’inférence. La
+collecte a repris après l’autorisation explicite pour Albert DINUM et les
+traces temporaires.
+
+### Résultat de `m1_http_staging_20261125`
+
+Les **98/98 réponses HTTP valides** sont identiques aux runs persistés.
+MATTE : 94/94. MSO : 4/4. Latence médiane **12,63 s**, p95 **38,55 s**.
+53 questions servent au moins une référence attendue. Le rappel moyen des
+références servies atteint **45,14 %**. Le contrôle PDF retourne 200 pour
+l’auteur et 404 pour l’autre compte du même groupe.
+
+La reconstruction de 96 contextes concorde avec les projections et les
+préfixes de prompts enregistrés. Deux questions suivent une réponse
+directe. La troncature des listes de retrieval empêche le calcul du rappel
+comparable à M1. Le jugement de référence reste à réaliser.
+
+La candidate et ses empreintes sont inchangées après la collecte. La purge
+supprime 98 runs et 676 traces. Le groupe, les comptes et les sessions de
+recette ont été nettoyés, et l’ACL initiale est rétablie.
+[Résultats agrégés](evidence/m2_http_goldset_staging_20261125.json)
+
+## M2 — préenregistrement `m1_http_staging_judge_20261125`
+
+Juger les 98 réponses capturées sur l’API `21aa3e3` avec les réponses de
+référence M0a #240 et les contextes reconstruits pour les 96 parcours RAG.
+Juge souverain M1 `mistral-medium-3.5-128b` sur Scaleway AI, majorité de
+trois votes et citations vérifiées selon `gold-passages-v2`. Conserver les
+votes dans des fichiers privés et comparer les scores aux bras M1.
+Les diagnostics de rappel sont laissés vides car la capture HTTP initiale
+conserve un inventaire de retrieval tronqué. Le jugement de cette capture et
+la mesure sur une nouvelle capture complète ont des provenances distinctes.
+
+### Résultat de `m1_http_staging_judge_20261125`
+
+Le juge valide **69/98 réponses (70,41 %)**. Les 98 questions ont un
+verdict majoritaire et les **294 votes** sont exploitables. Le score dépasse
+M1 legacy live (62/98) de 7,14 points et M1 core live et M0a rejugé (60/98
+chacun) de 9,18 points. Les diagnostics de retrieval étant absents
+des entrées du juge, cette comparaison ne valide pas le gate M1.
+
+## M2 — préenregistrement `m1_http_frozen_recapture_20261125`
+
+Reprendre les 98 questions de M1 sur le code `21aa3e3` et le corpus
+dont les empreintes ont été relevées lors de la collecte HTTP. Enregistrer
+les sorties de recherche complètes et les appels d’inférence lors d’une
+seconde campagne isolée en lecture seule. Deux appels simultanés au plus
+vers Albert DINUM. Les runs de la capture sont conservés en mémoire.
+
+Cette nouvelle capture fournit le rappel selon la métrique M1 et les
+entrées d’un rejeu exact du moteur direct puis de la route JSON HTTP,
+avec contrôle des empreintes et réseau coupé. Elle est datée et
+versionnée séparément du rejeu historique de septembre.
+
+Capture interrompue à la demande après **80/98 cas complets**. Les
+empreintes staging correspondent à celles du début. Les processus de
+capture sont arrêtés et l’ACL initiale est rétablie. Les 18 questions
+restantes sont identifiées dans le point de reprise privé. Le rappel
+global et le rejeu des 98 cas restent à vérifier après la reprise.
+
+### Résultat de `m1_http_frozen_recapture_20261125`
+
+Les 18 questions manquantes ont été capturées après vérification de
+l’image et des empreintes staging. Les 98 cas correspondent au panel
+certifié, dont 96 parcours avec retrieval et deux réponses directes.
+Le rappel documentaire M1 est de **72,51 %** sur les 98 questions.
+**81/98** retrouvent au moins un document attendu. L’écart est de
+−0,41 point contre M1 legacy live et core live et de +0,08 point
+contre M0a rejugé.
+
+Le test de conformance passe sur **98/98 cas** depuis la sortie du
+retriever. Les étapes comparées, réponses, sources, usages et enveloppes
+JSON sont exacts. Les empreintes de staging concordent après la reprise,
+les runs de capture restent en mémoire et l’ACL initiale est rétablie.
+Le score du juge provient de la collecte HTTP initiale. Le rejeu du lot
+historique de septembre requiert toujours l’archive M1 #259.
+[Bilan #530](evidence/m2_d3_staging_followup_20261125.json)
+
+## M2 — préenregistrement `m1_gate_same_capture_20261125`
+
+Mesurer le rappel et juger les réponses de la même capture
+`m1_http_frozen_recapture_20261125` sur l’API `21aa3e3`. Figer les
+98 réponses, contextes effectivement utilisés et diagnostics de retrieval
+à partir de l’archive `4e84366b…`. Vérifier le panel M1, les références
+M0a #240 et l’empreinte des alias documentaires avant le jugement.
+
+Utiliser Scaleway AI `mistral-medium-3.5-128b`, trois votes,
+`gold-passages-v2` et le calcul M1 des diagnostics. Comparer au legacy
+live #258, au core live #259 et à M0a rejugé #255, avec une baisse
+maximale de cinq points sur chacune des deux métriques. Le protocole
+porte sur la capture complète dont le rejeu JSON est déjà vérifié.
+
+### Résultat de `m1_gate_same_capture_20261125`
+
+**Gate M1 validé.** **65/98 réponses (66,33 %)** passent le jugement
+et les **294 votes** sont exploitables. Le rappel documentaire des mêmes
+cas est de **72,51 %**, avec au moins un document attendu retrouvé pour
+81 questions. Le corps de la réponse servi est jugé avant le bloc des
+sources, avec les contextes et les diagnostics de retrieval de la
+même capture.
+
+Face à M1 legacy live, la validation gagne 3,06 points et le rappel
+recule de 0,41 point. Face à M1 core live, les écarts sont de
++5,10 et −0,41 point. Face à M0a rejugé, les écarts sont de +5,10
+et +0,08 point. Tous respectent la tolérance de cinq points.
+[Preuve du gate M1](evidence/m2_m1_gate_same_capture_20261125.json)
