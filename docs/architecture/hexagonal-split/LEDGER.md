@@ -1346,13 +1346,13 @@ catalogue sans délégation aux trois états. L’ACL initiale est rétablie.
 
 Sur le service API privé, un flux de **175,439 s** délivre 17 pings,
 et la fermeture réelle du second flux persiste `cancelled` avec le
-motif `disconnect`. Dans un processus isolé de l’image staging,
-l’erreur SSE contrôlée après HTTP 200 persiste `failed` et apparaît
-dans les métriques et le journal.
+motif `disconnect`. En loopback dans un processus isolé de l’image
+staging, l’erreur SSE contrôlée après HTTP 200 persiste `failed` et
+apparaît dans les métriques et le journal.
 
 Trois requêtes HTTPS se chevauchent **122,143 s** et reçoivent chacune
-un keepalive vers **55,1 s** avant le premier texte. Elles se terminent
-en **122 à 149 s**. Le pic mesuré par pod est de **115 MiB** pour
+un `data-keepalive` de Conversations vers **55,1 s** avant le premier texte.
+Elles se terminent en **122 à 149 s**. Le pic mesuré par pod est de **115 MiB** pour
 l’API et de **1 487 MiB** pour Conversations. Les deux pods API restent
 prêts. Les données de recette sont purgées et l’ACL initiale est rétablie.
 [Preuve SSE #531](../../evals/evidence/m2_d4_staging_sse_20261126.json)
