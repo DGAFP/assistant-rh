@@ -357,3 +357,26 @@ async def test_concurrent_aggregation_diagnostics_and_scores_are_isolated():
     assert plain(chunks) == before
     with pytest.raises(TypeError):
         ranked.diagnostics.chunks_after_rerank[0]["doc_id"] = "other-request"
+
+
+@pytest.mark.parametrize(
+    "reference,section_id,expected",
+    [
+        ("00000000-0000-0000-0000-000000000001", None, "00000000-0000-0000-0000-000000000001"),
+        ("00000000000000000000000000000001", None, ""),
+        ("00000000-0000-0000-0000-000000000001", "missing", ""),
+    ],
+)
+async def test_scoped_aggregation_keeps_only_verified_document_associations(reference, section_id, expected):
+    chunk = RetrievedChunk("a", "Approved excerpt", 0.7, "MATTE", {"source_document_id": reference}, section_id, "albert")
+    aggregator = SectionAggregator(SectionAggregationConfig(enable_section_reranker=False), Content(), Reranker())
+    sections = (await aggregator.aggregate_with_diagnostics((chunk,), ministry="matte")).sections
+    assert sections[0].metadata["doc_id"] == expected
+
+
+async def test_scoped_aggregation_uses_canonical_document_of_standalone_excerpt():
+    doc_id = "00000000-0000-0000-0000-000000000001"
+    chunk = RetrievedChunk("a", "Approved excerpt", 0.7, "MASA", {"doc_id": doc_id}, None, "albert")
+    aggregator = SectionAggregator(SectionAggregationConfig(enable_section_reranker=False), Content(), Reranker())
+    result = await aggregator.aggregate_with_diagnostics((chunk,), ministry="masa")
+    assert result.sections[0].metadata["doc_id"] == doc_id

@@ -255,7 +255,7 @@ def compare(case, actual):
 async def replay_candidate(case, *, complete=None):
     from scripts.conformance.m0b_values import ReplayStore
 
-    tape = Tape(case["stores"])
+    tape = Tape(case["stores"], legacy_document_ministry=case["effective_ministry"])
     stores = {name: ReplayStore(name, tape) for name in ("config", "search", "content", "prompts", "packaged", "acronyms")}
     if case.get("retrieval_boundary") == "retriever_output":
         stores["retriever"] = ReplayStore("retriever", tape)

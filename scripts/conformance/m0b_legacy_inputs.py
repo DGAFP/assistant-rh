@@ -103,7 +103,7 @@ def attach_search(retriever, records):
         hybrid = "semantic_ranked AS" in statement
         mode = "lexical" if model_used == "lexical" else "vector"
         request = SearchRequest(
-            scope["source"], mode, scope["query"], tuple(scope["embedding"]), scope["model"], params[-1], retriever.config.ivfflat_probes
+            scope["source"], mode, scope["query"], tuple(scope["embedding"]), scope["model"], params[-1], retriever.config.ivfflat_probes, scoped=True
         )
         if hybrid:
             lanes, evidence = hybrid_lanes(retriever, table, statement, params)
@@ -131,6 +131,7 @@ def attach_search(retriever, records):
             query=query,
             limit=kwargs.get("top_k") or retriever.config.initial_top_k,
             probes=retriever.config.ivfflat_probes,
+            scoped=True,
         )
         store_call(records, "search.search", (request,), raw_chunks(sources[table.name], reads[0]), {"rows": reads[0]})
         return result
