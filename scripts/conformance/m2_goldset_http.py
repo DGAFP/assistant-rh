@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
+from assistant_rh_api.core.sources import public_source_url
 
 from scripts.conformance.m0b_private import private_directory
 from scripts.conformance.m0b_values import digest
@@ -95,7 +96,7 @@ def valid_source(source):
         return False
     access = source.get("access")
     return (access == "authenticated" and "url" in source and source["url"] is None) or (
-        access == "public" and isinstance(source.get("url"), str) and source["url"].startswith("https://")
+        access == "public" and isinstance(source.get("url"), str) and bool(public_source_url(source["url"]))
     )
 
 

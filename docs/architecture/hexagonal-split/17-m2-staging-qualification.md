@@ -111,13 +111,17 @@ les scores M1 est donc indicatif.
 Pour préparer un jugement à partir du collecteur, fournir `TRANSPORT_REPORT`,
 `PRIVATE_CAPTURE` et un JSONL privé `VERIFIED_CONTEXTS` avec une ligne par
 `turn_id`. Ce fichier contient `model`, `status` (`completed`), la liste
-`contexts` et les empreintes `answer_sha256` et `sources_sha256` du run
-persisté. Le hachage porte sur le JSON UTF-8 avec les clés triées et les
-caractères Unicode conservés. Le statut `context_status` vaut
+`contexts` et les empreintes `answer_sha256` et `sources_sha256` calculées
+à partir du run persisté. Pour les sources, conserver l’ordre du run et la
+projection HTTP `doc_ref`, `title`, `publisher`, `access` et `url`.
+Une URL vide devient `null`. Pour chaque valeur, appliquer SHA-256 aux
+octets de `json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")`.
+Le statut `context_status` vaut
 `trace_projection_and_prompt_prefix_matched` après rapprochement des extraits
 avec la trace et le préfixe de génération, ou `no_generation_context`
-pour une réponse directe avec une liste vide. Le juge vérifie ce
-rapprochement à partir des empreintes avant de préparer ses entrées.
+pour une réponse directe avec une liste vide. L’opérateur vérifie les
+contextes, et le préparateur du juge contrôle la concordance des réponses
+et des sources avec les empreintes du run.
 
 ```sh
 PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.conformance.m2_judge prepare \

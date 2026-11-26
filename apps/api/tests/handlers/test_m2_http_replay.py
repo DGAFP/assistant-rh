@@ -77,9 +77,10 @@ def test_incomplete_http_success_does_not_count_toward_quality(live_case, omitte
     assert transport["status"] == 200 and transport["outcome"] == "invalid_response" and result is None
 
 
-def test_unrecognized_source_access_does_not_count_toward_quality(live_case):
+@pytest.mark.parametrize("access,url", (("broken", None), ("public", "https://"), ("public", "https://private.example/document")))
+def test_invalid_source_access_does_not_count_toward_quality(live_case, access, url):
     row, payload = live_case
-    payload["x_assistant_rh"]["sources"][0]["access"] = "broken"
+    payload["x_assistant_rh"]["sources"][0].update(access=access, url=url)
     with httpx.Client(
         base_url="http://127.0.0.1/v1/",
         transport=httpx.MockTransport(lambda _: httpx.Response(200, json=payload)),
