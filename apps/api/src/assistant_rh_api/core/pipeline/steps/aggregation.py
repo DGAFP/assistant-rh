@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import replace
 from typing import Dict, List, cast
+from uuid import UUID
 
 from assistant_rh_api.core.errors import DatabaseConflict, DatabaseFailure, DatabaseUnavailable, InferenceFailure
 from assistant_rh_api.core.models.context import AggregatedSection, SectionAggregationDiagnostics, SectionAggregationResult
@@ -96,7 +97,20 @@ class SectionAggregator:
 
             first_meta = first.metadata or {}
 
-            doc_id = meta.get("doc_id") or first_meta.get("doc_id" if ministry is not None else "source_document_id")
+            # Scoped search checks canonical UUID links in SQL. An unavailable
+            # section cannot grant authority, nor can a legacy text alias.
+            doc_id = meta.get("doc_id")
+            if not doc_id:
+                raw_reference = first_meta.get("source_document_id")
+                doc_id = raw_reference
+                if ministry is not None and raw_reference:
+                    try:
+                        canonical = str(UUID(str(raw_reference)))
+                    except ValueError:
+                        pass  # An ordinary short ID is display metadata only.
+                    else:
+                        if first.section_id or canonical != str(raw_reference).lower():
+                            doc_id = None
 
             doc_short_id = (
                 meta.get("doc_short_id") or first_meta.get("doc_short_id") or first_meta.get("short_id") or first_meta.get("source_document_id") or ""

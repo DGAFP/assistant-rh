@@ -340,7 +340,6 @@ class Retriever:
                         for key in (*source.metadata_fields, "doc_short_id", "doc_title", "doc_url")
                         if chunk.metadata.get(key) is not None
                     },
-                    **({"doc_id": chunk.metadata["doc_id"]} if scoped and chunk.section_id is None and chunk.metadata.get("doc_id") else {}),
                     "source_score_mode": score_mode,
                 },
                 chunk.section_id if source.headings else None,

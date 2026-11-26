@@ -128,14 +128,29 @@ def final_output(answer, items, sources, diagnostics):
     )
 
 
+def with_recorded_document_scope(operation, request, ministry):
+    """Supply the scope implicit in an older recording, never rewrite live calls."""
+    if operation in ("search.search", "search.hybrid_candidates"):
+        args = list(request["args"])
+        args[0] = {"scoped": True, **args[0]}
+        return {**request, "args": args}
+    if operation in ("content.documents", "content.sections"):
+        return {**request, "kwargs": {"ministry": ministry, **request["kwargs"]}}
+    return request
+
+
 class Tape:
     """Match calls by their complete arguments; never by an expected stage result."""
 
-    def __init__(self, records):
+    def __init__(self, records, *, legacy_document_ministry=None):
         self.pending = defaultdict(deque)
         self.count = 0
         for row in records:
-            self.pending[canonical([row["operation"], row["request"]])].append(row["response"])
+            operation = row["operation"]
+            request = row["request"]
+            if legacy_document_ministry is not None:
+                request = with_recorded_document_scope(operation, request, legacy_document_ministry)
+            self.pending[canonical([operation, request])].append(row["response"])
 
     def take(self, operation, request):
         rows = self.pending[canonical([operation, request])]
