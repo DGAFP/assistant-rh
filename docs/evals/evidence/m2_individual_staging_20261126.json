@@ -1,0 +1,649 @@
+{
+  "schema": "assistant-rh-m2-individual-api-acceptance-v1",
+  "started_at": "2026-11-26T19:01:51Z",
+  "phases": [
+    {
+      "phase": "setup",
+      "checks": [],
+      "measurements": {
+        "isolated_authors": 2,
+        "isolated_group": 1,
+        "synthetic_initial_runs": 4
+      }
+    },
+    {
+      "phase": "feedback_initial",
+      "checks": [
+        {
+          "name": "feedback_initial_all_204",
+          "passed": true
+        },
+        {
+          "name": "feedback_initial_no_store",
+          "passed": true
+        },
+        {
+          "name": "author_reads_feedback",
+          "passed": true
+        },
+        {
+          "name": "annotations_not_exposed",
+          "passed": true
+        }
+      ],
+      "measurements": {}
+    },
+    {
+      "phase": "feedback_retry",
+      "checks": [
+        {
+          "name": "feedback_retry_all_204",
+          "passed": true
+        },
+        {
+          "name": "feedback_retry_no_store",
+          "passed": true
+        },
+        {
+          "name": "author_reads_feedback",
+          "passed": true
+        },
+        {
+          "name": "annotations_not_exposed",
+          "passed": true
+        }
+      ],
+      "measurements": {}
+    },
+    {
+      "phase": "feedback_denials",
+      "checks": [
+        {
+          "name": "peer_feedback_refused",
+          "passed": true
+        },
+        {
+          "name": "other_ministry_feedback_refused",
+          "passed": true
+        },
+        {
+          "name": "collective_feedback_refused",
+          "passed": true
+        },
+        {
+          "name": "missing_feedback_refused",
+          "passed": true
+        },
+        {
+          "name": "withdrawn_feedback_refused",
+          "passed": true
+        },
+        {
+          "name": "expired_feedback_refused",
+          "passed": true
+        },
+        {
+          "name": "collective_session_issued",
+          "passed": true
+        },
+        {
+          "name": "b4_cannot_read_individual_feedback",
+          "passed": true
+        },
+        {
+          "name": "b4_cannot_write_individual_feedback",
+          "passed": true
+        },
+        {
+          "name": "b4_cannot_open_individual_document",
+          "passed": true
+        },
+        {
+          "name": "collective_session_revoked",
+          "passed": true
+        }
+      ],
+      "measurements": {}
+    },
+    {
+      "phase": "feedback_edit",
+      "checks": [
+        {
+          "name": "reconnected_author_edits",
+          "passed": true
+        },
+        {
+          "name": "edit_persists",
+          "passed": true
+        }
+      ],
+      "measurements": {}
+    },
+    {
+      "phase": "feedback_concurrency",
+      "checks": [
+        {
+          "name": "feedback_concurrency_all_204",
+          "passed": true
+        },
+        {
+          "name": "feedback_concurrency_no_store",
+          "passed": true
+        },
+        {
+          "name": "author_reads_feedback",
+          "passed": true
+        },
+        {
+          "name": "annotations_not_exposed",
+          "passed": true
+        }
+      ],
+      "measurements": {}
+    },
+    {
+      "phase": "feedback_rollback",
+      "checks": [
+        {
+          "name": "failed_update_returns_500",
+          "passed": true
+        },
+        {
+          "name": "failure_detail_hidden",
+          "passed": true
+        }
+      ],
+      "measurements": {}
+    },
+    {
+      "phase": "documents",
+      "checks": [
+        {
+          "name": "s3_200",
+          "passed": true
+        },
+        {
+          "name": "s3_headers",
+          "passed": true
+        },
+        {
+          "name": "s3_complete_pdf",
+          "passed": true
+        },
+        {
+          "name": "s3_200",
+          "passed": true
+        },
+        {
+          "name": "s3_headers",
+          "passed": true
+        },
+        {
+          "name": "s3_complete_pdf",
+          "passed": true
+        },
+        {
+          "name": "range_is_full_response",
+          "passed": true
+        },
+        {
+          "name": "s3_200",
+          "passed": true
+        },
+        {
+          "name": "s3_headers",
+          "passed": true
+        },
+        {
+          "name": "s3_complete_pdf",
+          "passed": true
+        },
+        {
+          "name": "range_is_full_response",
+          "passed": true
+        },
+        {
+          "name": "s3_200",
+          "passed": true
+        },
+        {
+          "name": "s3_headers",
+          "passed": true
+        },
+        {
+          "name": "s3_complete_pdf",
+          "passed": true
+        },
+        {
+          "name": "range_is_full_response",
+          "passed": true
+        },
+        {
+          "name": "s3_200",
+          "passed": true
+        },
+        {
+          "name": "s3_headers",
+          "passed": true
+        },
+        {
+          "name": "s3_complete_pdf",
+          "passed": true
+        },
+        {
+          "name": "range_is_full_response",
+          "passed": true
+        },
+        {
+          "name": "legacy_200",
+          "passed": true
+        },
+        {
+          "name": "legacy_headers",
+          "passed": true
+        },
+        {
+          "name": "legacy_complete_pdf",
+          "passed": true
+        },
+        {
+          "name": "legacy_bytes_match",
+          "passed": true
+        },
+        {
+          "name": "legacy_200",
+          "passed": true
+        },
+        {
+          "name": "legacy_headers",
+          "passed": true
+        },
+        {
+          "name": "legacy_complete_pdf",
+          "passed": true
+        },
+        {
+          "name": "legacy_range_is_full_response",
+          "passed": true
+        },
+        {
+          "name": "abort_legacy_started_0",
+          "passed": true
+        },
+        {
+          "name": "abort_legacy_started_1",
+          "passed": true
+        },
+        {
+          "name": "legacy_200",
+          "passed": true
+        },
+        {
+          "name": "legacy_headers",
+          "passed": true
+        },
+        {
+          "name": "legacy_complete_pdf",
+          "passed": true
+        },
+        {
+          "name": "legacy_pool_reusable_after_aborts",
+          "passed": true
+        },
+        {
+          "name": "peer_document_refused",
+          "passed": true
+        },
+        {
+          "name": "wrong_ministry_document_refused",
+          "passed": true
+        },
+        {
+          "name": "foreign_document_document_refused",
+          "passed": true
+        },
+        {
+          "name": "unserved_candidate_document_refused",
+          "passed": true
+        },
+        {
+          "name": "missing_storage_document_refused",
+          "passed": true
+        },
+        {
+          "name": "collective_document_refused",
+          "passed": true
+        },
+        {
+          "name": "other_run_document_refused",
+          "passed": true
+        },
+        {
+          "name": "withdrawn_document_refused",
+          "passed": true
+        },
+        {
+          "name": "expired_document_refused",
+          "passed": true
+        },
+        {
+          "name": "s3_200",
+          "passed": true
+        },
+        {
+          "name": "s3_headers",
+          "passed": true
+        },
+        {
+          "name": "s3_complete_pdf",
+          "passed": true
+        },
+        {
+          "name": "restored_document_access",
+          "passed": true
+        }
+      ],
+      "measurements": {
+        "s3": {
+          "bytes": 96201,
+          "sha256": "5f47b49b51940f7a376adbe752ca21d505f334419756f1a7dd6bd9a6bad08ee9"
+        },
+        "legacy": {
+          "bytes": 33554413,
+          "sha256": "402d1a2bbd1e9a9e771843afa33acbea4eab845e0166298936dccf33216ea0af"
+        }
+      }
+    },
+    {
+      "phase": "clients",
+      "checks": [
+        {
+          "name": "openai_sdk_completion",
+          "passed": true
+        },
+        {
+          "name": "conversations_provider_completion",
+          "passed": true
+        }
+      ],
+      "measurements": {}
+    },
+    {
+      "phase": "streaming",
+      "checks": [
+        {
+          "name": "stream_http_200",
+          "passed": true
+        },
+        {
+          "name": "stream_event_type",
+          "passed": true
+        },
+        {
+          "name": "stream_completed",
+          "passed": true
+        },
+        {
+          "name": "stream_http_200",
+          "passed": true
+        },
+        {
+          "name": "stream_event_type",
+          "passed": true
+        },
+        {
+          "name": "stream_interrupted",
+          "passed": true
+        }
+      ],
+      "measurements": {
+        "streams": [
+          {
+            "cancelled_by_client": false,
+            "duration_s": 77.346,
+            "first_text_s": 53.739,
+            "pings": 7,
+            "text_frames": 423,
+            "done": true
+          },
+          {
+            "cancelled_by_client": true,
+            "duration_s": 10.038,
+            "first_text_s": null,
+            "pings": 1,
+            "text_frames": 0,
+            "done": false
+          }
+        ]
+      }
+    },
+    {
+      "phase": "cleanup",
+      "checks": [
+        {
+          "name": "users_removed",
+          "passed": true
+        },
+        {
+          "name": "group_removed",
+          "passed": true
+        },
+        {
+          "name": "sessions_removed",
+          "passed": true
+        }
+      ],
+      "measurements": {}
+    }
+  ],
+  "sql_checks": [
+    {
+      "name": "staging_cluster",
+      "passed": true
+    },
+    {
+      "name": "private_staging_database",
+      "passed": true
+    },
+    {
+      "name": "operator_tls",
+      "passed": true
+    },
+    {
+      "name": "operator_target",
+      "passed": true
+    },
+    {
+      "name": "initial_unique_revision",
+      "passed": true
+    },
+    {
+      "name": "retry_has_no_write",
+      "passed": true
+    },
+    {
+      "name": "denials_have_no_write",
+      "passed": true
+    },
+    {
+      "name": "arh_streamlit_non_api_login",
+      "passed": true
+    },
+    {
+      "name": "arh_streamlit_content_comment",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "arh_streamlit_content_stars",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "arh_streamlit_content_reasons_positive",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "arh_streamlit_content_reasons_negative",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "arh_streamlit_annotation",
+      "passed": true,
+      "sqlstate": null
+    },
+    {
+      "name": "arh_streamlit_analysis",
+      "passed": true,
+      "sqlstate": null
+    },
+    {
+      "name": "arh_streamlit_delete_individual",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "arh_streamlit_disable_guard",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "arh_streamlit_drop_guard",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "arh_streamlit_rename_individual",
+      "passed": true,
+      "sqlstate": "23514"
+    },
+    {
+      "name": "collective_history_replacement",
+      "passed": true
+    },
+    {
+      "name": "arh_analysis_non_api_login",
+      "passed": true
+    },
+    {
+      "name": "arh_analysis_content_comment",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "arh_analysis_content_stars",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "arh_analysis_content_reasons_positive",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "arh_analysis_content_reasons_negative",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "arh_analysis_annotation",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "arh_analysis_analysis",
+      "passed": true,
+      "sqlstate": null
+    },
+    {
+      "name": "arh_analysis_delete_individual",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "arh_analysis_disable_guard",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "arh_analysis_drop_guard",
+      "passed": true,
+      "sqlstate": "42501"
+    },
+    {
+      "name": "annotations_preserved",
+      "passed": true
+    },
+    {
+      "name": "analysis_invalidated_once",
+      "passed": true
+    },
+    {
+      "name": "one_pending_analysis",
+      "passed": true
+    },
+    {
+      "name": "stale_analysis_cannot_overwrite_edit",
+      "passed": true
+    },
+    {
+      "name": "individual_audit",
+      "passed": true
+    },
+    {
+      "name": "reconnection_changes_audit_session",
+      "passed": true
+    },
+    {
+      "name": "concurrent_updates_serialized",
+      "passed": true
+    },
+    {
+      "name": "http_failure_rolls_back_current_and_audit",
+      "passed": true
+    },
+    {
+      "name": "sdk_provider_runs_completed",
+      "passed": true
+    },
+    {
+      "name": "streaming_completion_and_disconnect_persisted",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "cleanup": {
+    "rag_runs_remaining": 0,
+    "synthetic_documents_remaining": 0,
+    "replays_remaining": 0
+  },
+  "sql_login_cleanup": {
+    "temporary_non_api_logins_removed": 2,
+    "all_removed": true
+  },
+  "finished_at": "2026-11-26T19:04:38Z",
+  "checks_total": 123,
+  "deployment": {
+    "environment": "staging",
+    "git_sha": "2043a66b9da9b88a7e44c0ce1efdcc3896a36353",
+    "api_image_digest": "sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b",
+    "chart": "0.84.1+aaf6ad46cd64",
+    "conversations_backend_git_sha": "d38bec4eeaebc911b5278d404dc8eb5879c9d1ce",
+    "conversations_chart": "0.73.1+d1303baae68f"
+  },
+  "clients": {
+    "openai": "3.20.0",
+    "pydantic-ai-slim": "2.54.0",
+    "conversations_backend": "d38bec4eeaebc911b5278d404dc8eb5879c9d1ce"
+  },
+  "method": {
+    "operator": "TLS verified staging migrator, isolated synthetic fixtures",
+    "non_api_sql_identities": "Two temporary native Scaleway nonadmin readonly logins attached to existing arh_streamlit/arh_analysis roles, privileges removed before logins",
+    "fault": "Fixture-only temporary trigger; verifies HTTP 500 rolls back current feedback and audit",
+    "range": "Full HTTP 200 payload for Range, including invalid/multiple/unsatisfiable ranges",
+    "existing_runtime_privileges_changed": false,
+    "migration_applied": false
+  }
+}

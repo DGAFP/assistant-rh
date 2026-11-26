@@ -1357,7 +1357,7 @@ l’API et de **1 487 MiB** pour Conversations. Les deux pods API restent
 prêts. Les données de recette sont purgées et l’ACL initiale est rétablie.
 [Preuve SSE #531](../../evals/evidence/m2_d4_staging_sse_20261126.json)
 
-### M2 #532 / #599 — complément sur `2043a66`, 26 novembre 2026
+### M2 #532 / #599 — premier complément sur `2043a66`, 26 novembre 2026 (historique)
 
 Le cloisonnement documentaire a été corrigé par #650/#654, promu par #655 et
 recetté sur les quatre ministères dans #532. Les deux pods API servent le digest
@@ -1388,3 +1388,42 @@ l’ancien staging. Aucun droit n’est élargi pour poursuivre la recette.
 | Autres identités runtime, annotations/analyse et historique collectif | #599 | pcasad | Bloqué sur accès opérateur staging |
 | Matrice documentaire complémentaire, transferts et annulation | #532 | pcasad | À terminer ; couverture synthétique distincte |
 | Validité du gate qualité sur la candidate finale et décision M2 | #532 | pcasad | À consigner avant clôture #526 |
+
+### M2 #532 / #599 — recette opérateur terminée sur `2043a66`, 26 novembre 2026
+
+L’accès opérateur TLS fourni résout le blocage décrit dans l’entrée précédente.
+La recette sur l’API `2043a66` et Conversations `d38bec4` passe **123 contrôles
+HTTP/SQL**. Les rôles Streamlit/analyse, les feedbacks individuels et collectifs,
+les annotations, l’analyse obsolète, les audits, les retries, la concurrence et
+le rollback sont exercés. Les PDF S3 et legacy de 32 MiB, les refus d’accès,
+Range et l’annulation passent. Le SDK et le provider déployés passent ; le SSE
+privé complet dure 77,346 s avec sept pings et la coupure à 10,038 s persiste
+`cancelled`. #599 est entièrement recettée.
+
+La nouvelle collecte HTTP passe **98/98**, avec persistance exacte des réponses
+et sources. La capture complète sur la nouvelle base donne un rejeu exact
+**98/98** et un rappel documentaire de **72,51 %** dans les tolérances M1.
+La suite API passe **1 578 tests** avec M0b privé. Configuration et corpus sont
+inchangés ; les quatre pods restent prêts sans redémarrage. Le transport D4
+et la finalisation sont inchangés ; ses preuves HTTPS, erreur après en-têtes
+et rollback restent applicables, sans nouveau rejeu HTTPS de ces trois scénarios.
+
+Tous les objets et comptes de recette sont nettoyés ; le tunnel et l’ACL de
+l’opérateur sont préservés. Les captures brutes restent privées hors Git.
+[Recette et décision](17-m2-staging-qualification.md) ·
+[HTTP/SQL](../../evals/evidence/m2_individual_staging_20261126.json) ·
+[Capture/replay/rappel](../../evals/evidence/m2_candidate_capture_20261126.json) ·
+[Opérabilité](../../evals/evidence/m2_candidate_operability_20261126.json)
+
+**NO-GO provisoire maintenu : jugement qualité de la candidate en attente.**
+Le contrôle automatique a refusé l’export des réponses et extraits privés sans
+autorisation précise du destinataire et du contenu. Les 98 entrées sont préparées
+et inspectées ; aucun jugement n’a été envoyé. Le propriétaire pcasad doit
+explicitement autoriser le jugement Scaleway, puis le résultat doit satisfaire
+les tolérances avant le GO M2. Aucun autre report de phase D n’est non assigné.
+
+| Sujet restant | Suivi | Responsable | Statut |
+| --- | --- | --- | --- |
+| Jugement qualité de `2043a66`, 98 cas, trois votes | #532 | pcasad | En attente d’autorisation d’export ; entrées préparées |
+| Décision GO et clôture D | #532 / #526 | pcasad | Après gate conforme |
+| Parcours navigateur, canary, charge et production | #533 / #536 / #364 | pcasad | Phase E / préproduction |

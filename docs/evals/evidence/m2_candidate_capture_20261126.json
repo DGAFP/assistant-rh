@@ -1,0 +1,105 @@
+{
+  "schema": "assistant-rh-m2-d3-staging-followup-v1",
+  "date": "2026-11-26",
+  "issue": 532,
+  "gate_run_label": "m2_candidate_2043a66_20261126",
+  "deployment": {
+    "environment": "staging",
+    "git_sha": "2043a66b9da9b88a7e44c0ce1efdcc3896a36353",
+    "api_image_digest": "sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b",
+    "chart": "0.84.1+aaf6ad46cd64",
+    "conversations_backend_git_sha": "d38bec4eeaebc911b5278d404dc8eb5879c9d1ce",
+    "conversations_chart": "0.73.1+d1303baae68f"
+  },
+  "capture": {
+    "campaign": "m2_candidate_2043a66_20261126",
+    "sha256": "600eb155ecf570f8e6f1fb74b0367959a052bd7b7e92feeba01f362dad89677a",
+    "bytes": 288891356,
+    "cases": 98,
+    "retrieval_boundary": "retriever_output",
+    "storage": "read-only new Kapsule staging; in-memory runs",
+    "config_sha256": "65158452d7072ff4051544e1bb51e38d4dfe3a52a40240e51b0987ff04d14e5c"
+  },
+  "panel_sha256": "2dfa514409f67a9df87f3dbd2ce65a1798016ede984d550738fd0630bb386c41",
+  "exact_http_replay": {
+    "cases": 98,
+    "sha256": "600eb155ecf570f8e6f1fb74b0367959a052bd7b7e92feeba01f362dad89677a",
+    "http_json_exact": true,
+    "network": "python_connections_denied"
+  },
+  "retrieval_recall": {
+    "archive_sha256": "600eb155ecf570f8e6f1fb74b0367959a052bd7b7e92feeba01f362dad89677a",
+    "panel_sha256": "2dfa514409f67a9df87f3dbd2ce65a1798016ede984d550738fd0630bb386c41",
+    "aliases_sha256": "72b0fd8df0efdfe2ce1f68eb4889295c14106a6e484310ffb40b2ff58b1b0bac",
+    "questions": 98,
+    "recall_scored": 98,
+    "questions_with_hit": 81,
+    "doc_recall_avg": 0.7250559359956608,
+    "by_model": {
+      "assistant-rh-matte": {
+        "questions": 94,
+        "recall_scored": 94,
+        "questions_with_hit": 77,
+        "doc_recall_avg": 0.7270340001413728
+      },
+      "assistant-rh-mso": {
+        "questions": 4,
+        "recall_scored": 4,
+        "questions_with_hit": 4,
+        "doc_recall_avg": 0.6785714285714286
+      }
+    },
+    "threshold_comparisons": {
+      "legacy_live": {
+        "baseline": 0.7291375686487219,
+        "delta": -0.004081632653061162,
+        "max_drop": 0.05,
+        "within_threshold": true
+      },
+      "core_live": {
+        "baseline": 0.7291375686487219,
+        "delta": -0.004081632653061162,
+        "max_drop": 0.05,
+        "within_threshold": true
+      },
+      "m0a_rejudged": {
+        "baseline": 0.7242784821569823,
+        "delta": 0.0007774538386784435,
+        "max_drop": 0.05,
+        "within_threshold": true
+      }
+    }
+  },
+  "judge": {
+    "role": "checksum-verified M0a reference rows used to prepare judgment inputs",
+    "manifest": {
+      "input_sha256": "019988348c0b851995ebea814c2285d5f3a83a8295da6693308055215d8ba7df"
+    }
+  },
+  "reference_inputs": {
+    "source": "legacy staging, read-only",
+    "m1_questions_sha256": "afd6cfc97a4232e9f8b9253d9d9b5b930c63ed83421f544f5c8178a42e163bdc",
+    "m0a_reference_canonical_sha256": "47c2aff7babe6f93a629eeb4782fadac4b6830ebcdf497b876fbf033fdd81771",
+    "aliases_sha256": "72b0fd8df0efdfe2ce1f68eb4889295c14106a6e484310ffb40b2ff58b1b0bac",
+    "same_aliases_as_published_m1": true
+  },
+  "private_artifact": {
+    "archive": "capture-2043a66-20261126.tar.gz",
+    "sha256": "c4a9dbb3c2a396734c09588cf5079f2ce08756cf428892be0e38b6652a48dfaf",
+    "bytes": 54607398,
+    "cases": 98,
+    "file_mode": "0600",
+    "directory_mode": "0700",
+    "location": "operator host, outside Git",
+    "judge_requests_sent": 0
+  },
+  "answer_quality": {
+    "status": "pending_explicit_egress_approval",
+    "judge_requests_sent": 0,
+    "prepared_input_sha256": "65837656d31801397f3281eb0e59cf1a343671fd91b4be59e9602ca367655323",
+    "judge": "mistral-medium-3.5-128b",
+    "rubric": "gold-passages-v2",
+    "votes_per_case": 3,
+    "note": "Recall and exact replay are measured; answer-quality gate on this candidate has not yet run."
+  }
+}
