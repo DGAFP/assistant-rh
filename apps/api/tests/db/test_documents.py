@@ -6,6 +6,7 @@ from assistant_rh_api.core.documents import DocumentService
 from assistant_rh_api.core.errors import IndividualIdentityRequired
 from assistant_rh_api.core.errors.documents import DocumentNotFound
 from assistant_rh_api.core.models.conversations import RunSource, TraceEvent
+from assistant_rh_api.core.ports.documents import AuthorizedDocument
 from assistant_rh_api.db.documents import DocumentStore
 from assistant_rh_api.db.run_store import ChatRunStore
 from assistant_rh_api.handlers.app import create_app
@@ -16,14 +17,14 @@ from apps.api.tests.db.test_run_feedback_stores import make_run
 pytestmark = pytest.mark.anyio
 
 
-async def persist(database, *, data=None):
+async def persist(database, *, data=None, source="matte"):
     doc_id, legacy_id = uuid4(), uuid4() if data is not None else None
     async with database.transaction() as connection:
         if data is not None:
             await connection.execute("INSERT INTO public.documents(id, filename, data) VALUES (%s, 'unsafe.pdf', %s)", (legacy_id, data))
         await connection.execute(
-            "INSERT INTO public.rag_documents(doc_id, title, legacy_doc_id, storage_path) VALUES (%s, 'PDF', %s, 'mi/private.pdf')",
-            (doc_id, legacy_id),
+            "INSERT INTO public.rag_documents(doc_id, title, legacy_doc_id, storage_path, source) VALUES (%s, 'PDF', %s, %s, %s)",
+            (doc_id, legacy_id, f"{source}/private.pdf", source),
         )
     return doc_id, legacy_id
 
@@ -41,7 +42,7 @@ async def test_final_sources_author_ministry_and_b4_isolation(repository_db):
     runs = ChatRunStore(repository_db)
     await runs.finalize(run)
     documents = DocumentService(runs, DocumentStore(repository_db), None)
-    assert await documents.authorize("chatcmpl-" + run.turn_id, "final", context) == doc_id
+    assert await documents.authorize("chatcmpl-" + run.turn_id, "final", context) == AuthorizedDocument(doc_id, "matte")
     # No shared-group ownership: second individual has the same group label/rights.
     for auth in (
         individual_context(UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")),
@@ -67,14 +68,14 @@ async def test_final_sources_author_ministry_and_b4_isolation(repository_db):
     with pytest.raises(DocumentNotFound):
         await documents.authorize(collective.turn_id, "final", context)
     # Source access resumes when the same individual regains the ministry right.
-    assert await documents.authorize(run.turn_id, "final", context) == doc_id
+    assert await documents.authorize(run.turn_id, "final", context) == AuthorizedDocument(doc_id, "matte")
 
 
 async def test_legacy_pdf_uses_sql_slices_stable_snapshot_and_runtime_grants(repository_db):
     data = b"%PDF-1.7\n" + b"synthetic" * 250000
     doc_id, legacy_id = await persist(repository_db, data=data)
     store = DocumentStore(repository_db)
-    async with store.open(doc_id) as stored:
+    async with store.open(AuthorizedDocument(doc_id, "matte")) as stored:
         assert stored.legacy is not None and stored.legacy.size == len(data)
         # Concurrent edits cannot change bytes halfway through this transfer.
         async with repository_db.transaction() as connection:
@@ -98,17 +99,17 @@ async def test_legacy_close_releases_snapshot_and_invalid_documents_are_uniform(
     for data in (b"<html>unsafe", b"", None):
         doc_id, _ = await persist(repository_db, data=data)
         if data is None:
-            async with store.open(doc_id) as stored:
-                assert stored.legacy is None and stored.storage_path == "mi/private.pdf"
+            async with store.open(AuthorizedDocument(doc_id, "matte")) as stored:
+                assert stored.legacy is None and stored.storage_path == "matte/private.pdf"
         else:
             with pytest.raises(DocumentNotFound):
-                async with store.open(doc_id):
+                async with store.open(AuthorizedDocument(doc_id, "matte")):
                     pass
     with pytest.raises(DocumentNotFound):
-        async with store.open(uuid4()):
+        async with store.open(AuthorizedDocument(uuid4(), "matte")):
             pass
     doc_id, _ = await persist(repository_db, data=b"%PDF-" + b"x" * 200000)
-    async with store.open(doc_id) as stored:
+    async with store.open(AuthorizedDocument(doc_id, "matte")) as stored:
         assert len(await anext(stored.legacy.chunks)) <= 65536
     # A partial read keeps no lease. The same database can acquire again.
     async with repository_db.transaction() as connection:
@@ -121,7 +122,7 @@ async def test_slow_legacy_readers_do_not_consume_runtime_pool(repository_db):
     async with app.router.lifespan_context(app):
         store = app.state.document_service.documents
         assert store.database is not repository_db
-        async with store.open(doc_id) as first, store.open(doc_id) as second:
+        async with store.open(AuthorizedDocument(doc_id, "matte")) as first, store.open(AuthorizedDocument(doc_id, "matte")) as second:
             assert len(await anext(first.legacy.chunks)) <= 65536
             assert len(await anext(second.legacy.chunks)) <= 65536
             # Both dedicated leases are occupied, while runtime/auth stays usable.
@@ -129,3 +130,24 @@ async def test_slow_legacy_readers_do_not_consume_runtime_pool(repository_db):
             async with repository_db.transaction(read_only=True) as connection:
                 assert await (await connection.execute("SELECT 1")).fetchone() == (1,)
     assert store.database.closed
+
+
+async def test_pdf_open_uses_run_ministry_even_when_author_can_access_both_corpora(repository_db):
+    context = individual_context(ministries=("matte", "mso"))
+    matte_doc, _ = await persist(repository_db, data=b"%PDF-1.7")
+    mso_doc, _ = await persist(repository_db, data=b"%PDF-1.7", source="mso")
+    run = make_run(
+        author_user_id=context.user_id,
+        sources=(
+            RunSource("matte", "MATTE", "", str(matte_doc)),
+            RunSource("mso", "MSO", "", str(mso_doc)),
+        ),
+    )
+    runs = ChatRunStore(repository_db)
+    await runs.finalize(run)
+    documents = DocumentService(runs, DocumentStore(repository_db), None)
+    async with documents.open(await documents.authorize(run.turn_id, "matte", context)) as content:
+        assert await anext(content.chunks) == b"%PDF-1.7"
+    with pytest.raises(DocumentNotFound):
+        async with documents.open(await documents.authorize(run.turn_id, "mso", context)):
+            pass

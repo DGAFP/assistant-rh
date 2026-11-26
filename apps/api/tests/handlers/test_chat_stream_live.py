@@ -1,8 +1,10 @@
 """Real TCP proof: no ASGITransport buffering, fake I/O ports, real API pipeline."""
 
 import asyncio
+import json
 import logging
 import socket
+import sys
 from unittest.mock import AsyncMock
 
 import httpx
@@ -16,7 +18,7 @@ from assistant_rh_api.handlers.app import create_app
 from assistant_rh_api.handlers.chat_stream import StreamSettings
 from starlette.responses import StreamingResponse
 
-from apps.api.tests.auth_fakes import service
+from apps.api.tests.auth_fakes import Signer, delegated_service, service
 from apps.api.tests.chat_fakes import Runtime
 from apps.api.tests.handlers.test_chat_stream import BODY, StreamLLM
 
@@ -122,6 +124,85 @@ async def test_sdk_consumes_live_stream_and_post_header_error(live):
             _ = [chunk async for chunk in stream]
         assert failure.value.code == "stream_error"
     assert sorted(run.status for run in runtime.runs.rows.values()) == ["completed", "failed"]
+
+
+async def test_goldset_cli_collects_delegated_completions_over_tcp(live, tmp_path):
+    app, runtime, _, base, _, _ = live
+    signer = Signer()
+    auth = delegated_service(signer)
+    app.state.auth_service = auth
+
+    panel = tmp_path / "panel.jsonl"
+    panel.write_text(
+        "".join(
+            json.dumps(
+                {"id": number, "model": "assistant-rh-matte", "question": f"Question synthétique {number}", "expected_doc_refs": ["guide-matte"]}
+            )
+            + "\n"
+            for number in (1, 2)
+        )
+    )
+    deployment = tmp_path / "deployment.json"
+    deployment.write_text(
+        json.dumps(
+            {
+                "environment": "staging",
+                "git_sha": "a" * 40,
+                "image_digest": "sha256:" + "b" * 64,
+                "config_sha256": "c" * 64,
+                "corpus_sha256": "d" * 64,
+                "model_config_sha256": "e" * 64,
+            }
+        )
+    )
+
+    tokens = tmp_path / "synthetic-tokens.json"
+    tokens.write_text(json.dumps([signer.sign(signer.claims(ministry="matte")) for _ in range(2)]))
+    token_command = tmp_path / "signer"
+    token_command.write_text(
+        f"#!{sys.executable}\n"
+        "import json, pathlib, sys\n"
+        "assert sys.argv[1] == 'assistant-rh-matte'\n"
+        "path = pathlib.Path(__file__).with_name('synthetic-tokens.json')\n"
+        "tokens = json.loads(path.read_text())\n"
+        "print(tokens.pop(0))\n"
+        "path.write_text(json.dumps(tokens))\n"
+    )
+    token_command.chmod(0o700)
+    report = tmp_path / "report.json"
+    capture = tmp_path / "private" / "capture.jsonl"
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-m",
+        "scripts.conformance.m2_goldset_http",
+        "--base-url",
+        base + "/v1",
+        "--panel",
+        str(panel),
+        "--deployment",
+        str(deployment),
+        "--signer",
+        str(token_command),
+        "--report",
+        str(report),
+        "--private-capture",
+        str(capture),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    async with asyncio.timeout(10):
+        stdout, stderr = await process.communicate()
+    assert process.returncode == 0, stderr.decode()
+    assert not stdout
+    public = json.loads(report.read_text())
+    private = [json.loads(line) for line in capture.read_text().splitlines()]
+    assert public["quality_complete"] and [row["outcome"] for row in public["transport"]] == ["completed", "completed"]
+    assert [row["gold_sources_served"] for row in public["quality"]] == [1, 1]
+    assert {row["turn_id"] for row in private} == set(runtime.runs.rows)
+    assert len(auth.replays.claims) == 2 and json.loads(tokens.read_text()) == []
+    assert "Question synthétique" not in report.read_text()
+    assert all(row["answer"] not in report.read_text() for row in private)
+    assert capture.stat().st_mode & 0o777 == 0o600
 
 
 async def test_live_ping_while_retrieval_waits_and_socket_close_cancels(live):

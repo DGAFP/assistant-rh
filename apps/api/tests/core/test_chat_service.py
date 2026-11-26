@@ -245,8 +245,8 @@ async def test_empty_final_context_never_calls_generation_without_explicit_rejec
         runtime.search.empty = True
     else:
 
-        async def empty_build(self, sections):
-            assert sections
+        async def empty_build(self, sections, *, ministry):
+            assert sections and ministry == "matte"
             return ContextBuildResult(items=(), resolved_refs={}, diagnostics=ContextBuildDiagnostics())
 
         monkeypatch.setattr(ContextBuilder, "build", empty_build)

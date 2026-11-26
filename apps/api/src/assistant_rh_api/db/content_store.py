@@ -6,6 +6,7 @@ from typing import cast
 from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 
+from assistant_rh_api.core.ministry_policy import document_corpora
 from assistant_rh_api.core.models.configuration import ConfigValues
 from assistant_rh_api.core.models.retrieval import Document, LegalReference, RawChunk, Section, Source
 from assistant_rh_api.core.ports.retrieval import ContentStorePort
@@ -44,21 +45,51 @@ async def columns(connection: AsyncConnection, table: str) -> set[str]:
     return {row[0] for row in rows}
 
 
-def section_expression(existing: set[str]) -> sql.Composable:
+def document_source_clause(corpus: str | None) -> sql.Composable:
+    return sql.SQL(" AND lower(btrim(d.source)) = {}").format(sql.Literal(corpus)) if corpus is not None else sql.SQL("")
+
+
+def explicit_document_id(existing: set[str]) -> sql.Composable:
+    if "source_document_id" not in existing:
+        return sql.SQL("NULL::uuid")
+    # The historical text column can contain short IDs as well as UUIDs.
+    return sql.SQL("""
+        CASE WHEN t.source_document_id::text ~*
+            '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            THEN t.source_document_id::text::uuid END
+    """)
+
+
+def scoped_document_id(existing: set[str], corpus: str) -> sql.Composable:
+    direct = explicit_document_id(existing)
+    if "short_id" not in existing:
+        return direct
+    return sql.SQL("""
+        COALESCE({direct}, (
+            SELECT (array_agg(d.doc_id))[1] FROM public.rag_documents d
+            WHERE d.short_id = t.short_id {scope} HAVING count(*) = 1
+        ))
+    """).format(direct=direct, scope=document_source_clause(corpus))
+
+
+def section_expression(existing: set[str], corpus: str | None = None) -> sql.Composable:
     direct = sql.SQL("t.section_id") if "section_id" in existing else sql.SQL("NULL::uuid")
     if not {"short_id", "section_path"}.issubset(existing):
         return direct
-    return sql.SQL(r"""COALESCE({}, (
+    document_match = sql.SQL("d.short_id = t.short_id")
+    if corpus is not None:
+        document_match = sql.SQL("d.doc_id = ({id})").format(id=scoped_document_id(existing, corpus))
+    return sql.SQL(r"""COALESCE({direct}, (
         SELECT s.section_id FROM public.rag_sections s
         JOIN public.rag_documents d ON d.doc_id = s.doc_id
-        WHERE d.short_id = t.short_id AND (
+        WHERE {document_match} {scope} AND (
             s.heading_path = t.section_path OR s.heading = btrim(regexp_replace(t.section_path, '^.*>\s*', ''))
         ) ORDER BY CASE WHEN s.heading_path = t.section_path THEN 0 ELSE 1 END, s.section_id
         LIMIT 1
-    ))""").format(direct)
+    ))""").format(direct=direct, document_match=document_match, scope=document_source_clause(corpus))
 
 
-def metadata_expression(existing: set[str]) -> sql.Composable:
+def metadata_expression(existing: set[str], corpus: str | None = None) -> sql.Composable:
     keys = sorted(
         existing
         & {
@@ -88,12 +119,15 @@ def metadata_expression(existing: set[str]) -> sql.Composable:
     args = [item for key in keys for item in (sql.Literal(key), sql.Identifier("t", key))]
     metadata = sql.SQL("jsonb_build_object({})").format(sql.SQL(", ").join(args))
     if "short_id" in existing:
-        # A legacy chunk can have a known document but no resolvable section.
-        # Keep canonical source metadata available on every raw search lane.
-        metadata += sql.SQL(""" || jsonb_build_object('doc_short_id', t.short_id) || COALESCE((
+        metadata += sql.SQL(" || jsonb_build_object('doc_short_id', t.short_id)")
+    if "short_id" in existing or (corpus is not None and "source_document_id" in existing):
+        document_match = sql.SQL("d.short_id = t.short_id")
+        if corpus is not None:
+            document_match = sql.SQL("d.doc_id = ({id})").format(id=scoped_document_id(existing, corpus))
+        metadata += sql.SQL(""" || COALESCE((
             SELECT jsonb_build_object('doc_id', d.doc_id, 'doc_title', d.title, 'doc_url', d.source_url)
-            FROM public.rag_documents d WHERE d.short_id = t.short_id ORDER BY d.doc_id LIMIT 1
-        ), '{}'::jsonb)""")
+            FROM public.rag_documents d WHERE {document_match} {scope} ORDER BY d.doc_id LIMIT 1
+        ), '{{}}'::jsonb)""").format(document_match=document_match, scope=document_source_clause(corpus))
     return metadata
 
 
@@ -121,24 +155,28 @@ class ContentStore(ContentStorePort):
     def __init__(self, database: Database) -> None:
         self._database = database
 
-    async def documents(self, ids: tuple[str, ...]) -> tuple[Document, ...]:
+    async def documents(self, ids: tuple[str, ...], *, ministry: str | None = None) -> tuple[Document, ...]:
         if not ids:
             return ()
+        corpora = None if ministry is None else list(document_corpora(ministry))
         async with self._database.transaction(read_only=True) as connection:
             async with connection.cursor(row_factory=dict_row) as cursor:
                 await cursor.execute(
                     """
                     SELECT doc_id, short_id, title, source_url, publisher, doc_markdown, token_count,
                            to_jsonb(d)->>'last_updated_date' AS last_updated_date
-                    FROM public.rag_documents d WHERE doc_id = ANY(%s::uuid[]) ORDER BY doc_id
+                    FROM public.rag_documents d WHERE doc_id = ANY(%s::uuid[])
+                      AND (%s::text[] IS NULL OR lower(btrim(d.source)) = ANY(%s::text[]))
+                    ORDER BY doc_id
                 """,
-                    (list(ids),),
+                    (list(ids), corpora, corpora),
                 )
                 return tuple(document(row) for row in await cursor.fetchall())
 
-    async def sections(self, ids: tuple[str, ...]) -> tuple[Section, ...]:
+    async def sections(self, ids: tuple[str, ...], *, ministry: str | None = None) -> tuple[Section, ...]:
         if not ids:
             return ()
+        corpora = None if ministry is None else list(document_corpora(ministry))
         async with self._database.transaction(read_only=True) as connection:
             rows = await (
                 await connection.execute(
@@ -147,9 +185,11 @@ class ContentStore(ContentStorePort):
                        COALESCE(to_jsonb(s)->>'section_markdown', to_jsonb(s)->>'markdown_content', ''),
                        to_jsonb(s)->'references_juridiques', to_jsonb(d)
                 FROM public.rag_sections s LEFT JOIN public.rag_documents d ON d.doc_id = s.doc_id
-                WHERE s.section_id = ANY(%s::uuid[]) ORDER BY s.section_id
+                WHERE s.section_id = ANY(%s::uuid[])
+                  AND (%s::text[] IS NULL OR lower(btrim(d.source)) = ANY(%s::text[]))
+                ORDER BY s.section_id
             """,
-                    (list(ids),),
+                    (list(ids), corpora, corpora),
                 )
             ).fetchall()
         return tuple(

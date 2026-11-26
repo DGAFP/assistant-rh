@@ -1,0 +1,81 @@
+{
+  "schema": "assistant-rh-d4-staging-flux-rollback-v1",
+  "date": "2026-11-26",
+  "issue": 531,
+  "environment": "staging",
+  "strategy": "temporary pin of the previous immutable OCI chart digest, then restoration of the original Flux selector",
+  "application_and_migrations_unchanged_between_versions": true,
+  "acl_restored": true,
+  "steps": [
+    {
+      "step": "baseline_verified",
+      "at": "2026-11-26T08:43:32.226673+00:00",
+      "selector": {
+        "semver": ">=0.1.0 <1.0.0"
+      },
+      "chart": "0.55.1+78870b6dd828",
+      "revision": "21aa3e3a3bb37d78456c3e846cb47d9e70e429f0",
+      "chart_digest": "sha256:78870b6dd82887b718b8fe8f0deb126578223ed5777ea82a4056315b786457a2",
+      "image_digest": "sha256:432d8d3d51cb863902a20e6eaa6c46c2f028bb92462065f9c46b502d4d18a891",
+      "release_version": 11,
+      "ready_pods": 2,
+      "smoke": {
+        "healthz": {
+          "http_status": 200,
+          "status": "ok"
+        },
+        "catalog_without_delegation": 401
+      }
+    },
+    {
+      "step": "previous_chart_pinned",
+      "at": "2026-11-26T08:43:32.765726+00:00",
+      "selector": {
+        "digest": "sha256:14799ef13eb0facfb3b037847c37c58d93b4f3316ccd583972180a1dcb775948"
+      }
+    },
+    {
+      "step": "rollback_verified",
+      "at": "2026-11-26T08:44:06.195423+00:00",
+      "chart": "0.52.1+14799ef13eb0",
+      "revision": "4701d04cfbaf171009603db532b940eb673dcabb",
+      "chart_digest": "sha256:14799ef13eb0facfb3b037847c37c58d93b4f3316ccd583972180a1dcb775948",
+      "image_digest": "sha256:e5af90d01fa8fb20e026d0a2cb1b4f25d229b55ae43c751b9874f35a284ef79c",
+      "release_version": 12,
+      "ready_pods": 2,
+      "elapsed_s": 32.86,
+      "smoke": {
+        "healthz": {
+          "http_status": 200,
+          "status": "ok"
+        },
+        "catalog_without_delegation": 401
+      }
+    },
+    {
+      "step": "original_selector_restored",
+      "at": "2026-11-26T08:44:06.490532+00:00",
+      "selector": {
+        "semver": ">=0.1.0 <1.0.0"
+      }
+    },
+    {
+      "step": "candidate_verified",
+      "at": "2026-11-26T08:44:35.220695+00:00",
+      "chart": "0.55.1+78870b6dd828",
+      "revision": "21aa3e3a3bb37d78456c3e846cb47d9e70e429f0",
+      "chart_digest": "sha256:78870b6dd82887b718b8fe8f0deb126578223ed5777ea82a4056315b786457a2",
+      "image_digest": "sha256:432d8d3d51cb863902a20e6eaa6c46c2f028bb92462065f9c46b502d4d18a891",
+      "release_version": 13,
+      "ready_pods": 2,
+      "elapsed_s": 28.13,
+      "smoke": {
+        "healthz": {
+          "http_status": 200,
+          "status": "ok"
+        },
+        "catalog_without_delegation": 401
+      }
+    }
+  ]
+}

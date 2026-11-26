@@ -1,0 +1,307 @@
+{
+  "schema": "assistant-rh-m1-same-capture-gate-v1",
+  "manifest": {
+    "run_label": "m1_gate_same_capture_20261125",
+    "capture_campaign": "m1_http_frozen_recapture_20261125",
+    "archive_sha256": "4e84366b153f18ba5c2ce64fb43d2cff42874d52896bf4508b718dd0fb75b339",
+    "panel_sha256": "2dfa514409f67a9df87f3dbd2ce65a1798016ede984d550738fd0630bb386c41",
+    "aliases_sha256": "72b0fd8df0efdfe2ce1f68eb4889295c14106a6e484310ffb40b2ff58b1b0bac",
+    "reference_input_sha256": "31cbc9c4e1a694b6888f1d651a72a5625d594ce80bbbd02562a7a76786d66449",
+    "input_sha256": "01bb836a067d00973d810c3f838e93d1ca84713029efae0a6235377a5ad9387e",
+    "cases": 98,
+    "judge_provider": "scaleway",
+    "judge_endpoint": "https://api.scaleway.ai/v1",
+    "judge_model": "mistral-medium-3.5-128b",
+    "judge_votes": 3,
+    "judge_evidence": "gold-passages-v2",
+    "answer_projection": "served answer body before the API-appended sources block",
+    "retrieval_diagnostics": "from the same frozen case as the answer and generation context",
+    "eval_scope": {
+      "limit": null,
+      "judge_model": "mistral-medium-3.5-128b",
+      "judge_votes": 3,
+      "ragas_model": "",
+      "question_ids": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        7,
+        9,
+        10,
+        11,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        23,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        173,
+        174,
+        175,
+        176,
+        177,
+        178,
+        179,
+        180,
+        181,
+        182,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192,
+        193,
+        194,
+        196,
+        197,
+        198,
+        199,
+        200,
+        201,
+        203,
+        204,
+        205,
+        206,
+        207,
+        208,
+        209,
+        210,
+        211,
+        212,
+        213,
+        214,
+        215,
+        216,
+        217,
+        218,
+        219,
+        220,
+        221,
+        222,
+        223,
+        224,
+        225,
+        226,
+        227,
+        228,
+        229,
+        657,
+        660,
+        676,
+        706,
+        827,
+        926,
+        4528,
+        4529,
+        4530,
+        4531,
+        4532,
+        4533,
+        4534,
+        4535,
+        4536,
+        4537,
+        4538
+      ],
+      "judge_enabled": true,
+      "ragas_enabled": false,
+      "judge_base_url": "https://api.scaleway.ai/v1",
+      "judge_evidence": "gold-passages-v2",
+      "judge_provider": "scaleway",
+      "ministry_scope": "per-question",
+      "question_count": 98
+    },
+    "retrieval": {
+      "questions": 98,
+      "recall_scored": 98,
+      "questions_with_hit": 81,
+      "doc_recall_avg": 0.7250559359956608,
+      "by_corpus": {
+        "DGAFP": {
+          "questions": 2,
+          "recall_scored": 2,
+          "questions_with_hit": 1,
+          "doc_recall_avg": 0.03488372093023256
+        },
+        "MATTE": {
+          "questions": 12,
+          "recall_scored": 12,
+          "questions_with_hit": 11,
+          "doc_recall_avg": 0.7573412698412698
+        },
+        "MSO": {
+          "questions": 4,
+          "recall_scored": 4,
+          "questions_with_hit": 4,
+          "doc_recall_avg": 0.6785714285714286
+        },
+        "Service-Public": {
+          "questions": 14,
+          "recall_scored": 14,
+          "questions_with_hit": 14,
+          "doc_recall_avg": 1.0
+        },
+        "manual": {
+          "questions": 55,
+          "recall_scored": 55,
+          "questions_with_hit": 43,
+          "doc_recall_avg": 0.676060606060606
+        },
+        "synthetic": {
+          "questions": 11,
+          "recall_scored": 11,
+          "questions_with_hit": 8,
+          "doc_recall_avg": 0.7272727272727273
+        }
+      }
+    }
+  },
+  "deployment": {
+    "environment": "staging",
+    "git_sha": "21aa3e3a3bb37d78456c3e846cb47d9e70e429f0",
+    "chart": "0.55.1+78870b6dd828",
+    "api_image_digest": "sha256:432d8d3d51cb863902a20e6eaa6c46c2f028bb92462065f9c46b502d4d18a891",
+    "conversations_backend_git_sha": "3fe712b7d025d61da1c5ff4d35bf173a03bc1788",
+    "ready_api_pods_before_and_after": 2,
+    "release": "https://github.com/DGAFP/assistant-rh/actions/runs/40498924160"
+  },
+  "judgment": {
+    "outcomes": {
+      "pass": 65,
+      "fail": 33
+    },
+    "by_corpus": {
+      "MATTE": {
+        "pass": 8,
+        "fail": 4
+      },
+      "Service-Public": {
+        "pass": 8,
+        "fail": 6
+      },
+      "MSO": {
+        "pass": 3,
+        "fail": 1
+      },
+      "manual": {
+        "pass": 37,
+        "fail": 18
+      },
+      "DGAFP": {
+        "pass": 2
+      },
+      "synthetic": {
+        "pass": 7,
+        "fail": 4
+      }
+    },
+    "failed_votes": 0
+  },
+  "aggregate": {
+    "judge_pass_rate": 0.6632653061224489,
+    "doc_recall_avg": 0.7250559359956608
+  },
+  "complete": true,
+  "comparisons": {
+    "legacy_live": {
+      "status": "passed",
+      "passed": true,
+      "baseline_run_id": 258,
+      "baseline_run_label": "m1_sql_ties_gold_passages_v2_20260930_legacy",
+      "baseline_git_sha": "0c0a6d0f82059508e76da1e682d50b17859e75e0",
+      "baseline_config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+      "comparable": true,
+      "comparability_failures": [],
+      "metrics": {
+        "judge_pass_rate": {
+          "baseline": 0.6326530612244898,
+          "candidate": 0.6632653061224489,
+          "delta": 0.030612244897959107,
+          "max_drop": 0.05,
+          "passed": true
+        },
+        "doc_recall_avg": {
+          "baseline": 0.7291375686487219,
+          "candidate": 0.7250559359956608,
+          "delta": -0.004081632653061162,
+          "max_drop": 0.05,
+          "passed": true
+        }
+      },
+      "failures": []
+    },
+    "core_live": {
+      "status": "passed",
+      "passed": true,
+      "baseline_run_id": 259,
+      "baseline_run_label": "m1_sql_ties_gold_passages_v2_20260930_core",
+      "baseline_git_sha": "0c0a6d0f82059508e76da1e682d50b17859e75e0",
+      "baseline_config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+      "comparable": true,
+      "comparability_failures": [],
+      "metrics": {
+        "judge_pass_rate": {
+          "baseline": 0.6122448979591837,
+          "candidate": 0.6632653061224489,
+          "delta": 0.05102040816326525,
+          "max_drop": 0.05,
+          "passed": true
+        },
+        "doc_recall_avg": {
+          "baseline": 0.7291375686487219,
+          "candidate": 0.7250559359956608,
+          "delta": -0.004081632653061162,
+          "max_drop": 0.05,
+          "passed": true
+        }
+      },
+      "failures": []
+    },
+    "m0a_rejudged": {
+      "status": "passed",
+      "passed": true,
+      "baseline_run_id": 255,
+      "baseline_run_label": "m1_rejudge_gold_passages_v2_20260930_m0a",
+      "baseline_git_sha": "cf937ee6913196a5c75fd5686abd34608f6e8680",
+      "baseline_config_fingerprint": "51d6256bace3d6c3c36b26ea0dee66b79ecc214f78e4b67dc6b76525e1bbf1ce",
+      "comparable": true,
+      "comparability_failures": [],
+      "metrics": {
+        "judge_pass_rate": {
+          "baseline": 0.6122448979591837,
+          "candidate": 0.6632653061224489,
+          "delta": 0.05102040816326525,
+          "max_drop": 0.05,
+          "passed": true
+        },
+        "doc_recall_avg": {
+          "baseline": 0.7242784821569823,
+          "candidate": 0.7250559359956608,
+          "delta": 0.0007774538386784435,
+          "max_drop": 0.05,
+          "passed": true
+        }
+      },
+      "failures": []
+    }
+  },
+  "gate": "pass"
+}

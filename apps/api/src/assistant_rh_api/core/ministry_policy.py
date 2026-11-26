@@ -6,6 +6,10 @@ from assistant_rh_api.core.models.auth import Group
 MINISTRIES = frozenset(("matte", "mso", "mi", "masa"))
 
 
+def document_corpora(ministry: str) -> tuple[str, ...]:
+    return (ministry, "service_public", "legifrance") if ministry in MINISTRIES else ()
+
+
 def valid_ministry_policy(group: Group) -> bool:
     return bool(group.allowed_ministries and set(group.allowed_ministries) <= MINISTRIES and group.default_ministry in group.allowed_ministries)
 

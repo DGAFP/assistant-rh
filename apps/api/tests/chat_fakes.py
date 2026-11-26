@@ -124,10 +124,10 @@ class Embeddings:
 
 
 class Content:
-    async def sections(self, ids):
+    async def sections(self, ids, *, ministry=None):
         return ()
 
-    async def documents(self, ids):
+    async def documents(self, ids, *, ministry=None):
         return ()
 
     async def references(self, numbers):

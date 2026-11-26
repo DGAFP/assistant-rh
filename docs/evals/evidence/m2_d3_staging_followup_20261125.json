@@ -1,0 +1,191 @@
+{
+  "schema": "assistant-rh-m2-d3-staging-followup-v1",
+  "issue": 530,
+  "date": "2026-11-25",
+  "deployment": {
+    "environment": "staging",
+    "git_sha": "21aa3e3a3bb37d78456c3e846cb47d9e70e429f0",
+    "chart": "0.55.1+78870b6dd828",
+    "api_image_digest": "sha256:432d8d3d51cb863902a20e6eaa6c46c2f028bb92462065f9c46b502d4d18a891",
+    "conversations_backend_git_sha": "3fe712b7d025d61da1c5ff4d35bf173a03bc1788",
+    "ready_api_pods_before_and_after": 2,
+    "release": "https://github.com/DGAFP/assistant-rh/actions/runs/40498924160"
+  },
+  "panel_sha256": "2dfa514409f67a9df87f3dbd2ce65a1798016ede984d550738fd0630bb386c41",
+  "judge": {
+    "campaign": "m1_http_staging_judge_20261125",
+    "input_campaign": "m1_http_staging_20261125",
+    "gold_reference": "M0a #240",
+    "manifest": {
+      "cases": 98,
+      "input_sha256": "31cbc9c4e1a694b6888f1d651a72a5625d594ce80bbbd02562a7a76786d66449",
+      "panel_sha256": "2dfa514409f67a9df87f3dbd2ce65a1798016ede984d550738fd0630bb386c41",
+      "judge_provider": "scaleway",
+      "judge_endpoint": "https://api.scaleway.ai/v1",
+      "judge_model": "mistral-medium-3.5-128b",
+      "judge_votes": 3,
+      "judge_evidence": "gold-passages-v2",
+      "retrieval_diagnostics": "omitted: complete retrieval inventory unavailable for the captured staging responses"
+    },
+    "outcomes": {
+      "pass": 69,
+      "fail": 29
+    },
+    "by_corpus": {
+      "MATTE": {
+        "pass": 8,
+        "fail": 4
+      },
+      "Service-Public": {
+        "pass": 7,
+        "fail": 7
+      },
+      "MSO": {
+        "pass": 3,
+        "fail": 1
+      },
+      "manual": {
+        "pass": 41,
+        "fail": 14
+      },
+      "DGAFP": {
+        "pass": 2
+      },
+      "synthetic": {
+        "pass": 8,
+        "fail": 3
+      }
+    },
+    "failed_votes": 0,
+    "input_revalidation": {
+      "http_events_sha256": "c7306056b5c55417fbd009417d73e4733196b22ba4441ead8e6bab7b43921fc6",
+      "reconstructed_contexts_sha256": "dcc8c401d7f4fa97bdf4b3b75bfa119dd0cac3d7faf7d5f51454c22853d4143a",
+      "m0a_reference_sha256": "47c2aff7babe6f93a629eeb4782fadac4b6830ebcdf497b876fbf033fdd81771"
+    },
+    "judge_pass_rate": 0.7040816326530612,
+    "threshold_comparisons": {
+      "legacy_live": {
+        "run": 258,
+        "baseline": 0.6326530612244898,
+        "delta": 0.0714285714285714,
+        "max_drop": 0.05,
+        "within_threshold": true
+      },
+      "core_live": {
+        "run": 259,
+        "baseline": 0.6122448979591837,
+        "delta": 0.09183673469387754,
+        "max_drop": 0.05,
+        "within_threshold": true
+      },
+      "m0a_rejudged": {
+        "run": 255,
+        "baseline": 0.6122448979591837,
+        "delta": 0.09183673469387754,
+        "max_drop": 0.05,
+        "within_threshold": true
+      }
+    }
+  },
+  "capture": {
+    "campaign": "m1_http_frozen_recapture_20261125",
+    "provider": "Albert DINUM",
+    "retrieval_boundary": "retriever_output",
+    "storage": "read-only staging PostgreSQL, runs held in memory",
+    "cases": 98,
+    "by_model": {
+      "assistant-rh-matte": 94,
+      "assistant-rh-mso": 4
+    },
+    "with_unbounded_retrieval": 96,
+    "direct_response": 2,
+    "selector_retry": 0,
+    "sha256": "4e84366b153f18ba5c2ce64fb43d2cff42874d52896bf4508b718dd0fb75b339",
+    "bytes": 289075549,
+    "integrity": {
+      "capture_archive_sha256": "4e84366b153f18ba5c2ce64fb43d2cff42874d52896bf4508b718dd0fb75b339",
+      "resumed_after": 80,
+      "cases_resumed": 18,
+      "api_image_digest": "sha256:432d8d3d51cb863902a20e6eaa6c46c2f028bb92462065f9c46b502d4d18a891",
+      "ready_api_pods_before": 2,
+      "ready_api_pods_after": 2,
+      "fingerprints_match": true,
+      "image_match": true,
+      "acl_restored": true,
+      "fingerprints": {
+        "config_sha256": "a3f914651ca5b03846a152e209171589a943e0ae5b405869d4e7ba5d26f926af",
+        "corpus_sha256": "798ae4cba1439274a76ef21f00bf2902280d65e103e6f1b8ba9caea15550c681",
+        "model_config_sha256": "0ab54f64bef685db1ad38b4442fce2461ab399607ddff781ff33b096793b1879",
+        "counts": {
+          "config": 1,
+          "prompts": 37,
+          "acronyms": 248,
+          "documents": 4882,
+          "sections": 10412,
+          "matte": 2455,
+          "mso": 7582,
+          "mi": 707,
+          "masa": 1216,
+          "service_public": 5102,
+          "dgafp": 8554,
+          "rgrh": 324
+        },
+        "private_staging_db_read_only_verified": true,
+        "fingerprint_method": "ordered corpus rows; config, prompt and acronym table digests; explicit model settings"
+      },
+      "run_persistence": "in-memory"
+    }
+  },
+  "retrieval_recall": {
+    "archive_sha256": "4e84366b153f18ba5c2ce64fb43d2cff42874d52896bf4508b718dd0fb75b339",
+    "panel_sha256": "2dfa514409f67a9df87f3dbd2ce65a1798016ede984d550738fd0630bb386c41",
+    "aliases_sha256": "72b0fd8df0efdfe2ce1f68eb4889295c14106a6e484310ffb40b2ff58b1b0bac",
+    "questions": 98,
+    "recall_scored": 98,
+    "questions_with_hit": 81,
+    "doc_recall_avg": 0.7250559359956608,
+    "by_model": {
+      "assistant-rh-matte": {
+        "questions": 94,
+        "recall_scored": 94,
+        "questions_with_hit": 77,
+        "doc_recall_avg": 0.7270340001413728
+      },
+      "assistant-rh-mso": {
+        "questions": 4,
+        "recall_scored": 4,
+        "questions_with_hit": 4,
+        "doc_recall_avg": 0.6785714285714286
+      }
+    },
+    "threshold_comparisons": {
+      "legacy_live": {
+        "baseline": 0.7291375686487219,
+        "delta": -0.004081632653061162,
+        "max_drop": 0.05,
+        "within_threshold": true
+      },
+      "core_live": {
+        "baseline": 0.7291375686487219,
+        "delta": -0.004081632653061162,
+        "max_drop": 0.05,
+        "within_threshold": true
+      },
+      "m0a_rejudged": {
+        "baseline": 0.7242784821569823,
+        "delta": 0.0007774538386784435,
+        "max_drop": 0.05,
+        "within_threshold": true
+      }
+    }
+  },
+  "exact_http_replay": {
+    "cases": 98,
+    "sha256": "4e84366b153f18ba5c2ce64fb43d2cff42874d52896bf4508b718dd0fb75b339",
+    "http_json_exact": true,
+    "network": "python_connections_denied"
+  },
+  "historical_m1_archive_available": false,
+  "historical_m1_archive_sha256": "5483d97650d68e542db590aea516793c233def52655ea25753f7d8d3b1b176c3",
+  "quality_gate": "not_established: separate observations; judge retrieval diagnostics unavailable"
+}

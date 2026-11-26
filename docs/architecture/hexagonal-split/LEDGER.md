@@ -1268,3 +1268,91 @@ accord explicite puis vérifié par checksum, passe ses18tests hors réseau sans
 changer la référence. Aucun prompt/configuration partagée, déploiement ou taille
 PostgreSQL n’est modifié par cette analyse. Le candidat de parseur demeure une
 correction locale non promue ; cette analyse ne valide pas la qualité globale.
+
+## D3, D4 et M2 — recette de la candidate du 25 novembre 2026
+
+Le rejeu M1 peut passer par la route JSON réelle avec une délégation
+individuelle éphémère. Le collecteur live relève le transport et les sources
+servies. Localement, 1 524 tests API synthétiques et 14 tests du banc de
+transport passent. Le smoke du provider utilise les versions du verrou
+Conversations `7ac0eb11`, OpenAI 3.20.0 et Pydantic AI 2.54.0.
+
+Le [dossier de recette M2](17-m2-staging-qualification.md) rattache les preuves
+aux révisions et consigne un NO-GO de qualification. D3 #530 porte le rejeu
+privé et le goldset de la candidate. D4 #531 porte la vérification Kapsule,
+le proxy et le rollback. M2 #532 porte le cloisonnement documentaire et la
+matrice API avec #599. E1 #533 porte le rejeu navigateur après publication du
+feedback. [Correctif de publication Conversations](https://github.com/DGAFP/conversations/pull/26)
+
+Pour D3 #530, le rejeu complémentaire M0b établit la comparaison exacte
+core ↔ HTTP sur les sept scénarios privés vérifiés par empreinte. Le
+[dossier M2](17-m2-staging-qualification.md#preuve-complémentaire-d3-du-25-novembre)
+consigne les commandes pour le panel M1 et le goldset sur le déploiement
+Scaleway.
+
+Le panel de 98 questions en PostgreSQL staging a l’empreinte de la
+référence M1 et correspond aux entrées de M0a #240. L’exporteur refuse
+le clone local dont l’empreinte diffère.
+
+Sur la candidate Scaleway `21aa3e3`, les **98/98 réponses** concordent
+avec les runs persistés. Le PDF est accessible à l’auteur et refusé au
+second compte du même groupe. Le juge M1 valide **69/98 réponses** avec
+les contextes reconstruits. La campagne HTTP a été purgée.
+[Résultats agrégés](../../evals/evidence/m2_http_goldset_staging_20261125.json)
+
+La seconde capture rassemble les 80 cas sauvegardés et les 18 cas repris.
+Elle donne un rappel de retrieval de **72,51 %**, dans la tolérance de
+cinq points des références M1, et **98/98 replays exacts** du core et de
+la route JSON depuis la sortie du retriever. L’image et les empreintes
+staging sont vérifiées, et la liste ACL initiale est rétablie. L’archive
+du run M1 #259 reste à retrouver.
+[Bilan #530](../../evals/evidence/m2_d3_staging_followup_20261125.json)
+
+Le gate M1 sur la même capture obtient **65/98 réponses validées** avec
+294 votes exploitables et **72,51 %** de rappel documentaire. Les
+comparaisons contre le legacy live #258, le core live #259 et M0a
+rejugé #255 passent. Le jugement utilise le corps servi et les
+diagnostics de recherche propres à chaque cas.
+[Gate M1 de #530](../../evals/evidence/m2_m1_gate_same_capture_20261125.json)
+
+### Complément opérabilité de la phase D
+
+Sur le proxy HTTPS staging, un flux SSE se termine en **47,195 s**.
+Un second échange est arrêté depuis Conversations et le run API est
+persisté `cancelled`. L’accès privé depuis Conversations, les métriques
+SSE et le rôle PostgreSQL effectif de l’API sont observés. Les données de
+recette sont purgées et l’ACL initiale est rétablie. Le chart précédent
+`0.52.1+14799ef13eb0` et son image sont identifiés dans l’historique Flux.
+[Preuves #531 et contrôle #599](../../evals/evidence/m2_d4_staging_operability_20261125.json)
+
+Le cloisonnement entre recherche, hydratation et délivrance ainsi que la
+matrice feedback et documents restent ouverts dans #532. Sur le fork
+Conversations, la CI du correctif de dépendances passe, et son job de
+publication est ignoré sur la PR. Frontend et backend staging utilisent
+encore `3fe712b7`. Le rejeu du feedback reste suivi par #595 et #533.
+[Correctif Conversations #26](https://github.com/DGAFP/conversations/pull/26)
+
+### D4 #531 — retour arrière staging du 26 novembre 2026
+
+Flux passe du chart `0.55.1+78870b6dd828` au chart précédent
+`0.52.1+14799ef13eb0`, puis restaure le sélecteur initial et
+redéploie le chart et l’image de départ. Les révisions Helm **11 → 12 → 13**
+et les deux pods prêts attestent les transitions. Le backend
+Conversations obtient HTTP 200 sur `/healthz` et HTTP 401 sur le
+catalogue sans délégation aux trois états. L’ACL initiale est rétablie.
+[Preuve #531](../../evals/evidence/m2_d4_staging_rollback_20261126.json)
+
+### D4 #531 — streaming et opérabilité staging du 26 novembre 2026
+
+Sur le service API privé, un flux de **175,439 s** délivre 17 pings,
+et la fermeture réelle du second flux persiste `cancelled` avec le
+motif `disconnect`. En loopback dans un processus isolé de l’image
+staging, l’erreur SSE contrôlée après HTTP 200 persiste `failed` et
+apparaît dans les métriques et le journal.
+
+Trois requêtes HTTPS se chevauchent **122,143 s** et reçoivent chacune
+un `data-keepalive` de Conversations vers **55,1 s** avant le premier texte.
+Elles se terminent en **122 à 149 s**. Le pic mesuré par pod est de **115 MiB** pour
+l’API et de **1 487 MiB** pour Conversations. Les deux pods API restent
+prêts. Les données de recette sont purgées et l’ACL initiale est rétablie.
+[Preuve SSE #531](../../evals/evidence/m2_d4_staging_sse_20261126.json)

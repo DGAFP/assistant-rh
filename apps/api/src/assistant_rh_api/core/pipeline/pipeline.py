@@ -134,7 +134,7 @@ class Pipeline:
         )
         aggregated = await context.stage(
             "section-aggregator",
-            lambda: self._aggregator.aggregate_with_diagnostics(retrieved.chunks, query=query),
+            lambda: self._aggregator.aggregate_with_diagnostics(retrieved.chunks, query=query, ministry=ministry),
             project=aggregation_trace,
             measure=aggregation_metrics,
             attempt=attempt,
@@ -149,7 +149,11 @@ class Pipeline:
         if selected.all_rejected and not selected.sections:
             return ContextBuildResult(items=(), resolved_refs={}, diagnostics=ContextBuildDiagnostics()), True
         built = await context.stage(
-            "context-builder", lambda: self._builder.build(selected.sections), project=context_trace, measure=context_metrics, attempt=attempt
+            "context-builder",
+            lambda: self._builder.build(selected.sections, ministry=ministry),
+            project=context_trace,
+            measure=context_metrics,
+            attempt=attempt,
         )
         return built, selected.all_rejected
 
