@@ -119,6 +119,14 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
     else:
         resolutions = sql.SQL("")
         sections = sql.Identifier("public", "rag_sections")
+        candidates = sql.SQL("""
+            SELECT t.{id} AS chunk_id, {section} AS section_id, {document} AS explicit_doc_id FROM {table} t
+        """).format(
+            id=sql.Identifier(id_column),
+            section=section,
+            document=explicit_document_id(existing),
+            table=sql.Identifier("public", table),
+        )
         if {"short_id", "section_path"} <= existing:
             # Resolve a legacy section once per document/path, rather than once
             # per chunk and again for joins/order. Keep the historical resolver,
@@ -135,8 +143,7 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
             relations = sql.SQL("""
                 FROM {table} t LEFT JOIN resolved_sections r
                   ON r.short_id = t.short_id AND r.section_path = t.section_path {canonical_join}
-                WHERE TRUE {chunk_scope}
-            """).format(table=sql.Identifier("public", table), chunk_scope=chunk_scope, canonical_join=canonical_join)
+                            """).format(table=sql.Identifier("public", table), canonical_join=canonical_join)
             resolutions = sql.SQL("""
                 section_keys AS MATERIALIZED (
                     SELECT DISTINCT short_id, section_path {canonical_column} FROM {table} {unresolved}
@@ -156,6 +163,10 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
                 direct=direct,
                 relations=relations,
             )
+            candidates = sql.SQL("""
+                SELECT t.{id} AS chunk_id, COALESCE({direct}, r.section_id) AS section_id, {document} AS explicit_doc_id
+                {relations}
+            """).format(id=sql.Identifier(id_column), direct=direct, document=explicit_document_id(existing), relations=relations)
             # Avoid evaluating French text search over sections absent from this
             # source. Materialize IDs/sections, not chunk text or chunk metadata.
             sections = sql.Identifier("relevant_sections")
@@ -168,6 +179,46 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
                 meta=metadata,
                 relations=relations,
             )
+        if request.scoped:
+            # Score eligible titles once per section; require any explicit
+            # document ID to agree with that section before ranking its chunks.
+            statement = sql.SQL("""
+                WITH parsed AS (SELECT {query} AS q),
+                {resolutions}
+                candidates AS ({candidates}),
+                section_scores AS MATERIALIZED (
+                    SELECT s.section_id, s.heading, s.heading_path, d.doc_id,
+                           d.title, d.source_url, d.short_id,
+                           ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) AS score
+                    FROM {sections} s JOIN public.rag_documents d ON d.doc_id = s.doc_id
+                    CROSS JOIN parsed
+                    WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ parsed.q {scope}
+                ),
+                ranked AS MATERIALIZED (
+                    SELECT c.chunk_id, s.*,
+                           ROW_NUMBER() OVER (ORDER BY s.score DESC, c.chunk_id, s.section_id) AS rank
+                    FROM candidates c JOIN section_scores s ON s.section_id = c.section_id
+                      AND (c.explicit_doc_id IS NULL OR c.explicit_doc_id = s.doc_id)
+                    ORDER BY s.score DESC, c.chunk_id, s.section_id LIMIT %s
+                )
+                SELECT r.chunk_id::text, t.chunk_text, r.section_id,
+                       {metadata} || jsonb_build_object('heading', r.heading, 'heading_path', r.heading_path,
+                           'doc_title', r.title, 'doc_url', r.source_url, 'doc_short_id', r.short_id,
+                           'source_name', r.title, 'source_document_id', r.short_id),
+                       r.score, r.rank
+                FROM ranked r JOIN {table} t ON t.{id} = r.chunk_id
+                ORDER BY r.rank
+            """).format(
+                query=TSQUERY,
+                resolutions=resolutions,
+                candidates=candidates,
+                sections=sections,
+                scope=scope,
+                metadata=metadata,
+                table=sql.Identifier("public", table),
+                id=sql.Identifier(id_column),
+            )
+            return statement, (request.query, request.query, request.query, request.limit)
         statement = sql.SQL("""
             WITH parsed AS (SELECT {query} AS q), {resolutions} candidates AS ({base})
             SELECT c.chunk_id::text, c.chunk_text, c.section_id,
