@@ -1,0 +1,371 @@
+{
+  "schema": "assistant-rh-d4-staging-sse-v1",
+  "date": "2026-11-26",
+  "issue": 531,
+  "environment": "staging",
+  "api_git_sha": "21aa3e3a3bb37d78456c3e846cb47d9e70e429f0",
+  "api_image": "sha256:432d8d3d51cb863902a20e6eaa6c46c2f028bb92462065f9c46b502d4d18a891",
+  "conversations_backend_git_sha": "3fe712b7d025d61da1c5ff4d35bf173a03bc1788",
+  "snapshot": {
+    "stream_settings": {
+      "max_workers": 50,
+      "queue_size": 32,
+      "ping_s": 10,
+      "send_timeout_s": 30
+    },
+    "persisted_sse": [
+      {
+        "status": "cancelled",
+        "runs": 190,
+        "execution_failures": 0
+      },
+      {
+        "status": "completed",
+        "runs": 3692,
+        "execution_failures": 0
+      },
+      {
+        "status": "failed",
+        "runs": 44,
+        "execution_failures": 44
+      }
+    ]
+  },
+  "public_keepalive": {
+    "type": "data-keepalive",
+    "seconds": 55
+  },
+  "proxy_io_timeout_s": 300,
+  "container_start_to_ready": [
+    {
+      "container_start_to_ready_s": 7,
+      "restarts": 0,
+      "image_matches": true
+    },
+    {
+      "container_start_to_ready_s": 6,
+      "restarts": 0,
+      "image_matches": true
+    }
+  ],
+  "private_streams": {
+    "cases": [
+      {
+        "kind": "completion",
+        "http_status": 200,
+        "headers_s": 0.033,
+        "pings_s": [
+          10.034,
+          20.035,
+          30.036,
+          40.039,
+          50.038,
+          60.039,
+          70.04,
+          80.041,
+          90.041,
+          100.042,
+          110.044,
+          120.044,
+          130.046,
+          140.046,
+          150.047,
+          160.048,
+          170.049
+        ],
+        "first_text_s": 70.024,
+        "text_frames": 2136,
+        "last_text_s": 175.437,
+        "duration_s": 175.439,
+        "done": true,
+        "client_closed_body_before_terminal": false,
+        "stream_error": null,
+        "persisted": {
+          "status": "completed",
+          "stream": true,
+          "cancellation": null,
+          "traces": 7
+        }
+      },
+      {
+        "kind": "disconnect",
+        "http_status": 200,
+        "headers_s": 0.038,
+        "pings_s": [
+          10.038
+        ],
+        "first_text_s": null,
+        "text_frames": 0,
+        "last_text_s": null,
+        "duration_s": 10.038,
+        "done": false,
+        "client_closed_body_before_terminal": true,
+        "stream_error": null,
+        "persisted": {
+          "status": "cancelled",
+          "stream": true,
+          "cancellation": "disconnect",
+          "traces": 5
+        }
+      }
+    ],
+    "identity_cleanup": {
+      "kind": "cleanup",
+      "remaining_accounts": 0,
+      "remaining_groups": 0
+    },
+    "purge": {
+      "runs_deleted": 2,
+      "traces_deleted": 12,
+      "remaining_runs": 0
+    }
+  },
+  "controlled_api_failure": {
+    "returncode": 0,
+    "control": {
+      "route": "isolated_staging_api_loopback",
+      "http_status": 200,
+      "headers_s": 0.061,
+      "pings_s": [
+        10.062
+      ],
+      "stream_error": "stream_error",
+      "done": false,
+      "terminal_s": 11.253,
+      "persisted": [
+        {
+          "status": "failed",
+          "streaming": true,
+          "error": "execution_failed",
+          "sources": 0
+        }
+      ],
+      "failed_counter": 1,
+      "active_after": 0
+    },
+    "error_log_observed": true,
+    "cleanup": {
+      "runs_deleted": 1,
+      "traces_deleted": 1,
+      "remaining_runs": 0
+    }
+  },
+  "public_https_load": {
+    "case_count": 3,
+    "common_overlap_s": 122.143,
+    "baseline": {
+      "api": [
+        {
+          "memory_mib": 68,
+          "cpu_millicores": 5
+        },
+        {
+          "memory_mib": 115,
+          "cpu_millicores": 171
+        }
+      ],
+      "conversations": [
+        {
+          "memory_mib": 1169,
+          "cpu_millicores": 15
+        },
+        {
+          "memory_mib": 1156,
+          "cpu_millicores": 18
+        }
+      ]
+    },
+    "samples_during_streams": 29,
+    "peak_pod": {
+      "api": {
+        "memory_mib": 115,
+        "cpu_millicores": 171
+      },
+      "conversations": {
+        "memory_mib": 1487,
+        "cpu_millicores": 672
+      }
+    },
+    "after": {
+      "api": [
+        {
+          "memory_mib": 63,
+          "cpu_millicores": 36
+        },
+        {
+          "memory_mib": 64,
+          "cpu_millicores": 59
+        }
+      ],
+      "conversations": [
+        {
+          "memory_mib": 1171,
+          "cpu_millicores": 60
+        },
+        {
+          "memory_mib": 1156,
+          "cpu_millicores": 72
+        }
+      ]
+    },
+    "streams": [
+      {
+        "https": true,
+        "http_status": 200,
+        "sse_content_type": "text/event-stream",
+        "first_headers_s": 0.157,
+        "first_text_s": 64.052,
+        "duration_s": 148.608,
+        "text_frames": 1356,
+        "ping_times_s": [],
+        "keepalive_times_s": [
+          55.161
+        ],
+        "event_counts": {
+          "start": 1,
+          "data-keepalive": 1,
+          "text-start": 1,
+          "text-delta": 1356,
+          "text-end": 1,
+          "source-url": 6,
+          "finish": 1
+        },
+        "last_text_s": 148.532,
+        "completed_marker": true,
+        "stop_http": null,
+        "persisted_runs": [
+          {
+            "status": "completed"
+          }
+        ],
+        "cleanup": {
+          "fixture_removed": true,
+          "api": {
+            "runs_deleted": 1,
+            "traces_deleted": 7,
+            "remaining_runs": 0
+          }
+        }
+      },
+      {
+        "https": true,
+        "http_status": 200,
+        "sse_content_type": "text/event-stream",
+        "first_headers_s": 0.135,
+        "first_text_s": 61.204,
+        "duration_s": 146.54,
+        "text_frames": 1394,
+        "ping_times_s": [],
+        "keepalive_times_s": [
+          55.15
+        ],
+        "event_counts": {
+          "start": 1,
+          "data-keepalive": 1,
+          "text-start": 1,
+          "text-delta": 1394,
+          "text-end": 1,
+          "source-url": 6,
+          "finish": 1
+        },
+        "last_text_s": 146.482,
+        "completed_marker": true,
+        "stop_http": null,
+        "persisted_runs": [
+          {
+            "status": "completed"
+          }
+        ],
+        "cleanup": {
+          "fixture_removed": true,
+          "api": {
+            "runs_deleted": 1,
+            "traces_deleted": 7,
+            "remaining_runs": 0
+          }
+        }
+      },
+      {
+        "https": true,
+        "http_status": 200,
+        "sse_content_type": "text/event-stream",
+        "first_headers_s": 0.089,
+        "first_text_s": 59.051,
+        "duration_s": 122.143,
+        "text_frames": 1133,
+        "ping_times_s": [],
+        "keepalive_times_s": [
+          55.098
+        ],
+        "event_counts": {
+          "start": 1,
+          "data-keepalive": 1,
+          "text-start": 1,
+          "text-delta": 1133,
+          "text-end": 1,
+          "source-url": 6,
+          "finish": 1
+        },
+        "last_text_s": 122.059,
+        "completed_marker": true,
+        "stop_http": null,
+        "persisted_runs": [
+          {
+            "status": "completed"
+          }
+        ],
+        "cleanup": {
+          "fixture_removed": true,
+          "api": {
+            "runs_deleted": 1,
+            "traces_deleted": 7,
+            "remaining_runs": 0
+          }
+        }
+      }
+    ],
+    "worker_exit_codes": [
+      0,
+      0,
+      0
+    ]
+  },
+  "live_api_metrics_after": [
+    [
+      "assistant_rh_sse_streams_total{outcome=\"completed\"} 4.0",
+      "assistant_rh_sse_streams_total{outcome=\"disconnect\"} 2.0",
+      "assistant_rh_sse_active 0.0",
+      "assistant_rh_sse_capacity 50.0"
+    ],
+    [
+      "assistant_rh_sse_streams_total{outcome=\"completed\"} 2.0",
+      "assistant_rh_sse_streams_total{outcome=\"disconnect\"} 2.0",
+      "assistant_rh_sse_active 0.0",
+      "assistant_rh_sse_capacity 50.0"
+    ]
+  ],
+  "post_health": {
+    "health": {
+      "http": 200,
+      "status": "ok"
+    },
+    "unauthenticated_catalog": 401
+  },
+  "ready_pods_after": [
+    {
+      "ready": true,
+      "restartCount": 0
+    },
+    {
+      "ready": true,
+      "restartCount": 0
+    }
+  ],
+  "acl_restored": true,
+  "scope": {
+    "public_concurrency_tested": 3,
+    "api_memory_limit_mib": 1024,
+    "conversations_memory_limit_mib": 2048,
+    "post_header_failure": "candidate image in isolated loopback process; real staging PostgreSQL and SSE telemetry; test auth and synthetic pipeline fault"
+  }
+}
