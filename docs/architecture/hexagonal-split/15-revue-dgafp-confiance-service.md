@@ -36,3 +36,7 @@ Les pouvoirs administrateurs restent explicites et audités. B4 conserve son fon
 La stack API #597 → #601 → #602 → #603 fusionnée dans `dev` ne vaut pas activation. Provisionner et vérifier les comptes runtime non propriétaires selon le [runbook #599](../../deployment/SCALEWAY_DB_RUNTIME_ROLES.md), puis consigner révision du fork, révision API, environnement et résultats.
 
 Tester réellement depuis `DGAFP/conversations` : connexion ProConnect, approbation, catalogue multi-groupes, chat JSON/SSE, auteur du run, reconnexion/expiration/logout/désactivation, refus croisés entre utilisateurs, retrait/rétablissement des droits et feedback. Raccorder les documents protégés avec #594. Les tests locaux et mocks préparent cette recette ; ils ne clôturent pas #596.
+
+## Recette d’intégration du 27 novembre 2026
+
+La [recette #596](18-identity-staging-qualification.md) rattache les principes ci-dessus au backend `d38bec4` et à l’API `2043a66`. Deux identités synthétiques du FI officiel ProConnect ont exercé la fédération d’intégration. Les contrôles d’administration, de session, d’isolation et de rotation sont documentés séparément des générations live et des fixtures contrôlées. Le secours Scaleway n’est pas configuré ; le retour de logout et les erreurs de transport observées restent à qualifier. La recette reste incomplète et ne vaut pas validation d’identités personnelles ou de MFA de production.

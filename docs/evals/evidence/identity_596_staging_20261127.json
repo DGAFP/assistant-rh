@@ -1,0 +1,1866 @@
+{
+  "schema": "assistant-rh-596-staging-qualification-v1",
+  "date": "2026-11-27",
+  "issue": 596,
+  "status": "incomplete",
+  "verdict": "No closure: provider transition unqualified; live SSE transport observation and external logout return require qualification",
+  "deployment": {
+    "backend_images": [
+      "rg.fr-par.scw.cloud/assistant-rh-staging/conversations-backend@sha256:374f1985a3f8425ab02a8ce8a79f58c53da37e2031cec63d92e5893333ec4663"
+    ],
+    "api_images": [
+      "rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api@sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+    ],
+    "backend_revision": "d38bec4eeaebc911b5278d404dc8eb5879c9d1ce",
+    "api_revision": "2043a66b9da9b88a7e44c0ce1efdcc3896a36353"
+  },
+  "scope": {
+    "authentication": "Official ProConnect integration federation and free test-FI identities; actual browser authorization-code/PKCE flow, no local mock OIDC server",
+    "controlled_authorization": "Runs, message associations and source authority deliberately seeded; real HTTPS, actual API guards/SQL roles and real private PDF delivery, no model inference in these matrices",
+    "real_generation": "Three local-session and two ProConnect-session real SSE completions exercised separately; these are not a new goldset/quality gate",
+    "production_personal_identity_or_mfa": "Not exercised; test-FI ACR eidas1",
+    "existing_services_or_credentials_modified": false
+  },
+  "official_test_provider_documentation": "https://partenaires.proconnect.gouv.fr/docs/fournisseur-service/identifiants-fi-test",
+  "local_controlled": {
+    "schema": "assistant-rh-596-staging-identity-recipe-v1",
+    "started_at": "2026-11-27T10:46:48.980805+00:00",
+    "target": "https://staging.assistant-rh.beta.gouv.fr",
+    "auth_mode": "Real HTTPS local authentication; controlled authoritative fixtures, no model inference",
+    "checks": [
+      {
+        "name": "verified_tls_private_staging_operator",
+        "passed": true
+      },
+      {
+        "name": "two_ready_api_replicas",
+        "passed": true
+      },
+      {
+        "name": "anonymous_catalog_refused",
+        "passed": true
+      },
+      {
+        "name": "anonymous_history_refused",
+        "passed": true
+      },
+      {
+        "name": "form_available_v1.0_4",
+        "passed": true
+      },
+      {
+        "name": "login_refused_alice",
+        "passed": true
+      },
+      {
+        "name": "form_available_v1.0_6",
+        "passed": true
+      },
+      {
+        "name": "login_refused_bob",
+        "passed": true
+      },
+      {
+        "name": "form_available_v1.0_8",
+        "passed": true
+      },
+      {
+        "name": "login_admin_9",
+        "passed": true
+      },
+      {
+        "name": "session_cookie_secure_admin",
+        "passed": true
+      },
+      {
+        "name": "server_nonce_and_identity_admin",
+        "passed": true
+      },
+      {
+        "name": "form_available_v1.0_12",
+        "passed": true
+      },
+      {
+        "name": "login_staff_13",
+        "passed": true
+      },
+      {
+        "name": "session_cookie_secure_staff",
+        "passed": true
+      },
+      {
+        "name": "server_nonce_and_identity_staff",
+        "passed": true
+      },
+      {
+        "name": "noncentral_staff_cannot_change_users",
+        "passed": true
+      },
+      {
+        "name": "noncentral_staff_cannot_add_grants",
+        "passed": true
+      },
+      {
+        "name": "form_available_auth_18",
+        "passed": true
+      },
+      {
+        "name": "admin_creates_group_matte",
+        "passed": true
+      },
+      {
+        "name": "group_id_resolved_matte",
+        "passed": true
+      },
+      {
+        "name": "form_available_auth_21",
+        "passed": true
+      },
+      {
+        "name": "admin_creates_group_mso",
+        "passed": true
+      },
+      {
+        "name": "group_id_resolved_mso",
+        "passed": true
+      },
+      {
+        "name": "form_available_auth_24",
+        "passed": true
+      },
+      {
+        "name": "admin_creates_group_alternate",
+        "passed": true
+      },
+      {
+        "name": "group_id_resolved_alternate",
+        "passed": true
+      },
+      {
+        "name": "form_available_core_27",
+        "passed": true
+      },
+      {
+        "name": "admin_grants_matte_28",
+        "passed": true
+      },
+      {
+        "name": "form_available_core_29",
+        "passed": true
+      },
+      {
+        "name": "admin_grants_mso_30",
+        "passed": true
+      },
+      {
+        "name": "form_available_core_31",
+        "passed": true
+      },
+      {
+        "name": "admin_grants_matte_32",
+        "passed": true
+      },
+      {
+        "name": "form_available_core_33",
+        "passed": true
+      },
+      {
+        "name": "admin_updates_alice_34",
+        "passed": true
+      },
+      {
+        "name": "form_available_core_35",
+        "passed": true
+      },
+      {
+        "name": "admin_updates_bob_36",
+        "passed": true
+      },
+      {
+        "name": "form_available_v1.0_37",
+        "passed": true
+      },
+      {
+        "name": "login_alice_38",
+        "passed": true
+      },
+      {
+        "name": "session_cookie_secure_alice",
+        "passed": true
+      },
+      {
+        "name": "server_nonce_and_identity_alice",
+        "passed": true
+      },
+      {
+        "name": "form_available_v1.0_41",
+        "passed": true
+      },
+      {
+        "name": "login_bob_42",
+        "passed": true
+      },
+      {
+        "name": "session_cookie_secure_bob",
+        "passed": true
+      },
+      {
+        "name": "server_nonce_and_identity_bob",
+        "passed": true
+      },
+      {
+        "name": "form_available_v1.0_45",
+        "passed": true
+      },
+      {
+        "name": "login_empty_46",
+        "passed": true
+      },
+      {
+        "name": "session_cookie_secure_empty",
+        "passed": true
+      },
+      {
+        "name": "server_nonce_and_identity_empty",
+        "passed": true
+      },
+      {
+        "name": "catalog_available_49",
+        "passed": true
+      },
+      {
+        "name": "admitted_without_grant_has_no_corpus",
+        "passed": true
+      },
+      {
+        "name": "catalog_available_51",
+        "passed": true
+      },
+      {
+        "name": "multigroup_union",
+        "passed": true
+      },
+      {
+        "name": "catalog_available_53",
+        "passed": true
+      },
+      {
+        "name": "same_group_peer_own_catalog",
+        "passed": true
+      },
+      {
+        "name": "catalog_available_55",
+        "passed": true
+      },
+      {
+        "name": "no_automatic_admin_corpus",
+        "passed": true
+      },
+      {
+        "name": "browser_cannot_choose_out_of_scope_model",
+        "passed": true
+      },
+      {
+        "name": "controlled_chat_created_alice_matte",
+        "passed": true
+      },
+      {
+        "name": "existing_private_corpus_fixture_matte",
+        "passed": true
+      },
+      {
+        "name": "controlled_history_visible_alice",
+        "passed": true
+      },
+      {
+        "name": "controlled_chat_created_bob_matte",
+        "passed": true
+      },
+      {
+        "name": "existing_private_corpus_fixture_matte",
+        "passed": true
+      },
+      {
+        "name": "controlled_history_visible_bob",
+        "passed": true
+      },
+      {
+        "name": "controlled_chat_created_alice_mso",
+        "passed": true
+      },
+      {
+        "name": "existing_private_corpus_fixture_mso",
+        "passed": true
+      },
+      {
+        "name": "controlled_history_visible_alice",
+        "passed": true
+      },
+      {
+        "name": "three_server_owned_message_run_associations",
+        "passed": true
+      },
+      {
+        "name": "alice_same_group_peer_history_refused",
+        "passed": true
+      },
+      {
+        "name": "alice_history_list_is_private",
+        "passed": true
+      },
+      {
+        "name": "bob_same_group_peer_history_refused",
+        "passed": true
+      },
+      {
+        "name": "bob_history_list_is_private",
+        "passed": true
+      },
+      {
+        "name": "ministry_immutable_in_patch",
+        "passed": true
+      },
+      {
+        "name": "model_immutable_in_patch",
+        "passed": true
+      },
+      {
+        "name": "query_cannot_override_ministry",
+        "passed": true
+      },
+      {
+        "name": "feedback_bridge_writes",
+        "passed": true
+      },
+      {
+        "name": "feedback_bridge_reads_canonical",
+        "passed": true
+      },
+      {
+        "name": "peer_cannot_read_feedback",
+        "passed": true
+      },
+      {
+        "name": "peer_cannot_write_feedback",
+        "passed": true
+      },
+      {
+        "name": "browser_cannot_forge_completion",
+        "passed": true
+      },
+      {
+        "name": "feedback_uses_server_author_and_audit",
+        "passed": true
+      },
+      {
+        "name": "feedback_retry_http",
+        "passed": true
+      },
+      {
+        "name": "feedback_retry_no_write",
+        "passed": true
+      },
+      {
+        "name": "private_selected_source_available",
+        "passed": true
+      },
+      {
+        "name": "document_https_proxy_pdf",
+        "passed": true
+      },
+      {
+        "name": "document_private_headers",
+        "passed": true
+      },
+      {
+        "name": "peer_document_refused",
+        "passed": true
+      },
+      {
+        "name": "controlled_run_fixture_ownership_verified",
+        "passed": true,
+        "measurement_kind": "Fixture integrity, not proof of inference-generated run ownership"
+      },
+      {
+        "name": "valid_signed_catalog_first_replica",
+        "passed": true,
+        "http_status": 200
+      },
+      {
+        "name": "replay_refused_second_replica",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "wrong_audience",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "wrong_issuer",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "expired_assertion",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "excess_lifetime",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "unknown_kid",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "wrong_signature",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "fresh_attempt_one",
+        "passed": true,
+        "http_status": 200
+      },
+      {
+        "name": "fresh_attempt_two",
+        "passed": true,
+        "http_status": 200
+      },
+      {
+        "name": "form_available_core_98",
+        "passed": true
+      },
+      {
+        "name": "admin_updates_alice_99",
+        "passed": true
+      },
+      {
+        "name": "catalog_available_100",
+        "passed": true
+      },
+      {
+        "name": "withdrawal_catalog_updates_without_relogin",
+        "passed": true
+      },
+      {
+        "name": "withdrawal_hides_history",
+        "passed": true
+      },
+      {
+        "name": "withdrawal_refuses_question",
+        "passed": true
+      },
+      {
+        "name": "withdrawal_refuses_feedback",
+        "passed": true
+      },
+      {
+        "name": "withdrawal_refuses_document",
+        "passed": true
+      },
+      {
+        "name": "withdrawal_preserves_own_run",
+        "passed": true
+      },
+      {
+        "name": "form_available_core_107",
+        "passed": true
+      },
+      {
+        "name": "admin_updates_alice_108",
+        "passed": true
+      },
+      {
+        "name": "another_group_same_ministry_restores_history",
+        "passed": true
+      },
+      {
+        "name": "another_group_same_ministry_restores_feedback",
+        "passed": true
+      },
+      {
+        "name": "another_group_same_ministry_restores_document",
+        "passed": true
+      },
+      {
+        "name": "another_group_ministry_keeps_author",
+        "passed": true
+      },
+      {
+        "name": "logout_get_only_confirms",
+        "passed": true
+      },
+      {
+        "name": "logout_without_csrf_refused",
+        "passed": true
+      },
+      {
+        "name": "logout_post_succeeds",
+        "passed": true
+      },
+      {
+        "name": "logout_revokes_session",
+        "passed": true
+      },
+      {
+        "name": "form_available_v1.0_117",
+        "passed": true
+      },
+      {
+        "name": "login_alice_118",
+        "passed": true
+      },
+      {
+        "name": "session_cookie_secure_alice",
+        "passed": true
+      },
+      {
+        "name": "server_nonce_and_identity_alice",
+        "passed": true
+      },
+      {
+        "name": "reconnection_stable_uuid_and_new_nonce",
+        "passed": true
+      },
+      {
+        "name": "reconnection_reads_same_feedback",
+        "passed": true
+      },
+      {
+        "name": "form_available_core_123",
+        "passed": true
+      },
+      {
+        "name": "admin_updates_alice_124",
+        "passed": true
+      },
+      {
+        "name": "deactivation_refuses_existing_session",
+        "passed": true
+      },
+      {
+        "name": "form_available_core_126",
+        "passed": true
+      },
+      {
+        "name": "admin_updates_alice_127",
+        "passed": true
+      },
+      {
+        "name": "reactivation_does_not_revive_old_session",
+        "passed": true
+      },
+      {
+        "name": "form_available_v1.0_129",
+        "passed": true
+      },
+      {
+        "name": "login_alice_130",
+        "passed": true
+      },
+      {
+        "name": "session_cookie_secure_alice",
+        "passed": true
+      },
+      {
+        "name": "server_nonce_and_identity_alice",
+        "passed": true
+      },
+      {
+        "name": "form_available_core_133",
+        "passed": true
+      },
+      {
+        "name": "admin_updates_alice_134",
+        "passed": true
+      },
+      {
+        "name": "admission_withdrawal_refuses_existing_session",
+        "passed": true
+      },
+      {
+        "name": "form_available_core_136",
+        "passed": true
+      },
+      {
+        "name": "admin_updates_alice_137",
+        "passed": true
+      },
+      {
+        "name": "readmission_does_not_revive_old_session",
+        "passed": true
+      },
+      {
+        "name": "form_available_v1.0_139",
+        "passed": true
+      },
+      {
+        "name": "login_alice_140",
+        "passed": true
+      },
+      {
+        "name": "session_cookie_secure_alice",
+        "passed": true
+      },
+      {
+        "name": "server_nonce_and_identity_alice",
+        "passed": true
+      },
+      {
+        "name": "cache_session_expiry_refused",
+        "passed": true
+      },
+      {
+        "name": "form_available_v1.0_144",
+        "passed": true
+      },
+      {
+        "name": "login_alice_145",
+        "passed": true
+      },
+      {
+        "name": "session_cookie_secure_alice",
+        "passed": true
+      },
+      {
+        "name": "server_nonce_and_identity_alice",
+        "passed": true
+      },
+      {
+        "name": "pre_rh_session_without_nonce_refused",
+        "passed": true
+      },
+      {
+        "name": "administration_audits_actor_date_objects",
+        "passed": true
+      },
+      {
+        "name": "same_email_recreation_has_new_uuid",
+        "passed": true
+      },
+      {
+        "name": "form_available_core_151",
+        "passed": true
+      },
+      {
+        "name": "admin_updates_recreated_152",
+        "passed": true
+      },
+      {
+        "name": "form_available_v1.0_153",
+        "passed": true
+      },
+      {
+        "name": "login_recreated_154",
+        "passed": true
+      },
+      {
+        "name": "session_cookie_secure_recreated",
+        "passed": true
+      },
+      {
+        "name": "server_nonce_and_identity_recreated",
+        "passed": true
+      },
+      {
+        "name": "recreated_user_has_no_old_history",
+        "passed": true
+      },
+      {
+        "name": "valid_signed_catalog_first_replica",
+        "passed": true,
+        "http_status": 200
+      },
+      {
+        "name": "replay_refused_second_replica",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "wrong_audience",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "wrong_issuer",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "expired_assertion",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "excess_lifetime",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "unknown_kid",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "wrong_signature",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "fresh_attempt_one",
+        "passed": true,
+        "http_status": 200
+      },
+      {
+        "name": "fresh_attempt_two",
+        "passed": true,
+        "http_status": 200
+      },
+      {
+        "name": "recreated_author_cannot_read_old_feedback",
+        "passed": true,
+        "http_status": 404
+      },
+      {
+        "name": "old_run_author_never_reassigned",
+        "passed": true
+      }
+    ],
+    "measurements": {
+      "admin_audit_records": 14
+    },
+    "deployment": {
+      "backend_images": [
+        "rg.fr-par.scw.cloud/assistant-rh-staging/conversations-backend@sha256:374f1985a3f8425ab02a8ce8a79f58c53da37e2031cec63d92e5893333ec4663"
+      ],
+      "api_images": [
+        "rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api@sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+      ],
+      "backend_revision": "d38bec4eeaebc911b5278d404dc8eb5879c9d1ce",
+      "api_revision": "2043a66b9da9b88a7e44c0ce1efdcc3896a36353"
+    },
+    "inference": "Not invoked: controlled RAG/message fixtures for deterministic authorization and lifecycle checks",
+    "technical_recipe_passed": true,
+    "backend_cleanup": {
+      "users_remaining": 0,
+      "groups_remaining": 0,
+      "chats_remaining": 0,
+      "sessions_remaining": 0
+    },
+    "rag_cleanup": {
+      "deleted": {
+        "chat_feedback_audit": 0,
+        "chat_feedbacks": 1,
+        "chat_run_sources": 3,
+        "rag_trace_events": 0,
+        "chat_runs": 3
+      },
+      "runs_remaining": 0,
+      "replays_remaining": 0
+    },
+    "ephemeral_delegation_replays": "Explicit probe JTIs removed; ordinary request replay markers expire within 120 seconds and are purged by the normal verifier.",
+    "finished_at": "2026-11-27T10:48:46.797747+00:00",
+    "checks_total": 170
+  },
+  "proconnect_controlled": {
+    "schema": "assistant-rh-596-official-proconnect-integration-v1",
+    "started_at": "2026-11-27T10:50:08.508109+00:00",
+    "scope": "Real staging HTTPS and official ProConnect federation/integration with free test-FI identities; controlled RAG/message fixtures for authorization, no model inference",
+    "documentation": "https://partenaires.proconnect.gouv.fr/docs/fournisseur-service/identifiants-fi-test",
+    "target": "https://staging.assistant-rh.beta.gouv.fr",
+    "checks": [
+      {
+        "name": "tls_verified_staging_operator",
+        "passed": true
+      },
+      {
+        "name": "form_1",
+        "passed": true
+      },
+      {
+        "name": "central_operator_login",
+        "passed": true
+      },
+      {
+        "name": "oidc_returns_to_staging_alice",
+        "passed": true
+      },
+      {
+        "name": "unadmitted_oidc_identity_denied_alice",
+        "passed": true
+      },
+      {
+        "name": "oidc_returns_to_staging_bob",
+        "passed": true
+      },
+      {
+        "name": "unadmitted_oidc_identity_denied_bob",
+        "passed": true
+      },
+      {
+        "name": "official_identities_have_distinct_uuids",
+        "passed": true
+      },
+      {
+        "name": "official_subjects_distinct",
+        "passed": true
+      },
+      {
+        "name": "form_9",
+        "passed": true
+      },
+      {
+        "name": "admin_update_alice_10",
+        "passed": true
+      },
+      {
+        "name": "form_11",
+        "passed": true
+      },
+      {
+        "name": "admin_update_bob_12",
+        "passed": true
+      },
+      {
+        "name": "oidc_returns_to_staging_alice",
+        "passed": true
+      },
+      {
+        "name": "oidc_authenticated_alice",
+        "passed": true
+      },
+      {
+        "name": "oidc_backend_and_server_audit_alice",
+        "passed": true
+      },
+      {
+        "name": "oidc_session_cookie_protected_alice",
+        "passed": true
+      },
+      {
+        "name": "oidc_returns_to_staging_bob",
+        "passed": true
+      },
+      {
+        "name": "oidc_authenticated_bob",
+        "passed": true
+      },
+      {
+        "name": "oidc_backend_and_server_audit_bob",
+        "passed": true
+      },
+      {
+        "name": "oidc_session_cookie_protected_bob",
+        "passed": true
+      },
+      {
+        "name": "oidc_same_subject_preserves_uuids",
+        "passed": true
+      },
+      {
+        "name": "catalog_http_22",
+        "passed": true
+      },
+      {
+        "name": "catalog_http_23",
+        "passed": true
+      },
+      {
+        "name": "oidc_no_automatic_email_or_siret_corpus",
+        "passed": true
+      },
+      {
+        "name": "form_25",
+        "passed": true
+      },
+      {
+        "name": "central_creates_oidc_group",
+        "passed": true
+      },
+      {
+        "name": "oidc_group_id_resolved",
+        "passed": true
+      },
+      {
+        "name": "form_28",
+        "passed": true
+      },
+      {
+        "name": "central_grants_oidc_ministry",
+        "passed": true
+      },
+      {
+        "name": "form_30",
+        "passed": true
+      },
+      {
+        "name": "admin_update_alice_31",
+        "passed": true
+      },
+      {
+        "name": "form_32",
+        "passed": true
+      },
+      {
+        "name": "admin_update_bob_33",
+        "passed": true
+      },
+      {
+        "name": "catalog_http_34",
+        "passed": true
+      },
+      {
+        "name": "catalog_http_35",
+        "passed": true
+      },
+      {
+        "name": "live_oidc_catalog_follows_server_grant",
+        "passed": true
+      },
+      {
+        "name": "controlled_chat_created_alice_matte",
+        "passed": true
+      },
+      {
+        "name": "existing_private_corpus_fixture_matte",
+        "passed": true
+      },
+      {
+        "name": "controlled_history_visible_alice",
+        "passed": true
+      },
+      {
+        "name": "controlled_chat_created_bob_matte",
+        "passed": true
+      },
+      {
+        "name": "existing_private_corpus_fixture_matte",
+        "passed": true
+      },
+      {
+        "name": "controlled_history_visible_bob",
+        "passed": true
+      },
+      {
+        "name": "two_oidc_message_completion_associations",
+        "passed": true
+      },
+      {
+        "name": "oidc_feedback_saved",
+        "passed": true
+      },
+      {
+        "name": "oidc_feedback_read",
+        "passed": true
+      },
+      {
+        "name": "same_group_oidc_peer_history_refused",
+        "passed": true
+      },
+      {
+        "name": "same_group_oidc_peer_feedback_refused",
+        "passed": true
+      },
+      {
+        "name": "oidc_private_source_selected",
+        "passed": true
+      },
+      {
+        "name": "oidc_author_reads_private_pdf",
+        "passed": true
+      },
+      {
+        "name": "oidc_peer_private_pdf_refused",
+        "passed": true
+      },
+      {
+        "name": "controlled_oidc_fixture_authors_verified",
+        "passed": true,
+        "measurement_kind": "Fixture integrity, not proof of inference-generated run ownership"
+      },
+      {
+        "name": "official_oidc_feedback_audit_actor",
+        "passed": true
+      },
+      {
+        "name": "form_53",
+        "passed": true
+      },
+      {
+        "name": "admin_update_alice_54",
+        "passed": true
+      },
+      {
+        "name": "catalog_http_55",
+        "passed": true
+      },
+      {
+        "name": "oidc_withdrawal_empties_catalog",
+        "passed": true
+      },
+      {
+        "name": "oidc_withdrawal_hides_history",
+        "passed": true
+      },
+      {
+        "name": "oidc_withdrawal_blocks_feedback",
+        "passed": true
+      },
+      {
+        "name": "oidc_withdrawal_blocks_document",
+        "passed": true
+      },
+      {
+        "name": "form_60",
+        "passed": true
+      },
+      {
+        "name": "admin_update_alice_61",
+        "passed": true
+      },
+      {
+        "name": "oidc_restoration_recovers_history",
+        "passed": true
+      },
+      {
+        "name": "oidc_logout_returns_to_staging",
+        "passed": false
+      },
+      {
+        "name": "oidc_logout_revokes_old_session",
+        "passed": true
+      },
+      {
+        "name": "oidc_returns_to_staging_alice",
+        "passed": true
+      },
+      {
+        "name": "oidc_authenticated_alice",
+        "passed": true
+      },
+      {
+        "name": "oidc_backend_and_server_audit_alice",
+        "passed": true
+      },
+      {
+        "name": "oidc_session_cookie_protected_alice",
+        "passed": true
+      },
+      {
+        "name": "oidc_reconnection_uuid_and_audit",
+        "passed": true
+      },
+      {
+        "name": "form_70",
+        "passed": true
+      },
+      {
+        "name": "admin_update_bob_71",
+        "passed": true
+      },
+      {
+        "name": "oidc_deactivation_revokes_session",
+        "passed": true
+      },
+      {
+        "name": "form_73",
+        "passed": true
+      },
+      {
+        "name": "admin_update_bob_74",
+        "passed": true
+      },
+      {
+        "name": "oidc_reactivation_keeps_old_session_revoked",
+        "passed": true
+      },
+      {
+        "name": "oidc_returns_to_staging_bob",
+        "passed": true
+      },
+      {
+        "name": "oidc_authenticated_bob",
+        "passed": true
+      },
+      {
+        "name": "oidc_backend_and_server_audit_bob",
+        "passed": true
+      },
+      {
+        "name": "oidc_session_cookie_protected_bob",
+        "passed": true
+      },
+      {
+        "name": "oidc_expired_cache_session_refused",
+        "passed": true
+      },
+      {
+        "name": "oidc_returns_to_staging_bob",
+        "passed": true
+      },
+      {
+        "name": "oidc_authenticated_bob",
+        "passed": true
+      },
+      {
+        "name": "oidc_backend_and_server_audit_bob",
+        "passed": true
+      },
+      {
+        "name": "oidc_session_cookie_protected_bob",
+        "passed": true
+      },
+      {
+        "name": "oidc_reconnect_after_expiry_preserves_uuid",
+        "passed": true
+      },
+      {
+        "name": "oidc_frontend_session_httponly",
+        "passed": true
+      },
+      {
+        "name": "oidc_no_service_bearer_in_browser",
+        "passed": true
+      },
+      {
+        "name": "oidc_no_private_storage_url_in_browser",
+        "passed": true
+      },
+      {
+        "name": "oidc_public_config_omits_secrets",
+        "passed": true
+      },
+      {
+        "name": "oidc_returns_to_staging_alice",
+        "passed": true
+      },
+      {
+        "name": "unadmitted_oidc_identity_denied_alice",
+        "passed": true
+      },
+      {
+        "name": "oidc_delete_recreate_new_uuid_no_inherited_admission",
+        "passed": true
+      },
+      {
+        "name": "form_93",
+        "passed": true
+      },
+      {
+        "name": "admin_update_alice_94",
+        "passed": true
+      },
+      {
+        "name": "oidc_returns_to_staging_alice",
+        "passed": true
+      },
+      {
+        "name": "oidc_authenticated_alice",
+        "passed": true
+      },
+      {
+        "name": "oidc_backend_and_server_audit_alice",
+        "passed": true
+      },
+      {
+        "name": "oidc_session_cookie_protected_alice",
+        "passed": true
+      },
+      {
+        "name": "oidc_recreated_user_no_old_history",
+        "passed": true
+      },
+      {
+        "name": "oidc_old_rag_author_immutable",
+        "passed": true
+      },
+      {
+        "name": "valid_signed_catalog_first_replica",
+        "passed": true,
+        "http_status": 200
+      },
+      {
+        "name": "replay_refused_second_replica",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "wrong_audience",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "wrong_issuer",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "expired_assertion",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "excess_lifetime",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "unknown_kid",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "wrong_signature",
+        "passed": true,
+        "http_status": 401
+      },
+      {
+        "name": "fresh_attempt_one",
+        "passed": true,
+        "http_status": 200
+      },
+      {
+        "name": "fresh_attempt_two",
+        "passed": true,
+        "http_status": 200
+      },
+      {
+        "name": "recreated_author_cannot_read_old_feedback",
+        "passed": true,
+        "http_status": 404
+      },
+      {
+        "name": "oidc_admin_operations_audited",
+        "passed": true
+      }
+    ],
+    "measurements": {
+      "browser_app_requests": 119,
+      "central_admin_audit_records": 11
+    },
+    "passed": false,
+    "backend_cleanup": {
+      "users_remaining": 0,
+      "groups_remaining": 0,
+      "chats_remaining": 0,
+      "sessions_remaining": 0
+    },
+    "rag_cleanup": {
+      "deleted": {
+        "chat_feedback_audit": 0,
+        "chat_feedbacks": 1,
+        "chat_run_sources": 2,
+        "rag_trace_events": 0,
+        "chat_runs": 2
+      },
+      "runs_remaining": 0,
+      "replays_remaining": 0
+    },
+    "finished_at": "2026-11-27T10:52:50.994377+00:00",
+    "checks_total": 113
+  },
+  "key_rotation_isolated_canary": {
+    "schema": "assistant-rh-596-isolated-key-rotation-v1",
+    "started_at": "2026-11-27T10:25:12.569307+00:00",
+    "scope": "One private staging canary deployment, same qualified API image and existing non-owner runtime; active deployment/keys unchanged",
+    "checks": [
+      {
+        "name": "old_key_status_0",
+        "passed": true,
+        "http_status": 200,
+        "assertion_fresh_and_unused": true
+      },
+      {
+        "name": "new_key_status_1",
+        "passed": true,
+        "http_status": 200,
+        "assertion_fresh_and_unused": true
+      },
+      {
+        "name": "old_key_status_2",
+        "passed": true,
+        "http_status": 401,
+        "assertion_fresh_and_unused": true
+      },
+      {
+        "name": "new_key_status_3",
+        "passed": true,
+        "http_status": 200,
+        "assertion_fresh_and_unused": true
+      },
+      {
+        "name": "old_key_status_4",
+        "passed": true,
+        "http_status": 200,
+        "assertion_fresh_and_unused": true
+      },
+      {
+        "name": "new_key_status_5",
+        "passed": true,
+        "http_status": 200,
+        "assertion_fresh_and_unused": true
+      },
+      {
+        "name": "active_deployment_spec_unchanged",
+        "passed": true
+      },
+      {
+        "name": "canary_fully_removed",
+        "passed": true
+      }
+    ],
+    "rollouts": [
+      {
+        "phase": "both_keys_deployed",
+        "duration_s": 10.701,
+        "image_digests": [
+          "sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+        ]
+      },
+      {
+        "phase": "old_key_removed_after_rollout",
+        "duration_s": 6.25,
+        "image_digests": [
+          "sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+        ]
+      },
+      {
+        "phase": "rollback_both_keys_restored",
+        "duration_s": 6.155,
+        "image_digests": [
+          "sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+        ]
+      }
+    ],
+    "api_image": "rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api@sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b",
+    "passed": true,
+    "cleanup": {
+      "canary_pods_remaining": 0,
+      "recipe_replays_remaining": 0
+    },
+    "finished_at": "2026-11-27T10:25:43.250475+00:00"
+  },
+  "replicated_sessions": {
+    "passed": true,
+    "checks": [
+      {
+        "campaign": "local-live-v4",
+        "two_backend_replicas": true,
+        "same_principal_and_audit_nonce": true,
+        "auth_backend": "django.contrib.auth.backends.ModelBackend"
+      },
+      {
+        "campaign": "oidc-live-v4",
+        "two_backend_replicas": true,
+        "same_principal_and_audit_nonce": true,
+        "auth_backend": "core.authentication.backends.OIDCAuthenticationBackend"
+      }
+    ]
+  },
+  "provenance_and_network": {
+    "backend_revision": "d38bec4eeaebc911b5278d404dc8eb5879c9d1ce",
+    "source_checks": [
+      {
+        "path": "src/backend/core/assistant_rh.py",
+        "sha256": "e8b87efbc8fcc495fb39afec4478917e790ae80ced7c87569f40c60a10af7af6",
+        "matches_deployed_revision": true
+      },
+      {
+        "path": "src/backend/core/admin.py",
+        "sha256": "6e6d3715a562511b7b1d735a7f73529595a5738d96e721e2adfc81c868f3e0fe",
+        "matches_deployed_revision": true
+      },
+      {
+        "path": "src/backend/core/models.py",
+        "sha256": "eaa4e53d97f1998e9c2501d42e54a1668fa66b86345283a25c566260f00955d7",
+        "matches_deployed_revision": true
+      },
+      {
+        "path": "src/backend/core/middleware.py",
+        "sha256": "aefe50c883d9ec4a30d0f7534fe5897bd2789432d67aaa9ed5f1e0f92e3c9145",
+        "matches_deployed_revision": true
+      },
+      {
+        "path": "src/backend/core/authentication/backends.py",
+        "sha256": "1fc8c6e553065036792aa1d893d62ce8fa1005dee89b5b4d067ecabb976d5829",
+        "matches_deployed_revision": true
+      },
+      {
+        "path": "src/backend/core/authentication/local.py",
+        "sha256": "b1f2bd2be9ab177df93609282139ed11044d079d69daf8ef590a700a502b12ef",
+        "matches_deployed_revision": true
+      },
+      {
+        "path": "src/backend/core/authentication/views.py",
+        "sha256": "6cfae13303412bca094f61859ae65755ad2d57cca1bfdcda535d1fc7c67df4b7",
+        "matches_deployed_revision": true
+      },
+      {
+        "path": "src/backend/chat/assistant_rh_delegation.py",
+        "sha256": "c8610845a96733de2e31d7ac763aeb745a9d82c003c45770db32b413289ebd89",
+        "matches_deployed_revision": true
+      },
+      {
+        "path": "src/backend/chat/assistant_rh_sources.py",
+        "sha256": "2f4fccb6bccd608b6372848d6c6dff5d1d82c9763a9c8fd6a0df3e824da22295",
+        "matches_deployed_revision": true
+      },
+      {
+        "path": "src/backend/chat/views/assistant_rh_feedback.py",
+        "sha256": "a7b510ad0ee89dc3322234d1734890b534532dfba86c623e2bd596c663270c3c",
+        "matches_deployed_revision": true
+      },
+      {
+        "path": "src/backend/chat/views/assistant_rh_documents.py",
+        "sha256": "46c32805ce20a30b8bab5caea3c22f0f39dda9f69e7ba798b588be56759d50be",
+        "matches_deployed_revision": true
+      }
+    ],
+    "identity_flags": {
+      "ASSISTANT_RH_OIDC_ENABLED": true,
+      "ASSISTANT_RH_LOCAL_LOGIN_ENABLED": true,
+      "ASSISTANT_RH_LOCAL_LOGIN_IS_DEFAULT": true,
+      "ASSISTANT_RH_INVITATIONS_ENABLED": false,
+      "OIDC_FALLBACK_TO_EMAIL_FOR_IDENTIFICATION": false,
+      "OIDC_USE_PKCE": true,
+      "OIDC_RP_SIGN_ALGO": "RS256"
+    },
+    "network": {
+      "api_service_type": "ClusterIP",
+      "api_external_ips": [],
+      "api_public_ingress_count": 0,
+      "backend_private_api_url": "http://assistant-rh-api.assistant-rh-api.svc.cluster.local:8000/v1"
+    },
+    "passed": true
+  },
+  "real_transport_and_provider": {
+    "real_local": {
+      "scope": "Real deployed HTTPS calls and actual inference, before cleanup/infrastructure or document-fixture preparation interrupted subsequent checks",
+      "successful_streams": [
+        {
+          "name": "sse_completed_alice_matte",
+          "passed": true,
+          "elapsed_s": 182.593
+        },
+        {
+          "name": "sse_completed_bob_matte",
+          "passed": true,
+          "elapsed_s": 170.073
+        },
+        {
+          "name": "sse_completed_alice_mso",
+          "passed": true,
+          "elapsed_s": 220.465
+        }
+      ],
+      "feedback_ownership_checks": [
+        {
+          "name": "feedback_bridge_writes",
+          "passed": true
+        },
+        {
+          "name": "feedback_bridge_reads_canonical",
+          "passed": true
+        },
+        {
+          "name": "peer_cannot_read_feedback",
+          "passed": true
+        },
+        {
+          "name": "peer_cannot_write_feedback",
+          "passed": true
+        },
+        {
+          "name": "browser_cannot_forge_completion",
+          "passed": true
+        }
+      ],
+      "cleanup": {
+        "backend": {
+          "users_remaining": 0,
+          "groups_remaining": 0,
+          "chats_remaining": 0,
+          "sessions_remaining": 0
+        },
+        "deleted": {
+          "chat_feedback_audit": 0,
+          "chat_feedbacks": 1,
+          "chat_run_sources": 4,
+          "rag_trace_events": 21,
+          "chat_runs": 3
+        },
+        "rag_runs_remaining": 0
+      }
+    },
+    "real_oidc": {
+      "scope": "Real deployed HTTPS calls and actual inference, before cleanup/infrastructure or document-fixture preparation interrupted subsequent checks",
+      "successful_streams": [
+        {
+          "name": "oidc_sse_completed_alice",
+          "passed": true,
+          "elapsed_s": 177.971
+        },
+        {
+          "name": "oidc_sse_completed_bob",
+          "passed": true,
+          "elapsed_s": 146.986
+        }
+      ],
+      "feedback_ownership_checks": [
+        {
+          "name": "oidc_feedback_saved",
+          "passed": true
+        },
+        {
+          "name": "oidc_feedback_read",
+          "passed": true
+        },
+        {
+          "name": "same_group_oidc_peer_history_refused",
+          "passed": true
+        },
+        {
+          "name": "same_group_oidc_peer_feedback_refused",
+          "passed": true
+        }
+      ],
+      "cleanup": {
+        "backend": {
+          "users_remaining": 0,
+          "groups_remaining": 0,
+          "chats_remaining": 0,
+          "sessions_remaining": 0
+        },
+        "deleted": {
+          "chat_feedback_audit": 0,
+          "chat_feedbacks": 1,
+          "chat_run_sources": 3,
+          "rag_trace_events": 14,
+          "chat_runs": 2
+        },
+        "rag_runs_remaining": 0
+      }
+    },
+    "later_real_local": {
+      "failure_type": "ReadError",
+      "error": "SSL record layer failure in Python HTTPX/OpenSSL client",
+      "attribution": "Not established as an application failure; independent browser streaming reproduction required",
+      "fixture_cleanup": {
+        "users_remaining": 0,
+        "groups_remaining": 0,
+        "chats_remaining": 0,
+        "sessions_remaining": 0
+      },
+      "rag_cleanup": {
+        "deleted": {
+          "chat_feedback_audit": 0,
+          "chat_feedbacks": 0,
+          "chat_run_sources": 0,
+          "rag_trace_events": 7,
+          "chat_runs": 1
+        },
+        "runs_remaining": 0,
+        "replays_remaining": 0
+      }
+    },
+    "later_real_oidc": {
+      "failure_type": "ReadError",
+      "error": "SSL record layer failure in Python HTTPX/OpenSSL client",
+      "attribution": "Not established as an application failure; independent browser streaming reproduction required",
+      "fixture_cleanup": {
+        "users_remaining": 0,
+        "groups_remaining": 0,
+        "chats_remaining": 0,
+        "sessions_remaining": 0
+      },
+      "rag_cleanup": {
+        "deleted": {
+          "chat_feedback_audit": 0,
+          "chat_feedbacks": 0,
+          "chat_run_sources": 0,
+          "rag_trace_events": 0,
+          "chat_runs": 0
+        },
+        "runs_remaining": 0,
+        "replays_remaining": 0
+      }
+    },
+    "late_fixture_reconciliation": {
+      "reason": "Cancelled fixture run finalized after client teardown",
+      "ownership_checks": {
+        "exact_private_recipe_question": true,
+        "inside_official_oidc_v4_campaign_window": true,
+        "new_author_has_only_this_run": true,
+        "author_absent_after_recipe_account_cleanup": true,
+        "four_matching_central_admin_recipe_operations": true,
+        "no_other_user_deletion_audited_in_window": true
+      },
+      "deleted": {
+        "chat_feedback_audit": 0,
+        "chat_feedbacks": 0,
+        "chat_run_sources": 0,
+        "rag_trace_events": 7,
+        "chat_runs": 1
+      },
+      "remaining_runs": 0
+    },
+    "provider_fallback": {
+      "schema": "assistant-rh-596-isolated-provider-fallback-v1",
+      "started_at": "2026-11-27T10:27:59.773457+00:00",
+      "scope": "One private staging canary, real providers/database; force Albert unreachable only in canary, same delegated author and ministry; active service unchanged",
+      "checks": [
+        {
+          "name": "albert_http_completion",
+          "passed": true,
+          "http_status": 200,
+          "duration_s": 148.759
+        },
+        {
+          "name": "albert_same_author_ministry_completed",
+          "passed": true
+        },
+        {
+          "name": "albert_sources_stay_in_ministry",
+          "passed": true,
+          "source_corpora": [
+            "service_public"
+          ],
+          "source_count": 1
+        },
+        {
+          "name": "scaleway_http_completion",
+          "passed": false,
+          "http_status": 500,
+          "duration_s": 0.436
+        },
+        {
+          "name": "shared_rag_configuration_unchanged",
+          "passed": true
+        },
+        {
+          "name": "active_deployment_spec_unchanged",
+          "passed": true
+        },
+        {
+          "name": "canary_fully_removed",
+          "passed": true
+        }
+      ],
+      "rollouts": [
+        {
+          "phase": "normal_primary_deployed",
+          "duration_s": 6.592,
+          "image_digests": [
+            "sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+          ]
+        },
+        {
+          "phase": "primary_unreachable_only_in_canary",
+          "duration_s": 5.972,
+          "image_digests": [
+            "sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+          ]
+        }
+      ],
+      "api_image": "rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api@sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b",
+      "completions": [
+        {
+          "status": 200,
+          "answer_chars": 512,
+          "answer_sha256": "12dacb8a9f32d0650ef74fd157fac2da851ff3a0af39aa09e9fc8a1d8c3326f8",
+          "duration_s": 148.759,
+          "provider": "albert"
+        }
+      ],
+      "passed": false,
+      "failure": {
+        "type": "RuntimeError",
+        "check": "scaleway_http_completion"
+      },
+      "cleanup": {
+        "canary_pods_remaining": 0,
+        "recipe_runs_remaining": 0,
+        "recipe_replays_remaining": 0
+      },
+      "config_sha256_before": "d99a91f7c587118e22d02336f5945d5199d6b8c099e12358a2896cdba80c31e4",
+      "config_sha256_after": "d99a91f7c587118e22d02336f5945d5199d6b8c099e12358a2896cdba80c31e4",
+      "finished_at": "2026-11-27T10:30:47.033328+00:00"
+    },
+    "provider_fallback_diagnostic": {
+      "schema": "assistant-rh-596-isolated-provider-fallback-v1",
+      "started_at": "2026-11-27T10:34:34.747768+00:00",
+      "scope": "One private staging canary, real providers/database; force Albert unreachable only in canary, same delegated author and ministry; active service unchanged",
+      "checks": [
+        {
+          "name": "scaleway_http_completion",
+          "passed": false,
+          "http_status": 500,
+          "duration_s": 0.438
+        },
+        {
+          "name": "shared_rag_configuration_unchanged",
+          "passed": true
+        },
+        {
+          "name": "active_deployment_spec_unchanged",
+          "passed": true
+        },
+        {
+          "name": "canary_fully_removed",
+          "passed": true
+        }
+      ],
+      "rollouts": [
+        {
+          "phase": "normal_primary_deployed",
+          "duration_s": 5.974,
+          "image_digests": [
+            "sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+          ]
+        },
+        {
+          "phase": "primary_unreachable_only_in_canary",
+          "duration_s": 5.899,
+          "image_digests": [
+            "sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+          ]
+        }
+      ],
+      "api_image": "rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api@sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b",
+      "passed": false,
+      "failure": {
+        "type": "RuntimeError",
+        "check": "scaleway_http_completion"
+      },
+      "cleanup": {
+        "canary_pods_remaining": 0,
+        "recipe_runs_remaining": 0,
+        "recipe_replays_remaining": 0
+      },
+      "config_sha256_before": "d99a91f7c587118e22d02336f5945d5199d6b8c099e12358a2896cdba80c31e4",
+      "config_sha256_after": "d99a91f7c587118e22d02336f5945d5199d6b8c099e12358a2896cdba80c31e4",
+      "finished_at": "2026-11-27T10:34:51.687588+00:00"
+    },
+    "active_runtime_configuration": {
+      "ALBERT_API_KEY_configured": true,
+      "SCALEWAY_API_KEY_configured": false,
+      "SCALEWAY_BASE_URL_configured": false,
+      "values_never_exported": true
+    },
+    "diagnosis": "Albert was made unreachable only in private canary. No Scaleway credential is configured in active runtime, and the retriever fails before generation. No active provider config changed."
+  },
+  "final_verification": {
+    "checked_at": "2026-11-27T10:57:40.377945+00:00",
+    "pods": [
+      {
+        "namespace": "assistant-rh-api",
+        "pod": "assistant-rh-api-5f888d866-g2b4h",
+        "images": [
+          "rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api@sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+        ],
+        "ready": true,
+        "restarts": 0,
+        "log_lines": 1951,
+        "compact_jws_found": false,
+        "postgres_credential_url_found": false,
+        "private_signed_storage_url_found": false
+      },
+      {
+        "namespace": "assistant-rh-api",
+        "pod": "assistant-rh-api-5f888d866-x8kzx",
+        "images": [
+          "rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api@sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+        ],
+        "ready": true,
+        "restarts": 0,
+        "log_lines": 1909,
+        "compact_jws_found": false,
+        "postgres_credential_url_found": false,
+        "private_signed_storage_url_found": false
+      },
+      {
+        "namespace": "conversations",
+        "pod": "conversations-backend-746cd59fd7-6gq7p",
+        "images": [
+          "rg.fr-par.scw.cloud/assistant-rh-staging/conversations-backend@sha256:374f1985a3f8425ab02a8ce8a79f58c53da37e2031cec63d92e5893333ec4663"
+        ],
+        "ready": true,
+        "restarts": 0,
+        "log_lines": 5097,
+        "compact_jws_found": false,
+        "postgres_credential_url_found": false,
+        "private_signed_storage_url_found": false
+      },
+      {
+        "namespace": "conversations",
+        "pod": "conversations-backend-746cd59fd7-sqhrb",
+        "images": [
+          "rg.fr-par.scw.cloud/assistant-rh-staging/conversations-backend@sha256:374f1985a3f8425ab02a8ce8a79f58c53da37e2031cec63d92e5893333ec4663"
+        ],
+        "ready": true,
+        "restarts": 0,
+        "log_lines": 5346,
+        "compact_jws_found": false,
+        "postgres_credential_url_found": false,
+        "private_signed_storage_url_found": false
+      }
+    ],
+    "application_log_safety": true,
+    "traefik_logs": {
+      "application_lines": 0,
+      "callback_lines": 0,
+      "authorization_code_in_log": false,
+      "oidc_or_service_jws_in_log": false
+    },
+    "request_correlation": {
+      "backend_request_ids_observed": 32,
+      "matched_in_api_logs": 32,
+      "unmatched": 0,
+      "scope": "Stage application requests during recipe window; raw IDs retained only in private logs"
+    },
+    "cleanup": {
+      "owned_users_remaining": 0,
+      "owned_groups_remaining": 0,
+      "all_application_users": 15,
+      "owned_rag_runs_remaining": 0,
+      "canary_deployments_remaining": 0
+    },
+    "operator_relay_cleanup": {
+      "remote_proxy_stopped": true,
+      "local_port_forward_processes_stopped": 1,
+      "loopback_55436_closed": true,
+      "preexisting_operator_tunnel_and_acl_untouched": true
+    }
+  },
+  "private_artifact": {
+    "archive": "staging-recipe-20261127.tar.gz",
+    "sha256": "5356ca9f6415481a581849b08c87e115c6201838184542f227e6e347c3f09910",
+    "bytes": 413984,
+    "file_mode": "0600",
+    "directory_mode": "0700",
+    "location": "operator host, outside Git",
+    "contains": "recipe source, checkpoints, scoped private logs, synthetic fixture metadata; no operator .env or private TLS CA key"
+  },
+  "remaining": [
+    {
+      "topic": "Provider fallback",
+      "owner": "pcasad",
+      "status": "Scaleway credential absent from active staging API; configure through normal secret process or explicitly decide Albert-only service, then rerun transition proof"
+    },
+    {
+      "topic": "OIDC logout return",
+      "owner": "pcasad",
+      "status": "Local session revoked and reconnect works; browser remains on empty official test-FI /session/end page, return chain not qualified"
+    },
+    {
+      "topic": "Live long-stream client transport",
+      "owner": "pcasad",
+      "status": "Two HTTPX/OpenSSL record-layer errors; reproduce in browser before attributing to application or infrastructure"
+    }
+  ]
+}

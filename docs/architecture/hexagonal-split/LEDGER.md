@@ -1356,3 +1356,28 @@ Elles se terminent en **122 à 149 s**. Le pic mesuré par pod est de **115 MiB*
 l’API et de **1 487 MiB** pour Conversations. Les deux pods API restent
 prêts. Les données de recette sont purgées et l’ACL initiale est rétablie.
 [Preuve SSE #531](../../evals/evidence/m2_d4_staging_sse_20261126.json)
+
+### #596 — recette identité/habilitations du 27 novembre 2026
+
+La [campagne automatisée](18-identity-staging-qualification.md) exerce l’API
+`2043a66` et Conversations `d38bec4`, dont onze modules déployés correspondent
+au code. Deux identités du FI officiel ProConnect d’intégration sont utilisées,
+sans compte personnel. Les matrices sur fixtures contrôlées passent 170/170
+contrôles locaux et 112/113 contrôles OIDC ; la session est révoquée au logout,
+mais le retour navigateur reste sur le FI de test. Huit contrôles de rotation
+passent dans un canary privé supprimé ; les clés actives sont préservées.
+Les sessions sont cohérentes entre les deux réplicas et 32/32 identifiants de
+requête observés sont corrélés entre backend et API.
+
+Les premiers essais live ont reçu trois réponses SSE locales et deux OIDC.
+Les longs essais suivants ont rencontré une erreur TLS HTTPX/OpenSSL dont
+l’origine reste à qualifier ; les fixtures contrôlées ne sont pas présentées
+comme de nouvelles inférences. Le test de panne isolée relève l’absence de
+`SCALEWAY_API_KEY` dans l’API staging : le secours ne peut pas être qualifié.
+
+**#596 reste ouverte.** pcasad porte le provisionnement/décision sur le secours
+et sa recette, le retour de logout (#596/#533) et la reproduction navigateur
+des coupures observées (#533/#536). Les comptes, données, canaries et le relais
+de cette campagne sont nettoyés ; les quatre pods restent prêts sans redémarrage.
+Les scripts et journaux sont archivés en privé, les seuls agrégats sont versionnés.
+[Preuve](../../evals/evidence/identity_596_staging_20261127.json)
