@@ -1389,7 +1389,7 @@ l’ancien staging. Aucun droit n’est élargi pour poursuivre la recette.
 | Matrice documentaire complémentaire, transferts et annulation | #532 | pcasad | À terminer ; couverture synthétique distincte |
 | Validité du gate qualité sur la candidate finale et décision M2 | #532 | pcasad | À consigner avant clôture #526 |
 
-### M2 #532 / #599 — recette opérateur terminée sur `2043a66`, 26 novembre 2026
+### M2 #532 / #599 — recette opérateur terminée sur `2043a66`, 26 novembre 2026 (historique)
 
 L’accès opérateur TLS fourni résout le blocage décrit dans l’entrée précédente.
 La recette sur l’API `2043a66` et Conversations `d38bec4` passe **123 contrôles
@@ -1427,3 +1427,30 @@ les tolérances avant le GO M2. Aucun autre report de phase D n’est non assign
 | Jugement qualité de `2043a66`, 98 cas, trois votes | #532 | pcasad | En attente d’autorisation d’export ; entrées préparées |
 | Décision GO et clôture D | #532 / #526 | pcasad | Après gate conforme |
 | Parcours navigateur, canary, charge et production | #533 / #536 / #364 | pcasad | Phase E / préproduction |
+
+### GO M2 et clôture de la phase D — 27 novembre 2026
+
+L’opérateur a explicitement autorisé l’envoi des 98 cas et extraits privés au
+juge Scaleway pour trois votes. La candidate API `2043a66` et le backend
+Conversations `d38bec4` satisfont le gate M1 : **68/98 réponses validées
+(69,39 %)**, **294 votes exploitables**, zéro vote en échec et rappel
+**72,51 %**. Les trois comparaisons `legacy_live`, `core_live` et
+`m0a_rejudged` passent les tolérances inchangées de cinq points. Les entrées,
+la capture et les références sont liées par leurs empreintes ; les votes bruts
+restent privés hors Git. Les images qualifiées sont encore actives sur quatre
+pods prêts sans redémarrage au contrôle du 27 novembre.
+
+**GO technique M2 vers la phase E.** Les recettes HTTP/SQL (123 contrôles),
+la suite API (1 578 tests), le goldset HTTP et le rejeu exact (98/98 chacun),
+les SDK, le SSE, les refus d’accès, le nettoyage et l’opérabilité sont rattachés
+à la [décision complète](17-m2-staging-qualification.md). Les preuves D4 HTTPS,
+erreur après en-têtes et rollback sont conservées selon l’équivalence documentée
+du transport, sans nouveau rejeu HTTPS de ces trois scénarios.
+
+[#532](https://github.com/DGAFP/assistant-rh/issues/532) et la phase D
+[#526](https://github.com/DGAFP/assistant-rh/issues/526) peuvent être clôturées
+sur cette décision ; #599 est déjà clôturée. Aucun report de phase D ne reste.
+Les sujets navigateur, ProConnect, canary, charge et stabilité restent en phase E
+(#533 / #595 / #596 / #535 / #536 / #537), sous responsabilité pcasad ;
+le préflight de production reste dans #364.
+[Preuve du gate](../../evals/evidence/m2_m1_gate_candidate_20261127.json)

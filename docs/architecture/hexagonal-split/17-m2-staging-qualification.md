@@ -1,8 +1,10 @@
 # M2 — Recette API et Conversations
 
-## Décision au 26 novembre 2026 — candidate `2043a66`
+## Décision au 27 novembre 2026 — candidate `2043a66`
 
-**NO-GO provisoire : seul le jugement qualité des réponses de cette candidate reste en attente.** Les recettes API et SQL, le transport, le rejeu exact et le rappel documentaire sont terminés. Le jugement externe nécessite l’autorisation explicite d’envoyer les questions, réponses et extraits privés au juge Scaleway ; aucun appel de jugement de cette campagne n’a été envoyé. Les scores de l’ancienne candidate ci-dessous sont conservés comme historique et ne valent pas jugement de `2043a66`.
+**GO M2 vers la phase E ; phase D terminée.** Après autorisation explicite de l’opérateur le 27 novembre, le jugement des 98 cas par Scaleway `mistral-medium-3.5-128b`, rubrique `gold-passages-v2`, donne **68/98 réponses validées (69,39 %)** et **294 votes exploitables**, sans vote en échec. Le rappel documentaire est **72,51 %**. Les deux métriques respectent les tolérances des trois références M1, avec une baisse maximale de cinq points inchangée. [Gate complet et empreintes](../../evals/evidence/m2_m1_gate_candidate_20261127.json).
+
+La décision porte sur les révisions ci-dessous et permet d’ouvrir la phase E et son canary staging borné. Les recettes navigateur, ProConnect, canary, charge et stabilité conservent leurs critères propres. Les scores des campagnes précédentes restent historiques.
 
 Révisions qualifiées : API `2043a66b9da9b88a7e44c0ce1efdcc3896a36353`, digest `sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b`, chart `0.84.1+aaf6ad46cd64` ; backend Conversations `d38bec4eeaebc911b5278d404dc8eb5879c9d1ce`, digest `sha256:374f1985a3f8425ab02a8ce8a79f58c53da37e2031cec63d92e5893333ec4663`, chart `0.73.1+d1303baae68f`. Les quatre pods sont prêts sans redémarrage à la fin de la campagne.
 
@@ -26,7 +28,7 @@ Le goldset et ses références M0a ont été relus uniquement sur l’ancien sta
 
 Les comptes Django, groupes, sessions, marqueurs anti-rejeu, runs, feedbacks, audits, documents synthétiques, logins SQL et déclencheur de panne de recette sont nettoyés. Aucun objet SQL temporaire ne reste. Le tunnel et l’ACL préexistants fournis par l’opérateur sont préservés. La [preuve partielle antérieure](../../evals/evidence/m2_api_acceptance_partial_20261126.json) reste historique ; son blocage d’accès opérateur est résolu.
 
-## Reproduire et terminer M2
+## Reproduire M2
 
 La recette complète utilise les scripts existants et les deux scripts d’intégration suivants. Elle crée des fixtures durables isolées, deux logins SQL temporaires et un trigger de panne limité à une fixture, puis les supprime dans le nettoyage final. Elle contrôle le cluster, la base, le compte et TLS avant ces écritures.
 
@@ -38,13 +40,20 @@ PYTHON_DOTENV_DISABLED=1 uv run --no-sync python -m scripts.integration.m2_stagi
 
 `scripts/integration/m2_individual_staging.py` est exécuté par cet opérateur dans un pod backend Conversations ; son état contient des sessions et reste privé. Les anciennes sondes `m2_delegation_staging.py` et `m2_runtime_roles.py` restent utilisables pour les contrôles sans opérateur ; le probe SQL sous le seul compte API signale toujours une couverture incomplète et ne vaut pas GO.
 
-Pour terminer le gate, utiliser `scripts.conformance.m2_gate` avec `--proof docs/evals/evidence/m2_candidate_capture_20261126.json`, la nouvelle capture privée et les entrées de jugement déjà préparées. Le gate conserve l’inventaire des 98 questions, les empreintes, la rubrique et les tolérances M1 ; il refuse une couverture manquante. Après autorisation de l’export au juge et résultat conforme, consigner le score et la décision GO sur ces révisions, puis clôturer #532 et #526.
+Le jugement utilise `scripts.conformance.m2_judge judge`, puis `scripts.conformance.m2_gate report --proof docs/evals/evidence/m2_candidate_capture_20261126.json`. Les entrées privées sont liées à la capture `600eb155…` et à l’empreinte `65837656…`. L’inventaire des 98 questions, la rubrique, les trois votes, les empreintes et les tolérances M1 sont contrôlés. Le résultat complet, les votes et le manifeste sont archivés hors Git en mode `0600` ; seuls les agrégats sont publiés.
 
-| Reste à faire | Suivi | Responsable | Statut |
+| Référence M1 | Taux de référence | Écart du taux de validation | Écart du rappel | Résultat |
+| --- | --- | --- | --- | --- |
+| `legacy_live` | 63,27 % | 6,12 pt | -0,41 pt | Conforme |
+| `core_live` | 61,22 % | 8,16 pt | -0,41 pt | Conforme |
+| `m0a_rejudged` | 61,22 % | 8,16 pt | 0,08 pt | Conforme |
+
+Aucun report de phase D ne reste ouvert. Les suites sont attribuées dans le LEDGER :
+
+| Suite | Suivi | Responsable | Statut |
 | --- | --- | --- | --- |
-| Autoriser l’export précis au juge Scaleway et exécuter les trois votes des 98 cas | #532 | pcasad | Autorisation explicite en attente ; zéro appel envoyé |
-| Consigner le gate complet et le GO vers E | #532 / #526 | pcasad | Après résultat conforme |
-| Parcours navigateur, ProConnect, canary et charge | #533 / #595 / #596 / #536 | pcasad | Phase E |
+| Parcours navigateur, ProConnect et intégration | #533 / #595 / #596 | pcasad | Phase E |
+| Canary, charge et stabilité | #535 / #536 / #537 | pcasad | Phase E |
 | Préflight de production | #364 | pcasad | Avant activation en production |
 
 ## Campagnes précédentes — historique

@@ -91,15 +91,22 @@
     "file_mode": "0600",
     "directory_mode": "0700",
     "location": "operator host, outside Git",
-    "judge_requests_sent": 0
+    "judge_requests_sent_at_archive_creation": 0
   },
   "answer_quality": {
-    "status": "pending_explicit_egress_approval",
-    "judge_requests_sent": 0,
-    "prepared_input_sha256": "65837656d31801397f3281eb0e59cf1a343671fd91b4be59e9602ca367655323",
+    "status": "completed",
+    "date": "2026-11-27",
+    "gate": "pass",
+    "outcomes": {
+      "pass": 68,
+      "fail": 30
+    },
+    "votes_completed": 294,
+    "failed_votes": 0,
+    "input_sha256": "65837656d31801397f3281eb0e59cf1a343671fd91b4be59e9602ca367655323",
     "judge": "mistral-medium-3.5-128b",
     "rubric": "gold-passages-v2",
     "votes_per_case": 3,
-    "note": "Recall and exact replay are measured; answer-quality gate on this candidate has not yet run."
+    "report": "m2_m1_gate_candidate_20261127.json"
   }
 }
