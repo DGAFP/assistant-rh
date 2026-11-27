@@ -1,0 +1,173 @@
+{
+  "before": {
+    "rag_config": {
+      "rows": 1,
+      "sha256": "f376803faa3b35c5b4098b73779f83ecc86dbf117f22b428f9de29f28c33e62d"
+    },
+    "system_prompts": {
+      "rows": 37,
+      "sha256": "2e96373027da1194b597fdc5e408017f2407cc893163825773e97d8db02aeb2c"
+    },
+    "acronyms": {
+      "rows": 248,
+      "sha256": "d1c65afc3a7d67570a6943f421c32dc3b657c53c997154a22387966cbbbf0ab5"
+    },
+    "rag_documents": {
+      "rows": 4882,
+      "sha256": "52c2e74ed86f96b59bc6a21dbbe64e0824c9c8603af2e8a3a8b5d65df17e1e4d"
+    },
+    "rag_sections": {
+      "rows": 10412,
+      "sha256": "c7754ce461c78a47b3c0cfe1ab3f00e870a4b15a4cb1ebe90fb25541a2ed022b"
+    },
+    "aliases_sha256": "31b5baf46386121bdd302eca9cd94facc81f45337a54278c157482d58c00f7ed"
+  },
+  "after": {
+    "rag_config": {
+      "rows": 1,
+      "sha256": "f376803faa3b35c5b4098b73779f83ecc86dbf117f22b428f9de29f28c33e62d"
+    },
+    "system_prompts": {
+      "rows": 37,
+      "sha256": "2e96373027da1194b597fdc5e408017f2407cc893163825773e97d8db02aeb2c"
+    },
+    "acronyms": {
+      "rows": 248,
+      "sha256": "d1c65afc3a7d67570a6943f421c32dc3b657c53c997154a22387966cbbbf0ab5"
+    },
+    "rag_documents": {
+      "rows": 4882,
+      "sha256": "52c2e74ed86f96b59bc6a21dbbe64e0824c9c8603af2e8a3a8b5d65df17e1e4d"
+    },
+    "rag_sections": {
+      "rows": 10412,
+      "sha256": "c7754ce461c78a47b3c0cfe1ab3f00e870a4b15a4cb1ebe90fb25541a2ed022b"
+    },
+    "aliases_sha256": "31b5baf46386121bdd302eca9cd94facc81f45337a54278c157482d58c00f7ed"
+  },
+  "config_and_corpus_unchanged": true,
+  "temporary_sql_objects_remaining": {
+    "temporary_sql_logins": 0,
+    "temporary_fault_triggers": 0,
+    "temporary_fault_functions": 0
+  },
+  "d4_equivalence": {
+    "previous_revision": "21aa3e3",
+    "candidate_source": "533bedb",
+    "chat_auth_telemetry_dependencies_image_deploy_unchanged": true,
+    "run_finalization_ast_unchanged": true,
+    "scope_note": "The current private SSE and disconnect were rerun. Prior D4 HTTPS concurrency, controlled post-header error and rollback are retained based on unchanged transport/auth/dependencies/deployment and finalization AST; those three scenarios were not rerun over HTTPS on this candidate."
+  },
+  "read_only_verification": true,
+  "pods_and_logs": {
+    "pods": [
+      {
+        "namespace": "assistant-rh-api",
+        "pod": "assistant-rh-api-5f888d866-g2b4h",
+        "ready": true,
+        "restarts": 0,
+        "images": [
+          "rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api@sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+        ],
+        "log_lines_scanned": 2853,
+        "compact_jws_found": false,
+        "private_storage_url_found": false,
+        "postgres_dsn_found": false,
+        "opaque_session_token_found": false
+      },
+      {
+        "namespace": "assistant-rh-api",
+        "pod": "assistant-rh-api-5f888d866-x8kzx",
+        "ready": true,
+        "restarts": 0,
+        "images": [
+          "rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api@sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+        ],
+        "log_lines_scanned": 1807,
+        "compact_jws_found": false,
+        "private_storage_url_found": false,
+        "postgres_dsn_found": false,
+        "opaque_session_token_found": false
+      },
+      {
+        "namespace": "conversations",
+        "pod": "conversations-backend-746cd59fd7-6gq7p",
+        "ready": true,
+        "restarts": 0,
+        "images": [
+          "rg.fr-par.scw.cloud/assistant-rh-staging/conversations-backend@sha256:374f1985a3f8425ab02a8ce8a79f58c53da37e2031cec63d92e5893333ec4663"
+        ],
+        "log_lines_scanned": 2843,
+        "compact_jws_found": false,
+        "private_storage_url_found": false,
+        "postgres_dsn_found": false,
+        "opaque_session_token_found": false
+      },
+      {
+        "namespace": "conversations",
+        "pod": "conversations-backend-746cd59fd7-sqhrb",
+        "ready": true,
+        "restarts": 0,
+        "images": [
+          "rg.fr-par.scw.cloud/assistant-rh-staging/conversations-backend@sha256:374f1985a3f8425ab02a8ce8a79f58c53da37e2031cec63d92e5893333ec4663"
+        ],
+        "log_lines_scanned": 2999,
+        "compact_jws_found": false,
+        "private_storage_url_found": false,
+        "postgres_dsn_found": false,
+        "opaque_session_token_found": false
+      }
+    ],
+    "passed": true
+  },
+  "log_safety_earlier": {
+    "scope": "Recent application logs; only aggregate checks are retained",
+    "checks": [
+      {
+        "namespace": "assistant-rh-api",
+        "pod": "assistant-rh-api-5f888d866-g2b4h",
+        "lines_scanned": 1560,
+        "known_runtime_secret_found": false,
+        "compact_jws_found": false,
+        "private_storage_url_found": false
+      },
+      {
+        "namespace": "assistant-rh-api",
+        "pod": "assistant-rh-api-5f888d866-x8kzx",
+        "lines_scanned": 1232,
+        "known_runtime_secret_found": false,
+        "compact_jws_found": false,
+        "private_storage_url_found": false
+      },
+      {
+        "namespace": "conversations",
+        "pod": "conversations-backend-746cd59fd7-6gq7p",
+        "lines_scanned": 1821,
+        "known_runtime_secret_found": false,
+        "compact_jws_found": false,
+        "private_storage_url_found": false
+      },
+      {
+        "namespace": "conversations",
+        "pod": "conversations-backend-746cd59fd7-sqhrb",
+        "lines_scanned": 1896,
+        "known_runtime_secret_found": false,
+        "compact_jws_found": false,
+        "private_storage_url_found": false
+      }
+    ],
+    "passed": true
+  },
+  "tests": {
+    "api_passed": 1578,
+    "api_failed": 0,
+    "api_skipped": 0,
+    "private_m0b_replay_included": true,
+    "api_duration_s": 108.84,
+    "ruff": "pass",
+    "format": "pass",
+    "import_contracts": 4,
+    "suite_log_sha256": "e936398b4f7316a5c0fc0a3f23324b246843a4455b908469b1189fe7c8ece69c"
+  },
+  "initial_user_tunnel_and_acl_preserved": true
+}

@@ -75,6 +75,8 @@ La DB et les providers existent déjà. C1 fixe le contrat à partir du spike A2
 
 **Jalon M2 — fidélité API et opérabilité** : conformance core ↔ API exacte en replay, qualité live dans les tolérances M1, compatibilité de transport SDK/provider `conversations` épinglé, streaming Scaleway et métriques opérationnelles au vert. Le fork déployable, son auth machine-to-machine, ProConnect, son feedback et le renouvellement des sources restent au temps 2.
 
+**GO technique M2 — 27/11/2026, phase D terminée.** API `2043a66`, backend Conversations `d38bec4` : rejeu exact et goldset HTTP 98/98, qualité 68/98 (69,39 %) et rappel 72,51 % dans les trois tolérances M1, 294 votes exploitables sans échec. Les matrices feedback/documents et les rôles runtime #599 sont recettés ; 123 contrôles HTTP/SQL et 1 578 tests API passent. [Décision, preuves et limites D4](17-m2-staging-qualification.md). Le jalon permet la poursuite de la phase E ; les critères navigateur, canary et stabilité restent suivis dans leurs tickets.
+
 ## Phase E — Streamlit et canary staging
 
 | PR / étape | Contenu |

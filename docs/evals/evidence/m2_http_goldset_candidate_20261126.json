@@ -1,0 +1,1038 @@
+{
+  "schema": "assistant-rh-m2-deployed-http-goldset-v1",
+  "started_at": "2026-11-26T18:32:01Z",
+  "environment": "staging",
+  "api_revision": "2043a66b9da9b88a7e44c0ce1efdcc3896a36353",
+  "max_concurrent_requests": 2,
+  "phases": [
+    {
+      "phase": "goldset",
+      "checks": [
+        {
+          "name": "goldset_http_1",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_2",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_3",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_4",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_6",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_7",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_9",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_10",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_11",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_13",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_14",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_15",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_16",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_17",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_18",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_19",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_20",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_21",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_23",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_27",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_28",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_29",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_30",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_31",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_32",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_33",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_173",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_174",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_175",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_176",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_177",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_178",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_179",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_180",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_181",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_182",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_183",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_184",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_185",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_186",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_187",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_188",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_189",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_190",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_191",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_192",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_193",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_194",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_196",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_197",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_198",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_199",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_200",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_201",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_203",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_204",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_205",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_206",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_207",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_208",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_209",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_210",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_211",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_212",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_213",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_214",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_215",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_216",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_217",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_218",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_219",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_220",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_221",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_222",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_223",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_224",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_225",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_226",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_227",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_228",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_229",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_657",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_660",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_676",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_706",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_827",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_926",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_4528",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_4529",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_4530",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_4531",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_4532",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_4533",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_4534",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_4535",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_4536",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_4537",
+          "passed": true
+        },
+        {
+          "name": "goldset_http_4538",
+          "passed": true
+        }
+      ],
+      "measurements": {
+        "transport": [
+          {
+            "id": 1,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 57.734
+          },
+          {
+            "id": 2,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 30.937
+          },
+          {
+            "id": 3,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 32.426
+          },
+          {
+            "id": 4,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 45.804
+          },
+          {
+            "id": 6,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 27.486
+          },
+          {
+            "id": 7,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 34.01
+          },
+          {
+            "id": 9,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 31.034
+          },
+          {
+            "id": 10,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 37.777
+          },
+          {
+            "id": 11,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 34.414
+          },
+          {
+            "id": 13,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 37.762
+          },
+          {
+            "id": 14,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 38.666
+          },
+          {
+            "id": 15,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 48.033
+          },
+          {
+            "id": 16,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 16.629
+          },
+          {
+            "id": 17,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 14.054
+          },
+          {
+            "id": 18,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 21.202
+          },
+          {
+            "id": 19,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 13.875
+          },
+          {
+            "id": 20,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 16.877
+          },
+          {
+            "id": 21,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 12.567
+          },
+          {
+            "id": 23,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 9.974
+          },
+          {
+            "id": 27,
+            "model": "assistant-rh-mso",
+            "http_status": 200,
+            "elapsed_s": 8.696
+          },
+          {
+            "id": 28,
+            "model": "assistant-rh-mso",
+            "http_status": 200,
+            "elapsed_s": 14.111
+          },
+          {
+            "id": 29,
+            "model": "assistant-rh-mso",
+            "http_status": 200,
+            "elapsed_s": 13.529
+          },
+          {
+            "id": 30,
+            "model": "assistant-rh-mso",
+            "http_status": 200,
+            "elapsed_s": 8.591
+          },
+          {
+            "id": 31,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 8.116
+          },
+          {
+            "id": 32,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 12.725
+          },
+          {
+            "id": 33,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 7.614
+          },
+          {
+            "id": 173,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 8.011
+          },
+          {
+            "id": 174,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 9.147
+          },
+          {
+            "id": 175,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 10.016
+          },
+          {
+            "id": 176,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 9.686
+          },
+          {
+            "id": 177,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 7.219
+          },
+          {
+            "id": 178,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 6.94
+          },
+          {
+            "id": 179,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 7.485
+          },
+          {
+            "id": 180,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 7.288
+          },
+          {
+            "id": 181,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 2.138
+          },
+          {
+            "id": 182,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 8.087
+          },
+          {
+            "id": 183,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 9.541
+          },
+          {
+            "id": 184,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 10.607
+          },
+          {
+            "id": 185,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 10.236
+          },
+          {
+            "id": 186,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 7.942
+          },
+          {
+            "id": 187,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 9.104
+          },
+          {
+            "id": 188,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 6.833
+          },
+          {
+            "id": 189,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 7.069
+          },
+          {
+            "id": 190,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 7.481
+          },
+          {
+            "id": 191,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 9.706
+          },
+          {
+            "id": 192,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 8.102
+          },
+          {
+            "id": 193,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 9.403
+          },
+          {
+            "id": 194,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 9.742
+          },
+          {
+            "id": 196,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 27.305
+          },
+          {
+            "id": 197,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 46.145
+          },
+          {
+            "id": 198,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 25.46
+          },
+          {
+            "id": 199,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 46.19
+          },
+          {
+            "id": 200,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 35.52
+          },
+          {
+            "id": 201,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 46.179
+          },
+          {
+            "id": 203,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 37.202
+          },
+          {
+            "id": 204,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 41.473
+          },
+          {
+            "id": 205,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 41.204
+          },
+          {
+            "id": 206,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 31.924
+          },
+          {
+            "id": 207,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 31.73
+          },
+          {
+            "id": 208,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 28.492
+          },
+          {
+            "id": 209,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 35.646
+          },
+          {
+            "id": 210,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 43.158
+          },
+          {
+            "id": 211,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 48.993
+          },
+          {
+            "id": 212,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 37.608
+          },
+          {
+            "id": 213,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 74.291
+          },
+          {
+            "id": 214,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 53.672
+          },
+          {
+            "id": 215,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 90.987
+          },
+          {
+            "id": 216,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 88.373
+          },
+          {
+            "id": 217,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 44.532
+          },
+          {
+            "id": 218,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 38.547
+          },
+          {
+            "id": 219,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 55.706
+          },
+          {
+            "id": 220,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 54.454
+          },
+          {
+            "id": 221,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 36.407
+          },
+          {
+            "id": 222,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 72.492
+          },
+          {
+            "id": 223,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 25.283
+          },
+          {
+            "id": 224,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 28.354
+          },
+          {
+            "id": 225,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 60.9
+          },
+          {
+            "id": 226,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 30.368
+          },
+          {
+            "id": 227,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 63.678
+          },
+          {
+            "id": 228,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 61.133
+          },
+          {
+            "id": 229,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 48.084
+          },
+          {
+            "id": 657,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 42.544
+          },
+          {
+            "id": 660,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 31.476
+          },
+          {
+            "id": 676,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 25.639
+          },
+          {
+            "id": 706,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 50.767
+          },
+          {
+            "id": 827,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 36.65
+          },
+          {
+            "id": 926,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 92.201
+          },
+          {
+            "id": 4528,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 40.319
+          },
+          {
+            "id": 4529,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 59.156
+          },
+          {
+            "id": 4530,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 41.42
+          },
+          {
+            "id": 4531,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 41.272
+          },
+          {
+            "id": 4532,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 29.266
+          },
+          {
+            "id": 4533,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 33.227
+          },
+          {
+            "id": 4534,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 29.013
+          },
+          {
+            "id": 4535,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 2.027
+          },
+          {
+            "id": 4536,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 19.072
+          },
+          {
+            "id": 4537,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 35.455
+          },
+          {
+            "id": 4538,
+            "model": "assistant-rh-matte",
+            "http_status": 200,
+            "elapsed_s": 48.737
+          }
+        ],
+        "elapsed_s": 1720.941
+      }
+    },
+    {
+      "phase": "cleanup",
+      "checks": [
+        {
+          "name": "users_removed",
+          "passed": true
+        },
+        {
+          "name": "group_removed",
+          "passed": true
+        },
+        {
+          "name": "sessions_removed",
+          "passed": true
+        }
+      ],
+      "measurements": {}
+    }
+  ],
+  "passed": true,
+  "questions": 98,
+  "valid_http_responses": 98,
+  "persisted_responses_matching_http": 98,
+  "panel_sha256": "2dfa514409f67a9df87f3dbd2ce65a1798016ede984d550738fd0630bb386c41",
+  "private_capture_sha256": "f5d569e4fa4058cc4313755abe03f2c05736ba5d24eb658501aa89c83d67576d",
+  "latency_median_s": 30.985500000000002,
+  "latency_p95_s": 63.678,
+  "cleanup": {
+    "deleted": {
+      "chat_feedback_audit": 0,
+      "chat_feedbacks": 0,
+      "chat_run_sources": 192,
+      "rag_trace_events": 676,
+      "chat_runs": 98
+    },
+    "remaining_runs": 0,
+    "remaining_replays": 0
+  },
+  "finished_at": "2026-11-26T19:01:12Z",
+  "latency_observation": "Two concurrent HTTP calls, alongside two read-only capture workers; observed staging latencies, not the phase E load test."
+}

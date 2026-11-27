@@ -38,8 +38,8 @@ def capture_binding(proof):
     }
 
 
-def prepare(archive, panel_file, reference_inputs, dsn, output):
-    proof = read_json(FOLLOWUP)
+def prepare(archive, panel_file, reference_inputs, dsn, output, proof_path=FOLLOWUP):
+    proof = read_json(proof_path)
     binding = capture_binding(proof)
     assessment = read_json(M1_EVIDENCE)["assessment"]
     if (
@@ -93,7 +93,7 @@ def prepare(archive, panel_file, reference_inputs, dsn, output):
     inputs = output / "judge-inputs.json"
     write_private(inputs, cases)
     manifest = {
-        "run_label": "m1_gate_same_capture_20261125",
+        "run_label": proof.get("gate_run_label", "m1_gate_same_capture_20261125"),
         **binding,
         "input_sha256": digest(inputs),
         "cases": len(cases),
@@ -111,8 +111,8 @@ def prepare(archive, panel_file, reference_inputs, dsn, output):
     return manifest
 
 
-def report(output):
-    proof = read_json(FOLLOWUP)
+def report(output, proof_path=FOLLOWUP):
+    proof = read_json(proof_path)
     binding = capture_binding(proof)
     assessment = read_json(M1_EVIDENCE)["assessment"]
     manifest = read_json(output / "judge-manifest.json")
@@ -124,6 +124,9 @@ def report(output):
     total = manifest["cases"]
     retrieval = manifest["retrieval"]
     scope = assessment["runs"]["core_live"]["fingerprints"]["eval_scope"]
+    cases = index_unique(read_json(output / "judge-inputs.json"), lambda row: row["question_id"])
+    if len(cases) != total or sorted(cases) != scope["question_ids"]:
+        raise ValueError("Judge inputs do not cover the complete M1 question inventory")
     if (
         any(manifest.get(key) != value for key, value in binding.items())
         or manifest["eval_scope"] != scope
@@ -171,14 +174,15 @@ def main():
     parser.add_argument("--panel", type=Path)
     parser.add_argument("--reference-inputs", type=Path)
     parser.add_argument("--env-file", type=Path)
+    parser.add_argument("--proof", type=Path, default=FOLLOWUP, help="Published capture/recall/replay evidence for the candidate")
     args = parser.parse_args()
     output = private_directory(args.output)
     if args.mode == "prepare":
         if None in (args.archive, args.panel, args.reference_inputs, args.env_file):
             parser.error("prepare requires --archive, --panel, --reference-inputs and --env-file")
-        result = prepare(args.archive, args.panel, args.reference_inputs, readonly_staging_dsn(args.env_file), output)
+        result = prepare(args.archive, args.panel, args.reference_inputs, readonly_staging_dsn(args.env_file), output, args.proof)
     else:
-        result = report(output)
+        result = report(output, args.proof)
     print(json.dumps(result, ensure_ascii=False))
     if args.mode == "report" and result["gate"] != "pass":
         raise SystemExit(1)
