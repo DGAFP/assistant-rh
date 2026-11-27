@@ -256,16 +256,23 @@ class ReleaseTest(unittest.TestCase):
                 }
                 with patch.dict(os.environ, env):
                     delivery.publish()
+                    reservation = json.loads(next(c.args[2] for c in upload.call_args_list if c.args[1] == "reservation.json"))
+                    candidate.reset_mock()
+                    candidate.return_value = manifest("v0.1.0-rc.2")
+                    download.side_effect = lambda record, name: delivery.serialized(reservation) if name == "reservation.json" else None
+                    with patch.object(delivery, "read_manifest", return_value=manifest()), patch.object(delivery, "receipt", return_value=True):
+                        delivery.publish()
+                    candidate.assert_not_called()  # A newer RC cannot change an interrupted promotion.
             finally:
                 os.chdir(before)
         self.assertFalse(any(args[0] == "docker" for args in calls))
         self.assertFalse(any("/conversations" in str(part) for args in calls for part in args))
         self.assertTrue(any(str(part).endswith("/assistant-rh-api:0.74.0") for args in calls for part in args))
-        self.assertEqual(sum(args[:2] == ("oras", "cp") for args in calls), 1)
+        self.assertEqual(sum(args[:2] == ("oras", "cp") for args in calls), 2)
         uploaded = json.loads(next(c.args[2] for c in upload.call_args_list if c.args[1] == "delivery.json"))
         self.assertEqual(uploaded["api"]["digest"], DIGEST)
         self.assertEqual(uploaded["candidate"], "v0.1.0-rc.1")
-        wait.assert_called_once()
+        self.assertEqual(wait.call_count, 2)
 
 
 class ConfirmTest(unittest.TestCase):
