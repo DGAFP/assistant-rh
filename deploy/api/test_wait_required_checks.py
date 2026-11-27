@@ -33,11 +33,29 @@ class DeliveryGateTest(unittest.TestCase):
         self.assertEqual(gate.evaluate(self.runs()[1:], SHA), [gate.REQUIRED[0]])
 
     def test_other_revision_branch_event_and_path_are_not_proof(self):
-        for key, value in [("head_sha", "b" * 40), ("head_branch", "main"), ("event", "pull_request"), ("path", ".github/workflows/other.yml")]:
+        for key, value in [
+            ("head_sha", "b" * 40),
+            ("head_branch", "staging"),
+            ("event", "pull_request"),
+            ("path", ".github/workflows/other.yml"),
+        ]:
             with self.subTest(key=key):
                 runs = self.runs()
                 runs[0][key] = value
                 self.assertEqual(gate.evaluate(runs, SHA), [gate.REQUIRED[0]])
+
+    def test_integrated_hotfix_requires_its_exact_tag_push_revision(self):
+        runs = self.runs()
+        for run in runs:
+            run.update(
+                head_branch="v1.2.1-rc.1",
+                event="push",
+            )
+        self.assertEqual(gate.evaluate(runs, SHA, "v1.2.1-rc.1"), [])
+        runs[0].update(event="pull_request", pull_requests=[{"base": {"ref": "main"}}])
+        self.assertEqual(gate.evaluate(runs, SHA, "v1.2.1-rc.1"), [gate.REQUIRED[0]])
+        runs[0].update(event="push", head_branch="v1.2.1-rc.2")
+        self.assertEqual(gate.evaluate(runs, SHA, "v1.2.1-rc.1"), [gate.REQUIRED[0]])
 
     def test_pending_is_not_success(self):
         runs = self.runs()

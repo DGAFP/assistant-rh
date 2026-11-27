@@ -3,6 +3,7 @@ name: CI Tests
 on:
   push:
     branches: [dev, staging, main]
+    tags: ['v*']
   pull_request:
     branches: [dev, staging, main]
     types: [opened, synchronize, reopened, ready_for_review]

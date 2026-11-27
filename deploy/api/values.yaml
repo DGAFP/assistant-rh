@@ -1,3 +1,4 @@
+environment: staging
 replicas: 2
 # Admission staging par processus ; la régulation SQL reste indépendante.
 streamWorkers: 50
