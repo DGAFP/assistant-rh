@@ -2,8 +2,8 @@
   "schema": "assistant-rh-596-staging-qualification-v1",
   "date": "2026-11-27",
   "issue": 596,
-  "status": "incomplete",
-  "verdict": "No closure: provider transition unqualified; live SSE transport observation and external logout return require qualification",
+  "status": "qualified_with_explicit_scope_exclusion",
+  "verdict": "Identity and authorization recipe accepted for the agreed Albert-only scope; Scaleway fallback excluded at explicit user request, not qualified. Logout return and native browser SSE qualified in follow-up. Phase E remains open.",
   "deployment": {
     "backend_images": [
       "rg.fr-par.scw.cloud/assistant-rh-staging/conversations-backend@sha256:374f1985a3f8425ab02a8ce8a79f58c53da37e2031cec63d92e5893333ec4663"
@@ -1846,7 +1846,15 @@
     "location": "operator host, outside Git",
     "contains": "recipe source, checkpoints, scoped private logs, synthetic fixture metadata; no operator .env or private TLS CA key"
   },
-  "remaining": [
+  "observed_identity_configuration": {
+    "ASSISTANT_RH_DELEGATION_ISSUER": "urn:assistant-rh:conversations:staging",
+    "ASSISTANT_RH_API_AUDIENCE": "assistant-rh-api",
+    "ASSISTANT_RH_SIGNING_KID": "staging-2026-10",
+    "OIDC_OP_AUTHORIZATION_ENDPOINT": "https://fca.integ01.dev-agentconnect.fr/api/v2/authorize",
+    "SESSION_COOKIE_AGE": 43200
+  },
+  "initial_status": "incomplete",
+  "initial_remaining": [
     {
       "topic": "Provider fallback",
       "owner": "pcasad",
@@ -1863,11 +1871,408 @@
       "status": "Two HTTPX/OpenSSL record-layer errors; reproduce in browser before attributing to application or infrastructure"
     }
   ],
-  "observed_identity_configuration": {
-    "ASSISTANT_RH_DELEGATION_ISSUER": "urn:assistant-rh:conversations:staging",
-    "ASSISTANT_RH_API_AUDIENCE": "assistant-rh-api",
-    "ASSISTANT_RH_SIGNING_KID": "staging-2026-10",
-    "OIDC_OP_AUTHORIZATION_ENDPOINT": "https://fca.integ01.dev-agentconnect.fr/api/v2/authorize",
-    "SESSION_COOKIE_AGE": 43200
+  "remaining": [],
+  "exclusions": [
+    {
+      "topic": "Albert to Scaleway provider transition",
+      "decision": "Explicit user instruction on 2026-11-27: « ignorons la partie scaleway, mais faisons le reste »",
+      "result": "Excluded from this recipe and issue closure; fallback remains unconfigured/unqualified, no claim of provider continuity or change to the DAT principle."
+    }
+  ],
+  "browser_followup": {
+    "schema": "rh596-browser-followup-v1",
+    "started_at": "2026-11-27T12:12:10.372382+00:00",
+    "checks": [
+      {
+        "name": "unadmitted_alice",
+        "passed": true
+      },
+      {
+        "name": "federated_authenticated_alice",
+        "passed": true
+      },
+      {
+        "name": "logout_returns_to_staging",
+        "passed": true
+      },
+      {
+        "name": "logout_revokes_old_session",
+        "passed": true
+      },
+      {
+        "name": "reconnect_preserves_uuid",
+        "passed": true
+      },
+      {
+        "name": "unadmitted_bob",
+        "passed": true
+      },
+      {
+        "name": "federated_authenticated_bob",
+        "passed": true
+      },
+      {
+        "name": "native_chromium_stream_alice",
+        "passed": true
+      },
+      {
+        "name": "native_chromium_stream_bob",
+        "passed": true
+      },
+      {
+        "name": "two_real_completed_runs",
+        "passed": true
+      }
+    ],
+    "streams": [
+      {
+        "actor": "alice",
+        "done": true,
+        "bytes": 34495,
+        "frames": 578,
+        "text_chars": 4146,
+        "error_frames": 0,
+        "pings": 0,
+        "first_text_s": 24.921400000035764,
+        "first_byte_s": 0.12619999998807907,
+        "status": 200,
+        "content_type": "text/event-stream",
+        "duration_s": 51.922400000035765,
+        "transport": {
+          "protocol": "h2",
+          "tls": "TLS 1.3",
+          "status": 200
+        }
+      },
+      {
+        "actor": "bob",
+        "done": true,
+        "bytes": 36134,
+        "frames": 609,
+        "text_chars": 4207,
+        "error_frames": 0,
+        "pings": 0,
+        "first_text_s": 24.91130000001192,
+        "first_byte_s": 0.11389999997615814,
+        "status": 200,
+        "content_type": "text/event-stream",
+        "duration_s": 60.10989999997616,
+        "transport": {
+          "protocol": "h2",
+          "tls": "TLS 1.3",
+          "status": 200
+        }
+      }
+    ],
+    "scaleway_fallback": "excluded at explicit user request",
+    "logout": {
+      "host": "staging.assistant-rh.beta.gouv.fr",
+      "path": "/",
+      "query_keys": [],
+      "buttons": [],
+      "returned": true,
+      "trace": [
+        {
+          "host": "staging.assistant-rh.beta.gouv.fr",
+          "path": "/api/v1.0/logout/",
+          "status": 302,
+          "query_keys": []
+        },
+        {
+          "host": "fca.integ01.dev-agentconnect.fr",
+          "path": "/api/v2/session/end",
+          "status": 302,
+          "query_keys": [
+            "id_token_hint",
+            "state",
+            "post_logout_redirect_uri"
+          ],
+          "post_logout_redirect_uri": {
+            "host": "staging.assistant-rh.beta.gouv.fr",
+            "path": "/api/v1.0/logout-callback/"
+          }
+        },
+        {
+          "host": "test-idp.proconnect.gouv.fr",
+          "path": "/session/end",
+          "status": 200,
+          "query_keys": [
+            "id_token_hint",
+            "post_logout_redirect_uri"
+          ],
+          "post_logout_redirect_uri": {
+            "host": "fca.integ01.dev-agentconnect.fr",
+            "path": "/api/v2/client/logout-callback"
+          }
+        },
+        {
+          "host": "test-idp.proconnect.gouv.fr",
+          "path": "/session/end/confirm",
+          "status": 303,
+          "query_keys": []
+        },
+        {
+          "host": "fca.integ01.dev-agentconnect.fr",
+          "path": "/api/v2/client/logout-callback",
+          "status": 302,
+          "query_keys": []
+        },
+        {
+          "host": "fca.integ01.dev-agentconnect.fr",
+          "path": "/api/v2/session/end",
+          "status": 200,
+          "query_keys": [
+            "from_idp",
+            "id_token_hint",
+            "state",
+            "post_logout_redirect_uri"
+          ],
+          "post_logout_redirect_uri": {
+            "host": "staging.assistant-rh.beta.gouv.fr",
+            "path": "/api/v1.0/logout-callback/"
+          }
+        },
+        {
+          "host": "fca.integ01.dev-agentconnect.fr",
+          "path": "/js/end-session-confirm.js",
+          "status": 200,
+          "query_keys": []
+        },
+        {
+          "host": "fca.integ01.dev-agentconnect.fr",
+          "path": "/api/v2/session/end/confirm",
+          "status": 303,
+          "query_keys": []
+        },
+        {
+          "host": "staging.assistant-rh.beta.gouv.fr",
+          "path": "/api/v1.0/logout-callback/",
+          "status": 302,
+          "query_keys": [
+            "state"
+          ]
+        },
+        {
+          "host": "staging.assistant-rh.beta.gouv.fr",
+          "path": "/",
+          "status": 200,
+          "query_keys": []
+        },
+        {
+          "host": "staging.assistant-rh.beta.gouv.fr",
+          "path": "/_app/index-BijbtxhA.css",
+          "status": 200,
+          "query_keys": []
+        },
+        {
+          "host": "staging.assistant-rh.beta.gouv.fr",
+          "path": "/_app/jsx-runtime-Wy9s6hX0.js",
+          "status": 200,
+          "query_keys": []
+        },
+        {
+          "host": "staging.assistant-rh.beta.gouv.fr",
+          "path": "/_app/index-BRVD4ARr.js",
+          "status": 200,
+          "query_keys": []
+        },
+        {
+          "host": "staging.assistant-rh.beta.gouv.fr",
+          "path": "/_app/wasm-BnjxR4X6.js",
+          "status": 200,
+          "query_keys": []
+        },
+        {
+          "host": "staging.assistant-rh.beta.gouv.fr",
+          "path": "/api/v1.0/config/",
+          "status": 200,
+          "query_keys": []
+        },
+        {
+          "host": "staging.assistant-rh.beta.gouv.fr",
+          "path": "/api/v1.0/users/me/",
+          "status": 403,
+          "query_keys": []
+        },
+        {
+          "host": "staging.assistant-rh.beta.gouv.fr",
+          "path": "/_app/build-3EK7DNA0.js",
+          "status": 200,
+          "query_keys": []
+        }
+      ],
+      "console_issues": [
+        {
+          "csp": false,
+          "network": true
+        }
+      ],
+      "document_bytes": 31322,
+      "forms": []
+    },
+    "producers_stopped": true,
+    "backend_cleanup": {
+      "users_remaining": 0,
+      "groups_remaining": 0,
+      "chats_remaining": 0,
+      "sessions_remaining": 0
+    },
+    "rag_cleanup": {
+      "deleted": {
+        "chat_feedback_audit": 0,
+        "chat_feedbacks": 0,
+        "chat_run_sources": 6,
+        "rag_trace_events": 14,
+        "chat_runs": 2
+      },
+      "runs_remaining": 0
+    },
+    "finished_at": "2026-11-27T12:15:53.258374+00:00",
+    "passed": true,
+    "question_sha256": "89b50f67b8938664818924f5792c35967c6e66a74deaa8f4b01e1819e805a506",
+    "scope": "Native Chromium fetch/ReadableStream over the public HTTPS entrypoint and real ProConnect sessions; two distinct test-FI identities; fixture admission/grants prepared by operator ORM only for this transport probe, central HTTPS administration qualified in previous campaign. Does not replace whole UI widget/source recipe #533/#595.",
+    "logout_interpretation": "Initial harness stopped on the identity-provider intermediate page before asynchronous logout redirects finished. Waiting for the staging host observes both provider confirmation routes, state-bearing logout callback, home 200, old session 403 and stable UUID after reconnect. No runtime/application change.",
+    "transport_interpretation": "Both native Chromium streams complete on the same private question used in the failing HTTPX trials; run authors and completed status checked in SQL. Prior Python/OpenSSL errors are not reproduced in Chromium; their root cause is not established and this is not a transport patch or stability-window qualification.",
+    "browser_version": "Google Chrome for Testing 153.0.8010.12"
+  },
+  "followup_initial_diagnostic": {
+    "checks": [
+      {
+        "name": "unadmitted_alice",
+        "passed": true
+      },
+      {
+        "name": "federated_authenticated_alice",
+        "passed": true
+      },
+      {
+        "name": "logout_returns_to_staging",
+        "passed": true
+      },
+      {
+        "name": "logout_revokes_old_session",
+        "passed": true
+      },
+      {
+        "name": "reconnect_preserves_uuid",
+        "passed": true
+      },
+      {
+        "name": "unadmitted_bob",
+        "passed": true
+      }
+    ],
+    "exception": {
+      "type": "RuntimeError"
+    },
+    "cause": "Test harness reused a group name while preparing the second identity; cleaned before retry with unique names. Logout checks already passed. No inference in this interrupted diagnostic.",
+    "backend_cleanup": {
+      "users_remaining": 0,
+      "groups_remaining": 0,
+      "chats_remaining": 0,
+      "sessions_remaining": 0
+    },
+    "rag_cleanup": {
+      "deleted": {
+        "chat_feedback_audit": 0,
+        "chat_feedbacks": 0,
+        "chat_run_sources": 0,
+        "rag_trace_events": 0,
+        "chat_runs": 0
+      },
+      "runs_remaining": 0
+    }
+  },
+  "followup_final_verification": {
+    "checked_at": "2026-11-27T12:16:03.148992+00:00",
+    "pods": [
+      {
+        "namespace": "assistant-rh-api",
+        "pod": "assistant-rh-api-5f888d866-g2b4h",
+        "images": [
+          "rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api@sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+        ],
+        "ready": true,
+        "restarts": 0,
+        "log_lines": 1875,
+        "compact_jws_found": false,
+        "postgres_credential_url_found": false,
+        "private_signed_storage_url_found": false
+      },
+      {
+        "namespace": "assistant-rh-api",
+        "pod": "assistant-rh-api-5f888d866-x8kzx",
+        "images": [
+          "rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api@sha256:5f0eff1de8629ca7e7c2f827062f000322968b995a35f3a3a8f6861bf160673b"
+        ],
+        "ready": true,
+        "restarts": 0,
+        "log_lines": 1893,
+        "compact_jws_found": false,
+        "postgres_credential_url_found": false,
+        "private_signed_storage_url_found": false
+      },
+      {
+        "namespace": "conversations",
+        "pod": "conversations-backend-746cd59fd7-6gq7p",
+        "images": [
+          "rg.fr-par.scw.cloud/assistant-rh-staging/conversations-backend@sha256:374f1985a3f8425ab02a8ce8a79f58c53da37e2031cec63d92e5893333ec4663"
+        ],
+        "ready": true,
+        "restarts": 0,
+        "log_lines": 4464,
+        "compact_jws_found": false,
+        "postgres_credential_url_found": false,
+        "private_signed_storage_url_found": false
+      },
+      {
+        "namespace": "conversations",
+        "pod": "conversations-backend-746cd59fd7-sqhrb",
+        "images": [
+          "rg.fr-par.scw.cloud/assistant-rh-staging/conversations-backend@sha256:374f1985a3f8425ab02a8ce8a79f58c53da37e2031cec63d92e5893333ec4663"
+        ],
+        "ready": true,
+        "restarts": 0,
+        "log_lines": 4372,
+        "compact_jws_found": false,
+        "postgres_credential_url_found": false,
+        "private_signed_storage_url_found": false
+      }
+    ],
+    "application_log_safety": true,
+    "traefik_logs": {
+      "application_lines": 0,
+      "callback_lines": 0,
+      "authorization_code_in_log": false,
+      "oidc_or_service_jws_in_log": false
+    },
+    "request_correlation": {
+      "backend_request_ids_observed": 23,
+      "matched_in_api_logs": 23,
+      "unmatched": 0,
+      "scope": "Stage application requests during recipe window; raw IDs retained only in private logs"
+    },
+    "cleanup": {
+      "owned_users_remaining": 0,
+      "owned_groups_remaining": 0,
+      "all_application_users": 15,
+      "owned_rag_runs_remaining": 0,
+      "canary_deployments_remaining": 0
+    },
+    "operator_relay_cleanup": {
+      "remote_proxy_processes_stopped": 1,
+      "local_port_forward_processes_stopped": 1,
+      "loopback_55436_closed": true,
+      "preexisting_operator_tunnel_and_acl_untouched": true
+    }
+  },
+  "followup_private_artifact": {
+    "archive": "browser-followup-20261127.tar.gz",
+    "sha256": "23964cf58caf02e5ef9a9680d5268b1197e0d57765f4b93c1a5a3ae4bac3d4f9",
+    "bytes": 124080,
+    "file_mode": "0600",
+    "directory_mode": "0700",
+    "location": "operator host, outside Git",
+    "contains": "follow-up recipe sources, private diagnostic logs and fixture metadata; no operator .env or TLS CA file"
   }
 }

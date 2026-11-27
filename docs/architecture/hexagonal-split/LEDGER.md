@@ -1381,3 +1381,23 @@ des coupures observées (#533/#536). Les comptes, données, canaries et le relai
 de cette campagne sont nettoyés ; les quatre pods restent prêts sans redémarrage.
 Les scripts et journaux sont archivés en privé, les seuls agrégats sont versionnés.
 [Preuve](../../evals/evidence/identity_596_staging_20261127.json)
+
+### #596 — complément navigateur et exclusion explicite du 27 novembre 2026
+
+Le porteur exclut le secours Scaleway de la recette ; son absence de configuration
+et de qualification reste consignée. Le retour complet ProConnect est observé
+jusqu'au callback staging et à l'accueil, avec ancien cookie refusé et UUID stable
+après reconnexion. Le banc initial s'arrêtait avant les redirections asynchrones.
+Aucun correctif applicatif de logout n'est nécessaire.
+
+Deux flux SSE réels dans Chromium se terminent en **51.922 s et 60.110 s** (h2),
+avec deux auteurs distincts et deux runs `completed` contrôlés en SQL. Les erreurs
+Python/OpenSSL historiques ne sont pas reproduites dans Chromium ; leur cause
+exacte reste non attribuée. Les résultats initiaux et la tentative diagnostique
+interrompue pour collision de noms de groupes restent dans les preuves.
+
+La [recette #596](18-identity-staging-qualification.md) est qualifiée et permet la
+clôture dans ce périmètre convenu. Les fixtures, deux runs et relais du complément
+sont nettoyés ; les quatre pods restent prêts sans redémarrage. La phase E, la
+recette du widget/sources et la fenêtre de stabilité gardent leurs critères.
+[Preuve et complément](../../evals/evidence/identity_596_staging_20261127.json)
