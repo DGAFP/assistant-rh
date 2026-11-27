@@ -1356,3 +1356,48 @@ Elles se terminent en **122 à 149 s**. Le pic mesuré par pod est de **115 MiB*
 l’API et de **1 487 MiB** pour Conversations. Les deux pods API restent
 prêts. Les données de recette sont purgées et l’ACL initiale est rétablie.
 [Preuve SSE #531](../../evals/evidence/m2_d4_staging_sse_20261126.json)
+
+### #596 — recette identité/habilitations du 27 novembre 2026
+
+La [campagne automatisée](18-identity-staging-qualification.md) exerce l’API
+`2043a66` et Conversations `d38bec4`, dont onze modules déployés correspondent
+au code. Deux identités du FI officiel ProConnect d’intégration sont utilisées,
+sans compte personnel. Les matrices sur fixtures contrôlées passent 170/170
+contrôles locaux et 112/113 contrôles OIDC ; la session est révoquée au logout,
+mais le retour navigateur reste sur le FI de test. Huit contrôles de rotation
+passent dans un canary privé supprimé ; les clés actives sont préservées.
+Les sessions sont cohérentes entre les deux réplicas et 32/32 identifiants de
+requête observés sont corrélés entre backend et API.
+
+Les premiers essais live ont reçu trois réponses SSE locales et deux OIDC.
+Les longs essais suivants ont rencontré une erreur TLS HTTPX/OpenSSL dont
+l’origine reste à qualifier ; les fixtures contrôlées ne sont pas présentées
+comme de nouvelles inférences. Le test de panne isolée relève l’absence de
+`SCALEWAY_API_KEY` dans l’API staging : le secours ne peut pas être qualifié.
+
+**#596 reste ouverte.** pcasad porte le provisionnement/décision sur le secours
+et sa recette, le retour de logout (#596/#533) et la reproduction navigateur
+des coupures observées (#533/#536). Les comptes, données, canaries et le relais
+de cette campagne sont nettoyés ; les quatre pods restent prêts sans redémarrage.
+Les scripts et journaux sont archivés en privé, les seuls agrégats sont versionnés.
+[Preuve](../../evals/evidence/identity_596_staging_20261127.json)
+
+### #596 — complément navigateur et exclusion explicite du 27 novembre 2026
+
+Le porteur exclut le secours Scaleway de la recette ; son absence de configuration
+et de qualification reste consignée. Le retour complet ProConnect est observé
+jusqu'au callback staging et à l'accueil, avec ancien cookie refusé et UUID stable
+après reconnexion. Le banc initial s'arrêtait avant les redirections asynchrones.
+Aucun correctif applicatif de logout n'est nécessaire.
+
+Deux flux SSE réels dans Chromium se terminent en **51.922 s et 60.110 s** (h2),
+avec deux auteurs distincts et deux runs `completed` contrôlés en SQL. Les erreurs
+Python/OpenSSL historiques ne sont pas reproduites dans Chromium ; leur cause
+exacte reste non attribuée. Les résultats initiaux et la tentative diagnostique
+interrompue pour collision de noms de groupes restent dans les preuves.
+
+La [recette #596](18-identity-staging-qualification.md) est qualifiée et permet la
+clôture dans ce périmètre convenu. Les fixtures, deux runs et relais du complément
+sont nettoyés ; les quatre pods restent prêts sans redémarrage. La phase E, la
+recette du widget/sources et la fenêtre de stabilité gardent leurs critères.
+[Preuve et complément](../../evals/evidence/identity_596_staging_20261127.json)
