@@ -36,6 +36,23 @@ def manifest(tag="v0.1.0-rc.1", target="staging"):
 
 
 class ReleaseTest(unittest.TestCase):
+    @patch.object(delivery.subprocess, "run")
+    def test_registry_absence_is_distinct_from_authentication_and_transport_failures(self, run):
+        missing = "Error response from registry: failed to resolve digest: registry/image:release-tag: not found\n"
+        with patch.dict(os.environ, {"TARGET_REGISTRY_CONFIG": "private-config.json"}):
+            for message in (missing, "HTTP 404 Not Found", "MANIFEST_UNKNOWN"):
+                run.return_value = delivery.subprocess.CompletedProcess([], 1, "", message)
+                with self.subTest(message=message):
+                    self.assertIsNone(delivery.existing_digest("registry/image:release-tag"))
+                    self.assertEqual(delivery.registry_tags("registry"), [])
+            for message in ("401 Unauthorized", "403 Forbidden", "connection timeout", "credentials token not found"):
+                run.return_value = delivery.subprocess.CompletedProcess([], 1, "", message)
+                with self.subTest(message=message):
+                    with self.assertRaises(RuntimeError):
+                        delivery.existing_digest("registry/image:release-tag")
+                    with self.assertRaises(RuntimeError):
+                        delivery.registry_tags("registry")
+
     @patch.object(delivery, "api")
     def test_successful_recovery_resolves_the_full_failed_deployment_chain(self, api):
         def response(path, data=None):
