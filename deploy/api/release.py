@@ -323,14 +323,21 @@ def publish():
     values = Path("source/deploy/api/" + target + ".yaml")
     if not values.is_file():
         raise RuntimeError("Reviewed environment values are missing: " + str(values))
-    if recovery:
-        record = release_for(tag)
+    record = release_for(tag, create=not recovery)
+    reserved = download(record, plan_name)
+    reservation = json.loads(reserved) if reserved is not None else None
+    if reservation and reservation.get("candidate_manifest"):
+        original = reservation["candidate_manifest"]
+        candidate_record = release_for(original["tag"])
+        candidate = read_manifest(candidate_record)
+        if candidate != original or not receipt(candidate_record, candidate):
+            raise RuntimeError("The reserved candidate changed or its validation was revoked")
+    elif recovery:
         candidate = read_manifest(record)
         if not receipt(record, candidate):
             raise RuntimeError("Only a previously validated delivery can be redeployed")
     else:
         candidate = find_candidate(tag, sha) if target == "production" else None
-    record = release_for(tag, create=True)
     saved = download(record, manifest_name)
     if saved is not None:
         manifest = read_manifest(record, manifest_name)
@@ -343,7 +350,6 @@ def publish():
         wait_for_receipt(record, manifest, proof_name)
         return
     active = active_deployment(target, tag, key, recovery=recovery)
-    reservation = download(record, plan_name)
     if reservation is None:
         reservation = {
             "schema": 1,
@@ -353,10 +359,10 @@ def publish():
             "registry": registry,
             "cluster_server": server,
             "chart_version": next_chart_version(registry_tags(registry)),
+            "candidate_manifest": candidate,
         }
         upload(record, plan_name, serialized(reservation))
     else:
-        reservation = json.loads(reservation)
         if any(
             reservation[k] != v
             for k, v in {
