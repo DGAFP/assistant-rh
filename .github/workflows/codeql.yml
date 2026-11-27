@@ -40,7 +40,7 @@ jobs:
             suppression_pack: codeql/python-queries:AlertSuppression.ql
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4

@@ -19,7 +19,7 @@ jobs:
     steps:
     # 1. Récupérer le code
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
     
     # 2. Installer uv
     - name: Install uv
@@ -42,7 +42,7 @@ jobs:
 
     - name: Upload audit results
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: security-report-${{ github.run_number }}
         path: "*.txt"

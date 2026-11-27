@@ -93,7 +93,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Install Scaleway CLI
         uses: scaleway/action-scw@v0.0.3
@@ -192,7 +192,7 @@ jobs:
 
       - name: Upload ${{ matrix.name }} data quality reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: data-quality-cron-${{ matrix.name }}-${{ github.run_attempt }}
           path: artifacts/data-quality/

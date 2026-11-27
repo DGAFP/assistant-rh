@@ -134,7 +134,7 @@ jobs:
 
     steps:
       - name: Checkout candidate
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
 
