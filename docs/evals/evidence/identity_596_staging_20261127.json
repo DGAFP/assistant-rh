@@ -1850,7 +1850,7 @@
     {
       "topic": "Provider fallback",
       "owner": "pcasad",
-      "status": "Scaleway credential absent from active staging API; configure through normal secret process or explicitly decide Albert-only service, then rerun transition proof"
+      "status": "Scaleway credential absent from active staging API; provision through the normal secret process, then rerun transition proof"
     },
     {
       "topic": "OIDC logout return",
@@ -1862,5 +1862,12 @@
       "owner": "pcasad",
       "status": "Two HTTPX/OpenSSL record-layer errors; reproduce in browser before attributing to application or infrastructure"
     }
-  ]
+  ],
+  "observed_identity_configuration": {
+    "ASSISTANT_RH_DELEGATION_ISSUER": "urn:assistant-rh:conversations:staging",
+    "ASSISTANT_RH_API_AUDIENCE": "assistant-rh-api",
+    "ASSISTANT_RH_SIGNING_KID": "staging-2026-10",
+    "OIDC_OP_AUTHORIZATION_ENDPOINT": "https://fca.integ01.dev-agentconnect.fr/api/v2/authorize",
+    "SESSION_COOKIE_AGE": 43200
+  }
 }

@@ -12,6 +12,8 @@ Révisions : API `2043a66b9da9b88a7e44c0ce1efdcc3896a36353`, image `sha256:5f0ef
 
 Le login local reste le défaut public. La route explicite `/api/v1.0/proconnect/authenticate/` mène à `fca.integ01.dev-agentconnect.fr`, avec PKCE et le callback HTTPS staging. Les identités choisies passent par le [FI officiel de test ProConnect](https://partenaires.proconnect.gouv.fr/docs/fournisseur-service/identifiants-fi-test), avec des sujets distincts, des adresses synthétiques et ACR `eidas1`. Aucun compte personnel ni MFA réelle n’est utilisé. Les invitations CSV/SMTP sont désactivées ; la voie d’admission testée est l’administration centrale Django.
 
+Configuration observée : émetteur `urn:assistant-rh:conversations:staging`, audience `assistant-rh-api`, `kid` actif `staging-2026-10`. OIDC et PKCE sont activés ; le login local reste le défaut et les invitations sont désactivées. Ces identifiants de configuration ne sont pas des secrets.
+
 Deux ensembles sont distingués :
 
 - Les premiers essais live ont obtenu **trois réponses SSE sous sessions locales et deux sous sessions ProConnect**, ainsi que l’écriture et les refus croisés de feedback. La question générique a parfois produit uniquement des sources publiques. Le relais SQL de recette a aussi coupé des connexions inactives ; ce défaut du banc a été corrigé et ses fixtures réconciliées. Ces essais sont partiels, leur succès de génération ne vaut pas succès de la matrice entière.
@@ -38,7 +40,7 @@ Les migrations, comptes runtime non propriétaires et la coexistence B4 ont leur
 
 | Écart | Constat | Suite et responsable |
 | --- | --- | --- |
-| Secours Albert → Scaleway non qualifié | `SCALEWAY_API_KEY` est absent du runtime API staging. Dans le canary, Albert fonctionne ; lorsqu’il est rendu indisponible par une URL loopback, le retriever échoue et le HTTP retourne 500 avant toute génération de secours. | **pcasad, #596** : provisionner le secours par le processus normal de secrets, ou décider explicitement d’un service Albert seul ; rejouer la transition avec même auteur/ministère et contrôle des sources. Aucun credential actif n’est modifié par le test. |
+| Secours Albert → Scaleway non qualifié | `SCALEWAY_API_KEY` est absent du runtime API staging. Dans le canary, Albert fonctionne ; lorsqu’il est rendu indisponible par une URL loopback, le retriever échoue et le HTTP retourne 500 avant toute génération de secours. | **pcasad, #596** : provisionner le secours par le processus normal de secrets ; rejouer la transition avec même auteur/ministère et contrôle des sources. Aucun credential actif n’est modifié par le test. |
 | Retour de logout OIDC non abouti | La session applicative est bien révoquée, l’ancien cookie est refusé et la reconnexion fonctionne. Le navigateur reste cependant sur une page vide `test-idp.proconnect.gouv.fr/session/end`. | **pcasad, #596/#533** : qualifier la chaîne de retour de la fédération/FI d’intégration. Le défaut de retour ne doit pas être présenté comme une session encore utilisable. |
 | Longs flux : erreur de transport du client de recette | Deux essais Python HTTPX/OpenSSL ont terminé par `SSL record layer failure`. L’attribution à l’application, à l’entrée réseau ou au client n’est pas établie. Les quatre pods restent prêts sans redémarrage. | **pcasad, #533/#536** : reproduire depuis le navigateur avant tout diagnostic applicatif ou changement de timeout. Aucune nouvelle génération de qualité n’est déduite de ces flux incomplets. |
 
