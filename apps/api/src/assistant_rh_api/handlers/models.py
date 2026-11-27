@@ -34,6 +34,6 @@ def create_models_router() -> APIRouter:
     @router.get("/models", response_model=ModelListResponse)
     async def models(context: Authenticated, service: ModelServiceDependency, response: Response) -> ModelListResponse:
         response.headers["Cache-Control"] = "no-store"
-        return ModelListResponse(data=[ModelResponse(id=model.id, created=model.created) for model in service.list_models(context.group)])
+        return ModelListResponse(data=[ModelResponse(id=model.id, created=model.created) for model in service.list_models(context.principal)])
 
     return router

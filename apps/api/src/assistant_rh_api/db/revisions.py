@@ -16,7 +16,9 @@ def freeze_json(value: object) -> JsonValue:
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):
             raise TypeError("JSON object keys must be strings")
-        return MappingProxyType({key: freeze_json(item) for key, item in sorted(value.items())})
+        # Keep the database order: some legacy prompt text renders JSON objects.
+        # content_revision() sorts keys separately when calculating the hash.
+        return MappingProxyType({key: freeze_json(item) for key, item in value.items()})
     if isinstance(value, (list, tuple)):
         return tuple(freeze_json(item) for item in value)
     raise TypeError("Unsupported JSON value")

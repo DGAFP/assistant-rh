@@ -6,64 +6,52 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 
 
-def test_production_migrations_follow_successful_release_please_on_main() -> None:
+def test_migrations_do_not_follow_a_merge_release_or_tag_automatically() -> None:
     workflow = (WORKFLOWS / "db-migrations-scaleway.yml").read_text(encoding="utf-8")
-    trigger_block = workflow.split("on:", 1)[1].split("permissions:", 1)[0]
-    production_job = workflow.split("migrate-production:", 1)[1]
-
-    assert 'workflows:\n      - "Release Please"' in trigger_block
-    assert "branches:\n      - main" in trigger_block
-    assert "release:" not in trigger_block
-    assert "github.event.workflow_run.conclusion == 'success'" in production_job
-    assert "github.event.workflow_run.event == 'push'" in production_job
-    assert "github.event.workflow_run.head_branch == 'main'" in production_job
-    assert "ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}" in production_job
-    assert "group: scaleway-production-db-migrations" in production_job
-    assert 'MAIN_SHA="$(git ls-remote origin refs/heads/main | cut -f1)"' in production_job
+    trigger = workflow.split("on:", 1)[1].split("permissions:", 1)[0]
+    production = workflow.split("migrate-production:", 1)[1]
+    assert "workflow_run:" not in trigger
+    assert "release:" not in trigger
+    assert "workflow_dispatch:" in trigger
+    assert "github.event_name == 'workflow_dispatch' && inputs.target == 'production'" in production
+    assert "deploy-production:" not in workflow
+    assert "uses: ./.github/workflows/streamlit-deploy-production.yml" not in workflow
+    assert "group: scaleway-production-db-migrations" in production
 
 
-def test_production_release_chain_is_serialized_through_deployment() -> None:
-    workflow = (WORKFLOWS / "db-migrations-scaleway.yml").read_text(encoding="utf-8")
-    workflow_concurrency = workflow.split("permissions:", 1)[1].split("jobs:", 1)[0]
-
-    assert (
-        "group: ${{ (github.event_name == 'workflow_run' || inputs.target == 'production') "
-        "&& 'scaleway-production-release-chain'"
-    ) in workflow_concurrency
-    assert "cancel-in-progress: false" in workflow_concurrency
-    assert "deploy-production:" in workflow
-    assert "needs: migrate-production" in workflow
-
-
-def test_production_migrations_require_a_published_semantic_release() -> None:
-    workflow = (WORKFLOWS / "db-migrations-scaleway.yml").read_text(encoding="utf-8")
-    release_step = workflow.split("- name: Resolve published release", 1)[1].split("- name: Setup Supabase CLI", 1)[0]
-    resolver = (REPO_ROOT / ".github" / "scripts" / "resolve_published_release.sh").read_text(encoding="utf-8")
-
-    assert "resolve_published_release.sh" in release_step
-    assert "git tag --points-at" in resolver
-    assert "^v[0-9]+\\.[0-9]+\\.[0-9]+$" in resolver
-    assert 'gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"' in resolver
-    assert ".draft == false and .prerelease == false" in resolver
+def test_tagged_delivery_is_serialized_and_requires_private_source_qualification() -> None:
+    workflow = (WORKFLOWS / "tagged-release.yml").read_text(encoding="utf-8")
+    assert "group: assistant-rh-api-tagged-delivery" in workflow
+    assert "cancel-in-progress: false" in workflow
+    assert "needs: [plan, qualify-source]" in workflow
+    assert "environment: scaleway-staging" in workflow
+    assert "HF_CONFORMANCE_TOKEN" in workflow
+    assert "ref: ${{ needs.plan.outputs.source_sha }}" in workflow
+    assert "test_m0b_companion.py" in workflow
+    assert "Publish and wait for observed deployment and recipe proof" in workflow
 
 
-def test_streamlit_deploy_receives_the_exact_migrated_release() -> None:
-    migrations = (WORKFLOWS / "db-migrations-scaleway.yml").read_text(encoding="utf-8")
+def test_main_does_not_publish_release_tags_or_back_merge_to_dev() -> None:
+    assert not (WORKFLOWS / "release-please.yml").exists()
+    workflow = (WORKFLOWS / "tagged-release.yml").read_text(encoding="utf-8")
+    assert "github.ref == 'refs/heads/main'" in workflow
+    assert "TAGGED_RELEASES_ENABLED == 'true'" in workflow
+    validation = (WORKFLOWS / "kapsule-staging.yml").read_text(encoding="utf-8")
+    assert "branches: [main]" in validation
+    assert "tags: ['v*']" in validation
+    assert "SCW_REGISTRY_SECRET_KEY" not in validation
+    assert "docker push" not in validation
+
+
+def test_legacy_streamlit_production_is_only_callable_or_manual() -> None:
     workflow = (WORKFLOWS / "streamlit-deploy-production.yml").read_text(encoding="utf-8")
-    trigger_block = workflow.split("on:", 1)[1].split("permissions:", 1)[0]
-    deploy_job = workflow.split("deploy:", 1)[1]
-
-    assert "workflow_call:" in trigger_block
-    assert "workflow_run:" not in trigger_block
-    assert "uses: ./.github/workflows/streamlit-deploy-production.yml" in migrations
-    assert "release_sha: ${{ github.event.workflow_run.head_sha }}" in migrations
-    assert "release_tag: ${{ needs.migrate-production.outputs.release_tag }}" in migrations
-    assert "ref: ${{ inputs.release_sha || github.ref }}" in deploy_job
-    assert 'if [[ -n "${RELEASE_WORKFLOW_SHA}" || -n "${RELEASE_WORKFLOW_TAG}" ]]' in deploy_job
-    assert "github.event_name == 'workflow_call'" not in deploy_job
-    assert "resolve_published_release.sh" in deploy_job
-    assert 'if [[ "${RELEASE_TAG}" != "${RELEASE_WORKFLOW_TAG}" ]]' in deploy_job
-    assert "WORKFLOW_RUN_DISPLAY_TITLE" not in deploy_job
+    trigger = workflow.split("on:", 1)[1].split("permissions:", 1)[0]
+    assert "workflow_call:" in trigger
+    assert "workflow_dispatch:" in trigger
+    assert "workflow_run:" not in trigger
+    assert "release:" not in trigger
+    assert "resolve_published_release.sh" in workflow
+    assert "ref: ${{ inputs.release_sha || github.ref }}" in workflow
 
 
 def _commit_release(tmp_path: Path) -> tuple[Path, str]:

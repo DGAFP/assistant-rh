@@ -1,0 +1,110 @@
+{
+  "success": true,
+  "started_at": "2026-10-12T12:48:14.178444+00:00",
+  "finished_at": "2026-10-12T12:49:03.464600+00:00",
+  "api_commit": "180f855da9f714a1ff1a205170df0dc1f7af9a3e",
+  "fork_commit": "5f9a3aa4100db6e75959fe9a01ede3899cceb5ce",
+  "passed": [
+    "two real API replicas with non-owner runtime role and migrated PostgreSQL",
+    "OIDC authorization-code HTTP flow, pending admission then stable distinct UUIDs",
+    "multi-corpus catalogue and forged out-of-scope model refused",
+    "Conversations -> real API JSON and SSE -> completed runs with distinct authors",
+    "Albert/Scaleway HTTP fallback preserves individual author and ministry",
+    "live grant withdrawal blocks chat and hides history; restoration recovers it",
+    "shared PostgreSQL anti-replay rejects reuse on a second API process",
+    "real API feedback persistence and same-group cross-user isolation",
+    "logout, stable identity on reconnection, disable/reactivate revocation and expiry",
+    "matching request correlation without signed assertion in service logs"
+  ],
+  "simulated": [
+    "OIDC provider (not ProConnect)",
+    "Albert and Scaleway inference endpoints"
+  ],
+  "provider_calls": [
+    {
+      "path": "/albert/v1/chat/completions",
+      "model": "openweight-medium",
+      "stream": false
+    },
+    {
+      "path": "/albert/v1/embeddings",
+      "model": "openweight-embeddings",
+      "stream": false
+    },
+    {
+      "path": "/albert/v1/rerank",
+      "model": "openweight-rerank",
+      "stream": false
+    },
+    {
+      "path": "/albert/v1/chat/completions",
+      "model": "synthetic-selector",
+      "stream": false
+    },
+    {
+      "path": "/albert/v1/chat/completions",
+      "model": "synthetic-generator",
+      "stream": false
+    },
+    {
+      "path": "/albert/v1/chat/completions",
+      "model": "openweight-medium",
+      "stream": false
+    },
+    {
+      "path": "/albert/v1/embeddings",
+      "model": "openweight-embeddings",
+      "stream": false
+    },
+    {
+      "path": "/albert/v1/rerank",
+      "model": "openweight-rerank",
+      "stream": false
+    },
+    {
+      "path": "/albert/v1/chat/completions",
+      "model": "synthetic-selector",
+      "stream": false
+    },
+    {
+      "path": "/albert/v1/chat/completions",
+      "model": "synthetic-generator",
+      "stream": true
+    },
+    {
+      "path": "/albert/v1/chat/completions",
+      "model": "openweight-medium",
+      "stream": false
+    },
+    {
+      "path": "/albert/v1/embeddings",
+      "model": "openweight-embeddings",
+      "stream": false
+    },
+    {
+      "path": "/albert/v1/rerank",
+      "model": "openweight-rerank",
+      "stream": false
+    },
+    {
+      "path": "/albert/v1/chat/completions",
+      "model": "synthetic-selector",
+      "stream": false
+    },
+    {
+      "path": "/albert/v1/chat/completions",
+      "model": "synthetic-generator",
+      "stream": true
+    },
+    {
+      "path": "/albert/v1/chat/completions",
+      "model": "synthetic-generator",
+      "stream": true
+    },
+    {
+      "path": "/scaleway/v1/chat/completions",
+      "model": "llama-3.1-70b-instruct",
+      "stream": true
+    }
+  ]
+}

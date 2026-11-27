@@ -5,6 +5,8 @@
 
 Ce document ferme la matrice demandée par l'issue [#444](https://github.com/DGAFP/assistant-rh/issues/444). Il sépare le chemin public, qui devient client HTTP sans accès PostgreSQL ni import du pipeline Python, de l'interface Streamlit d'administration et d'exploitation, qui conserve temporairement un accès DB direct sous une exception explicite.
 
+> Amendement documentaire du 20 octobre 2026 : la cible publique est Conversations. Le parcours documentaire Streamlit initialement prévu est remplacé par [D2](02-api-contract.md#accès-documentaire) et #594 ; les autres éléments de ce document décrivent le cadrage historique A3 et ne prouvent pas leur livraison.
+
 ## Décisions structurantes
 
 1. **M4 porte sur le chemin public.** `Home.py`, `01_Chatbot` et `_PDF_Viewer` utilisent l'API. Ils n'importent plus de client PostgreSQL ni `packages/rag-pipeline` après le retrait du rollback.
@@ -12,7 +14,7 @@ Ce document ferme la matrice demandée par l'issue [#444](https://github.com/DGA
 3. **Cette exception ne bloque pas M4.** Une migration vers Grafana/Tempo, LangSmith, un outil RAG-ops ou des endpoints admin sera instruite séparément, avec une décision d'hébergement et de traitement des données sensibles.
 4. **Aucune API SQL générique n'est créée.** Le maintien de pages admin en accès direct n'autorise aucun endpoint de requête arbitraire dans `apps/api`.
 5. **Le login crée une session API courte.** Après vérification du mot de passe, l'API émet un bearer opaque, borné au groupe, valable huit heures et conservé dans la session serveur Streamlit. La perte de cet état force une réauthentification et le logout révoque la session. Le fast-path passwordless `?group=<slug>` est supprimé à E1 et le sentinel `default` est exclu du catalogue. Il n'existe pas de bundle `STREAMLIT_API_BEARERS_JSON`.
-6. **Les liens internes ne contiennent pas de capability durable.** `chat_run_sources` persiste seulement les sources finales affichées. Le contrôle de source navigue dans la session Streamlit existante plutôt que d'ouvrir une URL dans un nouvel onglet. `_PDF_Viewer` demande et rédime côté serveur une URL valable quinze minutes ; sa présignature S3 ne dépasse pas la durée restante et un premier 404 déclenche au plus une nouvelle demande authentifiée.
+6. **Documents individuels via le backend Conversations.** Seules les sources finales persistées accordent un droit, avec auteur + ministère courant. Lecture du contenu legacy/S3 privé via D2 ; aucun lien S3/capability navigateur. Streamlit reste interne.
 7. **Le feedback suit l'UI active.** L'API accepte une note 1–5, les raisons positives/négatives cochées et un commentaire. Elle dérive `helpful`, normalise le stockage historique 0–4, migre les doublons existants sans perte et conserve un audit des remplacements corrélé au groupe et à une session pseudonyme.
 8. **L'agentic RAG reste hors de ce chantier iso-fonctionnel.** Il est traité comme une expérimentation qualité ultérieure ; LangSmith éventuel n'impose aucune adoption de LangChain.
 
@@ -86,10 +88,9 @@ L'exception est réexaminée lorsqu'un remplaçant admin/ops est financé et sat
 | `GET /v1/models` | B5 | bearer de session | Catalogue filtré par `allowed_ministries`. |
 | `POST /v1/chat/completions` | C1–C7 | bearer de session | Question, historique, réponse et références de sources ; aucun secret durable dans le contenu. |
 | `POST /v1/feedback` | D1 | bearer propriétaire du run | Feedback structuré ; 404 pour run absent ou hors groupe ; upsert audité. |
-| `POST /v1/documents/{doc_ref}/access-url` | D2 | bearer propriétaire/autorisé | Vérifie que le document appartient aux sources du run et retourne une URL valable 15 min. |
-| `GET /v1/documents/access/{capability}` | D2 | capability courte dans l'URL | Répond 200 PDF legacy ou 302 S3 selon le contrat de headers ; portée à un document, expiration 15 min, masquée dans les logs. |
+| `GET /v1/documents/{doc_ref}/content?completion_id=...` | D2 | délégation individuelle fraîche | Contenu PDF via le backend Conversations ; auteur + ministère courant + source finale. |
 
-Les routes authentifiées sont utilisées par le backend Streamlit. `_PDF_Viewer` rédime aussi la capability côté serveur pour rendre le retry observable ; la route reste utilisable en navigation directe par d'autres clients. L'absence de CORS n'est pas considérée comme un contrôle d'accès. Streamlit limite les tentatives par IP visiteur issue de l'ingress de confiance + slug ; l'API protège aussi son accès direct par source, slug et quota global. Les compteurs déclenchent un 429/`Retry-After` et un backoff borné, jamais une colonne ou un verrou persistant sur le groupe.
+Le parcours documentaire individuel est réservé au backend Conversations, selon D2/#594. Les anciennes routes capability/rédemption ne sont pas implémentées. L'absence de CORS n'est pas considérée comme un contrôle d'accès. Streamlit limite les tentatives par IP visiteur issue de l'ingress de confiance + slug ; l'API protège aussi son accès direct par source, slug et quota global. Les compteurs déclenchent un 429/`Retry-After` et un backoff borné, jamais une colonne ou un verrou persistant sur le groupe.
 
 ## Session API courte
 
@@ -136,18 +137,9 @@ La requête canonique correspond au widget actif :
 - Les candidats récupérés, scores/rangs, filtres, rejets, fallbacks et décisions des différentes étapes sont consignés dans `rag_trace_events`. Ils restent diagnostiques et n'accordent aucun droit documentaire.
 - `chat_runs`, `chat_run_sources` et `rag_trace_events` sont commités atomiquement avant le chunk terminal et `[DONE]` ; une transaction échouée ne publie pas une completion prétendument réussie.
 
-## Accès documentaire court
+## Accès documentaire via le backend (amendement du 20 octobre 2026)
 
-- Une source publique conserve son URL canonique.
-- Une source interne persiste seulement `doc_ref`, `turn_id` et son ordinal dans `chat_run_sources`, jamais une capability ou une URL signée.
-- Le contrôle de source utilise une navigation interne Streamlit (`st.page_link`/`st.switch_page`) ou un rendu inline équivalent afin de conserver la session ; il ne réutilise pas le lien HTML `target="_blank"` historique.
-- `_PDF_Viewer`, authentifié côté serveur, appelle `POST /v1/documents/{doc_ref}/access-url` à son chargement, avec le `completion_id` concerné.
-- Le serveur vérifie que le document figure dans les sources persistées de ce run et que la session appartient au groupe autorisé.
-- La réponse contient une URL opaque valable quinze minutes et `expires_at`. Elle n'est pas ajoutée à l'historique de conversation. Chaque chargement du viewer repart de `doc_ref` + `completion_id` et obtient une URL fraîche.
-- `GET /v1/documents/access/{capability}` répond soit 200 avec les bytes PDF legacy (`application/pdf`, disposition `inline` avec nom assaini, `private, no-store`, `nosniff`), soit 302 sans body vers S3 (`Location`, `private, no-store`) ; les paramètres signés S3 imposent type allowlisté, disposition assainie et `private, no-store`. La capability remplace le bearer pour cette navigation, ne couvre qu'un document, expire après quinze minutes, n'est pas persistée et est masquée dans les logs d'accès.
-- `_PDF_Viewer` rédime la capability côté serveur avec les redirections désactivées : il rend les bytes legacy ou transmet la `Location` S3 courte au navigateur. Sur un premier 404, il redemande automatiquement une capability puis réessaie une fois ; le `POST` refait les contrôles run/groupe/source et aucun lien expiré ne peut se renouveler seul.
-- Les routes n'autorisent ni listing ni autre document. Les échecs d'existence et d'autorisation répondent tous deux 404.
-- A2 a validé uniquement le transport OpenAI du provider `conversations`. Le rendu et le renouvellement de ces sources, comme son auth machine-to-machine et son feedback, appartiennent au fork du temps 2 ; un document interne peut rester non cliquable dans un client OpenAI générique qui n'implémente pas l'extension.
+Le [contrat D2](02-api-contract.md#accès-documentaire) remplace le parcours initial par capability de quinze minutes/302 S3. Conversations vérifie sa session, l'admission, la propriété du message et les droits courants, puis appelle la route de contenu avec une délégation individuelle fraîche. L'API contrôle auteur + ministère + source finale persistée et transmet le PDF par buffers bornés. Aucun lien S3 ni bearer API ne parvient au navigateur. Les sessions B4 sont refusées sur cette route ; `_PDF_Viewer` conserve son seul rôle interne historique. La recette complète appartient à #594 ; les tests API ne la remplacent pas.
 
 ## Surface admin reportée
 
@@ -161,12 +153,12 @@ Ce report ne change pas les autorisations actuelles : les fonctions restent derr
 - les sessions expirent après huit heures et sont invalidées par reset de mot de passe ;
 - la perte d'état Streamlit force une réauthentification et le logout révoque la session avant d'effacer l'état local ;
 - le deep-link de cohorte `?group=<slug>` est retiré et ignoré dans les modes `direct` et `api`, y compris après rollback, et `default` n'apparaît jamais dans le catalogue de login ;
-- le clic source nominal conserve la session Streamlit ; l'ouverture URL/nouvel onglet ne récupère jamais le bearer et redemande le mot de passe ;
+- le clic source public passe par le backend Conversations, sans bearer API ni URL S3 au navigateur ;
 - les quotas login fonctionnent derrière le backend Streamlit, retournent `Retry-After` et ne verrouillent jamais durablement un groupe ;
 - les feedbacks suivent le schéma étoiles/raisons/commentaire et vérifient l'ownership ;
 - la migration feedback conserve le dernier `(ts, id)`, archive tous les doublons et résiste à deux premières soumissions concurrentes ;
 - les sources finales autorisées et les traces de toutes les étapes sont persistées atomiquement avec le run ;
 - aucune URL signée ou capability documentaire durable n'est persistée ;
-- la rédemption renvoie exactement le 200 PDF legacy ou la 302 S3 avec les headers sûrs définis, la présignature S3 n'excède pas la durée restante de sa capability et `_PDF_Viewer` ne retente qu'une fois, par une nouvelle demande authentifiée ;
+- la délivrance documentaire suit [D2](02-api-contract.md#accès-documentaire) : 200 PDF legacy/S3 privé, headers sûrs, contrôles individuels courants et annulation ; recette navigateur dans #594 ;
 - les pages admin existantes restent fonctionnelles et protégées ;
 - M4 vérifie l'absence d'accès DB et d'import pipeline dans le chemin public, pas dans toute l'application Streamlit.

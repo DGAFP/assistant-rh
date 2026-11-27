@@ -1,0 +1,110 @@
+{
+  "run_label": "sql_quality_attribution_20261021",
+  "status": "analysis_complete_selector_fix_local_not_deployed",
+  "sql_causal_panel": {
+    "case_count": 20,
+    "exact_count": 20,
+    "stage_counts": {
+      "query-processor:": 20,
+      "retriever:initial": 20,
+      "section-aggregator:initial": 20,
+      "context-selector:initial": 20,
+      "context-builder:initial": 20,
+      "generator:": 20
+    },
+    "capture_matches_baseline_and_corrected": true,
+    "global_shared_snapshot_unchanged": true,
+    "scope": "20 real API pipeline cases; actual provider query-processing and embedding outputs captured once, old/new SQL read from real same staging DB, full downstream inference output tape frozen; sequential quality panel, not a concurrent-load experiment"
+  },
+  "provider_variability": {
+    "targeted_cases": 7,
+    "samples_per_request": 3,
+    "successful_new_calls": 42,
+    "rerank_order_changed_cases": 0,
+    "rerank_score_array_changed_cases": 6,
+    "selector_parsed_id_order_changed_cases": 4,
+    "generator_text_changed_cases": 7,
+    "note": "Selector IDs use the original parser; malformed wrapper may trigger fallback. Text variation alone is not a factual quality failure."
+  },
+  "prompt_candidate": {
+    "calls": 68,
+    "completed": 68,
+    "pairs": 34,
+    "decision": "rejected_not_applied",
+    "reason": "Targeted scope errors persist under repeated identical contexts; no reliable quality improvement established",
+    "independent_blind_review_answers": 42
+  },
+  "selector_wrapper_fix": {
+    "affected_recorded_responses": 5,
+    "other_record_comparisons_unchanged": 76,
+    "duplicated_reference_samples_in_81_observations": 7,
+    "quality_calls_initial": 30,
+    "quality_pairs_initial": 15,
+    "exploratory_extension_calls": 14,
+    "case_103_followup": {
+      "initial": {
+        "candidate": {
+          "n": 3,
+          "clear_generalizations": 2
+        },
+        "baseline": {
+          "n": 3,
+          "clear_generalizations": 0
+        }
+      },
+      "extension": {
+        "baseline": {
+          "n": 7,
+          "clear_generalizations": 3
+        },
+        "candidate": {
+          "n": 7,
+          "clear_generalizations": 1
+        }
+      },
+      "combined_descriptive": {
+        "baseline": {
+          "n": 10,
+          "clear_generalizations": 3
+        },
+        "candidate": {
+          "n": 10,
+          "clear_generalizations": 3
+        }
+      },
+      "scope": "Exploratory extension selected after initial observation; descriptive counts only, not a confirmatory significance test or global quality score"
+    },
+    "state": "implemented_and_reviewed_locally_not_promoted",
+    "quality_limit": "Restores intended valid JSON selection. No critical evidence loss found in reviewed fixed criteria, but generation defects remain and no uniform factual improvement is claimed."
+  },
+  "verification": {
+    "api_synthetic_suite_passed": 1475,
+    "additional_current_targeted_tests_passed": 165,
+    "root_suite_passed": 1676,
+    "root_suite_skipped": 45,
+    "private_m0b_offline_tests_passed": 18,
+    "import_contracts_kept": 4,
+    "ruff": "passed"
+  },
+  "runtime": {
+    "shared_config_changed": false,
+    "candidate_prompt_applied": false,
+    "postgresql_resized": false,
+    "staging_image": "sha256:a7f43c02b7ae99c3ca40a1611e5db93cabfe98b3fcd87be29db6a9fd66de4e9c",
+    "ready_replicas": 2,
+    "new_concurrency_5_10_test_executed": false
+  },
+  "private_evidence_sha256": {
+    "full-pipeline-causal-summary.json": "3d769ac058408f45d3ad7417e43fcae883813b6c3fd7f66bd673e6fe3ea7af14",
+    "live-variance-semantic-baseline.json": "a78d744eb884a310bd462fa75a566acd6800ed4024ea28a563354a66ed57f2ba",
+    "selector-context-replay.json": "17a6e564ea1d069d8502ca67842df9dfc0f9cbfed097c9ddcd81fb76b68f7b89",
+    "prompt-study/execution-summary.json": "59724e7a943e794c7bb6685b1d9cc8e96809505afa0ff715c17fb975bb27edc3",
+    "prompt-study/blind-review-04-06.json": "d7ce7608184b6a50f91c5d858bc4faa51f38f3b5f9f942edbe8a58d6633692b1",
+    "prompt-study/blind-review-10-12.json": "32c18ede29239b13addb9388e2c804f76e5112e4b156554bdaf187ab29e0ac43",
+    "prompt-study/blind-review-15-17.json": "78bb1c14d0ad5c52d196b551003642c5ed0de65f31999f249d663fc817e02641",
+    "parser-study/execution-summary.json": "45fe66dcd2aeb2b601c7917f8fcd8ec3391f4a6bf400d5d71180cd9e4740157a",
+    "parser-study/blind-review.json": "06b3220c587a2424bd25dd50a1eeeabdbed3a5b3e8a6176eb0ec0c196c45e604",
+    "parser-103-extension/blind-review.json": "1f36485f29a45e1221b564bfdbda36b4b07d601eaa67ebc1e80879391cecaf6c",
+    "parser-study/case-103-variance-followup-summary.json": "9330327eadc1e6521ee729599ca7990315e1e45062a367bc296bc028c3397c97"
+  }
+}

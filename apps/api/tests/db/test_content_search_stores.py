@@ -94,15 +94,31 @@ async def test_vector_provider_columns_and_transaction_local_probes(corpus):
         assert (await cursor.fetchone())[0] == "1"
 
 
-async def test_legacy_and_partial_service_public_relations(corpus):
+async def test_legacy_and_partial_service_public_relations(corpus, repository_dsn):
+    import psycopg
+    from assistant_rh_rag_pipeline.config import CHUNK_TABLES, RetrievalConfig
+    from assistant_rh_rag_pipeline.retriever import Retriever
+
+    def legacy_sections():
+        # Fresh resolver in each schema state: exercise both legacy SQL branches.
+        legacy = Retriever(RetrievalConfig(), dsn=repository_dsn)
+        section = legacy._section_select_sql(CHUNK_TABLES["service_public"])
+        with psycopg.connect(repository_dsn) as connection:
+            return [
+                (row[0], str(row[1]))
+                for row in connection.execute(f"SELECT t.hash_id {section} FROM public.rag_chunks_service_public t ORDER BY t.hash_id")
+            ]
+
     store = SearchStore(corpus)
     request = SearchRequest("service_public", "heading", query="congés")
     assert all(c.section_id == SEC1 for c in await store.search(request))
+    assert legacy_sections() == [("a", SEC1), ("b", SEC1)]
     try:
         async with corpus.transaction() as connection:
             await connection.execute("ALTER TABLE public.rag_chunks_service_public ADD COLUMN section_id UUID")
             await connection.execute("UPDATE public.rag_chunks_service_public SET section_id = %s WHERE hash_id = 'b'", (SEC2,))
         assert [c.section_id for c in await store.search(request)] == [SEC1, SEC2]
+        assert legacy_sections() == [("a", SEC1), ("b", SEC2)]
     finally:
         async with corpus.transaction() as connection:
             await connection.execute("ALTER TABLE public.rag_chunks_service_public DROP COLUMN section_id")
@@ -188,10 +204,23 @@ async def test_core_stage_exact_legacy_parity_on_synthetic_postgres(corpus, repo
     # Different vector/lexical order, ties, absent lanes, R2 duplicates and
     # section-backed metadata. Only synthetic content in the guarded test DB.
     async with corpus.transaction() as connection:
-        # Exact parity requires an unambiguous legacy section relation. The
-        # separate B2 tie tests above retain both sections and assert SEC1;
-        # legacy's LIMIT 1 has no id tie-break and can pick SEC2 instead.
-        await connection.execute("DELETE FROM public.rag_sections WHERE section_id = %s", (SEC2,))
+        # The two pipelines must agree on valid corpus membership. Keep the
+        # ambiguous public section paths and their UUID tie-break in the fixture.
+        if ministry is not None:
+            private_doc = "00000000-0000-0000-0000-000000000003"
+            private_section = "00000000-0000-0000-0000-000000000013"
+            await connection.execute("UPDATE public.rag_documents SET source = 'service_public' WHERE doc_id = %s", (DOC,))
+            await connection.execute(
+                """INSERT INTO public.rag_documents (doc_id, short_id, title, source_url, source)
+                   VALUES (%s, 'F2', 'Congés', 'https://example.invalid/guide', %s)""",
+                (private_doc, ministry),
+            )
+            await connection.execute(
+                """INSERT INTO public.rag_sections (section_id, doc_id, heading, heading_path, section_markdown)
+                   VALUES (%s, %s, 'Congés', 'Guide > Congés', 'Section synthétique')""",
+                (private_section, private_doc),
+            )
+            await connection.execute(sql.SQL("UPDATE {} SET section_id = %s").format(sql.Identifier(TABLES[ministry][0])), (private_section,))
         await connection.execute("""
             INSERT INTO public.rag_chunks_dgafp(chunk_id, chunk_text, cid, embedding_m3, embedding_bge_scw)
             VALUES ('CID_0', 'congés annuels', 'CID', '[1,0,0]', '[0,1,0]'),
@@ -257,3 +286,166 @@ async def test_missing_lexical_column_is_partial_or_scoped_failure_without_text_
     finally:
         async with corpus.transaction() as connection:
             await connection.execute("ALTER TABLE public.rag_chunks_dgafp RENAME COLUMN unavailable_tsv TO chunk_text_tsv")
+
+
+@pytest.mark.parametrize("direct_section", [False, True])
+async def test_heading_batch_resolution_matches_historical_full_rows(corpus, direct_section):
+    from assistant_rh_api.db.content_store import columns, metadata_expression, section_expression
+    from assistant_rh_api.db.search_catalog import search_catalog
+    from assistant_rh_api.db.search_store import TSQUERY, _query
+
+    try:
+        async with corpus.transaction() as connection:
+            if direct_section:
+                await connection.execute("ALTER TABLE public.rag_chunks_service_public ADD COLUMN section_id UUID")
+                await connection.execute("UPDATE public.rag_chunks_service_public SET section_id = %s WHERE hash_id = 'b'", (MISSING,))
+            await connection.execute("""
+                INSERT INTO public.rag_chunks_service_public(hash_id, chunk_text, short_id, section_path)
+                VALUES ('fallback', 'Fallback', 'F1', 'Other > Congés'),
+                       ('null-path', 'Null', 'F1', NULL), ('null-document', 'Null', NULL, 'Guide > Congés'),
+                       ('absent-path', 'Absent', 'F1', 'Missing'), ('absent-document', 'Absent', 'missing', 'Guide > Congés'),
+                       ('duplicate-key', 'Repeated path', 'F1', 'Guide > Congés')
+            """)
+            # An exact match wins over a lower-UUID heading-only match. Duplicate
+            # document short_ids retain the resolver's existing UUID tie-break.
+            await connection.execute("""
+                INSERT INTO public.rag_documents(doc_id, short_id, title) VALUES
+                    ('00000000-0000-0000-0000-000000000002', 'F1', 'Autre congés');
+                INSERT INTO public.rag_sections(section_id, doc_id, heading, heading_path) VALUES
+                    ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001', 'Congés', 'Elsewhere'),
+                    ('00000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000002', 'Congés', 'Guide > Congés');
+            """)
+        spec = next(t for t in search_catalog() if t.source.key == "service_public")
+        async with corpus.transaction(read_only=True) as connection:
+            existing = await columns(connection, spec.source.name)
+            historical = sql.SQL("""
+                WITH parsed AS (SELECT {query} AS q), candidates AS (
+                    SELECT t.hash_id AS chunk_id, t.chunk_text, {section} AS section_id, {meta} AS metadata
+                    FROM public.rag_chunks_service_public t
+                )
+                SELECT c.chunk_id::text, c.chunk_text, c.section_id,
+                    c.metadata || jsonb_build_object('heading', s.heading, 'heading_path', s.heading_path,
+                        'doc_title', d.title, 'doc_url', d.source_url, 'doc_short_id', d.short_id,
+                        'source_name', d.title, 'source_document_id', d.short_id),
+                    ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) AS score,
+                    ROW_NUMBER() OVER (ORDER BY ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) DESC,
+                        c.chunk_id, c.section_id) AS rank
+                FROM candidates c JOIN public.rag_sections s ON s.section_id = c.section_id
+                LEFT JOIN public.rag_documents d ON d.doc_id = s.doc_id CROSS JOIN parsed
+                WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ parsed.q
+                ORDER BY score DESC, c.chunk_id, c.section_id LIMIT %s
+            """).format(query=TSQUERY, section=section_expression(existing), meta=metadata_expression(existing))
+            for query in ("congés", "guide", "autre", "introuvable", "de la et"):
+                for limit in (1, 30):
+                    request = SearchRequest("service_public", "heading", query=query, limit=limit)
+                    statement, params = _query(request, spec, existing)
+                    expected = await (await connection.execute(historical, params)).fetchall()
+                    actual = await (await connection.execute(statement, params)).fetchall()
+                    assert actual == expected
+    finally:
+        if direct_section:
+            async with corpus.transaction() as connection:
+                await connection.execute("ALTER TABLE public.rag_chunks_service_public DROP COLUMN section_id")
+
+
+@pytest.mark.parametrize("mode", ["vector", "lexical", "heading"])
+async def test_scoped_search_hydrates_legacy_ids_only_in_the_searched_corpus(corpus, mode):
+    public_doc = "00000000-0000-0000-0000-000000000091"
+    public_section = "00000000-0000-0000-0000-000000000092"
+    async with corpus.transaction() as connection:
+        await connection.execute(
+            """INSERT INTO public.rag_documents (doc_id, short_id, title, source)
+               VALUES (%s, 'F1', 'Guide public', ' Service_Public ')""",
+            (public_doc,),
+        )
+        await connection.execute(
+            """INSERT INTO public.rag_sections (section_id, doc_id, heading, heading_path, section_markdown)
+               VALUES (%s, %s, 'Congés', 'Guide > Congés', 'Section publique')""",
+            (public_section, public_doc),
+        )
+
+    request = SearchRequest("service_public", mode, query="congés", embedding=(1.0, 0.0, 0.0), scoped=True)
+    chunks = await SearchStore(corpus).search(request)
+    assert len(chunks) == 2
+    assert {chunk.section_id for chunk in chunks} == {public_section}
+    assert {chunk.metadata["doc_id"] for chunk in chunks} == {public_doc}
+    assert {chunk.metadata["doc_title"] for chunk in chunks} == {"Guide public"}
+
+
+async def test_scoped_hybrid_search_and_hydration_require_the_document_corpus(corpus):
+    async with corpus.transaction() as connection:
+        await connection.execute("UPDATE public.rag_documents SET source = 'mso' WHERE doc_id = %s", (DOC,))
+    matte_request = SearchRequest("matte", "vector", query="congés", embedding=(1.0, 0.0, 0.0), scoped=True)
+    store = SearchStore(corpus)
+    assert await store.hybrid_candidates(matte_request) == ((), ())
+    assert await store.search(replace(matte_request, mode="heading")) == ()
+    assert len(await store.search(replace(matte_request, source="mso"))) == 2
+
+    content = ContentStore(corpus)
+    assert await content.sections((SEC1,), ministry="matte") == ()
+    assert await content.documents((DOC,), ministry="matte") == ()
+    assert await content.sections((SEC1,), ministry="unknown") == ()
+    assert (await content.sections((SEC1,), ministry="mso"))[0].document.doc_id == DOC
+    assert (await content.documents((DOC,), ministry="mso"))[0].doc_id == DOC
+
+
+async def test_scoped_search_checks_canonical_document_links_on_standalone_chunks(corpus):
+    async with corpus.transaction() as connection:
+        await connection.execute("ALTER TABLE public.rag_chunks_matte ADD COLUMN source_document_id UUID")
+        await connection.execute("UPDATE public.rag_documents SET source = 'mso' WHERE doc_id = %s", (DOC,))
+        await connection.execute("UPDATE public.rag_chunks_matte SET section_id = NULL, source_document_id = %s WHERE hash_id = 'a'", (DOC,))
+        await connection.execute("UPDATE public.rag_chunks_matte SET section_id = NULL WHERE hash_id = 'b'")
+    try:
+        request = SearchRequest("matte", "vector", query="congés", embedding=(1.0, 0.0, 0.0), scoped=True)
+        vector, lexical = await SearchStore(corpus).hybrid_candidates(request)
+        assert [chunk.chunk_id for chunk in vector] == [chunk.chunk_id for chunk in lexical] == ["b"]
+    finally:
+        async with corpus.transaction() as connection:
+            await connection.execute("ALTER TABLE public.rag_chunks_matte DROP COLUMN source_document_id")
+
+
+async def test_legacy_document_resolution_requires_a_unique_or_explicit_identity(corpus):
+    first_doc = "00000000-0000-0000-0000-000000000091"
+    second_doc = "00000000-0000-0000-0000-000000000093"
+    sections = ("00000000-0000-0000-0000-000000000092", "00000000-0000-0000-0000-000000000094")
+    async with corpus.transaction() as connection:
+        for doc, section, title in zip((first_doc, second_doc), sections, ("Premier guide", "Second guide")):
+            await connection.execute(
+                "INSERT INTO public.rag_documents (doc_id, short_id, title, source) VALUES (%s, 'F1', %s, 'service_public')",
+                (doc, title),
+            )
+            await connection.execute(
+                """INSERT INTO public.rag_sections (section_id, doc_id, heading, heading_path)
+                   VALUES (%s, %s, 'Congés', 'Guide > Congés')""",
+                (section, doc),
+            )
+        await connection.execute("ALTER TABLE public.rag_chunks_service_public ADD COLUMN source_document_id UUID")
+        await connection.execute("UPDATE public.rag_chunks_service_public SET source_document_id = %s WHERE hash_id = 'b'", (second_doc,))
+    try:
+        store = SearchStore(corpus)
+        request = SearchRequest("service_public", "vector", query="congés", embedding=(1.0, 0.0, 0.0), scoped=True)
+        for mode in ("vector", "lexical"):
+            unresolved, verified = await store.search(replace(request, mode=mode))
+            assert unresolved.section_id is None and "doc_id" not in unresolved.metadata
+            assert verified.section_id == sections[1]
+            assert verified.metadata["doc_id"] == second_doc
+        heading = await store.search(replace(request, mode="heading"))
+        assert [(chunk.chunk_id, chunk.section_id) for chunk in heading] == [("b", sections[1])]
+    finally:
+        async with corpus.transaction() as connection:
+            await connection.execute("ALTER TABLE public.rag_chunks_service_public DROP COLUMN source_document_id")
+
+
+async def test_scoped_heading_checks_document_agreement_before_selecting_top_result(corpus):
+    wrong_parent = "00000000-0000-0000-0000-000000000095"
+    async with corpus.transaction() as connection:
+        await connection.execute("INSERT INTO public.rag_documents (doc_id, source) VALUES (%s, 'matte')", (wrong_parent,))
+        await connection.execute("ALTER TABLE public.rag_chunks_matte ADD COLUMN source_document_id UUID")
+        await connection.execute("UPDATE public.rag_chunks_matte SET source_document_id = %s WHERE hash_id = 'a'", (wrong_parent,))
+    try:
+        request = SearchRequest("matte", "heading", query="congés", limit=1, scoped=True)
+        chunks = await SearchStore(corpus).search(request)
+        assert [(chunk.chunk_id, chunk.section_id, chunk.rank) for chunk in chunks] == [("b", SEC1, 1)]
+    finally:
+        async with corpus.transaction() as connection:
+            await connection.execute("ALTER TABLE public.rag_chunks_matte DROP COLUMN source_document_id")

@@ -38,7 +38,7 @@ async def test_legacy_analysis_checks_the_generation_read_before_llm(repository_
 
     async def submit(comment):
         if writer == "api":
-            await store.save(FeedbackInput(run.turn_id, 1, comment), run.group_slug, run.session_hash, NOW)
+            await store.save(FeedbackInput(run.turn_id, 1, comment), run.group_slug, run.session_hash, NOW, ministries=("matte",))
         else:
             async with repository_db.transaction() as connection:
                 await connection.execute(
@@ -117,7 +117,9 @@ async def test_legacy_and_api_first_feedback_with_historical_foreign_key(reposit
         # Pause at the legacy trigger's advisory lock, before the implicit FK
         # check. The API must be able to serialize without blocking KEY SHARE.
         await legacy.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 454))", (run.turn_id,))
-        task = asyncio.create_task(FeedbackStore(repository_db).save(FeedbackInput(run.turn_id, 1, "API"), "synthetic", "b" * 64, NOW))
+        task = asyncio.create_task(
+            FeedbackStore(repository_db).save(FeedbackInput(run.turn_id, 1, "API"), "synthetic", "b" * 64, NOW, ministries=("matte",))
+        )
         async with asyncio.timeout(5):
             while True:
                 # The API waits for this legacy transaction's advisory lock.

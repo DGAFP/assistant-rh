@@ -150,10 +150,7 @@ class ReplayRequestHandler(BaseHTTPRequestHandler):
             HTTPStatus.OK,
             {
                 "object": "list",
-                "data": [
-                    {"id": model, "object": "model", "created": 1_755_734_400, "owned_by": "assistant-rh"}
-                    for model in AUTHORIZED_MODELS
-                ],
+                "data": [{"id": model, "object": "model", "created": 1_755_734_400, "owned_by": "assistant-rh"} for model in AUTHORIZED_MODELS],
             },
         )
 
@@ -564,8 +561,11 @@ def _extension(model: Any, *, expected_ministry: str | None = None) -> dict[str,
 
 def _provider_post_header_error_name(exc: Exception) -> str:
     exception_name = f"{type(exc).__module__}.{type(exc).__name__}"
-    if not isinstance(exc, APIError) or exc.code != "stream_error":
-        raise ProbeFailure(f"Unexpected Conversations provider post-header error: {exception_name} (code={getattr(exc, 'code', None)!r})") from exc
+    # Pydantic AI 2.54 wraps the SDK error while retaining it as the explicit cause.
+    sdk_error = exc.__cause__ if exception_name == "pydantic_ai.exceptions.ModelAPIError" else exc
+    if not isinstance(sdk_error, APIError) or sdk_error.code != "stream_error":
+        code = getattr(sdk_error, "code", None)
+        raise ProbeFailure(f"Unexpected Conversations provider post-header error: {exception_name} (code={code!r})") from exc
     return exception_name
 
 
@@ -802,18 +802,10 @@ def run_replay_error_probe(*, base_url: str, api_key: str) -> dict[str, Any]:
 
     results = {
         "invalid_bearer": _capture_status(lambda: invalid.models.list()),
-        "forbidden_model": _capture_status(
-            lambda: valid.chat.completions.create(model="assistant-rh-mi", messages=tiny_messages)
-        ),
-        "forbidden_masa_model": _capture_status(
-            lambda: valid.chat.completions.create(model="assistant-rh-masa", messages=tiny_messages)
-        ),
-        "unknown_model": _capture_status(
-            lambda: valid.chat.completions.create(model="assistant-rh-unknown", messages=tiny_messages)
-        ),
-        "n_greater_than_one": _capture_status(
-            lambda: valid.chat.completions.create(model=DEFAULT_MODEL, messages=tiny_messages, n=2)
-        ),
+        "forbidden_model": _capture_status(lambda: valid.chat.completions.create(model="assistant-rh-mi", messages=tiny_messages)),
+        "forbidden_masa_model": _capture_status(lambda: valid.chat.completions.create(model="assistant-rh-masa", messages=tiny_messages)),
+        "unknown_model": _capture_status(lambda: valid.chat.completions.create(model="assistant-rh-unknown", messages=tiny_messages)),
+        "n_greater_than_one": _capture_status(lambda: valid.chat.completions.create(model=DEFAULT_MODEL, messages=tiny_messages, n=2)),
         "unsupported_stream_option": _capture_status(
             lambda: valid.chat.completions.create(
                 model=DEFAULT_MODEL,
@@ -881,8 +873,10 @@ def probe_post_header_error(*, base_url: str, api_key: str) -> dict[str, Any]:
     raise ProbeFailure("Post-header error stream ended without SDK APIError")
 
 
-def run_conversations_provider_probe(*, base_url: str, api_key: str) -> dict[str, Any]:
-    """Run the exact provider layer used by Conversations at the pinned A2 revision.
+def run_conversations_provider_probe(
+    *, base_url: str, api_key: str, conversations_revision: str = "1bba2f0e444ae9c2ddb3eae68c665b63ee4a195e"
+) -> dict[str, Any]:
+    """Exercise Conversations' Pydantic AI provider abstraction.
 
     ``pydantic-ai-slim[openai]==2.22.0`` and ``openai==2.52.0`` are optional
     spike dependencies.  They are deliberately not added to the production lock.
@@ -896,10 +890,7 @@ def run_conversations_provider_probe(*, base_url: str, api_key: str) -> dict[str
         from pydantic_ai.models.openai import OpenAIChatModel
         from pydantic_ai.providers.openai import OpenAIProvider
     except ImportError as exc:  # pragma: no cover - depends on the optional spike environment
-        raise ProbeFailure(
-            "Install the pinned Conversations provider dependencies: "
-            "pydantic-ai-slim[openai]==2.22.0 and openai==2.52.0"
-        ) from exc
+        raise ProbeFailure("Install the pinned Conversations provider dependencies: pydantic-ai-slim[openai]==2.22.0 and openai==2.52.0") from exc
 
     async def exercise() -> dict[str, Any]:
         provider = OpenAIProvider(base_url=base_url.rstrip("/"), api_key=api_key)
@@ -945,7 +936,7 @@ def run_conversations_provider_probe(*, base_url: str, api_key: str) -> dict[str
     result = asyncio.run(exercise())
     return {
         "client": "suitenumerique/conversations provider layer",
-        "conversations_revision": "1bba2f0e444ae9c2ddb3eae68c665b63ee4a195e",
+        "conversations_revision": conversations_revision,
         "pydantic_ai_version": version("pydantic-ai-slim"),
         "openai_version": openai.__version__,
         **result,
@@ -987,6 +978,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Also run Conversations' pinned Pydantic-AI provider layer (optional dependencies required).",
     )
+    probe.add_argument(
+        "--conversations-revision",
+        default="1bba2f0e444ae9c2ddb3eae68c665b63ee4a195e",
+        help="Conversations revision whose lockfile supplied the client versions",
+    )
     probe.add_argument("--output", type=Path)
     return parser
 
@@ -1013,7 +1009,9 @@ def main() -> int:
         report["sse_framing"] = probe_replay_sse_framing(base_url=args.base_url, api_key=api_key)
         report["post_header_error"] = probe_post_header_error(base_url=args.base_url, api_key=api_key)
     if args.conversations_client:
-        report["conversations_provider"] = run_conversations_provider_probe(base_url=args.base_url, api_key=api_key)
+        report["conversations_provider"] = run_conversations_provider_probe(
+            base_url=args.base_url, api_key=api_key, conversations_revision=args.conversations_revision
+        )
     _write_report(report, args.output)
     return 0
 

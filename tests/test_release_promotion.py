@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import importlib.util
-import json
 from pathlib import Path
 
 import pytest
@@ -277,28 +276,13 @@ def test_back_merge_reuses_existing_back_merge_pull_request(tmp_path: Path, monk
     assert outputs["back_merge_pr_url"].endswith("/pull/7")
 
 
-def test_workflow_creates_one_draft_promotion_and_publishes_without_second_pr() -> None:
-    workflow = (REPO_ROOT / ".github/workflows/release-please.yml").read_text(encoding="utf-8")
-    config = json.loads((REPO_ROOT / "release-please-config.json").read_text(encoding="utf-8"))
-
-    assert "- staging" in workflow
-    assert "target-branch: release-candidate" in workflow
-    assert "skip-github-release: true" in workflow
-    assert "Retarget release PR to main" in workflow
-    assert "Wait for staging workflows" in workflow
-    assert "Commit signed lockfile update through GitHub" in workflow
-    assert "Mark release PR ready and trigger main checks" in workflow
-    assert "target-branch: main" in workflow
-    assert "skip-github-pull-request: true" in workflow
-    assert config["group-pull-request-title-pattern"] == "chore(main): release ${version}"
-    assert config["packages"]["."]["draft-pull-request"] is True
-    assert config["packages"]["."]["pull-request-title-pattern"] == "chore(main): release ${version}"
-
-    assert not (REPO_ROOT / ".github/workflows/release-please-lockfile.yml").exists()
-    assert "release_promotion.py update-file" in workflow
-    assert "release_promotion.py refresh-checks" in workflow
-    assert "Back-merge main into dev" in workflow
-    assert "release_promotion.py back-merge --base dev --head main" in workflow
+def test_automatic_release_please_promotion_is_retired() -> None:
+    assert not (REPO_ROOT / ".github/workflows/release-please.yml").exists()
+    workflow = (REPO_ROOT / ".github/workflows/tagged-release.yml").read_text(encoding="utf-8")
+    assert "workflow_run:" in workflow
+    assert "github.ref == 'refs/heads/main'" in workflow
+    assert "RELEASE_TAG: ${{ needs.plan.outputs.tag }}" in workflow
+    assert "release_promotion.py back-merge" not in workflow
 
 
 @pytest.mark.parametrize(

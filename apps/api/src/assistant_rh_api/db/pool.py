@@ -1,19 +1,39 @@
 """Bounded async pool owned by one application lifespan/event loop."""
 
 import asyncio
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from typing import Any, Self
 
 import psycopg
+from psycopg.abc import PQGen
 from psycopg_pool import AsyncConnectionPool
 
+from assistant_rh_api.core.errors import DatabaseUnavailable
+from assistant_rh_api.core.observability import Observation, observe
 from assistant_rh_api.db.dsn import DatabaseSettings, validate_libpq_environment
 from assistant_rh_api.db.errors import translate_database_errors
 
+logger = logging.getLogger(__name__)
+
 
 class _SafeConnection(psycopg.AsyncConnection):
+    async def wait[T](self, gen: PQGen[T], interval: float = 0.1) -> T:
+        # psycopg's cancellation handshake may wait forever for a lost reply.
+        # Close the socket before cancelling driver I/O, then join it so the
+        # original cancellation/timeout propagates and the pool drops the lease.
+        operation = asyncio.create_task(super().wait(gen, interval))
+        try:
+            return await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            await self.close()
+            operation.cancel()
+            await asyncio.gather(operation, return_exceptions=True)
+            raise
+
     @classmethod
     async def connect(cls, *args: Any, **kwargs: Any) -> Self:
         # Pool reconnect workers log connection errors before our public boundary.
@@ -28,6 +48,12 @@ class _SafeConnection(psycopg.AsyncConnection):
 class Database:
     def __init__(self, settings: DatabaseSettings) -> None:
         self._settings = settings
+        self._individual_feedback_schema: bool | None = None
+        # Retrieval fans out across sources. Admit SQL work before pool checkout,
+        # leaving one lease for authentication/configuration/traces when possible.
+        self._search_slots = asyncio.Semaphore(max(1, settings.max_size - 1))
+        self._search_waiting = 0
+        self._search_active = 0
         self._pool = AsyncConnectionPool(
             conninfo=settings.dsn,
             connection_class=_SafeConnection,
@@ -45,7 +71,16 @@ class Database:
         return self._pool.closed
 
     def statistics(self) -> dict[str, int]:
-        return self._pool.get_stats()
+        return {
+            **self._pool.get_stats(),
+            "search_active": self._search_active,
+            "search_waiting": self._search_waiting,
+            "search_capacity": max(1, self._settings.max_size - 1),
+        }
+
+    def separate_pool(self, *, max_size: int) -> "Database":
+        """Same target/timeouts, independent leases for long-lived readers."""
+        return Database(replace(self._settings, min_size=1, max_size=max_size, max_waiting=max_size))
 
     async def open(self) -> None:
         """Wait for initial connections; a failed/cancelled startup closes workers."""
@@ -57,8 +92,62 @@ class Database:
             await self.close()
             raise
 
+    async def individual_feedback_schema(self) -> bool:
+        """Cache D1 capability for this pool lifetime; partial installs fail closed."""
+        if self._individual_feedback_schema is None:
+            async with self.transaction(read_only=True) as connection:
+                row = await (
+                    await connection.execute("""
+                    SELECT
+                        (SELECT count(*) FROM information_schema.columns
+                         WHERE table_schema = 'public' AND (table_name, column_name) IN (
+                             ('chat_runs', 'author_user_id'), ('chat_feedbacks', 'api_actor_user_id'),
+                             ('chat_feedback_audit', 'actor_user_id'))),
+                        (SELECT count(*) FROM pg_catalog.pg_trigger
+                         WHERE tgenabled IN ('O', 'A') AND NOT tgisinternal AND (
+                             (tgrelid = to_regclass('public.chat_runs') AND tgname = 'api_run_author_immutable') OR
+                             (tgrelid = to_regclass('public.chat_feedbacks') AND tgname = 'api_feedback_individual_guard')))
+                """)
+                ).fetchone()
+            if row not in ((0, 0), (3, 2)):
+                raise DatabaseUnavailable()
+            self._individual_feedback_schema = row == (3, 2)
+        return self._individual_feedback_schema
+
     async def close(self) -> None:
+        self._individual_feedback_schema = None
         await self._pool.close()
+
+    @asynccontextmanager
+    async def search_transaction(self) -> AsyncIterator[psycopg.AsyncConnection]:
+        """Bound search fan-out across all stores sharing this application pool."""
+        if self.closed:
+            logger.warning("Database search unavailable (reason=pool_closed)")
+            observe(Observation("database", "database", "pool_closed"))
+            raise DatabaseUnavailable()
+        if self._search_slots.locked() and self._search_waiting >= self._settings.search_max_waiting:
+            logger.warning("Database search unavailable (reason=admission_queue_full)")
+            observe(Observation("database", "database", "admission_queue_full"))
+            raise DatabaseUnavailable()
+        self._search_waiting += 1
+        try:
+            try:
+                async with asyncio.timeout(self._settings.search_timeout_seconds):
+                    await self._search_slots.acquire()
+            except TimeoutError:
+                logger.warning("Database search unavailable (reason=admission_timeout)")
+                observe(Observation("database", "database", "admission_timeout"))
+                raise DatabaseUnavailable() from None
+        finally:
+            self._search_waiting -= 1
+        self._search_active += 1
+        # An acquisition cancelled while queued never enters this release block.
+        try:
+            async with self.transaction(read_only=True) as connection:
+                yield connection
+        finally:
+            self._search_active -= 1
+            self._search_slots.release()
 
     async def _check_connection(self, connection: psycopg.AsyncConnection) -> None:
         # Wait without cancelling psycopg: its cancellation handler can itself
@@ -67,6 +156,7 @@ class Database:
         try:
             done, _ = await asyncio.wait({check}, timeout=self._settings.timeout_seconds)
             if not done:
+                logger.warning("Database connection unavailable (reason=connection_check_timeout)")
                 raise TimeoutError
             await check
         except asyncio.CancelledError:
@@ -81,7 +171,7 @@ class Database:
             await asyncio.gather(check, return_exceptions=True)
 
     @asynccontextmanager
-    async def transaction(self, *, read_only: bool = False) -> AsyncIterator[psycopg.AsyncConnection]:
+    async def transaction(self, *, read_only: bool = False, repeatable_read: bool = False) -> AsyncIterator[psycopg.AsyncConnection]:
         """Commit on success, rollback on any exception/cancellation, then release.
 
         Pass this connection to cooperating repositories for atomic writes.
@@ -94,10 +184,18 @@ class Database:
                 # also catches CancelledError and can serve a cancelled caller.
                 await self._check_connection(connection)
                 async with connection.transaction():
+                    if repeatable_read:
+                        await connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
                     if read_only:
                         await connection.execute("SET TRANSACTION READ ONLY")
                     await connection.execute(
                         "SELECT set_config('statement_timeout', %s, true)",
                         (str(self._settings.statement_timeout_ms),),
                     )
-                    yield connection
+                    try:
+                        yield connection
+                    except asyncio.CancelledError:
+                        # Cancellation between SQL calls must not start an
+                        # unbounded network rollback after its deadline expired.
+                        await connection.close()
+                        raise

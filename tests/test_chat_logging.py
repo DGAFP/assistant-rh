@@ -285,6 +285,17 @@ class TestDynamicSQL:
 
 
 class TestBuildLogRow:
+    def test_fallback_is_attributed_to_the_provider_and_model_that_answered(self):
+        row = self._build_row(
+            metadata_overrides={
+                "generator_provider": "albert",
+                "generator_model": "primary",
+                "generator_provider_used": "scaleway",
+                "generator_model_used": "fallback",
+            }
+        )
+        assert (row["provider"], row["model"]) == ("scaleway", "fallback")
+
     REQUIRED_COLUMNS = [
         "ts",
         "turn_id",

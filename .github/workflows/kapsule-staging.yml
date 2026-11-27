@@ -1,0 +1,47 @@
+name: Kapsule staging
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: kapsule-validation-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.20.2
+      - name: Validate Helm and shell
+        run: |
+          set -euo pipefail
+          python3 -m pip install 'PyYAML==6.0.3'
+          python3 deploy/api/test_deploy_permissions.py
+          python3 deploy/api/test_wait_required_checks.py
+          python3 deploy/api/test_package_staging.py
+          python3 deploy/api/test_release.py
+          bash -n deploy/api/deploy.sh
+          helm lint deploy/api --set-string image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          helm template assistant-rh-api deploy/api --set-string image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa > /dev/null
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: Build images without credentials
+        run: |
+          docker buildx build --platform linux/amd64 -f docker/api/Dockerfile --load -t assistant-rh-api:ci .
+      - name: Scan API validation image
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
+        with:
+          version: v0.75.0
+          image-ref: assistant-rh-api:ci
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false

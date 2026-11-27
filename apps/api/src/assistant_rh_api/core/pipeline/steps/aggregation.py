@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import replace
 from typing import Dict, List, cast
+from uuid import UUID
 
 from assistant_rh_api.core.errors import DatabaseConflict, DatabaseFailure, DatabaseUnavailable, InferenceFailure
 from assistant_rh_api.core.models.context import AggregatedSection, SectionAggregationDiagnostics, SectionAggregationResult
@@ -60,6 +61,8 @@ class SectionAggregator:
         self,
         chunks: Sequence[RetrievedChunk],
         query: str | None = None,
+        *,
+        ministry: str | None = None,
     ) -> SectionAggregationResult:
         chunks = tuple(chunks)
         if not chunks:
@@ -70,7 +73,7 @@ class SectionAggregator:
 
         section_ids = [str(c.section_id) for c in chunks if c.section_id]
         store_errors: list[str] = []
-        section_meta = await self._fetch_sections(section_ids, store_errors) if section_ids else {}
+        section_meta = await self._fetch_sections(section_ids, store_errors, ministry) if section_ids else {}
 
         groups: Dict[str, list[RetrievedChunk]] = {}
         for c in chunks:
@@ -94,7 +97,22 @@ class SectionAggregator:
 
             first_meta = first.metadata or {}
 
-            doc_id = meta.get("doc_id") or first_meta.get("source_document_id")
+            # Scoped search checks canonical UUID links in SQL. An unavailable
+            # section cannot grant authority, nor can a legacy text alias.
+            doc_id = meta.get("doc_id")
+            if not doc_id and ministry is not None and first.section_id is None:
+                doc_id = first_meta.get("doc_id")
+            if not doc_id:
+                raw_reference = first_meta.get("source_document_id")
+                doc_id = raw_reference
+                if ministry is not None and raw_reference:
+                    try:
+                        canonical = str(UUID(str(raw_reference)))
+                    except ValueError:
+                        pass  # An ordinary short ID is display metadata only.
+                    else:
+                        if first.section_id or canonical != str(raw_reference).lower():
+                            doc_id = None
 
             doc_short_id = (
                 meta.get("doc_short_id") or first_meta.get("doc_short_id") or first_meta.get("short_id") or first_meta.get("source_document_id") or ""
@@ -169,9 +187,9 @@ class SectionAggregator:
             ),
         )
 
-    async def _fetch_sections(self, ids: list[str], errors: list[str]) -> dict[str, dict]:
+    async def _fetch_sections(self, ids: list[str], errors: list[str], ministry: str | None) -> dict[str, dict]:
         try:
-            rows = await self.content_store.sections(tuple(dict.fromkeys(ids)))
+            rows = await self.content_store.sections(tuple(dict.fromkeys(ids)), ministry=ministry)
         except (DatabaseUnavailable, DatabaseFailure, DatabaseConflict) as exc:
             errors.append(exc.code)
             return {}

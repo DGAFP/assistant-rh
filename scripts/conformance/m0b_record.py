@@ -289,7 +289,7 @@ async def record(output, env_file, limit=None):
                     "packaged": PackagedPromptStore(),
                 }
                 stores = {name: RecordedStore(name, store, case["stores"]) for name, store in underlying.items()}
-                legacy_inputs = Tape(case["stores"])
+                legacy_inputs = Tape(case["stores"], legacy_document_ministry=case["effective_ministry"])
                 stores.update({name: ReplayStore(name, legacy_inputs) for name in ("search", "content")})
                 path = output / (fixture["id"] + ".json")
                 try:
