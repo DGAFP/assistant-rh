@@ -180,7 +180,7 @@ jobs:
       mode: ${{ steps.plan.outputs.mode }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -209,10 +209,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@v4.4.1
 
       - name: Login to Scaleway Container Registry
         env:
@@ -302,7 +302,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Validate Service-Public wipe/backfill selection
         run: |
@@ -435,7 +435,7 @@ jobs:
 
       - name: Upload staging data quality reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: data-quality-staging-${{ matrix.name }}-${{ github.run_attempt }}
           path: artifacts/data-quality/
