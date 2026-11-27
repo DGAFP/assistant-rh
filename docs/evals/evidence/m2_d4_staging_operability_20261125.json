@@ -1,0 +1,175 @@
+{
+  "schema": "assistant-rh-d4-staging-operability-v1",
+  "date": "2026-11-25",
+  "issues": [
+    531,
+    532,
+    599
+  ],
+  "helm": [
+    {
+      "namespace": "assistant-rh-api",
+      "name": "assistant-rh-api",
+      "revision": "0.55.1+78870b6dd828",
+      "ready": "True"
+    },
+    {
+      "namespace": "conversations",
+      "name": "conversations",
+      "revision": "0.59.2+c4eb25a675dc",
+      "ready": "True"
+    }
+  ],
+  "api_image": "sha256:432d8d3d51cb863902a20e6eaa6c46c2f028bb92462065f9c46b502d4d18a891",
+  "api_revision": "21aa3e3a3bb37d78456c3e846cb47d9e70e429f0",
+  "conversations_revision": "3fe712b7d025d61da1c5ff4d35bf173a03bc1788",
+  "api_replicas": 2,
+  "api_restarts": 0,
+  "api_memory_limit_per_pod": "1Gi",
+  "api_memory_observed_mib": [
+    68,
+    66
+  ],
+  "load_balancer": {
+    "namespace": "traefik",
+    "name": "traefik",
+    "timeout_client": "300s",
+    "timeout_server": "300s"
+  },
+  "private_backend_health": {
+    "private_dns_resolves": true,
+    "healthz": {
+      "status": 200,
+      "health": {
+        "status": "ok"
+      },
+      "ms": 15.5
+    },
+    "unauthenticated_catalog": {
+      "status": 401,
+      "ms": 7.6
+    }
+  },
+  "api_metrics": {
+    "before": [
+      "assistant_rh_sse_streams_total{outcome=\"completed\"} 1295.0",
+      "assistant_rh_sse_streams_total{outcome=\"failed\"} 4.0",
+      "assistant_rh_sse_streams_total{outcome=\"disconnect\"} 81.0",
+      "assistant_rh_sse_active 0.0"
+    ],
+    "after": [
+      "assistant_rh_sse_streams_total{outcome=\"completed\"} 1295.0",
+      "assistant_rh_sse_streams_total{outcome=\"failed\"} 4.0",
+      "assistant_rh_sse_streams_total{outcome=\"disconnect\"} 82.0",
+      "assistant_rh_sse_active 0.0"
+    ],
+    "scope": "one API pod"
+  },
+  "persisted_status_counts": [
+    {
+      "status": "cancelled",
+      "runs": 180
+    },
+    {
+      "status": "completed",
+      "runs": 3640
+    },
+    {
+      "status": "failed",
+      "runs": 44
+    }
+  ],
+  "https_stream": {
+    "https": true,
+    "http_status": 200,
+    "sse_content_type": "text/event-stream",
+    "first_headers_s": 0.094,
+    "first_text_s": 21.662,
+    "duration_s": 47.195,
+    "text_frames": 550,
+    "ping_times_s": [],
+    "event_counts": {
+      "start": 1,
+      "text-start": 1,
+      "text-delta": 550,
+      "text-end": 1,
+      "source-url": 2,
+      "finish": 1
+    },
+    "completed_marker": true,
+    "cleanup": {
+      "fixture_removed": true,
+      "api": {
+        "runs_deleted": 1,
+        "traces_deleted": 7,
+        "remaining_runs": 0
+      }
+    }
+  },
+  "https_stop": {
+    "https": true,
+    "http_status": 200,
+    "sse_content_type": "text/event-stream",
+    "first_headers_s": 0.111,
+    "first_text_s": 17.227,
+    "duration_s": 19.284,
+    "text_frames": 45,
+    "ping_times_s": [],
+    "event_counts": {
+      "start": 1,
+      "text-start": 1,
+      "text-delta": 45,
+      "text-end": 1
+    },
+    "completed_marker": true,
+    "stop_http": 200,
+    "persisted_runs": [
+      {
+        "status": "cancelled"
+      }
+    ],
+    "cleanup": {
+      "fixture_removed": true,
+      "api": {
+        "runs_deleted": 1,
+        "traces_deleted": 7,
+        "remaining_runs": 0
+      }
+    }
+  },
+  "api_runtime_grants": {
+    "api_runtime": {
+      "api_role": true,
+      "feedback_update": true,
+      "feedback_trigger_privilege": false,
+      "feedback_truncate": false,
+      "shares_protected_table_owner": false,
+      "read_only": true
+    },
+    "triggers": [
+      {
+        "tgname": "api_feedback_individual_guard",
+        "tgenabled": "O"
+      },
+      {
+        "tgname": "api_run_author_immutable",
+        "tgenabled": "O"
+      }
+    ]
+  },
+  "acl_restored": true,
+  "rollback_target": {
+    "chart": "0.52.1+14799ef13eb0",
+    "git_sha": "4701d04cfbaf171009603db532b940eb673dcabb",
+    "image_digest": "sha256:e5af90d01fa8fb20e026d0a2cb1b4f25d229b55ae43c751b9874f35a284ef79c",
+    "source_comparison": "application, dependency lock and migrations identical; delivery CI and RBAC files differ",
+    "observed_staging_test": false
+  },
+  "feedback_frontend_release": {
+    "pr": 26,
+    "ci": "success",
+    "kapsule_run": 45634251791,
+    "publish_job": "skipped",
+    "active_backend_revision": "3fe712b7d025d61da1c5ff4d35bf173a03bc1788"
+  }
+}

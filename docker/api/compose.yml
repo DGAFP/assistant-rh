@@ -5,6 +5,8 @@ services:
       dockerfile: docker/api/Dockerfile
     image: assistant-rh-api:local
     init: true
+    # 5s request drain + up to 120s provider close + DB finalization and margin.
+    stop_grace_period: 150s
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     environment:
@@ -15,7 +17,7 @@ services:
       api-postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/healthz"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
       interval: 2s
       timeout: 3s
       retries: 20

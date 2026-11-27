@@ -37,7 +37,8 @@ def dump(path, value):
 
 
 def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    with path.open("rb") as source:
+        return hashlib.file_digest(source, "sha256").hexdigest()
 
 
 def require(condition, message):
@@ -127,14 +128,29 @@ def final_output(answer, items, sources, diagnostics):
     )
 
 
+def with_recorded_document_scope(operation, request, ministry):
+    """Supply the scope implicit in an older recording, never rewrite live calls."""
+    if operation in ("search.search", "search.hybrid_candidates"):
+        args = list(request["args"])
+        args[0] = {"scoped": True, **args[0]}
+        return {**request, "args": args}
+    if operation in ("content.documents", "content.sections"):
+        return {**request, "kwargs": {"ministry": ministry, **request["kwargs"]}}
+    return request
+
+
 class Tape:
     """Match calls by their complete arguments; never by an expected stage result."""
 
-    def __init__(self, records):
+    def __init__(self, records, *, legacy_document_ministry=None):
         self.pending = defaultdict(deque)
         self.count = 0
         for row in records:
-            self.pending[canonical([row["operation"], row["request"]])].append(row["response"])
+            operation = row["operation"]
+            request = row["request"]
+            if legacy_document_ministry is not None:
+                request = with_recorded_document_scope(operation, request, legacy_document_ministry)
+            self.pending[canonical([operation, request])].append(row["response"])
 
     def take(self, operation, request):
         rows = self.pending[canonical([operation, request])]
@@ -205,4 +221,23 @@ def decode(operation, value):
         return tuple(Document(**row) for row in value)
     if operation == "content.references":
         return tuple(LegalReference(**row) for row in value)
+    if operation == "retriever.retrieve":
+        from assistant_rh_api.core.models.inference import Attempt, Embedding
+        from assistant_rh_api.core.models.retrieval import RetrievedChunk
+        from assistant_rh_api.core.pipeline.steps.retrieval import RetrievalFailure, RetrievalResult
+
+        def attempts(rows):
+            return tuple(Attempt(**row) for row in rows)
+
+        embedding = value["embedding"]
+        if embedding is not None:
+            embedding = Embedding(tuple(embedding["vector"]), embedding["model"], embedding["provider"], attempts(embedding["attempts"]))
+        return RetrievalResult(
+            chunks=tuple(RetrievedChunk(**row) for row in value["chunks"]),
+            sources=tuple(value["sources"]),
+            failures=tuple(RetrievalFailure(**row) for row in value["failures"]),
+            embedding=embedding,
+            embedding_failed=value["embedding_failed"],
+            embedding_attempts=attempts(value["embedding_attempts"]),
+        )
     raise AssertionError(f"Unknown port result type: {operation}")

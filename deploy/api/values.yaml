@@ -1,0 +1,15 @@
+replicas: 2
+# Admission staging par processus ; la régulation SQL reste indépendante.
+streamWorkers: 50
+# Délai d'admission SQL staging ; pool, connexions et timeout SQL inchangés.
+sqlSearchAdmissionTimeoutSeconds: 30
+# Port interne distinct du trafic utilisateur ; une seule instance Uvicorn par pod.
+metricsPort: 9109
+image:
+  repository: rg.fr-par.scw.cloud/assistant-rh-staging/assistant-rh-api
+  digest: ""
+imagePullSecret: scw-registry
+runtimeSecret: assistant-rh-api-runtime
+resources:
+  requests: {cpu: 250m, memory: 256Mi}
+  limits: {cpu: "2", memory: 1Gi}

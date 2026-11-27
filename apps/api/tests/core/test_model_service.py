@@ -60,3 +60,31 @@ def test_invalid_policy_is_explicit_configuration_error_for_listing_and_resoluti
     for model in ("assistant-rh", "assistant-rh-matte"):
         with pytest.raises(MinistryConfigurationError):
             service.resolve(model, group)
+
+
+def delegation(ministries=("matte", "mi"), ministry=None):
+    from datetime import UTC, datetime
+    from uuid import UUID
+
+    from assistant_rh_api.core.models.auth import Delegation
+
+    return Delegation(UUID(int=1), ministries, ministry, datetime(2026, 9, 8, tzinfo=UTC), "kid")
+
+
+def test_delegated_catalogue_and_alias_follow_the_conversation_ministry():
+    service = ModelService()
+    assert [m.id for m in service.list_models(delegation())] == ["assistant-rh-matte", "assistant-rh-mi"]
+    assert [m.id for m in service.list_models(delegation(ministry="mi"))] == ["assistant-rh-mi"]
+    assert service.list_models(delegation(())) == ()
+    assert service.resolve("assistant-rh", delegation(ministry="mi")).ministry == "mi"
+    assert service.resolve("assistant-rh-matte", delegation()).ministry == "matte"
+    for model, principal in (
+        ("assistant-rh", delegation()),  # no conversation ministry: the alias grants nothing
+        ("assistant-rh-matte", delegation(ministry="mi")),
+        ("assistant-rh-masa", delegation()),
+        ("assistant-rh-matte", delegation(())),
+    ):
+        with pytest.raises(MinistryForbidden):
+            service.resolve(model, principal)
+    with pytest.raises(ModelNotFound):
+        service.resolve("assistant-rh-unknown", delegation())

@@ -43,7 +43,7 @@ jobs:
         run: uv sync --all-packages --group dev --frozen
 
       - name: Lint check
-        run: uv run --no-sync ruff check src apps/streamlit-ui/pages apps/api/src apps/api/tests tests --select E,F,I
+        run: uv run --no-sync ruff check src apps/streamlit-ui/pages apps/api/src apps/api/tests tests scripts/dev.py docker/dev --select E,F,I
 
       - name: Check API import boundaries
         run: uv run --no-sync lint-imports --config apps/api/pyproject.toml --no-cache
@@ -84,7 +84,8 @@ jobs:
     needs: tests
     if: >-
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      contains(fromJSON('["dev", "staging", "main"]'), github.ref_name)
+      contains(fromJSON('["dev", "staging", "main"]'), github.ref_name) &&
+      (github.event_name == 'workflow_dispatch' || github.ref_name != 'staging' || vars.LEGACY_STAGING_AUTOMATION_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # This existing environment only permits dev, staging and main.

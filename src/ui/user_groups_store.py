@@ -117,8 +117,11 @@ def db_available() -> bool:
     return True
 
 
+# Runtime roles do not own tables (#599): DDL only runs when the object is missing,
+# so a non-owner Streamlit starts on a migrated schema.
 _CREATE_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS user_groups (
+DO $ddl$ BEGIN IF to_regclass('public.user_groups') IS NULL THEN
+CREATE TABLE user_groups (
     slug          VARCHAR(64) PRIMARY KEY,
     label         VARCHAR(128) NOT NULL,
     icon          VARCHAR(16)  NOT NULL DEFAULT '',
@@ -133,7 +136,26 @@ CREATE TABLE IF NOT EXISTS user_groups (
     chart_label   VARCHAR(64)  NOT NULL DEFAULT '',
     created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     updated_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
-)
+);
+END IF; END $ddl$
+"""
+
+# Forward migrations for tables created before these columns, skipped once present.
+_FORWARD_COLUMNS_SQL = """
+DO $ddl$ BEGIN
+IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'user_groups' AND column_name = 'visible') THEN
+    ALTER TABLE user_groups ADD COLUMN visible BOOLEAN NOT NULL DEFAULT TRUE;
+END IF;
+IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'user_groups' AND column_name = 'allowed_ministries') THEN
+    ALTER TABLE user_groups ADD COLUMN allowed_ministries JSONB NOT NULL DEFAULT '["matte"]'::jsonb;
+END IF;
+IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'user_groups' AND column_name = 'default_ministry') THEN
+    ALTER TABLE user_groups ADD COLUMN default_ministry TEXT NOT NULL DEFAULT 'matte';
+END IF;
+END $ddl$
 """
 
 
@@ -163,10 +185,7 @@ def init_user_groups_table_with_status() -> UserGroupsInitResult:
     try:
         with conn.cursor() as cur:
             cur.execute(_CREATE_TABLE_SQL)
-            # Forward migration for tables created before the `visible` column.
-            cur.execute("ALTER TABLE user_groups ADD COLUMN IF NOT EXISTS visible BOOLEAN NOT NULL DEFAULT TRUE")
-            cur.execute("ALTER TABLE user_groups ADD COLUMN IF NOT EXISTS allowed_ministries JSONB NOT NULL DEFAULT '[\"matte\"]'::jsonb")
-            cur.execute("ALTER TABLE user_groups ADD COLUMN IF NOT EXISTS default_ministry TEXT NOT NULL DEFAULT 'matte'")
+            cur.execute(_FORWARD_COLUMNS_SQL)
             # Anonymous sessions use the default group before authentication.
             # Repair any value created before this invariant was enforced.
             cur.execute(

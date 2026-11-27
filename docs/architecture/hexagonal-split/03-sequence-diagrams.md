@@ -157,79 +157,34 @@ sequenceDiagram
 
 Chat Logs, Feedback Dashboard, Admin Config, DB/Goldset Explorer, les pages d'évaluation, Pipeline Timeline et User Groups conservent ce chemin après M4. Leur migration vers une API, Grafana/Tempo, LangSmith ou RAG-ops est un chantier séparé.
 
-## 6. Document interne — URL courte créée au clic
+## 6. Document interne — contenu via le backend Conversations
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant U as Utilisateur
-    participant F as Frontend authentifié
-    participant API as handlers/documents
-    participant DS as core/DocumentService
-    participant CR as db/chat_run_store
-    participant DOC as PostgreSQL legacy ou S3
-
-    U->>F: ouvrir une source via navigation Streamlit conservant la session
-    F->>API: POST /v1/documents/{doc_ref}/access-url {completion_id} (session)
-    API->>DS: demander accès(doc_ref, turn_id, groupe)
-    DS->>CR: vérifier run, groupe et source finale dans chat_run_sources
-    CR-->>DS: autorisé
-    Note over API,CR: variante refusée → 404 terminal<br/>aucune capability créée ni rédemption tentée
-    DS->>DS: émettre capability document bornée (15 min)
-    DS-->>API: URL + expires_at
-    API-->>F: 200 URL courte
-    F->>API: GET /v1/documents/access/{capability} (serveur, redirects=false)
-    API->>DS: vérifier capability et résoudre le support
-    alt première capability valide
-        DS->>DOC: lire le document autorisé
-        alt PDF legacy PostgreSQL
-            DOC-->>DS: bytes PDF + nom assaini
-            DS-->>API: contenu legacy
-            API-->>F: 200 application/pdf, inline, private/no-store, nosniff
-            F-->>U: PDF rendu
-        else objet S3
-            DOC-->>DS: URL présignée, TTL borné et paramètres de réponse sûrs
-            DS-->>API: redirection autorisée
-            API-->>F: 302 sans body + Location S3, private/no-store
-            F-->>U: ouvrir/embarquer la Location courte
-        end
-    else première capability invalide/expirée
-        DS-->>API: capability refusée
-        API-->>F: 404
-        F->>API: POST access-url à nouveau (session encore valide)
-        API->>DS: rejouer les contrôles run/groupe/source
-        alt session ou source refusée
-            DS-->>API: refus
-            API-->>F: 401/404 terminal
-            F-->>U: réauthentification ou source indisponible
-        else nouvelle capability
-            DS-->>API: nouvelle URL + expires_at
-            API-->>F: 200 URL courte
-            F->>API: GET nouvelle capability (unique relance)
-            API->>DS: vérifier la nouvelle capability
-            alt seconde capability invalide/expirée
-                DS-->>API: capability refusée
-                API-->>F: 404 terminal
-                F-->>U: document indisponible
-            else seconde capability valide
-                DS->>DOC: lire le document autorisé
-                alt PDF legacy PostgreSQL
-                    DOC-->>DS: bytes PDF + nom assaini
-                    DS-->>API: contenu legacy
-                    API-->>F: 200 application/pdf, inline, private/no-store, nosniff
-                    F-->>U: PDF rendu
-                else objet S3
-                    DOC-->>DS: URL présignée, TTL borné et paramètres de réponse sûrs
-                    DS-->>API: redirection autorisée
-                    API-->>F: 302 sans body + Location S3, private/no-store
-                    F-->>U: ouvrir/embarquer la Location courte
-                end
-            end
-        end
+    participant U as Navigateur
+    participant C as Backend Conversations
+    participant API as API documentaire
+    participant CR as chat_runs + chat_run_sources
+    participant DOC as PostgreSQL legacy ou S3 privé
+    U->>C: ouvrir la source du message (session applicative)
+    C->>C: session, admission, propriétaire, droits courants
+    C->>C: résoudre message → completion_id → doc_ref
+    C->>API: GET /v1/documents/{doc_ref}/content?completion_id=...<br/>délégation individuelle fraîche
+    API->>CR: auteur + ministère courant + source finale
+    alt absent ou hors droits
+        API-->>C: 404 uniforme
+        C-->>U: document indisponible
+    else autorisé
+        API->>DOC: lire via la cible persistée (jamais une URL navigateur)
+        DOC-->>API: PDF par tranches bornées
+        API-->>C: 200 application/pdf, inline, private/no-store, nosniff
+        C-->>U: contenu via la route applicative
     end
+    Note over U,DOC: aucun lien S3, capability, bearer API ou Location au navigateur
 ```
 
-La capability n'est ni persistée ni ajoutée au chat et sa valeur est masquée dans les logs d'accès. Le contrôle de source remplace le lien HTML historique ouvrant un nouvel onglet : une navigation interne Streamlit, ou un rendu inline équivalent, préserve le bearer en `st.session_state`. `_PDF_Viewer` conserve `doc_ref` + `completion_id`, demande une capability fraîche à chaque chargement et effectue la rédemption côté serveur ; il peut donc observer le premier 404, refaire une fois le `POST` avec sa session encore valide puis réessayer. Les contrôles d'autorisation sont rejoués et l'ancien lien ne se renouvelle jamais lui-même.
+Chaque nouvelle requête refait les contrôles, y compris si le lecteur envoie `Range` (ignoré : réponse complète `200`, `Accept-Ranges: none`). Chaque tentative serveur utilise une nouvelle assertion. Le retrait de droits bloque la requête suivante ; un transfert autorisé peut se terminer. Déconnexion/annulation ferme l'amont. Les bornes, erreurs et responsabilités de #594 sont décrites dans le [contrat D2](02-api-contract.md#accès-documentaire).
 
 ## 7. Éval via-API (test de fidélité de l'adaptateur, D3)
 

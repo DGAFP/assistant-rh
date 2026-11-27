@@ -11,6 +11,7 @@ import pytest
 from assistant_rh_rag_pipeline import llm_client
 
 ROOT = Path(__file__).resolve().parents[4]
+SELECTOR_TRANSITION = ROOT / "tests/conformance/companions/selector-markdown-wrapper-20261021/transition.json"
 SPEC = importlib.util.spec_from_file_location("c5_companion", ROOT / "scripts/conformance/c5_companion.py")
 companion = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(companion)
@@ -156,7 +157,7 @@ def published_c5(tmp_path):
     return evidence
 
 
-async def test_published_live_companion_replays_current_checkout_without_network(published_c5, monkeypatch):
+async def test_published_live_companion_replays_versioned_selector_transition_without_network(published_c5, monkeypatch):
     import socket
 
     def blocked(*args, **kwargs):
@@ -164,10 +165,60 @@ async def test_published_live_companion_replays_current_checkout_without_network
 
     monkeypatch.setattr(socket.socket, "connect", blocked)
     monkeypatch.setattr(socket, "create_connection", blocked)
-    result = await companion.replay(published_c5)
+    result = await companion.replay(published_c5, selector_transition=SELECTOR_TRANSITION)
     assert result["exact_comparison"] is True
     assert len(result["cases"]) == 4
     assert sum(case["selector_candidates"] for case in result["cases"]) == 80
+    assert result["intentional_selector_changes"] == ["rag-acronym-contract"]
+    assert sum(case["historical_selector_exact"] for case in result["cases"]) == 3
+
+
+async def test_published_historical_reference_stays_strict_without_explicit_transition(published_c5):
+    with pytest.raises(AssertionError, match="selector differs: rag-acronym-contract"):
+        await companion.replay(published_c5)
+
+
+@pytest.mark.parametrize("mutation", ["manifest", "extra-case", "expected-sections"])
+async def test_selector_transition_rejects_wrong_reference_or_expectations(published_c5, tmp_path, mutation):
+    data = json.loads(SELECTOR_TRANSITION.read_text())
+    if mutation == "manifest":
+        data["historical_manifest_sha256"] = "0" * 64
+    elif mutation == "extra-case":
+        data["cases"]["unknown-case"] = data["cases"]["rag-acronym-contract"]
+    else:
+        data["cases"]["rag-acronym-contract"]["expected"]["sections"] = []
+    transition = tmp_path / "transition.json"
+    companion.dump(transition, data)
+    with pytest.raises(AssertionError):
+        await companion.replay(published_c5, selector_transition=transition)
+
+
+@pytest.mark.parametrize("mutation,message", [("prompt", "exact LLM request mismatch"), ("answer", "generator differs")])
+async def test_transition_semantic_guards_reject_rehashed_inputs(published_c5, tmp_path, mutation, message):
+    # First prove this fixture/reference pair is green, then deliberately move
+    # its integrity pins to exercise the deeper semantic checks independently.
+    await companion.replay(published_c5, selector_transition=SELECTOR_TRANSITION)
+    if mutation == "prompt":
+        path = published_c5 / "prompts.json"
+        data = json.loads(path.read_text())
+        config = json.loads((published_c5 / "config.json").read_text())
+        data[config["selector"]["prompt_name"]]["content"] += " CHANGED POLICY"
+    else:
+        path = published_c5 / "rag-acronym-contract.json"
+        data = json.loads(path.read_text())
+        data["generator_expected"]["answer"] += " UNSUPPORTED CLAIM"
+    companion.dump(path, data)
+    manifest = json.loads((published_c5 / "manifest.json").read_text())
+    manifest["files"][path.name] = companion.digest(path)
+    companion.dump(published_c5 / "manifest.json", manifest)
+    transition = json.loads(SELECTOR_TRANSITION.read_text())
+    transition["historical_manifest_sha256"] = companion.digest(published_c5 / "manifest.json")
+    if mutation == "answer":
+        transition["cases"]["rag-acronym-contract"]["fixture_sha256"] = companion.digest(path)
+    reference = tmp_path / "deliberately-rehashed-transition.json"
+    companion.dump(reference, transition)
+    with pytest.raises(AssertionError, match=message):
+        await companion.replay(published_c5, selector_transition=reference)
 
 
 @pytest.mark.parametrize("mutation", ["unhashed-fixture", "prompt-with-new-hash", "answer-with-new-hash"])
@@ -186,4 +237,4 @@ async def test_published_live_companion_detects_mutations(published_c5, mutation
         manifest["files"][path.name] = companion.digest(path)
         companion.dump(published_c5 / "manifest.json", manifest)
     with pytest.raises(AssertionError):
-        await companion.replay(published_c5)
+        await companion.replay(published_c5, selector_transition=SELECTOR_TRANSITION)

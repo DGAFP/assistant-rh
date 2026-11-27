@@ -8,7 +8,14 @@ from psycopg import sql
 
 from assistant_rh_api.core.models.retrieval import RawChunk, RetrievalSource, SearchRequest
 from assistant_rh_api.core.ports.retrieval import SearchPort
-from assistant_rh_api.db.content_store import columns, immutable_object, metadata_expression, section_expression
+from assistant_rh_api.db.content_store import (
+    columns,
+    document_source_clause,
+    explicit_document_id,
+    immutable_object,
+    metadata_expression,
+    section_expression,
+)
 from assistant_rh_api.db.pool import Database
 from assistant_rh_api.db.search_catalog import SearchTable, search_catalog
 
@@ -18,13 +25,47 @@ TSQUERY = sql.SQL("""CASE WHEN plainto_tsquery('french', %s)::text = ''
     ELSE to_tsquery('french', replace(plainto_tsquery('french', %s)::text, ' & ', ' | ')) END""")
 
 
+def scoped_chunk_filter(existing: set[str], corpus: str | None) -> sql.Composable:
+    if corpus is None:
+        return sql.SQL("")
+    scope = document_source_clause(corpus)
+    clause = sql.SQL("")
+    document_id = explicit_document_id(existing)
+    if "section_id" in existing:
+        clause += sql.SQL("""
+            AND (t.section_id IS NULL OR EXISTS (
+                SELECT 1 FROM public.rag_sections linked
+                JOIN public.rag_documents d ON d.doc_id = linked.doc_id
+                WHERE linked.section_id = t.section_id {scope} AND (({id}) IS NULL OR d.doc_id = ({id}))
+            ))
+        """).format(scope=scope, id=document_id)
+    if "source_document_id" in existing:
+        clause += sql.SQL("""
+            AND (({id}) IS NULL OR EXISTS (
+                SELECT 1 FROM public.rag_documents d WHERE d.doc_id = ({id}) {scope}
+            ))
+        """).format(id=document_id, scope=scope)
+    return clause
+
+
 def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hybrid: bool = False) -> tuple[sql.Composed, tuple]:
     table, id_column, tsv_column = spec.source.name, spec.id_column, spec.tsv_column
-    base = sql.SQL("SELECT t.{id} AS chunk_id, t.chunk_text, {section} AS section_id, {meta} AS metadata FROM {table} t").format(
+    corpus = None
+    if request.scoped:
+        corpus = "legifrance" if request.source == "dgafp" else request.source
+    scope = document_source_clause(corpus)
+    chunk_scope = scoped_chunk_filter(existing, corpus)
+    section = section_expression(existing, corpus)
+    metadata = metadata_expression(existing, corpus)
+    base = sql.SQL("""
+        SELECT t.{id} AS chunk_id, t.chunk_text, {section} AS section_id, {meta} AS metadata
+        FROM {table} t WHERE TRUE {chunk_scope}
+    """).format(
         id=sql.Identifier(id_column),
-        section=section_expression(existing),
-        meta=metadata_expression(existing),
+        section=section,
+        meta=metadata,
         table=sql.Identifier("public", table),
+        chunk_scope=chunk_scope,
     )
     params: tuple
     if request.mode == "vector":
@@ -38,15 +79,16 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
         )
         statement = sql.SQL("""
             SELECT t.{id}::text, t.chunk_text, {section}, {meta}, 1 - (t.{vector} <=> %s::vector) AS score {ranking}
-            FROM {table} t WHERE t.{vector} IS NOT NULL
+            FROM {table} t WHERE t.{vector} IS NOT NULL {chunk_scope}
             ORDER BY t.{vector} <=> %s::vector, t.{id} LIMIT %s
         """).format(
             id=sql.Identifier(id_column),
-            section=section_expression(existing),
-            meta=metadata_expression(existing),
+            section=section,
+            meta=metadata,
             vector=sql.Identifier(column),
             table=sql.Identifier("public", table),
             ranking=ranking,
+            chunk_scope=chunk_scope,
         )
         vector = "[" + ",".join(str(v) for v in request.embedding) + "]"
         params = (vector, vector, vector, request.limit) if hybrid else (vector, vector, request.limit)
@@ -62,20 +104,123 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
             WITH parsed AS (SELECT {query} AS q)
             SELECT t.{id}::text, t.chunk_text, {section}, {meta}, ts_rank_cd({tsv}, parsed.q) AS score,
                    ROW_NUMBER() OVER (ORDER BY ts_rank_cd({tsv}, parsed.q) DESC, t.{id}) AS rank
-            FROM {table} t CROSS JOIN parsed WHERE {tsv} @@ parsed.q
+            FROM {table} t CROSS JOIN parsed WHERE {tsv} @@ parsed.q {chunk_scope}
             ORDER BY score DESC, t.{id} LIMIT %s
         """).format(
             query=TSQUERY,
             id=sql.Identifier(id_column),
-            section=section_expression(existing),
-            meta=metadata_expression(existing),
+            section=section,
+            meta=metadata,
             table=sql.Identifier("public", table),
             tsv=tsv,
+            chunk_scope=chunk_scope,
         )
         params = (request.query, request.query, request.query, request.limit)
     else:
+        resolutions = sql.SQL("")
+        sections = sql.Identifier("public", "rag_sections")
+        candidates = sql.SQL("""
+            SELECT t.{id} AS chunk_id, {section} AS section_id, {document} AS explicit_doc_id FROM {table} t
+        """).format(
+            id=sql.Identifier(id_column),
+            section=section,
+            document=explicit_document_id(existing),
+            table=sql.Identifier("public", table),
+        )
+        if {"short_id", "section_path"} <= existing:
+            # Resolve a legacy section once per document/path, rather than once
+            # per chunk and again for joins/order. Keep the historical resolver,
+            # including exact-path priority and UUID tie-break, unchanged.
+            direct = sql.SQL("t.section_id") if "section_id" in existing else sql.SQL("NULL::uuid")
+            unresolved = sql.SQL("WHERE section_id IS NULL") if "section_id" in existing else sql.SQL("")
+            legacy_columns = {"short_id", "section_path"}
+            canonical_column = sql.SQL("")
+            canonical_join = sql.SQL("")
+            if corpus is not None and "source_document_id" in existing:
+                legacy_columns.add("source_document_id")
+                canonical_column = sql.SQL(", source_document_id")
+                canonical_join = sql.SQL("AND r.source_document_id IS NOT DISTINCT FROM t.source_document_id")
+            relations = sql.SQL("""
+                FROM {table} t LEFT JOIN resolved_sections r
+                  ON r.short_id = t.short_id AND r.section_path = t.section_path {canonical_join}
+                            """).format(table=sql.Identifier("public", table), canonical_join=canonical_join)
+            resolutions = sql.SQL("""
+                section_keys AS MATERIALIZED (
+                    SELECT DISTINCT short_id, section_path {canonical_column} FROM {table} {unresolved}
+                ), resolved_sections AS MATERIALIZED (
+                    SELECT t.short_id, t.section_path {canonical_column}, {section} AS section_id FROM section_keys t
+                ), candidate_sections AS (
+                    SELECT DISTINCT COALESCE({direct}, r.section_id) AS section_id {relations}
+                ), relevant_sections AS MATERIALIZED (
+                    SELECT s.section_id, s.doc_id, s.heading, s.heading_path FROM public.rag_sections s
+                    JOIN candidate_sections c ON c.section_id = s.section_id
+                ),
+            """).format(
+                table=sql.Identifier("public", table),
+                unresolved=unresolved,
+                section=section_expression(legacy_columns, corpus),
+                canonical_column=canonical_column,
+                direct=direct,
+                relations=relations,
+            )
+            candidates = sql.SQL("""
+                SELECT t.{id} AS chunk_id, COALESCE({direct}, r.section_id) AS section_id, {document} AS explicit_doc_id
+                {relations}
+            """).format(id=sql.Identifier(id_column), direct=direct, document=explicit_document_id(existing), relations=relations)
+            # Avoid evaluating French text search over sections absent from this
+            # source. Materialize IDs/sections, not chunk text or chunk metadata.
+            sections = sql.Identifier("relevant_sections")
+            base = sql.SQL("""
+                SELECT t.{id} AS chunk_id, t.chunk_text, COALESCE({direct}, r.section_id) AS section_id, {meta} AS metadata
+                {relations}
+            """).format(
+                id=sql.Identifier(id_column),
+                direct=direct,
+                meta=metadata,
+                relations=relations,
+            )
+        if request.scoped:
+            # Score eligible titles once per section; require any explicit
+            # document ID to agree with that section before ranking its chunks.
+            statement = sql.SQL("""
+                WITH parsed AS (SELECT {query} AS q),
+                {resolutions}
+                candidates AS MATERIALIZED ({candidates}),
+                section_scores AS MATERIALIZED (
+                    SELECT s.section_id, s.heading, s.heading_path, d.doc_id,
+                           d.title, d.source_url, d.short_id,
+                           ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) AS score
+                    FROM {sections} s JOIN public.rag_documents d ON d.doc_id = s.doc_id
+                    CROSS JOIN parsed
+                    WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ parsed.q {scope}
+                ),
+                ranked AS MATERIALIZED (
+                    SELECT c.chunk_id, s.*,
+                           ROW_NUMBER() OVER (ORDER BY s.score DESC, c.chunk_id, s.section_id) AS rank
+                    FROM candidates c JOIN section_scores s ON s.section_id = c.section_id
+                      AND (c.explicit_doc_id IS NULL OR c.explicit_doc_id = s.doc_id)
+                    ORDER BY s.score DESC, c.chunk_id, s.section_id LIMIT %s
+                )
+                SELECT r.chunk_id::text, t.chunk_text, r.section_id,
+                       {metadata} || jsonb_build_object('heading', r.heading, 'heading_path', r.heading_path,
+                           'doc_title', r.title, 'doc_url', r.source_url, 'doc_short_id', r.short_id,
+                           'source_name', r.title, 'source_document_id', r.short_id),
+                       r.score, r.rank
+                FROM ranked r JOIN {table} t ON t.{id} = r.chunk_id
+                ORDER BY r.rank
+            """).format(
+                query=TSQUERY,
+                resolutions=resolutions,
+                candidates=candidates,
+                sections=sections,
+                scope=scope,
+                metadata=metadata,
+                table=sql.Identifier("public", table),
+                id=sql.Identifier(id_column),
+            )
+            return statement, (request.query, request.query, request.query, request.limit)
         statement = sql.SQL("""
-            WITH parsed AS (SELECT {query} AS q), candidates AS ({base})
+            WITH parsed AS (SELECT {query} AS q), {resolutions} candidates AS ({base})
             SELECT c.chunk_id::text, c.chunk_text, c.section_id,
                    c.metadata || jsonb_build_object('heading', s.heading, 'heading_path', s.heading_path,
                        'doc_title', d.title, 'doc_url', d.source_url, 'doc_short_id', d.short_id,
@@ -84,11 +229,11 @@ def _query(request: SearchRequest, spec: SearchTable, existing: set[str], *, hyb
                    ROW_NUMBER() OVER (ORDER BY
                        ts_rank_cd(to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)), parsed.q) DESC,
                        c.chunk_id, c.section_id) AS rank
-            FROM candidates c JOIN public.rag_sections s ON s.section_id = c.section_id
+            FROM candidates c JOIN {sections} s ON s.section_id = c.section_id
             LEFT JOIN public.rag_documents d ON d.doc_id = s.doc_id CROSS JOIN parsed
-            WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ parsed.q
+            WHERE to_tsvector('french', concat_ws(' ', d.title, s.heading, s.heading_path)) @@ parsed.q {scope}
             ORDER BY score DESC, c.chunk_id, c.section_id LIMIT %s
-        """).format(query=TSQUERY, base=base)
+        """).format(query=TSQUERY, resolutions=resolutions, base=base, sections=sections, scope=scope)
         params = (request.query, request.query, request.query, request.limit)
     return statement, params
 
@@ -124,7 +269,7 @@ class SearchStore(SearchPort):
 
     async def search(self, request: SearchRequest) -> tuple[RawChunk, ...]:
         spec = self._validate(request)
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.search_transaction() as connection:
             existing = await columns(connection, spec.source.name)
             statement, params = _query(request, spec, existing)
             if request.mode == "vector" and request.probes:
@@ -136,7 +281,7 @@ class SearchStore(SearchPort):
         """Two raw lanes from one statement snapshot, with no SQL fusion policy."""
         vector_request = replace(request, mode="vector")
         spec = self._validate(vector_request)
-        async with self._database.transaction(read_only=True) as connection:
+        async with self._database.search_transaction() as connection:
             existing = await columns(connection, spec.source.name)
             vector_sql, vector_params = _query(vector_request, spec, existing, hybrid=True)
             lexical_sql, lexical_params = _query(replace(request, mode="lexical"), spec, existing)

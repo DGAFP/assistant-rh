@@ -17,6 +17,57 @@ _ANSWER_URL = re.compile(
     r"(?:(?!\)[.,;:!?]*\[)[^\s<>\"'`])+",
     re.IGNORECASE,
 )
+_ANSWER_BOUNDARY = re.compile(r"""[\s<>"'`]""")
+
+
+class AnswerStream:
+    """Apply answer policy before delivery, retaining unfinished URLs/source markers.
+
+    The provider byte limit also bounds a token with no delimiter. Such a token
+    cannot be released early: a later fragment may turn it into a private URL.
+    """
+
+    def __init__(self) -> None:
+        self._pending = ""
+        self._carriage_return = ""
+        self._started = False
+        self._stopped = False
+
+    def feed(self, text: str, *, final: bool = False) -> str:
+        if self._stopped:
+            return ""
+        text = self._carriage_return + text
+        self._carriage_return = "\r" if not final and text.endswith("\r") else ""
+        if self._carriage_return:
+            text = text[:-1]
+        self._pending += text.replace("\r\n", "\n").replace("\r", "\n")
+        leading_marker = SOURCES_MARKER.lstrip("\n")
+        marker = self._pending.find(SOURCES_MARKER)
+        if not self._started and self._pending.startswith(leading_marker):
+            marker = 0
+        if marker >= 0:
+            self._pending = self._pending[:marker]
+            final = True
+        if final:
+            self._stopped = True
+            result = redact_private_urls(self._pending)
+            self._pending = ""
+            return result
+        if not self._started and leading_marker.startswith(self._pending):
+            return ""
+        limit = len(self._pending)
+        for size in range(min(limit, len(SOURCES_MARKER) - 1), 0, -1):
+            if self._pending.endswith(SOURCES_MARKER[:size]):
+                limit -= size
+                break
+        # URL matching cannot cross these delimiters. Keep the last unfinished
+        # token and any reserved marker prefix until their meaning is known.
+        boundary = 0
+        for match in _ANSWER_BOUNDARY.finditer(self._pending, 0, limit):
+            boundary = match.end()
+        ready, self._pending = self._pending[:boundary], self._pending[boundary:]
+        self._started = self._started or bool(ready)
+        return redact_private_urls(ready)
 
 
 def redact_private_urls(text: str, *, replacement: str = "[lien privé retiré]") -> str:
@@ -60,21 +111,34 @@ def final_sources(items: tuple[ContextItem, ...]) -> tuple[RunSource, ...]:
             document_id = str(UUID(raw_document_id))
         except ValueError:
             document_id = None
+        public_url = public_source_url(item.document_url or "")
+        hostname = urlsplit(public_url).hostname
+        publisher = item.publisher or ""
         title = item.document_title or str(metadata.get("full_title") or metadata.get("title") or item.heading or "Document")
+        if hostname in {"www.legifrance.gouv.fr", "legifrance.gouv.fr"}:
+            publisher = "Légifrance"
+            title = str(metadata.get("full_title") or metadata.get("title") or item.document_title or item.heading or "Document")
+            number = re.sub(r"^Article\b\s*", "", str(metadata.get("number") or "").strip(), flags=re.IGNORECASE).strip()
+            if number:
+                legal_title = re.sub(
+                    r"^(?:Article\s+)?" + re.escape(number) + r"(?!\w)(?:\s*[—–-]\s*|\s*$)", "", title.strip(), flags=re.IGNORECASE
+                ).strip()
+                title = f"Article {number} - {legal_title}" if legal_title else f"Article {number}"
+        elif hostname in {"www.service-public.fr", "www.service-public.gouv.fr"}:
+            publisher = "Service-Public"
         reference = str(document_id or metadata.get("doc_short_id") or raw_document_id or metadata.get("cid") or "")
         if not reference:
             reference = "source-" + sha256(f"{item.publisher}\n{item.section_id}\n{title}\n{item.document_url}".encode()).hexdigest()
         if reference in seen:
             continue
         seen.add(reference)
-        public_url = public_source_url(item.document_url or "")
         sources.append(
             RunSource(
                 doc_ref=reference,
                 title=redact_private_urls(title),
                 url=public_url,
                 document_id=document_id,
-                publisher=redact_private_urls(item.publisher or ""),
+                publisher=redact_private_urls(publisher),
                 access="public" if public_url else "authenticated",
             )
         )
