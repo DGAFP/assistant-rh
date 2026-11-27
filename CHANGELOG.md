@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Livraisons API par tags depuis main, avec promotion du digest validé, preuve
+  Flux/recette et reprise sérialisée ; retrait des promotions Release Please.
+
 ## [0.14.0](https://github.com/DGAFP/assistant-rh/compare/v0.13.0...v0.14.0) (2026-09-25)
 
 

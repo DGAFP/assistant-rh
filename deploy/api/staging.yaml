@@ -1,0 +1,2 @@
+# Reviewed target overrides; shared resource defaults stay in values.yaml.
+environment: staging

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a sealed staging Helm archive locally. This script never publishes it."""
+"""Seal reviewed API values and an immutable image digest into an OCI Helm chart."""
 
 import json
 import os
@@ -9,58 +9,67 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-APPLICATION = "api"
-REPOSITORY = "DGAFP/assistant-rh"
-CHART = "deploy/api"
-RELEASE = "assistant-rh-api"
+from release import DIGEST, REPOSITORY, SHA, STAGING_REGISTRY, classify
 
 
 def main():
-    if os.environ.get("GITHUB_REPOSITORY") != REPOSITORY or os.environ.get("GITHUB_REF_NAME") != "staging":
-        raise RuntimeError("Only the intended repository staging branch can produce this bundle")
-    sha = os.environ["GITHUB_SHA"]
-    if not re.fullmatch(r"[a-f0-9]{40}", sha):
-        raise RuntimeError("Invalid commit")
-    numbers = [os.environ["GITHUB_RUN_NUMBER"], os.environ["GITHUB_RUN_ATTEMPT"]]
-    if not all(re.fullmatch(r"[1-9][0-9]*", number) for number in numbers):
-        raise RuntimeError("Invalid release sequence")
-    version = "0." + ".".join(numbers)
-    keys = ["IMAGE_DIGEST"] if APPLICATION == "api" else ["BACKEND_DIGEST", "FRONTEND_DIGEST"]
-    for key in keys:
-        if not re.fullmatch(r"sha256:[a-f0-9]{64}", os.environ[key]):
-            raise RuntimeError("Invalid image digest")
+    if os.environ.get("GITHUB_REPOSITORY") != REPOSITORY:
+        raise RuntimeError("Unexpected delivery repository")
+    tag = os.environ["RELEASE_TAG"]
+    _, target = classify(tag)
+    if target != os.environ["RELEASE_ENVIRONMENT"]:
+        raise RuntimeError("Tag does not select this environment")
+    sha = os.environ["SOURCE_SHA"]
+    if not SHA.fullmatch(sha):
+        raise RuntimeError("Invalid source commit")
+    version = os.environ["CHART_VERSION"]
+    if not re.fullmatch(r"0\.[1-9][0-9]*\.0", version):
+        raise RuntimeError("Invalid chart sequence")
+    registry = os.environ["RELEASE_REGISTRY"]
+    if not re.fullmatch(r"rg\.fr-par\.scw\.cloud/[a-z0-9-]+", registry):
+        raise RuntimeError("Invalid registry")
+    if (target == "staging") != (registry == STAGING_REGISTRY):
+        raise RuntimeError("Registry does not match the target environment")
+    digest = os.environ["IMAGE_DIGEST"]
+    if not DIGEST.fullmatch(digest):
+        raise RuntimeError("Invalid image digest")
+    source = Path(os.environ.get("SOURCE_ROOT", ".")).resolve()
+    overrides = source / "deploy/api" / (target + ".yaml")
+    if not overrides.is_file():
+        raise RuntimeError("Reviewed environment values are missing")
     destination = Path(os.environ["BUNDLE_OUTPUT_DIR"]).resolve()
     destination.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as temporary:
-        chart = Path(temporary) / RELEASE
-        shutil.copytree(CHART, chart)
-        values_template = chart / "templates" / "bundle-values.yaml"
-        values_template.write_text("{{ .Values | toJson }}\n")
-        args = ["helm", "template", RELEASE, str(chart), "--namespace", RELEASE, "--show-only", "templates/bundle-values.yaml"]
-        if APPLICATION == "api":
-            args += ["--set-string", "image.digest=" + os.environ["IMAGE_DIGEST"]]
-        else:
-            args += [
-                "-f",
-                "deploy/kapsule/staging.yaml",
-                "--set-string",
-                "image.tag=sha-" + sha + "@" + os.environ["BACKEND_DIGEST"],
-                "--set-string",
-                "frontend.image.tag=sha-" + sha + "@" + os.environ["FRONTEND_DIGEST"],
-            ]
+        chart = Path(temporary) / "assistant-rh-api"
+        shutil.copytree(source / "deploy/api", chart)
+        template = chart / "templates/bundle-values.yaml"
+        template.write_text("{{ .Values | toJson }}\n")
+        args = [
+            "helm",
+            "template",
+            "assistant-rh-api",
+            str(chart),
+            "--namespace",
+            "assistant-rh-api",
+            "--show-only",
+            "templates/bundle-values.yaml",
+            "-f",
+            str(overrides),
+            "--set-string",
+            "image.repository=" + registry + "/assistant-rh-api",
+            "--set-string",
+            "image.digest=" + digest,
+        ]
         rendered = subprocess.check_output(args, text=True)
         values = json.loads("\n".join(line for line in rendered.splitlines() if line.strip() and not line.startswith(("#", "---"))))
-        values_template.unlink()
-        # JSON is valid YAML; Helm does the values merge without another dependency.
+        if values["environment"] != target:
+            raise RuntimeError("Application environment differs from the delivery")
+        template.unlink()
         (chart / "values.yaml").write_text(json.dumps(values, indent=2) + "\n")
-        shutil.copyfile(Path(__file__).with_name("staging-smoke.yaml"), chart / "templates" / "staging-smoke.yaml")
+        shutil.copyfile(Path(__file__).with_name("staging-smoke.yaml"), chart / "templates/staging-smoke.yaml")
         subprocess.run(["helm", "lint", str(chart)], check=True)
         subprocess.run(["helm", "package", str(chart), "--destination", str(destination), "--version", version, "--app-version", sha], check=True)
-    print("Prepared staging chart", RELEASE, version, "for", sha)
-    if os.environ.get("GITHUB_OUTPUT"):
-        with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-            output.write("chart_version=" + version + "\n")
-            output.write("chart_path=" + str(destination / (RELEASE + "-" + version + ".tgz")) + "\n")
+    print(f"Prepared {target} chart assistant-rh-api {version} for {tag} ({sha})")
 
 
 if __name__ == "__main__":
