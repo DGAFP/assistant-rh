@@ -249,6 +249,11 @@ def next_chart_version(tags):
     return f"0.{max((v[1] for v in versions), default=0) + 1}.0"
 
 
+def registry_missing(message):
+    # ORAS 1.3 reports a missing manifest as "<reference>: not found", without 404.
+    return bool(re.search(r": not found\s*$|\b(?:MANIFEST_UNKNOWN|NAME_UNKNOWN)\b|\b404(?:\s+|:\s*)Not Found\b", message, re.IGNORECASE))
+
+
 def registry_tags(registry):
     result = subprocess.run(
         [
@@ -263,7 +268,7 @@ def registry_tags(registry):
         capture_output=True,
         check=False,
     )
-    if result.returncode and "404" not in result.stderr:
+    if result.returncode and not registry_missing(result.stderr):
         raise RuntimeError("Could not enumerate existing chart versions")
     return result.stdout.splitlines()
 
@@ -276,7 +281,7 @@ def existing_digest(reference):
         check=False,
     )
     if result.returncode:
-        if "404" in result.stderr:
+        if registry_missing(result.stderr):
             return None
         raise RuntimeError("Registry lookup failed; artifact existence is unknown")
     if not DIGEST.fullmatch(result.stdout.strip()):
@@ -445,7 +450,7 @@ def publish():
                 capture_output=True,
                 check=False,
             )
-            if existing.returncode and "404" not in existing.stderr:
+            if existing.returncode and not registry_missing(existing.stderr):
                 raise RuntimeError("Cannot establish whether a release image already exists")
             if existing.returncode:
                 dockerfile = "docker/api/Dockerfile"
