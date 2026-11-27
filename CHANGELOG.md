@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## [0.15.0](https://github.com/DGAFP/assistant-rh/compare/v0.14.0...v0.15.0) (2026-11-27)
+
+- Authentification individuelle des délégations Conversations et protection contre
+  les replays, avec feedback lié à son auteur et son ministère.
+- Réponses Chat Completions SSE robustes, persistance et isolation des documents.
+- Admission SQL bornée et diagnostics HTTP, SSE, SQL et fournisseurs.
+- Qualification de l’intégration Conversations et outillage de développement local.
 
 - Livraisons API par tags depuis main, avec promotion du digest validé, preuve
   Flux/recette et reprise sérialisée ; retrait des promotions Release Please.
